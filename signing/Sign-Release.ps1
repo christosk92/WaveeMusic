@@ -109,8 +109,8 @@ if (-not (Test-Path $dlib)) { throw "Azure.CodeSigning.Dlib.dll not found at $dl
 $metadata = Join-Path $PSScriptRoot 'metadata.json'
 if (-not (Test-Path $metadata)) { throw "$metadata missing. Copy metadata.template.json to metadata.json and fill in your Endpoint/Account/Profile." }
 
-$proj = Join-Path $repoRoot 'Wavee.UI.WinUI\Wavee.UI.WinUI.csproj'
-$manifestPath = Join-Path $repoRoot 'Wavee.UI.WinUI\Package.appxmanifest'
+$proj = Join-Path $repoRoot 'src\Wavee.UI.WinUI\Wavee.UI.WinUI.csproj'
+$manifestPath = Join-Path $repoRoot 'src\Wavee.UI.WinUI\Package.appxmanifest'
 
 Write-Host "  msbuild   : $msbuild"
 Write-Host "  signtool  : $signtool"

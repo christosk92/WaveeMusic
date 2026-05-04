@@ -28,7 +28,7 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$ManifestPath = (Join-Path $PSScriptRoot '..\Wavee.UI.WinUI\Package.appxmanifest'),
+  [string]$ManifestPath = (Join-Path $PSScriptRoot '..\src\Wavee.UI.WinUI\Package.appxmanifest'),
   [Parameter(Mandatory = $true)]
   [string]$PublisherSubject
 )

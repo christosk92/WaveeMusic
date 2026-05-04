@@ -1,0 +1,10 @@
+{
+  "solution": {
+    "path": "Wavee.slnx",
+    "projects": [
+      "test\\Wavee.Tests\\Wavee.Tests.csproj",
+      "test\\Wavee.UI.Tests\\Wavee.UI.Tests.csproj",
+      "test\\Wavee.PlayPlay.Tests\\Wavee.PlayPlay.Tests.csproj"
+    ]
+  }
+}

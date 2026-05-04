@@ -1,0 +1,65 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+        <!-- Native AOT Compatibility -->
+        <IsAotCompatible>true</IsAotCompatible>
+        <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+        <EnableAotAnalyzer>true</EnableAotAnalyzer>
+        <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+
+        <!-- Treat AOT/Trim warnings as errors -->
+        <WarningsAsErrors>$(WarningsAsErrors);IL2026;IL2050;IL2055;IL2060;IL2067;IL2069;IL2070;IL2072;IL2073;IL2075;IL2076;IL2077;IL2079;IL2080;IL2081;IL2082;IL2084;IL2085;IL2086;IL2087;IL2088;IL2089;IL2090;IL2091;IL2092;IL2093;IL2094;IL2095;IL2096;IL2097;IL2098;IL2099;IL2100;IL2101;IL2102;IL2103;IL2104;IL2105;IL2106;IL2107;IL2108;IL2109;IL2110;IL2111;IL2112;IL2113;IL2114;IL2115;IL2116;IL3050;IL3051;IL3052;IL3053;IL3054;IL3055;IL3056</WarningsAsErrors>
+        <Platforms>AnyCPU;ARM64;x64</Platforms>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Google.Protobuf" Version="3.34.1" />
+      <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.7" />
+      <PackageReference Include="Grpc.Tools" Version="2.80.0">
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        <PrivateAssets>all</PrivateAssets>
+      </PackageReference>
+      <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.7" />
+      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
+      <PackageReference Include="System.Reactive" Version="7.0.0-preview.1" />
+      <PackageReference Include="z440.atl.core" Version="7.13.0" />
+      <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.7" />
+      <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Wavee.Playback.Contracts\Wavee.Playback.Contracts.csproj" />
+      <ProjectReference Include="..\..\vendor\NVorbis\NVorbis\NVorbis.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <!-- Auto-generate C# code from all .proto files with public access -->
+      <Protobuf Include="Protocol\Protos\**\*.proto" GrpcServices="None" Access="Public" ProtoRoot="Protocol\Protos" OutputDir="Protocol\Generated" CompileOutputs="true" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <!-- Exclude generated Protocol files from SDK's default Compile items to avoid duplicates -->
+      <Compile Remove="Protocol\Generated\**\*.cs" />
+    </ItemGroup>
+
+    <!--
+      PlayPlay constants (Spotify property; not bundled in the public repo).
+      The real file at Core/Audio/PlayPlayConstants.cs is gitignored. When it
+      exists locally, drop the stub from compilation. When it doesn't, the
+      stub stands in and the runtime feature stays disabled.
+    -->
+    <ItemGroup Condition="Exists('Core\Audio\PlayPlayConstants.cs')">
+      <Compile Remove="Core\Audio\PlayPlayConstants.Stub.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <InternalsVisibleTo Include="Wavee.Tests" />
+      <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+    </ItemGroup>
+
+</Project>

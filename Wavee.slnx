@@ -1,0 +1,39 @@
+<Solution>
+  <!--
+    Solution platforms intentionally exclude "Any CPU": Wavee.UI.WinUI and
+    Wavee.Controls.Lyrics declare <Platforms>x86;x64;ARM64</Platforms> with
+    no AnyCPU variant, so a solution-level Any CPU triggers VS error
+    "specifies a project configuration that does not exist". The class-
+    library projects (Wavee, Wavee.UI, etc.) that ARE AnyCPU build fine
+    under x86/x64/ARM64 — msbuild promotes the platform automatically.
+  -->
+  <Configurations>
+    <Platform Name="x86" />
+    <Platform Name="x64" />
+    <Platform Name="ARM64" />
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/Wavee.AudioHost/Wavee.AudioHost.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/Wavee.Console/Wavee.Console.csproj" />
+    <Project Path="src/Wavee.Controls.Lyrics/Wavee.Controls.Lyrics.csproj" />
+    <Project Path="src/Wavee.Playback.Contracts/Wavee.Playback.Contracts.csproj" />
+    <Project Path="src/Wavee.UI.WinUI/Wavee.UI.WinUI.csproj" />
+    <Project Path="src/Wavee.UI/Wavee.UI.csproj" />
+    <Project Path="src/Wavee/Wavee.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Wavee.PlayPlay.Tests/Wavee.PlayPlay.Tests.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="test/Wavee.Tests/Wavee.Tests.csproj" />
+    <Project Path="test/Wavee.UI.Tests/Wavee.UI.Tests.csproj" />
+  </Folder>
+  <Folder Name="/vendor/">
+    <Project Path="vendor/Lyricify.Lyrics.Helper/Lyricify.Lyrics.Helper.csproj" />
+    <Project Path="vendor/NVorbis/NVorbis/NVorbis.csproj" />
+  </Folder>
+</Solution>

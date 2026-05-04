@@ -196,3 +196,20 @@ signing/metadata.json
 
 # Local signed-MSIX output staging — large per-build artifacts (100MB+).
 .signed-msix/
+
+# Protocol-capture binaries / Spotify reverse-engineering scratch.
+# Anything in bodies/ is research material, not source.
+bodies/
+
+# Superpowers planning files: working notes the workflow generates and
+# discards each session. Already gitignored under docs/superpowers/specs/;
+# include the broader subtree so /loop and /plan output never leaks.
+docs/superpowers/
+
+# Various AI-tool sandbox/cache directories created at the repo root by
+# host-side coding agents. None of these are source.
+.codex-ai-compile/
+.codex-dotnet-home/
+.codex-har-inspect/
+.dotnet-cli-home/
+.dotnet-home/

@@ -47,15 +47,20 @@ jobs:
           ./signing/Set-Publisher.ps1 -PublisherSubject "${{ secrets.RELEASE_PUBLISHER_SUBJECT }}"
 
       - name: Restore
-        run: dotnet restore Wavee.UI.WinUI/Wavee.UI.WinUI.csproj
+        run: dotnet restore src/Wavee.UI.WinUI/Wavee.UI.WinUI.csproj
 
       - name: Build & package MSIX
         shell: pwsh
         run: |
-          msbuild Wavee.UI.WinUI/Wavee.UI.WinUI.csproj `
+          # IMPORTANT: do NOT pass /p:RuntimeIdentifier — that flag triggers
+          # WMC9999 in the WinUI XAML compiler. Platform alone is enough.
+          # UapAppxPackageBuildMode=SideloadOnly + AppxBundle=Never matches
+          # what signing/Sign-Release.ps1 was verified against locally.
+          msbuild src/Wavee.UI.WinUI/Wavee.UI.WinUI.csproj `
             /p:Configuration=Release `
             /p:Platform=${{ matrix.platform }} `
             /p:GenerateAppxPackageOnBuild=true `
+            /p:UapAppxPackageBuildMode=SideloadOnly `
             /p:AppxPackageSigningEnabled=false `
             /p:AppxBundle=Never `
             /p:AppxPackageDir="$env:GITHUB_WORKSPACE\AppPackages\\" `

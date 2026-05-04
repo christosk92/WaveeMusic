@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -9,15 +9,15 @@ WaveeMusic is a clean-room Spotify desktop client for Windows: a .NET 10 reimple
 Top-level project READMEs are the canonical source of architectural detail — they're already detailed and current. Read them before invasive changes:
 
 - `README.md` — features, project layout, gabo events surface, what's excluded from public source.
-- `Wavee/README.md` — core protocol library entry points (`Session`, `DealerClient`, `PlaybackOrchestrator`, `SpClient`, `PathfinderClient`, `AudioKeyManager`).
-- `Wavee.UI/README.md` — framework-neutral UI service layer.
-- `Wavee.UI.WinUI/README.md` — desktop app composition, services, custom MSBuild targets, on-device AI plumbing.
-- `Wavee.AudioHost/README.md` — out-of-process audio runtime (x64-only).
-- `Wavee.Playback.Contracts/README.md` — IPC wire format.
-- `Wavee.Console/README.md` — AOT CLI client (Linux/Docker friendly).
-- `Wavee.Controls.Lyrics/README.md` — lyrics rendering control library.
-- `Wavee/Connect/DEALER_PROTOCOL.md` and `DEALER_IMPLEMENTATION_GUIDE.md` — wire-level Dealer reference.
-- `Wavee/OAuth/OAUTH_FLOWS.md` — Spotify OAuth analysis.
+- `src/Wavee/README.md` — core protocol library entry points (`Session`, `DealerClient`, `PlaybackOrchestrator`, `SpClient`, `PathfinderClient`, `AudioKeyManager`).
+- `src/Wavee.UI/README.md` — framework-neutral UI service layer.
+- `src/Wavee.UI.WinUI/README.md` — desktop app composition, services, custom MSBuild targets, on-device AI plumbing.
+- `src/Wavee.AudioHost/README.md` — out-of-process audio runtime (x64-only).
+- `src/Wavee.Playback.Contracts/README.md` — IPC wire format.
+- `src/Wavee.Console/README.md` — AOT CLI client (Linux/Docker friendly).
+- `src/Wavee.Controls.Lyrics/README.md` — lyrics rendering control library.
+- `src/Wavee/Connect/DEALER_PROTOCOL.md` and `DEALER_IMPLEMENTATION_GUIDE.md` — wire-level Dealer reference.
+- `src/Wavee/OAuth/OAUTH_FLOWS.md` — Spotify OAuth analysis.
 
 ## Common commands
 
@@ -29,28 +29,28 @@ dotnet build                       # debug
 dotnet build -c Release
 
 # Run desktop client
-dotnet run --project Wavee.UI.WinUI
+dotnet run --project src/Wavee.UI.WinUI
 
 # Run console client
-dotnet run --project Wavee.Console
+dotnet run --project src/Wavee.Console
 
 # Run AudioHost manually for diagnostics (refuses to start without --standalone-dev)
-dotnet run --project Wavee.AudioHost -p Platform=x64 -- --standalone-dev --pipe MyPipe --verbose
+dotnet run --project src/Wavee.AudioHost -p Platform=x64 -- --standalone-dev --pipe MyPipe --verbose
 
 # Tests
 dotnet test                                                              # whole solution
-dotnet test Wavee.Tests/Wavee.Tests.csproj                               # core suite
-dotnet test Wavee.UI.Tests/Wavee.UI.Tests.csproj                         # UI service layer
-dotnet test Wavee.Tests/Wavee.Tests.csproj --filter "FullyQualifiedName~ShannonCipher"   # single class
-dotnet test Wavee.Tests/Wavee.Tests.csproj --filter "FullyQualifiedName~Wavee.Tests.Connect"  # namespace
+dotnet test test/Wavee.Tests/Wavee.Tests.csproj                               # core suite
+dotnet test test/Wavee.UI.Tests/Wavee.UI.Tests.csproj                         # UI service layer
+dotnet test test/Wavee.Tests/Wavee.Tests.csproj --filter "FullyQualifiedName~ShannonCipher"   # single class
+dotnet test test/Wavee.Tests/Wavee.Tests.csproj --filter "FullyQualifiedName~Wavee.Tests.Connect"  # namespace
 
 # PlayPlay decryption tests (x64-only, plain Exe harness — exits non-zero on failure, not xUnit)
-dotnet run --project Wavee.PlayPlay.Tests -p Platform=x64
+dotnet run --project test/Wavee.PlayPlay.Tests -p Platform=x64
 
 # Native publish for Wavee.Console
-dotnet publish Wavee.Console -c Release -r win-x64
-dotnet publish Wavee.Console -c Release -r linux-x64
-dotnet publish Wavee.Console -c Release -r linux-arm64
+dotnet publish src/Wavee.Console -c Release -r win-x64
+dotnet publish src/Wavee.Console -c Release -r linux-x64
+dotnet publish src/Wavee.Console -c Release -r linux-arm64
 ```
 
 Prerequisites: .NET 10 SDK, Windows 11 24H2 (build 26100) or later for the WinUI app, Spotify Premium account.
@@ -83,7 +83,7 @@ Length-prefixed JSON over named pipe: `[4 bytes big-endian length][UTF-8 JSON pa
 - **Project reference** by `Wavee` and (transitively) `Wavee.UI.WinUI`.
 - **Source-included** by `Wavee.AudioHost` (`<Compile Include="..\Wavee.Playback.Contracts\IpcMessages.cs">`). AudioHost has **zero project references on Wavee\* assemblies** so a stale `Wavee.Playback.Contracts.dll` can never land alongside `Wavee.AudioHost.exe` and break startup. JSON wire format means type identity across assemblies doesn't matter.
 
-When adding a new IPC command/event: edit `Wavee.Playback.Contracts/IpcMessages.cs` only. Both sides pick it up automatically.
+When adding a new IPC command/event: edit `src/Wavee.Playback.Contracts/IpcMessages.cs` only. Both sides pick it up automatically.
 
 ### Project layering
 
@@ -104,7 +104,7 @@ Wavee.AudioHost  ──►  NVorbis only (no Wavee* refs — see IPC section)
 
 ### Core library entry point — `Session`
 
-`Wavee/Core/Session/Session.cs` is the anchor of everything: AP TCP+TLS connect, authenticate, then **lazy-init** of every subsystem (Dealer, Mercury, Pathfinder, AudioKeyManager, EventService) on first access. A consumer that only needs metadata (`pathfinder.SearchAsync(...)`) never opens a Dealer WebSocket or audio key channel. Use `ISession` in DI; the WinUI app registers a singleton wired with `SessionConfig`, `IHttpClientFactory`, `ILogger<Session>`, and an optional `IRemoteStateRecorder` (off by default; toggled from the Debug page).
+`src/Wavee/Core/Session/Session.cs` is the anchor of everything: AP TCP+TLS connect, authenticate, then **lazy-init** of every subsystem (Dealer, Mercury, Pathfinder, AudioKeyManager, EventService) on first access. A consumer that only needs metadata (`pathfinder.SearchAsync(...)`) never opens a Dealer WebSocket or audio key channel. Use `ISession` in DI; the WinUI app registers a singleton wired with `SessionConfig`, `IHttpClientFactory`, `ILogger<Session>`, and an optional `IRemoteStateRecorder` (off by default; toggled from the Debug page).
 
 Most state across the protocol layer is exposed as `IObservable<T>` — `System.Reactive` is used heavily.
 
@@ -114,13 +114,13 @@ Most state across the protocol layer is exposed as `IObservable<T>` — `System.
 
 ### Spotify Connect / Dealer
 
-`Wavee/Connect/` implements the full Dealer WebSocket protocol (cluster state, transfer, volume, remote commands). `DealerClient` exposes `IObservable<DealerMessage>` and `Requests`. `DeviceStateManager` announces this device and handles `PutState`. `PlaybackStateManager` is the reactive view of remote cluster state. `ConnectCommandClient` issues commands with ack tracking. The desktop client works as both controller and target.
+`src/Wavee/Connect/` implements the full Dealer WebSocket protocol (cluster state, transfer, volume, remote commands). `DealerClient` exposes `IObservable<DealerMessage>` and `Requests`. `DeviceStateManager` announces this device and handles `PutState`. `PlaybackStateManager` is the reactive view of remote cluster state. `ConnectCommandClient` issues commands with ack tracking. The desktop client works as both controller and target.
 
 ### Telemetry (gabo events)
 
 Wavee posts the bare minimum playback events Spotify needs to credit Recently Played and play counts. All events go to `https://spclient.wg.spotify.com/gabo-receiver-service/v3/events/`. The legacy `event-service/v1/events` path returns 404 — gabo is the only working transport.
 
-The `GaboEnvelopeFactory` mimics the C++ desktop client's context block (SDK strings, app version `1.2.88.483`, real BIOS manufacturer/model + Windows machine SID) to clear Spotify's anti-fraud pipeline. Anti-fraud silently drops batches whose context block doesn't look first-party. **If you change SDK strings, version code, or the device-context fragments, expect Recently Played to silently stop working.** The breakthrough is documented inline in `Wavee/Connect/Events/GaboEnvelopeFactory.cs`.
+The `GaboEnvelopeFactory` mimics the C++ desktop client's context block (SDK strings, app version `1.2.88.483`, real BIOS manufacturer/model + Windows machine SID) to clear Spotify's anti-fraud pipeline. Anti-fraud silently drops batches whose context block doesn't look first-party. **If you change SDK strings, version code, or the device-context fragments, expect Recently Played to silently stop working.** The breakthrough is documented inline in `src/Wavee/Connect/Events/GaboEnvelopeFactory.cs`.
 
 ### AOT / trimming
 
@@ -134,10 +134,10 @@ Three Spotify-property files are gitignored. The build still compiles via stub f
 
 | File | Effect when missing |
 |---|---|
-| `Wavee/Core/Crypto/AudioDecryptStream.cs` | No stub — file simply absent. Cannot decrypt encrypted Spotify Ogg streams in this repo's open form. Test fixtures in `Wavee.Tests/Core/Crypto/` document what *would* be tested. |
-| `Wavee/Core/Audio/PlayPlayConstants.cs` | `PlayPlayConstants.Stub.cs` is used (csproj swaps via `Condition="Exists(...)"`). PlayPlay key fallback disabled at runtime; `AudioKeyManager` falls back to AP-only key resolution. |
-| `Wavee.AudioHost/PlayPlay/PlayPlayKeyEmulator.cs` | `PlayPlayKeyEmulator.Stub.cs` ships in its place. `Wavee.PlayPlay.Tests` runs against the stub and skips real test vectors. |
-| `Wavee.PlayPlay.Tests/Program.cs` | `Program.Stub.cs` ships in its place; the harness builds and runs but doesn't exercise PlayPlay end-to-end. |
+| `src/Wavee/Core/Crypto/AudioDecryptStream.cs` | No stub — file simply absent. Cannot decrypt encrypted Spotify Ogg streams in this repo's open form. Test fixtures in `test/Wavee.Tests/Core/Crypto/` document what *would* be tested. |
+| `src/Wavee/Core/Audio/PlayPlayConstants.cs` | `PlayPlayConstants.Stub.cs` is used (csproj swaps via `Condition="Exists(...)"`). PlayPlay key fallback disabled at runtime; `AudioKeyManager` falls back to AP-only key resolution. |
+| `src/Wavee.AudioHost/PlayPlay/PlayPlayKeyEmulator.cs` | `PlayPlayKeyEmulator.Stub.cs` ships in its place. `Wavee.PlayPlay.Tests` runs against the stub and skips real test vectors. |
+| `test/test/Wavee.PlayPlay.Tests/Program.cs` | `Program.Stub.cs` ships in its place; the harness builds and runs but doesn't exercise PlayPlay end-to-end. |
 
 Everything else works without these: auth, session management, Spotify Connect (controller + target), all metadata APIs, UI, library sync, search, lyrics, music videos via PlayReady, Connect commands, telemetry.
 
@@ -158,7 +158,7 @@ The desktop app uses Microsoft's NPU-tuned Phi Silica via `Microsoft.Windows.AI.
 - **Opt-in by default**: master toggle in Settings → On-device AI is OFF. Until flipped, no AI affordance renders and no Phi Silica calls are made.
 - **Region-gated**: not available in China; Settings shows "Not available in your region" and affordances stay hidden.
 - **Limited Access Feature**: production builds need an LAF unlock token in `Package.appxmanifest`. Without it, `LanguageModel.CreateAsync()` throws — `AiCapabilities` swallows that and affordances stay hidden.
-- **Single decision point**: `Wavee.UI.WinUI/Services/AiCapabilities.cs` composes hardware + region + opt-in. Every AI affordance binds against it.
+- **Single decision point**: `src/Wavee.UI.WinUI/Services/AiCapabilities.cs` composes hardware + region + opt-in. Every AI affordance binds against it.
 
 ## Testing
 
@@ -168,7 +168,7 @@ The desktop app uses Microsoft's NPU-tuned Phi Silica via `Microsoft.Windows.AI.
 | `Wavee.UI.Tests` | Framework-neutral UI service layer (`Wavee.UI`) | xUnit v3 + FluentAssertions + Moq. Doesn't reference WinUI deliberately — that would drag in MSIX/RID complexity. |
 | `Wavee.PlayPlay.Tests` | PlayPlay key emulator | Plain `Exe` harness, **not** xUnit; exits non-zero on failure. x64-only because it loads `Spotify.dll`. |
 
-Crypto primitives (`ShannonCipher`, `AudioDecryptStream`) are validated against librespot vectors — see `Wavee.Tests/Core/Crypto/README.md` for how to regenerate.
+Crypto primitives (`ShannonCipher`, `AudioDecryptStream`) are validated against librespot vectors — see `test/Wavee.Tests/Core/Crypto/README.md` for how to regenerate.
 
 ## Conventions worth knowing
 
@@ -176,4 +176,4 @@ Crypto primitives (`ShannonCipher`, `AudioDecryptStream`) are validated against 
 - **`IRemoteStateRecorder`** is threaded through `Session`, `DealerClient`, `DeviceStateManager`, `PlaybackStateManager`, and HTTP clients. Pass `null` for "no recording"; pass a real implementation (the WinUI app's `RemoteStateRecorder`, capped at 500 entries) to capture every dealer message + HTTP call for the Debug page.
 - **Workstation GC** is intentional in `Wavee.UI.WinUI` (`<ServerGarbageCollection>false</>`). Image-heavy navigation UI doesn't want server GC's per-core heaps and aggressive working set growth — and the audio pipeline is out-of-process so playback latency doesn't need protecting.
 - **C# preview language version** in `Wavee.UI.WinUI` (required for CommunityToolkit.Mvvm 8.4.x on .NET 10).
-- **Protobuf code generation** runs at build time (`Grpc.Tools` 2.80.0). Generated files land in `Wavee/Protocol/Generated/`, are excluded from default `Compile`, and the `Protobuf` ItemGroup re-includes them with `Access="Public"`.
+- **Protobuf code generation** runs at build time (`Grpc.Tools` 2.80.0). Generated files land in `src/Wavee/Protocol/Generated/`, are excluded from default `Compile`, and the `Protobuf` ItemGroup re-includes them with `Access="Public"`.

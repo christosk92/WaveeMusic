@@ -1,0 +1,378 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+		<!-- Windows 11 24H2 (build 26100) is the floor where Microsoft.Windows.AI.*
+		     APIs (Phi Silica, etc.) are available. We deliberately gate the whole
+		     app to this minimum so the AI projection assemblies are guaranteed
+		     loadable at startup — older Windows versions would throw
+		     ReflectionTypeLoadException when ReactiveUI enumerates types in
+		     this assembly. Bumping the floor is opinionated but matches the app's
+		     opinionated, high-end audience and removes a whole class of
+		     hardware-availability bugs. -->
+		<TargetPlatformMinVersion>10.0.26100.0</TargetPlatformMinVersion>
+		<RootNamespace>Wavee.UI.WinUI</RootNamespace>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+		<Platforms>x86;x64;ARM64</Platforms>
+		<RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+		<PublishProfile>win-$(Platform).pubxml</PublishProfile>
+		<UseWinUI>true</UseWinUI>
+		<WinUISDKReferences>false</WinUISDKReferences>
+		<EnableMsixTooling>true</EnableMsixTooling>
+		<Nullable>enable</Nullable>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<Version>0.1.0-beta</Version>
+		<AssemblyVersion>0.1.0.0</AssemblyVersion>
+		<FileVersion>0.1.0.0</FileVersion>
+		<!-- Required for CommunityToolkit.Mvvm 8.4.0 on .NET 10 -->
+		<LangVersion>preview</LangVersion>
+		<!-- Workstation GC is the right default for a desktop UI process.
+		     Server GC creates one heap per logical processor and grows working set
+		     aggressively, which is a bad trade for Wavee's image-heavy navigation UI.
+		     The audio pipeline runs out-of-process, so UI GC pauses no longer need a
+		     server-GC-sized memory footprint to protect playback. -->
+		<ServerGarbageCollection>false</ServerGarbageCollection>
+		<ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+
+		<!-- Required by Microsoft's official Windows AI APIs guide:
+		     https://learn.microsoft.com/en-us/windows/ai/apis/get-started
+
+		     Both flags prevent Visual Studio from overwriting the
+		     <TargetDeviceFamily MaxVersionTested="..."> we set in
+		     Package.appxmanifest. The AI runtime gates on the manifest's
+		     declared MaxVersionTested being >= 10.0.26226.0 (the build
+		     where the system AI runtime stabilized). Without these flags,
+		     VS rewrites MaxVersionTested to a stale value at packaging
+		     time and the AI types fail to load. -->
+		<AppxOSMinVersionReplaceManifestVersion>false</AppxOSMinVersionReplaceManifestVersion>
+		<AppxOSMaxVersionTestedReplaceManifestVersion>false</AppxOSMaxVersionTestedReplaceManifestVersion>
+	</PropertyGroup>
+	<ItemGroup>
+		<Content Remove="Assets\MediaPlayerIcons.ttf" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="Assets\SplashScreen.scale-200.png" />
+		<Content Include="Assets\LockScreenLogo.scale-200.png" />
+		<Content Include="Assets\Square150x150Logo.scale-200.png" />
+		<Content Include="Assets\Square44x44Logo.scale-200.png" />
+		<Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
+		<Content Include="Assets\StoreLogo.png" />
+		<Content Include="Assets\Wide310x150Logo.scale-200.png" />
+		<Content Include="Services\SpotifyVideo\WebEmePlayer.html">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Manifest Include="$(ApplicationManifest)" />
+	</ItemGroup>
+
+	<!--
+    Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
+    Tools extension to be activated for this project even if the Windows App SDK Nuget
+    package has not yet been restored.
+  -->
+	<ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+		<ProjectCapability Include="Msix" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Labs.WinUI.Controls.Shimmer" Version="0.1.251217-build.2433" />
+		<PackageReference Include="CommunityToolkit.Labs.WinUI.Controls.TokenView" Version="0.1.251217-build.2433" />
+		<PackageReference Include="CommunityToolkit.Labs.WinUI.TransitionHelper" Version="0.1.251217-build.2433" />
+		<PackageReference Include="CommunityToolkit.WinUI.Animations" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Controls.MetadataControl" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Controls.Segmented" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Controls.TabbedCommandBar" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Media" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Controls.Primitives" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Helpers" Version="8.3.260402-preview2" />
+		<PackageReference Include="ComputeSharp.D2D1.WinUI" Version="3.2.0" />
+		<PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+		<PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.0-prerelease.251115.2" />
+		<PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
+		<PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.1" />
+		<PackageReference Include="FluentIcons.WinUI" Version="2.1.325" />
+		<PackageReference Include="FontAwesome6.Svg.WinUI" Version="2.5.1" />
+		<PackageReference Include="QRCoder" Version="1.8.0" />
+		<PackageReference Include="Serilog" Version="4.3.2-dev-02430" />
+		<PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+		<PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+		<PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
+		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+		<!-- Window management -->
+		<PackageReference Include="WinUIEx" Version="2.9.0" />
+		<!-- MVVM and DI -->
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.7" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.7" />
+		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.7" />
+		<!-- UI Extensions -->
+		<PackageReference Include="CommunityToolkit.WinUI.Extensions" Version="8.3.260402-preview2" />
+		<PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.3.260402-preview2" />
+		<!-- Reactive Extensions (System.Reactive used by Connect/Core layer) -->
+		<PackageReference Include="ReactiveUI" Version="23.2.19" />
+		<PackageReference Include="ReactiveUI.WinUI" Version="23.2.19" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="Wavee.Tests" />
+		<!-- Wavee core integration -->
+		<ProjectReference Include="..\Wavee\Wavee.csproj" />
+		<!-- Plain-C# UI service layer (non-WinUI) -->
+		<ProjectReference Include="..\Wavee.UI\Wavee.UI.csproj" />
+		<!-- IPC contracts shared with AudioHost process (audio device DTOs, etc.) -->
+		<ProjectReference Include="..\Wavee.Playback.Contracts\Wavee.Playback.Contracts.csproj" />
+		<!-- Lyrics rendering control -->
+		<ProjectReference Include="..\Wavee.Controls.Lyrics\Wavee.Controls.Lyrics.csproj" />
+		<!-- Multi-provider lyrics search & parsing (QQ, Kugou, Netease) -->
+		<ProjectReference Include="..\..\vendor\Lyricify.Lyrics.Helper\Lyricify.Lyrics.Helper.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Update="Assets\Fonts\MediaPlayerIcons.ttf">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+
+	<!--
+    Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
+    Explorer "Package and Publish" context menu entry to be enabled for this project even if
+    the Windows App SDK Nuget package has not yet been restored.
+  -->
+	<PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+		<HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
+	</PropertyGroup>
+
+	<!-- Publish Properties.
+	     Both PublishTrimmed and PublishReadyToRun were previously enabled for non-Debug
+	     builds, but the project is framework-dependent (<SelfContained> is not set).
+	     The .NET SDK rejects both optimizations in that state:
+	       - PublishTrimmed needs SelfContained=true (trimmer needs the full runtime).
+	       - PublishReadyToRun needs either SelfContained=true or an explicit
+	         <RuntimeIdentifier> with a restored runtime package.
+	     Re-enabling either would require bundling the entire .NET runtime into the AppX
+	     (~70-100 MB bigger) and validating trim safety across WinUI, ReactiveUI, MVVM
+	     Toolkit, and ComputeSharp, which all use reflection or source generators. Not
+	     worth it for a framework-dependent store/sideload distribution. When self-
+	     contained packaging is revisited, both can be re-enabled together. -->
+	<PropertyGroup>
+		<PublishReadyToRun>false</PublishReadyToRun>
+	</PropertyGroup>
+
+	<!--
+	    Auto-build Wavee.AudioHost (x64-only — LoadLibrarys Spotify.dll which
+	    is x86_64). AudioHost has zero ProjectReferences on Wavee* assemblies
+	    — IPC contract types are baked into AudioHost.dll itself via
+	    Compile-Include.
+
+	    The remaining ProjectReference (NVorbis) is enough to reintroduce the
+	    "stale-neighbour-dll" class of bug under MSBuild's incremental rules,
+	    because the parent ARM64 WinUI build can leave the NVorbis x64 output
+	    out of sync with what AudioHost's bin already has. Wiping AudioHost's
+	    bin/obj before each call guarantees all neighbour DLLs are re-copied
+	    from the freshly-built sources. Cost: a few seconds per WinUI launch;
+	    benefit: the FileNotFoundException-on-startup class of bug is
+	    structurally impossible.
+	-->
+	<!--
+	    BeforeTargets list: hit several entry points so the target fires on
+	    every VS code path — full Build, incremental Build, F5 Run, and the
+	    Hot-Reload "Skipping analyzers" fast path. Targets is a SET, so the
+	    body executes at most once per build even when multiple hooks fire.
+	-->
+	<Target Name="BuildAudioHost" BeforeTargets="PrepareForBuild;ResolveProjectReferences;CoreCompile;Build">
+		<Message Importance="high" Text="[BuildAudioHost] Building AudioHost in an isolated 'dotnet build' subprocess..." />
+		<!--
+		    Spawn 'dotnet build' as a separate process. The previous approach
+		    used MSBuild Task which ran inside the parent VS build's MSBuild
+		    instance — that meant Wavee.AudioHost's transitive ProjectReferences
+		    (NVorbis) inherited the parent's project-evaluation cache. The
+		    parent build is ARM64, so cached NVorbis evaluations were ARM64,
+		    and AudioHost's bin would silently get the wrong-arch NVorbis.dll.
+		    A fresh 'dotnet build' process has zero cache poisoning — its
+		    project graph evaluates from scratch with Platform=x64, so every
+		    transitive reference is x64 and every neighbour DLL alongside
+		    Wavee.AudioHost.exe is the right architecture.
+		-->
+		<Exec Command="dotnet build &quot;$(MSBuildThisFileDirectory)..\Wavee.AudioHost\Wavee.AudioHost.csproj&quot; -c $(Configuration) -p:Platform=x64 --nologo -v quiet" ConsoleToMSBuild="true" />
+		<Message Importance="high" Text="[BuildAudioHost] AudioHost rebuilt at ..\Wavee.AudioHost\bin\x64\$(Configuration)\net10.0\win-x64\Wavee.AudioHost.exe" />
+	</Target>
+
+	<!--
+	    Stage Wavee.AudioHost into a `Wavee.AudioHost\` subdirectory of the
+	    WinUI app's payload, both in the F5/deploy AppX layout (this target)
+	    and in the sideload MSIX (IncludeAudioHostInMsixPayload below).
+
+	    Without these, AudioProcessManager only finds AudioHost via dev path
+	    walking — installed packages throw "Audio host not found" on first
+	    playback.
+
+	    The subdirectory layout is intentional: AudioHost ships ~23 DLLs
+	    that overlap by name with the WinUI app's payload (Microsoft.
+	    Extensions.*, Serilog.*, NVorbis, System.Reactive, Ude). Flattening
+	    them into the package root would either fail the AppX validator
+	    with duplicate-target errors or silently bind AudioHost.exe against
+	    the WinUI app's transitive (ARM64) DLLs at runtime — an arch
+	    mismatch since AudioHost is x64. AudioProcessManager.cs probes the
+	    subdir candidate first.
+
+	    Mirrors the existing "AI projection assemblies" workaround pattern.
+	-->
+	<Target Name="CopyAudioHostToAppxLayout" AfterTargets="_GenerateProjectPriFileCore" Condition="Exists('$(OutputPath)AppX\')">
+		<PropertyGroup>
+			<_AudioHostBin>$(MSBuildThisFileDirectory)..\Wavee.AudioHost\bin\x64\$(Configuration)\net10.0\win-x64\</_AudioHostBin>
+		</PropertyGroup>
+		<ItemGroup>
+			<_AudioHostFiles Include="$(_AudioHostBin)**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(_AudioHostFiles)" DestinationFiles="@(_AudioHostFiles->'$(OutputPath)AppX\Wavee.AudioHost\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'@(_AudioHostFiles)' != ''" />
+		<Message Importance="high" Text="[BuildAudioHost] Staged @(_AudioHostFiles-&gt;Count()) AudioHost file(s) into $(OutputPath)AppX\Wavee.AudioHost\." />
+	</Target>
+
+	<!--
+	    Sideload package path (no AppX\ folder is materialised on disk):
+	    inject the AudioHost files into AppxPackagePayload before the
+	    package recipe is computed. _ComputeAppxPackagePayload is the same
+	    hook used for the AI projection workaround above.
+	-->
+	<Target Name="IncludeAudioHostInMsixPayload" BeforeTargets="_ComputeAppxPackagePayload">
+		<PropertyGroup>
+			<_AudioHostBin>$(MSBuildThisFileDirectory)..\Wavee.AudioHost\bin\x64\$(Configuration)\net10.0\win-x64\</_AudioHostBin>
+		</PropertyGroup>
+		<ItemGroup>
+			<_AudioHostPayloadFiles Include="$(_AudioHostBin)**\*.*" />
+			<AppxPackagePayload Include="@(_AudioHostPayloadFiles)">
+				<TargetPath>Wavee.AudioHost\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+			</AppxPackagePayload>
+		</ItemGroup>
+		<Message Importance="high" Text="[BuildAudioHost] Added @(_AudioHostPayloadFiles-&gt;Count()) AudioHost file(s) to AppxPackagePayload at TargetPath=Wavee.AudioHost\." />
+	</Target>
+
+	<!-- WinUI AppX packaging copies <Content> items from referenced projects twice:
+	     once flattened to the AppX root (e.g. AppX\Assets\Wiki82.profile.xml) which
+	     PathHelper reads via AppContext.BaseDirectory\Assets\*, and once preserved
+	     under the per-project subfolder (e.g. AppX\Wavee.Controls.Lyrics\Assets\...).
+	     The nested Assets copies are dead weight — ~14.6 MB for Wiki82.profile.xml alone.
+
+	     IMPORTANT: do NOT delete the entire AppX\Wavee.Controls.Lyrics\ folder. That
+	     folder also contains the compiled per-assembly XAML (.xbf files for
+	     NowPlayingCanvas, ImageSwitcher, ShadowImage) which WinUI resolves via
+	     ms-appx:///Wavee.Controls.Lyrics/Controls/*.xaml at runtime. Removing them
+	     breaks XAML type activation with "Cannot create instance of type ..." errors.
+	     Only the specific orphan asset files under the nested Assets subfolder are
+	     safe to delete. -->
+	<Target Name="RemoveDuplicateReferencedProjectAssets" AfterTargets="CopyFilesToOutputDirectory;_GenerateProjectPriFileCore">
+		<ItemGroup>
+			<_OrphanAssetFiles Include="$(OutputPath)Wavee.Controls.Lyrics\Assets\Wiki82.profile.xml" />
+			<_OrphanAssetFiles Include="$(OutputPath)Wavee.Controls.Lyrics\Assets\AlbumArtPlaceholder.png" />
+			<_OrphanAssetFiles Include="$(OutputPath)AppX\Wavee.Controls.Lyrics\Assets\Wiki82.profile.xml" />
+			<_OrphanAssetFiles Include="$(OutputPath)AppX\Wavee.Controls.Lyrics\Assets\AlbumArtPlaceholder.png" />
+		</ItemGroup>
+		<Delete Files="@(_OrphanAssetFiles)" Condition="Exists('%(Identity)')" />
+	</Target>
+
+	<!-- StripUnusedWindowsAiPayload: intentionally a no-op for now.
+	     We use Phi Silica via Microsoft.Windows.AI.Text.LanguageModel for the
+	     opt-in on-device lyrics features. The transitive dependency graph
+	     between the AI projection assemblies (Microsoft.Windows.AI.dll,
+	     Microsoft.Windows.AI.Text.Projection.dll, Microsoft.Windows.AI.MachineLearning.dll,
+	     Microsoft.Windows.AI.ContentModeration.Projection.dll, etc.) is not
+	     fully documented and an earlier narrowed strip set caused
+	     ReflectionTypeLoadException at startup on machines without the AI
+	     runtime. Until we've empirically verified on a real Copilot+ PC which
+	     DLLs are safe to drop, the conservative path is to ship the entire
+	     Windows AI payload (~42 MB on disk, ~30-60 MB process RSS).
+
+	     When stripping is revisited, narrow incrementally: strip one DLL,
+	     verify on (a) a Copilot+ PC with all features working and (b) a
+	     non-AI box with the app cold-starting cleanly, then move on. -->
+	<Target Name="StripUnusedWindowsAiPayload" AfterTargets="CopyFilesToOutputDirectory;_GenerateProjectPriFileCore">
+		<!-- Intentionally empty. See comment block above for the rationale. -->
+	</Target>
+
+	<!--
+		Windows AI deployment fixes for WinAppSDK 2.0.1.
+
+		The Microsoft.WindowsAppSDK.AI package contributes managed projection
+		assemblies such as Microsoft.Windows.AI.Projection.dll and
+		Microsoft.Windows.AI.Text.Projection.dll. They resolve and copy to the
+		normal build output, but the single-project MSIX layout does not put
+		them in AppX by default. A packaged WinUI app runs from AppX, so the
+		CLR throws FileNotFoundException before LanguageModel.GetReadyState()
+		can report hardware availability.
+
+		The projection assemblies already exist in $(OutputPath); the broken
+		part is the MSIX payload/layout step. Add those resolved output files to
+		AppxPackagePayload for real package generation, then explicitly copy the
+		same files into the debug AppX layout after _CreatePackageLayout. This
+		keeps the workaround version-independent: NuGet can resolve newer
+		assembly versions later and this target will ship whatever landed in
+		the build output.
+	-->
+	<Target Name="IncludeWindowsAiProjectionAssembliesInMsixPayload" BeforeTargets="_ComputeAppxPackagePayload">
+		<ItemGroup>
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Graphics.Imaging.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.ContentSafety.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.Foundation.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.Imaging.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.MachineLearning.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.Text.Projection.dll" />
+			<_ExistingWindowsAiProjectionFiles Include="@(_WindowsAiProjectionFiles)" Condition="Exists('%(Identity)')" />
+
+			<AppxPackagePayload Include="@(_ExistingWindowsAiProjectionFiles)">
+				<TargetPath>%(_ExistingWindowsAiProjectionFiles.Filename)%(_ExistingWindowsAiProjectionFiles.Extension)</TargetPath>
+			</AppxPackagePayload>
+		</ItemGroup>
+		<Message Importance="high" Text="[WindowsAI] Added @(_ExistingWindowsAiProjectionFiles-&gt;Count()) managed AI projection assembly/assemblies to AppxPackagePayload." />
+	</Target>
+
+	<Target Name="CopyWindowsAiProjectionAssembliesToAppxLayout" AfterTargets="_CreatePackageLayout" Condition="Exists('$(OutputPath)AppX\')">
+		<ItemGroup>
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Graphics.Imaging.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.ContentSafety.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.Foundation.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.Imaging.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.MachineLearning.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.Text.Projection.dll" />
+			<_ExistingWindowsAiProjectionFiles Include="@(_WindowsAiProjectionFiles)" Condition="Exists('%(Identity)')" />
+		</ItemGroup>
+		<Copy SourceFiles="@(_ExistingWindowsAiProjectionFiles)" DestinationFiles="@(_ExistingWindowsAiProjectionFiles->'$(OutputPath)AppX\%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'@(_ExistingWindowsAiProjectionFiles)' != ''" />
+		<Message Importance="high" Text="[WindowsAI] Ensured @(_ExistingWindowsAiProjectionFiles-&gt;Count()) managed AI projection assembly/assemblies exist in $(OutputPath)AppX\." />
+	</Target>
+
+	<Target Name="CopyWindowsAiProjectionAssembliesToAppxLayoutAfterPri" AfterTargets="_GenerateProjectPriFileCore" Condition="Exists('$(OutputPath)AppX\')">
+		<ItemGroup>
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Graphics.Imaging.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.ContentSafety.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.Foundation.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.Imaging.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.MachineLearning.Projection.dll" />
+			<_WindowsAiProjectionFiles Include="$(OutputPath)Microsoft.Windows.AI.Text.Projection.dll" />
+			<_ExistingWindowsAiProjectionFiles Include="@(_WindowsAiProjectionFiles)" Condition="Exists('%(Identity)')" />
+		</ItemGroup>
+		<Copy SourceFiles="@(_ExistingWindowsAiProjectionFiles)" DestinationFiles="@(_ExistingWindowsAiProjectionFiles->'$(OutputPath)AppX\%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'@(_ExistingWindowsAiProjectionFiles)' != ''" />
+		<Message Importance="high" Text="[WindowsAI] Ensured @(_ExistingWindowsAiProjectionFiles-&gt;Count()) managed AI projection assembly/assemblies exist in $(OutputPath)AppX\ after PRI generation." />
+	</Target>
+
+	<!--
+		Microsoft's Windows AI setup requires the generated package manifest to
+		declare MaxVersionTested >= 10.0.26226.0. Our source manifest does that,
+		but the MSIX tooling rewrites the Windows.Desktop entry back to the
+		project TargetPlatformVersion (10.0.26100.0) because only the 26100 SDK
+		is installed. Patch the generated manifest immediately before the recipe
+		and package are produced so the deployed AppX carries the documented
+		Windows AI gate value.
+	-->
+	<Target Name="PreserveWindowsAiManifestMaxVersionTested" BeforeTargets="_GenerateAppxPackageRecipe;_GenerateAppxPackageFile" Condition="Exists('$(FinalAppxManifestName)')">
+		<XmlPoke XmlInputPath="$(FinalAppxManifestName)" Query="/*[local-name()='Package']/*[local-name()='Dependencies']/*[local-name()='TargetDeviceFamily'][@Name='Windows.Desktop']/@MaxVersionTested" Value="10.0.26226.0" />
+		<XmlPoke XmlInputPath="$(FinalAppxManifestName)" Query="/*[local-name()='Package']/*[local-name()='Dependencies']/*[local-name()='TargetDeviceFamily'][@Name='Windows.Universal']/@MaxVersionTested" Value="10.0.26226.0" />
+		<Message Importance="high" Text="[WindowsAI] Ensured generated AppxManifest MaxVersionTested is 10.0.26226.0." />
+	</Target>
+
+</Project>

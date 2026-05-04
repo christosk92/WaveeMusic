@@ -1,0 +1,98 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <AssemblyTitle>Wavee Audio Runtime</AssemblyTitle>
+        <Product>Wavee</Product>
+        <Description>Wavee Audio Runtime</Description>
+
+        <!-- Publish as self-contained for process isolation -->
+        <SelfContained>false</SelfContained>
+
+        <!-- Native AOT candidate (future) -->
+        <IsAotCompatible>true</IsAotCompatible>
+        <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+
+        <!--
+            x64-only. AudioHost loads Spotify.dll (x86_64) directly to derive
+            PlayPlay AES keys, so the host process must be x86_64 too. On
+            ARM64 Windows the OS's built-in x64 emulation runs this exe; the
+            ARM64-native WinUI process talks to it over the existing named
+            pipe (length-prefixed JSON, request IDs).
+        -->
+        <Platforms>x64</Platforms>
+        <Platform Condition="'$(Platform)' == ''">x64</Platform>
+        <PlatformTarget>x64</PlatformTarget>
+        <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!--
+            NVorbis is AnyCPU-only (its csproj enforces this), so a single
+            build output is shared by every consumer regardless of platform.
+            No SetPlatform needed.
+        -->
+        <ProjectReference Include="..\..\vendor\NVorbis\NVorbis\NVorbis.csproj" />
+    </ItemGroup>
+
+    <!--
+        AudioHost has ZERO project references on Wavee* assemblies. It pulls
+        IPC contract source files in via Compile-Include so the contracts
+        types end up baked into Wavee.AudioHost.dll itself. This eliminates
+        a whole class of cross-project incremental-build bugs where a stale
+        Wavee.Playback.Contracts.dll could land alongside AudioHost.exe and
+        cause a JIT FileNotFoundException at startup.
+
+        The IPC wire format is JSON, so type identity across assemblies
+        doesn't matter — both ends just see {type,id,payload} strings.
+
+        PlayPlayConstants follows the same shared-source pattern; the real
+        file is gitignored (Spotify property), with a stub fallback.
+    -->
+    <ItemGroup>
+        <Compile Include="..\Wavee.Playback.Contracts\IpcMessages.cs">
+            <Link>Ipc\IpcMessages.cs</Link>
+        </Compile>
+        <Compile Include="..\Wavee.Playback.Contracts\IpcPipeTransport.cs">
+            <Link>Ipc\IpcPipeTransport.cs</Link>
+        </Compile>
+        <Compile Include="..\Wavee.Playback.Contracts\AudioFileCache.cs">
+            <Link>Ipc\AudioFileCache.cs</Link>
+        </Compile>
+    </ItemGroup>
+
+    <ItemGroup Condition="Exists('..\Wavee\Core\Audio\PlayPlayConstants.cs')">
+        <Compile Include="..\Wavee\Core\Audio\PlayPlayConstants.cs">
+            <Link>PlayPlay\PlayPlayConstants.cs</Link>
+        </Compile>
+    </ItemGroup>
+    <ItemGroup Condition="!Exists('..\Wavee\Core\Audio\PlayPlayConstants.cs')">
+        <Compile Include="..\Wavee\Core\Audio\PlayPlayConstants.Stub.cs">
+            <Link>PlayPlay\PlayPlayConstants.cs</Link>
+        </Compile>
+    </ItemGroup>
+
+    <!-- Drop the local emulator stub when the real implementation is present. -->
+    <ItemGroup Condition="Exists('PlayPlay\PlayPlayKeyEmulator.cs')">
+        <Compile Remove="PlayPlay\PlayPlayKeyEmulator.Stub.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.7" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.7" />
+        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.7" />
+        <PackageReference Include="PortAudioSharp2" Version="1.0.6" />
+        <PackageReference Include="ManagedBass" Version="4.0.2" />
+        <PackageReference Include="z440.atl.core" Version="7.13.0" />
+        <PackageReference Include="System.Reactive" Version="7.0.0-preview.1" />
+        <PackageReference Include="Serilog" Version="4.3.1" />
+        <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+        <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+        <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+    </ItemGroup>
+
+</Project>
