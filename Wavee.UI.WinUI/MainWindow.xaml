@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:winuiex="using:WinUIEx"
+    xmlns:splash="using:Wavee.UI.WinUI.Controls.Splash"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     x:Uid="MainWindow"
@@ -17,5 +18,12 @@
         <MicaBackdrop Kind="BaseAlt" />
     </winuiex:WindowEx.SystemBackdrop>
 
-    <Frame x:Name="RootFrame" />
+    <!-- BootSplash sits over RootFrame (z-order: above) and covers the
+         ~150ms cold-start gap between Activate() and ShellPage's first
+         layout pass. MainWindow.InitializeApplicationAsync triggers the
+         splash fade-out once Frame.Navigated has fired. -->
+    <Grid>
+        <Frame x:Name="RootFrame" />
+        <splash:BootSplash x:Name="Splash" />
+    </Grid>
 </winuiex:WindowEx>

@@ -32,6 +32,27 @@ public interface IPodcastService
         string showUri, CancellationToken ct = default);
 
     /// <summary>
+    /// Fetches a podcast browse page: root podcasts, a category page, or another
+    /// browse page returned from Spotify's category cards.
+    /// </summary>
+    Task<PodcastBrowsePageDto?> GetPodcastBrowsePageAsync(
+        string uri,
+        int pageOffset = 0,
+        int pageLimit = 10,
+        int sectionOffset = 0,
+        int sectionLimit = 10,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches one paged podcast browse section, usually a show-producing shelf.
+    /// </summary>
+    Task<PodcastBrowseSectionDto?> GetPodcastBrowseSectionAsync(
+        string uri,
+        int offset = 0,
+        int limit = 20,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Chapter / display-segment list for a podcast episode — used by the
     /// player position bar to render discrete segments. Returns an empty list
     /// when the episode has no chapters or the call fails (callers shouldn't

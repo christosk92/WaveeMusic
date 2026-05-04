@@ -36,32 +36,145 @@
         <!-- ══ LOADING SKELETON ════════════════════════════════════════════════
              Mirrors the hero shape so the user perceives layout stability the
              first frame. ScheduleCrossfade fades shimmer→content over ~300 ms. -->
-        <Grid x:Name="ShimmerContainer" Padding="40,32,40,40">
-            <StackPanel Spacing="16" MaxWidth="960" HorizontalAlignment="Stretch">
-                <controls:Shimmer Width="240" Height="20" CornerRadius="4"/>
-                <Grid ColumnSpacing="24">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="240"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <controls:Shimmer Grid.Column="0" Width="240" Height="240" CornerRadius="10"/>
-                    <StackPanel Grid.Column="1" Spacing="10">
-                        <controls:Shimmer Width="120" Height="22" CornerRadius="11"/>
-                        <controls:Shimmer Width="420" Height="34"/>
-                        <controls:Shimmer Width="240" Height="16"/>
-                        <controls:Shimmer Width="180" Height="14"/>
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
-                            <controls:Shimmer Width="120" Height="40" CornerRadius="20"/>
-                            <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
-                            <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
-                            <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
+        <Grid x:Name="ShimmerContainer"
+              IsHitTestVisible="False">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border
+                Grid.Row="0"
+                Margin="20,16,20,0"
+                Padding="10,6"
+                HorizontalAlignment="Left"
+                CornerRadius="18"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <controls:Shimmer Width="14" Height="14" CornerRadius="7"/>
+                    <controls:Shimmer Width="190" Height="16" CornerRadius="4"/>
+                </StackPanel>
+            </Border>
+
+            <ScrollView
+                Grid.Row="1"
+                ContentOrientation="Vertical"
+                VerticalScrollMode="Disabled"
+                VerticalScrollBarVisibility="Hidden"
+                HorizontalScrollMode="Disabled"
+                HorizontalScrollBarVisibility="Hidden">
+                <StackPanel Spacing="24"
+                            Margin="40,16,40,40"
+                            MaxWidth="1160"
+                            HorizontalAlignment="Stretch">
+                    <Grid ColumnSpacing="28">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <controls:Shimmer Grid.Column="0" Width="240" Height="240" CornerRadius="10"/>
+                        <StackPanel Grid.Column="1" Spacing="10" VerticalAlignment="Top">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <controls:Shimmer Width="88" Height="26" CornerRadius="13"/>
+                                <controls:Shimmer Width="64" Height="26" CornerRadius="13"/>
+                            </StackPanel>
+                            <controls:Shimmer Width="520" Height="34" CornerRadius="6"/>
+                            <controls:Shimmer Width="280" Height="17" CornerRadius="4"/>
+                            <controls:Shimmer Width="220" Height="14" CornerRadius="4"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+                                <controls:Shimmer Width="132" Height="44" CornerRadius="22"/>
+                                <controls:Shimmer Width="44" Height="44" CornerRadius="22"/>
+                                <controls:Shimmer Width="44" Height="44" CornerRadius="22"/>
+                                <controls:Shimmer Width="44" Height="44" CornerRadius="22"/>
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
-                </Grid>
-                <controls:Shimmer Height="14" HorizontalAlignment="Stretch" CornerRadius="3"/>
-                <controls:Shimmer Height="14" HorizontalAlignment="Stretch" CornerRadius="3"/>
-                <controls:Shimmer Height="14" Width="640" CornerRadius="3"/>
-            </StackPanel>
+                    </Grid>
+
+                    <Grid ColumnSpacing="32" RowSpacing="24">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="1.15*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Spacing="24">
+                            <StackPanel Spacing="10">
+                                <controls:Shimmer Width="180" Height="24" CornerRadius="6" HorizontalAlignment="Left"/>
+                                <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="18">
+                                    <StackPanel Spacing="8">
+                                        <controls:Shimmer Height="14" HorizontalAlignment="Stretch" CornerRadius="3"/>
+                                        <controls:Shimmer Height="14" HorizontalAlignment="Stretch" CornerRadius="3" Margin="0,0,48,0"/>
+                                        <controls:Shimmer Height="14" HorizontalAlignment="Stretch" CornerRadius="3" Margin="0,0,116,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <StackPanel Spacing="10">
+                                <controls:Shimmer Width="128" Height="24" CornerRadius="6" HorizontalAlignment="Left"/>
+                                <controls:Shimmer Height="84" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="88"/>
+                                    </Grid.ColumnDefinitions>
+                                    <controls:Shimmer Grid.Column="0" Width="44" Height="12" CornerRadius="3" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                    <controls:Shimmer Grid.Column="1" Height="36" CornerRadius="6"/>
+                                </Grid>
+                                <StackPanel Spacing="12">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="36"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <controls:Shimmer Grid.Column="0" Width="36" Height="36" CornerRadius="18"/>
+                                        <StackPanel Grid.Column="1" Spacing="7">
+                                            <controls:Shimmer Width="220" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                                            <controls:Shimmer Height="13" CornerRadius="3" HorizontalAlignment="Stretch" Margin="0,0,54,0"/>
+                                            <controls:Shimmer Height="13" CornerRadius="3" HorizontalAlignment="Stretch" Margin="0,0,112,0"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="36"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <controls:Shimmer Grid.Column="0" Width="36" Height="36" CornerRadius="18"/>
+                                        <StackPanel Grid.Column="1" Spacing="7">
+                                            <controls:Shimmer Width="180" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                                            <controls:Shimmer Height="13" CornerRadius="3" HorizontalAlignment="Stretch" Margin="0,0,28,0"/>
+                                            <controls:Shimmer Height="13" CornerRadius="3" HorizontalAlignment="Stretch" Margin="0,0,154,0"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Spacing="24">
+                            <StackPanel Spacing="14">
+                                <controls:Shimmer Width="112" Height="24" CornerRadius="6" HorizontalAlignment="Left"/>
+                                <StackPanel Spacing="10">
+                                    <controls:Shimmer Height="68" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                                    <controls:Shimmer Height="68" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                                    <controls:Shimmer Height="68" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel Spacing="14">
+                                <controls:Shimmer Width="170" Height="24" CornerRadius="6" HorizontalAlignment="Left"/>
+                                <StackPanel Spacing="10">
+                                    <controls:Shimmer Height="76" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                                    <controls:Shimmer Height="76" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                                    <controls:Shimmer Height="76" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </ScrollView>
         </Grid>
 
         <!-- ══ CONTENT ════════════════════════════════════════════════════════ -->
@@ -91,13 +204,16 @@
                 </StackPanel>
             </Border>
 
-            <ScrollViewer x:Name="EpisodeScrollViewer"
-                          Grid.Row="1"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled"
-                          Padding="40,16,40,40">
+            <ScrollView x:Name="EpisodeScrollViewer"
+                        Grid.Row="1"
+                        ContentOrientation="Vertical"
+                        VerticalScrollMode="Auto"
+                        VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollMode="Disabled"
+                        HorizontalScrollBarVisibility="Hidden">
                 <StackPanel x:Name="EpisodeContentStack"
                             Spacing="24"
+                            Margin="40,16,40,40"
                             MaxWidth="1160"
                             HorizontalAlignment="Stretch"
                             SizeChanged="EpisodeContentStack_SizeChanged">
@@ -421,7 +537,7 @@
                         </StackPanel>
                     </Grid>
                 </StackPanel>
-            </ScrollViewer>
+            </ScrollView>
         </Grid>
 
         <!-- Error state — same surface as ShowPage. -->

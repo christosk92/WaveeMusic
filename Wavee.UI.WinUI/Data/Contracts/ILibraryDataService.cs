@@ -6,6 +6,19 @@ using Wavee.UI.WinUI.Data.DTOs;
 
 namespace Wavee.UI.WinUI.Data.Contracts;
 
+public sealed class PodcastEpisodeProgressChangedEventArgs(PodcastEpisodeProgressDto progress, string? aliasUri = null)
+    : EventArgs
+{
+    public PodcastEpisodeProgressDto Progress { get; } = progress;
+    public string EpisodeUri => Progress.Uri;
+    public string? AliasUri { get; } = aliasUri;
+
+    public bool Matches(string? episodeUri)
+        => !string.IsNullOrWhiteSpace(episodeUri) &&
+           (string.Equals(episodeUri, EpisodeUri, StringComparison.Ordinal) ||
+            string.Equals(episodeUri, AliasUri, StringComparison.Ordinal));
+}
+
 /// <summary>
 /// Service for retrieving user library data.
 /// </summary>
@@ -311,6 +324,12 @@ public interface ILibraryDataService
     /// Subscribe to refresh UI (sidebar badges, library pages, etc.).
     /// </summary>
     event EventHandler? DataChanged;
+
+    /// <summary>
+    /// Event raised when a podcast episode resume point changes. This is scoped
+    /// to progress only and should not trigger a full library reload.
+    /// </summary>
+    event EventHandler<PodcastEpisodeProgressChangedEventArgs>? PodcastEpisodeProgressChanged;
 
     /// <summary>
     /// Requests a full library sync when local data appears to be missing.

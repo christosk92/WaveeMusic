@@ -44,6 +44,53 @@ public sealed class LyricsProviderSelectorTests
         selected.Reason.Should().Contain("Fallback-only source");
     }
 
+    [Fact]
+    public void SelectBestExternalResult_IgnoresTimingUnreliableCandidates()
+    {
+        var qqMusic = new LyricsSelectionCandidate(
+            "QQMusic",
+            CreateLyricsData(lineCount: 51, hasSyllable: true),
+            ContentScore: 1.0,
+            PreferenceBonus: 500,
+            IsTimingReliable: false,
+            TimingReason: "drift");
+
+        var netease = new LyricsSelectionCandidate(
+            "Netease",
+            CreateLyricsData(lineCount: 45, hasSyllable: false),
+            ContentScore: 0.6,
+            PreferenceBonus: 0);
+
+        var selected = LyricsProviderSelector.SelectBestExternalResult([qqMusic, netease]);
+
+        selected.Should().NotBeNull();
+        selected!.Provider.Should().Be("Netease");
+    }
+
+    [Fact]
+    public void SelectBestExternalResult_ReturnsNullWhenEveryExternalCandidateHasUnreliableTiming()
+    {
+        var qqMusic = new LyricsSelectionCandidate(
+            "QQMusic",
+            CreateLyricsData(lineCount: 51, hasSyllable: true),
+            ContentScore: 1.0,
+            PreferenceBonus: 0,
+            IsTimingReliable: false,
+            TimingReason: "drift");
+
+        var musixmatch = new LyricsSelectionCandidate(
+            "Musixmatch",
+            CreateLyricsData(lineCount: 50, hasSyllable: true),
+            ContentScore: 1.0,
+            PreferenceBonus: 0,
+            IsTimingReliable: false,
+            TimingReason: "drift");
+
+        var selected = LyricsProviderSelector.SelectBestExternalResult([qqMusic, musixmatch]);
+
+        selected.Should().BeNull();
+    }
+
     private static LyricsData CreateLyricsData(int lineCount, bool hasSyllable)
     {
         var lines = Enumerable.Range(0, lineCount)

@@ -714,7 +714,10 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         if (detail is null || string.IsNullOrWhiteSpace(detail.ShowUri))
             return;
 
-        NavigationHelpers.OpenShow(detail.ShowUri, detail.ShowName ?? "Podcast", NavigationHelpers.IsCtrlPressed());
+        NavigationHelpers.OpenShowPage(
+            detail.ShowUri,
+            detail.ShowName ?? "Podcast",
+            openInNewTab: NavigationHelpers.IsCtrlPressed());
     }
 
     [RelayCommand]

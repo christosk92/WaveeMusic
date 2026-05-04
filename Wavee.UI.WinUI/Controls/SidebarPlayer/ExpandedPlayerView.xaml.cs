@@ -40,6 +40,7 @@ public sealed partial class ExpandedPlayerView : UserControl
     private readonly IActiveVideoSurfaceService _videoSurface;
     private DispatcherQueueTimer? _lyricsScrollResetTimer;
     private DispatcherQueueTimer? _lyricsRenderPulseTimer;
+    private DispatcherQueueTimer? _lyricsTimelineSyncTimer;
     private bool _lyricsCanvasInitialized;
     private bool _lyricsConsumerActive;
     private bool _pendingLyricsLayoutRetry;
@@ -68,6 +69,7 @@ public sealed partial class ExpandedPlayerView : UserControl
     private double _compactHeaderTop = 42;
     private double _compactHeaderSide = 44;
     private double _compactHeaderArtSize = 78;
+    private const int LyricsTimelineSyncIntervalMs = 250;
 
     public ExpandedPlayerView()
     {
@@ -155,6 +157,13 @@ public sealed partial class ExpandedPlayerView : UserControl
             _lyricsRenderPulseTimer.Stop();
             _lyricsRenderPulseTimer.Tick -= OnLyricsRenderPulseTimerTick;
             _lyricsRenderPulseTimer = null;
+        }
+
+        if (_lyricsTimelineSyncTimer != null)
+        {
+            _lyricsTimelineSyncTimer.Stop();
+            _lyricsTimelineSyncTimer.Tick -= OnLyricsTimelineSyncTimerTick;
+            _lyricsTimelineSyncTimer = null;
         }
 
         if (_surfaceTintTimer != null)
@@ -677,6 +686,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
         _lyricsScrollResetTimer?.Stop();
         _lyricsRenderPulseTimer?.Stop();
+        _lyricsTimelineSyncTimer?.Stop();
         _surfaceTintTimer?.Stop();
         _ambientTintTimer?.Stop();
 
@@ -790,6 +800,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
         FullscreenLyricsCanvas.SetRenderingActive(shouldRender);
         FullscreenLyricsCanvas.SetIsPlaying(canRender && _lyricsVm.PlaybackState.IsPlaying);
+        UpdateLyricsTimelineSyncTimer(canRender && _lyricsVm.PlaybackState.IsPlaying);
     }
 
     private void SyncLyricsCanvasPosition()
@@ -798,6 +809,42 @@ public sealed partial class ExpandedPlayerView : UserControl
             return;
 
         FullscreenLyricsCanvas.SetPosition(_lyricsVm.GetInterpolatedPosition());
+    }
+
+    private void UpdateLyricsTimelineSyncTimer(bool shouldRun)
+    {
+        if (!shouldRun || DispatcherQueue == null)
+        {
+            _lyricsTimelineSyncTimer?.Stop();
+            return;
+        }
+
+        _lyricsTimelineSyncTimer ??= CreateLyricsTimelineSyncTimer();
+        if (!_lyricsTimelineSyncTimer.IsRunning)
+            _lyricsTimelineSyncTimer.Start();
+    }
+
+    private DispatcherQueueTimer CreateLyricsTimelineSyncTimer()
+    {
+        var timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(LyricsTimelineSyncIntervalMs);
+        timer.Tick += OnLyricsTimelineSyncTimerTick;
+        return timer;
+    }
+
+    private void OnLyricsTimelineSyncTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        if (!_lyricsCanvasInitialized
+            || _lyricsVm == null
+            || FullscreenLyricsCanvas == null
+            || !IsLyricsModeActive
+            || !_lyricsVm.PlaybackState.IsPlaying)
+        {
+            sender.Stop();
+            return;
+        }
+
+        SyncLyricsCanvasPosition();
     }
 
     private void OnLyricsSeekRequested(object? sender, TimeSpan position)

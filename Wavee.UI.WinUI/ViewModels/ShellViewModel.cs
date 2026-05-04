@@ -622,6 +622,21 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         SelectedSidebarItem = match;
     }
 
+    public void SyncSidebarSelectionToTag(string tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag))
+        {
+            if (SelectedSidebarItem is not null)
+                SelectedSidebarItem = null;
+            return;
+        }
+
+        var match = FindSidebarItemByTag(tag);
+        if (ReferenceEquals(SelectedSidebarItem, match)) return;
+
+        SelectedSidebarItem = match;
+    }
+
     private void OnSidebarGroupPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (sender is not SidebarItemModel group

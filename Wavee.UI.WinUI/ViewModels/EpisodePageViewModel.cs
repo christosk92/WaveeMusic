@@ -21,6 +21,7 @@ using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Helpers.Playback;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -34,6 +35,8 @@ namespace Wavee.UI.WinUI.ViewModels;
 public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemContent, IDisposable
 {
     private const int MaxPodcastCommentLength = 500;
+    private const long PodcastProgressUiDeltaMs = 5_000;
+    private const long PodcastCompletedThresholdMs = 90_000;
 
     private readonly IPodcastService _podcastService;
     private readonly ILibraryDataService _libraryDataService;
@@ -45,7 +48,7 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
     private bool _disposed;
     private bool _isDarkTheme;
     private ShowPaletteDto? _palette;
-    private bool _chapterTimelineRefreshScheduled;
+    private bool _playbackUiRefreshScheduled;
 
     private string _episodeUri = "";
     private ShowEpisodeDto? _episode;
@@ -311,6 +314,7 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
         _playbackStateService.PropertyChanged += OnPlaybackStateChanged;
+        _libraryDataService.PodcastEpisodeProgressChanged += OnPodcastEpisodeProgressChanged;
     }
 
     /// <summary>Entry-point from <c>EpisodePage.OnNavigatedTo</c>.</summary>
@@ -432,6 +436,13 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
             }
 
             var resolvedShowUri = episodeDetail?.ShowUri ?? episode.ShowUri ?? parameter.ShowUri;
+            if (episodeDetail is not null)
+            {
+                episode = episode.WithPlaybackProgress(
+                    (long)Math.Max(0, episodeDetail.PlayedPosition.TotalMilliseconds),
+                    episodeDetail.PlayedState);
+            }
+
             var commentsPage = episodeDetail is null
                 ? null
                 : new PodcastEpisodeCommentsPageDto
@@ -610,28 +621,117 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
     private void OnPlaybackStateChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (_disposed) return;
-        if (Chapters.Count == 0) return;
 
         if (e.PropertyName == nameof(IPlaybackStateService.Position) ||
             e.PropertyName == nameof(IPlaybackStateService.Duration) ||
-            e.PropertyName == nameof(IPlaybackStateService.CurrentTrackId))
+            e.PropertyName == nameof(IPlaybackStateService.CurrentTrackId) ||
+            e.PropertyName == nameof(IPlaybackStateService.CurrentContext) ||
+            e.PropertyName == nameof(IPlaybackStateService.CurrentAlbumId) ||
+            e.PropertyName == nameof(IPlaybackStateService.IsPlaying))
         {
-            ScheduleChapterTimelineRefresh();
+            SchedulePlaybackUiRefresh();
         }
     }
 
-    private void ScheduleChapterTimelineRefresh()
+    private void OnPodcastEpisodeProgressChanged(object? sender, PodcastEpisodeProgressChangedEventArgs e)
     {
-        if (_chapterTimelineRefreshScheduled) return;
-        _chapterTimelineRefreshScheduled = true;
+        if (_disposed)
+            return;
+
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            if (_disposed)
+                return;
+
+            ApplyPodcastEpisodeProgress(e);
+        });
+    }
+
+    private void SchedulePlaybackUiRefresh()
+    {
+        if (_playbackUiRefreshScheduled) return;
+        _playbackUiRefreshScheduled = true;
         if (!_dispatcherQueue.TryEnqueue(() =>
             {
-                _chapterTimelineRefreshScheduled = false;
+                _playbackUiRefreshScheduled = false;
+                ApplyCurrentPlaybackProgress();
                 RefreshChapterTimeline();
             }))
         {
-            _chapterTimelineRefreshScheduled = false;
+            _playbackUiRefreshScheduled = false;
         }
+    }
+
+    private void ApplyPodcastEpisodeProgress(PodcastEpisodeProgressChangedEventArgs e)
+    {
+        var positionMs = (long)Math.Max(0, e.Progress.PlayedPosition.TotalMilliseconds);
+        if (e.Matches(_episodeUri))
+            UpdateCurrentEpisodeProgress(positionMs, e.Progress.PlayedState, minPositionDeltaMs: 0);
+
+        for (var i = 0; i < MoreFromShow.Count; i++)
+        {
+            var sibling = MoreFromShow[i];
+            if (e.Matches(sibling.Uri))
+                MoreFromShow[i] = sibling.WithPlaybackProgress(positionMs, e.Progress.PlayedState);
+        }
+    }
+
+    private void ApplyCurrentPlaybackProgress()
+    {
+        var currentEpisodeUri = PlaybackSaveTargetResolver.GetEpisodeUri(_playbackStateService);
+        if (string.IsNullOrEmpty(currentEpisodeUri))
+            return;
+
+        var positionMs = NormalizePlaybackMilliseconds(_playbackStateService.Position);
+        var durationMs = Math.Max(
+            NormalizePlaybackMilliseconds(_playbackStateService.Duration),
+            Episode?.DurationMs ?? 0);
+        var state = ResolvePlaybackOverlayState(positionMs, durationMs, _playbackStateService.IsPlaying);
+        if (string.Equals(currentEpisodeUri, _episodeUri, StringComparison.Ordinal))
+            UpdateCurrentEpisodeProgress(positionMs, state, PodcastProgressUiDeltaMs);
+
+        for (var i = 0; i < MoreFromShow.Count; i++)
+        {
+            var sibling = MoreFromShow[i];
+            if (string.Equals(sibling.Uri, currentEpisodeUri, StringComparison.Ordinal))
+                MoreFromShow[i] = sibling.WithPlaybackProgress(positionMs, state);
+        }
+    }
+
+    private void UpdateCurrentEpisodeProgress(long positionMs, string? playedState, long minPositionDeltaMs)
+    {
+        if (Episode is not { } current)
+            return;
+
+        var updated = current.WithPlaybackProgress(positionMs, playedState);
+        var positionDelta = Math.Abs(current.PlayedPositionMs - updated.PlayedPositionMs);
+        if (string.Equals(current.PlayedState, updated.PlayedState, StringComparison.Ordinal) &&
+            positionDelta < minPositionDeltaMs &&
+            string.Equals(current.MetaLine, updated.MetaLine, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Episode = updated;
+    }
+
+    private static long NormalizePlaybackMilliseconds(double value)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value))
+            return 0;
+
+        return (long)Math.Max(0, value);
+    }
+
+    private static string ResolvePlaybackOverlayState(long positionMs, long durationMs, bool isPlaying)
+    {
+        if (durationMs > 0 && positionMs > 0 && durationMs - positionMs <= PodcastCompletedThresholdMs)
+            return "COMPLETED";
+
+        if (isPlaying || positionMs > 0)
+            return "IN_PROGRESS";
+
+        return "NOT_STARTED";
     }
 
     private void RefreshChapterTimeline()
@@ -741,14 +841,14 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
     private void OpenShow()
     {
         if (string.IsNullOrEmpty(_parentShowUri)) return;
-        NavigationHelpers.OpenShow(_parentShowUri!, _parentShowTitle ?? "Show", NavigationHelpers.IsCtrlPressed());
+        NavigationHelpers.OpenShowPage(_parentShowUri!, _parentShowTitle ?? "Show", openInNewTab: NavigationHelpers.IsCtrlPressed());
     }
 
     [RelayCommand]
     private void OpenSiblingEpisode(ShowEpisodeDto? sibling)
     {
         if (sibling is null || string.IsNullOrEmpty(sibling.Uri)) return;
-        NavigationHelpers.OpenEpisode(
+        NavigationHelpers.OpenEpisodePage(
             sibling.Uri,
             sibling.Title,
             sibling.CoverArtUrl,
@@ -842,6 +942,7 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         _loadCts = null;
 
         _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
+        _libraryDataService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
 
         Chapters.Clear();
         MoreFromShow.Clear();

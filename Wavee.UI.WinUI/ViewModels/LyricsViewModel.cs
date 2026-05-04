@@ -78,6 +78,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         _logger = logger;
 
         WindowStatus = CreateSidebarWindowStatus();
+        CapturePlaybackPositionSnapshot();
 
         _playbackState.PropertyChanged += OnPlaybackStateChanged;
     }
@@ -87,6 +88,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         switch (e.PropertyName)
         {
             case nameof(IPlaybackStateService.CurrentTrackId):
+                CapturePlaybackPositionSnapshot();
                 if (HasActiveConsumers)
                     _ = DeferredLoadLyricsAsync();
                 else
@@ -112,11 +114,28 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
                 if (HasActiveConsumers)
                     ApplyPaletteFromPlaybackColor();
                 break;
+            case nameof(IPlaybackStateService.IsPlaying):
+                CapturePlaybackPositionSnapshot();
+                break;
             case nameof(IPlaybackStateService.Position):
-                LastServicePosition = _playbackState.Position;
-                LastPositionTimestamp = DateTime.UtcNow;
+                CapturePlaybackPositionSnapshot();
                 break;
         }
+    }
+
+    private void CapturePlaybackPositionSnapshot()
+    {
+        var position = _playbackState.Position;
+        if (double.IsNaN(position) || double.IsInfinity(position))
+            position = 0;
+
+        position = Math.Max(0, position);
+        var duration = _playbackState.Duration;
+        if (duration > 0)
+            position = Math.Min(position, duration);
+
+        LastServicePosition = position;
+        LastPositionTimestamp = DateTime.UtcNow;
     }
 
     public void SetConsumerActive(object consumer, bool active)

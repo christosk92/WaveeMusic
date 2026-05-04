@@ -297,7 +297,7 @@ public sealed partial class EpisodeCard : UserControl
         // on ContentCard's dispatch.
         if (uri.Contains(":episode:", StringComparison.Ordinal))
         {
-            NavigationHelpers.OpenEpisode(
+            NavigationHelpers.OpenEpisodePage(
                 uri,
                 item?.Title,
                 item?.ImageUrl,
@@ -305,7 +305,7 @@ public sealed partial class EpisodeCard : UserControl
         }
         else if (uri.Contains(":show:", StringComparison.Ordinal))
         {
-            NavigationHelpers.OpenShow(uri, item?.Title ?? string.Empty, NavigationHelpers.IsCtrlPressed());
+            NavigationHelpers.OpenShowPage(uri, item?.Title ?? string.Empty, openInNewTab: NavigationHelpers.IsCtrlPressed());
         }
 
         e.Handled = true;

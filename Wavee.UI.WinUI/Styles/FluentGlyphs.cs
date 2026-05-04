@@ -98,6 +98,8 @@ public static class FluentGlyphs
     public const string Cancel = "";
     /// <summary>ChevronRight — E76C.</summary>
     public const string ChevronRight = "";
+    /// <summary>ChevronLeft — E76B.</summary>
+    public const string ChevronLeft = "";
     /// <summary>Video — E714. Used for "Watch Video" / music-video toggle.</summary>
     public const string Video = "";
 

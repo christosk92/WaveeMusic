@@ -88,6 +88,7 @@
 		<PackageReference Include="CommunityToolkit.WinUI.Controls.Primitives" Version="8.2.251219" />
 		<PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
 		<PackageReference Include="CommunityToolkit.WinUI.Helpers" Version="8.2.251219" />
+		<PackageReference Include="ComputeSharp.D2D1.WinUI" Version="3.2.0" />
 		<PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
 		<PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.0-prerelease.251115.2" />
 		<PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
@@ -198,6 +199,65 @@
 		-->
 		<Exec Command="dotnet build &quot;$(MSBuildThisFileDirectory)..\Wavee.AudioHost\Wavee.AudioHost.csproj&quot; -c $(Configuration) -p:Platform=x64 --nologo -v quiet" ConsoleToMSBuild="true" />
 		<Message Importance="high" Text="[BuildAudioHost] AudioHost rebuilt at ..\Wavee.AudioHost\bin\x64\$(Configuration)\net10.0\win-x64\Wavee.AudioHost.exe" />
+	</Target>
+
+	<!--
+	    Stage Wavee.AudioHost into a `Wavee.AudioHost\` subdirectory of the
+	    WinUI app's payload, both in the F5/deploy AppX layout (this target)
+	    and in the sideload MSIX (IncludeAudioHostInMsixPayload below).
+
+	    Without these, AudioProcessManager only finds AudioHost via dev path
+	    walking — installed packages throw "Audio host not found" on first
+	    playback.
+
+	    The subdirectory layout is intentional: AudioHost ships ~23 DLLs
+	    that overlap by name with the WinUI app's payload (Microsoft.
+	    Extensions.*, Serilog.*, NVorbis, System.Reactive, Ude). Flattening
+	    them into the package root would either fail the AppX validator
+	    with duplicate-target errors or silently bind AudioHost.exe against
+	    the WinUI app's transitive (ARM64) DLLs at runtime — an arch
+	    mismatch since AudioHost is x64. AudioProcessManager.cs probes the
+	    subdir candidate first.
+
+	    Mirrors the existing "AI projection assemblies" workaround pattern.
+	-->
+	<Target Name="CopyAudioHostToAppxLayout"
+	        AfterTargets="_GenerateProjectPriFileCore"
+	        Condition="Exists('$(OutputPath)AppX\')">
+		<PropertyGroup>
+			<_AudioHostBin>$(MSBuildThisFileDirectory)..\Wavee.AudioHost\bin\x64\$(Configuration)\net10.0\win-x64\</_AudioHostBin>
+		</PropertyGroup>
+		<ItemGroup>
+			<_AudioHostFiles Include="$(_AudioHostBin)**\*.*" />
+		</ItemGroup>
+		<Copy
+			SourceFiles="@(_AudioHostFiles)"
+			DestinationFiles="@(_AudioHostFiles->'$(OutputPath)AppX\Wavee.AudioHost\%(RecursiveDir)%(Filename)%(Extension)')"
+			SkipUnchangedFiles="true"
+			Condition="'@(_AudioHostFiles)' != ''" />
+		<Message Importance="high"
+		         Text="[BuildAudioHost] Staged @(_AudioHostFiles->Count()) AudioHost file(s) into $(OutputPath)AppX\Wavee.AudioHost\." />
+	</Target>
+
+	<!--
+	    Sideload package path (no AppX\ folder is materialised on disk):
+	    inject the AudioHost files into AppxPackagePayload before the
+	    package recipe is computed. _ComputeAppxPackagePayload is the same
+	    hook used for the AI projection workaround above.
+	-->
+	<Target Name="IncludeAudioHostInMsixPayload"
+	        BeforeTargets="_ComputeAppxPackagePayload">
+		<PropertyGroup>
+			<_AudioHostBin>$(MSBuildThisFileDirectory)..\Wavee.AudioHost\bin\x64\$(Configuration)\net10.0\win-x64\</_AudioHostBin>
+		</PropertyGroup>
+		<ItemGroup>
+			<_AudioHostPayloadFiles Include="$(_AudioHostBin)**\*.*" />
+			<AppxPackagePayload Include="@(_AudioHostPayloadFiles)">
+				<TargetPath>Wavee.AudioHost\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+			</AppxPackagePayload>
+		</ItemGroup>
+		<Message Importance="high"
+		         Text="[BuildAudioHost] Added @(_AudioHostPayloadFiles->Count()) AudioHost file(s) to AppxPackagePayload at TargetPath=Wavee.AudioHost\." />
 	</Target>
 
 	<!-- WinUI AppX packaging copies <Content> items from referenced projects twice:

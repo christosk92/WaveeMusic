@@ -62,6 +62,7 @@ public sealed class LibraryDataService : ILibraryDataService
 
     public event EventHandler? PlaylistsChanged;
     public event EventHandler? DataChanged;
+    public event EventHandler<PodcastEpisodeProgressChangedEventArgs>? PodcastEpisodeProgressChanged;
 
     private readonly string _databasePath;
 
@@ -758,7 +759,7 @@ public sealed class LibraryDataService : ILibraryDataService
         _cachedPodcastEpisodeProgress = updated;
         _podcastProgressFetchedAt = DateTimeOffset.UtcNow;
         _podcastProgressFetchFailed = false;
-        ScheduleChangeEmit(dataChanged: true, playlistsChanged: false);
+        PodcastEpisodeProgressChanged?.Invoke(this, new PodcastEpisodeProgressChangedEventArgs(progress, aliasUri));
     }
 
     private async Task<LibraryEpisodeDto?> FetchRecentPodcastEpisodeAsync(

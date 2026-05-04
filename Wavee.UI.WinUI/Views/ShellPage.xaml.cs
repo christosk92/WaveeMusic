@@ -612,6 +612,9 @@ public sealed partial class ShellPage : Page
                     else
                         NavigationHelpers.OpenPodcasts(openInNewTab);
                     break;
+                case "PodcastBrowse":
+                    NavigationHelpers.OpenPodcastBrowse(openInNewTab);
+                    break;
                 default:
                     // Handle playlist navigation (tags starting with "spotify:playlist:")
                     if (tag.StartsWith("spotify:playlist:"))

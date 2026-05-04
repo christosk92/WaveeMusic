@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Splash.BootSplash"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:branding="using:Wavee.UI.WinUI.Controls.Branding"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    HorizontalAlignment="Stretch"
+    VerticalAlignment="Stretch"
+    IsHitTestVisible="False">
+    <Grid>
+        <!-- Opaque base so the empty Frame underneath never bleeds through during
+             the splash phase; sits behind the animated mesh so the gradient blends
+             toward this colour at the edges. -->
+        <Grid.Background>
+            <SolidColorBrush Color="#FF0F0F0F"/>
+        </Grid.Background>
+
+        <!-- Animated mesh gradient: same shader stack used by the home cards.
+             PrimaryColor stays close to the base so the gradient feels like a
+             slow shimmer rather than two competing colours. -->
+        <cards:AnimatedHeroBackground
+            x:Name="PART_Background"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            PrimaryColor="#FF0E1B12"
+            AccentColor="#FF1DB954"/>
+
+        <!-- Vignette so the wordmark stays legible everywhere across the gradient.
+             Centre is fully transparent; edges fade toward the base. -->
+        <Rectangle IsHitTestVisible="False">
+            <Rectangle.Fill>
+                <RadialGradientBrush Center="0.5,0.5" RadiusX="0.75" RadiusY="0.75">
+                    <GradientStop Color="#000F0F0F" Offset="0.0"/>
+                    <GradientStop Color="#330F0F0F" Offset="0.6"/>
+                    <GradientStop Color="#A00F0F0F" Offset="1.0"/>
+                </RadialGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+
+        <!-- Centred brand stack: logo above, wordmark below. WaveeLogo Plated=False
+             so the mark sits on top of our gradient backdrop without doubling up
+             the dark base. Logo size + spacing tuned for cold-start legibility on
+             a typical 1080p+ window. -->
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="20">
+            <branding:WaveeLogo
+                Width="128"
+                Height="128"
+                HorizontalAlignment="Center"/>
+            <TextBlock
+                HorizontalAlignment="Center"
+                Text="Wavee"
+                FontFamily="Segoe UI Variable Display"
+                FontSize="48"
+                FontWeight="SemiLight"
+                CharacterSpacing="-50"
+                Foreground="#FFFFFFFF"/>
+        </StackPanel>
+
+        <!-- Delayed indeterminate ring. Hidden on warm starts (splash dies before 700ms);
+             only long cold starts show it. -->
+        <ProgressRing
+            x:Name="PART_Ring"
+            Visibility="Collapsed"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Margin="0,0,0,96"
+            Width="28"
+            Height="28"
+            IsActive="True"
+            Foreground="{ThemeResource App.Theme.AccentBrush}"/>
+    </Grid>
+</UserControl>

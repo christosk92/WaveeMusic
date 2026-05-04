@@ -25,6 +25,8 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
 {
+    private const int ShimmerCollapseDelayMs = 250;
+
     private readonly ILogger? _logger;
     private readonly INotificationService? _notificationService;
     private readonly ISettingsService _settings;
@@ -38,31 +40,6 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
 
     public event EventHandler<TabItemParameter>? ContentChanged;
-
-    public void SetEmbeddedInLibrary(bool embedded, double chromeTopInset = 0)
-    {
-        var topInset = embedded ? chromeTopInset + 56 : 0;
-        if (ShowBreadcrumb is not null)
-            ShowBreadcrumb.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible;
-        if (ShimmerContainer is not null)
-            ShimmerContainer.Padding = embedded ? new Thickness(0, topInset, 0, 0) : new Thickness(40, 32, 40, 40);
-        if (ContentContainer is not null)
-            ContentContainer.Margin = embedded ? new Thickness(0, topInset, 0, 0) : new Thickness(0);
-    }
-
-    public void SetEmbeddedBackdropOnly(bool backdropOnly)
-    {
-        if (ContentContainer is not null)
-            ContentContainer.Visibility = backdropOnly ? Visibility.Collapsed : Visibility.Visible;
-
-        if (ShimmerContainer is not null)
-        {
-            if (backdropOnly)
-                ShimmerContainer.Visibility = Visibility.Collapsed;
-            else if (!_showingContent && ViewModel.IsLoading)
-                ShimmerContainer.Visibility = Visibility.Visible;
-        }
-    }
 
     public ShowPage()
     {
@@ -94,7 +71,7 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
         if (e.PropertyName == nameof(ShowViewModel.IsLoading))
         {
             if (!ViewModel.IsLoading && !_showingContent && !_crossfadeScheduled)
-                ScheduleCrossfade();
+                TryShowContentNow();
         }
     }
 
@@ -108,7 +85,7 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
 
         if (!ViewModel.IsLoading)
-            SnapCrossfadeToContent();
+            TryShowContentNow();
 
         TryHandlePendingPodcastArtConnectedAnimation();
     }
@@ -140,7 +117,7 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
         _crossfadeScheduled = true;
         await Task.Yield();
         await Task.Delay(16);
-        if (_isNavigatingAway || _showingContent)
+        if (_isNavigatingAway || _showingContent || ViewModel.IsLoading)
         {
             _crossfadeScheduled = false;
             return;
@@ -153,18 +130,34 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
     {
         if (_showingContent) return;
         _showingContent = true;
+        _crossfadeScheduled = false;
 
         AnimationBuilder.Create()
-            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200))
+            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200),
+                layer: FrameworkLayer.Xaml)
             .Start(ShimmerContainer);
 
         AnimationBuilder.Create()
             .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
-                     delay: TimeSpan.FromMilliseconds(100))
+                delay: TimeSpan.FromMilliseconds(100),
+                layer: FrameworkLayer.Xaml)
             .Start(ContentContainer);
 
-        await Task.Delay(250);
+        await Task.Delay(ShimmerCollapseDelayMs);
         if (_showingContent) ShimmerContainer.Visibility = Visibility.Collapsed;
+    }
+
+    private void TryShowContentNow()
+    {
+        if (_showingContent ||
+            _crossfadeScheduled ||
+            ViewModel.IsLoading ||
+            (string.IsNullOrEmpty(ViewModel.ShowName) && !ViewModel.HasError))
+        {
+            return;
+        }
+
+        ScheduleCrossfade();
     }
 
     private void SnapCrossfadeToContent()
@@ -173,6 +166,8 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
         _crossfadeScheduled = false;
         ShimmerContainer.Visibility = Visibility.Collapsed;
         ShimmerContainer.Opacity = 0;
+        ContentContainer.Opacity = 1;
+        ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 0;
         ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 1;
     }
 
@@ -183,6 +178,8 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
         _crossfadeScheduled = false;
         ShimmerContainer.Visibility = Visibility.Visible;
         ShimmerContainer.Opacity = 1;
+        ContentContainer.Opacity = 0;
+        ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 1;
         ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
     }
 
@@ -203,7 +200,7 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
         LoadNewContent(parameter);
     }
 
-    private void LoadNewContent(object? parameter)
+    private async void LoadNewContent(object? parameter)
     {
         ResetCrossfadeForNewLoad();
 
@@ -223,6 +220,12 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
         RestoreShowPanelWidth(showUri);
 
         TryHandlePendingPodcastArtConnectedAnimation();
+
+        await Task.Yield();
+        if (_isNavigatingAway)
+            return;
+
+        TryShowContentNow();
     }
 
     private bool TryHandlePendingPodcastArtConnectedAnimation()
@@ -321,7 +324,7 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
     private void OpenEpisodeFromShow(ShowEpisodeDto? e)
     {
         if (e is null || string.IsNullOrEmpty(e.Uri)) return;
-        NavigationHelpers.OpenEpisode(
+        NavigationHelpers.OpenEpisodePage(
             e.Uri,
             e.Title,
             e.CoverArtUrl ?? ViewModel.CoverArtUrl,

@@ -211,6 +211,27 @@ public interface IPathfinderClient
         string showUri, CancellationToken ct = default);
 
     /// <summary>
+    /// Fetches a Spotify browse page container. Podcast category pages use this
+    /// shape for category grids and editorial show sections.
+    /// </summary>
+    Task<BrowsePageResponse> GetBrowsePageAsync(
+        string uri,
+        int pageOffset = 0,
+        int pageLimit = 10,
+        int sectionOffset = 0,
+        int sectionLimit = 10,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches one paginated browse section, such as a "Popular podcasts" shelf.
+    /// </summary>
+    Task<BrowseSectionResponse> GetBrowseSectionAsync(
+        string uri,
+        int offset = 0,
+        int limit = 20,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Fetches Spotify's "more podcasts you might like" carousel for a given
     /// show URI. Backed by the <c>internalLinkRecommenderShow</c> persisted query.
     /// </summary>

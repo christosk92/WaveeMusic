@@ -890,6 +890,9 @@ Aggressive</value>
   <data name="Shell_SidebarPodcasts" xml:space="preserve">
     <value>Podcasts</value>
   </data>
+  <data name="Shell_SidebarPodcastBrowse" xml:space="preserve">
+    <value>Browse podcasts</value>
+  </data>
   <data name="Shell_SidebarNoPlaylists" xml:space="preserve">
     <value>아직 플레이리스트가 없습니다. 하나 만들어 보세요!</value>
   </data>

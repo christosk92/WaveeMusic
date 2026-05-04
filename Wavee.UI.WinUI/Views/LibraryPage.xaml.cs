@@ -1,5 +1,4 @@
 using System;
-using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
@@ -16,9 +15,7 @@ namespace Wavee.UI.WinUI.Views;
 public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepParticipant, INavigationCacheMemoryParticipant, IDisposable
 {
     private const int MaxDeferredShowTabAttempts = 3;
-    private const double DefaultExpandedPodcastTopInset = 52;
     private static readonly Thickness DefaultContentPadding = new(24, 8, 24, 0);
-    private static readonly Thickness ExpandedPodcastContentPadding = new(0);
 
     private readonly ShellViewModel _shellViewModel;
 
@@ -36,7 +33,6 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
     private TabItemParameter? _tabItemParameter;
     private bool _disposed;
     private LibraryPageSleepState? _pendingSleepState;
-    private PodcastLibraryNavigationParameter? _pendingPodcastNavigation;
     private bool _trimmedForNavigationCache;
     private string? _trimmedSelectedTabKey;
 
@@ -57,6 +53,8 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
     /// </summary>
     private void SetSelectedItemSilently(SegmentedItem itemToSelect)
     {
+        if (_disposed) return;
+
         if (ReferenceEquals(LibrarySelectorBar.SelectedItem, itemToSelect)) return;
 
         LibrarySelectorBar.SelectionChanged -= SelectorBar_SelectionChanged;
@@ -75,6 +73,8 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
     /// </summary>
     public void SelectTab(string tabName)
     {
+        if (_disposed) return;
+
         SegmentedItem itemToSelect = GetItemForTabKey(tabName);
 
         SetSelectedItemSilently(itemToSelect);
@@ -84,6 +84,7 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        if (_disposed) return;
 
         // On back/forward navigation, restore the cached page as-is
         if (e.NavigationMode is NavigationMode.Back or NavigationMode.Forward
@@ -93,44 +94,36 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         }
 
         var navigationParameter = UnwrapNavigationParameter(e.Parameter);
-        if (_trimmedForNavigationCache &&
-            navigationParameter is not string &&
-            navigationParameter is not PodcastLibraryNavigationParameter)
+        if (_trimmedForNavigationCache && navigationParameter is not string)
         {
             RestoreFromNavigationCache();
             TryApplyPendingSleepState();
             return;
         }
 
-        // Determine which item to select based on parameter
-        SegmentedItem itemToSelect = AlbumsItem; // default
-
-        PodcastLibraryNavigationParameter? podcastNavigation = null;
-        if (navigationParameter is PodcastLibraryNavigationParameter podcastParameter)
-        {
-            itemToSelect = YourEpisodesItem;
-            podcastNavigation = podcastParameter;
-        }
-        else if (navigationParameter is string tab)
-            itemToSelect = GetItemForTabKey(tab);
+        SegmentedItem itemToSelect = navigationParameter is string tab
+            ? GetItemForTabKey(tab)
+            : AlbumsItem;
 
         SetSelectedItemSilently(itemToSelect);
         _trimmedForNavigationCache = false;
         _trimmedSelectedTabKey = null;
         ShowTab(itemToSelect);
-        if (podcastNavigation is not null)
-            ApplyPodcastNavigation(podcastNavigation);
         TryApplyPendingSleepState();
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
+        if (_disposed) return;
+
         TrimForNavigationCache();
     }
 
     private void SelectorBar_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_disposed) return;
+
         // Skip any spurious initial event before OnNavigatedTo applies the navigation
         // is null until ShowTab runs for the first time — once OnNavigatedTo has wired
         // parameter. ContentHost.Content is null until ShowTab runs for the first time.
@@ -150,6 +143,8 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
     /// </summary>
     private void ShowTab(SegmentedItem selectedItem)
     {
+        if (_disposed) return;
+
         // In rare timing windows the generated x:Name field may still be null.
         // Defer to the UI queue and retry a few times instead of throwing.
         if (ContentHost == null)
@@ -177,13 +172,7 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         }
         else if (selectedItem == YourEpisodesItem)
         {
-            if (_yourEpisodesView is null)
-            {
-                _yourEpisodesView = new YourEpisodesView(ViewModel.YourEpisodes);
-                _yourEpisodesView.ViewModel.PropertyChanged += YourEpisodesViewModel_PropertyChanged;
-            }
-
-            view = _yourEpisodesView;
+            view = _yourEpisodesView ??= new YourEpisodesView(ViewModel.YourEpisodes);
         }
         else
         {
@@ -195,50 +184,9 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
             ContentHost.Content = view;
         }
 
-        if (selectedItem == YourEpisodesItem && _pendingPodcastNavigation is not null)
-        {
-            var pending = _pendingPodcastNavigation;
-            _pendingPodcastNavigation = null;
-            ApplyPodcastNavigation(pending);
-        }
-
-        UpdateContentAreaPadding(selectedItem);
         UpdateSidebarSelection(selectedItem);
         UpdateCurrentTabTitle(selectedItem);
         UpdateTabItemParameter(selectedItem);
-    }
-
-    private void YourEpisodesViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName is nameof(YourEpisodesViewModel.IsSelectedShowDetailMode)
-            or nameof(YourEpisodesViewModel.IsSelectedEpisodeDetailPageMode))
-        {
-            UpdateContentAreaPadding(LibrarySelectorBar.SelectedItem as SegmentedItem);
-        }
-    }
-
-    private void UpdateContentAreaPadding(SegmentedItem? selectedItem)
-    {
-        if (ContentArea is null)
-            return;
-
-        var expandedPodcastDetail = selectedItem == YourEpisodesItem &&
-                                    _yourEpisodesView?.ViewModel is { } vm &&
-                                    (vm.IsSelectedShowDetailMode || vm.IsSelectedEpisodeDetailPageMode);
-
-        ContentArea.Padding = expandedPodcastDetail
-            ? ExpandedPodcastContentPadding
-            : DefaultContentPadding;
-
-        Grid.SetRow(ContentArea, expandedPodcastDetail ? 0 : 1);
-        Grid.SetRowSpan(ContentArea, expandedPodcastDetail ? 2 : 1);
-
-        var chromeTopInset = expandedPodcastDetail
-            ? Math.Max(LibrarySelectorBar.ActualHeight, DefaultExpandedPodcastTopInset)
-            : 0;
-
-        if (_yourEpisodesView is not null)
-            _yourEpisodesView.SetExpandedChromeTopInset(chromeTopInset);
     }
 
     private static string GetLocalizedTabTitle(SegmentedItem selectedItem, SegmentedItem albumsItem, SegmentedItem artistsItem, SegmentedItem likedSongsItem, SegmentedItem yourEpisodesItem)
@@ -330,42 +278,30 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
 
     public void RefreshWithParameter(object? parameter)
     {
+        if (_disposed) return;
+
         parameter = UnwrapNavigationParameter(parameter);
 
-        if (parameter is PodcastLibraryNavigationParameter podcastParameter)
-        {
-            SetSelectedItemSilently(YourEpisodesItem);
-            ShowTab(YourEpisodesItem);
-            ApplyPodcastNavigation(podcastParameter);
-        }
-        else if (parameter is string tabName)
-        {
+        if (parameter is string tabName)
             SelectTab(tabName);
-        }
-    }
-
-    private void ApplyPodcastNavigation(PodcastLibraryNavigationParameter parameter)
-    {
-        if (_yourEpisodesView is null)
-        {
-            _pendingPodcastNavigation = parameter;
-            return;
-        }
-
-        _ = _yourEpisodesView.ViewModel.NavigateToAsync(parameter);
     }
 
     public object? CaptureSleepState()
-        => new LibraryPageSleepState(GetSelectedTabKey());
+        => _disposed ? null : new LibraryPageSleepState(GetSelectedTabKey());
 
     public void RestoreSleepState(object? state)
     {
+        if (_disposed) return;
+
         _pendingSleepState = state as LibraryPageSleepState;
         TryApplyPendingSleepState();
     }
 
     public void TrimForNavigationCache()
     {
+        if (_disposed)
+            return;
+
         if (_trimmedForNavigationCache)
             return;
 
@@ -377,6 +313,9 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
 
     public void RestoreFromNavigationCache()
     {
+        if (_disposed)
+            return;
+
         if (!_trimmedForNavigationCache)
             return;
 
@@ -395,8 +334,6 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         _disposed = true;
 
         LibrarySelectorBar.SelectionChanged -= SelectorBar_SelectionChanged;
-        if (_yourEpisodesView is not null)
-            _yourEpisodesView.ViewModel.PropertyChanged -= YourEpisodesViewModel_PropertyChanged;
         ContentHost.Content = null;
 
         DisposeIfNeeded(ref _albumsView);
@@ -407,10 +344,15 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         ViewModel.Dispose();
         ContentChanged = null;
         _tabItemParameter = null;
+        _pendingSleepState = null;
+        _trimmedSelectedTabKey = null;
     }
 
     private void TryApplyPendingSleepState()
     {
+        if (_disposed)
+            return;
+
         if (_pendingSleepState == null || !IsLoaded)
             return;
 

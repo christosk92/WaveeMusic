@@ -457,6 +457,16 @@ public sealed partial class PlayerBar : UserControl
 
     private void NavigateToAlbum()
     {
+        if (PodcastPlaybackNavigation.TryOpenCurrentEpisode(
+                _playbackStateService,
+                ViewModel.TrackTitle,
+                ViewModel.AlbumArtLarge ?? ViewModel.AlbumArt,
+                ViewModel.ArtistName,
+                ViewModel.AlbumArtLarge ?? ViewModel.AlbumArt))
+        {
+            return;
+        }
+
         var albumId = ViewModel.CurrentAlbumId;
         if (string.IsNullOrEmpty(albumId)) return;
         var param = new Data.Parameters.ContentNavigationParameter
@@ -467,7 +477,7 @@ public sealed partial class PlayerBar : UserControl
         };
         if (albumId.StartsWith("spotify:show:", StringComparison.Ordinal))
         {
-            NavigationHelpers.OpenShow(albumId, param.Title);
+            NavigationHelpers.OpenShowPage(albumId, param.Title);
             return;
         }
         NavigationHelpers.OpenAlbum(param, param.Title);
@@ -475,6 +485,16 @@ public sealed partial class PlayerBar : UserControl
 
     private void NavigateToActiveContext()
     {
+        if (PodcastPlaybackNavigation.TryOpenCurrentEpisode(
+                _playbackStateService,
+                ViewModel.TrackTitle,
+                ViewModel.AlbumArtLarge ?? ViewModel.AlbumArt,
+                ViewModel.ArtistName,
+                ViewModel.AlbumArtLarge ?? ViewModel.AlbumArt))
+        {
+            return;
+        }
+
         var ctx = _playbackStateService?.CurrentContext;
         if (ctx is null || string.IsNullOrEmpty(ctx.ContextUri))
         {
@@ -506,13 +526,13 @@ public sealed partial class PlayerBar : UserControl
                 NavigationHelpers.OpenLikedSongs();
                 break;
             case PlaybackContextType.Show:
-                NavigationHelpers.OpenShow(param.Uri, param.Title);
+                NavigationHelpers.OpenShowPage(param.Uri, param.Title);
                 break;
             case PlaybackContextType.Episode:
                 if (param.Uri.Contains("your-episodes", StringComparison.OrdinalIgnoreCase))
                     NavigationHelpers.OpenYourEpisodes();
                 else
-                    NavigationHelpers.OpenShow(param.Uri, param.Title);
+                    NavigationHelpers.OpenEpisodePage(param.Uri, param.Title);
                 break;
             default:
                 // Queue / Search / Unknown — no canonical destination; fall back

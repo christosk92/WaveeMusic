@@ -113,6 +113,8 @@ public sealed class PathfinderClient : IPathfinderClient
             or PathfinderOperations.GetEpisodeOrChapter
             or PathfinderOperations.InternalLinkRecommenderEpisode
             or PathfinderOperations.QueryShowMetadataV2
+            or PathfinderOperations.BrowsePage
+            or PathfinderOperations.BrowseSection
             or PathfinderOperations.InternalLinkRecommenderShow
             or PathfinderOperations.GetCommentsForEntity
             or PathfinderOperations.GetReplies
@@ -591,6 +593,67 @@ public sealed class PathfinderClient : IPathfinderClient
     }
 
     /// <inheritdoc />
+    public async Task<BrowsePageResponse> GetBrowsePageAsync(
+        string uri,
+        int pageOffset = 0,
+        int pageLimit = 10,
+        int sectionOffset = 0,
+        int sectionLimit = 10,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uri);
+
+        var variables = new BrowsePageVariables
+        {
+            Uri = uri,
+            PagePagination = new BrowsePagination
+            {
+                Offset = Math.Max(0, pageOffset),
+                Limit = Math.Max(1, pageLimit)
+            },
+            SectionPagination = new BrowsePagination
+            {
+                Offset = Math.Max(0, sectionOffset),
+                Limit = Math.Max(1, sectionLimit)
+            }
+        };
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.BrowsePage,
+            PathfinderOperations.BrowsePageHash,
+            BrowsePageJsonContext.Default.BrowsePageResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<BrowseSectionResponse> GetBrowseSectionAsync(
+        string uri,
+        int offset = 0,
+        int limit = 20,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uri);
+
+        var variables = new BrowseSectionVariables
+        {
+            Uri = uri,
+            Pagination = new BrowsePagination
+            {
+                Offset = Math.Max(0, offset),
+                Limit = Math.Max(1, limit)
+            }
+        };
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.BrowseSection,
+            PathfinderOperations.BrowseSectionHash,
+            BrowseSectionJsonContext.Default.BrowseSectionResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
     public async Task<QueryNpvEpisodeChaptersResponse> GetEpisodeChaptersAsync(
         string episodeUri, int offset = 0, int limit = 50, CancellationToken ct = default)
     {
@@ -977,6 +1040,14 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is QueryShowMetadataV2Variables qsmv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(qsmv, QueryShowMetadataV2VariablesJsonContext.Default.QueryShowMetadataV2Variables);
+        }
+        else if (variables is BrowsePageVariables bpv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(bpv, BrowsePageVariablesJsonContext.Default.BrowsePageVariables);
+        }
+        else if (variables is BrowseSectionVariables bsv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(bsv, BrowseSectionVariablesJsonContext.Default.BrowseSectionVariables);
         }
         else if (variables is QueryNpvEpisodeChaptersVariables qnecv)
         {

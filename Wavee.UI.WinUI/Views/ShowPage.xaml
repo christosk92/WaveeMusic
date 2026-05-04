@@ -40,34 +40,114 @@
              user sees the page shape stabilise immediately. ScheduleCrossfade
              in code-behind fades shimmer to content over ~300 ms. -->
         <Grid x:Name="ShimmerContainer"
-              Padding="40,32,40,40"
-              ColumnSpacing="24">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="280"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" Spacing="12">
-                <controls:Shimmer Width="248" Height="248" CornerRadius="8"/>
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <controls:Shimmer Width="80" Height="26" CornerRadius="13"/>
-                    <controls:Shimmer Width="86" Height="26" CornerRadius="13"/>
+              IsHitTestVisible="False">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border
+                Grid.Row="0"
+                Margin="20,16,20,0"
+                Padding="10,6"
+                HorizontalAlignment="Left"
+                CornerRadius="18"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <controls:Shimmer Width="14" Height="14" CornerRadius="7"/>
+                    <controls:Shimmer Width="150" Height="16" CornerRadius="4"/>
                 </StackPanel>
-                <controls:Shimmer Width="240" Height="28"/>
-                <controls:Shimmer Width="160" Height="16"/>
-                <controls:Shimmer Width="200" Height="14"/>
-                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
-                    <controls:Shimmer Width="80" Height="40" CornerRadius="20"/>
-                    <controls:Shimmer Width="120" Height="40" CornerRadius="20"/>
-                    <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
-                </StackPanel>
-            </StackPanel>
-            <StackPanel Grid.Column="1" Spacing="10">
-                <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
-                <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
-                <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
-                <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
-                <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
-            </StackPanel>
+            </Border>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="280"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <ScrollView Grid.Column="0"
+                            ContentOrientation="Vertical"
+                            VerticalScrollMode="Disabled"
+                            VerticalScrollBarVisibility="Hidden"
+                            HorizontalScrollMode="Disabled"
+                            HorizontalScrollBarVisibility="Hidden">
+                    <StackPanel Padding="20,24,12,24" Spacing="14">
+                        <controls:Shimmer Width="248" Height="248" CornerRadius="8" HorizontalAlignment="Stretch"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <controls:Shimmer Width="80" Height="26" CornerRadius="13"/>
+                            <controls:Shimmer Width="86" Height="26" CornerRadius="13"/>
+                        </StackPanel>
+                        <controls:Shimmer Width="240" Height="28" CornerRadius="6"/>
+                        <controls:Shimmer Width="160" Height="16" CornerRadius="4"/>
+                        <controls:Shimmer Width="200" Height="14" CornerRadius="4"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                            <controls:Shimmer Width="80" Height="40" CornerRadius="20"/>
+                            <controls:Shimmer Width="120" Height="40" CornerRadius="20"/>
+                            <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
+                        </StackPanel>
+                        <controls:Shimmer Height="96" HorizontalAlignment="Stretch" CornerRadius="6" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </ScrollView>
+
+                <Grid Grid.Column="1" Width="12"/>
+
+                <Grid Grid.Column="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0"
+                          Padding="20,16,20,8"
+                          ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="300"/>
+                        </Grid.ColumnDefinitions>
+                        <controls:Shimmer Grid.Column="0" Height="32" CornerRadius="6"/>
+                        <controls:Shimmer Grid.Column="1" Height="32" CornerRadius="6"/>
+                        <controls:Shimmer Grid.Column="2" Width="190" Height="14" CornerRadius="4" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        <controls:Shimmer Grid.Column="3" Height="32" CornerRadius="6"/>
+                    </Grid>
+                    <ScrollView Grid.Row="1"
+                                ContentOrientation="Vertical"
+                                VerticalScrollMode="Disabled"
+                                VerticalScrollBarVisibility="Hidden"
+                                HorizontalScrollMode="Disabled"
+                                HorizontalScrollBarVisibility="Hidden">
+                        <StackPanel Spacing="32" Margin="20,4,20,32">
+                            <StackPanel Spacing="14">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="6">
+                                        <controls:Shimmer Width="140" Height="24" CornerRadius="6" HorizontalAlignment="Left"/>
+                                        <controls:Shimmer Width="220" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                    <controls:Shimmer Grid.Column="1" Width="92" Height="34" CornerRadius="17"/>
+                                </Grid>
+                                <controls:Shimmer Height="124" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                            </StackPanel>
+
+                            <StackPanel Spacing="12">
+                                <controls:Shimmer Width="170" Height="24" CornerRadius="6" HorizontalAlignment="Left"/>
+                                <StackPanel Spacing="10">
+                                    <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                                    <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                                    <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                                    <controls:Shimmer Height="88" HorizontalAlignment="Stretch" CornerRadius="8"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollView>
+                </Grid>
+            </Grid>
         </Grid>
 
         <!-- Content. Composition Opacity starts at 0 (set in code-behind);
@@ -105,10 +185,12 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- LEFT PANEL — sticky show identity. -->
-                <ScrollViewer Grid.Column="0"
-                              VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled"
-                              Padding="0">
+                <ScrollView Grid.Column="0"
+                            ContentOrientation="Vertical"
+                            VerticalScrollMode="Auto"
+                            VerticalScrollBarVisibility="Auto"
+                            HorizontalScrollMode="Disabled"
+                            HorizontalScrollBarVisibility="Hidden">
                     <StackPanel Padding="20,24,12,24"
                                 Spacing="14">
 
@@ -285,7 +367,7 @@
                                        TextWrapping="Wrap"/>
                         </Expander>
                     </StackPanel>
-                </ScrollViewer>
+                </ScrollView>
 
                 <!-- SPLITTER — same control AlbumPage uses. -->
                 <appControls:GridSplitter
@@ -346,11 +428,13 @@
                     <!-- Episode list. ScrollView wraps the ItemsRepeater so it can
                          virtualise; we cap each row's chrome by setting min height
                          on the ItemsRepeater layout below. -->
-                    <ScrollViewer Grid.Row="1"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  Padding="20,4,20,32">
-                        <StackPanel Spacing="32">
+                    <ScrollView Grid.Row="1"
+                                ContentOrientation="Vertical"
+                                VerticalScrollMode="Auto"
+                                VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollMode="Disabled"
+                                HorizontalScrollBarVisibility="Hidden">
+                        <StackPanel Spacing="32" Margin="20,4,20,32">
                             <StackPanel Spacing="14"
                                         Visibility="{x:Bind ViewModel.HasListenNextEpisodes, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <Grid>
@@ -533,7 +617,7 @@
                                 </Grid>
                             </StackPanel>
                         </StackPanel>
-                    </ScrollViewer>
+                    </ScrollView>
                 </Grid>
             </Grid>
         </Grid>

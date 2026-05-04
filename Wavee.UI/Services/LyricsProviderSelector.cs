@@ -9,7 +9,9 @@ internal sealed record LyricsSelectionCandidate(
     string Provider,
     LyricsData Data,
     double ContentScore,
-    int PreferenceBonus);
+    int PreferenceBonus,
+    bool IsTimingReliable = true,
+    string? TimingReason = null);
 
 internal sealed record LyricsSelectionDecision(
     string Provider,
@@ -27,6 +29,9 @@ internal static class LyricsProviderSelector
 
         foreach (var candidate in candidates)
         {
+            if (!candidate.IsTimingReliable)
+                continue;
+
             if (candidate.Provider == "Musixmatch")
             {
                 musixmatchFallback ??= candidate;
@@ -52,7 +57,13 @@ internal static class LyricsProviderSelector
             return new LyricsSelectionDecision(
                 bestNonMusixmatch.Provider,
                 bestNonMusixmatch.Data,
-                $"Content match: {bestNonMusixmatch.ContentScore:P0}, syllable: {hasSyllable}, pref: +{bestNonMusixmatch.PreferenceBonus}, lines: {bestNonMusixmatch.Data.LyricsLines.Count}");
+                BuildReason(
+                    "Content match",
+                    bestNonMusixmatch.ContentScore,
+                    hasSyllable,
+                    bestNonMusixmatch.PreferenceBonus,
+                    bestNonMusixmatch.Data.LyricsLines.Count,
+                    bestNonMusixmatch.TimingReason));
         }
 
         if (musixmatchFallback != null)
@@ -61,9 +72,29 @@ internal static class LyricsProviderSelector
             return new LyricsSelectionDecision(
                 musixmatchFallback.Provider,
                 musixmatchFallback.Data,
-                $"Fallback-only source — content match: {musixmatchFallback.ContentScore:P0}, syllable: {hasSyllable}, pref: +{musixmatchFallback.PreferenceBonus}, lines: {musixmatchFallback.Data.LyricsLines.Count}");
+                BuildReason(
+                    "Fallback-only source - content match",
+                    musixmatchFallback.ContentScore,
+                    hasSyllable,
+                    musixmatchFallback.PreferenceBonus,
+                    musixmatchFallback.Data.LyricsLines.Count,
+                    musixmatchFallback.TimingReason));
         }
 
         return null;
+    }
+
+    private static string BuildReason(
+        string prefix,
+        double contentScore,
+        bool hasSyllable,
+        int preferenceBonus,
+        int lineCount,
+        string? timingReason)
+    {
+        var reason = $"{prefix}: {contentScore:P0}, syllable: {hasSyllable}, pref: +{preferenceBonus}, lines: {lineCount}";
+        if (!string.IsNullOrWhiteSpace(timingReason))
+            reason += $", timing: {timingReason}";
+        return reason;
     }
 }

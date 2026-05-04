@@ -763,9 +763,28 @@ public sealed partial class ContentCard : UserControl
 
     private void SquareImageContainer_SizeChanged(object sender, SizeChangedEventArgs e)
     {
+        var side = e.NewSize.Width;
+        if (side <= 0) return;
+
         // Keep the image area square: height = width
-        if (e.NewSize.Width > 0)
-            SquareImageContainer.Height = e.NewSize.Width;
+        SquareImageContainer.Height = side;
+
+        // Grid.CornerRadius only clips background paint in WinUI 3. SquareImageContainer
+        // is a Grid (not a Border), so its CornerRadius does not clip child UIElements.
+        // CompositionRectangleClip set on the outermost visual (GetElementVisual returns the
+        // handoff visual for Border but the outermost for Grid/UserControl) clips the image.
+        // CreateRectangleClip is used instead of CreateGeometricClip(RoundedRectangleGeometry)
+        // — the latter bleeds at sub-pixel edges (see AnimatedHeroBackground.UpdateClip).
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(SquareImageContainer);
+        var compositor = visual.Compositor;
+        var clip = compositor.CreateRectangleClip();
+        clip.Right = (float)side;
+        clip.Bottom = (float)side;
+        clip.TopLeftRadius = new System.Numerics.Vector2(4f);
+        clip.TopRightRadius = new System.Numerics.Vector2(4f);
+        clip.BottomLeftRadius = new System.Numerics.Vector2(4f);
+        clip.BottomRightRadius = new System.Numerics.Vector2(4f);
+        visual.Clip = clip;
     }
 
     private void SquareImage_ImageOpened(object sender, RoutedEventArgs e)
@@ -1224,11 +1243,20 @@ public sealed partial class ContentCard : UserControl
             case "user":
                 Helpers.Navigation.NavigationHelpers.OpenProfile(param, title, openInNewTab);
                 return true;
+            case "page":
+            case "section":
+            case "genre":
+                Helpers.Navigation.NavigationHelpers.OpenPodcastBrowse(param, openInNewTab);
+                return true;
             case "show":
-                Helpers.Navigation.NavigationHelpers.OpenShow(uri, title, openInNewTab);
+                Helpers.Navigation.NavigationHelpers.OpenShowPage(param, openInNewTab);
                 return true;
             case "episode":
-                Helpers.Navigation.NavigationHelpers.PlayEpisode(uri);
+                Helpers.Navigation.NavigationHelpers.OpenEpisodePage(
+                    uri,
+                    title,
+                    ImageUrl,
+                    openInNewTab: openInNewTab);
                 return true;
         }
 
@@ -1251,6 +1279,10 @@ public sealed partial class ContentCard : UserControl
                 => Helpers.ConnectedAnimationHelper.AlbumArt,
             var type when type.Equals("playlist", StringComparison.OrdinalIgnoreCase)
                 => Helpers.ConnectedAnimationHelper.PlaylistArt,
+            var type when type.Equals("show", StringComparison.OrdinalIgnoreCase)
+                => Helpers.ConnectedAnimationHelper.PodcastArt,
+            var type when type.Equals("episode", StringComparison.OrdinalIgnoreCase)
+                => Helpers.ConnectedAnimationHelper.PodcastEpisodeArt,
             _ => null
         };
 

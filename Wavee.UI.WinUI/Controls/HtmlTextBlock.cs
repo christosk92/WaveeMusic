@@ -184,6 +184,11 @@ public sealed partial class HtmlTextBlock : UserControl
             case "artist": NavigationHelpers.OpenArtist(param, title); break;
             case "album": NavigationHelpers.OpenAlbum(param, title); break;
             case "playlist": NavigationHelpers.OpenPlaylist(param, title); break;
+            case "page":
+            case "section":
+            case "genre":
+                NavigationHelpers.OpenPodcastBrowse(param);
+                break;
         }
     }
 

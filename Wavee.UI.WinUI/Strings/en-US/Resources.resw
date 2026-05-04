@@ -908,6 +908,9 @@ the music you previously queued?</value>
   <data name="Shell_SidebarPodcasts" xml:space="preserve">
     <value>Podcasts</value>
   </data>
+  <data name="Shell_SidebarPodcastBrowse" xml:space="preserve">
+    <value>Browse podcasts</value>
+  </data>
   <data name="Shell_SidebarNoPlaylists" xml:space="preserve">
     <value>You have no playlists yet. Create one!</value>
   </data>

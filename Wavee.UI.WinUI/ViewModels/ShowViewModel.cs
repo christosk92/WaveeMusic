@@ -20,6 +20,7 @@ using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Helpers.Playback;
 using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -278,7 +279,10 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
 
         _playbackStateService.PropertyChanged += OnPlaybackStateChanged;
         if (_libraryDataService != null)
+        {
             _libraryDataService.DataChanged += OnLibraryDataChanged;
+            _libraryDataService.PodcastEpisodeProgressChanged += OnPodcastEpisodeProgressChanged;
+        }
     }
 
     /// <summary>Entry-point from <c>ShowPage.OnNavigatedTo</c>.</summary>
@@ -642,6 +646,32 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         _dispatcherQueue.TryEnqueue(StartEpisodeProgressRefresh);
     }
 
+    private void OnPodcastEpisodeProgressChanged(object? sender, PodcastEpisodeProgressChangedEventArgs e)
+    {
+        if (_disposed)
+            return;
+
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            if (_disposed)
+                return;
+
+            var changed = ApplyPodcastEpisodeProgress(e);
+            changed |= ApplyPlaybackStateToEpisodes(rebuild: false);
+            if (changed)
+                RebuildEpisodeViews();
+        });
+    }
+
+    private bool ApplyPodcastEpisodeProgress(PodcastEpisodeProgressChangedEventArgs e)
+    {
+        var positionMs = (long)Math.Max(0, e.Progress.PlayedPosition.TotalMilliseconds);
+        var changed = TryUpdateEpisodeProgress(e.EpisodeUri, positionMs, e.Progress.PlayedState, minPositionDeltaMs: 0);
+        if (!string.IsNullOrWhiteSpace(e.AliasUri))
+            changed |= TryUpdateEpisodeProgress(e.AliasUri, positionMs, e.Progress.PlayedState, minPositionDeltaMs: 0);
+        return changed;
+    }
+
     private void StartEpisodeProgressRefresh()
     {
         if (_disposed || _libraryDataService is null || _allEpisodes.Count == 0)
@@ -762,26 +792,7 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
     }
 
     private string? GetCurrentPlaybackEpisodeUri()
-    {
-        var trackId = _playbackStateService.CurrentTrackId;
-        if (!string.IsNullOrWhiteSpace(trackId))
-        {
-            if (trackId.StartsWith("spotify:episode:", StringComparison.Ordinal))
-                return trackId;
-
-            if (!trackId.Contains(':', StringComparison.Ordinal) &&
-                (_playbackStateService.CurrentContext?.Type is PlaybackContextType.Show or PlaybackContextType.Episode ||
-                 _playbackStateService.CurrentAlbumId?.StartsWith("spotify:show:", StringComparison.Ordinal) == true))
-            {
-                return $"spotify:episode:{trackId}";
-            }
-        }
-
-        var contextUri = _playbackStateService.CurrentContext?.ContextUri;
-        return contextUri?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true
-            ? contextUri
-            : null;
-    }
+        => PlaybackSaveTargetResolver.GetEpisodeUri(_playbackStateService);
 
     private static long NormalizePlaybackMilliseconds(double value)
     {
@@ -1115,7 +1126,7 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
     private void OpenRecommendation(ShowRecommendationDto? rec)
     {
         if (rec is null || string.IsNullOrEmpty(rec.Uri)) return;
-        NavigationHelpers.OpenShow(rec.Uri, rec.Name, NavigationHelpers.IsCtrlPressed());
+        NavigationHelpers.OpenShowPage(rec.Uri, rec.Name, openInNewTab: NavigationHelpers.IsCtrlPressed());
     }
 
     private void RefreshFollowState()
@@ -1164,7 +1175,10 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
             _likeService.SaveStateChanged -= OnSaveStateChanged;
         _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
         if (_libraryDataService != null)
+        {
             _libraryDataService.DataChanged -= OnLibraryDataChanged;
+            _libraryDataService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
+        }
 
         _allEpisodes.Clear();
         FilteredEpisodes = Array.Empty<ShowEpisodeDto>();

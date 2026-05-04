@@ -158,6 +158,16 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
 
     private void NavigateToAlbum()
     {
+        if (PodcastPlaybackNavigation.TryOpenCurrentEpisode(
+                _playbackStateService,
+                ViewModel.TrackTitle,
+                ViewModel.AlbumArtLarge ?? ViewModel.AlbumArt,
+                ViewModel.ArtistName,
+                ViewModel.AlbumArtLarge ?? ViewModel.AlbumArt))
+        {
+            return;
+        }
+
         var albumId = ViewModel.CurrentAlbumId;
         if (string.IsNullOrEmpty(albumId)) return;
 
@@ -169,7 +179,7 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
         };
         if (albumId.StartsWith("spotify:show:", StringComparison.Ordinal))
         {
-            NavigationHelpers.OpenShow(albumId, param.Title);
+            NavigationHelpers.OpenShowPage(albumId, param.Title);
             return;
         }
         NavigationHelpers.OpenAlbum(param, param.Title);

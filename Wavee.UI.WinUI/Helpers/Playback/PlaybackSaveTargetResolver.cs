@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.UI.Contracts;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Helpers.Playback;
@@ -41,6 +42,38 @@ internal static class PlaybackSaveTargetResolver
         return trackId.Contains(':', StringComparison.Ordinal)
             ? trackId
             : $"spotify:track:{trackId}";
+    }
+
+    public static string? GetEpisodeUri(IPlaybackStateService? playbackState)
+    {
+        if (playbackState is null)
+            return null;
+
+        var trackId = playbackState.CurrentTrackId;
+        if (!string.IsNullOrWhiteSpace(trackId))
+        {
+            if (trackId.StartsWith("spotify:episode:", StringComparison.Ordinal))
+                return trackId;
+
+            if (!trackId.Contains(':', StringComparison.Ordinal)
+                && (playbackState.CurrentContext?.Type is PlaybackContextType.Show or PlaybackContextType.Episode
+                    || playbackState.CurrentAlbumId?.StartsWith("spotify:show:", StringComparison.Ordinal) == true))
+            {
+                return $"spotify:episode:{trackId}";
+            }
+        }
+
+        var originalTrackId = playbackState.CurrentOriginalTrackId;
+        if (!string.IsNullOrWhiteSpace(originalTrackId)
+            && originalTrackId.StartsWith("spotify:episode:", StringComparison.Ordinal))
+        {
+            return originalTrackId;
+        }
+
+        var contextUri = playbackState.CurrentContext?.ContextUri;
+        return contextUri?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true
+            ? contextUri
+            : null;
     }
 
     public static async Task<string?> ResolveTrackUriAsync(

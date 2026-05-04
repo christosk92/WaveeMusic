@@ -9,17 +9,13 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
-using Microsoft.UI.Xaml.Media;
-using Windows.UI;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Models;
-using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Extensions;
-using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -27,10 +23,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 public enum PodcastLibraryStage
 {
     Shows,
-    Episodes,
-    EpisodeDetails,
-    EpisodePageDetails,
-    ShowDetails
+    Episodes
 }
 
 public enum PodcastEpisodeScope
@@ -41,7 +34,6 @@ public enum PodcastEpisodeScope
 
 public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposable
 {
-    private const int MaxPodcastCommentLength = 500;
     private const string PodcastShowsColumnWidthKey = "podcasts.showsColumn";
     private const string PodcastEpisodesColumnWidthKey = "podcasts.episodesColumn";
     private const string PodcastDetailsColumnWidthKey = "podcasts.detailsColumn";
@@ -66,12 +58,15 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     private CancellationTokenSource? _episodeDetailCts;
     private CancellationTokenSource? _episodeProgressCts;
     private CancellationTokenSource? _showArchiveCts;
-    private string? _selectedEpisodePaletteShowUri;
     private PodcastEpisodeScope _podcastEpisodeScope = PodcastEpisodeScope.Latest;
     private bool _disposed;
     private bool _syncAlreadyRequested;
+    private bool _pendingAutoSelectFirstEpisode;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsInitialLoading))]
+    [NotifyPropertyChangedFor(nameof(ShowEpisodeEmptyState))]
+    [NotifyPropertyChangedFor(nameof(ShowEpisodesShimmer))]
     private bool _isLoading;
 
     [ObservableProperty]
@@ -125,14 +120,10 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(SelectedEpisodeMetadata))]
     [NotifyPropertyChangedFor(nameof(SelectedEpisodeMetaLine))]
     [NotifyPropertyChangedFor(nameof(SelectedEpisodeDescription))]
+    [NotifyPropertyChangedFor(nameof(HasSelectedEpisodeDescription))]
     [NotifyPropertyChangedFor(nameof(SelectedEpisodeDurationFormatted))]
     [NotifyPropertyChangedFor(nameof(HasShowName))]
     [NotifyPropertyChangedFor(nameof(HasExplicit))]
-    [NotifyPropertyChangedFor(nameof(CanSubmitComment))]
-    [NotifyPropertyChangedFor(nameof(ShowEpisodeDetailLoadingSkeleton))]
-    [NotifyPropertyChangedFor(nameof(ShowEpisodeComments))]
-    [NotifyPropertyChangedFor(nameof(HasNoEpisodeComments))]
-    [NotifyCanExecuteChangedFor(nameof(SubmitCommentCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopyEpisodeLinkCommand))]
     private LibraryEpisodeDto? _selectedEpisode;
 
@@ -143,6 +134,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(SelectedEpisodeMetadata))]
     [NotifyPropertyChangedFor(nameof(SelectedEpisodeMetaLine))]
     [NotifyPropertyChangedFor(nameof(SelectedEpisodeDescription))]
+    [NotifyPropertyChangedFor(nameof(HasSelectedEpisodeDescription))]
     [NotifyPropertyChangedFor(nameof(SelectedEpisodeAvailability))]
     [NotifyPropertyChangedFor(nameof(SelectedEpisodeTranscriptSummary))]
     [NotifyPropertyChangedFor(nameof(SelectedEpisodeReleaseDate))]
@@ -163,165 +155,49 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     private PodcastEpisodeDetailDto? _selectedEpisodeDetail;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowEpisodeDetailLoadingSkeleton))]
-    [NotifyPropertyChangedFor(nameof(ShowEpisodeRecommendations))]
-    [NotifyPropertyChangedFor(nameof(ShowEpisodeComments))]
-    [NotifyPropertyChangedFor(nameof(HasNoEpisodeComments))]
-    private bool _isEpisodeDetailLoading;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CommentCharacterCount))]
-    [NotifyPropertyChangedFor(nameof(CanSubmitComment))]
-    [NotifyCanExecuteChangedFor(nameof(SubmitCommentCommand))]
-    private string _commentDraft = "";
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanSubmitComment))]
-    [NotifyCanExecuteChangedFor(nameof(SubmitCommentCommand))]
-    private bool _isSubmittingComment;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasCommentComposerStatus))]
-    private string? _commentComposerStatus;
-
-    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsWideLayout))]
     [NotifyPropertyChangedFor(nameof(IsNarrowLayout))]
     [NotifyPropertyChangedFor(nameof(ShowWidePodcastBrowser))]
-    [NotifyPropertyChangedFor(nameof(ShowWideShowDetail))]
-    [NotifyPropertyChangedFor(nameof(ShowWideShowBackdrop))]
-    [NotifyPropertyChangedFor(nameof(ShowWideExpandedDetail))]
-    [NotifyPropertyChangedFor(nameof(ShowWideEpisodeDetail))]
     [NotifyPropertyChangedFor(nameof(ShowNarrowShowsStage))]
     [NotifyPropertyChangedFor(nameof(ShowNarrowEpisodesStage))]
-    [NotifyPropertyChangedFor(nameof(ShowNarrowEpisodeDetailsStage))]
-    [NotifyPropertyChangedFor(nameof(ShowNarrowEmbeddedEpisodeDetailStage))]
-    [NotifyPropertyChangedFor(nameof(ShowNarrowExpandedDetail))]
-    [NotifyPropertyChangedFor(nameof(ShowNarrowShowDetailStage))]
     private bool _useNarrowLayout;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNarrowShowsStage))]
     [NotifyPropertyChangedFor(nameof(ShowNarrowEpisodesStage))]
-    [NotifyPropertyChangedFor(nameof(ShowNarrowEpisodeDetailsStage))]
-    [NotifyPropertyChangedFor(nameof(ShowNarrowEmbeddedEpisodeDetailStage))]
-    [NotifyPropertyChangedFor(nameof(ShowNarrowExpandedDetail))]
-    [NotifyPropertyChangedFor(nameof(ShowNarrowShowDetailStage))]
     private PodcastLibraryStage _narrowStage = PodcastLibraryStage.Shows;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowWidePodcastBrowser))]
-    [NotifyPropertyChangedFor(nameof(ShowWideShowDetail))]
-    [NotifyPropertyChangedFor(nameof(ShowWideShowBackdrop))]
-    [NotifyPropertyChangedFor(nameof(ShowWideExpandedDetail))]
-    [NotifyPropertyChangedFor(nameof(ShowNarrowShowDetailStage))]
-    [NotifyPropertyChangedFor(nameof(ShowNarrowExpandedDetail))]
-    private bool _isSelectedShowDetailMode;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowWidePodcastBrowser))]
-    [NotifyPropertyChangedFor(nameof(ShowWideShowBackdrop))]
-    [NotifyPropertyChangedFor(nameof(ShowWideExpandedDetail))]
-    [NotifyPropertyChangedFor(nameof(ShowWideEpisodeDetail))]
-    [NotifyPropertyChangedFor(nameof(ShowNarrowEpisodeDetailsStage))]
-    [NotifyPropertyChangedFor(nameof(ShowNarrowEmbeddedEpisodeDetailStage))]
-    [NotifyPropertyChangedFor(nameof(ShowNarrowExpandedDetail))]
-    private bool _isSelectedEpisodeDetailPageMode;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEpisodeEmptyState))]
     [NotifyPropertyChangedFor(nameof(EpisodeEmptyTitle))]
     [NotifyPropertyChangedFor(nameof(EpisodeEmptyDescription))]
     [NotifyPropertyChangedFor(nameof(SelectedShowDetailArchiveSummary))]
+    [NotifyPropertyChangedFor(nameof(ShowEpisodesShimmer))]
     private bool _isSelectedShowArchiveLoading;
 
     [ObservableProperty]
     private ShowDetailDto? _selectedShowDetail;
 
-    [ObservableProperty]
-    private Brush? _selectedShowCardBrush;
-
-    [ObservableProperty]
-    private Brush? _selectedShowCardBorderBrush;
-
-    [ObservableProperty]
-    private Brush? _selectedShowAccentBrush;
-
-    [ObservableProperty]
-    private Brush? _selectedShowAccentSubtleBrush;
-
-    [ObservableProperty]
-    private Brush? _selectedEpisodeDetailCardBrush;
-
-    [ObservableProperty]
-    private Brush? _selectedEpisodeDetailCardBorderBrush;
-
-    [ObservableProperty]
-    private Brush? _selectedEpisodeDetailAccentBrush;
-
-    [ObservableProperty]
-    private Brush? _selectedEpisodeDetailAccentSubtleBrush;
-
     public ObservableCollection<LibraryPodcastShowDto> PodcastShows { get; } = [];
     public ObservableCollection<LibraryPodcastShowDto> FilteredShows { get; } = [];
     public ObservableCollection<PodcastEpisodeGroupViewModel> EpisodeGroups { get; } = [];
-    public ObservableCollection<PodcastEpisodeRecommendationDto> EpisodeRecommendations { get; } = [];
-    public ObservableCollection<PodcastCommentViewModel> EpisodeComments { get; } = [];
     public ObservableCollection<string> BreadcrumbItems { get; } = [];
     public ObservableCollection<ShowTopicDto> SelectedShowTopics { get; } = [];
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasMoreComments))]
-    [NotifyCanExecuteChangedFor(nameof(LoadMoreCommentsCommand))]
-    private string? _commentsNextPageToken;
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(LoadMoreCommentsCommand))]
-    private bool _isLoadingMoreComments;
-
-    [ObservableProperty]
-    private int _commentsTotalCount;
-
-    public bool HasMoreComments => !string.IsNullOrEmpty(CommentsNextPageToken);
-
-    public string CommentsCountLabel => CommentsTotalCount switch
-    {
-        <= 0 => "Comments",
-        1 => "1 comment",
-        _ => $"{CommentsTotalCount:N0} comments"
-    };
-
     public bool IsWideLayout => !UseNarrowLayout;
     public bool IsNarrowLayout => UseNarrowLayout;
-    public bool ShowWidePodcastBrowser => IsWideLayout && !IsSelectedShowDetailMode && !IsSelectedEpisodeDetailPageMode;
-    public bool ShowWideShowDetail => IsWideLayout && IsSelectedShowDetailMode;
-    public bool ShowWideShowBackdrop => IsWideLayout && (IsSelectedShowDetailMode || IsSelectedEpisodeDetailPageMode);
-    public bool ShowWideExpandedDetail => IsWideLayout && (IsSelectedShowDetailMode || IsSelectedEpisodeDetailPageMode);
-    public bool ShowWideEpisodeDetail => IsWideLayout && IsSelectedEpisodeDetailPageMode;
+    public bool ShowWidePodcastBrowser => IsWideLayout;
     public bool ShowNarrowShowsStage => UseNarrowLayout && NarrowStage == PodcastLibraryStage.Shows;
     public bool ShowNarrowEpisodesStage => UseNarrowLayout && NarrowStage == PodcastLibraryStage.Episodes;
-    public bool ShowNarrowEpisodeDetailsStage =>
-        UseNarrowLayout && !IsSelectedEpisodeDetailPageMode && NarrowStage == PodcastLibraryStage.EpisodeDetails;
-    public bool ShowNarrowEmbeddedEpisodeDetailStage =>
-        UseNarrowLayout && IsSelectedEpisodeDetailPageMode && NarrowStage == PodcastLibraryStage.EpisodePageDetails;
-    public bool ShowNarrowExpandedDetail =>
-        UseNarrowLayout && NarrowStage is PodcastLibraryStage.ShowDetails or PodcastLibraryStage.EpisodePageDetails;
-    public bool ShowNarrowShowDetailStage =>
-        UseNarrowLayout && IsSelectedShowDetailMode && NarrowStage == PodcastLibraryStage.ShowDetails;
     public string SortDirectionGlyph => SortDirection == LibrarySortDirection.Ascending ? "\uE74A" : "\uE74B";
     public bool HasEpisodeGroups => EpisodeGroups.Count > 0;
     public bool HasSelectedEpisode => SelectedEpisode is not null;
-    public bool HasEpisodeRecommendations => EpisodeRecommendations.Count > 0;
-    public bool ShowEpisodeDetailLoadingSkeleton => HasSelectedEpisode && IsEpisodeDetailLoading;
-    public bool ShowEpisodeRecommendations => !IsEpisodeDetailLoading && HasEpisodeRecommendations;
-    public bool ShowEpisodeComments => HasSelectedEpisode && !IsEpisodeDetailLoading;
-    public bool HasEpisodeComments => EpisodeComments.Count > 0;
-    public bool HasNoEpisodeComments => ShowEpisodeComments && EpisodeComments.Count == 0;
-    public bool HasCommentComposerStatus => !string.IsNullOrWhiteSpace(CommentComposerStatus);
     public bool HasSelectedShowTopics => SelectedShowTopics.Count > 0;
+    public bool IsInitialLoading => IsLoading && PodcastShows.Count == 0;
+    public bool ShowEpisodesShimmer => IsLoading || IsSelectedShowArchiveLoading;
     public int PodcastEpisodeScopeIndex => _podcastEpisodeScope == PodcastEpisodeScope.Latest ? 1 : 0;
     public bool CanSwitchPodcastEpisodeScope => CanLoadArchiveForShow(SelectedShow);
-    public bool ShowEpisodeEmptyState => !HasEpisodeGroups && !IsSelectedShowArchiveLoading;
+    public bool ShowEpisodeEmptyState => !HasEpisodeGroups && !IsSelectedShowArchiveLoading && !IsLoading;
     public string EpisodeEmptyTitle => IsSelectedShowArchiveLoading
         ? "Loading episodes"
         : CanSwitchPodcastEpisodeScope && _podcastEpisodeScope == PodcastEpisodeScope.Saved && SelectedShow is { HasSavedEpisodes: false }
@@ -333,14 +209,9 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             : CanSwitchPodcastEpisodeScope && _podcastEpisodeScope == PodcastEpisodeScope.Saved
                 ? "Switch to Latest to browse this followed show's recent archive."
             : CanSwitchPodcastEpisodeScope
-                ? "Use View details for the full archive, recommendations, and show details."
+                ? "Open the show page for the full archive, recommendations, and show details."
             : "Followed shows appear here even before you save an episode.";
 
-    public string CommentCharacterCount => $"{Math.Min(CommentDraft.Length, MaxPodcastCommentLength)}/{MaxPodcastCommentLength}";
-    public bool CanSubmitComment => HasSelectedEpisode
-        && !IsSubmittingComment
-        && NormalizeCommentText(CommentDraft) is { Length: > 0 and <= MaxPodcastCommentLength };
-    public bool HasAcceptedPodcastCommentsConsent => _settingsService?.Settings.PodcastCommentsConsentAccepted == true;
     public string SelectedEpisodeTitle => SelectedEpisodeDetail?.Title ?? SelectedEpisode?.Title ?? "Select an episode";
     public string? SelectedEpisodeImageUrl => SelectedEpisodeDetail?.ImageUrl ?? SelectedEpisode?.ImageUrl;
     public string SelectedEpisodeShowName => SelectedEpisodeDetail?.ShowName ?? SelectedEpisode?.AlbumName ?? "";
@@ -349,6 +220,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     public string? SelectedEpisodeDescription => SelectedEpisodeDetail?.HtmlDescription
                                                  ?? SelectedEpisodeDetail?.Description
                                                  ?? SelectedEpisode?.Description;
+    public bool HasSelectedEpisodeDescription => !string.IsNullOrWhiteSpace(SelectedEpisodeDescription);
     public string SelectedEpisodeAvailability => SelectedEpisodeDetail?.Availability ?? "";
     public string SelectedEpisodeTranscriptSummary => SelectedEpisodeDetail?.TranscriptSummary ?? "";
 
@@ -510,289 +382,6 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             _ = LoadSelectedShowArchivePreviewAsync(SelectedShow!);
     }
 
-    public async Task NavigateToAsync(PodcastLibraryNavigationParameter parameter)
-    {
-        ArgumentNullException.ThrowIfNull(parameter);
-
-        await EnsureLoadedForNavigationAsync();
-        if (_disposed)
-            return;
-
-        SearchQuery = "";
-
-        var show = await ResolveNavigationShowAsync(parameter);
-        if (show is not null)
-        {
-            if (parameter.Target == PodcastLibraryNavigationTarget.Show)
-            {
-                ShowSelectedShowDetail(show);
-                return;
-            }
-
-            ShowSelectedShowEpisodes(show);
-        }
-
-        if (parameter.Target != PodcastLibraryNavigationTarget.Episode ||
-            string.IsNullOrWhiteSpace(parameter.EpisodeUri))
-        {
-            return;
-        }
-
-        var episode = await ResolveNavigationEpisodeAsync(parameter, show);
-        if (episode is null)
-            return;
-
-        if (show is null && !string.IsNullOrWhiteSpace(episode.AlbumId))
-        {
-            show = await ResolveNavigationShowAsync(parameter with
-            {
-                ShowUri = episode.AlbumId,
-                ShowTitle = episode.AlbumName,
-                ShowImageUrl = episode.ImageUrl
-            });
-
-            if (show is not null)
-            {
-                ShowSelectedShowEpisodes(show);
-            }
-        }
-
-        EnsureEpisodeVisible(episode, show);
-        ShowSelectedEpisodeDetailPage(episode);
-    }
-
-    private async Task EnsureLoadedForNavigationAsync()
-    {
-        if (IsLoading)
-        {
-            while (IsLoading && !_disposed)
-                await Task.Delay(50);
-            return;
-        }
-
-        if (PodcastShows.Count == 0 &&
-            FilteredShows.Count == 0 &&
-            _allEpisodes.Count == 0 &&
-            _recentEpisodes.Count == 0)
-        {
-            await LoadCommand.ExecuteAsync(null);
-        }
-    }
-
-    private async Task<LibraryPodcastShowDto?> ResolveNavigationShowAsync(
-        PodcastLibraryNavigationParameter parameter)
-    {
-        var showUri = NormalizeSpotifyShowUri(parameter.ShowUri);
-        if (string.IsNullOrWhiteSpace(showUri))
-            return null;
-
-        var existing = FindShow(showUri);
-        if (existing is not null)
-            return existing;
-
-        ShowDetailDto? detail = null;
-        if (_podcastService is not null)
-        {
-            try
-            {
-                detail = await _podcastService.GetShowDetailAsync(showUri);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogDebug(ex, "Failed to resolve podcast show for library navigation: {ShowUri}", showUri);
-            }
-        }
-
-        var show = CreateNavigationShow(parameter, detail, showUri);
-        if (show is null)
-            return null;
-
-        if (PodcastShows.All(s => !string.Equals(s.Id, show.Id, StringComparison.Ordinal)))
-            PodcastShows.Add(show);
-
-        ApplyShowFilter();
-        return FindShow(show.Id) ?? show;
-    }
-
-    private async Task<LibraryEpisodeDto?> ResolveNavigationEpisodeAsync(
-        PodcastLibraryNavigationParameter parameter,
-        LibraryPodcastShowDto? show)
-    {
-        var episodeUri = parameter.EpisodeUri;
-        if (string.IsNullOrWhiteSpace(episodeUri))
-            return null;
-
-        var existing = FindEpisode(episodeUri);
-        if (existing is not null)
-            return existing;
-
-        PodcastEpisodeDetailDto? detail = null;
-        try
-        {
-            detail = await _libraryDataService.GetPodcastEpisodeDetailAsync(episodeUri);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogDebug(ex, "Failed to resolve podcast episode detail for library navigation: {EpisodeUri}", episodeUri);
-        }
-
-        if (detail is not null)
-            return MapNavigationEpisode(detail, parameter, show);
-
-        if (_podcastService is not null)
-        {
-            try
-            {
-                var episodes = await _podcastService.GetEpisodesAsync(new[] { episodeUri });
-                var episode = episodes.FirstOrDefault();
-                if (episode is not null)
-                    return MapNavigationEpisode(episode, parameter, show);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogDebug(ex, "Failed to resolve podcast episode row for library navigation: {EpisodeUri}", episodeUri);
-            }
-        }
-
-        return null;
-    }
-
-    private LibraryPodcastShowDto? FindShow(string showUri)
-    {
-        return FilteredShows.FirstOrDefault(show => string.Equals(show.Id, showUri, StringComparison.Ordinal))
-               ?? PodcastShows.FirstOrDefault(show => string.Equals(show.Id, showUri, StringComparison.Ordinal));
-    }
-
-    private LibraryEpisodeDto? FindEpisode(string episodeUri)
-    {
-        return GetVisibleEpisodes().FirstOrDefault(episode => string.Equals(episode.Uri, episodeUri, StringComparison.Ordinal))
-               ?? _allEpisodes.FirstOrDefault(episode => string.Equals(episode.Uri, episodeUri, StringComparison.Ordinal))
-               ?? _recentEpisodes.FirstOrDefault(episode => string.Equals(episode.Uri, episodeUri, StringComparison.Ordinal));
-    }
-
-    private void EnsureEpisodeVisible(LibraryEpisodeDto episode, LibraryPodcastShowDto? show)
-    {
-        if (GetVisibleEpisodes().Any(e => string.Equals(e.Uri, episode.Uri, StringComparison.Ordinal)))
-            return;
-
-        EpisodeGroups.Insert(0, new PodcastEpisodeGroupViewModel(
-            show?.Name ?? episode.AlbumName,
-            show?.ImageUrl ?? episode.ImageUrl,
-            new[] { episode },
-            PlayEpisodeCommand,
-            SelectEpisodeCommand,
-            "Selected episode",
-            showHeader: false)
-        {
-            IsExpanded = true
-        });
-
-        OnPropertyChanged(nameof(HasEpisodeGroups));
-        OnPropertyChanged(nameof(ShowEpisodeEmptyState));
-    }
-
-    private static LibraryPodcastShowDto? CreateNavigationShow(
-        PodcastLibraryNavigationParameter parameter,
-        ShowDetailDto? detail,
-        string fallbackShowUri)
-    {
-        var uri = detail?.Uri;
-        if (string.IsNullOrWhiteSpace(uri))
-            uri = fallbackShowUri;
-
-        var name = detail?.Name;
-        if (string.IsNullOrWhiteSpace(name))
-            name = parameter.ShowTitle;
-        if (string.IsNullOrWhiteSpace(uri) || string.IsNullOrWhiteSpace(name))
-            return null;
-
-        return new LibraryPodcastShowDto
-        {
-            Id = uri!,
-            Name = name!,
-            Publisher = detail?.PublisherName,
-            Description = detail?.PlainDescription,
-            ImageUrl = detail?.CoverArtUrl ?? parameter.ShowImageUrl,
-            EpisodeCount = Math.Max(0, detail?.TotalEpisodes ?? 0),
-            SavedEpisodeCount = 0,
-            AddedAt = DateTime.Now,
-            LastEpisodeAddedAt = DateTime.Now,
-            IsFollowed = detail?.IsSavedOnServer ?? false
-        };
-    }
-
-    private static LibraryEpisodeDto MapNavigationEpisode(
-        PodcastEpisodeDetailDto detail,
-        PodcastLibraryNavigationParameter parameter,
-        LibraryPodcastShowDto? show)
-    {
-        var uri = string.IsNullOrWhiteSpace(detail.Uri) ? parameter.EpisodeUri! : detail.Uri;
-        var showUri = detail.ShowUri ?? show?.Id ?? parameter.ShowUri ?? "";
-        var showName = detail.ShowName ?? show?.Name ?? parameter.ShowTitle ?? "";
-        var addedAt = detail.AddedAt == default
-            ? detail.ReleaseDate?.LocalDateTime ?? DateTime.Now
-            : detail.AddedAt;
-
-        var episode = new LibraryEpisodeDto
-        {
-            Id = ExtractIdFromUri(uri),
-            Uri = uri,
-            Title = detail.Title,
-            ArtistName = showName,
-            ArtistId = showUri,
-            AlbumName = showName,
-            AlbumId = showUri,
-            ImageUrl = detail.ImageUrl ?? parameter.EpisodeImageUrl ?? show?.ImageUrl,
-            Description = detail.HtmlDescription ?? detail.Description,
-            ReleaseDate = detail.ReleaseDate,
-            ShareUrl = detail.ShareUrl,
-            PreviewUrl = detail.PreviewUrl,
-            MediaTypes = detail.MediaTypes,
-            Duration = detail.Duration,
-            AddedAt = addedAt,
-            IsExplicit = detail.IsExplicit,
-            IsPlayable = detail.IsPlayable,
-            OriginalIndex = 1,
-            IsLiked = false
-        };
-
-        episode.ApplyPlaybackProgress(detail.PlayedPosition, detail.PlayedState);
-        return episode;
-    }
-
-    private static LibraryEpisodeDto MapNavigationEpisode(
-        ShowEpisodeDto episode,
-        PodcastLibraryNavigationParameter parameter,
-        LibraryPodcastShowDto? show)
-    {
-        var showUri = episode.ShowUri ?? show?.Id ?? parameter.ShowUri ?? "";
-        var showName = episode.ShowName ?? show?.Name ?? parameter.ShowTitle ?? "";
-        var dto = new LibraryEpisodeDto
-        {
-            Id = ExtractIdFromUri(episode.Uri),
-            Uri = episode.Uri,
-            Title = episode.Title,
-            ArtistName = showName,
-            ArtistId = showUri,
-            AlbumName = showName,
-            AlbumId = showUri,
-            ImageUrl = episode.CoverArtUrl ?? parameter.EpisodeImageUrl ?? show?.ImageUrl,
-            Description = episode.DescriptionHtml ?? episode.FullDescription ?? episode.DescriptionPreview,
-            ReleaseDate = episode.ReleaseDate,
-            ShareUrl = string.IsNullOrWhiteSpace(episode.Uri) ? null : $"https://open.spotify.com/episode/{ExtractIdFromUri(episode.Uri)}",
-            MediaTypes = episode.IsVideo ? ["video"] : ["audio"],
-            Duration = TimeSpan.FromMilliseconds(Math.Max(0, episode.DurationMs)),
-            AddedAt = episode.ReleaseDate?.LocalDateTime ?? DateTime.Now,
-            IsExplicit = episode.IsExplicit,
-            IsPlayable = episode.IsPlayable,
-            OriginalIndex = episode.EpisodeNumber > 0 ? episode.EpisodeNumber : 1,
-            IsLiked = false
-        };
-
-        dto.ApplyPlaybackProgress(TimeSpan.FromMilliseconds(Math.Max(0, episode.PlayedPositionMs)), episode.PlayedState);
-        return dto;
-    }
-
     private static string? NormalizeSpotifyShowUri(string? showUri)
     {
         if (string.IsNullOrWhiteSpace(showUri))
@@ -851,10 +440,19 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _podcastEpisodeScope = LoadPodcastEpisodeScopePreference();
         _libraryDataService.DataChanged += OnLibraryDataChanged;
+        _libraryDataService.PodcastEpisodeProgressChanged += OnPodcastEpisodeProgressChanged;
     }
 
     [RelayCommand]
     private async Task LoadAsync()
+    {
+        if (IsLoading || PodcastShows.Count > 0 || _allEpisodes.Count > 0 || _recentEpisodes.Count > 0)
+            return;
+
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
     {
         if (IsLoading) return;
         IsLoading = true;
@@ -894,14 +492,22 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             TotalDuration = FormatDuration(_allEpisodes.Sum(static e => e.Duration.TotalSeconds));
 
             ApplyShowFilter();
-            var defaultShow = _allEpisodes.Count == 0 && _recentEpisodes.Count > 0
-                ? FilteredShows.FirstOrDefault(show => string.Equals(show.Id, RecentlyPlayedShowId, StringComparison.OrdinalIgnoreCase))
-                : FilteredShows.FirstOrDefault();
+            var firstRealShow = FilteredShows.FirstOrDefault(s => !s.IsAllPodcasts && !s.IsRecentlyPlayed);
+            var defaultShow = firstRealShow
+                              ?? (_allEpisodes.Count == 0 && _recentEpisodes.Count > 0
+                                  ? FilteredShows.FirstOrDefault(show => string.Equals(show.Id, RecentlyPlayedShowId, StringComparison.OrdinalIgnoreCase))
+                                  : FilteredShows.FirstOrDefault());
 
             SelectedShow = !string.IsNullOrEmpty(previousShowId)
                 ? FilteredShows.FirstOrDefault(show => string.Equals(show.Id, previousShowId, StringComparison.OrdinalIgnoreCase))
                     ?? defaultShow
                 : defaultShow;
+
+            if (!UseNarrowLayout && SelectedEpisode is null)
+            {
+                _pendingAutoSelectFirstEpisode = true;
+                TryAutoSelectFirstEpisode();
+            }
 
             if (_allEpisodes.Count == 0 && PodcastShows.Count == 0 && _recentEpisodes.Count == 0 && !_syncAlreadyRequested)
             {
@@ -950,7 +556,12 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     private void SelectEpisode(object? episode)
     {
         if (episode is LibraryEpisodeDto item)
-            ShowEpisodeDetails(item);
+        {
+            if (UseNarrowLayout)
+                OpenEpisodePage(item);
+            else
+                ShowEpisodeDetails(item);
+        }
     }
 
     [RelayCommand]
@@ -971,13 +582,32 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             return;
         }
 
-        NavigationHelpers.OpenShow(showUri, showName ?? "Podcast", NavigationHelpers.IsCtrlPressed());
+        NavigationHelpers.OpenShowPage(showUri, showName ?? "Podcast", openInNewTab: NavigationHelpers.IsCtrlPressed());
     }
 
     [RelayCommand]
     private void OpenSelectedEpisodeDetails()
     {
-        ShowSelectedEpisodeDetailPage();
+        OpenEpisodePage(SelectedEpisode);
+    }
+
+    private void OpenEpisodePage(LibraryEpisodeDto? episode)
+    {
+        if (episode is null || string.IsNullOrWhiteSpace(episode.Uri))
+            return;
+
+        var detail = string.Equals(SelectedEpisode?.Uri, episode.Uri, StringComparison.Ordinal)
+            ? SelectedEpisodeDetail
+            : null;
+
+        NavigationHelpers.OpenEpisodePage(
+            episode.Uri,
+            detail?.Title ?? episode.Title,
+            detail?.ImageUrl ?? episode.ImageUrl,
+            detail?.ShowUri ?? episode.AlbumId,
+            detail?.ShowName ?? episode.AlbumName,
+            detail?.ShowImageUrl ?? episode.ImageUrl,
+            NavigationHelpers.IsCtrlPressed());
     }
 
     [RelayCommand(CanExecute = nameof(HasShareUrl))]
@@ -1002,18 +632,12 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             return;
         }
 
-        ShowSelectedShowDetail(show);
-    }
-
-    [RelayCommand]
-    private void CloseSelectedShowDetail()
-    {
-        if (!IsSelectedShowDetailMode)
-            return;
-
-        IsSelectedShowDetailMode = false;
-        ClearSelectedEpisode();
-        SetNarrowStage(SelectedShow is null ? PodcastLibraryStage.Shows : PodcastLibraryStage.Episodes);
+        NavigationHelpers.OpenShowPage(
+            show.Id,
+            show.Name,
+            show.Publisher,
+            show.ImageUrl,
+            NavigationHelpers.IsCtrlPressed());
     }
 
     [RelayCommand]
@@ -1022,49 +646,6 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         SortDirection = SortDirection == LibrarySortDirection.Ascending
             ? LibrarySortDirection.Descending
             : LibrarySortDirection.Ascending;
-    }
-
-    [RelayCommand(CanExecute = nameof(CanSubmitComment))]
-    private async Task SubmitCommentAsync()
-    {
-        var episode = SelectedEpisode;
-        var text = NormalizeCommentText(CommentDraft);
-        if (episode is null || text.Length == 0 || text.Length > MaxPodcastCommentLength)
-            return;
-
-        IsSubmittingComment = true;
-        CommentComposerStatus = null;
-        try
-        {
-            var comment = await _libraryDataService
-                .CreatePodcastEpisodeCommentAsync(episode.Uri, text)
-                .ConfigureAwait(true);
-
-            EpisodeComments.Insert(0, new PodcastCommentViewModel(comment, _libraryDataService, _logger));
-            CommentDraft = "";
-            CommentComposerStatus = "Comment saved locally. Spotify posting is not wired yet.";
-            OnPropertyChanged(nameof(HasEpisodeComments));
-            OnPropertyChanged(nameof(HasNoEpisodeComments));
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Failed to add local podcast comment for {EpisodeUri}", episode.Uri);
-            CommentComposerStatus = "Could not add the comment.";
-        }
-        finally
-        {
-            IsSubmittingComment = false;
-        }
-    }
-
-    public async Task AcceptPodcastCommentsConsentAsync()
-    {
-        if (_settingsService is null)
-            return;
-
-        _settingsService.Update(settings => settings.PodcastCommentsConsentAccepted = true);
-        OnPropertyChanged(nameof(HasAcceptedPodcastCommentsConsent));
-        await _settingsService.SaveAsync();
     }
 
     public void SetSortBy(LibrarySortBy sortBy)
@@ -1091,12 +672,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         SelectedShowImageUrl = value?.ImageUrl;
         SelectedShowDescription = value?.Description;
         SelectedShowPlaceholderGlyph = value?.PlaceholderGlyph ?? "\uEC05";
-        _selectedEpisodePaletteShowUri = null;
         ApplySelectedShowDetail(null);
-        if (IsSelectedShowDetailMode)
-            IsSelectedShowDetailMode = false;
-        if (IsSelectedEpisodeDetailPageMode)
-            IsSelectedEpisodeDetailPageMode = false;
 
         CancelSelectedShowArchiveLoad();
         ClearSelectedEpisode();
@@ -1141,12 +717,6 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     {
         if (!preserveContext)
             return PodcastLibraryStage.Shows;
-        if (IsSelectedEpisodeDetailPageMode)
-            return PodcastLibraryStage.EpisodePageDetails;
-        if (IsSelectedShowDetailMode)
-            return PodcastLibraryStage.ShowDetails;
-        if (SelectedEpisode is not null)
-            return PodcastLibraryStage.EpisodeDetails;
         if (SelectedShow is not null)
             return PodcastLibraryStage.Episodes;
         return PodcastLibraryStage.Shows;
@@ -1154,8 +724,6 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
 
     public void ShowPodcastsRoot()
     {
-        IsSelectedShowDetailMode = false;
-        IsSelectedEpisodeDetailPageMode = false;
         if (!UseNarrowLayout)
             SelectedShow = FilteredShows.FirstOrDefault(show => show.IsAllPodcasts)
                            ?? FilteredShows.FirstOrDefault();
@@ -1165,8 +733,6 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
 
     public void ShowSelectedShowEpisodes(LibraryPodcastShowDto? show = null)
     {
-        IsSelectedShowDetailMode = false;
-        IsSelectedEpisodeDetailPageMode = false;
         if (show != null)
             SelectedShow = show;
 
@@ -1177,105 +743,23 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         SetNarrowStage(PodcastLibraryStage.Episodes);
     }
 
-    public void ShowSelectedShowDetail(LibraryPodcastShowDto? show = null)
+    public void ShowEpisodeDetails(LibraryEpisodeDto episode)
     {
-        var targetShow = show ?? SelectedShow;
-        if (targetShow is not { IsAllPodcasts: false, IsRecentlyPlayed: false } ||
-            !targetShow.Id.StartsWith("spotify:show:", StringComparison.Ordinal))
-        {
-            targetShow = ResolveSelectedEpisodeParentShow();
-        }
+        SelectedEpisode = episode;
+        SelectedEpisodeDetail = PodcastEpisodeDetailDto.FromEpisode(episode);
 
-        if (targetShow != null && !string.Equals(SelectedShow?.Id, targetShow.Id, StringComparison.Ordinal))
-            SelectedShow = targetShow;
-
-        if (targetShow is not { IsAllPodcasts: false, IsRecentlyPlayed: false } selectedShow ||
-            !selectedShow.Id.StartsWith("spotify:show:", StringComparison.Ordinal))
+        if (UseNarrowLayout)
         {
+            OpenEpisodePage(episode);
             return;
         }
 
-        if (_podcastEpisodeScope != PodcastEpisodeScope.Latest)
-            SetPodcastEpisodeScope(PodcastEpisodeScope.Latest);
-
-        ClearSelectedEpisode();
-        IsSelectedEpisodeDetailPageMode = false;
-        IsSelectedShowDetailMode = true;
-        SetNarrowStage(PodcastLibraryStage.ShowDetails);
-
-        if (!TryApplyCachedShowDetail(selectedShow))
-            ApplySelectedShowDetail(null);
-
-        if (ShouldLoadArchivePreview(selectedShow))
-            _ = LoadSelectedShowArchivePreviewAsync(selectedShow);
-    }
-
-    private LibraryPodcastShowDto? ResolveSelectedEpisodeParentShow()
-    {
-        var showUri = SelectedEpisodeDetail?.ShowUri ?? SelectedEpisode?.AlbumId;
-        if (string.IsNullOrWhiteSpace(showUri) ||
-            !showUri.StartsWith("spotify:show:", StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        var existing = FindShow(showUri);
-        if (existing is not null)
-            return existing;
-
-        var showName = SelectedEpisodeDetail?.ShowName ?? SelectedEpisode?.AlbumName;
-        if (string.IsNullOrWhiteSpace(showName))
-            return null;
-
-        var show = new LibraryPodcastShowDto
-        {
-            Id = showUri,
-            Name = showName,
-            ImageUrl = SelectedEpisodeDetail?.ShowImageUrl ?? SelectedEpisode?.ImageUrl
-        };
-
-        PodcastShows.Add(show);
-        ApplyShowFilter();
-        return FindShow(showUri) ?? show;
-    }
-
-    public void ShowEpisodeDetails(LibraryEpisodeDto episode)
-    {
-        IsSelectedShowDetailMode = false;
-        IsSelectedEpisodeDetailPageMode = false;
-        IsEpisodeDetailLoading = true;
-        SelectedEpisode = episode;
-        SelectedEpisodeDetail = PodcastEpisodeDetailDto.FromEpisode(episode);
-        ReplaceEpisodeRelatedContent(SelectedEpisodeDetail);
-        ResetSelectedEpisodeDetailPalette();
-        ResetCommentComposer();
-
-        if (UseNarrowLayout)
-            SetNarrowStage(PodcastLibraryStage.EpisodeDetails);
-        else
-            UpdateBreadcrumbs();
+        UpdateBreadcrumbs();
 
         _episodeDetailCts?.Cancel();
         _episodeDetailCts?.Dispose();
         _episodeDetailCts = new CancellationTokenSource();
-        _ = ApplySelectedEpisodeParentPaletteAsync(SelectedEpisodeDetail, episode.Uri, _episodeDetailCts.Token);
         _ = LoadEpisodeDetailAsync(episode.Uri, _episodeDetailCts.Token);
-    }
-
-    public void ShowSelectedEpisodeDetailPage(LibraryEpisodeDto? episode = null)
-    {
-        if (episode is not null &&
-            !string.Equals(SelectedEpisode?.Uri, episode.Uri, StringComparison.Ordinal))
-        {
-            ShowEpisodeDetails(episode);
-        }
-
-        if (SelectedEpisode is null)
-            return;
-
-        IsSelectedEpisodeDetailPageMode = true;
-        IsSelectedShowDetailMode = false;
-        SetNarrowStage(PodcastLibraryStage.EpisodePageDetails);
     }
 
     private void SetNarrowStage(PodcastLibraryStage stage)
@@ -1284,9 +768,21 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         UpdateBreadcrumbs();
     }
 
+    private void TryAutoSelectFirstEpisode()
+    {
+        if (!_pendingAutoSelectFirstEpisode || UseNarrowLayout || SelectedEpisode is not null)
+            return;
+
+        var first = GetVisibleEpisodes().FirstOrDefault();
+        if (first is null)
+            return;
+
+        _pendingAutoSelectFirstEpisode = false;
+        ShowEpisodeDetails(first);
+    }
+
     private async Task LoadEpisodeDetailAsync(string episodeUri, CancellationToken ct)
     {
-        IsEpisodeDetailLoading = true;
         try
         {
             var detail = await _libraryDataService.GetPodcastEpisodeDetailAsync(episodeUri, ct);
@@ -1297,10 +793,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
                 return;
 
             ApplyEpisodeDetailProgress(SelectedEpisode, detail);
-            var mergedDetail = MergeEpisodeDetail(detail, SelectedEpisode);
-            SelectedEpisodeDetail = mergedDetail;
-            ReplaceEpisodeRelatedContent(mergedDetail);
-            _ = ApplySelectedEpisodeParentPaletteAsync(mergedDetail, episodeUri, ct);
+            SelectedEpisodeDetail = MergeEpisodeDetail(detail, SelectedEpisode);
         }
         catch (OperationCanceledException)
         {
@@ -1308,11 +801,6 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "Failed to load podcast episode detail for {EpisodeUri}", episodeUri);
-        }
-        finally
-        {
-            if (!ct.IsCancellationRequested)
-                IsEpisodeDetailLoading = false;
         }
     }
 
@@ -1430,82 +918,13 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         return Math.Clamp(playedPosition.TotalMilliseconds / duration.TotalMilliseconds, 0d, 1d);
     }
 
-    private void ReplaceEpisodeRelatedContent(PodcastEpisodeDetailDto? detail)
-    {
-        EpisodeRecommendations.ReplaceWith(detail?.Recommendations ?? []);
-
-        EpisodeComments.Clear();
-        if (detail?.Comments is { Count: > 0 } comments)
-        {
-            foreach (var c in comments)
-                EpisodeComments.Add(new PodcastCommentViewModel(c, _libraryDataService, _logger));
-        }
-
-        CommentsNextPageToken = detail?.CommentsNextPageToken;
-        CommentsTotalCount = detail?.CommentsTotalCount ?? 0;
-        OnPropertyChanged(nameof(CommentsCountLabel));
-
-        OnPropertyChanged(nameof(HasEpisodeRecommendations));
-        OnPropertyChanged(nameof(ShowEpisodeRecommendations));
-        OnPropertyChanged(nameof(HasEpisodeComments));
-        OnPropertyChanged(nameof(HasNoEpisodeComments));
-    }
-
-    [RelayCommand(CanExecute = nameof(CanLoadMoreComments))]
-    private async Task LoadMoreCommentsAsync()
-    {
-        var episode = SelectedEpisode;
-        if (episode is null || string.IsNullOrEmpty(CommentsNextPageToken)) return;
-
-        IsLoadingMoreComments = true;
-        try
-        {
-            var page = await _libraryDataService.GetPodcastEpisodeCommentsPageAsync(
-                episode.Uri, CommentsNextPageToken, CancellationToken.None);
-            if (page is null)
-            {
-                CommentsNextPageToken = null;
-                return;
-            }
-
-            foreach (var c in page.Items)
-                EpisodeComments.Add(new PodcastCommentViewModel(c, _libraryDataService, _logger));
-
-            CommentsNextPageToken = page.NextPageToken;
-            CommentsTotalCount = page.TotalCount > 0 ? page.TotalCount : CommentsTotalCount;
-            OnPropertyChanged(nameof(HasEpisodeComments));
-            OnPropertyChanged(nameof(HasNoEpisodeComments));
-            OnPropertyChanged(nameof(CommentsCountLabel));
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Failed to load more podcast comments for {EpisodeUri}", episode.Uri);
-        }
-        finally
-        {
-            IsLoadingMoreComments = false;
-        }
-    }
-
-    private bool CanLoadMoreComments() => HasMoreComments && !IsLoadingMoreComments;
-
     private void ClearSelectedEpisode()
     {
         _episodeDetailCts?.Cancel();
         _episodeDetailCts?.Dispose();
         _episodeDetailCts = null;
-        IsEpisodeDetailLoading = false;
         SelectedEpisode = null;
         SelectedEpisodeDetail = null;
-        ReplaceEpisodeRelatedContent(null);
-        ResetSelectedEpisodeDetailPalette();
-        ResetCommentComposer();
-    }
-
-    private void ResetCommentComposer()
-    {
-        CommentDraft = "";
-        CommentComposerStatus = null;
     }
 
     private void ApplyShowFilter()
@@ -1655,6 +1074,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         OnPropertyChanged(nameof(HasEpisodeGroups));
         OnPropertyChanged(nameof(ShowEpisodeEmptyState));
         OnPropertyChanged(nameof(SelectedShowDetailArchiveSummary));
+        TryAutoSelectFirstEpisode();
     }
 
     private bool ShouldLoadArchivePreview(LibraryPodcastShowDto? show)
@@ -1707,122 +1127,16 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             _showDetailCache[showUri] = detail;
     }
 
-    private async Task ApplySelectedEpisodeParentPaletteAsync(
-        PodcastEpisodeDetailDto? detail,
-        string episodeUri,
-        CancellationToken ct)
-    {
-        if (_podcastService is null || detail is null)
-            return;
-
-        var showUri = NormalizeSpotifyShowUri(detail.ShowUri);
-        if (string.IsNullOrWhiteSpace(showUri))
-            return;
-
-        if (TryGetCachedShowDetail(showUri, out var cachedDetail))
-        {
-            DispatchApplySelectedEpisodePalette(episodeUri, showUri, cachedDetail?.Palette);
-            return;
-        }
-
-        var selectedShowIsParent = SelectedShow is { IsAllPodcasts: false, IsRecentlyPlayed: false } selectedShow &&
-                                   string.Equals(selectedShow.Id, showUri, StringComparison.Ordinal);
-        if (!selectedShowIsParent &&
-            !string.Equals(_selectedEpisodePaletteShowUri, showUri, StringComparison.Ordinal))
-        {
-            DispatchApplySelectedEpisodePalette(episodeUri, showUri, null);
-        }
-
-        try
-        {
-            var parentDetail = await _podcastService.GetShowDetailAsync(showUri, ct).ConfigureAwait(false);
-            if (ct.IsCancellationRequested || parentDetail is null)
-                return;
-
-            CacheShowDetail(parentDetail);
-            DispatchApplySelectedEpisodePalette(episodeUri, showUri, parentDetail.Palette);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogDebug(ex, "Failed to load parent show palette for podcast episode {EpisodeUri}", episodeUri);
-        }
-    }
-
-    private void DispatchApplySelectedEpisodePalette(
-        string episodeUri,
-        string showUri,
-        ShowPaletteDto? palette)
-    {
-        _dispatcherQueue.TryEnqueue(() =>
-        {
-            if (_disposed || !string.Equals(SelectedEpisode?.Uri, episodeUri, StringComparison.Ordinal))
-                return;
-
-            var currentShowUri = NormalizeSpotifyShowUri(SelectedEpisodeDetail?.ShowUri ?? SelectedEpisode?.AlbumId);
-            if (!string.Equals(currentShowUri, showUri, StringComparison.Ordinal))
-                return;
-
-            ApplySelectedEpisodeDetailPalette(palette);
-            _selectedEpisodePaletteShowUri = palette is null ? null : showUri;
-        });
-    }
-
     private void ApplySelectedShowDetail(ShowDetailDto? detail)
     {
         if (detail is not null)
             CacheShowDetail(detail);
 
         SelectedShowDetail = detail;
-        ApplySelectedShowPalette(detail?.Palette);
         if (detail is null)
             SelectedShowTopics.Clear();
 
         RefreshSelectedShowDetailProperties();
-    }
-
-    private void ApplySelectedShowPalette(ShowPaletteDto? palette)
-    {
-        var brushes = CreatePaletteBrushes(palette);
-        SelectedShowCardBrush = brushes.Card;
-        SelectedShowCardBorderBrush = brushes.Border;
-        SelectedShowAccentBrush = brushes.Accent;
-        SelectedShowAccentSubtleBrush = brushes.AccentSubtle;
-    }
-
-    private void ResetSelectedEpisodeDetailPalette()
-    {
-        ApplySelectedEpisodeDetailPalette(null);
-        _selectedEpisodePaletteShowUri = null;
-    }
-
-    private void ApplySelectedEpisodeDetailPalette(ShowPaletteDto? palette)
-    {
-        var brushes = CreatePaletteBrushes(palette);
-        SelectedEpisodeDetailCardBrush = brushes.Card;
-        SelectedEpisodeDetailCardBorderBrush = brushes.Border;
-        SelectedEpisodeDetailAccentBrush = brushes.Accent;
-        SelectedEpisodeDetailAccentSubtleBrush = brushes.AccentSubtle;
-    }
-
-    private static (Brush? Card, Brush? Border, Brush? Accent, Brush? AccentSubtle) CreatePaletteBrushes(
-        ShowPaletteDto? palette)
-    {
-        var tier = palette?.HigherContrast ?? palette?.HighContrast ?? palette?.MinContrast;
-        if (tier is null)
-            return default;
-
-        var bg = Color.FromArgb(255, tier.BackgroundR, tier.BackgroundG, tier.BackgroundB);
-        var bgTint = Color.FromArgb(255, tier.BackgroundTintedR, tier.BackgroundTintedG, tier.BackgroundTintedB);
-        var accent = TintColorHelper.BrightenForTint(bgTint, targetMax: 210);
-
-        return (
-            new SolidColorBrush(Color.FromArgb(76, bg.R, bg.G, bg.B)),
-            new SolidColorBrush(Color.FromArgb(150, accent.R, accent.G, accent.B)),
-            new SolidColorBrush(accent),
-            new SolidColorBrush(Color.FromArgb(76, accent.R, accent.G, accent.B)));
     }
 
     private void RefreshSelectedShowDetailProperties()
@@ -1934,6 +1248,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         OnPropertyChanged(nameof(HasEpisodeGroups));
         OnPropertyChanged(nameof(ShowEpisodeEmptyState));
         OnPropertyChanged(nameof(SelectedShowDetailArchiveSummary));
+        TryAutoSelectFirstEpisode();
     }
 
     private PodcastEpisodeGroupViewModel CreateArchivePreviewGroup(
@@ -2054,10 +1369,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         BreadcrumbItems.Add("Podcasts");
 
         var includeSelectedShow = !UseNarrowLayout ||
-                                  NarrowStage is PodcastLibraryStage.Episodes
-                                      or PodcastLibraryStage.EpisodeDetails
-                                      or PodcastLibraryStage.EpisodePageDetails
-                                      or PodcastLibraryStage.ShowDetails ||
+                                  NarrowStage == PodcastLibraryStage.Episodes ||
                                   SelectedEpisode is not null;
         if (includeSelectedShow && SelectedShow is { IsAllPodcasts: false } selectedShow)
         {
@@ -2081,8 +1393,41 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             if (_disposed || IsLoading)
                 return;
 
-            await LoadAsync();
+            await LoadDataAsync();
         });
+    }
+
+    private void OnPodcastEpisodeProgressChanged(object? sender, PodcastEpisodeProgressChangedEventArgs e)
+    {
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            if (_disposed)
+                return;
+
+            ApplyPodcastEpisodeProgress(e);
+        });
+    }
+
+    private void ApplyPodcastEpisodeProgress(PodcastEpisodeProgressChangedEventArgs e)
+    {
+        foreach (var episode in _allEpisodes.Concat(_recentEpisodes))
+        {
+            if (e.Matches(episode.Uri))
+                episode.ApplyPlaybackProgress(e.Progress.PlayedPosition, e.Progress.PlayedState);
+        }
+
+        if (SelectedEpisode is { } selectedEpisode && e.Matches(selectedEpisode.Uri))
+        {
+            selectedEpisode.ApplyPlaybackProgress(e.Progress.PlayedPosition, e.Progress.PlayedState);
+            if (SelectedEpisodeDetail is { } detail)
+            {
+                SelectedEpisodeDetail = detail with
+                {
+                    PlayedPosition = e.Progress.PlayedPosition,
+                    PlayedState = e.Progress.PlayedState
+                };
+            }
+        }
     }
 
     private static string PodcastShowKey(LibraryPodcastShowDto show)
@@ -2114,9 +1459,6 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         return idx >= 0 && idx < uri.Length - 1 ? uri[(idx + 1)..] : uri;
     }
 
-    private static string NormalizeCommentText(string? value)
-        => string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
-
     private static string FormatDuration(double totalSeconds)
     {
         var ts = TimeSpan.FromSeconds(totalSeconds);
@@ -2147,6 +1489,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         _showArchiveCts?.Cancel();
         _showArchiveCts?.Dispose();
         _libraryDataService.DataChanged -= OnLibraryDataChanged;
+        _libraryDataService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
     }
 }
 

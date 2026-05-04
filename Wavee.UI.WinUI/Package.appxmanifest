@@ -46,7 +46,11 @@
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
-        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+        <!-- BackgroundColor matches the in-process BootSplash base colour so the OS
+             splash and the WinUI splash blend into a single brand moment. Tile
+             BackgroundColor stays "transparent" on VisualElements above so the
+             tile uses the system theme. -->
+        <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#0F0F0F" />
       </uap:VisualElements>
 
       <!--

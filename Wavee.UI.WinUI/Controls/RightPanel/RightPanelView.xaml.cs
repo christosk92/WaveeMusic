@@ -603,7 +603,10 @@ public sealed partial class RightPanelView : UserControl
                         && _lyricsVm.HasLyrics
                         && _lyricsVm.CurrentLyrics != null;
 
-        var shouldRunSharedTimer = ShouldRunDetailsLyricsSharedTimer() || shouldRunPodcastTimeline;
+        var shouldRunLyricsTimelineSync = ShouldRunLyricsTimelineSyncTimer();
+        var shouldRunSharedTimer = ShouldRunDetailsLyricsSharedTimer()
+                                   || shouldRunPodcastTimeline
+                                   || shouldRunLyricsTimelineSync;
 
         // Keep rendering active only for realtime playback or direct user interaction.
         var isInteracting = NowPlayingCanvas.IsMouseInLyricsArea
@@ -639,6 +642,9 @@ public sealed partial class RightPanelView : UserControl
     {
         if (ShouldRunPodcastChapterTimelineTimer())
             UpdatePodcastChapterTimelineProgress();
+
+        if (ShouldRunLyricsTimelineSyncTimer())
+            SyncNowPlayingCanvasPosition();
 
         if (_lyricsVm == null || !ShouldRunDetailsLyricsSharedTimer())
             return;
@@ -3075,6 +3081,19 @@ public sealed partial class RightPanelView : UserControl
             && _lyricsVm?.HasLyrics == true
             && _lyricsVm.CurrentLyrics != null
             && !ShouldRunDetailsLyricsRenderLoop();
+    }
+
+    private bool ShouldRunLyricsTimelineSyncTimer()
+    {
+        var lyricsVm = _lyricsVm;
+        if (lyricsVm == null)
+            return false;
+
+        return SelectedMode == RightPanelMode.Lyrics
+            && Visibility == Visibility.Visible
+            && lyricsVm.PlaybackState.IsPlaying
+            && lyricsVm.HasLyrics
+            && lyricsVm.CurrentLyrics != null;
     }
 
     private int FindCurrentLyricLineIndex(IReadOnlyList<LyricsLine> lines, double posMs)

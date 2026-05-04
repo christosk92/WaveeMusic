@@ -87,6 +87,8 @@ public sealed class MockLibraryDataService : ILibraryDataService
 
     public event EventHandler? PlaylistsChanged;
     public event EventHandler? DataChanged;
+    public event EventHandler<PodcastEpisodeProgressChangedEventArgs>? PodcastEpisodeProgressChanged;
+
     public void RequestSyncIfEmpty()
     {
         throw new NotImplementedException();
@@ -407,6 +409,20 @@ public sealed class MockLibraryDataService : ILibraryDataService
         bool completed,
         CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+        var position = completed ? TimeSpan.Zero : resumePosition ?? TimeSpan.Zero;
+        var progress = new PodcastEpisodeProgressDto
+        {
+            Uri = episodeUri,
+            PlayedPosition = position,
+            PlayedState = completed
+                ? "COMPLETED"
+                : position > TimeSpan.Zero
+                    ? "IN_PROGRESS"
+                    : "NOT_STARTED",
+            UpdatedAt = DateTimeOffset.Now
+        };
+        PodcastEpisodeProgressChanged?.Invoke(this, new PodcastEpisodeProgressChangedEventArgs(progress));
         return Task.CompletedTask;
     }
 

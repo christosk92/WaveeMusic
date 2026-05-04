@@ -254,6 +254,63 @@ public sealed class PodcastService : IPodcastService
         }
     }
 
+    public async Task<PodcastBrowsePageDto?> GetPodcastBrowsePageAsync(
+        string uri,
+        int pageOffset = 0,
+        int pageLimit = 10,
+        int sectionOffset = 0,
+        int sectionLimit = 10,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uri);
+        var normalizedUri = NormalizeBrowseUri(uri);
+
+        try
+        {
+            var response = await _pathfinder
+                .GetBrowsePageAsync(normalizedUri, pageOffset, pageLimit, sectionOffset, sectionLimit, ct)
+                .ConfigureAwait(false);
+            var browse = response?.Data?.Browse;
+            return browse is null ? null : MapBrowsePage(browse, normalizedUri);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to fetch podcast browse page {Uri}", uri);
+            return null;
+        }
+    }
+
+    public async Task<PodcastBrowseSectionDto?> GetPodcastBrowseSectionAsync(
+        string uri,
+        int offset = 0,
+        int limit = 20,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uri);
+
+        try
+        {
+            var response = await _pathfinder
+                .GetBrowseSectionAsync(uri, offset, limit, ct)
+                .ConfigureAwait(false);
+            var section = response?.Data?.BrowseSection;
+            return section is null ? null : MapBrowseSection(section);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to fetch podcast browse section {Uri}", uri);
+            return null;
+        }
+    }
+
     public async Task<IReadOnlyList<ViewModels.EpisodeChapterVm>> GetEpisodeChaptersAsync(
         string episodeUri, CancellationToken ct = default)
     {
@@ -489,6 +546,138 @@ public sealed class PodcastService : IPodcastService
             EpisodeUris = episodeUris,
             TotalEpisodes = totalEpisodes,
             Palette = MapPalette(podcast.VisualIdentity?.SquareCoverImage?.ExtractedColorSet),
+        };
+    }
+
+    private static PodcastBrowsePageDto MapBrowsePage(
+        PathfinderBrowseContainer container,
+        string fallbackUri)
+    {
+        var sections = container.Sections?.Items?
+            .Select(MapBrowseSection)
+            .Where(static section => section is not null && section.Items.Count > 0)
+            .Cast<PodcastBrowseSectionDto>()
+            .ToList() ?? [];
+
+        var card = container.Data?.CardRepresentation;
+        return new PodcastBrowsePageDto
+        {
+            Uri = container.Uri ?? fallbackUri,
+            Title = LabelText(container.Header?.Title) ?? LabelText(card?.Title) ?? "Podcasts",
+            Subtitle = LabelText(container.Header?.Subtitle),
+            HeaderColorHex = container.Header?.Color?.Hex ?? card?.BackgroundColor?.Hex,
+            Sections = sections
+        };
+    }
+
+    private static PodcastBrowseSectionDto? MapBrowseSection(PathfinderBrowseSection? section)
+    {
+        if (section is null)
+            return null;
+
+        var items = section.SectionItems?.Items?
+            .Select(MapBrowseItem)
+            .Where(static item => item is not null && !string.IsNullOrWhiteSpace(item.Title))
+            .Cast<PodcastBrowseItemDto>()
+            .ToList() ?? [];
+
+        if (items.Count == 0)
+            return null;
+
+        return new PodcastBrowseSectionDto
+        {
+            Uri = section.Uri ?? "",
+            Title = LabelText(section.Data?.Title) ?? "Podcasts",
+            Subtitle = LabelText(section.Data?.Subtitle),
+            TypeName = section.Data?.TypeName ?? section.TypeName,
+            Items = items,
+            TotalCount = Math.Max(section.SectionItems?.TotalCount ?? 0, items.Count),
+            NextOffset = section.SectionItems?.PagingInfo?.NextOffset
+        };
+    }
+
+    private static PodcastBrowseItemDto? MapBrowseItem(PathfinderBrowseSectionItem? item)
+    {
+        if (item is null)
+            return null;
+
+        var data = item.Content?.Data;
+        if (data is not null && string.Equals(data.TypeName, "Podcast", StringComparison.OrdinalIgnoreCase))
+        {
+            var uri = data.Uri ?? item.Uri ?? "";
+            var title = data.Name ?? "";
+            if (string.IsNullOrWhiteSpace(uri) || string.IsNullOrWhiteSpace(title))
+                return null;
+
+            return new PodcastBrowseItemDto
+            {
+                Uri = uri,
+                Title = title,
+                Subtitle = data.Publisher?.Name,
+                ImageUrl = PickBestBrowseImage(data.CoverArt?.Sources, preferredHeight: 640),
+                Kind = PodcastBrowseItemKind.Show,
+                MediaType = data.MediaType,
+                SourceLabel = FormatBrowseMediaType(data.MediaType)
+            };
+        }
+
+        var card = data?.Data?.CardRepresentation;
+        if (card is not null)
+        {
+            var uri = item.Uri ?? data?.Uri ?? "";
+            var title = LabelText(card.Title) ?? data?.Name ?? "";
+            if (string.IsNullOrWhiteSpace(uri) || string.IsNullOrWhiteSpace(title))
+                return null;
+
+            return new PodcastBrowseItemDto
+            {
+                Uri = NormalizeBrowseUri(uri),
+                Title = title,
+                ImageUrl = PickBestBrowseImage(card.Artwork?.Sources, preferredHeight: 300),
+                ColorHex = card.BackgroundColor?.Hex,
+                Kind = uri.StartsWith("spotify:section:", StringComparison.Ordinal)
+                    ? PodcastBrowseItemKind.Section
+                    : PodcastBrowseItemKind.Category
+            };
+        }
+
+        return null;
+    }
+
+    private static string? LabelText(PathfinderBrowseLabel? label)
+        => string.IsNullOrWhiteSpace(label?.TransformedLabel)
+            ? label?.TranslatedBaseText
+            : label.TransformedLabel;
+
+    private static string NormalizeBrowseUri(string uri)
+    {
+        const string genrePrefix = "spotify:genre:";
+        if (uri.StartsWith(genrePrefix, StringComparison.Ordinal))
+            return $"spotify:page:{uri[genrePrefix.Length..]}";
+
+        return uri;
+    }
+
+    private static string? PickBestBrowseImage(IList<PathfinderBrowseImageSource>? sources, int preferredHeight)
+    {
+        if (sources is null || sources.Count == 0)
+            return null;
+
+        return sources
+            .Where(static source => !string.IsNullOrWhiteSpace(source?.Url))
+            .OrderBy(source => Math.Abs((source!.Height ?? source.Width ?? 0) - preferredHeight))
+            .FirstOrDefault()
+            ?.Url;
+    }
+
+    private static string? FormatBrowseMediaType(string? mediaType)
+    {
+        return mediaType?.ToUpperInvariant() switch
+        {
+            "MIXED" => "Mixed",
+            "AUDIO" => "Audio",
+            "VIDEO" => "Video",
+            _ => null
         };
     }
 

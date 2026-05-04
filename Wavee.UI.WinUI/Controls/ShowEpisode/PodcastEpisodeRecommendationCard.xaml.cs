@@ -104,7 +104,7 @@ public sealed partial class PodcastEpisodeRecommendationCard : UserControl
         if (e.OriginalSource is FrameworkElement fe && IsInsidePlayButton(fe)) return;
 
         ConnectedAnimationHelper.PrepareAnimation(ConnectedAnimationHelper.PodcastEpisodeArt, CoverContainer);
-        NavigationHelpers.OpenEpisode(
+        NavigationHelpers.OpenEpisodePage(
             Recommendation.Uri,
             Recommendation.Title,
             Recommendation.ImageUrl,

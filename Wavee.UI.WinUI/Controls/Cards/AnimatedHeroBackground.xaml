@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Cards.AnimatedHeroBackground"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:win2d="using:Microsoft.Graphics.Canvas.UI.Xaml"
+    mc:Ignorable="d"
+    Background="Transparent"
+    HorizontalAlignment="Stretch"
+    VerticalAlignment="Stretch"
+    IsHitTestVisible="False">
+    <win2d:CanvasAnimatedControl
+        x:Name="PART_Canvas"
+        ClearColor="Transparent"
+        HorizontalAlignment="Stretch"
+        VerticalAlignment="Stretch"
+        IsFixedTimeStep="True"
+        TargetElapsedTime="0:0:0.01666667"/>
+</UserControl>

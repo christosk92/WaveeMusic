@@ -23,36 +23,20 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class EpisodePage : Page, ITabBarItemContent, IDisposable
 {
+    private const int ShimmerCollapseDelayMs = 250;
+
     private readonly ILogger? _logger;
     private readonly INotificationService? _notificationService;
     private bool _showingContent;
     private bool _crossfadeScheduled;
     private bool _isNavigatingAway;
     private bool _isDisposed;
-    private bool _isEmbeddedInLibrary;
 
     public EpisodePageViewModel ViewModel { get; }
 
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
 
     public event EventHandler<TabItemParameter>? ContentChanged;
-
-    public void SetEmbeddedInLibrary(bool embedded, double chromeTopInset = 0)
-    {
-        _isEmbeddedInLibrary = embedded;
-        var topInset = embedded ? chromeTopInset + 56 : 0;
-        if (EpisodeBreadcrumbContainer is not null)
-            EpisodeBreadcrumbContainer.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible;
-        if (ShimmerContainer is not null)
-            ShimmerContainer.Padding = embedded ? new Thickness(0, topInset, 0, 0) : new Thickness(40, 32, 40, 40);
-        if (ContentContainer is not null)
-            ContentContainer.Margin = embedded ? new Thickness(0, topInset, 0, 0) : new Thickness(0);
-        if (EpisodeScrollViewer is not null)
-            EpisodeScrollViewer.Padding = embedded ? new Thickness(24, 16, 24, 40) : new Thickness(40, 16, 40, 40);
-        if (EpisodeContentStack is not null)
-            EpisodeContentStack.MaxWidth = embedded ? double.PositiveInfinity : 1160;
-        UpdateEpisodeBodyLayout();
-    }
 
     public EpisodePage()
     {
@@ -82,7 +66,7 @@ public sealed partial class EpisodePage : Page, ITabBarItemContent, IDisposable
         if (e.PropertyName == nameof(EpisodePageViewModel.IsLoading))
         {
             if (!ViewModel.IsLoading && !_showingContent && !_crossfadeScheduled)
-                ScheduleCrossfade();
+                TryShowContentNow();
         }
     }
 
@@ -96,7 +80,7 @@ public sealed partial class EpisodePage : Page, ITabBarItemContent, IDisposable
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
 
         if (!ViewModel.IsLoading)
-            SnapCrossfadeToContent();
+            TryShowContentNow();
 
         UpdateEpisodeBodyLayout();
         TryHandlePendingPodcastEpisodeArtConnectedAnimation();
@@ -126,7 +110,7 @@ public sealed partial class EpisodePage : Page, ITabBarItemContent, IDisposable
         _crossfadeScheduled = true;
         await Task.Yield();
         await Task.Delay(16);
-        if (_isNavigatingAway || _showingContent)
+        if (_isNavigatingAway || _showingContent || ViewModel.IsLoading)
         {
             _crossfadeScheduled = false;
             return;
@@ -139,18 +123,34 @@ public sealed partial class EpisodePage : Page, ITabBarItemContent, IDisposable
     {
         if (_showingContent) return;
         _showingContent = true;
+        _crossfadeScheduled = false;
 
         AnimationBuilder.Create()
-            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200))
+            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200),
+                layer: FrameworkLayer.Xaml)
             .Start(ShimmerContainer);
 
         AnimationBuilder.Create()
             .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
-                     delay: TimeSpan.FromMilliseconds(100))
+                delay: TimeSpan.FromMilliseconds(100),
+                layer: FrameworkLayer.Xaml)
             .Start(ContentContainer);
 
-        await Task.Delay(250);
+        await Task.Delay(ShimmerCollapseDelayMs);
         if (_showingContent) ShimmerContainer.Visibility = Visibility.Collapsed;
+    }
+
+    private void TryShowContentNow()
+    {
+        if (_showingContent ||
+            _crossfadeScheduled ||
+            ViewModel.IsLoading ||
+            (string.IsNullOrEmpty(ViewModel.Title) && !ViewModel.HasError))
+        {
+            return;
+        }
+
+        ScheduleCrossfade();
     }
 
     private void SnapCrossfadeToContent()
@@ -159,6 +159,8 @@ public sealed partial class EpisodePage : Page, ITabBarItemContent, IDisposable
         _crossfadeScheduled = false;
         ShimmerContainer.Visibility = Visibility.Collapsed;
         ShimmerContainer.Opacity = 0;
+        ContentContainer.Opacity = 1;
+        ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 0;
         ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 1;
     }
 
@@ -169,6 +171,8 @@ public sealed partial class EpisodePage : Page, ITabBarItemContent, IDisposable
         _crossfadeScheduled = false;
         ShimmerContainer.Visibility = Visibility.Visible;
         ShimmerContainer.Opacity = 1;
+        ContentContainer.Opacity = 0;
+        ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 1;
         ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
     }
 
@@ -219,7 +223,7 @@ public sealed partial class EpisodePage : Page, ITabBarItemContent, IDisposable
         LoadNewContent(parameter);
     }
 
-    private void LoadNewContent(object? parameter)
+    private async void LoadNewContent(object? parameter)
     {
         ResetCrossfadeForNewLoad();
 
@@ -241,14 +245,13 @@ public sealed partial class EpisodePage : Page, ITabBarItemContent, IDisposable
         if (episodeParam is null) return;
         ViewModel.Activate(episodeParam);
 
-        if (_isEmbeddedInLibrary &&
-            (!string.IsNullOrWhiteSpace(episodeParam.EpisodeTitle) ||
-             !string.IsNullOrWhiteSpace(episodeParam.EpisodeImageUrl)))
-        {
-            SnapCrossfadeToContent();
-        }
-
         TryHandlePendingPodcastEpisodeArtConnectedAnimation();
+
+        await Task.Yield();
+        if (_isNavigatingAway)
+            return;
+
+        TryShowContentNow();
     }
 
     private bool TryHandlePendingPodcastEpisodeArtConnectedAnimation()
@@ -300,7 +303,10 @@ public sealed partial class EpisodePage : Page, ITabBarItemContent, IDisposable
             }
         }
 
-        NavigationHelpers.OpenShow(ViewModel.ParentShowUri!, ViewModel.ParentShowTitle ?? "Show", NavigationHelpers.IsCtrlPressed());
+        NavigationHelpers.OpenShowPage(
+            ViewModel.ParentShowUri!,
+            ViewModel.ParentShowTitle ?? "Show",
+            openInNewTab: NavigationHelpers.IsCtrlPressed());
     }
 
     // ── Action buttons ──────────────────────────────────────────────────────

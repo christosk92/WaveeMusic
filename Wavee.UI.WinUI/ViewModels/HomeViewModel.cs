@@ -1440,6 +1440,11 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             case "user" when item.Uri.Contains(":collection", StringComparison.OrdinalIgnoreCase):
                 Helpers.Navigation.NavigationHelpers.OpenLikedSongs(openInNewTab);
                 break;
+            case "page":
+            case "section":
+            case "genre":
+                Helpers.Navigation.NavigationHelpers.OpenPodcastBrowse(param, openInNewTab);
+                break;
         }
     }
 

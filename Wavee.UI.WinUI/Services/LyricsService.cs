@@ -19,6 +19,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Lyrics;
 using ControlsLyricsData = Wavee.Controls.Lyrics.Models.Lyrics.LyricsData;
+using ControlsLyricsLine = Wavee.Controls.Lyrics.Models.Lyrics.LyricsLine;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -43,6 +44,8 @@ public sealed class LyricsService : ILyricsService
     private readonly LyricsMemoryCache _memoryCache;
 
     private static readonly TimeSpan ProviderTimeout = TimeSpan.FromSeconds(10);
+    private const string LyricsCacheVersion = "syllable-v3";
+    private const string PreviousLyricsCacheVersion = "timing-v2";
     private static readonly Regex CollapseWhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
     private static readonly Regex PunctuationRegex = new(@"[\p{P}\p{S}]", RegexOptions.Compiled);
 
@@ -88,7 +91,19 @@ public sealed class LyricsService : ILyricsService
         {
             try
             {
-                var dbResult = await _db.GetLyricsCacheAsync($"spotify:track:{trackId}", ct);
+                var cacheKey = BuildLyricsCacheKey(trackId);
+                var dbResult = await _db.GetLyricsCacheAsync(cacheKey, ct);
+                if (dbResult == null)
+                {
+                    var legacyKey = BuildLegacyLyricsCacheKey(trackId);
+                    var legacyResult = await _db.GetLyricsCacheAsync(legacyKey, ct);
+                    if (legacyResult != null)
+                    {
+                        dbResult = legacyResult;
+                        cacheKey = legacyKey;
+                    }
+                }
+
                 if (dbResult != null)
                 {
                     var dto = JsonSerializer.Deserialize(dbResult.Value.JsonData, LyricsCacheJsonContext.Default.CachedLyricsDto);
@@ -105,7 +120,7 @@ public sealed class LyricsService : ILyricsService
 
                         // Evict stale instrumental-only entry from SQLite
                         _logger?.LogDebug("Evicted instrumental-only lyrics from SQLite cache for {TrackId}", trackId);
-                        _ = _db.DeleteLyricsCacheAsync($"spotify:track:{trackId}", CancellationToken.None);
+                        _ = _db.DeleteLyricsCacheAsync(cacheKey, CancellationToken.None);
                     }
                 }
             }
@@ -222,12 +237,17 @@ public sealed class LyricsService : ILyricsService
                 continue;
             }
 
+            var hasSyllableSync = data.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo);
             double contentScore = spotifyLines is { Count: > 0 }
                 ? ScoreAgainstSpotify(data, spotifyLines)
                 : 1.0; // No Spotify to compare — accept all
 
-            // Reject results with very low similarity to Spotify (<20% line overlap)
-            if (contentScore < 0.2 && spotifyLines is { Count: > 0 })
+            // Spotify is useful as a text sanity check, but not as a timing
+            // authority. Syllable providers often segment lyrics differently,
+            // so use a lower text-overlap floor for them and preserve their
+            // own timestamps.
+            var minimumTextScore = hasSyllableSync ? 0.05 : 0.2;
+            if (contentScore < minimumTextScore && spotifyLines is { Count: > 0 })
             {
                 _logger?.LogDebug("{Provider} rejected: content score {Score:P0} vs Spotify", ext.Provider, contentScore);
                 continue;
@@ -239,7 +259,10 @@ public sealed class LyricsService : ILyricsService
                 ext.Provider!,
                 data,
                 contentScore,
-                prefBonus));
+                prefBonus,
+                TimingReason: hasSyllableSync
+                    ? "provider syllable timing preserved"
+                    : null));
         }
 
         var selection = LyricsProviderSelector.SelectBestExternalResult(selectionCandidates);
@@ -347,12 +370,25 @@ public sealed class LyricsService : ILyricsService
         };
     }
 
+    private static string BuildLyricsCacheKey(string trackId)
+        => $"{BuildLegacyLyricsCacheKey(trackId)}#{LyricsCacheVersion}";
+
+    private static string BuildLyricsCacheKey(string trackId, string version)
+        => $"{BuildLegacyLyricsCacheKey(trackId)}#{version}";
+
+    private static string BuildLegacyLyricsCacheKey(string trackId)
+        => $"spotify:track:{trackId}";
+
     public async Task ClearCacheForTrackAsync(string trackId, CancellationToken ct = default)
     {
         _memoryCache.TryRemove(trackId, out _);
 
         if (_db != null)
-            await _db.DeleteLyricsCacheAsync($"spotify:track:{trackId}", ct);
+        {
+            await _db.DeleteLyricsCacheAsync(BuildLyricsCacheKey(trackId), ct);
+            await _db.DeleteLyricsCacheAsync(BuildLyricsCacheKey(trackId, PreviousLyricsCacheVersion), ct);
+            await _db.DeleteLyricsCacheAsync(BuildLegacyLyricsCacheKey(trackId), ct);
+        }
     }
 
     private void CacheLyrics(string trackId, ControlsLyricsData data, string provider)
@@ -368,7 +404,7 @@ public sealed class LyricsService : ILyricsService
                     var dto = LyricsCacheConverter.ToDto(data);
                     var json = JsonSerializer.Serialize(dto, LyricsCacheJsonContext.Default.CachedLyricsDto);
                     bool hasSyllable = data.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo);
-                    await _db.SetLyricsCacheAsync($"spotify:track:{trackId}", provider, json, hasSyllable);
+                    await _db.SetLyricsCacheAsync(BuildLyricsCacheKey(trackId), provider, json, hasSyllable);
                 }
                 catch (Exception ex)
                 {

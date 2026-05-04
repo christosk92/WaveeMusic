@@ -109,6 +109,12 @@ internal static class PathfinderOperations
     public const string QueryShowMetadataV2 = "queryShowMetadataV2";
     public const string QueryShowMetadataV2Hash = "aaad798a17a43c0f443c45d630a83df39d2ca1062a090c2e4fb045d6b00ab360";
 
+    public const string BrowsePage = "browsePage";
+    public const string BrowsePageHash = "f5c4e6d668f5716464a231c1cc8b22c1cbf6ad68b09929fd7de813a30581298b";
+
+    public const string BrowseSection = "browseSection";
+    public const string BrowseSectionHash = "b13c1cccbfcb6947753c2613411b3566485c21fd5f36d80a80bb64be61ba2d51";
+
     // "More podcasts you might like" carousel for the Show detail page.
     public const string InternalLinkRecommenderShow = "internalLinkRecommenderShow";
     public const string InternalLinkRecommenderShowHash = "6c369ff272a666b31fef1629c169925a1bd80f372195396c82304142cacd89e8";

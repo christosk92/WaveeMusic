@@ -132,7 +132,13 @@ public sealed class AudioProcessManager : IAsyncDisposable
 
         var candidates = new List<string>
         {
-            // Same directory (deployed side by side, e.g. packaged AppX)
+            // Packaged MSIX layout: AudioHost lives in its own subdir to
+            // keep its (x64) dependency graph separate from the WinUI app's
+            // (ARM64-or-x64) payload. Wavee.UI.WinUI.csproj's MSBuild
+            // targets stage it there for both F5 deploy and sideload.
+            Path.Combine(baseDir, "Wavee.AudioHost", "Wavee.AudioHost.exe"),
+            // Same directory (legacy / single-arch packages, side-by-side
+            // dev deploys).
             Path.Combine(baseDir, "Wavee.AudioHost.exe"),
         };
 

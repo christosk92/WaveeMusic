@@ -290,7 +290,22 @@ public sealed partial class MainWindow : WindowEx
         var themeService = Ioc.Default.GetRequiredService<IThemeService>();
         themeService.Initialize(RootFrame);
 
-        // Always navigate to ShellPage (app works without Spotify login)
+        // Always navigate to ShellPage (app works without Spotify login).
+        // Hand off from BootSplash → ShellPage on Frame.Navigated, deferred
+        // one Low-priority dispatcher tick so ShellPage's first layout pass
+        // completes before the fade animation starts. Otherwise the splash
+        // dissolves into a still-empty frame for one frame.
+        if (Splash is { } splash)
+        {
+            void OnNavigated(object _, Microsoft.UI.Xaml.Navigation.NavigationEventArgs __)
+            {
+                RootFrame.Navigated -= OnNavigated;
+                DispatcherQueue.TryEnqueue(
+                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                    () => _ = splash.FadeOutAsync());
+            }
+            RootFrame.Navigated += OnNavigated;
+        }
         RootFrame.Navigate(typeof(ShellPage));
 
         // Restore tear-off panel windows from persisted state. Must run AFTER

@@ -422,7 +422,6 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     {
         ContentNavigationParameter nav => nav.Uri,
         EpisodeNavigationParameter nav => nav.EpisodeUri,
-        PodcastLibraryNavigationParameter nav => nav.NavigationKey,
         string s => s,
         _ => null
     };

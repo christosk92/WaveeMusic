@@ -20,33 +20,33 @@
 
     <UserControl.Resources>
         <DataTemplate x:Key="PodcastShowItemTemplate" x:DataType="dto:LibraryPodcastShowDto">
-            <Grid Padding="8" ColumnSpacing="12">
+            <Grid Padding="6" ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="44"/>
+                    <ColumnDefinition Width="32"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <Border
                     Grid.Column="0"
-                    Width="44"
-                    Height="44"
-                    CornerRadius="6"
+                    Width="32"
+                    Height="32"
+                    CornerRadius="5"
                     Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                     <Grid>
                         <FontIcon
                             Glyph="{x:Bind PlaceholderGlyph}"
-                            FontSize="18"
+                            FontSize="14"
                             Opacity="0.35"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"/>
                         <Image
-                            Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='88'}"
+                            Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='64'}"
                             Stretch="UniformToFill"
                             Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
                             behaviors:ImageFallbackBehavior.HideOnError="True"
                             behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                            behaviors:ImageFallbackBehavior.DecodePixelWidth="88"/>
+                            behaviors:ImageFallbackBehavior.DecodePixelWidth="64"/>
                     </Grid>
                 </Border>
 
@@ -66,10 +66,10 @@
 
                 <Border
                     Grid.Column="2"
-                    MinWidth="24"
-                    Height="20"
+                    MinWidth="22"
+                    Height="18"
                     Padding="6,0"
-                    CornerRadius="10"
+                    CornerRadius="9"
                     Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                     VerticalAlignment="Center"
                     Visibility="{x:Bind HasSavedEpisodes, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -156,881 +156,132 @@
             </StackPanel>
         </DataTemplate>
 
-        <DataTemplate x:Key="EpisodeRecommendationTemplate" x:DataType="dto:PodcastEpisodeRecommendationDto">
-            <showEpisode:PodcastEpisodeRecommendationCard Recommendation="{x:Bind}"/>
-        </DataTemplate>
-
-        <Style x:Key="EpisodeCommentReactionChipStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="10"/>
-            <Setter Property="Padding" Value="8,3"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-        </Style>
-
-        <DataTemplate x:Key="EpisodeReplyTemplate" x:DataType="vm:PodcastReplyViewModel">
-            <Grid Padding="0,6" ColumnSpacing="10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="28"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <PersonPicture Grid.Column="0"
-                               Width="28" Height="28"
-                               VerticalAlignment="Top"
-                               DisplayName="{x:Bind Data.AuthorName}"
-                               ProfilePicture="{x:Bind Data.AuthorImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='56'}"/>
-                <StackPanel Grid.Column="1" Spacing="4">
-                    <TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                               Style="{StaticResource CaptionTextBlockStyle}">
-                        <Run Text="{x:Bind Data.AuthorName}" FontWeight="SemiBold"
-                             Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
-                        <Run Text=" · "
-                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                        <Run Text="{x:Bind Data.CreatedAtFormatted}"
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    </TextBlock>
-                    <TextBlock
-                        Text="{x:Bind Data.Text}"
-                        Style="{StaticResource BodyTextBlockStyle}"
-                        TextWrapping="Wrap"
-                        MaxLines="6"/>
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <Button
-                            Padding="0"
-                            MinHeight="0"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            Click="ShowCommentReactionsButton_Click"
-                            Visibility="{x:Bind HasReactions, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <Border Style="{StaticResource EpisodeCommentReactionChipStyle}">
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="{x:Bind TopReactionEmojiString}"
-                                               FontFamily="Segoe UI Emoji"
-                                               FontSize="12"
-                                               VerticalAlignment="Center"/>
-                                    <TextBlock Text="{x:Bind ReactionsLabel}"
-                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                               VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                        </Button>
-                        <Button
-                            Content="React"
-                            Padding="8,3"
-                            MinHeight="0"
-                            IsEnabled="{x:Bind CanReact, Mode=OneWay}">
-                            <Button.Flyout>
-                                <MenuFlyout>
-                                    <MenuFlyoutItem Text="&#x2764;&#xFE0F;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x2764;&#xFE0F;"/>
-                                    <MenuFlyoutItem Text="&#x1F602;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x1F602;"/>
-                                    <MenuFlyoutItem Text="&#x1F62E;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x1F62E;"/>
-                                    <MenuFlyoutItem Text="&#x1F44E;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x1F44E;"/>
-                                    <MenuFlyoutItem Text="&#x1F44F;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x1F44F;"/>
-                                    <MenuFlyoutItem Text="&#x1F525;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x1F525;"/>
-                                    <MenuFlyoutItem Text="&#x1F44D;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x1F44D;"/>
-                                </MenuFlyout>
-                            </Button.Flyout>
-                        </Button>
-                    </StackPanel>
-                </StackPanel>
-            </Grid>
-        </DataTemplate>
-
-        <DataTemplate x:Key="EpisodeCommentTemplate" x:DataType="vm:PodcastCommentViewModel">
-            <Grid Padding="0,10" ColumnSpacing="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="36"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <PersonPicture Grid.Column="0"
-                               Width="36" Height="36"
-                               VerticalAlignment="Top"
-                               DisplayName="{x:Bind Data.AuthorName}"
-                               ProfilePicture="{x:Bind Data.AuthorImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='72'}"/>
-                <StackPanel Grid.Column="1" Spacing="6">
-                    <TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                               Style="{StaticResource CaptionTextBlockStyle}">
-                        <Run Text="{x:Bind Data.AuthorName}"
-                             FontWeight="SemiBold"
-                             Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
-                        <Run Text=" · "
-                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                        <Run Text="{x:Bind Data.CreatedAtFormatted}"
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    </TextBlock>
-
-                    <TextBlock
-                        Text="{x:Bind Data.Text}"
-                        Style="{StaticResource BodyTextBlockStyle}"
-                        TextWrapping="Wrap"/>
-
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <Button
-                            Padding="0"
-                            MinHeight="0"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            Click="ShowCommentReactionsButton_Click"
-                            Visibility="{x:Bind HasReactions, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <Border Style="{StaticResource EpisodeCommentReactionChipStyle}">
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="{x:Bind TopReactionEmojiString}"
-                                               FontFamily="Segoe UI Emoji"
-                                               FontSize="13"
-                                               VerticalAlignment="Center"/>
-                                    <TextBlock Text="{x:Bind ReactionsLabel}"
-                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                               VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                        </Button>
-                        <Button
-                            Content="React"
-                            Padding="8,3"
-                            MinHeight="0"
-                            IsEnabled="{x:Bind CanReact, Mode=OneWay}">
-                            <Button.Flyout>
-                                <MenuFlyout>
-                                    <MenuFlyoutItem Text="&#x2764;&#xFE0F;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x2764;&#xFE0F;"/>
-                                    <MenuFlyoutItem Text="&#x1F602;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x1F602;"/>
-                                    <MenuFlyoutItem Text="&#x1F62E;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x1F62E;"/>
-                                    <MenuFlyoutItem Text="&#x1F44E;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x1F44E;"/>
-                                    <MenuFlyoutItem Text="&#x1F44F;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x1F44F;"/>
-                                    <MenuFlyoutItem Text="&#x1F525;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x1F525;"/>
-                                    <MenuFlyoutItem Text="&#x1F44D;" Command="{x:Bind ReactCommand, Mode=OneWay}" CommandParameter="&#x1F44D;"/>
-                                </MenuFlyout>
-                            </Button.Flyout>
-                        </Button>
-                        <HyperlinkButton
-                            Content="Reply"
-                            Padding="2,4"
-                            Command="{x:Bind ShowReplyComposerCommand, Mode=OneWay}"/>
-                    </StackPanel>
-
-                    <StackPanel
-                        Spacing="6"
-                        Visibility="{x:Bind IsReplyComposerOpen, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBox
-                            PlaceholderText="{x:Bind ReplyPlaceholder, Mode=OneWay}"
-                            AcceptsReturn="True"
-                            TextWrapping="Wrap"
-                            MinHeight="54"
-                            MaxLength="500"
-                            Text="{x:Bind ReplyDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock
-                                Grid.Column="0"
-                                Text="{x:Bind ReplyCharacterCount, Mode=OneWay}"
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                VerticalAlignment="Center"/>
-
-                            <Button
-                                Grid.Column="1"
-                                Content="Cancel"
-                                Padding="10,5"
-                                Command="{x:Bind CancelReplyCommand, Mode=OneWay}"/>
-
-                            <Button
-                                Grid.Column="2"
-                                Content="Reply"
-                                Padding="12,5"
-                                IsEnabled="{x:Bind CanSubmitReply, Mode=OneWay}"
-                                Click="SubmitReplyButton_Click"/>
-                        </Grid>
-                    </StackPanel>
-
-                    <TextBlock
-                        Text="{x:Bind ReplyComposerStatus, Mode=OneWay}"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Visibility="{x:Bind HasReplyComposerStatus, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-
-                    <Expander
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        ExpandDirection="Down"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Padding="0,4,0,0"
-                        IsExpanded="{x:Bind IsRepliesExpanded, Mode=TwoWay}"
-                        Visibility="{x:Bind HasReplies, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <Expander.Header>
-                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                                <appcontrols:StackedAvatars
-                                    ItemsSource="{x:Bind TopReplyAvatarItems, Mode=OneWay}"
-                                    AvatarSize="20"
-                                    RingThickness="2"
-                                    Overlap="8"
-                                    MaxVisible="3"
-                                    Visibility="{x:Bind HasTopReplyAvatars, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                <TextBlock Text="{x:Bind RepliesLabel}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Expander.Header>
-                        <StackPanel Spacing="4" Padding="0,4,0,0">
-                            <ItemsRepeater
-                                ItemsSource="{x:Bind Replies}"
-                                ItemTemplate="{StaticResource EpisodeReplyTemplate}">
-                                <ItemsRepeater.Layout>
-                                    <StackLayout Orientation="Vertical" Spacing="2"/>
-                                </ItemsRepeater.Layout>
-                            </ItemsRepeater>
-                            <StackPanel Spacing="6"
-                                Visibility="{x:Bind IsLoadingReplies, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <Grid ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="28"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <controls:Shimmer Grid.Column="0" Width="28" Height="28" CornerRadius="14"/>
-                                    <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
-                                        <controls:Shimmer Width="120" Height="10" CornerRadius="3" HorizontalAlignment="Left"/>
-                                        <controls:Shimmer Width="220" Height="10" CornerRadius="3" HorizontalAlignment="Left"/>
-                                    </StackPanel>
-                                </Grid>
-                                <Grid ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="28"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <controls:Shimmer Grid.Column="0" Width="28" Height="28" CornerRadius="14"/>
-                                    <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
-                                        <controls:Shimmer Width="100" Height="10" CornerRadius="3" HorizontalAlignment="Left"/>
-                                        <controls:Shimmer Width="180" Height="10" CornerRadius="3" HorizontalAlignment="Left"/>
-                                    </StackPanel>
-                                </Grid>
-                            </StackPanel>
-                            <HyperlinkButton
-                                Content="Load more replies"
-                                Padding="0,2"
-                                Command="{x:Bind LoadMoreRepliesCommand}"
-                                Visibility="{x:Bind HasMoreReplies, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                        </StackPanel>
-                    </Expander>
-                </StackPanel>
-            </Grid>
-        </DataTemplate>
-
-        <Style x:Key="EpisodeMetaChipBorderStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="10"/>
-            <Setter Property="Padding" Value="8,2"/>
-            <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-        </Style>
-
         <DataTemplate x:Key="EpisodeDetailPanelTemplate" x:DataType="vm:YourEpisodesViewModel">
-            <Grid
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Stretch">
-                <ScrollView
-                    Loaded="EpisodeDetailScrollView_Loaded"
-                    Unloaded="EpisodeDetailScrollView_Unloaded"
-                    ViewChanged="EpisodeDetailScrollView_ViewChanged"
-                    Visibility="{x:Bind HasSelectedEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <StackPanel Spacing="18" Padding="0,0,2,0">
-
-                        <Border
-                            CornerRadius="14"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1">
-                            <Grid>
-                                <Border
-                                    CornerRadius="14"
-                                    Background="{x:Bind SelectedEpisodeDetailCardBrush, Mode=OneWay}"
-                                    IsHitTestVisible="False"/>
-                                <Border
-                                    CornerRadius="14"
-                                    BorderBrush="{x:Bind SelectedEpisodeDetailCardBorderBrush, Mode=OneWay}"
-                                    BorderThickness="1"
-                                    IsHitTestVisible="False"/>
-                                <Border
-                                    Width="4"
-                                    HorizontalAlignment="Left"
-                                    CornerRadius="14,0,0,14"
-                                    Background="{x:Bind SelectedEpisodeDetailAccentBrush, Mode=OneWay}"
-                                    IsHitTestVisible="False"/>
-                                <StackPanel Padding="14" Spacing="14">
-
-                        <!-- Hero: artwork + title + show hyperlink + meta line -->
-                        <Grid x:Name="EpisodeDetailHero" ColumnSpacing="14">
+            <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                <ScrollView Visibility="{x:Bind HasSelectedEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel Spacing="10" Padding="0,0,2,0">
+                        <Grid ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="112"/>
+                                <ColumnDefinition Width="64"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
+
                             <Border
-                                x:Name="EpisodeDetailCoverContainer"
                                 Grid.Column="0"
-                                Width="112"
-                                Height="112"
-                                CornerRadius="10"
+                                x:Name="EpisodeDetailCoverContainer"
+                                Width="64"
+                                Height="64"
+                                CornerRadius="6"
+                                VerticalAlignment="Top"
                                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                                 <Grid>
-                                    <Border
-                                        Background="{x:Bind SelectedEpisodeDetailAccentSubtleBrush, Mode=OneWay}"
-                                        IsHitTestVisible="False"/>
                                     <FontIcon
                                         Glyph="&#xEC05;"
-                                        FontSize="42"
+                                        FontSize="22"
                                         Opacity="0.35"
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center"/>
                                     <Image
-                                        Source="{x:Bind SelectedEpisodeImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='224'}"
+                                        Source="{x:Bind SelectedEpisodeImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='128'}"
                                         Stretch="UniformToFill"
                                         Visibility="{x:Bind SelectedEpisodeImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                                         behaviors:ImageFallbackBehavior.HideOnError="True"
                                         behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                        behaviors:ImageFallbackBehavior.DecodePixelWidth="224"/>
+                                        behaviors:ImageFallbackBehavior.DecodePixelWidth="128"/>
                                 </Grid>
                             </Border>
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+
+                            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Top">
+                                <TextBlock
+                                    Text="{x:Bind SelectedEpisodeTitle, Mode=OneWay}"
+                                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                                    TextWrapping="WrapWholeWords"
+                                    TextTrimming="CharacterEllipsis"
+                                    MaxLines="2"/>
                                 <HyperlinkButton
                                     Content="{x:Bind SelectedEpisodeShowName, Mode=OneWay}"
                                     Command="{x:Bind OpenSelectedEpisodeShowCommand, Mode=OneWay}"
-                                    Padding="0,0,0,2"
+                                    Padding="0"
+                                    MinHeight="0"
+                                    HorizontalAlignment="Left"
                                     Visibility="{x:Bind HasShowName, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                <TextBlock
-                                    Text="{x:Bind SelectedEpisodeTitle, Mode=OneWay}"
-                                    Style="{StaticResource SubtitleTextBlockStyle}"
-                                    TextWrapping="Wrap"
-                                    MaxLines="3"/>
                                 <TextBlock
                                     Text="{x:Bind SelectedEpisodeMetaLine, Mode=OneWay}"
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    TextWrapping="WrapWholeWords"
-                                    MaxLines="2"
-                                    Margin="0,4,0,0"/>
+                                    TextTrimming="CharacterEllipsis"
+                                    MaxLines="2"/>
                             </StackPanel>
                         </Grid>
 
-                        <!-- Resume progress -->
                         <StackPanel
-                            Spacing="4"
+                            Spacing="3"
                             Visibility="{x:Bind HasResumeProgress, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                             <ProgressBar
                                 Minimum="0"
                                 Maximum="100"
                                 Value="{x:Bind ResumeProgressPercent, Mode=OneWay}"
-                                Height="4"/>
+                                Height="3"/>
                             <TextBlock
                                 Text="{x:Bind SelectedEpisodeResumeText, Mode=OneWay}"
                                 Style="{StaticResource CaptionTextBlockStyle}"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </StackPanel>
 
-                        <!-- Action bar -->
-                        <controls:WrapPanel Orientation="Horizontal" HorizontalSpacing="8" VerticalSpacing="6">
+                        <controls:WrapPanel Orientation="Horizontal" HorizontalSpacing="6" VerticalSpacing="6">
                             <Button
                                 Style="{StaticResource AccentButtonStyle}"
                                 Command="{x:Bind PlaySelectedEpisodeCommand, Mode=OneWay}"
-                                Padding="14,6">
+                                Padding="10,4">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE768;" FontSize="14"/>
+                                    <FontIcon Glyph="&#xE768;" FontSize="12"/>
                                     <TextBlock Text="Play"/>
                                 </StackPanel>
                             </Button>
                             <Button
                                 Click="OpenSelectedEpisodeDetails_Click"
-                                Padding="12,6">
+                                Padding="10,4">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE8A5;" FontSize="14"/>
-                                    <TextBlock Text="View details"/>
+                                    <FontIcon Glyph="&#xE8A5;" FontSize="12"/>
+                                    <TextBlock Text="Open"/>
                                 </StackPanel>
                             </Button>
                             <Button
                                 Command="{x:Bind CopyEpisodeLinkCommand, Mode=OneWay}"
-                                Padding="12,6"
+                                Padding="8,4"
                                 Visibility="{x:Bind HasShareUrl, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                 ToolTipService.ToolTip="Copy episode link">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE71B;" FontSize="14"/>
-                                    <TextBlock Text="Copy link"/>
-                                </StackPanel>
+                                <FontIcon Glyph="&#xE71B;" FontSize="12"/>
                             </Button>
                         </controls:WrapPanel>
 
-                        <!-- Status chips -->
-                        <controls:WrapPanel Orientation="Horizontal" HorizontalSpacing="6" VerticalSpacing="6">
-                            <Border
-                                Style="{StaticResource EpisodeMetaChipBorderStyle}"
-                                Visibility="{x:Bind HasExplicit, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                ToolTipService.ToolTip="Explicit content">
-                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                    <TextBlock
-                                        Text="E"
-                                        FontWeight="SemiBold"
-                                        FontSize="11"
-                                        VerticalAlignment="Center"/>
-                                    <TextBlock
-                                        Text="Explicit"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                            <Border
-                                Style="{StaticResource EpisodeMetaChipBorderStyle}"
-                                Visibility="{x:Bind HasVideo, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                ToolTipService.ToolTip="Includes video">
-                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                    <FontIcon Glyph="&#xE714;" FontSize="11" VerticalAlignment="Center"/>
-                                    <TextBlock
-                                        Text="Video"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                            <Border
-                                Style="{StaticResource EpisodeMetaChipBorderStyle}"
-                                Visibility="{x:Bind HasTranscript, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                ToolTipService.ToolTip="{x:Bind TranscriptLanguagesTooltip, Mode=OneWay}">
-                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                    <FontIcon Glyph="&#xE8D2;" FontSize="11" VerticalAlignment="Center"/>
-                                    <TextBlock
-                                        Text="Transcript"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                            <Border
-                                Style="{StaticResource EpisodeMetaChipBorderStyle}"
-                                Visibility="{x:Bind HasPaywalled, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                ToolTipService.ToolTip="Subscriber-only">
-                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                    <FontIcon Glyph="&#xE785;" FontSize="11" VerticalAlignment="Center"/>
-                                    <TextBlock
-                                        Text="Paywalled"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                            <Border
-                                Style="{StaticResource EpisodeMetaChipBorderStyle}"
-                                Visibility="{x:Bind HasPreviewOnly, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                ToolTipService.ToolTip="Preview only — full episode unavailable">
-                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                    <FontIcon Glyph="&#xE7C3;" FontSize="11" VerticalAlignment="Center"/>
-                                    <TextBlock
-                                        Text="Preview only"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                        </controls:WrapPanel>
-
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-
-                        <Grid x:Name="EpisodeDetailBodyHost"
-                              Loaded="EpisodeDetailBodyHost_Loaded"
-                              Unloaded="EpisodeDetailBodyHost_Unloaded">
-                            <StackPanel x:Name="EpisodeDetailLoadedContent"
-                                        Spacing="18"
-                                        Opacity="0"
-                                        Visibility="Collapsed"
-                                        IsHitTestVisible="False">
-                                <!-- About this episode -->
-                                <StackPanel
-                            Spacing="8"
-                            Visibility="{x:Bind SelectedEpisodeDescription, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <Border Width="3" MinHeight="22" CornerRadius="1.5"
-                                        VerticalAlignment="Stretch"
-                                        Background="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
-                                        <TextBlock Text="About this episode"
-                                           FontWeight="Bold"
-                                           FontSize="18"
-                                           VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                    <appcontrols:HtmlTextBlock
+                        <StackPanel
+                            Spacing="4"
+                            Visibility="{x:Bind HasSelectedEpisodeDescription, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <appcontrols:HtmlTextBlock
                                 Text="{x:Bind SelectedEpisodeDescription, Mode=OneWay}"
-                                MaxLines="4"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Loaded="EpisodeAboutBlock_Loaded"
-                                Unloaded="EpisodeAboutBlock_Unloaded"/>
-                                    <HyperlinkButton
+                                MaxLines="6"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <HyperlinkButton
                                 Content="Show more"
-                                Padding="0,2,0,0"
-                                Click="EpisodeAboutShowMore_Click"
-                                Loaded="EpisodeAboutShowMoreButton_Loaded"
-                                Unloaded="EpisodeAboutShowMoreButton_Unloaded"/>
-                                </StackPanel>
-
-                                <!-- More like this -->
-                                <StackPanel
-                            Spacing="8"
-                            Visibility="{x:Bind ShowEpisodeRecommendations, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <Border Width="3" MinHeight="22" CornerRadius="1.5"
-                                        VerticalAlignment="Stretch"
-                                        Background="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
-                                        <TextBlock Text="More like this"
-                                           FontWeight="Bold"
-                                           FontSize="18"
-                                           VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                    <ItemsRepeater
-                                ItemsSource="{x:Bind EpisodeRecommendations, Mode=OneWay}"
-                                ItemTemplate="{StaticResource EpisodeRecommendationTemplate}">
-                                        <ItemsRepeater.Layout>
-                                            <StackLayout Orientation="Vertical" Spacing="10"/>
-                                        </ItemsRepeater.Layout>
-                                    </ItemsRepeater>
-                                </StackPanel>
-
-                                <!-- Comments — shared CommentsList control. CompactMode=False so
-                                     replies + reactions render in full. SubmitRequested + reactions
-                                     events route through code-behind to handle the consent gate
-                                     and the shared reactions dialog. -->
-                                <comments:CommentsList
-                                    x:Name="EpisodeCommentsList"
-                                    Visibility="{x:Bind ShowEpisodeComments, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                    HeaderText="{x:Bind CommentsCountLabel, Mode=OneWay}"
-                                    Comments="{x:Bind EpisodeComments, Mode=OneWay}"
-                                    Draft="{x:Bind CommentDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                    CharacterCount="{x:Bind CommentCharacterCount, Mode=OneWay}"
-                                    StatusText="{x:Bind CommentComposerStatus, Mode=OneWay}"
-                                    IsSubmitEnabled="{x:Bind CanSubmitComment, Mode=OneWay}"
-                                    HasNoComments="{x:Bind HasNoEpisodeComments, Mode=OneWay}"
-                                    IsLoadingMore="{x:Bind IsLoadingMoreComments, Mode=OneWay}"
-                                    HasMoreComments="{x:Bind HasMoreComments, Mode=OneWay}"
-                                    LoadMoreCommand="{x:Bind LoadMoreCommentsCommand, Mode=OneWay}"
-                                    SubmitRequested="EpisodeCommentsList_SubmitRequested"
-                                    ShowReactionsRequested="EpisodeCommentsList_ShowReactionsRequested"
-                                    ShowReplyReactionsRequested="EpisodeCommentsList_ShowReplyReactionsRequested"
-                                    ReplySubmitRequested="EpisodeCommentsList_ReplySubmitRequested"/>
-                            </StackPanel>
-
-                            <StackPanel x:Name="EpisodeDetailLoadingSkeleton"
-                                        Spacing="18"
-                                        Opacity="0"
-                                        Visibility="Collapsed"
-                                        IsHitTestVisible="False">
-                                <StackPanel Spacing="8">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <Border Width="3"
-                                                MinHeight="22"
-                                                CornerRadius="1.5"
-                                                VerticalAlignment="Stretch"
-                                                Background="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
-                                        <controls:Shimmer Width="156"
-                                                          Height="20"
-                                                          CornerRadius="4"/>
-                                    </StackPanel>
-                                    <StackPanel Spacing="7">
-                                        <controls:Shimmer Height="12"
-                                                          CornerRadius="3"
-                                                          HorizontalAlignment="Stretch"/>
-                                        <controls:Shimmer Height="12"
-                                                          CornerRadius="3"
-                                                          HorizontalAlignment="Stretch"
-                                                          Margin="0,0,42,0"/>
-                                        <controls:Shimmer Height="12"
-                                                          CornerRadius="3"
-                                                          HorizontalAlignment="Stretch"
-                                                          Margin="0,0,118,0"/>
-                                        <controls:Shimmer Width="72"
-                                                          Height="14"
-                                                          CornerRadius="3"
-                                                          HorizontalAlignment="Left"
-                                                          Margin="0,2,0,0"/>
-                                    </StackPanel>
-                                </StackPanel>
-
-                                <StackPanel Spacing="8">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <Border Width="3"
-                                                MinHeight="22"
-                                                CornerRadius="1.5"
-                                                VerticalAlignment="Stretch"
-                                                Background="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
-                                        <controls:Shimmer Width="128"
-                                                          Height="20"
-                                                          CornerRadius="4"/>
-                                    </StackPanel>
-                                    <Grid Padding="0,6" ColumnSpacing="10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="44"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <controls:Shimmer Grid.Column="0"
-                                                          Width="44"
-                                                          Height="44"
-                                                          CornerRadius="6"/>
-                                        <StackPanel Grid.Column="1"
-                                                    Spacing="7"
-                                                    VerticalAlignment="Center">
-                                            <controls:Shimmer Height="13"
-                                                              CornerRadius="3"
-                                                              HorizontalAlignment="Stretch"
-                                                              Margin="0,0,26,0"/>
-                                            <controls:Shimmer Width="210"
-                                                              Height="11"
-                                                              CornerRadius="3"
-                                                              HorizontalAlignment="Left"/>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Grid Padding="0,6" ColumnSpacing="10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="44"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <controls:Shimmer Grid.Column="0"
-                                                          Width="44"
-                                                          Height="44"
-                                                          CornerRadius="6"/>
-                                        <StackPanel Grid.Column="1"
-                                                    Spacing="7"
-                                                    VerticalAlignment="Center">
-                                            <controls:Shimmer Height="13"
-                                                              CornerRadius="3"
-                                                              HorizontalAlignment="Stretch"
-                                                              Margin="0,0,72,0"/>
-                                            <controls:Shimmer Width="180"
-                                                              Height="11"
-                                                              CornerRadius="3"
-                                                              HorizontalAlignment="Left"/>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Grid Padding="0,6" ColumnSpacing="10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="44"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <controls:Shimmer Grid.Column="0"
-                                                          Width="44"
-                                                          Height="44"
-                                                          CornerRadius="6"/>
-                                        <StackPanel Grid.Column="1"
-                                                    Spacing="7"
-                                                    VerticalAlignment="Center">
-                                            <controls:Shimmer Height="13"
-                                                              CornerRadius="3"
-                                                              HorizontalAlignment="Stretch"
-                                                              Margin="0,0,46,0"/>
-                                            <controls:Shimmer Width="230"
-                                                              Height="11"
-                                                              CornerRadius="3"
-                                                              HorizontalAlignment="Left"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </StackPanel>
-
-                                <StackPanel Spacing="10">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <Border Width="3"
-                                                MinHeight="22"
-                                                CornerRadius="1.5"
-                                                VerticalAlignment="Stretch"
-                                                Background="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
-                                        <controls:Shimmer Width="104"
-                                                          Height="20"
-                                                          CornerRadius="4"/>
-                                    </StackPanel>
-                                    <controls:Shimmer Height="64"
-                                                      CornerRadius="6"
-                                                      HorizontalAlignment="Stretch"/>
-                                    <Grid ColumnSpacing="8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="88"/>
-                                        </Grid.ColumnDefinitions>
-                                        <controls:Shimmer Grid.Column="0"
-                                                          Width="44"
-                                                          Height="12"
-                                                          CornerRadius="3"
-                                                          HorizontalAlignment="Left"
-                                                          VerticalAlignment="Center"/>
-                                        <controls:Shimmer Grid.Column="1"
-                                                          Height="36"
-                                                          CornerRadius="6"/>
-                                    </Grid>
-                                    <Grid Padding="0,10" ColumnSpacing="12">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="36"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <controls:Shimmer Grid.Column="0"
-                                                          Width="36"
-                                                          Height="36"
-                                                          CornerRadius="18"/>
-                                        <StackPanel Grid.Column="1" Spacing="7">
-                                            <controls:Shimmer Width="220"
-                                                              Height="11"
-                                                              CornerRadius="3"
-                                                              HorizontalAlignment="Left"/>
-                                            <controls:Shimmer Height="13"
-                                                              CornerRadius="3"
-                                                              HorizontalAlignment="Stretch"
-                                                              Margin="0,0,54,0"/>
-                                            <controls:Shimmer Height="13"
-                                                              CornerRadius="3"
-                                                              HorizontalAlignment="Stretch"
-                                                              Margin="0,0,112,0"/>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Grid Padding="0,10" ColumnSpacing="12">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="36"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <controls:Shimmer Grid.Column="0"
-                                                          Width="36"
-                                                          Height="36"
-                                                          CornerRadius="18"/>
-                                        <StackPanel Grid.Column="1" Spacing="7">
-                                            <controls:Shimmer Width="180"
-                                                              Height="11"
-                                                              CornerRadius="3"
-                                                              HorizontalAlignment="Left"/>
-                                            <controls:Shimmer Height="13"
-                                                              CornerRadius="3"
-                                                              HorizontalAlignment="Stretch"
-                                                              Margin="0,0,28,0"/>
-                                            <controls:Shimmer Height="13"
-                                                              CornerRadius="3"
-                                                              HorizontalAlignment="Stretch"
-                                                              Margin="0,0,154,0"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </StackPanel>
-                            </StackPanel>
-                        </Grid>
+                                Padding="0"
+                                MinHeight="0"
+                                HorizontalAlignment="Left"
+                                Click="OpenSelectedEpisodeDetails_Click"/>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollView>
-
-                <Grid
-                    x:Name="EpisodeDetailShyHeaderHost"
-                    Canvas.ZIndex="5"
-                    VerticalAlignment="Top"
-                    Margin="0,0,16,0"
-                    Visibility="{x:Bind HasSelectedEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <Grid
-                        x:Name="EpisodeDetailShyHeaderCard"
-                        MinHeight="58"
-                        Opacity="0"
-                        Translation="0,-8,0"
-                        Visibility="Collapsed">
-                        <SystemBackdropElement
-                            CornerRadius="14"
-                            HorizontalAlignment="Stretch"
-                            VerticalAlignment="Stretch"
-                            IsHitTestVisible="False">
-                            <SystemBackdropElement.SystemBackdrop>
-                                <MicaBackdrop Kind="Base" />
-                            </SystemBackdropElement.SystemBackdrop>
-                        </SystemBackdropElement>
-
-                        <Border
-                            CornerRadius="14"
-                            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
-                            Opacity="0.36"/>
-
-                        <Border
-                            CornerRadius="14"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1">
-                            <Border.Shadow>
-                                <ThemeShadow/>
-                            </Border.Shadow>
-                        </Border>
-
-                        <Grid Padding="10,8" ColumnSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-
-                            <Border
-                                Grid.Column="0"
-                                Width="40"
-                                Height="40"
-                                CornerRadius="8"
-                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                                <Grid>
-                                    <FontIcon
-                                        Glyph="&#xEC05;"
-                                        FontSize="16"
-                                        Opacity="0.35"
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"/>
-                                    <Image
-                                        Source="{x:Bind SelectedEpisodeImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='80'}"
-                                        Stretch="UniformToFill"
-                                        Visibility="{x:Bind SelectedEpisodeImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                                        behaviors:ImageFallbackBehavior.HideOnError="True"
-                                        behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                        behaviors:ImageFallbackBehavior.DecodePixelWidth="80"/>
-                                </Grid>
-                            </Border>
-
-                            <StackPanel
-                                Grid.Column="1"
-                                VerticalAlignment="Center"
-                                Spacing="1">
-                                <TextBlock
-                                    Text="{x:Bind SelectedEpisodeTitle, Mode=OneWay}"
-                                    FontSize="14"
-                                    FontWeight="SemiBold"
-                                    TextTrimming="CharacterEllipsis"
-                                    MaxLines="1"/>
-                                <TextBlock
-                                    Text="{x:Bind SelectedEpisodeShowName, Mode=OneWay}"
-                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    TextTrimming="CharacterEllipsis"
-                                    MaxLines="1"
-                                    Visibility="{x:Bind HasShowName, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                            </StackPanel>
-
-                            <Button
-                                Grid.Column="2"
-                                Style="{StaticResource AccentButtonStyle}"
-                                Command="{x:Bind PlaySelectedEpisodeCommand, Mode=OneWay}"
-                                Padding="12,7"
-                                CornerRadius="18"
-                                ToolTipService.ToolTip="Play episode">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE768;" FontSize="12"/>
-                                    <TextBlock Text="Play" FontSize="13"/>
-                                </StackPanel>
-                            </Button>
-                        </Grid>
-                    </Grid>
-                </Grid>
 
                 <StackPanel
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    Spacing="10"
+                    Spacing="8"
                     Visibility="{x:Bind HasSelectedEpisode, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                    <FontIcon Glyph="&#xE8D6;" FontSize="38" Opacity="0.35"/>
+                    <FontIcon Glyph="&#xE8D6;" FontSize="28" Opacity="0.35"/>
                     <TextBlock
                         Text="Select an episode"
                         Style="{StaticResource BodyStrongTextBlockStyle}"
                         HorizontalAlignment="Center"/>
-                    <TextBlock
-                        Text="Episode details, recommendations, and comments appear here."
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        TextAlignment="Center"
-                        TextWrapping="Wrap"
-                        MaxWidth="260"/>
                 </StackPanel>
             </Grid>
         </DataTemplate>
@@ -1047,32 +298,53 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="PodcastShowsColumn" Width="2*" MinWidth="220" MaxWidth="420"/>
+                <ColumnDefinition x:Name="PodcastShowsColumn" Width="260" MinWidth="220" MaxWidth="340"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition x:Name="PodcastEpisodesColumn" Width="3*" MinWidth="320"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition x:Name="PodcastDetailsColumn" Width="3*" MinWidth="300"/>
+                <ColumnDefinition x:Name="PodcastDetailsColumn" Width="320" MinWidth="280" MaxWidth="360"/>
             </Grid.ColumnDefinitions>
 
-            <Border
-                x:Name="WideBreadcrumbContainer"
+            <Grid
                 Grid.Row="0"
                 Grid.ColumnSpan="5"
                 Canvas.ZIndex="2"
                 Margin="0,0,0,12"
-                Padding="10,6"
-                HorizontalAlignment="Left"
-                CornerRadius="18"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <FontIcon Glyph="&#xEC05;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <BreadcrumbBar
-                        ItemsSource="{x:Bind ViewModel.BreadcrumbItems, Mode=OneWay}"
-                        ItemClicked="BreadcrumbBar_ItemClicked"/>
-                </StackPanel>
-            </Border>
+                ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Border
+                    x:Name="WideBreadcrumbContainer"
+                    Grid.Column="0"
+                    Padding="10,6"
+                    HorizontalAlignment="Left"
+                    CornerRadius="18"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xEC05;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <BreadcrumbBar
+                            ItemsSource="{x:Bind ViewModel.BreadcrumbItems, Mode=OneWay}"
+                            ItemClicked="BreadcrumbBar_ItemClicked"/>
+                    </StackPanel>
+                </Border>
+
+                <Button
+                    Grid.Column="1"
+                    Padding="12,6"
+                    HorizontalAlignment="Right"
+                    Click="BrowsePodcasts_Click"
+                    ToolTipService.ToolTip="Browse podcasts">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <FontIcon Glyph="&#xE71B;" FontSize="14"/>
+                        <TextBlock Text="Browse podcasts"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
 
             <Grid
                 Grid.Row="1"
@@ -1112,7 +384,70 @@
                     SelectedItem="{x:Bind ViewModel.SelectedShow, Mode=TwoWay}"
                     ItemTemplate="{StaticResource PodcastShowItemTemplate}"
                     SelectionMode="Single"
-                    HorizontalContentAlignment="Stretch"/>
+                    HorizontalContentAlignment="Stretch"
+                    Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+
+                <StackPanel
+                    Grid.Row="1"
+                    Spacing="6"
+                    Padding="6,0,6,0"
+                    Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid ColumnSpacing="8" Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="32"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <controls:Shimmer Grid.Column="0" Width="32" Height="32" CornerRadius="5"/>
+                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                            <controls:Shimmer Width="160" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                            <controls:Shimmer Width="100" Height="9" CornerRadius="3" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="32"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <controls:Shimmer Grid.Column="0" Width="32" Height="32" CornerRadius="5"/>
+                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                            <controls:Shimmer Width="140" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                            <controls:Shimmer Width="80" Height="9" CornerRadius="3" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="32"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <controls:Shimmer Grid.Column="0" Width="32" Height="32" CornerRadius="5"/>
+                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                            <controls:Shimmer Width="180" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                            <controls:Shimmer Width="120" Height="9" CornerRadius="3" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="32"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <controls:Shimmer Grid.Column="0" Width="32" Height="32" CornerRadius="5"/>
+                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                            <controls:Shimmer Width="120" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                            <controls:Shimmer Width="90" Height="9" CornerRadius="3" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="32"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <controls:Shimmer Grid.Column="0" Width="32" Height="32" CornerRadius="5"/>
+                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                            <controls:Shimmer Width="150" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                            <controls:Shimmer Width="100" Height="9" CornerRadius="3" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
             </Grid>
 
             <appcontrols:GridSplitter
@@ -1133,107 +468,101 @@
 
                 <Border
                     Grid.Row="0"
-                    Margin="0,0,0,16"
-                    CornerRadius="14"
+                    Margin="0,0,0,10"
+                    CornerRadius="8"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1">
+                    BorderThickness="1"
+                    Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                     <Grid>
                         <Border
-                            CornerRadius="14"
-                            Background="{x:Bind ViewModel.SelectedShowCardBrush, Mode=OneWay}"
+                            CornerRadius="8"
+                            Background="Transparent"
                             IsHitTestVisible="False"/>
                         <Border
-                            CornerRadius="14"
-                            BorderBrush="{x:Bind ViewModel.SelectedShowCardBorderBrush, Mode=OneWay}"
+                            CornerRadius="8"
+                            BorderBrush="Transparent"
                             BorderThickness="1"
                             IsHitTestVisible="False"/>
                         <Border
                             Width="4"
                             HorizontalAlignment="Left"
-                            CornerRadius="14,0,0,14"
-                            Background="{x:Bind ViewModel.SelectedShowAccentBrush, Mode=OneWay}"
+                            CornerRadius="8,0,0,8"
+                            Background="Transparent"
                             IsHitTestVisible="False"/>
-                        <Grid Padding="14" ColumnSpacing="12">
+                        <Grid Padding="10" ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="82"/>
+                                <ColumnDefinition Width="48"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
                     <Border
                         x:Name="SelectedShowCoverContainer"
                         Grid.Column="0"
-                        Width="82"
-                        Height="82"
-                        CornerRadius="8"
+                        Width="48"
+                        Height="48"
+                        CornerRadius="6"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                         <Grid>
                             <Border
-                                Background="{x:Bind ViewModel.SelectedShowAccentSubtleBrush, Mode=OneWay}"
+                                Background="Transparent"
                                 IsHitTestVisible="False"/>
                             <FontIcon
                                 Glyph="{x:Bind ViewModel.SelectedShowPlaceholderGlyph, Mode=OneWay}"
-                                FontSize="34"
+                                FontSize="20"
                                 Opacity="0.35"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"/>
                             <Image
-                                Source="{x:Bind ViewModel.SelectedShowImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='164'}"
+                                Source="{x:Bind ViewModel.SelectedShowImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='96'}"
                                 Stretch="UniformToFill"
                                 Visibility="{x:Bind ViewModel.SelectedShowImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                                 behaviors:ImageFallbackBehavior.HideOnError="True"
                                 behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                behaviors:ImageFallbackBehavior.DecodePixelWidth="164"/>
+                                behaviors:ImageFallbackBehavior.DecodePixelWidth="96"/>
                         </Grid>
                     </Border>
 
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
                         <TextBlock
                             Text="{x:Bind ViewModel.SelectedShowName, Mode=OneWay}"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
+                            Style="{StaticResource BodyStrongTextBlockStyle}"
                             TextTrimming="CharacterEllipsis"
-                            MaxLines="2"/>
+                            MaxLines="1"/>
                         <TextBlock
                             Text="{x:Bind ViewModel.SelectedShowMetadata, Mode=OneWay}"
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             TextTrimming="CharacterEllipsis"
                             MaxLines="1"/>
-                        <TextBlock
-                            Text="{x:Bind ViewModel.SelectedShowDescription, Mode=OneWay}"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            TextTrimming="CharacterEllipsis"
-                            MaxLines="2"
-                            Visibility="{x:Bind ViewModel.SelectedShowDescription, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
 
-                        <controls:WrapPanel Orientation="Horizontal" HorizontalSpacing="8" VerticalSpacing="6" Margin="0,8,0,0">
+                        <controls:WrapPanel Orientation="Horizontal" HorizontalSpacing="6" VerticalSpacing="6" Margin="0,6,0,0">
                             <Button
                                 Style="{StaticResource AccentButtonStyle}"
                                 Command="{x:Bind ViewModel.PlayAllCommand, Mode=OneWay}"
                                 IsEnabled="{x:Bind ViewModel.HasEpisodeGroups, Mode=OneWay}"
-                                Padding="12,6">
+                                Padding="10,5">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE768;" FontSize="14"/>
+                                    <FontIcon Glyph="&#xE768;" FontSize="13"/>
                                     <TextBlock Text="Play"/>
                                 </StackPanel>
                             </Button>
                             <Button
                                 Command="{x:Bind ViewModel.ShuffleCommand, Mode=OneWay}"
                                 IsEnabled="{x:Bind ViewModel.HasEpisodeGroups, Mode=OneWay}"
-                                Padding="12,6">
+                                Padding="10,5">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
+                                    <FontIcon Glyph="&#xE8B1;" FontSize="13"/>
                                     <TextBlock Text="Shuffle"/>
                                 </StackPanel>
                             </Button>
                             <Button
                                 Click="OpenSelectedShowDetails_Click"
-                                Padding="12,6"
+                                Padding="10,5"
                                 Visibility="{x:Bind ViewModel.CanOpenSelectedShow, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE8A5;" FontSize="14"/>
-                                    <TextBlock Text="View details"/>
+                                    <FontIcon Glyph="&#xE8A5;" FontSize="13"/>
+                                    <TextBlock Text="Open show"/>
                                 </StackPanel>
                             </Button>
                             <controls:Segmented
@@ -1250,8 +579,35 @@
                     </Grid>
                 </Border>
 
+                <Border
+                    Grid.Row="0"
+                    Margin="0,0,0,10"
+                    CornerRadius="8"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    Padding="10"
+                    Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="48"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <controls:Shimmer Grid.Column="0" Width="48" Height="48" CornerRadius="6"/>
+                        <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                            <controls:Shimmer Width="200" Height="13" CornerRadius="3" HorizontalAlignment="Left"/>
+                            <controls:Shimmer Width="120" Height="10" CornerRadius="3" HorizontalAlignment="Left"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                                <controls:Shimmer Width="64" Height="22" CornerRadius="4"/>
+                                <controls:Shimmer Width="72" Height="22" CornerRadius="4"/>
+                                <controls:Shimmer Width="120" Height="22" CornerRadius="4"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
                 <Grid Grid.Row="1">
-                    <ScrollView Visibility="{x:Bind ViewModel.IsSelectedShowArchiveLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                    <ScrollView Visibility="{x:Bind ViewModel.ShowEpisodesShimmer, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                         <ItemsRepeater
                             ItemsSource="{x:Bind ViewModel.EpisodeGroups, Mode=OneWay}"
                             ItemTemplate="{StaticResource EpisodeGroupTemplate}">
@@ -1264,7 +620,7 @@
                     <StackPanel
                         Spacing="12"
                         Padding="0,10,0,0"
-                        Visibility="{x:Bind ViewModel.IsSelectedShowArchiveLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        Visibility="{x:Bind ViewModel.ShowEpisodesShimmer, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="36"/>
@@ -1313,27 +669,48 @@
                 Visibility="{x:Bind ViewModel.ShowWidePodcastBrowser, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                 ResizeCompleted="WideColumnSplitter_ResizeCompleted"/>
 
-            <ContentControl
+            <Grid
                 Grid.Row="1"
                 Grid.Column="4"
-                Content="{x:Bind ViewModel}"
-                ContentTemplate="{StaticResource EpisodeDetailPanelTemplate}"
-                Visibility="{x:Bind ViewModel.ShowWidePodcastBrowser, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Stretch"
-                HorizontalContentAlignment="Stretch"
-                VerticalContentAlignment="Stretch"/>
+                Visibility="{x:Bind ViewModel.ShowWidePodcastBrowser, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <ContentControl
+                    Content="{x:Bind ViewModel}"
+                    ContentTemplate="{StaticResource EpisodeDetailPanelTemplate}"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    VerticalContentAlignment="Stretch"
+                    Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
 
-            <Frame
-                x:Name="EmbeddedDetailFrame"
-                Grid.Row="0"
-                Grid.RowSpan="2"
-                Grid.ColumnSpan="5"
-                Canvas.ZIndex="1"
-                Visibility="{x:Bind ViewModel.ShowWideExpandedDetail, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                Navigated="EmbeddedDetailFrame_Navigated"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Stretch"/>
+                <StackPanel
+                    Spacing="10"
+                    Padding="0,0,2,0"
+                    Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="64"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <controls:Shimmer Grid.Column="0" Width="64" Height="64" CornerRadius="6"/>
+                        <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Top">
+                            <controls:Shimmer Width="220" Height="14" CornerRadius="3" HorizontalAlignment="Left"/>
+                            <controls:Shimmer Width="180" Height="14" CornerRadius="3" HorizontalAlignment="Left"/>
+                            <controls:Shimmer Width="120" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                            <controls:Shimmer Width="160" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                        <controls:Shimmer Width="60" Height="26" CornerRadius="4"/>
+                        <controls:Shimmer Width="64" Height="26" CornerRadius="4"/>
+                        <controls:Shimmer Width="32" Height="26" CornerRadius="4"/>
+                    </StackPanel>
+                    <StackPanel Spacing="6" Margin="0,8,0,0">
+                        <controls:Shimmer Height="11" HorizontalAlignment="Stretch" CornerRadius="3"/>
+                        <controls:Shimmer Height="11" HorizontalAlignment="Stretch" CornerRadius="3"/>
+                        <controls:Shimmer Width="220" Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
         </Grid>
 
         <Grid
@@ -1343,23 +720,44 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
-            <Border
-                x:Name="NarrowBreadcrumbContainer"
+            <Grid
                 Grid.Row="0"
                 Margin="0,0,0,16"
-                Padding="10,6"
-                HorizontalAlignment="Left"
-                CornerRadius="18"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <FontIcon Glyph="&#xEC05;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <BreadcrumbBar
-                        ItemsSource="{x:Bind ViewModel.BreadcrumbItems, Mode=OneWay}"
-                        ItemClicked="BreadcrumbBar_ItemClicked"/>
-                </StackPanel>
-            </Border>
+                ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Border
+                    x:Name="NarrowBreadcrumbContainer"
+                    Grid.Column="0"
+                    Padding="10,6"
+                    HorizontalAlignment="Left"
+                    CornerRadius="18"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xEC05;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <BreadcrumbBar
+                            ItemsSource="{x:Bind ViewModel.BreadcrumbItems, Mode=OneWay}"
+                            ItemClicked="BreadcrumbBar_ItemClicked"/>
+                    </StackPanel>
+                </Border>
+
+                <Button
+                    Grid.Column="1"
+                    Padding="10,6"
+                    HorizontalAlignment="Right"
+                    Click="BrowsePodcasts_Click"
+                    ToolTipService.ToolTip="Browse podcasts">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE71B;" FontSize="14"/>
+                        <TextBlock Text="Browse"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
 
             <Grid Grid.Row="1">
                 <Grid
@@ -1397,23 +795,6 @@
                     </ScrollView>
                 </Grid>
 
-                <Grid
-                    Visibility="{x:Bind ViewModel.ShowNarrowEpisodeDetailsStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <ContentControl
-                        Content="{x:Bind ViewModel}"
-                        ContentTemplate="{StaticResource EpisodeDetailPanelTemplate}"
-                        HorizontalAlignment="Stretch"
-                        VerticalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        VerticalContentAlignment="Stretch"/>
-                </Grid>
-
-                <Frame
-                    x:Name="EmbeddedDetailFrameNarrow"
-                    Visibility="{x:Bind ViewModel.ShowNarrowExpandedDetail, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                    Navigated="EmbeddedDetailFrame_Navigated"
-                    HorizontalAlignment="Stretch"
-                    VerticalAlignment="Stretch"/>
             </Grid>
         </Grid>
     </Grid>
