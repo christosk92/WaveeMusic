@@ -1,0 +1,118 @@
+name: Release MSIX
+
+# Builds Wavee.UI.WinUI for x64 + ARM64, signs the resulting MSIX packages
+# with Azure Artifact Signing, and uploads them as workflow artifacts.
+#
+# Trigger:
+#   - tag push matching v*  (e.g. v0.1.0, v1.2.3-beta)
+#   - manual workflow_dispatch (for dry runs)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-sign:
+    name: Build & sign (${{ matrix.platform }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x64, arm64]
+
+    env:
+      DOTNET_NOLOGO: 1
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      Configuration: Release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Set release Publisher in manifest
+        shell: pwsh
+        run: |
+          ./signing/Set-Publisher.ps1 -PublisherSubject "${{ secrets.RELEASE_PUBLISHER_SUBJECT }}"
+
+      - name: Restore
+        run: dotnet restore Wavee.UI.WinUI/Wavee.UI.WinUI.csproj
+
+      - name: Build & package MSIX
+        shell: pwsh
+        run: |
+          msbuild Wavee.UI.WinUI/Wavee.UI.WinUI.csproj `
+            /p:Configuration=Release `
+            /p:Platform=${{ matrix.platform }} `
+            /p:GenerateAppxPackageOnBuild=true `
+            /p:AppxPackageSigningEnabled=false `
+            /p:AppxBundle=Never `
+            /p:AppxPackageDir="$env:GITHUB_WORKSPACE\AppPackages\\" `
+            /restore
+
+      - name: Build Artifact Signing metadata
+        shell: pwsh
+        run: |
+          $meta = @{
+            Endpoint               = "${{ secrets.AZURE_ARTIFACT_SIGNING_ENDPOINT }}"
+            CodeSigningAccountName = "${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT }}"
+            CertificateProfileName = "${{ secrets.AZURE_ARTIFACT_SIGNING_PROFILE }}"
+          } | ConvertTo-Json
+          New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\signing" | Out-Null
+          Set-Content -Encoding utf8 -Path "$env:GITHUB_WORKSPACE\signing\metadata.json" -Value $meta
+
+      - name: Sign MSIX with Azure Artifact Signing
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\AppPackages
+          files-folder-filter: msix
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Upload signed MSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: wavee-${{ matrix.platform }}-msix
+          path: AppPackages/**/*.msix
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    # Only attach to a GitHub Release when triggered by a tag push.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-sign
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download signed artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*.msix
+          generate_release_notes: true
+          draft: true

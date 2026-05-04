@@ -186,3 +186,13 @@ scripts/
 docs/superpowers/specs/
 .dotnet-cli/
 .claude/
+
+# Signing — local Artifact Signing config and any code-signing certificates.
+# metadata.json carries the developer's Azure account/profile names; *.pfx
+# and *.cer are private/public keys for self-signed dev certs. Never commit.
+signing/metadata.json
+*.pfx
+*.cer
+
+# Local signed-MSIX output staging — large per-build artifacts (100MB+).
+.signed-msix/
