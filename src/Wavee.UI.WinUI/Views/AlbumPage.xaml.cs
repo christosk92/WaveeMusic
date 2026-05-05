@@ -115,8 +115,12 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         _logger?.LogDebug(
             "[xfade][album:{Id}] unloaded showing={Showing} scheduled={Scheduled}",
             XfadeLog.Tag(ViewModel.AlbumId), _showingContent, _crossfadeScheduled);
+        // Under NavigationCacheMode=Required the Page is reused across N
+        // navigations and the (singleton-via-cache) VM lives with it — keep the
+        // constructor's PropertyChanged subscription attached for the page's
+        // lifetime. Unhooking here would leave the cached page deaf to the next
+        // IsLoading=false transition on cold cache, stuck on shimmer.
         _isNavigatingAway = true;
-        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
     }
 
     public void Dispose()

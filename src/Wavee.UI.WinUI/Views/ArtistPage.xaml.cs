@@ -696,16 +696,16 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     private void ArtistPage_Unloaded(object sender, RoutedEventArgs e)
     {
-        // The earlier "VM is transient, handlers don't leak" comment was wrong:
-        // ArtistViewModel's constructor used to subscribe to long-lived singleton
-        // services (`_likeService.SaveStateChanged`, `_playbackStateService.PropertyChanged`),
-        // so the singleton rooted the VM, and `VM.PropertyChanged += ViewModel_PropertyChanged`
-        // rooted the Page through the delegate's Target. Mirror AlbumPage_Unloaded:
-        // unhook the page-side handlers on every Unloaded so the cycle is broken
-        // even if Dispose() doesn't run for some reason.
+        // Under NavigationCacheMode=Required, the Page is reused across N
+        // navigations and the (singleton-via-cache) ViewModel lives with it,
+        // so the constructor's `ViewModel.PropertyChanged += ...` registration
+        // is correct for the page's lifetime — do NOT unhook here. Earlier
+        // we mirrored AlbumPage_Unloaded's unhook to break a leak chain that
+        // assumed Disabled cache (one VM per nav); under Required cache that
+        // unhook ran on X→Y nav and ArtistPage_Loaded (self-removed after the
+        // first Loaded) never re-attached on back-to-X, leaving the page deaf
+        // to IsLoading=false transitions and stuck on shimmer for cold cache.
         _isNavigatingAway = true;
-        ViewModel.ContentChanged -= ViewModel_ContentChanged;
-        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         CancelResizeDebounce();
         CollapseExpandedAlbum();
         TeardownWatchFeed();
