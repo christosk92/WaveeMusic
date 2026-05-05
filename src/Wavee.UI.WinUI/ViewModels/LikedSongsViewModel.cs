@@ -145,8 +145,25 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
             ApplyFilterAndSort();
         };
 
+        AttachLongLivedServices();
+    }
+
+    private bool _longLivedAttached;
+
+    private void AttachLongLivedServices()
+    {
+        if (_longLivedAttached) return;
+        _longLivedAttached = true;
         _libraryDataService.DataChanged += OnLibraryDataChanged;
         _descriptorFetcher.FetchCompleted += OnDescriptorFetchCompleted;
+    }
+
+    private void DetachLongLivedServices()
+    {
+        if (!_longLivedAttached) return;
+        _longLivedAttached = false;
+        _libraryDataService.DataChanged -= OnLibraryDataChanged;
+        _descriptorFetcher.FetchCompleted -= OnDescriptorFetchCompleted;
     }
 
     private void OnDescriptorFetchCompleted(object? sender, EventArgs e)
@@ -636,8 +653,7 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
             return;
 
         _disposed = true;
-        _libraryDataService.DataChanged -= OnLibraryDataChanged;
-        _descriptorFetcher.FetchCompleted -= OnDescriptorFetchCompleted;
+        DetachLongLivedServices();
         _searchDebounceTimer.Stop();
     }
 

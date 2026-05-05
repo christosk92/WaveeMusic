@@ -313,13 +313,33 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
+        AttachLongLivedServices();
+    }
+
+    // Long-lived singleton subscriptions are attached lazily and detached on
+    // Dispose so the (Transient) VM is not pinned across navigations.
+    private bool _longLivedAttached;
+
+    private void AttachLongLivedServices()
+    {
+        if (_longLivedAttached) return;
+        _longLivedAttached = true;
         _playbackStateService.PropertyChanged += OnPlaybackStateChanged;
         _libraryDataService.PodcastEpisodeProgressChanged += OnPodcastEpisodeProgressChanged;
+    }
+
+    private void DetachLongLivedServices()
+    {
+        if (!_longLivedAttached) return;
+        _longLivedAttached = false;
+        _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
+        _libraryDataService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
     }
 
     /// <summary>Entry-point from <c>EpisodePage.OnNavigatedTo</c>.</summary>
     public void Activate(EpisodeNavigationParameter parameter)
     {
+        AttachLongLivedServices();
         if (parameter is null || string.IsNullOrWhiteSpace(parameter.EpisodeUri))
             return;
 
@@ -941,8 +961,7 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         _loadCts?.Dispose();
         _loadCts = null;
 
-        _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
-        _libraryDataService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
+        DetachLongLivedServices();
 
         Chapters.Clear();
         MoreFromShow.Clear();

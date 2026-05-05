@@ -397,9 +397,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         _logger = logger;
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
-        if (_likeService != null)
-            _likeService.SaveStateChanged += OnSaveStateChanged;
-        _playbackStateService.PropertyChanged += OnPlaybackStateChanged;
+        AttachLongLivedServices();
 
         SelectedTopTracks.CollectionChanged += (_, _) =>
         {
@@ -431,6 +429,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     public void Initialize(string artistId)
     {
+        AttachLongLivedServices();
+
         if (ArtistId != null && ArtistId != artistId)
         {
             ResetForNewArtist();
@@ -464,8 +464,32 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     /// </summary>
     public void Deactivate()
     {
+        DetachLongLivedServices();
         _subscriptions?.Dispose();
         _subscriptions = null;
+    }
+
+    // Long-lived singleton subscriptions are attached lazily on first use and
+    // detached on Hibernate so the (Transient) VM is not pinned by the singleton
+    // services' invocation lists across navigations. Idempotent in both directions.
+    private bool _longLivedAttached;
+
+    private void AttachLongLivedServices()
+    {
+        if (_longLivedAttached) return;
+        _longLivedAttached = true;
+        if (_likeService != null)
+            _likeService.SaveStateChanged += OnSaveStateChanged;
+        _playbackStateService.PropertyChanged += OnPlaybackStateChanged;
+    }
+
+    private void DetachLongLivedServices()
+    {
+        if (!_longLivedAttached) return;
+        _longLivedAttached = false;
+        if (_likeService != null)
+            _likeService.SaveStateChanged -= OnSaveStateChanged;
+        _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
     }
 
     /// <summary>
@@ -1638,9 +1662,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             return;
         _disposed = true;
 
-        if (_likeService != null)
-            _likeService.SaveStateChanged -= OnSaveStateChanged;
-        _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
+        DetachLongLivedServices();
 
         _subscriptions?.Dispose();
         _subscriptions = null;

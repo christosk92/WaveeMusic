@@ -195,6 +195,10 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
         _trimmedForNavigationCache = true;
         ViewModel.Hibernate();
         TopResultCard.ColorHex = null;
+        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
+        // sibling is no longer rooted by the (singleton-store-subscribed) VM —
+        // without this the entire page tree is pinned across navigations.
+        Bindings?.StopTracking();
     }
 
     public void RestoreFromNavigationCache()
@@ -203,6 +207,7 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
             return;
 
         _trimmedForNavigationCache = false;
+        Bindings?.Update();
         _ = ViewModel.ResumeFromHibernateAsync();
     }
 

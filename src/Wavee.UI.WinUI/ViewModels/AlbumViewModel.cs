@@ -536,14 +536,34 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _logger = logger;
 
-        if (_likeService != null)
-            _likeService.SaveStateChanged += OnSaveStateChanged;
+        AttachLongLivedServices();
 
         Diagnostics.LiveInstanceTracker.Register(this);
     }
 
+    // Long-lived singleton subscriptions are attached lazily and detached on
+    // Hibernate so the (Transient) VM is not pinned by singleton invocation lists.
+    private bool _longLivedAttached;
+
+    private void AttachLongLivedServices()
+    {
+        if (_longLivedAttached) return;
+        _longLivedAttached = true;
+        if (_likeService != null)
+            _likeService.SaveStateChanged += OnSaveStateChanged;
+    }
+
+    private void DetachLongLivedServices()
+    {
+        if (!_longLivedAttached) return;
+        _longLivedAttached = false;
+        if (_likeService != null)
+            _likeService.SaveStateChanged -= OnSaveStateChanged;
+    }
+
     public void Initialize(string albumId, bool preserveHeaderPrefill = false)
     {
+        AttachLongLivedServices();
         var branch = AlbumId != albumId ? "reset" : "same";
         _logger?.LogDebug(
             "[xfade][album-vm:{Id}] init incoming={Incoming} current={Current} branch={Branch}",
@@ -630,6 +650,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
     public void Deactivate()
     {
+        DetachLongLivedServices();
         _subscriptions?.Dispose();
         _subscriptions = null;
     }
@@ -1226,9 +1247,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         _disposed = true;
 
         Deactivate();
-
-        if (_likeService != null)
-            _likeService.SaveStateChanged -= OnSaveStateChanged;
+        DetachLongLivedServices();
 
         _allTracks.Clear();
         FilteredTracks = Array.Empty<LazyTrackItem>();

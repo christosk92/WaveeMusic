@@ -696,10 +696,16 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     private void ArtistPage_Unloaded(object sender, RoutedEventArgs e)
     {
-        // Only tear down ephemeral resources. ViewModel subscriptions stay alive
-        // because the page may be re-attached from navigation cache. Page and
-        // VM share lifetime (VM is transient), so the handlers don't leak.
+        // The earlier "VM is transient, handlers don't leak" comment was wrong:
+        // ArtistViewModel's constructor used to subscribe to long-lived singleton
+        // services (`_likeService.SaveStateChanged`, `_playbackStateService.PropertyChanged`),
+        // so the singleton rooted the VM, and `VM.PropertyChanged += ViewModel_PropertyChanged`
+        // rooted the Page through the delegate's Target. Mirror AlbumPage_Unloaded:
+        // unhook the page-side handlers on every Unloaded so the cycle is broken
+        // even if Dispose() doesn't run for some reason.
         _isNavigatingAway = true;
+        ViewModel.ContentChanged -= ViewModel_ContentChanged;
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         CancelResizeDebounce();
         CollapseExpandedAlbum();
         TeardownWatchFeed();
@@ -1107,6 +1113,10 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         ViewModel.Hibernate();
         ReleaseNavigationCachedImages();
         HeroGrid?.ReleaseSurface();
+        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
+        // sibling is no longer rooted by the (singleton-store-subscribed) VM —
+        // without this the entire page tree is pinned across navigations.
+        Bindings?.StopTracking();
     }
 
     public void RestoreFromNavigationCache()
@@ -1118,6 +1128,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         _isNavigatingAway = false;
         ResetShyHeaderState();
         HeroGrid?.RestoreSurface();
+        Bindings?.Update();
 
         if (!string.IsNullOrEmpty(ViewModel.ArtistId))
         {

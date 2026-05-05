@@ -274,9 +274,20 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
+        AttachLongLivedServices();
+    }
+
+    // Long-lived singleton subscriptions are attached lazily and detached on
+    // Dispose so the (Transient) VM is not pinned by singleton invocation lists
+    // across navigations.
+    private bool _longLivedAttached;
+
+    private void AttachLongLivedServices()
+    {
+        if (_longLivedAttached) return;
+        _longLivedAttached = true;
         if (_likeService != null)
             _likeService.SaveStateChanged += OnSaveStateChanged;
-
         _playbackStateService.PropertyChanged += OnPlaybackStateChanged;
         if (_libraryDataService != null)
         {
@@ -285,9 +296,24 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         }
     }
 
+    private void DetachLongLivedServices()
+    {
+        if (!_longLivedAttached) return;
+        _longLivedAttached = false;
+        if (_likeService != null)
+            _likeService.SaveStateChanged -= OnSaveStateChanged;
+        _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
+        if (_libraryDataService != null)
+        {
+            _libraryDataService.DataChanged -= OnLibraryDataChanged;
+            _libraryDataService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
+        }
+    }
+
     /// <summary>Entry-point from <c>ShowPage.OnNavigatedTo</c>.</summary>
     public void Activate(string showUriOrId)
     {
+        AttachLongLivedServices();
         if (string.IsNullOrWhiteSpace(showUriOrId)) return;
 
         var showUri = NormalizeShowUri(showUriOrId);
@@ -1171,14 +1197,7 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         _progressRefreshCts?.Dispose();
         _progressRefreshCts = null;
 
-        if (_likeService != null)
-            _likeService.SaveStateChanged -= OnSaveStateChanged;
-        _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
-        if (_libraryDataService != null)
-        {
-            _libraryDataService.DataChanged -= OnLibraryDataChanged;
-            _libraryDataService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
-        }
+        DetachLongLivedServices();
 
         _allEpisodes.Clear();
         FilteredEpisodes = Array.Empty<ShowEpisodeDto>();

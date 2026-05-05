@@ -129,15 +129,32 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
 
         LoadPreferences();
 
-        if (_likeService != null)
-            _likeService.SaveStateChanged += OnSaveStateChanged;
-
+        AttachLongLivedServices();
         if (_libraryRecents != null)
-        {
-            _libraryRecents.RecentsChanged += OnLibraryRecentsChanged;
             // Best-effort prefetch; result arrives via RecentsChanged → re-applies sort.
             _ = PrefetchRecentsAsync();
-        }
+    }
+
+    private bool _longLivedAttached;
+
+    private void AttachLongLivedServices()
+    {
+        if (_longLivedAttached) return;
+        _longLivedAttached = true;
+        if (_likeService != null)
+            _likeService.SaveStateChanged += OnSaveStateChanged;
+        if (_libraryRecents != null)
+            _libraryRecents.RecentsChanged += OnLibraryRecentsChanged;
+    }
+
+    private void DetachLongLivedServices()
+    {
+        if (!_longLivedAttached) return;
+        _longLivedAttached = false;
+        if (_likeService != null)
+            _likeService.SaveStateChanged -= OnSaveStateChanged;
+        if (_libraryRecents != null)
+            _libraryRecents.RecentsChanged -= OnLibraryRecentsChanged;
     }
 
     private async Task PrefetchRecentsAsync()
@@ -732,11 +749,6 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
             return;
 
         _disposed = true;
-
-        if (_likeService != null)
-            _likeService.SaveStateChanged -= OnSaveStateChanged;
-
-        if (_libraryRecents != null)
-            _libraryRecents.RecentsChanged -= OnLibraryRecentsChanged;
+        DetachLongLivedServices();
     }
 }

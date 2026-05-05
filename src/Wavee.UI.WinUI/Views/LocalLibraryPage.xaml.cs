@@ -27,6 +27,15 @@ public sealed partial class LocalLibraryPage : Page
         await ViewModel.LoadAsync();
     }
 
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
+        // sibling does not pin this page across navigations. NavCacheMode is
+        // Disabled — page is destroyed on nav-away, no Update() partner needed.
+        Bindings?.StopTracking();
+    }
+
     private void TrackRow_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         if (sender is FrameworkElement fe)

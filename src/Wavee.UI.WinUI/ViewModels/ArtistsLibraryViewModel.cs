@@ -161,14 +161,31 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
 
         LoadPreferences();
 
+        AttachLongLivedServices();
+        if (_libraryRecents != null)
+            _ = PrefetchRecentsAsync();
+    }
+
+    private bool _longLivedAttached;
+
+    private void AttachLongLivedServices()
+    {
+        if (_longLivedAttached) return;
+        _longLivedAttached = true;
         if (_likeService != null)
             _likeService.SaveStateChanged += OnSaveStateChanged;
-
         if (_libraryRecents != null)
-        {
             _libraryRecents.RecentsChanged += OnLibraryRecentsChanged;
-            _ = PrefetchRecentsAsync();
-        }
+    }
+
+    private void DetachLongLivedServices()
+    {
+        if (!_longLivedAttached) return;
+        _longLivedAttached = false;
+        if (_likeService != null)
+            _likeService.SaveStateChanged -= OnSaveStateChanged;
+        if (_libraryRecents != null)
+            _libraryRecents.RecentsChanged -= OnLibraryRecentsChanged;
     }
 
     private async Task PrefetchRecentsAsync()
@@ -891,11 +908,6 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
         if (_disposed)
             return;
         _disposed = true;
-
-        if (_likeService != null)
-            _likeService.SaveStateChanged -= OnSaveStateChanged;
-
-        if (_libraryRecents != null)
-            _libraryRecents.RecentsChanged -= OnLibraryRecentsChanged;
+        DetachLongLivedServices();
     }
 }

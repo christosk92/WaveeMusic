@@ -75,6 +75,15 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
         ResetShyHeaderState();
     }
 
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
+        // sibling does not pin this page across navigations. NavCacheMode is
+        // Disabled — page is destroyed on nav-away, no Update() partner needed.
+        Bindings?.StopTracking();
+    }
+
     private void OnActualThemeChanged(FrameworkElement sender, object args)
     {
         ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);

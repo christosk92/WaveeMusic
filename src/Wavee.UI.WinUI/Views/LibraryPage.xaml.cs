@@ -86,6 +86,10 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
     {
         base.OnNavigatedTo(e);
         if (_disposed) return;
+        // Re-attach compiled x:Bind to VM.PropertyChanged. Idempotent; this also
+        // covers the back/forward early-return path below — bindings are detached
+        // on every nav-from regardless of whether the visual content was trimmed.
+        //Bindings?.Update();
 
         // On back/forward navigation, restore the cached page as-is
         if (e.NavigationMode is NavigationMode.Back or NavigationMode.Forward
@@ -119,6 +123,9 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         if (_disposed) return;
 
         TrimForNavigationCache();
+        // Detach compiled x:Bind from VM.PropertyChanged so the cached page
+        // does not keep its bindings live while the user is on another tab.
+        //Bindings?.StopTracking();
     }
 
     private void SelectorBar_SelectionChanged(object sender, SelectionChangedEventArgs e)

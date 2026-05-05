@@ -463,8 +463,25 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _podcastEpisodeScope = LoadPodcastEpisodeScopePreference();
+        AttachLongLivedServices();
+    }
+
+    private bool _longLivedAttached;
+
+    private void AttachLongLivedServices()
+    {
+        if (_longLivedAttached) return;
+        _longLivedAttached = true;
         _libraryDataService.DataChanged += OnLibraryDataChanged;
         _libraryDataService.PodcastEpisodeProgressChanged += OnPodcastEpisodeProgressChanged;
+    }
+
+    private void DetachLongLivedServices()
+    {
+        if (!_longLivedAttached) return;
+        _longLivedAttached = false;
+        _libraryDataService.DataChanged -= OnLibraryDataChanged;
+        _libraryDataService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
     }
 
     [RelayCommand]
@@ -1502,8 +1519,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         _episodeProgressCts?.Dispose();
         _showArchiveCts?.Cancel();
         _showArchiveCts?.Dispose();
-        _libraryDataService.DataChanged -= OnLibraryDataChanged;
-        _libraryDataService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
+        DetachLongLivedServices();
     }
 }
 

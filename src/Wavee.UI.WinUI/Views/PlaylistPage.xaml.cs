@@ -503,6 +503,10 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         _trimmedForNavigationCache = true;
         ViewModel.Hibernate();
         ReleaseHeaderBackgroundSurface();
+        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
+        // sibling is no longer rooted by the (singleton-store-subscribed) VM —
+        // without this the entire page tree is pinned across navigations.
+        Bindings?.StopTracking();
     }
 
     public void RestoreFromNavigationCache()
@@ -511,6 +515,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             return;
 
         _trimmedForNavigationCache = false;
+        Bindings?.Update();
         if (!string.IsNullOrEmpty(ViewModel.PlaylistId))
             LoadParameter(ViewModel.PlaylistId);
     }

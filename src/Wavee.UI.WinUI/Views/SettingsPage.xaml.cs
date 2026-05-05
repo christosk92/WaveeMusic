@@ -48,6 +48,10 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         Dispose();
+        // Detach compiled x:Bind from VM.PropertyChanged after Dispose — the page
+        // is destroyed on nav-away (NavCacheMode default = Disabled), no Update()
+        // partner needed.
+        Bindings?.StopTracking();
         base.OnNavigatedFrom(e);
     }
 

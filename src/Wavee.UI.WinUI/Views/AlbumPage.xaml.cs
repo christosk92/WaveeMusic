@@ -281,6 +281,10 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
         _trimmedForNavigationCache = true;
         ViewModel.Hibernate();
+        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
+        // sibling is no longer rooted by the (singleton-store-subscribed) VM —
+        // without this the entire page tree is pinned across navigations.
+        Bindings?.StopTracking();
     }
 
     public void RestoreFromNavigationCache()
@@ -289,6 +293,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             return;
 
         _trimmedForNavigationCache = false;
+        Bindings?.Update();
         if (string.IsNullOrEmpty(ViewModel.AlbumId))
             return;
 

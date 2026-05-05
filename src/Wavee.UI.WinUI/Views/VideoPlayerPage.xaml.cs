@@ -307,6 +307,10 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         StopTheatreAnimation();
         _hideTimer.Stop();
         UpdateArtistHeaderBlur(null);
+        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
+        // sibling does not pin this page across navigations. NavCacheMode is
+        // Disabled so the page is destroyed on nav-away — no Update() partner.
+        Bindings?.StopTracking();
     }
 
     private void OnPlaybackStateChanged(object? sender, PropertyChangedEventArgs e)

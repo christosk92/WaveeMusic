@@ -189,6 +189,10 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
             ProfileAvatar.ProfilePicture = null;
         if (PageBleedHost != null)
             PageBleedHost.Opacity = 0;
+        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
+        // sibling is no longer rooted by the (singleton-store-subscribed) VM —
+        // without this the entire page tree is pinned across navigations.
+        Bindings?.StopTracking();
     }
 
     public void RestoreFromNavigationCache()
@@ -198,6 +202,7 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
 
         _trimmedForNavigationCache = false;
         _isNavigatingAway = false;
+        Bindings?.Update();
         AttachDataSubscriptions();
         ViewModel.ResumeFromHibernate();
         UpdateProfileAvatar(ViewModel.ProfileImageUrl);

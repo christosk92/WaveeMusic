@@ -63,6 +63,19 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, IDisposable
         ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
     }
 
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
+        // sibling does not pin this page across navigations. NavCacheMode is
+        // Disabled — page is destroyed on nav-away, no Update() partner needed.
+        Bindings?.StopTracking();
+        // Detach the (Transient) VM from singleton service event subscriptions —
+        // without this the VM is rooted forever via _likeService / _playbackStateService /
+        // _libraryDataService invocation lists.
+        (ViewModel as IDisposable)?.Dispose();
+    }
+
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
         => ContentChanged?.Invoke(this, e);
 

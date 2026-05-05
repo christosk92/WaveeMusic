@@ -107,6 +107,20 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
         _heroTimer.Tick += HeroTimer_Tick;
     }
 
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
+        // sibling does not pin this page across navigations. NavCacheMode is
+        // Disabled — page is destroyed on nav-away, no Update() partner needed.
+        Bindings?.StopTracking();
+        // Page is destroyed on nav-away (NavCacheMode default = Disabled). Run
+        // the full IDisposable teardown — stops _heroTimer and -= its Tick handler
+        // (otherwise the dispatcher's timer queue keeps the page rooted), cancels
+        // _transitionCts, unhooks the VM, and disposes the VM itself.
+        Dispose();
+    }
+
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);

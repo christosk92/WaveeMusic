@@ -166,14 +166,11 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         if (_localLibrary is not null)
             _localProgressSub = _localLibrary.SyncProgress.Subscribe(OnLocalSyncProgress);
 
-        if (_recentlyPlayedService != null)
-            _recentlyPlayedService.ItemsChanged += OnRecentlyPlayedItemsChanged;
-
-        // Surface auth-state changes (display name + avatar) into the hero
-        // greeting so a sign-in / profile-refresh during a Home session
-        // updates the avatar and name without a navigation away-and-back.
-        if (_authState is not null)
-            _authState.PropertyChanged += OnAuthStatePropertyChanged;
+        // Long-lived singleton subscriptions are attached lazily through a helper so
+        // they have a single matching Detach point (called from Dispose). HomePage
+        // is Enabled-cached so only one HomeViewModel exists at a time, but routing
+        // through the helper keeps the pattern consistent across all VMs.
+        AttachLongLivedServices();
 
         WeakReferenceMessenger.Default.Register<HomeLocalFilesVisibilityChangedMessage>(this, (r, m) =>
         {
@@ -1604,15 +1601,35 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         if (_isDisposed) return;
         _isDisposed = true;
 
-        if (_recentlyPlayedService != null)
-            _recentlyPlayedService.ItemsChanged -= OnRecentlyPlayedItemsChanged;
-        if (_authState is not null)
-            _authState.PropertyChanged -= OnAuthStatePropertyChanged;
+        DetachLongLivedServices();
         WeakReferenceMessenger.Default.Unregister<HomeLocalFilesVisibilityChangedMessage>(this);
 
         _localProgressSub?.Dispose();
 
         CancelBaselineEnrichment();
+    }
+
+    private bool _longLivedAttached;
+
+    private void AttachLongLivedServices()
+    {
+        if (_longLivedAttached) return;
+        _longLivedAttached = true;
+        if (_recentlyPlayedService != null)
+            _recentlyPlayedService.ItemsChanged += OnRecentlyPlayedItemsChanged;
+        // Surface auth-state changes (display name + avatar) into the hero greeting.
+        if (_authState is not null)
+            _authState.PropertyChanged += OnAuthStatePropertyChanged;
+    }
+
+    private void DetachLongLivedServices()
+    {
+        if (!_longLivedAttached) return;
+        _longLivedAttached = false;
+        if (_recentlyPlayedService != null)
+            _recentlyPlayedService.ItemsChanged -= OnRecentlyPlayedItemsChanged;
+        if (_authState is not null)
+            _authState.PropertyChanged -= OnAuthStatePropertyChanged;
     }
 
     private void BeginBaselineEnrichment()

@@ -272,6 +272,9 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         base.OnNavigatedTo(e);
         _isNavigatedAway = false;
         CancelNavigationCacheTrim();
+        // Re-attach compiled x:Bind to VM.PropertyChanged before any rehydrate
+        // path runs. Idempotent; safe on first entry too.
+        Bindings?.Update();
 
         if (_trimmedForNavigationCache)
         {
@@ -297,6 +300,9 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         // Home surface instead of re-instantiating every visible shelf.
         ViewModel.SuspendBackgroundRefresh();
         ScheduleNavigationCacheTrim();
+        // Detach compiled x:Bind from VM.PropertyChanged so the cached page
+        // does not keep its bindings live while the user is on another page.
+        Bindings?.StopTracking();
     }
 
     private void ScheduleNavigationCacheTrim()
