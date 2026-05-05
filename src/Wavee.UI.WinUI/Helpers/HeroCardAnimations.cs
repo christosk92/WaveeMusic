@@ -38,13 +38,13 @@ public static class HeroCardAnimations
         var animation = selected
             ? new AnimationSet
               {
-                  new OpacityDropShadowAnimation { To = 0.55, Duration = TimeSpan.FromMilliseconds(600) },
-                  new BlurRadiusDropShadowAnimation { To = 28, Duration = TimeSpan.FromMilliseconds(600) },
+                  new OpacityDropShadowAnimation { To = 0.12, Duration = TimeSpan.FromMilliseconds(160) },
+                  new BlurRadiusDropShadowAnimation { To = 4, Duration = TimeSpan.FromMilliseconds(160) },
               }
             : new AnimationSet
               {
-                  new OpacityDropShadowAnimation { To = 0.30, Duration = TimeSpan.FromMilliseconds(350) },
-                  new BlurRadiusDropShadowAnimation { To = 12, Duration = TimeSpan.FromMilliseconds(350) },
+                  new OpacityDropShadowAnimation { To = 0.06, Duration = TimeSpan.FromMilliseconds(120) },
+                  new BlurRadiusDropShadowAnimation { To = 2, Duration = TimeSpan.FromMilliseconds(120) },
               };
 
         animation.Start(element);

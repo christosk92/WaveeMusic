@@ -148,6 +148,14 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         EnsureShyHeaderTransition();
         ResetShyHeaderState();
 
+        // PointerWheelChanged via AddHandler with handledEventsToo=true so we
+        // still see horizontal-pan events even when a child TrackItem (or any
+        // other inner element) marks the wheel event handled before bubbling.
+        TopTracksSection.AddHandler(
+            UIElement.PointerWheelChangedEvent,
+            new PointerEventHandler(TopTracksSection_PointerWheelChanged),
+            handledEventsToo: true);
+
         // If data already arrived before we attached, the IsLoading transition
         // already fired and our handler missed it. Force the crossfade now.
         TryShowContentNow();
@@ -312,6 +320,10 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
                                  or nameof(ArtistViewModel.Palette))
         {
             UpdatePageTint();
+        }
+        else if (e.PropertyName is nameof(ArtistViewModel.CurrentPage))
+        {
+            AnimateTopTracksPageChange();
         }
     }
 
@@ -811,6 +823,122 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private void TopTracksLayout_ColumnCountChanged(object? sender, int columns)
     {
         ViewModel.ColumnCount = columns;
+    }
+
+    // ── Top tracks page transition animation ──
+    // Slide+fade carousel feel. _prevTopTracksPage starts at -1 so the very
+    // first render skips the out-tween; cancellation token bumps on each call
+    // so a rapid pip click aborts the in-flight phase 1 instead of stacking.
+    private int _prevTopTracksPage = -1;
+    private long _topTracksAnimGen;
+    private bool _topTracksTranslationEnabled;
+    private const float TopTracksSlideOffsetPx = 40f;
+    private static readonly TimeSpan TopTracksOutDuration = TimeSpan.FromMilliseconds(80);
+    private static readonly TimeSpan TopTracksInDuration = TimeSpan.FromMilliseconds(120);
+
+    private async void AnimateTopTracksPageChange()
+    {
+        if (ViewModel == null || TopTracksRepeater == null) return;
+
+        int newPage = ViewModel.CurrentPage;
+        int prevPage = _prevTopTracksPage;
+        _prevTopTracksPage = newPage;
+
+        // First render — no animation.
+        if (prevPage < 0) return;
+
+        int dir = Math.Sign(newPage - prevPage);
+        if (dir == 0) return;
+
+        if (!_topTracksTranslationEnabled)
+        {
+            ElementCompositionPreview.SetIsTranslationEnabled(TopTracksRepeater, true);
+            _topTracksTranslationEnabled = true;
+        }
+
+        long gen = System.Threading.Interlocked.Increment(ref _topTracksAnimGen);
+
+        var visual = ElementCompositionPreview.GetElementVisual(TopTracksRepeater);
+        var compositor = visual.Compositor;
+        var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.33f, 1f), new Vector2(0.68f, 1f));
+
+        // Phase 1 — slide out + fade.
+        var outBatch = compositor.CreateScopedBatch(Microsoft.UI.Composition.CompositionBatchTypes.Animation);
+        var outOffset = compositor.CreateVector3KeyFrameAnimation();
+        outOffset.InsertKeyFrame(1f, new Vector3(-TopTracksSlideOffsetPx * dir, 0f, 0f), easing);
+        outOffset.Duration = TopTracksOutDuration;
+        var outOpacity = compositor.CreateScalarKeyFrameAnimation();
+        outOpacity.InsertKeyFrame(1f, 0f, easing);
+        outOpacity.Duration = TopTracksOutDuration;
+        visual.StartAnimation("Translation", outOffset);
+        visual.StartAnimation("Opacity", outOpacity);
+        outBatch.End();
+
+        var tcs = new TaskCompletionSource();
+        outBatch.Completed += (_, _) => tcs.TrySetResult();
+        await tcs.Task;
+
+        // Newer page change superseded us — abandon.
+        if (gen != System.Threading.Interlocked.Read(ref _topTracksAnimGen)) return;
+
+        // Let the binding rebuild PagedTopTracks before phase 2 starts.
+        await DispatcherQueue.EnqueueAsync(() => { });
+
+        if (gen != System.Threading.Interlocked.Read(ref _topTracksAnimGen)) return;
+
+        // Phase 2 — snap to opposite side, slide back in + fade.
+        visual.Properties.InsertVector3("Translation", new Vector3(TopTracksSlideOffsetPx * dir, 0f, 0f));
+        visual.Opacity = 0f;
+        var inOffset = compositor.CreateVector3KeyFrameAnimation();
+        inOffset.InsertKeyFrame(1f, Vector3.Zero, easing);
+        inOffset.Duration = TopTracksInDuration;
+        var inOpacity = compositor.CreateScalarKeyFrameAnimation();
+        inOpacity.InsertKeyFrame(1f, 1f, easing);
+        inOpacity.Duration = TopTracksInDuration;
+        visual.StartAnimation("Translation", inOffset);
+        visual.StartAnimation("Opacity", inOpacity);
+    }
+
+    // ── Trackpad two-finger horizontal swipe → paginate top tracks ──
+    // Precision touchpad horizontal pans surface as PointerWheelChanged with
+    // IsHorizontalMouseWheel=true. Vertical-only wheel events are left
+    // unhandled so the parent ScrollViewer keeps scrolling the page.
+    private double _wheelAccumulator;
+    private DateTimeOffset _wheelCooldownUntil = DateTimeOffset.MinValue;
+    private const double WheelPageThreshold = 80.0;
+    private static readonly TimeSpan WheelCooldown = TimeSpan.FromMilliseconds(250);
+
+    private void TopTracksSection_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        if (ViewModel == null || sender is not UIElement panel) return;
+
+        var props = e.GetCurrentPoint(panel).Properties;
+        if (!props.IsHorizontalMouseWheel) return;
+
+        if (DateTimeOffset.UtcNow < _wheelCooldownUntil)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        _wheelAccumulator += props.MouseWheelDelta;
+
+        if (_wheelAccumulator >= WheelPageThreshold)
+        {
+            if (ViewModel.CurrentPage < ViewModel.TotalPages - 1)
+                ViewModel.NextPageCommand.Execute(null);
+            _wheelAccumulator = 0;
+            _wheelCooldownUntil = DateTimeOffset.UtcNow + WheelCooldown;
+            e.Handled = true;
+        }
+        else if (_wheelAccumulator <= -WheelPageThreshold)
+        {
+            if (ViewModel.CurrentPage > 0)
+                ViewModel.PreviousPageCommand.Execute(null);
+            _wheelAccumulator = 0;
+            _wheelCooldownUntil = DateTimeOffset.UtcNow + WheelCooldown;
+            e.Handled = true;
+        }
     }
 
     private int? _topTrackSelectionAnchor;

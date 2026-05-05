@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -16,6 +18,8 @@ namespace Wavee.Core.Storage;
 /// </summary>
 public sealed class MetadataDatabase : IMetadataDatabase
 {
+    private static readonly TimeSpan WriteLockSlowWaitThreshold = TimeSpan.FromMilliseconds(250);
+
     private const string EntityColumns = """
         uri,
         source_type,
@@ -46,13 +50,15 @@ public sealed class MetadataDatabase : IMetadataDatabase
     private readonly string _connectionString;
     private readonly ILogger? _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private readonly object _writeLockStateGate = new();
     private readonly ConcurrentDictionary<string, CachedExtensionEntry> _hotCache = new();
     private readonly int _maxHotCacheSize;
     private readonly string _spotifyMetadataLocale;
-    // Active write-batch scope for the current async-flow. When set, write
-    // methods (UpsertEntityAsync, SetExtensionsBulkAsync, RefreshExtensionTtlBulkAsync)
-    // share the scope's open connection + transaction instead of self-locking.
-    private readonly AsyncLocal<WriteBatchScope?> _activeBatch = new();
+    private string? _writeLockOwner;
+    private long _writeLockOwnerId;
+    private DateTimeOffset _writeLockAcquiredAt;
+    private int _writeLockOwnerThreadId;
+    private long _writeLockSequence;
     private bool _disposed;
 
     // Schema version for migrations - bump to force fresh start
@@ -974,22 +980,10 @@ public sealed class MetadataDatabase : IMetadataDatabase
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var useLocalizedTable = ShouldUseLocalizedSpotifyMetadata(sourceType);
 
-        // If we're inside a BeginWriteBatchAsync scope, share its connection
-        // and transaction. Otherwise self-acquire the write lock + connection.
-        var batch = _activeBatch.Value;
-        if (batch is not null)
-        {
-            await ExecuteUpsertEntityAsync(
-                batch.Connection, batch.Transaction,
-                uri, entityType, sourceType, title, artistName, albumName, albumUri,
-                durationMs, trackNumber, discNumber, releaseYear, imageUrl, genre,
-                trackCount, followerCount, publisher, episodeCount, description,
-                filePath, streamUrl, expiresAt, addedAt,
-                useLocalizedTable, now, cancellationToken);
-            return;
-        }
-
-        await _writeLock.WaitAsync(cancellationToken);
+        // Standalone path. Callers that want to share a transaction with
+        // other writes must use IWriteBatch.UpsertEntityAsync via
+        // BeginWriteBatchAsync; this method always self-acquires.
+        var writeLock = await AcquireWriteLockAsync("UpsertEntity", 1, cancellationToken);
         try
         {
             using var connection = CreateConnection();
@@ -1004,7 +998,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
         finally
         {
-            _writeLock.Release();
+            writeLock.Dispose();
         }
     }
 
@@ -1258,7 +1252,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// </summary>
     public async Task DeleteEntityAsync(string uri, CancellationToken cancellationToken = default)
     {
-        await _writeLock.WaitAsync(cancellationToken);
+        var writeLock = await AcquireWriteLockAsync("DeleteEntity", 1, cancellationToken);
         try
         {
             using var connection = CreateConnection();
@@ -1276,7 +1270,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
         finally
         {
-            _writeLock.Release();
+            writeLock.Dispose();
         }
     }
 
@@ -1784,7 +1778,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
         PromoteToHotCache(cacheKey, data, etag, expiresAt);
 
         // Update SQLite
-        await _writeLock.WaitAsync(cancellationToken);
+        var writeLock = await AcquireWriteLockAsync("SetExtension", 1, cancellationToken);
         try
         {
             using var connection = CreateConnection();
@@ -1834,7 +1828,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
         finally
         {
-            _writeLock.Release();
+            writeLock.Dispose();
         }
     }
 
@@ -1926,14 +1920,9 @@ public sealed class MetadataDatabase : IMetadataDatabase
         if (records.Count == 0) return;
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-        var batch = _activeBatch.Value;
-        if (batch is not null)
-        {
-            await ExecuteSetExtensionsBulkAsync(batch.Connection, batch.Transaction, records, now, cancellationToken);
-            return;
-        }
-
-        await _writeLock.WaitAsync(cancellationToken);
+        // Standalone path. Callers that want to share a transaction must use
+        // IWriteBatch.SetExtensionsBulkAsync via BeginWriteBatchAsync.
+        var writeLock = await AcquireWriteLockAsync("SetExtensionsBulk", records.Count, cancellationToken);
         try
         {
             using var connection = CreateConnection();
@@ -1944,7 +1933,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
         finally
         {
-            _writeLock.Release();
+            writeLock.Dispose();
         }
     }
 
@@ -2018,14 +2007,9 @@ public sealed class MetadataDatabase : IMetadataDatabase
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var newExpiresAt = now + ttlSeconds;
 
-        var batch = _activeBatch.Value;
-        if (batch is not null)
-        {
-            await ExecuteRefreshExtensionTtlBulkAsync(batch.Connection, batch.Transaction, rows, newExpiresAt, cancellationToken);
-            return;
-        }
-
-        await _writeLock.WaitAsync(cancellationToken);
+        // Standalone path. Callers that want to share a transaction must use
+        // IWriteBatch.RefreshExtensionTtlBulkAsync via BeginWriteBatchAsync.
+        var writeLock = await AcquireWriteLockAsync("RefreshExtensionTtlBulk", rows.Count, cancellationToken);
         try
         {
             using var connection = CreateConnection();
@@ -2036,7 +2020,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
         finally
         {
-            _writeLock.Release();
+            writeLock.Dispose();
         }
     }
 
@@ -2082,30 +2066,56 @@ public sealed class MetadataDatabase : IMetadataDatabase
     }
 
     /// <inheritdoc />
-    public async Task<IAsyncDisposable> BeginWriteBatchAsync(CancellationToken cancellationToken = default)
+    public async Task<IWriteBatch> BeginWriteBatchAsync(
+        CancellationToken cancellationToken = default,
+        [CallerMemberName] string? callerTag = null)
     {
-        if (_activeBatch.Value is not null)
-        {
-            throw new InvalidOperationException("BeginWriteBatchAsync cannot be nested in the same async-flow.");
-        }
+        var operation = string.IsNullOrEmpty(callerTag)
+            ? "BeginWriteBatch"
+            : $"BeginWriteBatch:{callerTag}";
 
-        await _writeLock.WaitAsync(cancellationToken);
+        var batchOpenStart = Stopwatch.GetTimestamp();
+        var writeLock = await AcquireWriteLockAsync(operation, 0, cancellationToken);
+        var lockAcquiredAt = Stopwatch.GetTimestamp();
+
         SqliteConnection? connection = null;
         SqliteTransaction? transaction = null;
         try
         {
             connection = CreateConnection();
             await connection.OpenAsync(cancellationToken);
+            var connectionOpenedAt = Stopwatch.GetTimestamp();
+
             transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
-            var scope = new WriteBatchScope(this, connection, transaction);
-            _activeBatch.Value = scope;
-            return scope;
+            var transactionStartedAt = Stopwatch.GetTimestamp();
+
+            var openConnMs = Stopwatch.GetElapsedTime(lockAcquiredAt, connectionOpenedAt).TotalMilliseconds;
+            var beginTxMs = Stopwatch.GetElapsedTime(connectionOpenedAt, transactionStartedAt).TotalMilliseconds;
+
+            if (openConnMs >= 50 || beginTxMs >= 50)
+            {
+                _logger?.LogDebug(
+                    "BeginWriteBatch[{Caller}] open phase: openConn={OpenConnMs:F0}ms beginTx={BeginTxMs:F0}ms",
+                    callerTag ?? "<anon>",
+                    openConnMs,
+                    beginTxMs);
+            }
+
+            return new WriteBatchScope(
+                this,
+                connection,
+                transaction,
+                writeLock,
+                callerTag ?? "<anon>",
+                openedAt: batchOpenStart,
+                userWorkStartedAt: transactionStartedAt,
+                logger: _logger);
         }
         catch
         {
             if (transaction is not null) await transaction.DisposeAsync().ConfigureAwait(false);
             if (connection is not null) await connection.DisposeAsync().ConfigureAwait(false);
-            _writeLock.Release();
+            writeLock.Dispose();
             throw;
         }
     }
@@ -4117,19 +4127,221 @@ public sealed class MetadataDatabase : IMetadataDatabase
     /// Open write-batch scope: holds the write lock + a SQLite transaction
     /// for the lifetime of the using-block. Disposing commits.
     /// </summary>
-    private sealed class WriteBatchScope : IAsyncDisposable
+    private async Task<WriteLockLease> AcquireWriteLockAsync(
+        string operation,
+        int itemCount,
+        CancellationToken cancellationToken)
+    {
+        var waitStarted = Stopwatch.GetTimestamp();
+        if (!await _writeLock.WaitAsync(WriteLockSlowWaitThreshold, cancellationToken).ConfigureAwait(false))
+        {
+            var ownerSnapshot = GetWriteLockOwnerSnapshot();
+            _logger?.LogWarning(
+                "MetadataDatabase write lock wait: waiter={Operation} items={ItemCount} waitingMs>{ThresholdMs:F0} owner={Owner} ownerId={OwnerId} ownerThread={OwnerThread} heldMs={HeldMs:F0}",
+                operation,
+                itemCount,
+                WriteLockSlowWaitThreshold.TotalMilliseconds,
+                ownerSnapshot.Owner ?? "<unknown>",
+                ownerSnapshot.OwnerId,
+                ownerSnapshot.OwnerThreadId,
+                ownerSnapshot.Held?.TotalMilliseconds ?? -1);
+
+            try
+            {
+                await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                ownerSnapshot = GetWriteLockOwnerSnapshot();
+                _logger?.LogDebug(
+                    "MetadataDatabase write lock wait cancelled: waiter={Operation} items={ItemCount} owner={Owner} ownerId={OwnerId} ownerThread={OwnerThread} heldMs={HeldMs:F0}",
+                    operation,
+                    itemCount,
+                    ownerSnapshot.Owner ?? "<unknown>",
+                    ownerSnapshot.OwnerId,
+                    ownerSnapshot.OwnerThreadId,
+                    ownerSnapshot.Held?.TotalMilliseconds ?? -1);
+                throw;
+            }
+        }
+
+        var waitElapsed = Stopwatch.GetElapsedTime(waitStarted);
+        var ownerId = Interlocked.Increment(ref _writeLockSequence);
+        lock (_writeLockStateGate)
+        {
+            _writeLockOwner = itemCount > 0 ? $"{operation}({itemCount})" : operation;
+            _writeLockOwnerId = ownerId;
+            _writeLockAcquiredAt = DateTimeOffset.UtcNow;
+            _writeLockOwnerThreadId = Environment.CurrentManagedThreadId;
+        }
+
+        if (waitElapsed >= WriteLockSlowWaitThreshold)
+        {
+            _logger?.LogWarning(
+                "MetadataDatabase write lock acquired after slow wait: owner={Owner} ownerId={OwnerId} waitMs={WaitMs:F0}",
+                itemCount > 0 ? $"{operation}({itemCount})" : operation,
+                ownerId,
+                waitElapsed.TotalMilliseconds);
+        }
+
+        return new WriteLockLease(this, ownerId, itemCount > 0 ? $"{operation}({itemCount})" : operation);
+    }
+
+    private (string? Owner, long OwnerId, int OwnerThreadId, TimeSpan? Held) GetWriteLockOwnerSnapshot()
+    {
+        lock (_writeLockStateGate)
+        {
+            var held = _writeLockOwner is null
+                ? (TimeSpan?)null
+                : DateTimeOffset.UtcNow - _writeLockAcquiredAt;
+            return (_writeLockOwner, _writeLockOwnerId, _writeLockOwnerThreadId, held);
+        }
+    }
+
+    private void ReleaseWriteLock(long ownerId, string owner)
+    {
+        TimeSpan held;
+        lock (_writeLockStateGate)
+        {
+            held = _writeLockOwnerId == ownerId
+                ? DateTimeOffset.UtcNow - _writeLockAcquiredAt
+                : TimeSpan.Zero;
+
+            if (_writeLockOwnerId == ownerId)
+            {
+                _writeLockOwner = null;
+                _writeLockOwnerId = 0;
+                _writeLockOwnerThreadId = 0;
+                _writeLockAcquiredAt = default;
+            }
+        }
+
+        if (held >= WriteLockSlowWaitThreshold)
+        {
+            _logger?.LogWarning(
+                "MetadataDatabase write lock held for {HeldMs:F0}ms by {Owner} ownerId={OwnerId}",
+                held.TotalMilliseconds,
+                owner,
+                ownerId);
+        }
+
+        _writeLock.Release();
+    }
+
+    private readonly struct WriteLockLease : IDisposable
     {
         private readonly MetadataDatabase _owner;
+        private readonly long _ownerId;
+        private readonly string _operation;
+
+        public WriteLockLease(MetadataDatabase owner, long ownerId, string operation)
+        {
+            _owner = owner;
+            _ownerId = ownerId;
+            _operation = operation;
+        }
+
+        public void Dispose()
+        {
+            _owner.ReleaseWriteLock(_ownerId, _operation);
+        }
+    }
+
+    private sealed class WriteBatchScope : IWriteBatch
+    {
+        private readonly MetadataDatabase _owner;
+        private readonly WriteLockLease _writeLock;
+        private readonly string _callerTag;
+        private readonly long _openedAt;
+        private readonly long _userWorkStartedAt;
+        private readonly ILogger? _logger;
         private bool _disposed;
 
         public SqliteConnection Connection { get; }
         public SqliteTransaction Transaction { get; }
 
-        public WriteBatchScope(MetadataDatabase owner, SqliteConnection connection, SqliteTransaction transaction)
+        public WriteBatchScope(
+            MetadataDatabase owner,
+            SqliteConnection connection,
+            SqliteTransaction transaction,
+            WriteLockLease writeLock,
+            string callerTag,
+            long openedAt,
+            long userWorkStartedAt,
+            ILogger? logger)
         {
             _owner = owner;
+            _writeLock = writeLock;
+            _callerTag = callerTag;
+            _openedAt = openedAt;
+            _userWorkStartedAt = userWorkStartedAt;
+            _logger = logger;
             Connection = connection;
             Transaction = transaction;
+        }
+
+        public Task SetExtensionsBulkAsync(
+            IReadOnlyList<ExtensionWriteRecord> records,
+            CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+            if (records.Count == 0) return Task.CompletedTask;
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            return _owner.ExecuteSetExtensionsBulkAsync(Connection, Transaction, records, now, cancellationToken);
+        }
+
+        public Task RefreshExtensionTtlBulkAsync(
+            IReadOnlyList<(string EntityUri, ExtensionKind Kind)> rows,
+            long ttlSeconds,
+            CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+            if (rows.Count == 0) return Task.CompletedTask;
+            var newExpiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + ttlSeconds;
+            return _owner.ExecuteRefreshExtensionTtlBulkAsync(Connection, Transaction, rows, newExpiresAt, cancellationToken);
+        }
+
+        public Task UpsertEntityAsync(
+            string uri,
+            EntityType entityType,
+            SourceType sourceType = SourceType.Spotify,
+            string? title = null,
+            string? artistName = null,
+            string? albumName = null,
+            string? albumUri = null,
+            int? durationMs = null,
+            int? trackNumber = null,
+            int? discNumber = null,
+            int? releaseYear = null,
+            string? imageUrl = null,
+            string? genre = null,
+            int? trackCount = null,
+            int? followerCount = null,
+            string? publisher = null,
+            int? episodeCount = null,
+            string? description = null,
+            string? filePath = null,
+            string? streamUrl = null,
+            long? expiresAt = null,
+            long? addedAt = null,
+            CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var useLocalizedTable = _owner.ShouldUseLocalizedSpotifyMetadata(sourceType);
+            return _owner.ExecuteUpsertEntityAsync(
+                Connection, Transaction,
+                uri, entityType, sourceType, title, artistName, albumName, albumUri,
+                durationMs, trackNumber, discNumber, releaseYear, imageUrl, genre,
+                trackCount, followerCount, publisher, episodeCount, description,
+                filePath, streamUrl, expiresAt, addedAt,
+                useLocalizedTable, now, cancellationToken);
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(IWriteBatch), "Write batch has been disposed.");
         }
 
         public async ValueTask DisposeAsync()
@@ -4137,16 +4349,44 @@ public sealed class MetadataDatabase : IMetadataDatabase
             if (_disposed) return;
             _disposed = true;
 
+            var userWorkEnded = Stopwatch.GetTimestamp();
             try
             {
                 await Transaction.CommitAsync().ConfigureAwait(false);
             }
             finally
             {
+                var commitEnded = Stopwatch.GetTimestamp();
                 await Transaction.DisposeAsync().ConfigureAwait(false);
                 await Connection.DisposeAsync().ConfigureAwait(false);
-                _owner._activeBatch.Value = null;
-                _owner._writeLock.Release();
+                _writeLock.Dispose();
+                var releasedAt = Stopwatch.GetTimestamp();
+
+                var totalMs = Stopwatch.GetElapsedTime(_openedAt, releasedAt).TotalMilliseconds;
+                var userMs = Stopwatch.GetElapsedTime(_userWorkStartedAt, userWorkEnded).TotalMilliseconds;
+                var commitMs = Stopwatch.GetElapsedTime(userWorkEnded, commitEnded).TotalMilliseconds;
+                var teardownMs = Stopwatch.GetElapsedTime(commitEnded, releasedAt).TotalMilliseconds;
+
+                if (totalMs >= 250)
+                {
+                    _logger?.LogWarning(
+                        "BeginWriteBatch[{Caller}] timing: total={TotalMs:F0}ms userWork={UserMs:F0}ms commit={CommitMs:F0}ms teardown={TeardownMs:F0}ms",
+                        _callerTag,
+                        totalMs,
+                        userMs,
+                        commitMs,
+                        teardownMs);
+                }
+                else
+                {
+                    _logger?.LogDebug(
+                        "BeginWriteBatch[{Caller}] timing: total={TotalMs:F0}ms userWork={UserMs:F0}ms commit={CommitMs:F0}ms teardown={TeardownMs:F0}ms",
+                        _callerTag,
+                        totalMs,
+                        userMs,
+                        commitMs,
+                        teardownMs);
+                }
             }
         }
     }

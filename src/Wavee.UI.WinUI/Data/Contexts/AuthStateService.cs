@@ -16,6 +16,7 @@ using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Messages;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
@@ -25,6 +26,9 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// </summary>
 internal sealed partial class AuthStateService : ObservableObject, IAuthState, IDisposable
 {
+    private static readonly TimeSpan AuthorizationCodeLoginTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan DeviceCodeLoginTimeout = TimeSpan.FromMinutes(10);
+
     private static readonly string[] OAuthScopes =
         ["streaming", "user-read-playback-state", "user-modify-playback-state",
          "user-read-private", "user-read-email",
@@ -170,16 +174,44 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         if (_session == null || _sessionConfig == null)
             throw new InvalidOperationException("Session infrastructure not available");
 
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(AuthorizationCodeLoginTimeout);
+        var tokenCt = timeoutCts.Token;
+
         SetStatus(AuthStatus.Authenticating);
+        SendAuthProgress(
+            AppLocalization.GetString("Connect_Authenticating"),
+            "Waiting for browser authorization...",
+            0.35,
+            showProgressPanel: true);
 
         using var client = OAuthClient.Create(
             _sessionConfig.GetClientId(), OAuthScopes, openBrowser: true,
             logger: _logger as ILogger);
 
-        var token = await client.GetAccessTokenAsync(ct);
-        var creds = Credentials.WithAccessToken(token.AccessToken);
-        await _session.ConnectAsync(creds, _credentialsCache, ct);
-        await PopulateUserFromSession(ct);
+        try
+        {
+            var token = await client.GetAccessTokenAsync(tokenCt);
+            SendAuthProgress(
+                AppLocalization.GetString("Connect_ConnectingToSpotify"),
+                "Opening secure Spotify session...",
+                0.85);
+
+            var creds = Credentials.WithAccessToken(token.AccessToken);
+            await _session.ConnectAsync(creds, _credentialsCache, tokenCt);
+
+            SendAuthProgress(
+                AppLocalization.GetString("Connect_ConnectingToSpotify"),
+                "Loading your Spotify profile...",
+                0.95);
+            await PopulateUserFromSession(tokenCt);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            ConnectionError = "Spotify sign-in timed out. Close this dialog and try again.";
+            SetStatus(AuthStatus.Error);
+            throw;
+        }
     }
 
     public async Task LoginWithDeviceCodeAsync(
@@ -189,7 +221,16 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         if (_session == null || _sessionConfig == null)
             throw new InvalidOperationException("Session infrastructure not available");
 
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(DeviceCodeLoginTimeout);
+        var tokenCt = timeoutCts.Token;
+
         SetStatus(AuthStatus.Authenticating);
+        SendAuthProgress(
+            AppLocalization.GetString("Connect_Authenticating"),
+            "Waiting for device authorization...",
+            0.35,
+            showProgressPanel: false);
 
         using var client = OAuthClient.CreateCustom(
             _sessionConfig.GetClientId(), OAuthScopes, OAuthFlow.DeviceCode,
@@ -202,10 +243,29 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
                 e.VerificationUriComplete, e.ExpiresIn));
         };
 
-        var token = await client.GetAccessTokenAsync(ct);
-        var creds = Credentials.WithAccessToken(token.AccessToken);
-        await _session.ConnectAsync(creds, _credentialsCache, ct);
-        await PopulateUserFromSession(ct);
+        try
+        {
+            var token = await client.GetAccessTokenAsync(tokenCt);
+            SendAuthProgress(
+                AppLocalization.GetString("Connect_ConnectingToSpotify"),
+                "Opening secure Spotify session...",
+                0.85);
+
+            var creds = Credentials.WithAccessToken(token.AccessToken);
+            await _session.ConnectAsync(creds, _credentialsCache, tokenCt);
+
+            SendAuthProgress(
+                AppLocalization.GetString("Connect_ConnectingToSpotify"),
+                "Loading your Spotify profile...",
+                0.95);
+            await PopulateUserFromSession(tokenCt);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            ConnectionError = "Spotify sign-in timed out. Close this dialog and try again.";
+            SetStatus(AuthStatus.Error);
+            throw;
+        }
     }
 
     public async Task LogoutAsync(CancellationToken ct = default)
@@ -325,6 +385,9 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         AuthStatusChanged?.Invoke(this, newStatus);
         _messenger.Send(new AuthStatusChangedMessage(newStatus));
     }
+
+    private void SendAuthProgress(string mainText, string subText, double authProgress, bool showProgressPanel = true)
+        => _messenger.Send(new AuthProgressMessage(mainText, subText, Math.Clamp(authProgress, 0, 1), showProgressPanel));
 
     partial void OnCurrentUserChanged(UserData? value)
     {

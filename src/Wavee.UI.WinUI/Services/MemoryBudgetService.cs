@@ -159,6 +159,9 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
 
     private void CompactAndTrim(string reason)
     {
+        if (NavigationGcCoordinator.TryDeferRelease(_logger, reason))
+            return;
+
         try
         {
             GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;

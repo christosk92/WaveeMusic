@@ -97,19 +97,19 @@
                              style) instead of a darker gap. InnerContentClipMode="None" because
                              every inner layer is already intrinsically rounded. -->
                         <media:AttachedCardShadow
-                            BlurRadius="12"
+                            BlurRadius="3"
                             Color="{x:Bind HeroPrimaryColor, Mode=OneWay}"
                             CornerRadius="20"
                             InnerContentClipMode="None"
-                            Offset="0,8"
-                            Opacity="0.45"/>
+                            Offset="0,1"
+                            Opacity="0.10"/>
                     </winUi:Effects.Shadow>
                     <Border
                         x:Name="HeroCardClipRoot"
                         CornerRadius="20"
                         Background="{x:Bind HeroPrimaryBrush, Mode=OneWay}"
-                        BorderBrush="#08FFFFFF"
-                        BorderThickness="1">
+                        BorderBrush="Transparent"
+                        BorderThickness="0">
                         <!-- Background = HeroPrimaryBrush is a defense-in-depth fallback in case
                              the shader fails to render; the shader (alpha=1) covers it in normal
                              operation. BorderBrush+BorderThickness="1" gives the subtle inset
@@ -133,14 +133,13 @@
                                  right / cover` pattern). The scrim above (z2) fades the
                                  left half to dark for text legibility, so the artwork
                                  doesn't compete with the title. Stretching the artwork
-                                 across the whole card also gives the parallax shift
-                                 something to actually move within (the previous 420×420
-                                 right-anchored panel left no room on the left for the
-                                 active-card parallax to read). Border.Background+ImageBrush
+                                 across the whole card lets the whole slide move as one
+                                 flat editorial layer during carousel pushes. Border.Background+ImageBrush
                                  is intrinsically clipped to CornerRadius. -->
                             <Border
                                 x:Name="HeroArtworkHost"
                                 CornerRadius="20"
+                                Margin="-28,0"
                                 HorizontalAlignment="Stretch"
                                 VerticalAlignment="Stretch">
                                 <Border.Background>
@@ -179,9 +178,9 @@
                                 <Border
                                     HorizontalAlignment="Left"
                                     Padding="10,4"
-                                    Background="#8C000000"
-                                    BorderBrush="#14FFFFFF"
-                                    BorderThickness="1"
+                                    Background="#52000000"
+                                    BorderBrush="#0AFFFFFF"
+                                    BorderThickness="0.5"
                                     CornerRadius="6">
                                     <TextBlock
                                         Text="{x:Bind SourceLabel, Mode=OneWay}"
@@ -806,16 +805,16 @@
                                      HeroShowTemplate (one realised instance per ViewModel.HeroShows
                                      item) and stacked at the centred position. The active card sits
                                      at TranslateTransform.X=0; non-active cards sit off-stage at
-                                     ±stageWidth. Transitions slide the incoming card in over the
-                                     active one — the active card itself never moves, so its rounded
-                                     corners are always visible (no rectangular ScrollView clip to
-                                     fight). -->
+                                     ±cardWidth. Transitions push the outgoing and incoming cards
+                                     together behind HeroStage's fixed rounded viewport clip, matching
+                                     the Microsoft Store carousel motion. -->
                                 <Grid
                                     x:Name="HeroStage"
                                     Opacity="0"
-                                    Margin="-24"
+                                    Margin="0"
                                     Background="Transparent"
                                     Visibility="{x:Bind ViewModel.ShowHeroShows, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    SizeChanged="HeroStage_SizeChanged"
                                     ManipulationMode="TranslateX"
                                     ManipulationStarted="HeroStage_ManipulationStarted"
                                     ManipulationDelta="HeroStage_ManipulationDelta"

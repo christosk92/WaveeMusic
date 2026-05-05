@@ -552,7 +552,7 @@
 
                     <!-- ── Top Tracks (right column when paired with pinned,
                          full-width otherwise) ── -->
-                    <StackPanel Grid.Column="1" Spacing="12" Tapped="TopTracksSection_Tapped">
+                    <StackPanel Grid.Column="1" x:Name="TopTracksSection" Spacing="12" Tapped="TopTracksSection_Tapped">
                         <Grid>
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <Border Width="3" MinHeight="22" CornerRadius="1.5"
@@ -563,18 +563,13 @@
                                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                  VerticalAlignment="Center"/>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
-                                <Button Style="{StaticResource DefaultButtonStyle}" Padding="8,6"
-                                        Background="Transparent" BorderThickness="0"
-                                        Command="{x:Bind ViewModel.PreviousPageCommand}">
-                                    <FontIcon Glyph="&#xE76B;" FontSize="12"/>
-                                </Button>
-                                <Button Style="{StaticResource DefaultButtonStyle}" Padding="8,6"
-                                        Background="Transparent" BorderThickness="0"
-                                        Command="{x:Bind ViewModel.NextPageCommand}">
-                                    <FontIcon Glyph="&#xE76C;" FontSize="12"/>
-                                </Button>
-                            </StackPanel>
+                            <PipsPager x:Name="TopTracksPipsPager"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       NumberOfPages="{x:Bind ViewModel.TotalPages, Mode=OneWay}"
+                                       SelectedPageIndex="{x:Bind ViewModel.CurrentPage, Mode=TwoWay}"
+                                       PreviousButtonVisibility="Visible"
+                                       NextButtonVisibility="Visible"/>
                         </Grid>
 
                         <!-- Top tracks grid (column-first, max 3 rows) -->

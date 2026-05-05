@@ -32,6 +32,14 @@ public static class MemoryReleaseHelper
     /// </summary>
     public static void ReleaseWorkingSet(ILogger? logger = null, string reason = "")
     {
+        if (NavigationGcCoordinator.TryDeferRelease(logger, reason))
+            return;
+
+        ReleaseWorkingSetNow(logger, reason);
+    }
+
+    internal static void ReleaseWorkingSetNow(ILogger? logger = null, string reason = "")
+    {
         long beforeManaged = GC.GetTotalMemory(false);
         long beforeWorkingSet = SafeWorkingSet();
 

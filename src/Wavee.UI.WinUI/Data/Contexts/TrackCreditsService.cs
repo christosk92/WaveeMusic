@@ -89,9 +89,10 @@ public sealed class TrackCreditsService : ITrackCreditsService
         {
             _ = Task.Run(async () =>
             {
+                using var imageFetchCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
                 try
                 {
-                    var imageMap = await BatchFetchArtistImagesAsync(artistUris, ct).ConfigureAwait(false);
+                    var imageMap = await BatchFetchArtistImagesAsync(artistUris, imageFetchCts.Token).ConfigureAwait(false);
                     foreach (var group in result.Groups)
                     {
                         foreach (var contributor in group.Contributors)
@@ -102,8 +103,15 @@ public sealed class TrackCreditsService : ITrackCreditsService
                     }
                     // Images are now populated on the result objects
                 }
-                catch { /* non-critical */ }
-            }, ct);
+                catch (OperationCanceledException ex)
+                {
+                    _logger?.LogDebug(ex, "Artist image enrichment for credits cancelled");
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Artist image enrichment for credits failed");
+                }
+            }, CancellationToken.None);
         }
 
         return result;
@@ -139,6 +147,10 @@ public sealed class TrackCreditsService : ITrackCreditsService
 
                 map[extData.EntityUri] = imageUrl;
             }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

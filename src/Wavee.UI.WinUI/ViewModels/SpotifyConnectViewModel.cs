@@ -126,6 +126,9 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject, IDisposa
         _messenger.Register<SpotifyConnectViewModel, AuthStatusChangedMessage>(this, (r, m) =>
             r._dispatcherQueue.TryEnqueue(() => r.OnAuthStatusChanged(m.Value)));
 
+        _messenger.Register<SpotifyConnectViewModel, AuthProgressMessage>(this, (r, m) =>
+            r._dispatcherQueue.TryEnqueue(() => r.OnAuthProgress(m.Value.MainText, m.Value.SubText, m.Value.AuthProgress, m.Value.ShowProgressPanel)));
+
         _messenger.Register<SpotifyConnectViewModel, AudioProcessStateChangedMessage>(this, (r, m) =>
             r._dispatcherQueue.TryEnqueue(() => r.OnAudioStateChanged(m.Value.State, m.Value.Message)));
 
@@ -263,10 +266,9 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject, IDisposa
         switch (status)
         {
             case AuthStatus.Authenticating:
-                CurrentStep = ConnectStep.Progress;
-                MainText = AppLocalization.GetString("Connect_Authenticating");
-                SubText = AppLocalization.GetString("Connect_ExchangingAuthorizationCode");
-                _phaseAuth = 0.7;
+                MainText ??= AppLocalization.GetString("Connect_Authenticating");
+                SubText ??= StatusMessage;
+                _phaseAuth = Math.Max(_phaseAuth, 0.2);
                 RecalcProgress();
                 break;
 
@@ -284,6 +286,17 @@ public sealed partial class SpotifyConnectViewModel : ObservableObject, IDisposa
                 CurrentStep = ConnectStep.Error;
                 break;
         }
+    }
+
+    private void OnAuthProgress(string mainText, string subText, double authProgress, bool showProgressPanel)
+    {
+        if (showProgressPanel)
+            CurrentStep = ConnectStep.Progress;
+
+        MainText = mainText;
+        SubText = subText;
+        _phaseAuth = Math.Clamp(authProgress, 0, 1);
+        RecalcProgress();
     }
 
     private void OnAudioStateChanged(string state, string? message)

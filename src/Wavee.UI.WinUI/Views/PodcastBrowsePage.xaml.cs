@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Animations;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
@@ -35,31 +36,29 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
     // Bumped 760 → 1100 so the hero fills the content column the way the MS
     // Store reference does. Combined with the side-cards repeater being
     // collapsed, the page now has a single dominant hero panel per row.
-    private const double HeroCardMaxWidth = 1100;
+    private const double HeroCardMaxWidth = 1280;
     private const double HeroCardHeight = 420;
     private const double HeroSideColumnWidth = 380;
     private const double HeroSideColumnSpacing = 12;
     private const double HeroCardCornerRadius = 20;
     private const double HeroShadowBleed = 24;
+    private const double HeroTrackGap = 16;
+    private const double HeroNextCardPeekWidth = 120;
     // Compact browse header + carousel + pips. Keep this close to the card height
     // so category pages feel like a catalog, not a landing-page hero.
     private const double HeroSurfaceMinHeight = 500;
     private const double HeroSurfaceMaxHeight = 540;
     // Chevrons sit just inside the active card edge (MS Store-style overlap).
     private const double HeroChevronInset = 12;
-    // Parallax during a layered transition: active card's artwork shifts
-    // opposite to the slide for depth. Bumped from the original scroll-feel
-    // values (44 / 0.12) so the shift reads clearly across the brief 280–500ms
-    // slide window — was previously too subtle to notice mid-animation.
-    private const double HeroArtParallaxStrength = 0.18;
-    private const double HeroArtParallaxMaxShiftPx = 80;
-
-    // Layered transition timings.
-    private const int HeroSingleStepMs = 500;
-    private const int HeroChainStepMs = 280;
-    private const int HeroRevertStepMs = 260;
-    private const int HeroFrameMs = 16;
+    // Fixed-viewport carousel timings. The hero frame stays pinned while whole
+    // slides move horizontally behind the rounded clip, matching Microsoft Store.
+    private const int HeroSingleStepMs = 340;
+    private const int HeroChainStepMs = 210;
+    private const int HeroRevertStepMs = 170;
+    private const int HeroFrameMs = 33;
     private const double HeroDragCommitDivisor = 4.0;
+    private const double HeroArtworkParallaxStrength = 0.026;
+    private const double HeroArtworkParallaxMaxShiftPx = 24;
 
     private readonly DispatcherTimer _heroTimer = new()
     {
@@ -82,7 +81,7 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
     private bool _isTransitioning;
     // While a transition is in progress (animation OR drag), these describe which
     // pair of heroes the page is between, so UpdatePageTintFromState and
-    // ApplyTransitionParallax can lerp continuously.
+    // UpdatePageTintFromState can lerp continuously.
     private int _transitionFromIndex = -1;
     private int _transitionToIndex = -1;
     private int _transitionDirection;
@@ -337,6 +336,13 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             PositionCardsForActive(_currentHeroIndex);
     }
 
+    private void HeroStage_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyHeroStageViewportClip();
+        if (!_isTransitioning && !_isDragging && _currentHeroIndex >= 0)
+            PositionCardsForActive(_currentHeroIndex);
+    }
+
     private void UpdateSidebarVisibility()
     {
         if (CategorySidebar is null)
@@ -363,7 +369,11 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             return;
 
         var minWidth = Math.Min(HeroCardMinWidth, availableWidth);
-        var cardWidth = Math.Round(Math.Clamp(availableWidth * HeroCardWidthRatio, minWidth, HeroCardMaxWidth));
+        var peekReserve = availableWidth >= HeroCardMinWidth + HeroNextCardPeekWidth + HeroTrackGap
+            ? HeroNextCardPeekWidth + HeroTrackGap
+            : 0;
+        var desiredWidth = (availableWidth * HeroCardWidthRatio) - peekReserve;
+        var cardWidth = Math.Round(Math.Clamp(desiredWidth, minWidth, HeroCardMaxWidth));
         const double cardHeight = HeroCardHeight;
 
         foreach (var hero in ViewModel.HeroShows)
@@ -381,17 +391,18 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             HeroCarouselShimmer.Width = cardWidth;
             HeroCarouselShimmer.Height = cardHeight;
         }
+        ApplyHeroStageViewportClip();
 
         // Chevrons sit just inside the active card's edge — overlap pattern from
         // Microsoft Store. The card is centred, so its left edge lives at
         // (availableWidth - cardWidth)/2; the chevron's left edge is one inset
         // further right, putting it inside the card's rounded frame.
-        var cardLeftEdge = (availableWidth - cardWidth) / 2.0;
-        var inset = Math.Max(HeroChevronInset, cardLeftEdge + HeroChevronInset);
+        var inset = HeroChevronInset;
+        var rightInset = Math.Max(HeroChevronInset, availableWidth - cardWidth + HeroChevronInset);
         if (HeroPrevButton is not null)
             HeroPrevButton.Margin = new Thickness(inset, 0, 0, 0);
         if (HeroNextButton is not null)
-            HeroNextButton.Margin = new Thickness(0, 0, inset, 0);
+            HeroNextButton.Margin = new Thickness(0, 0, rightInset, 0);
     }
 
     // ─── Layered hero stage ───────────────────────────────────────────────
@@ -429,11 +440,9 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             {
                 Content = heroes[i],
                 ContentTemplate = template,
-                HorizontalAlignment = HorizontalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Center,
-                IsTabStop = false,
-                RenderTransformOrigin = new Point(0.5, 0.5),
-                RenderTransform = new TranslateTransform()
+                IsTabStop = false
             };
             HeroStage.Children.Add(card);
             _heroCards.Add(card);
@@ -441,17 +450,19 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
 
         var initialIndex = Math.Clamp(ViewModel.SelectedHeroIndex, 0, heroes.Count - 1);
         _currentHeroIndex = initialIndex;
+        ApplyHeroStageViewportClip();
         PositionCardsForActive(initialIndex);
     }
 
     private void PositionCardsForActive(int activeIndex)
     {
-        var stageWidth = GetStageWidth();
+        var travelDistance = GetHeroTravelDistance();
+        if (travelDistance <= 0)
+            return;
         for (var i = 0; i < _heroCards.Count; i++)
         {
             var card = _heroCards[i];
-            var transform = EnsureTranslate(card);
-            transform.X = i == activeIndex ? 0 : (i < activeIndex ? -stageWidth : stageWidth);
+            SetCardOffsetX(card, i == activeIndex ? 0 : (i < activeIndex ? -travelDistance : travelDistance));
             card.IsHitTestVisible = i == activeIndex;
             // Only the active card renders. Non-active cards live off-stage in the
             // layered model AND would otherwise leak across the sidebar / shelves
@@ -473,13 +484,88 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
         return HeroCardMaxWidth;
     }
 
-    private static TranslateTransform EnsureTranslate(FrameworkElement element)
+    private double GetHeroTravelDistance()
     {
-        if (element.RenderTransform is TranslateTransform existing)
-            return existing;
-        var fresh = new TranslateTransform();
-        element.RenderTransform = fresh;
-        return fresh;
+        if (_currentHeroIndex >= 0 && _currentHeroIndex < _heroCards.Count
+            && _heroCards[_currentHeroIndex].ActualWidth > 0)
+        {
+            return _heroCards[_currentHeroIndex].ActualWidth + HeroTrackGap;
+        }
+
+        if (ViewModel.HeroShows.Count > 0 && ViewModel.HeroShows[0].HeroCardWidth > 0)
+            return ViewModel.HeroShows[0].HeroCardWidth + HeroTrackGap;
+
+        return Math.Min(GetStageWidth(), HeroCardMaxWidth) + HeroTrackGap;
+    }
+
+    private void ApplyHeroStageViewportClip()
+    {
+        if (HeroStage is null || HeroStage.ActualWidth <= 0 || HeroStage.ActualHeight <= 0)
+            return;
+
+        var cardWidth = ViewModel.HeroShows.Count > 0
+            ? ViewModel.HeroShows[0].HeroCardWidth
+            : Math.Min(GetStageWidth(), HeroCardMaxWidth);
+        if (cardWidth <= 0)
+            return;
+
+        var left = 0d;
+        var top = Math.Max(0, (HeroStage.ActualHeight - HeroCardHeight) / 2.0);
+
+        var visual = ElementCompositionPreview.GetElementVisual(HeroStage);
+        var compositor = visual.Compositor;
+        var clip = compositor.CreateRectangleClip();
+        clip.Left = (float)left;
+        clip.Top = (float)top;
+        clip.Right = (float)HeroStage.ActualWidth;
+        clip.Bottom = (float)(top + HeroCardHeight);
+        visual.Clip = clip;
+    }
+
+    private static double GetCardOffsetX(FrameworkElement element)
+        => ElementCompositionPreview.GetElementVisual(element).Offset.X;
+
+    private static void SetCardOffsetX(FrameworkElement element, double x)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(element);
+        visual.Offset = new Vector3((float)x, visual.Offset.Y, visual.Offset.Z);
+    }
+
+    private static Task AnimateCardOffsetXAsync(FrameworkElement element, double to, int durationMs, CancellationToken token)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(element);
+        var compositor = visual.Compositor;
+        var animation = compositor.CreateScalarKeyFrameAnimation();
+        animation.Duration = TimeSpan.FromMilliseconds(durationMs);
+        animation.InsertKeyFrame(
+            1f,
+            (float)to,
+            compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1.0f), new Vector2(0.30f, 1.0f)));
+
+        var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        batch.Completed += (_, _) => completion.TrySetResult();
+        visual.StartAnimation("Offset.X", animation);
+        batch.End();
+
+        if (!token.CanBeCanceled)
+            return completion.Task;
+
+        var registration = token.Register(() =>
+        {
+            visual.StopAnimation("Offset.X");
+            completion.TrySetCanceled(token);
+        });
+
+        return completion.Task.ContinueWith(
+            completed =>
+            {
+                registration.Dispose();
+                return completed;
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default).Unwrap();
     }
 
     private async Task AnimateToHeroAsync(PodcastBrowseItemViewModel? hero)
@@ -539,19 +625,17 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
 
     private async Task AnimateStepAsync(int fromIndex, int toIndex, int direction, int durationMs, CancellationToken token)
     {
-        var stageWidth = GetStageWidth();
-        if (stageWidth <= 0)
+        var travelDistance = GetHeroTravelDistance();
+        if (travelDistance <= 0)
             return;
 
         var fromCard = _heroCards[fromIndex];
         var toCard = _heroCards[toIndex];
-        var fromTransform = EnsureTranslate(fromCard);
-        var toTransform = EnsureTranslate(toCard);
 
-        // Active card stays anchored at X=0; incoming starts off-stage on the far
-        // side and slides over the active. Z-order: incoming above active.
-        fromTransform.X = 0;
-        toTransform.X = direction * stageWidth;
+        // Both cards move as a single carousel track behind the fixed rounded
+        // viewport: outgoing leaves, incoming enters, arrows stay pinned.
+        SetCardOffsetX(fromCard, 0);
+        SetCardOffsetX(toCard, direction * travelDistance);
         // Reveal both cards for the duration of the slide; previous active goes
         // back to Collapsed once the slide settles.
         fromCard.Visibility = Visibility.Visible;
@@ -564,6 +648,8 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
         _transitionToIndex = toIndex;
         _transitionDirection = direction;
 
+        var fromAnimation = AnimateCardOffsetXAsync(fromCard, -direction * travelDistance, durationMs, token);
+        var toAnimation = AnimateCardOffsetXAsync(toCard, 0, durationMs, token);
         var startMs = Environment.TickCount64;
         while (true)
         {
@@ -574,7 +660,6 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             var eased = EaseOutCubic(raw);
             _transitionProgress = eased;
 
-            toTransform.X = direction * stageWidth * (1 - eased);
             ApplyTransitionParallax(fromCard, toCard, eased, direction);
             UpdatePageTintFromState();
 
@@ -584,10 +669,13 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             catch (TaskCanceledException) { return; }
         }
 
+        try { await Task.WhenAll(fromAnimation, toAnimation); }
+        catch (TaskCanceledException) { return; }
+
         // Settle: previous active is bumped off-stage in the direction of travel
         // and hidden so it doesn't paint over neighbours.
-        toTransform.X = 0;
-        fromTransform.X = -direction * stageWidth;
+        SetCardOffsetX(toCard, 0);
+        SetCardOffsetX(fromCard, -direction * travelDistance);
         fromCard.IsHitTestVisible = false;
         fromCard.Visibility = Visibility.Collapsed;
         toCard.IsHitTestVisible = true;
@@ -604,28 +692,6 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
         return 1 - Math.Pow(1 - clamped, 3);
     }
 
-    private static void ResetCardParallax(FrameworkElement card)
-    {
-        if (FindDescendant<Border>(card, "HeroArtworkHost") is { } art)
-            SetBrushTranslateX(art, 0);
-    }
-
-    private static void ApplyTransitionParallax(FrameworkElement fromCard, FrameworkElement toCard, double progress, int direction)
-    {
-        // Active card's artwork shifts opposite to the slide for depth.
-        if (FindDescendant<Border>(fromCard, "HeroArtworkHost") is { } fromArt && fromArt.ActualWidth > 0)
-        {
-            var maxShift = Math.Min(HeroArtParallaxMaxShiftPx, fromArt.ActualWidth * HeroArtParallaxStrength);
-            SetBrushTranslateX(fromArt, progress * direction * -maxShift);
-        }
-        // Incoming card's artwork starts offset (in the slide direction) and settles to 0.
-        if (FindDescendant<Border>(toCard, "HeroArtworkHost") is { } toArt && toArt.ActualWidth > 0)
-        {
-            var maxShift = Math.Min(HeroArtParallaxMaxShiftPx, toArt.ActualWidth * HeroArtParallaxStrength);
-            SetBrushTranslateX(toArt, (1 - progress) * direction * maxShift);
-        }
-    }
-
     // ─── Drag / Swipe ──────────────────────────────────────────────────────
     //
     // Manipulation events instead of raw PointerPressed/Moved/Released because
@@ -634,6 +700,29 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
     // to HeroStage. The manipulation system runs at a higher level and aggregates
     // mouse / trackpad / touch / pen drags into a single Translation stream that
     // reaches HeroStage even with a child holding the pointer.
+
+    private static void ResetCardParallax(FrameworkElement card)
+    {
+        if (FindDescendant<Border>(card, "HeroArtworkHost") is { } art)
+            SetBrushTranslateX(art, 0);
+    }
+
+    private static void ApplyTransitionParallax(FrameworkElement fromCard, FrameworkElement toCard, double progress, int direction)
+    {
+        progress = Math.Clamp(progress, 0.0, 1.0);
+
+        if (FindDescendant<Border>(fromCard, "HeroArtworkHost") is { } fromArt && fromArt.ActualWidth > 0)
+        {
+            var maxShift = Math.Min(HeroArtworkParallaxMaxShiftPx, fromArt.ActualWidth * HeroArtworkParallaxStrength);
+            SetBrushTranslateX(fromArt, direction * maxShift * progress);
+        }
+
+        if (FindDescendant<Border>(toCard, "HeroArtworkHost") is { } toArt && toArt.ActualWidth > 0)
+        {
+            var maxShift = Math.Min(HeroArtworkParallaxMaxShiftPx, toArt.ActualWidth * HeroArtworkParallaxStrength);
+            SetBrushTranslateX(toArt, -direction * maxShift * (1 - progress));
+        }
+    }
 
     private void HeroStage_ManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
     {
@@ -655,7 +744,9 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             return;
 
         var delta = e.Cumulative.Translation.X;
-        var stageWidth = GetStageWidth();
+        var travelDistance = GetHeroTravelDistance();
+        if (travelDistance <= 0)
+            return;
 
         // Drag right (positive delta) reveals the previous card → direction = -1.
         var direction = -Math.Sign(delta);
@@ -664,6 +755,12 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
 
         if (direction != _dragDirection || _dragIncomingCard is null)
         {
+            if (_dragIncomingCard is not null)
+            {
+                _dragIncomingCard.Visibility = Visibility.Collapsed;
+                ResetCardParallax(_dragIncomingCard);
+            }
+            ResetCardParallax(_heroCards[_currentHeroIndex]);
             _dragDirection = direction;
             var incomingIndex = _currentHeroIndex + direction;
             if (incomingIndex < 0 || incomingIndex >= _heroCards.Count)
@@ -681,11 +778,12 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
         if (_dragIncomingCard is null)
             return;
 
-        var clampedDelta = Math.Clamp(delta, -stageWidth, stageWidth);
-        // Incoming starts at direction * stageWidth (matches AnimateStepAsync) and
+        var clampedDelta = Math.Clamp(delta, -travelDistance, travelDistance);
+        // Incoming starts at direction * travelDistance (matches AnimateStepAsync) and
         // tracks the drag delta toward 0.
-        EnsureTranslate(_dragIncomingCard).X = (direction * stageWidth) + clampedDelta;
-        var progress = Math.Clamp(Math.Abs(clampedDelta) / stageWidth, 0.0, 1.0);
+        SetCardOffsetX(_dragIncomingCard, (direction * travelDistance) + clampedDelta);
+        SetCardOffsetX(_heroCards[_currentHeroIndex], clampedDelta);
+        var progress = Math.Clamp(Math.Abs(clampedDelta) / travelDistance, 0.0, 1.0);
         _transitionFromIndex = _currentHeroIndex;
         _transitionToIndex = _dragIncomingIndex;
         _transitionDirection = direction;
@@ -709,9 +807,11 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             return;
         }
 
-        var stageWidth = GetStageWidth();
-        var distanceFromStart = Math.Abs(EnsureTranslate(_dragIncomingCard).X - (_dragDirection * stageWidth));
-        var threshold = stageWidth / HeroDragCommitDivisor;
+        var travelDistance = GetHeroTravelDistance();
+        if (travelDistance <= 0)
+            return;
+        var distanceFromStart = Math.Abs(GetCardOffsetX(_dragIncomingCard) - (_dragDirection * travelDistance));
+        var threshold = travelDistance / HeroDragCommitDivisor;
 
         if (distanceFromStart >= threshold)
         {
@@ -736,11 +836,13 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
 
     private async Task CommitDragAsync(FrameworkElement incoming, int incomingIndex, int direction)
     {
-        var stageWidth = GetStageWidth();
-        var transform = EnsureTranslate(incoming);
-        var startX = transform.X;
-        var startProgress = _transitionProgress;
+        var travelDistance = GetHeroTravelDistance();
+        if (travelDistance <= 0)
+            return;
         var fromCard = _heroCards[_currentHeroIndex];
+        var startProgress = _transitionProgress;
+        var incomingAnimation = AnimateCardOffsetXAsync(incoming, 0, HeroChainStepMs, CancellationToken.None);
+        var fromAnimation = AnimateCardOffsetXAsync(fromCard, -direction * travelDistance, HeroChainStepMs, CancellationToken.None);
 
         var startMs = Environment.TickCount64;
         while (true)
@@ -748,7 +850,6 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             var elapsed = Environment.TickCount64 - startMs;
             var raw = Math.Clamp(elapsed / (double)HeroChainStepMs, 0.0, 1.0);
             var eased = EaseOutCubic(raw);
-            transform.X = startX + (0 - startX) * eased;
             _transitionProgress = startProgress + ((1.0 - startProgress) * eased);
             ApplyTransitionParallax(fromCard, incoming, _transitionProgress, direction);
             UpdatePageTintFromState();
@@ -756,9 +857,10 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
                 break;
             await Task.Delay(HeroFrameMs);
         }
+        await Task.WhenAll(incomingAnimation, fromAnimation);
 
-        transform.X = 0;
-        EnsureTranslate(fromCard).X = -direction * stageWidth;
+        SetCardOffsetX(incoming, 0);
+        SetCardOffsetX(fromCard, -direction * travelDistance);
         fromCard.IsHitTestVisible = false;
         fromCard.Visibility = Visibility.Collapsed;
         incoming.IsHitTestVisible = true;
@@ -776,12 +878,19 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
 
     private async Task RevertDragAsync(FrameworkElement incoming, int direction)
     {
-        var stageWidth = GetStageWidth();
-        var transform = EnsureTranslate(incoming);
-        var startX = transform.X;
-        // Send the incoming card back to its starting off-stage position (matches
-        // direction * stageWidth from AnimateStepAsync).
-        var endX = direction * stageWidth;
+        var travelDistance = GetHeroTravelDistance();
+        if (travelDistance <= 0)
+            return;
+        var activeCard = _currentHeroIndex >= 0 && _currentHeroIndex < _heroCards.Count
+            ? _heroCards[_currentHeroIndex]
+            : null;
+        var startProgress = _transitionProgress;
+        // Send the incoming card back to its starting off-stage position.
+        var endX = direction * travelDistance;
+        var incomingAnimation = AnimateCardOffsetXAsync(incoming, endX, HeroRevertStepMs, CancellationToken.None);
+        var activeAnimation = activeCard is null
+            ? Task.CompletedTask
+            : AnimateCardOffsetXAsync(activeCard, 0, HeroRevertStepMs, CancellationToken.None);
 
         var startMs = Environment.TickCount64;
         while (true)
@@ -789,16 +898,21 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             var elapsed = Environment.TickCount64 - startMs;
             var raw = Math.Clamp(elapsed / (double)HeroRevertStepMs, 0.0, 1.0);
             var eased = EaseOutCubic(raw);
-            transform.X = startX + ((endX - startX) * eased);
+            if (activeCard is not null)
+                ApplyTransitionParallax(activeCard, incoming, startProgress * (1 - eased), direction);
             if (raw >= 1.0)
                 break;
             await Task.Delay(HeroFrameMs);
         }
+        await Task.WhenAll(incomingAnimation, activeAnimation);
+        SetCardOffsetX(incoming, endX);
+        if (activeCard is not null)
+            SetCardOffsetX(activeCard, 0);
+        if (activeCard is not null)
+            ResetCardParallax(activeCard);
         ResetCardParallax(incoming);
         // Send the reverted incoming card back to Collapsed so it stops painting.
         incoming.Visibility = Visibility.Collapsed;
-        if (_currentHeroIndex >= 0 && _currentHeroIndex < _heroCards.Count)
-            ResetCardParallax(_heroCards[_currentHeroIndex]);
         _transitionFromIndex = -1;
         _transitionToIndex = -1;
         _transitionDirection = 0;
@@ -837,6 +951,12 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             return;
         _heroTimer.Stop();
         _heroTimer.Start();
+    }
+
+    private static void SetBrushTranslateX(Border artHost, double x)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(artHost);
+        visual.Offset = new Vector3((float)x, visual.Offset.Y, visual.Offset.Z);
     }
 
     private void BrowseItem_Click(object sender, RoutedEventArgs e)
@@ -1042,18 +1162,6 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             (byte)(a.R + ((b.R - a.R) * t)),
             (byte)(a.G + ((b.G - a.G) * t)),
             (byte)(a.B + ((b.B - a.B) * t)));
-    }
-
-    private static void SetBrushTranslateX(Border artHost, double x)
-    {
-        if (artHost.Background is not ImageBrush brush)
-            return;
-        if (brush.Transform is TranslateTransform existing)
-        {
-            existing.X = x;
-            return;
-        }
-        brush.Transform = new TranslateTransform { X = x };
     }
 
     public void Dispose()

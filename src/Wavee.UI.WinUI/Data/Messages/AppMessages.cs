@@ -55,6 +55,14 @@ public sealed class AuthStatusChangedMessage(AuthStatus status)
     : ValueChangedMessage<AuthStatus>(status);
 
 /// <summary>
+/// Fine-grained sign-in progress for SpotifyConnectDialog. AuthStatus only says
+/// "Authenticating"; this explains whether we are waiting for the browser,
+/// exchanging the code, connecting the AP session, or hydrating the profile.
+/// </summary>
+public sealed class AuthProgressMessage(string mainText, string subText, double authProgress, bool showProgressPanel = true)
+    : ValueChangedMessage<(string MainText, string SubText, double AuthProgress, bool ShowProgressPanel)>((mainText, subText, authProgress, showProgressPanel));
+
+/// <summary>
 /// Sent when the user profile data is updated.
 /// </summary>
 public sealed class UserProfileUpdatedMessage(UserData? user)

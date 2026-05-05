@@ -265,6 +265,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     private int TracksPerPage => RowsPerPage * ColumnCount;
     public int TotalPages => TopTracks.Count == 0 ? 0 : (int)Math.Ceiling((double)TopTracks.Count / TracksPerPage);
+    public bool HasMultiplePages => TotalPages > 1;
 
     private List<LazyTrackItem>? _pagedTopTracksCache;
     public IEnumerable<LazyTrackItem> PagedTopTracks => _pagedTopTracksCache ??= BuildPagedTopTracks();
@@ -1468,6 +1469,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         _pagedTopTracksCache = null;
         OnPropertyChanged(nameof(TotalPages));
+        OnPropertyChanged(nameof(HasMultiplePages));
         OnPropertyChanged(nameof(PagedTopTracks));
     }
 
@@ -1620,6 +1622,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
                 _pagedTopTracksCache = null;
                 OnPropertyChanged(nameof(TotalPages));
+                OnPropertyChanged(nameof(HasMultiplePages));
                 OnPropertyChanged(nameof(PagedTopTracks));
             });
         }

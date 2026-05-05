@@ -717,27 +717,54 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             return;
         }
 
-        // Pass 2: bulk write extensions + queryable property upserts in a
-        // single SQLite transaction. SetExtensionsBulkAsync + Upsert*PropertiesAsync
-        // detect the active scope and participate without re-acquiring the lock.
-        var storedEntities = 0;
-        await using (await _database.BeginWriteBatchAsync(cancellationToken).ConfigureAwait(false))
+        // Pass 2a: parse + compute entity rows OUTSIDE the write lock.
+        // The expensive work — protobuf parsing, GID→base62, image-id hex,
+        // string joins — must not run with the DB write lock held, or it
+        // starves playback's per-row UpsertEntity for seconds.
+        var parseStart = System.Diagnostics.Stopwatch.GetTimestamp();
+        var entityArgs = new List<EntityUpsertArgs>(queryableJobs.Count);
+        foreach (var (uri, kind, data) in queryableJobs)
         {
-            await _database.SetExtensionsBulkAsync(writes, cancellationToken).ConfigureAwait(false);
-
-            foreach (var (uri, kind, data) in queryableJobs)
-            {
-                try
-                {
-                    await StoreQueryablePropertiesAsync(uri, kind, data, cancellationToken).ConfigureAwait(false);
-                    storedEntities++;
-                }
-                catch
-                {
-                    // Ignore parse errors for property extraction
-                }
-            }
+            var args = BuildQueryableArgs(uri, kind, data);
+            if (args.HasValue) entityArgs.Add(args.Value);
         }
+        var parseMs = System.Diagnostics.Stopwatch.GetElapsedTime(parseStart).TotalMilliseconds;
+        var storedEntities = entityArgs.Count;
+
+        _logger?.LogDebug(
+            "CacheResponseAsync entering scope: writes={WriteCount} entityArgs={EntityArgsCount} parseMs={ParseMs:F0} arrays={ArrayCount}",
+            writes.Count,
+            entityArgs.Count,
+            parseMs,
+            response.ExtendedMetadata.Count);
+
+        // Pass 2b: open one transaction; only DB I/O runs under the lock.
+        // Operations dispatch through the IWriteBatch returned by
+        // BeginWriteBatchAsync, which holds the open conn + tx directly —
+        // routing through `_database` would self-acquire the lock and
+        // deadlock against the open scope.
+        var scopeStart = System.Diagnostics.Stopwatch.GetTimestamp();
+        long bulkWriteEnd;
+        long upsertsEnd;
+        await using (var batch = await _database.BeginWriteBatchAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await batch.SetExtensionsBulkAsync(writes, cancellationToken).ConfigureAwait(false);
+            bulkWriteEnd = System.Diagnostics.Stopwatch.GetTimestamp();
+            foreach (var args in entityArgs)
+            {
+                await UpsertFromArgsAsync(batch, args, cancellationToken).ConfigureAwait(false);
+            }
+            upsertsEnd = System.Diagnostics.Stopwatch.GetTimestamp();
+        }
+        var bulkMs = System.Diagnostics.Stopwatch.GetElapsedTime(scopeStart, bulkWriteEnd).TotalMilliseconds;
+        var upsertsMs = System.Diagnostics.Stopwatch.GetElapsedTime(bulkWriteEnd, upsertsEnd).TotalMilliseconds;
+        var perRowUs = entityArgs.Count > 0 ? (upsertsMs * 1000.0 / entityArgs.Count) : 0;
+        _logger?.LogDebug(
+            "CacheResponseAsync inside-scope timing: bulkWriteMs={BulkMs:F0} upsertsMs={UpsertsMs:F0} entityArgs={EntityArgs} perRowUs={PerRowUs:F0}",
+            bulkMs,
+            upsertsMs,
+            entityArgs.Count,
+            perRowUs);
 
         _logger?.LogDebug(
             "Cached extended-metadata response: extensions={ExtensionCount} queryableEntities={EntityCount} nullPayloads={NullPayloads} minTtl={MinTtl}s maxTtl={MaxTtl}s arrays={ArrayCount}",
@@ -760,25 +787,98 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         _ => false
     };
 
-    private Task StoreQueryablePropertiesAsync(
-        string uri,
-        ExtensionKind kind,
-        byte[] data,
-        CancellationToken cancellationToken)
+    // All work needed to populate the `entities` row for one extension kind.
+    // Built outside the write lock (parsing + GID→base62 + image-hex + string
+    // joins), then handed to UpsertFromArgsAsync inside the scope so only DB
+    // I/O runs under the lock.
+    private readonly record struct EntityUpsertArgs(
+        string Uri,
+        EntityType EntityType,
+        string? Title = null,
+        string? ArtistName = null,
+        string? AlbumName = null,
+        string? AlbumUri = null,
+        int? DurationMs = null,
+        int? TrackNumber = null,
+        int? DiscNumber = null,
+        int? ReleaseYear = null,
+        string? ImageUrl = null,
+        string? Genre = null,
+        int? TrackCount = null,
+        string? Publisher = null,
+        int? EpisodeCount = null,
+        string? Description = null);
+
+    private static Task UpsertFromArgsAsync(IWriteBatch batch, EntityUpsertArgs a, CancellationToken cancellationToken)
+        => batch.UpsertEntityAsync(
+            uri: a.Uri,
+            entityType: a.EntityType,
+            title: a.Title,
+            artistName: a.ArtistName,
+            albumName: a.AlbumName,
+            albumUri: a.AlbumUri,
+            durationMs: a.DurationMs,
+            trackNumber: a.TrackNumber,
+            discNumber: a.DiscNumber,
+            releaseYear: a.ReleaseYear,
+            imageUrl: a.ImageUrl,
+            genre: a.Genre,
+            trackCount: a.TrackCount,
+            publisher: a.Publisher,
+            episodeCount: a.EpisodeCount,
+            description: a.Description,
+            cancellationToken: cancellationToken);
+
+    // Standalone variant for the per-track GetTrackAsync path that runs
+    // outside any IWriteBatch scope. Routes directly through the database
+    // so a self-contained UpsertEntity transaction is opened and released.
+    private Task UpsertFromArgsStandaloneAsync(EntityUpsertArgs a, CancellationToken cancellationToken)
+        => _database.UpsertEntityAsync(
+            uri: a.Uri,
+            entityType: a.EntityType,
+            title: a.Title,
+            artistName: a.ArtistName,
+            albumName: a.AlbumName,
+            albumUri: a.AlbumUri,
+            durationMs: a.DurationMs,
+            trackNumber: a.TrackNumber,
+            discNumber: a.DiscNumber,
+            releaseYear: a.ReleaseYear,
+            imageUrl: a.ImageUrl,
+            genre: a.Genre,
+            trackCount: a.TrackCount,
+            publisher: a.Publisher,
+            episodeCount: a.EpisodeCount,
+            description: a.Description,
+            cancellationToken: cancellationToken);
+
+    // Pure: parse + compute. Returns null when the kind isn't queryable or
+    // when parsing fails. Safe to run on any thread without the write lock.
+    private static EntityUpsertArgs? BuildQueryableArgs(string uri, ExtensionKind kind, byte[] data)
     {
-        return kind switch
+        try
         {
-            ExtensionKind.TrackV4 => StoreTrackPropertiesAsync(uri, Track.Parser.ParseFrom(data), cancellationToken),
-            ExtensionKind.AlbumV4 => StoreAlbumPropertiesAsync(uri, Album.Parser.ParseFrom(data), cancellationToken),
-            ExtensionKind.ArtistV4 => StoreArtistPropertiesAsync(uri, Artist.Parser.ParseFrom(data), cancellationToken),
-            ExtensionKind.ShowV4 => StoreShowPropertiesAsync(uri, Show.Parser.ParseFrom(data), cancellationToken),
-            ExtensionKind.ShowV5 => StoreShowPropertiesAsync(uri, Show.Parser.ParseFrom(data), cancellationToken),
-            ExtensionKind.EpisodeV4 => StoreEpisodePropertiesAsync(uri, Episode.Parser.ParseFrom(data), cancellationToken),
-            _ => Task.CompletedTask
-        };
+            return kind switch
+            {
+                ExtensionKind.TrackV4 => BuildTrackUpsertArgs(uri, Track.Parser.ParseFrom(data)),
+                ExtensionKind.AlbumV4 => BuildAlbumUpsertArgs(uri, Album.Parser.ParseFrom(data)),
+                ExtensionKind.ArtistV4 => BuildArtistUpsertArgs(uri, Artist.Parser.ParseFrom(data)),
+                ExtensionKind.ShowV4 => BuildShowUpsertArgs(uri, Show.Parser.ParseFrom(data)),
+                ExtensionKind.ShowV5 => BuildShowUpsertArgs(uri, Show.Parser.ParseFrom(data)),
+                ExtensionKind.EpisodeV4 => BuildEpisodeUpsertArgs(uri, Episode.Parser.ParseFrom(data)),
+                _ => null
+            };
+        }
+        catch
+        {
+            return null;
+        }
     }
 
-    private async Task StoreTrackPropertiesAsync(string uri, Track track, CancellationToken cancellationToken)
+    private Task StoreTrackPropertiesAsync(string uri, Track track, CancellationToken cancellationToken)
+        => UpsertFromArgsStandaloneAsync(BuildTrackUpsertArgs(uri, track), cancellationToken);
+
+    private static EntityUpsertArgs BuildTrackUpsertArgs(string uri, Track track)
     {
         string? artistName = null;
         if (track.Artist.Count > 0)
@@ -817,20 +917,19 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             }
         }
 
-        await _database.UpsertEntityAsync(
-            uri: uri,
-            entityType: EntityType.Track,
-            title: track.Name,
-            artistName: artistName,
-            albumName: albumName,
-            albumUri: albumUri,
-            durationMs: track.Duration,
-            trackNumber: track.Number,
-            discNumber: track.DiscNumber,
-            releaseYear: releaseYear,
-            imageUrl: imageUrl,
-            genre: tags,
-            cancellationToken: cancellationToken);
+        return new EntityUpsertArgs(
+            Uri: uri,
+            EntityType: EntityType.Track,
+            Title: track.Name,
+            ArtistName: artistName,
+            AlbumName: albumName,
+            AlbumUri: albumUri,
+            DurationMs: track.Duration,
+            TrackNumber: track.Number,
+            DiscNumber: track.DiscNumber,
+            ReleaseYear: releaseYear,
+            ImageUrl: imageUrl,
+            Genre: tags);
     }
 
     private static long ResolveCacheTtl(long? entityTtlSeconds, long? arrayTtlSeconds)
@@ -855,7 +954,10 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         return DefaultTtlSeconds;
     }
 
-    private async Task StoreAlbumPropertiesAsync(string uri, Album album, CancellationToken cancellationToken)
+    private Task StoreAlbumPropertiesAsync(string uri, Album album, CancellationToken cancellationToken)
+        => UpsertFromArgsStandaloneAsync(BuildAlbumUpsertArgs(uri, album), cancellationToken);
+
+    private static EntityUpsertArgs BuildAlbumUpsertArgs(string uri, Album album)
     {
         string? artistName = null;
         if (album.Artist.Count > 0)
@@ -890,18 +992,20 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             trackCount = album.Disc.Sum(d => d.Track.Count);
         }
 
-        await _database.UpsertEntityAsync(
-            uri: uri,
-            entityType: EntityType.Album,
-            title: album.Name,
-            artistName: artistName,
-            releaseYear: releaseYear,
-            imageUrl: imageUrl,
-            trackCount: trackCount,
-            cancellationToken: cancellationToken);
+        return new EntityUpsertArgs(
+            Uri: uri,
+            EntityType: EntityType.Album,
+            Title: album.Name,
+            ArtistName: artistName,
+            ReleaseYear: releaseYear,
+            ImageUrl: imageUrl,
+            TrackCount: trackCount);
     }
 
-    private async Task StoreArtistPropertiesAsync(string uri, Artist artist, CancellationToken cancellationToken)
+    private Task StoreArtistPropertiesAsync(string uri, Artist artist, CancellationToken cancellationToken)
+        => UpsertFromArgsStandaloneAsync(BuildArtistUpsertArgs(uri, artist), cancellationToken);
+
+    private static EntityUpsertArgs BuildArtistUpsertArgs(string uri, Artist artist)
     {
         string? imageUrl = null;
         if (artist.PortraitGroup?.Image.Count > 0)
@@ -917,15 +1021,17 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             }
         }
 
-        await _database.UpsertEntityAsync(
-            uri: uri,
-            entityType: EntityType.Artist,
-            title: artist.Name,
-            imageUrl: imageUrl,
-            cancellationToken: cancellationToken);
+        return new EntityUpsertArgs(
+            Uri: uri,
+            EntityType: EntityType.Artist,
+            Title: artist.Name,
+            ImageUrl: imageUrl);
     }
 
-    private async Task StoreShowPropertiesAsync(string uri, Show show, CancellationToken cancellationToken)
+    private Task StoreShowPropertiesAsync(string uri, Show show, CancellationToken cancellationToken)
+        => UpsertFromArgsStandaloneAsync(BuildShowUpsertArgs(uri, show), cancellationToken);
+
+    private static EntityUpsertArgs BuildShowUpsertArgs(string uri, Show show)
     {
         string? imageUrl = null;
         if (show.CoverImage?.Image.Count > 0)
@@ -941,18 +1047,20 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
             }
         }
 
-        await _database.UpsertEntityAsync(
-            uri: uri,
-            entityType: EntityType.Show,
-            title: show.Name,
-            imageUrl: imageUrl,
-            publisher: show.Publisher,
-            description: show.Description,
-            episodeCount: show.Episode.Count,
-            cancellationToken: cancellationToken);
+        return new EntityUpsertArgs(
+            Uri: uri,
+            EntityType: EntityType.Show,
+            Title: show.Name,
+            ImageUrl: imageUrl,
+            Publisher: show.Publisher,
+            Description: show.Description,
+            EpisodeCount: show.Episode.Count);
     }
 
-    private async Task StoreEpisodePropertiesAsync(string uri, Episode episode, CancellationToken cancellationToken)
+    private Task StoreEpisodePropertiesAsync(string uri, Episode episode, CancellationToken cancellationToken)
+        => UpsertFromArgsStandaloneAsync(BuildEpisodeUpsertArgs(uri, episode), cancellationToken);
+
+    private static EntityUpsertArgs BuildEpisodeUpsertArgs(string uri, Episode episode)
     {
         var show = episode.Show;
         var showUri = show?.Gid is { Length: > 0 } gid
@@ -961,20 +1069,19 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
 
         var imageUrl = GetImageUrl(episode.CoverImage) ?? GetImageUrl(show?.CoverImage);
 
-        await _database.UpsertEntityAsync(
-            uri: uri,
-            entityType: EntityType.Episode,
-            title: episode.Name,
-            artistName: show?.Publisher,
-            albumName: show?.Name,
-            albumUri: showUri,
-            durationMs: episode.Duration,
-            trackNumber: episode.Number,
-            releaseYear: episode.PublishTime?.Year,
-            imageUrl: imageUrl,
-            publisher: show?.Publisher,
-            description: episode.Description,
-            cancellationToken: cancellationToken);
+        return new EntityUpsertArgs(
+            Uri: uri,
+            EntityType: EntityType.Episode,
+            Title: episode.Name,
+            ArtistName: show?.Publisher,
+            AlbumName: show?.Name,
+            AlbumUri: showUri,
+            DurationMs: episode.Duration,
+            TrackNumber: episode.Number,
+            ReleaseYear: episode.PublishTime?.Year,
+            ImageUrl: imageUrl,
+            Publisher: show?.Publisher,
+            Description: episode.Description);
     }
 
     private static string? GetImageUrl(ImageGroup? imageGroup)
@@ -1017,22 +1124,39 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
 
         if (toCreate.Count == 0) return;
 
-        // Single transaction for all upserts.
-        await using (await _database.BeginWriteBatchAsync(cancellationToken).ConfigureAwait(false))
+        // Parse + compute entity rows OUTSIDE the write lock first, then upsert
+        // them in a single transaction. Keeps lock-hold time to pure DB I/O
+        // so playback's per-row UpsertEntity doesn't starve.
+        var entityArgs = new List<EntityUpsertArgs>(toCreate.Count);
+        foreach (var ((entityUri, extensionKind), data) in toCreate)
         {
-            foreach (var ((entityUri, extensionKind), data) in toCreate)
+            var args = BuildQueryableArgs(entityUri, extensionKind, data);
+            if (args.HasValue) entityArgs.Add(args.Value);
+        }
+
+        if (entityArgs.Count == 0) return;
+
+        _logger?.LogDebug(
+            "EnsureEntitiesFromCacheAsync entering scope: cachedDataCount={CachedCount} toCreate={ToCreate} entityArgs={EntityArgs}",
+            cachedData.Count,
+            toCreate.Count,
+            entityArgs.Count);
+
+        var scopeStart = System.Diagnostics.Stopwatch.GetTimestamp();
+        await using (var batch = await _database.BeginWriteBatchAsync(cancellationToken).ConfigureAwait(false))
+        {
+            foreach (var args in entityArgs)
             {
-                try
-                {
-                    await StoreQueryablePropertiesAsync(entityUri, extensionKind, data, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch
-                {
-                    // Ignore parse errors
-                }
+                await UpsertFromArgsAsync(batch, args, cancellationToken).ConfigureAwait(false);
             }
         }
+        var elapsedMs = System.Diagnostics.Stopwatch.GetElapsedTime(scopeStart).TotalMilliseconds;
+        var perRowUs = entityArgs.Count > 0 ? (elapsedMs * 1000.0 / entityArgs.Count) : 0;
+        _logger?.LogDebug(
+            "EnsureEntitiesFromCacheAsync scope-elapsed: ms={Ms:F0} entityArgs={EntityArgs} perRowUs={PerRowUs:F0}",
+            elapsedMs,
+            entityArgs.Count,
+            perRowUs);
     }
 
     // Merges cached (uri, kind) -> bytes entries into an existing response

@@ -35,6 +35,7 @@
       <Platform Solution="*|x64" Project="x64" />
       <Platform Solution="*|x86" Project="x86" />
       <Deploy Solution="Debug|ARM64" />
+      <Deploy Solution="Release|ARM64" />
     </Project>
 
     <!-- AudioHost is x64-only by design (LoadLibrarys Spotify.dll which is

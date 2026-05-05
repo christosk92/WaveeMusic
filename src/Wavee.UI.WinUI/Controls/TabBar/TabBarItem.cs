@@ -7,11 +7,15 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Diagnostics;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.TabBar;
 
 public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposable
 {
+    private static readonly TimeSpan NavigationGcWindow = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan PostNavigatedGcWindow = TimeSpan.FromSeconds(2);
+
     // 5 cached pages per tab — deliberate memory-vs-UX tradeoff. Back/forward
     // through a deep navigation stack stays instant: no page recreation, no
     // flicker, no rebound of virtualized item containers, no palette/hero
@@ -115,6 +119,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
                 _navigationParameter = value;
                 if (_navigationParameter?.InitialPageType != null)
                 {
+                    NavigationGcCoordinator.BeginCriticalWindow(NavigationGcWindow, "tab-restore-navigation");
                     var navId = WaveeNavigationEventSource.Log.NextNavId();
                     WaveeNavigationEventSource.Log.Navigating(navId, _navigationParameter.InitialPageType.Name, "Restore");
                     _pendingNavId = navId;
@@ -254,6 +259,8 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     public void Navigate(Type pageType, object? parameter = null, bool suppressTransition = false)
     {
+        NavigationGcCoordinator.BeginCriticalWindow(NavigationGcWindow, "tab-navigation");
+
         if (IsSleeping)
         {
             DiscardSleepState();
@@ -429,6 +436,8 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     private void ContentFrame_Navigating(object sender, Microsoft.UI.Xaml.Navigation.NavigatingCancelEventArgs e)
     {
+        NavigationGcCoordinator.BeginCriticalWindow(NavigationGcWindow, "frame-navigating");
+
         if (_skipNextNavigationCacheTrim)
             _skipNextNavigationCacheTrim = false;
         else
@@ -441,6 +450,8 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     private void ContentFrame_Navigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
+        NavigationGcCoordinator.BeginCriticalWindow(PostNavigatedGcWindow, "frame-navigated");
+
         // Close the ETW navigation pair opened in Navigate() / NavigationParameter setter.
         // _pendingNavId == 0 means this callback fired without a preceding Start (shouldn't
         // happen in practice, but guard so we never emit a Stop without a Start).

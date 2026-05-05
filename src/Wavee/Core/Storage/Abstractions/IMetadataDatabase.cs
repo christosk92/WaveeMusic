@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Wavee.Core.Library.Spotify;
 using Wavee.Core.Storage.Entities;
 using Wavee.Protocol.ExtendedMetadata;
@@ -117,11 +118,15 @@ public interface IMetadataDatabase : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Writes many extension rows in a single transaction. Promotes each row
-    /// to the hot cache. If invoked inside a <see cref="BeginWriteBatchAsync"/>
-    /// scope, participates in the open scope's transaction without acquiring
-    /// the write lock.
+    /// Writes many extension rows in a single self-contained transaction.
+    /// Promotes each row to the hot cache.
     /// </summary>
+    /// <remarks>
+    /// To share a transaction with other writes, use
+    /// <see cref="IWriteBatch.SetExtensionsBulkAsync"/> via
+    /// <see cref="BeginWriteBatchAsync"/> — invoking this method while a batch
+    /// scope is open would self-deadlock against the open scope's lock.
+    /// </remarks>
     Task SetExtensionsBulkAsync(
         IReadOnlyList<ExtensionWriteRecord> records,
         CancellationToken cancellationToken = default);
@@ -162,14 +167,25 @@ public interface IMetadataDatabase : IAsyncDisposable
 
     /// <summary>
     /// Opens a write batch: acquires the write lock, opens a connection, and
-    /// begins a transaction. While the returned scope is alive, calls to
-    /// <see cref="UpsertEntityAsync"/>, <see cref="SetExtensionsBulkAsync"/>,
-    /// and <see cref="RefreshExtensionTtlBulkAsync"/> on the same async-flow
-    /// participate in the open transaction instead of self-locking. Disposing
-    /// the scope commits.
+    /// begins a transaction. Returns an <see cref="IWriteBatch"/> dispatcher
+    /// whose methods route writes through the open transaction. Disposing
+    /// commits and releases the lock.
     /// </summary>
-    /// <remarks>Nested scopes are not supported; the second call throws.</remarks>
-    Task<IAsyncDisposable> BeginWriteBatchAsync(CancellationToken cancellationToken = default);
+    /// <remarks>
+    /// Operations that must share the open transaction MUST be invoked through
+    /// methods on the returned <see cref="IWriteBatch"/> (e.g.
+    /// <c>batch.UpsertEntityAsync</c>), not on the database directly — the
+    /// database-level methods always self-acquire the write lock and would
+    /// self-deadlock against the open scope. Standalone
+    /// <see cref="UpsertEntityAsync"/> / <see cref="SetExtensionsBulkAsync"/>
+    /// calls outside any scope keep working unchanged.
+    /// </remarks>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="callerTag">Optional label used in lock-owner telemetry so logs identify
+    /// the call site (auto-filled with the caller method name when omitted).</param>
+    Task<IWriteBatch> BeginWriteBatchAsync(
+        CancellationToken cancellationToken = default,
+        [CallerMemberName] string? callerTag = null);
 
     #endregion
 
