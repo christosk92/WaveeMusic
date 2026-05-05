@@ -431,7 +431,15 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         AttachLongLivedServices();
 
-        if (ArtistId != null && ArtistId != artistId)
+        // Reset on any artist-id change, including null→firstId. The earlier
+        // guard `ArtistId != null && ArtistId != artistId` was defensive
+        // against a redundant clear on the very first nav (everything's empty
+        // anyway), but on a Required-cache reused page the same VM serves
+        // many artists and the prior null-guard occasionally let stale state
+        // through (TopTracks, ArtistName, MonthlyListeners) when navigating
+        // X→Y in the same tab. Clearing on every change is harmless on first
+        // nav and correct on every subsequent nav.
+        if (ArtistId != artistId)
         {
             ResetForNewArtist();
             _appliedOverviewFor = null;
