@@ -136,7 +136,10 @@ public sealed partial class ShowUpNextCard : UserControl
             return;
 
         CoverImage.Visibility = Visibility.Visible;
-        CoverImage.Source = new BitmapImage(uri);
+        // Cover renders at ~88 px in the up-next slot. Decode at 200 px (above
+        // 200% DPI render size) keeps text-on-art crisp without allocating the
+        // native 640×640 source texture for an 88-px slot.
+        CoverImage.Source = new BitmapImage(uri) { DecodePixelWidth = 200 };
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)

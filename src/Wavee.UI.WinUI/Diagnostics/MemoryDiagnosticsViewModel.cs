@@ -98,9 +98,9 @@ public sealed partial class MemoryDiagnosticsViewModel : ObservableObject, IDisp
     {
         var beforeMb = GC.GetTotalMemory(false) / 1048576.0;
         GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        GC.Collect();
         var afterMb = GC.GetTotalMemory(false) / 1048576.0;
         SetAction($"Forced GC: {beforeMb:F1} → {afterMb:F1} MB managed");
         _service.SampleNow();

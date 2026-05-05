@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.Mvvm.Messaging;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
@@ -18,6 +19,7 @@ using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.Playback;
@@ -1262,8 +1264,11 @@ public sealed partial class TrackItem : UserControl
         UpdateBadgePlacement();
         RefreshLikedState();
 
-        // Subscribe to global state changes for reactive updates
-        TrackStateBehavior.PlaybackStateChanged += OnPlaybackStateChanged;
+        // Subscribe to global state changes via WeakReferenceMessenger so a
+        // missed Unloaded `-=` (or container recycle past Unloaded) doesn't
+        // pin this TrackItem in the static event invocation list forever.
+        WeakReferenceMessenger.Default.Register<TrackItem, TrackStateRefreshMessage>(
+            this, static (r, _) => r.OnPlaybackStateChanged());
         if (_likeService != null)
             _likeService.SaveStateChanged += OnSaveStateChanged;
     }
@@ -1663,7 +1668,7 @@ public sealed partial class TrackItem : UserControl
         SetCompactEqualizer(false, false);
         SetRowEqualizer(false, false);
         StopPendingBeam();
-        TrackStateBehavior.PlaybackStateChanged -= OnPlaybackStateChanged;
+        WeakReferenceMessenger.Default.Unregister<TrackStateRefreshMessage>(this);
         if (_likeService != null)
             _likeService.SaveStateChanged -= OnSaveStateChanged;
 

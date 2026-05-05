@@ -238,18 +238,17 @@ public partial class App : Application
             try
             {
                 await Task.Delay(TimeSpan.FromSeconds(5));
+                // GCCollectionMode.Forced is the standard "run full GC now" hint;
+                // Aggressive evicts shorter-lived objects from older generations and
+                // is more likely to surface latent corruption (dotnet/runtime#126903).
                 GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
                 GC.Collect(
                     generation: GC.MaxGeneration,
-                    mode: GCCollectionMode.Aggressive,
+                    mode: GCCollectionMode.Forced,
                     blocking: true,
                     compacting: true);
                 GC.WaitForPendingFinalizers();
-                GC.Collect(
-                    generation: GC.MaxGeneration,
-                    mode: GCCollectionMode.Aggressive,
-                    blocking: true,
-                    compacting: true);
+                GC.Collect();
             }
             catch
             {

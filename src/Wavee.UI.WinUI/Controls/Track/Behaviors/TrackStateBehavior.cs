@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Messages;
 
 namespace Wavee.UI.WinUI.Controls.Track.Behaviors;
 
@@ -50,8 +52,25 @@ public static class TrackStateBehavior
     /// <summary>Track ID currently being loaded (for per-row indicators).</summary>
     public static string? BufferingTrackId => _bufferingTrackId;
 
-    /// <summary>Fired when playback state changes globally. Used by controls that can't use attached properties.</summary>
-    public static event Action? PlaybackStateChanged;
+    // Was a `public static event Action? PlaybackStateChanged;` that broadcasts
+    // global track-state changes to subscribers (TrackItem, SearchResultHeroCard,
+    // etc.). The static event was a leak hazard — every `+=` rooted the
+    // subscribing element via the delegate's Target, and any missed `-=` (e.g.
+    // because Unloaded didn't fire) leaked it for the lifetime of the app.
+    // Replaced with `WeakReferenceMessenger.Default.Send(new TrackStateRefreshMessage())`
+    // — same broadcast semantics, weak-reference subscribers, no leak surface.
+    private static void RaisePlaybackStateChanged()
+    {
+        try
+        {
+            WeakReferenceMessenger.Default.Send(new TrackStateRefreshMessage());
+        }
+        catch
+        {
+            // Messenger should never throw, but a faulty handler must not take
+            // down the playback state pipeline.
+        }
+    }
 
     #region TrackId Property
 
@@ -241,21 +260,21 @@ public static class TrackStateBehavior
                 UpdateBucket(oldTrackId);
                 if (!string.Equals(_currentTrackId, oldTrackId, StringComparison.Ordinal))
                     UpdateBucket(_currentTrackId);
-                PlaybackStateChanged?.Invoke();
+                RaisePlaybackStateChanged();
                 break;
             }
             case nameof(IPlaybackStateService.IsPlaying):
                 _isPlaying = service.IsPlaying;
                 UpdateBucket(_currentTrackId);
-                PlaybackStateChanged?.Invoke();
+                RaisePlaybackStateChanged();
                 break;
             case nameof(IPlaybackStateService.IsBuffering):
                 _isBuffering = service.IsBuffering;
-                PlaybackStateChanged?.Invoke();
+                RaisePlaybackStateChanged();
                 break;
             case nameof(IPlaybackStateService.BufferingTrackId):
                 _bufferingTrackId = service.BufferingTrackId;
-                PlaybackStateChanged?.Invoke();
+                RaisePlaybackStateChanged();
                 break;
         }
     }

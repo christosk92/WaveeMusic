@@ -43,7 +43,10 @@ public static class MemoryReleaseHelper
         long beforeManaged = GC.GetTotalMemory(false);
         long beforeWorkingSet = SafeWorkingSet();
 
-        GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        // GCCollectionMode.Forced (not Aggressive) is the recommended production
+        // hint — Aggressive surfaces latent corruption on certain configs
+        // (dotnet/runtime#126903) and is overkill for the working-set trim path.
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
         GC.Collect();
         TrimWorkingSet(logger, reason);

@@ -1,5 +1,6 @@
 using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.Mvvm.Messaging;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -11,6 +12,7 @@ using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
@@ -167,7 +169,9 @@ public sealed partial class SearchResultRowCard : UserControl
         if (!_subscribedToPlayback)
         {
             TrackStateBehavior.EnsurePlaybackSubscription();
-            TrackStateBehavior.PlaybackStateChanged += OnPlaybackStateChanged;
+            // Weak-reference messenger replaces the prior static event subscription.
+            WeakReferenceMessenger.Default.Register<SearchResultRowCard, TrackStateRefreshMessage>(
+                this, static (r, _) => r.OnPlaybackStateChanged());
             _subscribedToPlayback = true;
         }
 
@@ -179,7 +183,7 @@ public sealed partial class SearchResultRowCard : UserControl
     {
         if (_subscribedToPlayback)
         {
-            TrackStateBehavior.PlaybackStateChanged -= OnPlaybackStateChanged;
+            WeakReferenceMessenger.Default.Unregister<TrackStateRefreshMessage>(this);
             _subscribedToPlayback = false;
         }
 

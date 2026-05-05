@@ -5,21 +5,22 @@ using Microsoft.Extensions.Logging;
 namespace Wavee.UI.WinUI.Services;
 
 /// <summary>
-/// Starts a short opportunistic no-GC region and defers explicit, blocking
-/// memory-release passes while navigation is likely to be parsing XAML,
-/// realizing containers, loading images, or crossfading content.
+/// Defers explicit, blocking memory-release passes while navigation is likely
+/// parsing XAML, realising containers, loading images, or crossfading content.
+/// Pure ref-counted boolean — the previous <c>GC.TryStartNoGCRegion</c> attempt
+/// turned out to do more harm than good (allocation-budget exhaustion forced a
+/// catch-up Gen2 right at navigation completion, the late-nav hiccup). The
+/// runtime team's own guidance is unambiguous: <em>"For any normal kind of
+/// applications, YOU DON'T NEED TO DO THIS. You are likely to make your
+/// application run slower or blow up memory."</em> So we don't.
 /// </summary>
 public static class NavigationGcCoordinator
 {
-    private const long NoGcTotalBudgetBytes = 192L * 1024 * 1024;
-    private const long NoGcLohBudgetBytes = 48L * 1024 * 1024;
-
     private static readonly object Gate = new();
     private static int _activeWindows;
     private static int _deferredReleaseCount;
     private static string? _deferredReason;
     private static ILogger? _deferredLogger;
-    private static bool _noGcRegionActive;
 
     public static bool IsNavigationCritical
     {
@@ -37,9 +38,6 @@ public static class NavigationGcCoordinator
 
         lock (Gate)
         {
-            if (_activeWindows == 0)
-                TryStartNoGcRegion();
-
             _activeWindows++;
         }
 
@@ -95,8 +93,6 @@ public static class NavigationGcCoordinator
             if (_activeWindows > 0)
                 return;
 
-            EndNoGcRegion();
-
             if (_deferredReleaseCount == 0)
                 return;
 
@@ -119,44 +115,6 @@ public static class NavigationGcCoordinator
                 pendingLogger,
                 $"deferred-after-navigation:{pendingReason ?? reason}:{pendingCount}");
         });
-    }
-
-    private static void TryStartNoGcRegion()
-    {
-        if (_noGcRegionActive)
-            return;
-
-        try
-        {
-            _noGcRegionActive = GC.TryStartNoGCRegion(
-                NoGcTotalBudgetBytes,
-                NoGcLohBudgetBytes,
-                disallowFullBlockingGC: true);
-        }
-        catch
-        {
-            _noGcRegionActive = false;
-        }
-    }
-
-    private static void EndNoGcRegion()
-    {
-        if (!_noGcRegionActive)
-            return;
-
-        try
-        {
-            GC.EndNoGCRegion();
-        }
-        catch
-        {
-            // If the allocation budget was exceeded, the runtime already ended
-            // the region by doing a GC. There is nothing useful to do here.
-        }
-        finally
-        {
-            _noGcRegionActive = false;
-        }
     }
 
     private sealed class TimerState

@@ -133,10 +133,18 @@ public sealed partial class CommentThreadItem : UserControl
         RepliesRepeater.ItemsSource = null;
     }
 
+    private const int CommentAvatarDecodePixelWidth = 80;
+
     private static ImageSource? TryLoadImage(string? url)
     {
         if (string.IsNullOrEmpty(url)) return null;
-        try { return new BitmapImage(new Uri(url)); }
+        try
+        {
+            // 32–40 px rendered on screen at 200% DPI = 80 px source. Without
+            // DecodePixelWidth, Spotify's native 640×640 avatars allocate an
+            // ~80× larger D3D11 texture for no visible benefit.
+            return new BitmapImage(new Uri(url)) { DecodePixelWidth = CommentAvatarDecodePixelWidth };
+        }
         catch { return null; }
     }
 

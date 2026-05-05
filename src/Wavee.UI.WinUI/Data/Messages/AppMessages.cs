@@ -31,6 +31,18 @@ public sealed class PlaybackStateChangedMessage(bool isPlaying)
     : ValueChangedMessage<bool>(isPlaying);
 
 /// <summary>
+/// Broadcast by <see cref="Wavee.UI.WinUI.Controls.Track.Behaviors.TrackStateBehavior"/>
+/// when any of (CurrentTrackId, IsPlaying, IsBuffering, BufferingTrackId) changes.
+/// Subscribers (TrackItem, SearchResultHeroCard, lyrics surfaces, etc.) read the
+/// current state via <c>TrackStateBehavior</c>'s static getters and refresh.
+/// Replaces the prior <c>TrackStateBehavior.PlaybackStateChanged</c> static event,
+/// which was a memory-leak hazard: every subscriber held a strong delegate, the
+/// delegate's Target was the subscribing element, and the static event lived for
+/// the app's lifetime — any unsubscribe miss leaked the element forever.
+/// </summary>
+public sealed class TrackStateRefreshMessage;
+
+/// <summary>
 /// Sent when the playback context changes (e.g. switched from playlist to album).
 /// </summary>
 public sealed class PlaybackContextChangedMessage(PlaybackContextInfo? context)

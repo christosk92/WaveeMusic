@@ -36,13 +36,18 @@
 		<FileVersion>0.1.0.0</FileVersion>
 		<!-- Required for CommunityToolkit.Mvvm 8.4.0 on .NET 10 -->
 		<LangVersion>preview</LangVersion>
-		<!-- Workstation GC is the right default for a desktop UI process.
-		     Server GC creates one heap per logical processor and grows working set
-		     aggressively, which is a bad trade for Wavee's image-heavy navigation UI.
-		     The audio pipeline runs out-of-process, so UI GC pauses no longer need a
-		     server-GC-sized memory footprint to protect playback. -->
-		<ServerGarbageCollection>false</ServerGarbageCollection>
+		<!-- DATAS (Dynamic Adaptation To Application Sizes), default in .NET 9+.
+		     Bridges workstation/server: starts with one heap (workstation memory
+		     profile) and adds heaps under sustained pressure (server throughput).
+		     Pairs better with image-heavy navigation than vanilla workstation GC,
+		     which exhibited a textbook mid-life-crisis ratio (Gen0:Gen1:Gen2 ≈
+		     711:541:334) on this codebase — allocations living just long enough
+		     to escape Gen0. ServerGarbageCollection=true is required for DATAS;
+		     GarbageCollectionAdaptationMode=1 enables it. The audio pipeline runs
+		     out-of-process, so UI GC pauses don't need to protect playback. -->
+		<ServerGarbageCollection>true</ServerGarbageCollection>
 		<ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+		<GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
 
 		<!-- Required by Microsoft's official Windows AI APIs guide:
 		     https://learn.microsoft.com/en-us/windows/ai/apis/get-started

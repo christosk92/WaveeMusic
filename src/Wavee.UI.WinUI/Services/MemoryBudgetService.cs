@@ -18,7 +18,12 @@ namespace Wavee.UI.WinUI.Services;
 /// </summary>
 public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
 {
-    public const long DefaultBudgetBytes = 800L * 1024 * 1024;
+    // Steady-state private bytes after the x:Bind / VM-singleton-sub leak fix
+    // sit at 400-600 MB. Headroom to 1.5 GB keeps the budget service quiet for
+    // normal sessions; it only fires for genuine pathological growth. Earlier
+    // 800 MB threshold caused a periodic blocking compacting Gen2 every cooldown
+    // window once the leak held us at 838 MB — felt as recurring stutter.
+    public const long DefaultBudgetBytes = 1_500L * 1024 * 1024;
 
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan NormalCooldown = TimeSpan.FromSeconds(30);
@@ -164,10 +169,16 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
 
         try
         {
+            // Single compacting Gen2 + finalizer drain + non-aggressive sweep.
+            // The earlier double-Aggressive pattern doubled the pause for
+            // marginal benefit; GCCollectionMode.Aggressive also triggered
+            // dotnet/runtime#126903-class corruption on certain configs.
+            // GCCollectionMode.Forced is the standard "run full GC now" hint
+            // recommended by every production tuning guide.
             GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
             GC.WaitForPendingFinalizers();
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            GC.Collect();
             MemoryReleaseHelper.TrimWorkingSet(_logger, reason);
         }
         catch (Exception ex)
