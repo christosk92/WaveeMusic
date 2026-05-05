@@ -1307,7 +1307,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         LoadNewContent(e.Parameter);
     }
 
-    private void LoadNewContent(object? parameter)
+    private async void LoadNewContent(object? parameter)
     {
         _trimmedForNavigationCache = false;
         ClearPendingNavigationScrollPosition();
@@ -1345,6 +1345,18 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         // emits Ready once the overview lands and the VM drives its cascade from
         // there. No explicit load command needed.
         // SetupWatchFeedVideo is called from CrossfadeToContent after data loads.
+
+        // Warm-cache trigger. ArtistStore is a BehaviorSubject — Initialize's
+        // subscribe queues ApplyOverviewState via the dispatcher, which runs
+        // after this method returns. After one yield it has landed (ArtistName
+        // populated, IsLoading stayed false), so TryShowContentNow can fire
+        // ScheduleCrossfade for the warm-cache case where the IsLoading=false
+        // write was a no-op (PropertyChanged didn't fire). Without this, with
+        // NavigationCacheMode=Required the same VM is reused across nav and the
+        // shimmer stays stuck on cache hits. Mirrors AlbumPage / PlaylistPage.
+        await Task.Yield();
+        if (_isNavigatingAway) return;
+        TryShowContentNow();
     }
 
     private void RestoreHeroHeight(string artistId)
