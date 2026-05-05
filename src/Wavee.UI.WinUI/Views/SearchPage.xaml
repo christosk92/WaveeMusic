@@ -13,7 +13,7 @@
     xmlns:search="using:Wavee.UI.WinUI.Controls.Search"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d"
-    NavigationCacheMode="Disabled"
+    NavigationCacheMode="Required"
     Background="Transparent">
 
     <ScrollView x:Name="PageScrollView" VerticalScrollBarVisibility="Auto" ContentOrientation="Vertical">

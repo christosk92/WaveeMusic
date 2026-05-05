@@ -21,7 +21,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class EpisodePage : Page, ITabBarItemContent, IDisposable
+public sealed partial class EpisodePage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable
 {
     private const int ShimmerCollapseDelayMs = 250;
 
@@ -61,12 +61,28 @@ public sealed partial class EpisodePage : Page, ITabBarItemContent, IDisposable
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
+        // Cleanup is in TrimForNavigationCache below — TabBarItem invokes that
+        // around Frame.Navigate. Under NavigationCacheMode=Required the page
+        // survives nav-away in Frame's cache pool; do NOT Dispose the VM here
+        // (the cached page would come back bound to a dead VM).
+    }
+
+    private bool _trimmedForNavigationCache;
+
+    public void TrimForNavigationCache()
+    {
+        if (_trimmedForNavigationCache) return;
+        _trimmedForNavigationCache = true;
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
-        // sibling does not pin this page across navigations. NavCacheMode is
-        // Disabled — page is destroyed on nav-away, no Update() partner needed.
+        // sibling does not keep the cached page wired up while it sits off-screen.
         Bindings?.StopTracking();
-        // Detach the (Transient) VM from singleton service event subscriptions.
-        (ViewModel as IDisposable)?.Dispose();
+    }
+
+    public void RestoreFromNavigationCache()
+    {
+        if (!_trimmedForNavigationCache) return;
+        _trimmedForNavigationCache = false;
+        Bindings?.Update();
     }
 
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)

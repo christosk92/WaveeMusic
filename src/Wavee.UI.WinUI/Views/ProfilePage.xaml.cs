@@ -162,11 +162,25 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        LoadProfileParameter(e.Parameter);
+    }
+
+    /// <summary>
+    /// Same-tab profile→profile navigation reuses this Page instance and never
+    /// fires <see cref="OnNavigatedTo"/> — TabBarItem.Navigate routes through
+    /// this method instead. Without it, clicking a different profile from the
+    /// player bar / a song's context menu while ProfilePage is the active tab
+    /// content silently drops the new parameter.
+    /// </summary>
+    public void RefreshWithParameter(object? parameter)
+        => LoadProfileParameter(parameter);
+
+    private void LoadProfileParameter(object? parameter)
+    {
         _isNavigatingAway = false;
         _trimmedForNavigationCache = false;
         AttachDataSubscriptions();
-        var parameter = e.Parameter as ContentNavigationParameter;
-        ViewModel.Initialize(parameter);
+        ViewModel.Initialize(parameter as ContentNavigationParameter);
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)

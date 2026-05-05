@@ -18,7 +18,7 @@
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     mc:Ignorable="d"
-    NavigationCacheMode="Disabled"
+    NavigationCacheMode="Required"
     Background="Transparent">
 
     <Page.Resources>

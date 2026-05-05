@@ -15,7 +15,7 @@
     xmlns:appControls="using:Wavee.UI.WinUI.Controls"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     mc:Ignorable="d"
-    NavigationCacheMode="Disabled"
+    NavigationCacheMode="Required"
     Background="Transparent">
 
     <Page.Resources>

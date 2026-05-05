@@ -103,8 +103,21 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        LoadSearchParameter(e.Parameter);
+    }
 
-        if (e.Parameter is string query && !string.IsNullOrWhiteSpace(query))
+    /// <summary>
+    /// Same-tab search→search navigation reuses this Page instance and never
+    /// fires <see cref="OnNavigatedTo"/> — TabBarItem.Navigate routes through
+    /// this method instead. Without it, typing a new query from the sidebar
+    /// while SearchPage is the active tab content silently drops the request.
+    /// </summary>
+    public void RefreshWithParameter(object? parameter)
+        => LoadSearchParameter(parameter);
+
+    private void LoadSearchParameter(object? parameter)
+    {
+        if (parameter is string query && !string.IsNullOrWhiteSpace(query))
         {
             _trimmedForNavigationCache = false;
             _ = ViewModel.LoadAsync(query);

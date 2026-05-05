@@ -5,12 +5,13 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.ViewModels;
 using Windows.UI;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class LocalLibraryPage : Page
+public sealed partial class LocalLibraryPage : Page, INavigationCacheMemoryParticipant
 {
     public LocalLibraryViewModel ViewModel { get; }
 
@@ -30,10 +31,24 @@ public sealed partial class LocalLibraryPage : Page
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
-        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
-        // sibling does not pin this page across navigations. NavCacheMode is
-        // Disabled — page is destroyed on nav-away, no Update() partner needed.
+        // Cleanup is in TrimForNavigationCache below — TabBarItem invokes that
+        // around Frame.Navigate.
+    }
+
+    private bool _trimmedForNavigationCache;
+
+    public void TrimForNavigationCache()
+    {
+        if (_trimmedForNavigationCache) return;
+        _trimmedForNavigationCache = true;
         Bindings?.StopTracking();
+    }
+
+    public void RestoreFromNavigationCache()
+    {
+        if (!_trimmedForNavigationCache) return;
+        _trimmedForNavigationCache = false;
+        Bindings?.Update();
     }
 
     private void TrackRow_PointerEntered(object sender, PointerRoutedEventArgs e)

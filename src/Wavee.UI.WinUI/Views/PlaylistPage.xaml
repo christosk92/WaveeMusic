@@ -14,7 +14,7 @@
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:sessionTokens="using:Wavee.UI.WinUI.Controls.SessionTokens"
     mc:Ignorable="d"
-    NavigationCacheMode="Disabled"
+    NavigationCacheMode="Required"
     Background="Transparent">
     <Grid x:Name="RootGrid" SizeChanged="RootGrid_SizeChanged">
         <!-- Responsive: driven by SizeChanged in code-behind. Loading is bound to
