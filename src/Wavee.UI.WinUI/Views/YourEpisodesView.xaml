@@ -432,9 +432,11 @@
                     Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
 
                 <StackPanel
+                    x:Name="ShowsListShimmer"
                     Grid.Row="1"
                     Spacing="6"
                     Padding="6,0,6,0"
+                    x:Load="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay}"
                     Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <Grid ColumnSpacing="8" Margin="0,4,0,0">
                         <Grid.ColumnDefinitions>
@@ -624,6 +626,7 @@
                 </Border>
 
                 <Border
+                    x:Name="EpisodeDetailHeaderShimmer"
                     Grid.Row="0"
                     Margin="0,0,0,10"
                     CornerRadius="8"
@@ -631,6 +634,7 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     Padding="10"
+                    x:Load="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay}"
                     Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <Grid ColumnSpacing="10">
                         <Grid.ColumnDefinitions>
@@ -670,8 +674,10 @@
                         Visibility="{x:Bind ViewModel.ShowEpisodesShimmer, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
 
                     <StackPanel
+                        x:Name="EpisodesListShimmer"
                         Spacing="12"
                         Padding="0,10,0,0"
+                        x:Load="{x:Bind ViewModel.ShowEpisodesShimmer, Mode=OneWay}"
                         Visibility="{x:Bind ViewModel.ShowEpisodesShimmer, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
@@ -735,8 +741,10 @@
                     Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
 
                 <StackPanel
+                    x:Name="EpisodeDetailNarrowShimmer"
                     Spacing="10"
                     Padding="0,0,2,0"
+                    x:Load="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay}"
                     Visibility="{x:Bind ViewModel.IsInitialLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <Grid ColumnSpacing="10">
                         <Grid.ColumnDefinitions>

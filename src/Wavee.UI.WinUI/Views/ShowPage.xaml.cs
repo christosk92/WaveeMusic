@@ -37,6 +37,8 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
 
     public ShowViewModel ViewModel { get; }
 
+    public ShimmerLoadGate ShimmerGate { get; } = new();
+
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
 
     public event EventHandler<TabItemParameter>? ContentChanged;
@@ -159,19 +161,8 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
         _showingContent = true;
         _crossfadeScheduled = false;
 
-        AnimationBuilder.Create()
-            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200),
-                layer: FrameworkLayer.Xaml)
-            .Start(ShimmerContainer);
-
-        AnimationBuilder.Create()
-            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
-                delay: TimeSpan.FromMilliseconds(100),
-                layer: FrameworkLayer.Xaml)
-            .Start(ContentContainer);
-
-        await Task.Delay(ShimmerCollapseDelayMs);
-        if (_showingContent) ShimmerContainer.Visibility = Visibility.Collapsed;
+        await ShimmerGate.RunCrossfadeAsync(ShimmerContainer, ContentContainer, FrameworkLayer.Xaml,
+            () => _showingContent);
     }
 
     private void TryShowContentNow()
@@ -191,10 +182,14 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
     {
         _showingContent = true;
         _crossfadeScheduled = false;
-        ShimmerContainer.Visibility = Visibility.Collapsed;
-        ShimmerContainer.Opacity = 0;
+        ShimmerGate.IsLoaded = false;
+        if (ShimmerContainer is not null)
+        {
+            ShimmerContainer.Visibility = Visibility.Collapsed;
+            ShimmerContainer.Opacity = 0;
+            ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 0;
+        }
         ContentContainer.Opacity = 1;
-        ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 0;
         ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 1;
     }
 
@@ -203,11 +198,7 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
         _isNavigatingAway = false;
         _showingContent = false;
         _crossfadeScheduled = false;
-        ShimmerContainer.Visibility = Visibility.Visible;
-        ShimmerContainer.Opacity = 1;
-        ContentContainer.Opacity = 0;
-        ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 1;
-        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
+        ShimmerGate.Reset(() => ShimmerContainer, () => ContentContainer);
     }
 
     // ── Navigation ──────────────────────────────────────────────────────────

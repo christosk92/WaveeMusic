@@ -9,6 +9,7 @@ using Wavee.Connect;
 using Wavee.Audio.Queue;
 using Wavee.Core.Session;
 using Wavee.Core.Audio;
+using Wavee.Playback.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
@@ -25,17 +26,35 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
     private readonly Session _session;
     private readonly ILogger? _logger;
     private IPlaybackEngine? _localEngine;
+    private Wavee.AudioIpc.AudioPipelineProxy? _audioPipelineProxy;
 
     /// <summary>
     /// Enables local playback routing through the given engine.
     /// Called once after AudioPipeline is created in InitializePlaybackEngine.
     /// </summary>
-    internal void EnableLocalPlayback(IPlaybackEngine engine) => _localEngine = engine;
+    internal void EnableLocalPlayback(IPlaybackEngine engine)
+    {
+        _localEngine = engine;
+        if (engine is Wavee.AudioIpc.AudioPipelineProxy proxy)
+            _audioPipelineProxy = proxy;
+    }
+
+    /// <summary>
+    /// Wires live audio-pipeline controls. Playback commands route through
+    /// PlaybackOrchestrator, but EQ/normalization/quality are AudioHost-level
+    /// controls and must still reach the raw IPC proxy.
+    /// </summary>
+    internal void EnableAudioPipelineControl(Wavee.AudioIpc.AudioPipelineProxy proxy)
+        => _audioPipelineProxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
 
     /// <summary>
     /// Disables local playback routing (e.g. on logout).
     /// </summary>
-    internal void DisableLocalPlayback() => _localEngine = null;
+    internal void DisableLocalPlayback()
+    {
+        _localEngine = null;
+        _audioPipelineProxy = null;
+    }
 
     public ConnectCommandExecutor(ConnectCommandClient client, Session session, ILogger? logger = null)
     {
@@ -48,21 +67,40 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
 
     public async Task SwitchQualityAsync(AudioQuality quality, CancellationToken ct = default)
     {
-        if (_localEngine is Wavee.AudioIpc.AudioPipelineProxy proxy)
+        if (GetPipelineProxy() is { } proxy)
+        {
             await proxy.SwitchQualityAsync(quality.ToString(), ct).ConfigureAwait(false);
+            return;
+        }
+
+        _logger?.LogWarning("SwitchQualityAsync ignored: AudioHost proxy is not connected");
     }
 
     public void SetNormalizationEnabled(bool enabled)
     {
-        if (_localEngine is Wavee.AudioIpc.AudioPipelineProxy proxy)
+        if (GetPipelineProxy() is { } proxy)
+        {
             _ = proxy.SetNormalizationEnabledAsync(enabled);
+            return;
+        }
+
+        _logger?.LogWarning("SetNormalizationEnabled ignored: AudioHost proxy is not connected");
     }
 
-    public async Task SetEqualizerAsync(bool enabled, double[]? bandGains, CancellationToken ct = default)
+    public async Task<EqualizerApplyResult> SetEqualizerAsync(bool enabled, double[]? bandGains, CancellationToken ct = default)
     {
-        if (_localEngine is Wavee.AudioIpc.AudioPipelineProxy proxy)
-            await proxy.SetEqualizerAsync(enabled, bandGains, ct).ConfigureAwait(false);
+        if (GetPipelineProxy() is { } proxy)
+        {
+            return await proxy.SetEqualizerAsync(enabled, bandGains, ct).ConfigureAwait(false);
+        }
+
+        const string message = "AudioHost proxy is not connected";
+        _logger?.LogWarning("SetEqualizerAsync ignored: {Message}", message);
+        throw new InvalidOperationException(message);
     }
+
+    private Wavee.AudioIpc.AudioPipelineProxy? GetPipelineProxy()
+        => _audioPipelineProxy ?? (_localEngine as Wavee.AudioIpc.AudioPipelineProxy);
 
     private string? GetTargetDeviceId() =>
         _session.PlaybackState?.CurrentState.ActiveDeviceId;

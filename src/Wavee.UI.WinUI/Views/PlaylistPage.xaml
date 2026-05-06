@@ -14,7 +14,7 @@
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:sessionTokens="using:Wavee.UI.WinUI.Controls.SessionTokens"
     mc:Ignorable="d"
-    NavigationCacheMode="Required"
+    NavigationCacheMode="Enabled"
     Background="Transparent">
     <Grid x:Name="RootGrid" SizeChanged="RootGrid_SizeChanged">
         <!-- Responsive: driven by SizeChanged in code-behind. Loading is bound to
@@ -69,6 +69,8 @@
                 IsHitTestVisible="False"/>
 
         <Grid x:Name="TwoColumnGrid"
+              MaxWidth="1160"
+              HorizontalAlignment="Stretch"
               Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="LeftPanelColumn" Width="200" MinWidth="200" MaxWidth="500"/>
@@ -84,7 +86,9 @@
                  Visibility / opacity is now driven from code-behind so the
                  shimmer→content swap is a true crossfade — the previous hard
                  cut via BoolToVisibilityConverter snapped distractingly. -->
-            <StackPanel x:Name="ShimmerContainer" Grid.Column="0" Spacing="14"
+            <StackPanel x:Name="ShimmerContainer"
+                        x:Load="{x:Bind ShimmerGate.IsLoaded, Mode=OneWay}"
+                        Grid.Column="0" Spacing="14"
                         HorizontalAlignment="Stretch" VerticalAlignment="Top"
                         Padding="32,24,16,24">
                 <controls:Shimmer Height="220" CornerRadius="8" HorizontalAlignment="Stretch"/>

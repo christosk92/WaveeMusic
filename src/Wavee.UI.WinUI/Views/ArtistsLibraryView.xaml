@@ -233,8 +233,10 @@
                 </ItemsView>
 
                 <StackPanel
+                    x:Name="ArtistsListShimmer"
                     Grid.Row="1"
                     Spacing="2"
+                    x:Load="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
                     Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <Grid Padding="8" ColumnSpacing="12">
                         <Grid.ColumnDefinitions>

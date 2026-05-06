@@ -29,6 +29,7 @@ public sealed partial class EpisodeCard : UserControl
     private readonly ImageCacheService? _imageCache;
     private bool _isHovered;
     private HomeSectionItem? _boundItem;
+    private string? _currentCoverImageUrl;
 
     public EpisodeCard()
     {
@@ -45,8 +46,6 @@ public sealed partial class EpisodeCard : UserControl
             _boundItem.PropertyChanged -= OnItemPropertyChanged;
             _boundItem = null;
         }
-
-        CoverImage.Source = null;
     }
 
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
@@ -54,7 +53,6 @@ public sealed partial class EpisodeCard : UserControl
         if (_boundItem != null)
             _boundItem.PropertyChanged -= OnItemPropertyChanged;
 
-        CoverImage.Source = null;
         _boundItem = args.NewValue as HomeSectionItem;
 
         if (_boundItem != null)
@@ -85,23 +83,36 @@ public sealed partial class EpisodeCard : UserControl
         var imageUrl = SpotifyImageHelper.ToHttpsUrl(item?.ImageUrl) ?? item?.ImageUrl;
         if (!string.IsNullOrEmpty(imageUrl))
         {
-            try
+            if (string.Equals(_currentCoverImageUrl, imageUrl, StringComparison.Ordinal)
+                && CoverImage.Source != null)
             {
-                CoverImage.Source = _imageCache?.GetOrCreate(imageUrl, CoverDecodeSize)
-                    ?? new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(imageUrl))
-                    {
-                        DecodePixelWidth = CoverDecodeSize,
-                        DecodePixelType = Microsoft.UI.Xaml.Media.Imaging.DecodePixelType.Logical
-                    };
+                CoverPlaceholderIcon.Visibility = Visibility.Collapsed;
             }
-            catch
+            else
             {
-                CoverImage.Source = null;
+                _currentCoverImageUrl = imageUrl;
                 CoverPlaceholderIcon.Visibility = Visibility.Visible;
+
+                try
+                {
+                    CoverImage.Source = _imageCache?.GetOrCreate(imageUrl, CoverDecodeSize)
+                        ?? new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(imageUrl))
+                        {
+                            DecodePixelWidth = CoverDecodeSize,
+                            DecodePixelType = Microsoft.UI.Xaml.Media.Imaging.DecodePixelType.Logical
+                        };
+                }
+                catch
+                {
+                    _currentCoverImageUrl = null;
+                    CoverImage.Source = null;
+                    CoverPlaceholderIcon.Visibility = Visibility.Visible;
+                }
             }
         }
         else
         {
+            _currentCoverImageUrl = null;
             CoverImage.Source = null;
             CoverPlaceholderIcon.Visibility = Visibility.Visible;
         }

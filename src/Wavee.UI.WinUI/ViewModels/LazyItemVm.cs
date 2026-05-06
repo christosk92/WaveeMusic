@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Wavee.UI.WinUI.Data.Contracts;
 
@@ -98,6 +99,7 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
         OnPropertyChanged(nameof(HasVideo));
         OnPropertyChanged(nameof(AddedAtFormatted));
         OnPropertyChanged(nameof(PlayCountFormatted));
+        OnPropertyChanged(nameof(Artists));
     }
 
     // ITrackItem — delegate to Data when loaded, safe defaults when not
@@ -105,6 +107,8 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
     public string Title => Data?.Title ?? "";
     public string ArtistName => Data?.ArtistName ?? "";
     public string ArtistId => Data?.ArtistId ?? "";
+    public IReadOnlyList<TrackArtistRef> Artists =>
+        Data?.Artists ?? Array.Empty<TrackArtistRef>();
     public string AlbumName => Data?.AlbumName ?? "";
     public string AlbumId => Data?.AlbumId ?? "";
     public string? ImageUrl => Data?.ImageUrl;

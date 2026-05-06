@@ -63,6 +63,8 @@ public sealed partial class BaselineHomeCard : UserControl
     private int? _queuedPreviewDelta;
     private int _previewTransitionVersion;
     private int _previewPendingVisualVersion;
+    private string? _currentHeroImageUrl;
+    private string? _currentThumbImageUrl;
     private int _hoverStopVersion;
     private bool _hoverEnterGuardActive;
     private Storyboard? _previewPendingProgressStoryboard;
@@ -264,10 +266,18 @@ public sealed partial class BaselineHomeCard : UserControl
         var heroHttpsUrl = SpotifyImageHelper.ToHttpsUrl(heroUrl);
         if (string.IsNullOrWhiteSpace(heroHttpsUrl))
         {
+            _currentHeroImageUrl = null;
             HeroImage.Source = null;
+        }
+        else if (string.Equals(_currentHeroImageUrl, heroHttpsUrl, StringComparison.Ordinal)
+                 && HeroImage.Source != null)
+        {
+            // Same realized image; keep it in place to avoid home-card flashes
+            // during section diffing and ItemsRepeater recycle callbacks.
         }
         else
         {
+            _currentHeroImageUrl = heroHttpsUrl;
             BitmapImage? heroImage = _imageCache?.GetOrCreate(heroHttpsUrl, HeroImageDecodeSize);
             heroImage ??= new BitmapImage(new Uri(heroHttpsUrl))
             {
@@ -284,18 +294,25 @@ public sealed partial class BaselineHomeCard : UserControl
         var thumbHttpsUrl = SpotifyImageHelper.ToHttpsUrl(thumbUrl);
         if (string.IsNullOrWhiteSpace(thumbHttpsUrl))
         {
+            _currentThumbImageUrl = null;
             CoverThumbImage.Source = null;
             CoverThumbPlaceholder.Visibility = Visibility.Visible;
             return;
         }
 
-        BitmapImage? thumbImage = _imageCache?.GetOrCreate(thumbHttpsUrl, ThumbImageDecodeSize);
-        thumbImage ??= new BitmapImage(new Uri(thumbHttpsUrl))
+        if (!string.Equals(_currentThumbImageUrl, thumbHttpsUrl, StringComparison.Ordinal)
+            || CoverThumbImage.Source == null)
         {
-            DecodePixelWidth = ThumbImageDecodeSize,
-            DecodePixelType = DecodePixelType.Logical
-        };
-        CoverThumbImage.Source = thumbImage;
+            _currentThumbImageUrl = thumbHttpsUrl;
+            BitmapImage? thumbImage = _imageCache?.GetOrCreate(thumbHttpsUrl, ThumbImageDecodeSize);
+            thumbImage ??= new BitmapImage(new Uri(thumbHttpsUrl))
+            {
+                DecodePixelWidth = ThumbImageDecodeSize,
+                DecodePixelType = DecodePixelType.Logical
+            };
+            CoverThumbImage.Source = thumbImage;
+        }
+
         CoverThumbPlaceholder.Visibility = Visibility.Collapsed;
     }
 
@@ -1579,6 +1596,15 @@ public sealed partial class BaselineHomeCard : UserControl
         StopCanvasPreview();
         StopPreviewVisualization();
         UnregisterPreviewAudio();
+
+        // Mirror ContentCard.ReleaseImage(): null the bitmap sources on Unload
+        // so the cached BitmapImage isn't pinned in the visual tree past this
+        // card's lifetime. Without this, recycle-to-nothing scenarios keep the
+        // last hero/thumb decode resident in the cache.
+        if (HeroImage != null) HeroImage.Source = null;
+        if (CoverThumbImage != null) CoverThumbImage.Source = null;
+        _currentHeroImageUrl = null;
+        _currentThumbImageUrl = null;
 
         if (ReferenceEquals(s_activeCard, this))
             s_activeCard = null;

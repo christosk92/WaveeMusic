@@ -30,7 +30,9 @@ namespace Wavee.UI.WinUI.Controls.SidebarPlayer;
 /// </summary>
 public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfaceConsumer
 {
-    private const double AudioArtworkMaxSize = 540d;
+    private const double AudioArtworkBaseMaxSize = 540d;
+    private const double AudioArtworkExpandedMaxSize = 1080d;
+    private const double AudioArtworkMinSize = 378d;
     private const double VideoAspectRatio = 16d / 9d;
     private const double PreferredVideoWindowWidth = 960d;
     private const double MinVideoWindowWidth = 720d;
@@ -59,6 +61,7 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
     private string? _videoTakeoverVisibleTrackId;
     private string? _videoTakeoverSuppressedTrackId;
     private DispatcherQueueTimer? _videoOverlayHideTimer;
+    private double _appliedAudioChromeScale = -1;
 
     public event EventHandler<bool>? TheaterModeChanged;
     public event EventHandler? FitVideoWindowRequested;
@@ -78,6 +81,7 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        SizeChanged += OnControlSizeChanged;
         MediaFrame.AddHandler(PointerMovedEvent, new PointerEventHandler(MediaFrame_PointerMoved), true);
 
         var heartCommand = new RelayCommand(OnHeartClicked);
@@ -92,6 +96,7 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
         EnsureVideoOverlayHideTimer();
         SubscribeEvents();
         ViewModel.SetSurfaceVisible("widget", true);
+        ApplyResponsiveAudioSizing();
         UpdateVideoSurfaceOwnership();
         UpdateHeartState();
     }
@@ -149,6 +154,12 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
     {
         if (e.PropertyName is nameof(PlayerBarViewModel.HasTrack) or nameof(PlayerBarViewModel.TrackTitle))
             UpdateHeartState();
+    }
+
+    private void OnControlSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyResponsiveAudioSizing();
+        UpdateMediaFrameSize();
     }
 
     private void TrackTitle_Click(object sender, RoutedEventArgs e)
@@ -407,6 +418,9 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
                              && ((_videoElement is not null || _videoElementSurface is not null) || showTakeover);
         var useTheaterLayout = useVideoLayout && _isTheaterMode;
 
+        if (useVideoLayout)
+            ResetAudioContentWidth();
+
         LayoutRoot.Padding = useTheaterLayout
             ? new Thickness(0)
             : useVideoLayout
@@ -431,6 +445,8 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
         TitleRow.ColumnSpacing = useVideoLayout ? 10 : 16;
         TrackTitleText.FontSize = useTheaterLayout ? 18 : useVideoLayout ? 20 : 22;
         ArtistMetadata.Opacity = useVideoLayout ? 0.82 : 1;
+        if (useVideoLayout)
+            ArtistMetadata.TextBlockStyle = CreateMetadataTextStyle(14);
 
         var cornerRadius = useVideoLayout ? 0 : 14;
         AlbumArtHost.CornerRadius = new CornerRadius(cornerRadius);
@@ -441,6 +457,12 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
         DevicePicker.Visibility = useVideoLayout ? Visibility.Collapsed : Visibility.Visible;
         VideoTheaterModeButton.IsChecked = useTheaterLayout;
         VideoOverlayTheaterModeButton.IsChecked = useTheaterLayout;
+
+        if (!useVideoLayout)
+        {
+            _appliedAudioChromeScale = -1;
+            ApplyResponsiveAudioSizing();
+        }
 
         UpdateMediaFrameSize();
         AnimateTransform(MediaFrameTransform, useTheaterLayout ? 1.0 : useVideoLayout ? 1.01 : 1.0, 0, 320);
@@ -508,8 +530,150 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
         _videoTakeoverVisibleTrackId = null;
     }
 
+    private void ApplyResponsiveAudioSizing()
+    {
+        if (LayoutRoot == null)
+            return;
+
+        var useVideoLayout = _isVideoPresentationMode
+                             && ((_videoElement is not null || _videoElementSurface is not null) || ShouldShowVideoTakeover);
+        if (useVideoLayout)
+            return;
+
+        var scale = GetAudioChromeScale();
+        if (Math.Abs(scale - _appliedAudioChromeScale) < 0.01)
+            return;
+
+        _appliedAudioChromeScale = scale;
+
+        var spacingScale = 1 + ((scale - 1) * 0.55);
+
+        LayoutRoot.Padding = new Thickness(
+            RoundForLayout(40 * spacingScale),
+            RoundForLayout(28 * spacingScale),
+            RoundForLayout(40 * spacingScale),
+            RoundForLayout(24 * spacingScale));
+        LayoutRoot.RowSpacing = RoundForLayout(14 * spacingScale);
+        TitleRow.ColumnSpacing = RoundForLayout(16 * spacingScale);
+        TrackTitleText.FontSize = RoundForLayout(22 * scale);
+        ArtistMetadata.TextBlockStyle = CreateMetadataTextStyle(RoundForLayout(14 * scale));
+
+        ProgressRow.ColumnSpacing = RoundForLayout(12 * spacingScale);
+        ElapsedTimeText.FontSize = RoundForLayout(11 * scale);
+        DurationTimeText.FontSize = RoundForLayout(11 * scale);
+
+        MusicTransportRow.Spacing = RoundForLayout(12 * spacingScale);
+        SetSquare(ShuffleButton, RoundForLayout(40 * scale));
+        SetSquare(SkipBackwardButton, RoundForLayout(40 * scale));
+        SetSquare(PreviousButton, RoundForLayout(44 * scale));
+        SetSquare(PlayPauseButton, RoundForLayout(60 * scale));
+        SetSquare(NextButton, RoundForLayout(44 * scale));
+        SetSquare(SkipForwardButton, RoundForLayout(40 * scale));
+        PlaybackSpeedButton.Width = RoundForLayout(48 * scale);
+        PlaybackSpeedButton.Height = RoundForLayout(40 * scale);
+        SetSquare(RepeatButton, RoundForLayout(40 * scale));
+
+        ShuffleIcon.FontSize = RoundForLayout(16 * scale);
+        PreviousIcon.FontSize = RoundForLayout(20 * scale);
+        NextIcon.FontSize = RoundForLayout(20 * scale);
+        RepeatIcon.FontSize = RoundForLayout(16 * scale);
+        SkipBackwardText.FontSize = RoundForLayout(12 * scale);
+        SkipForwardText.FontSize = RoundForLayout(12 * scale);
+        PlaybackSpeedText.FontSize = RoundForLayout(12 * scale);
+        PlayPauseActionContent.IconSize = RoundForLayout(28 * scale);
+        PlayPauseActionContent.SpinnerSize = RoundForLayout(32 * scale);
+    }
+
+    private double GetAudioChromeScale()
+    {
+        // Artwork can become height-limited in wide popouts, so use the player
+        // bounds as well. Otherwise the album grows but the title/buttons still
+        // look like the default 540 px layout.
+        var album = GetAudioArtworkMaxSize();
+        var albumProgress = Math.Clamp((album - 500d) / 400d, 0, 1);
+
+        var layoutWidth = ActualWidth > 0 ? ActualWidth : LayoutRoot.ActualWidth;
+        var layoutHeight = ActualHeight > 0 ? ActualHeight : LayoutRoot.ActualHeight;
+        var widthProgress = Math.Clamp((layoutWidth - 560d) / 520d, 0, 1);
+        var heightProgress = Math.Clamp((layoutHeight - 600d) / 360d, 0, 1);
+        var layoutProgress = Math.Min(widthProgress, heightProgress);
+
+        var progress = Math.Max(albumProgress, layoutProgress);
+        return Math.Clamp(0.98 + progress * 0.26, 0.92, 1.24);
+    }
+
+    private double GetAudioArtworkMaxSize()
+    {
+        var stageWidth = MediaStage?.ActualWidth ?? 0;
+        var stageHeight = MediaStage?.ActualHeight ?? 0;
+        if (stageWidth <= 0 || stageHeight <= 0)
+            return AudioArtworkBaseMaxSize;
+
+        // Width factor is generous; height factor leaves a little vertical
+        // breathing room above the title row underneath.
+        var widthBudget = stageWidth * 0.94;
+        var heightBudget = stageHeight * 0.92;
+        var size = Math.Min(widthBudget, heightBudget);
+        return Math.Clamp(size, AudioArtworkMinSize, AudioArtworkExpandedMaxSize);
+    }
+
+    private static Style CreateMetadataTextStyle(double fontSize)
+    {
+        var style = new Style(typeof(TextBlock));
+        style.Setters.Add(new Setter(TextBlock.FontSizeProperty, fontSize));
+        style.Setters.Add(new Setter(UIElement.OpacityProperty, 0.72));
+        if (Application.Current.Resources.TryGetValue("ApplicationForegroundThemeBrush", out var foreground)
+            && foreground is Brush brush)
+        {
+            style.Setters.Add(new Setter(TextBlock.ForegroundProperty, brush));
+        }
+
+        style.Setters.Add(new Setter(TextBlock.MaxLinesProperty, 1));
+        style.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
+        return style;
+    }
+
+    private static void SetSquare(FrameworkElement element, double size)
+    {
+        element.Width = size;
+        element.Height = size;
+    }
+
+    private void ApplyAudioContentWidth(double width)
+    {
+        var snappedWidth = Math.Floor(Math.Max(1, width));
+
+        MediaFrame.HorizontalAlignment = HorizontalAlignment.Left;
+        TitleRow.Width = snappedWidth;
+        TitleRow.HorizontalAlignment = HorizontalAlignment.Left;
+        ProgressRow.Width = snappedWidth;
+        ProgressRow.HorizontalAlignment = HorizontalAlignment.Left;
+        MusicTransportFrame.Width = snappedWidth;
+        MusicTransportFrame.HorizontalAlignment = HorizontalAlignment.Left;
+    }
+
+    private void ResetAudioContentWidth()
+    {
+        MediaFrame.HorizontalAlignment = HorizontalAlignment.Center;
+        TitleRow.Width = double.NaN;
+        TitleRow.HorizontalAlignment = HorizontalAlignment.Stretch;
+        ProgressRow.Width = double.NaN;
+        ProgressRow.HorizontalAlignment = HorizontalAlignment.Stretch;
+        MusicTransportFrame.Width = double.NaN;
+        MusicTransportFrame.HorizontalAlignment = HorizontalAlignment.Stretch;
+    }
+
+    private static double RoundForLayout(double value)
+        => Math.Round(value, MidpointRounding.AwayFromZero);
+
     private void MediaStage_SizeChanged(object sender, SizeChangedEventArgs e)
-        => UpdateMediaFrameSize();
+    {
+        UpdateMediaFrameSize();
+        // Chrome scale is now derived from the artwork size, which is in turn
+        // derived from MediaStage's bounds. So the chrome must re-run whenever
+        // MediaStage settles, otherwise the first paint sticks at scale=1.
+        ApplyResponsiveAudioSizing();
+    }
 
     private void UpdateMediaFrameSize()
     {
@@ -526,11 +690,19 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
 
         if (!useVideoLayout)
         {
-            var size = Math.Max(1, Math.Min(AudioArtworkMaxSize, Math.Min(availableWidth, availableHeight)));
+            var size = Math.Max(1, Math.Min(GetAudioArtworkMaxSize(), Math.Min(availableWidth, availableHeight)));
             MediaFrame.Width = Math.Floor(size);
             MediaFrame.Height = Math.Floor(size);
+            // Track actual DPI rather than the legacy ×2 hard-coded scale, and
+            // cap at 1024 instead of 1600. 1600² BGRA8 = 10.24 MB native per
+            // decode; 1024² = 4.2 MB. Worst-case shrinks ~60 % per track swap.
+            var rasterScale = XamlRoot?.RasterizationScale ?? 1.0;
+            AlbumArtImage.DecodePixelWidth = Math.Min(1024, Math.Max(256, (int)Math.Round(size * rasterScale)));
+            ApplyAudioContentWidth(size);
             return;
         }
+
+        ResetAudioContentWidth();
 
         var maxWidth = Math.Max(1, availableWidth);
         var maxHeight = Math.Max(1, availableHeight);

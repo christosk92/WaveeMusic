@@ -16,6 +16,7 @@ using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
+using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.Views;
 
@@ -39,6 +40,8 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
     private bool _trimmedForNavigationCache;
 
     public ProfileViewModel ViewModel { get; }
+
+    public ShimmerLoadGate ShimmerGate { get; } = new();
 
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
 
@@ -329,12 +332,15 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
         }
         if (!_showingContent || ShimmerContainer == null) return;
         ShimmerContainer.Visibility = Visibility.Collapsed;
+        ShimmerGate.IsLoaded = false;
     }
 
     private void ShowShimmer()
     {
         _showingContent = false;
         _crossfadeScheduled = false;
+        ShimmerGate.IsLoaded = true;
+        if (ShimmerContainer is null) return;
         ShimmerContainer.Visibility = Visibility.Visible;
         AnimationBuilder.Create()
             .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(200))

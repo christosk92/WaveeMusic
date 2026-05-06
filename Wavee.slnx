@@ -63,6 +63,15 @@
       <Platform Solution="*|x86" Project="x86" />
     </Project>
 
+    <!-- WinUI control library: Microsoft Store-style hero carousel. -->
+    <Project Path="src/Wavee.Controls.HeroCarousel/Wavee.Controls.HeroCarousel.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
+
     <Project Path="src/Wavee.Playback.Contracts/Wavee.Playback.Contracts.csproj">
       <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
       <BuildType Solution="Release-Unpackaged|*" Project="Release" />

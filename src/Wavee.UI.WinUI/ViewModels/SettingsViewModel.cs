@@ -12,6 +12,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Serilog.Events;
@@ -58,6 +59,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly IMessenger? _messenger;
     private readonly INotificationService? _notificationService;
     private readonly ILogger? _logger;
+    private readonly DispatcherQueue? _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
     private readonly RestartSensitiveSettingsSnapshot _launchRestartSettings;
     private readonly HashSet<PendingRestartArea> _pendingRestartAreas = [];
     private bool _disposed;
@@ -1278,7 +1280,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"];
 
     public static readonly string[] EqPresetNames =
-        ["Flat", "Bass Boost", "Treble Boost", "Vocal", "Radio"];
+        ["Flat", "Bass Boost", "Treble Boost", "Vocal", "Radio", "EQ Proof"];
 
     private static readonly string[] EqPresetDescriptions =
     [
@@ -1286,7 +1288,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         "Enhanced low-end warmth and punch for bass-heavy genres",
         "Crisp highs and sparkle for acoustic and classical music",
         "Boosted mids to bring vocals forward in the mix",
-        "FM broadcast sound — punchy, loud, and consistent"
+        "FM broadcast sound — punchy, loud, and consistent",
+        "Extreme test curve. If this sounds normal, AudioHost is not applying EQ."
     ];
 
     private static readonly Dictionary<string, double[]> EqPresets = new()
@@ -1296,6 +1299,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         ["Treble Boost"] = [0, 0, 0, 0, 0, 1, 2, 3, 4, 5],
         ["Vocal"]        = [-2, -1, 0, 2, 4, 4, 2, 0, -1, -2],
         ["Radio"]        = [0, 2, -2, 0, 0, 2, 4, 2, 2, 2],
+        // Deliberately ugly verification preset: alternating full boost/cut
+        // across the 10 graphic-EQ bands. This should be unmistakable.
+        ["EQ Proof"]     = [12, -12, 12, -12, 12, -12, 12, -12, 12, -12],
     };
 
     public string EqPresetDescription =>
@@ -1313,6 +1319,17 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private int _selectedEqPresetIndex;
+
+    [ObservableProperty]
+    private string _equalizerApplyStatus = "AudioHost: not applied yet";
+
+    [ObservableProperty]
+    private bool _isEqualizerApplying;
+
+    [ObservableProperty]
+    private bool _equalizerApplySucceeded;
+
+    private long _equalizerApplyVersion;
 
     public void InitializeEqualizer(Data.Contracts.IAudioPipelineControl? control)
     {
@@ -1393,7 +1410,99 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     private void SendEqToAudioHost()
     {
-        _ = _pipelineControl?.SetEqualizerAsync(IsEqualizerEnabled, GetBandGains());
+        _ = SendEqToAudioHostAsync();
+    }
+
+    private async Task SendEqToAudioHostAsync()
+    {
+        var version = Interlocked.Increment(ref _equalizerApplyVersion);
+        var enabled = IsEqualizerEnabled;
+        var gains = GetBandGains();
+        var preset = SelectedEqPresetIndex >= 0 && SelectedEqPresetIndex < EqPresetNames.Length
+            ? EqPresetNames[SelectedEqPresetIndex]
+            : "Custom";
+
+        SetEqualizerApplyStatus(
+            enabled
+                ? $"AudioHost: applying {preset}..."
+                : "AudioHost: disabling equalizer...",
+            applying: true,
+            succeeded: false);
+
+        if (_pipelineControl is null)
+        {
+            SetEqualizerApplyStatus("AudioHost: not connected, EQ was only saved", applying: false, succeeded: false);
+            return;
+        }
+
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var result = await _pipelineControl.SetEqualizerAsync(enabled, gains, timeout.Token).ConfigureAwait(false);
+
+            if (Volatile.Read(ref _equalizerApplyVersion) != version)
+                return;
+
+            var now = DateTime.Now.ToString("HH:mm:ss");
+            SetEqualizerApplyStatus(
+                enabled
+                    ? result.ObservedAudioBuffer
+                        ? $"AudioHost: verified {preset} on audio buffer at {now}"
+                        : $"AudioHost: installed {preset}; waiting for playback to verify"
+                    : $"AudioHost: equalizer off at {now}",
+                applying: false,
+                succeeded: !enabled || result.ObservedAudioBuffer);
+            _logger?.LogInformation(
+                "Equalizer AudioHost result: enabled={Enabled}, preset={Preset}, bands={Bands}, installed={Installed}, observedAudio={ObservedAudio}, message={Message}",
+                enabled, preset, gains.Length, result.Installed, result.ObservedAudioBuffer, result.Message);
+        }
+        catch (OperationCanceledException)
+        {
+            if (Volatile.Read(ref _equalizerApplyVersion) != version)
+                return;
+
+            SetEqualizerApplyStatus("AudioHost: EQ apply timed out", applying: false, succeeded: false);
+            _notificationService?.Show(new NotificationInfo
+            {
+                Message = "Equalizer was saved, but AudioHost did not acknowledge it.",
+                Severity = NotificationSeverity.Warning,
+                AutoDismissAfter = TimeSpan.FromSeconds(5)
+            });
+        }
+        catch (Exception ex)
+        {
+            if (Volatile.Read(ref _equalizerApplyVersion) != version)
+                return;
+
+            SetEqualizerApplyStatus($"AudioHost: EQ apply failed ({ex.Message})", applying: false, succeeded: false);
+            _logger?.LogWarning(ex, "Equalizer apply failed");
+            _notificationService?.Show(new NotificationInfo
+            {
+                Message = "Equalizer was saved, but AudioHost rejected the live update.",
+                Severity = NotificationSeverity.Warning,
+                AutoDismissAfter = TimeSpan.FromSeconds(5)
+            });
+        }
+    }
+
+    private void SetEqualizerApplyStatus(string status, bool applying, bool succeeded)
+    {
+        void Apply()
+        {
+            EqualizerApplyStatus = status;
+            IsEqualizerApplying = applying;
+            EqualizerApplySucceeded = succeeded;
+        }
+
+        var dispatcher = _dispatcherQueue;
+        if (dispatcher is null || dispatcher.HasThreadAccess)
+        {
+            Apply();
+        }
+        else
+        {
+            dispatcher.TryEnqueue(Apply);
+        }
     }
 
     public void Dispose()

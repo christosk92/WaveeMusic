@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using Wavee.Playback.Contracts;
 using Wavee.Core.Audio;
 
 namespace Wavee.UI.WinUI.Data.Contracts;
@@ -12,5 +13,5 @@ public interface IAudioPipelineControl
 {
     Task SwitchQualityAsync(AudioQuality quality, CancellationToken ct = default);
     void SetNormalizationEnabled(bool enabled);
-    Task SetEqualizerAsync(bool enabled, double[]? bandGains, CancellationToken ct = default);
+    Task<EqualizerApplyResult> SetEqualizerAsync(bool enabled, double[]? bandGains, CancellationToken ct = default);
 }

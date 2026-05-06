@@ -13,9 +13,10 @@
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:contracts="using:Wavee.UI.WinUI.Data.Contracts"
     xmlns:appControls="using:Wavee.UI.WinUI.Controls"
+    xmlns:avatarStack="using:Wavee.UI.WinUI.Controls.AvatarStack"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     mc:Ignorable="d"
-    NavigationCacheMode="Required"
+    NavigationCacheMode="Enabled"
     Background="Transparent">
 
     <Page.Resources>
@@ -37,6 +38,9 @@
              code-behind: ScheduleCrossfade fades shimmer→content over ~300ms
              instead of the previous hard cut. -->
         <Grid x:Name="ShimmerContainer"
+              x:Load="{x:Bind ShimmerGate.IsLoaded, Mode=OneWay}"
+              MaxWidth="1160"
+              HorizontalAlignment="Stretch"
               Padding="40,32,40,40"
               ColumnSpacing="24">
             <Grid.ColumnDefinitions>
@@ -74,7 +78,9 @@
              Composition opacity is set to 0 in the code-behind constructor;
              ScheduleCrossfade fades it to 1 once IsLoading turns false (with
              a Task.Yield + 16 ms wait so layout has time to settle first). -->
-        <Grid x:Name="ContentContainer">
+        <Grid x:Name="ContentContainer"
+              MaxWidth="1160"
+              HorizontalAlignment="Stretch">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>   <!-- Pre-release banner -->
                 <RowDefinition Height="*"/>      <!-- Two-column main area -->
@@ -187,27 +193,75 @@
                                TextTrimming="CharacterEllipsis"
                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
 
-                    <!-- Artist hyperlink — small circular avatar + name. The avatar URL comes
-                         from artists.items[0].visuals.avatarImage on the album response, so no
-                         extra fetch is needed. Hidden when the album response has no avatar. -->
-                    <HyperlinkButton Click="Artist_Click" Padding="0">
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <Grid Width="24" Height="24"
-                                  Visibility="{x:Bind ViewModel.ArtistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                                <Ellipse Fill="{ThemeResource CardBackgroundFillColorSecondaryBrush}"/>
-                                <Ellipse>
-                                    <Ellipse.Fill>
-                                        <ImageBrush Stretch="UniformToFill"
-                                                    ImageSource="{x:Bind ViewModel.ArtistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='48'}"/>
-                                    </Ellipse.Fill>
-                                </Ellipse>
-                            </Grid>
-                            <TextBlock Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
-                                       FontSize="14"
-                                       FontWeight="SemiBold"
-                                       VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </HyperlinkButton>
+                    <!-- Artists row. Stacked-avatar strip (billed artists only) with a
+                         "+N" badge counting additional distinct artists pulled from
+                         individual tracks (e.g. soundtrack featureds). Tapping the stack
+                         opens ArtistsFlyout, listing every distinct artist on the album.
+                         The names line right of the stack uses inline Hyperlinks so it
+                         wraps mid-sentence on narrow panels — a horizontal StackPanel
+                         won't constrain its child's width, hence the explicit Grid. -->
+                    <Grid VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <appControls:ClickableBorder x:Name="ArtistsStackButton"
+                                                     Grid.Column="0"
+                                                     Margin="0,0,10,0"
+                                                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                     BorderThickness="1"
+                                                     CornerRadius="{ThemeResource OverlayCornerRadius}"
+                                                     Padding="6,4,8,4"
+                                                     Tapped="ArtistsAvatarStack_Tapped"
+                                                     ToolTipService.ToolTip="View all artists">
+                            <FlyoutBase.AttachedFlyout>
+                                <Flyout x:Name="ArtistsFlyout" Placement="BottomEdgeAlignedLeft">
+                                    <Grid Width="280" MaxHeight="360">
+                                        <ListView x:Name="ArtistsFlyoutList"
+                                                  ItemsSource="{x:Bind ViewModel.AllDistinctArtists, Mode=OneWay}"
+                                                  IsItemClickEnabled="True"
+                                                  SelectionMode="None"
+                                                  ItemClick="ArtistsFlyoutList_ItemClick">
+                                            <ListView.ItemTemplate>
+                                                <DataTemplate x:DataType="contracts:AlbumArtistResult">
+                                                    <StackPanel Orientation="Horizontal" Spacing="12" Padding="0,4">
+                                                        <PersonPicture Width="32"
+                                                                       Height="32"
+                                                                       DisplayName="{x:Bind Name}"
+                                                                       ProfilePicture="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='64'}"/>
+                                                        <TextBlock Text="{x:Bind Name}"
+                                                                   VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ListView.ItemTemplate>
+                                        </ListView>
+                                    </Grid>
+                                </Flyout>
+                            </FlyoutBase.AttachedFlyout>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <avatarStack:AvatarStack x:Name="ArtistsAvatarStack"
+                                                         Items="{x:Bind ViewModel.ArtistAvatarItems, Mode=OneWay}"
+                                                         OverflowCount="{x:Bind ViewModel.OverflowArtistCount, Mode=OneWay}"/>
+                                <FontIcon Glyph="&#xE70D;"
+                                          FontSize="10"
+                                          VerticalAlignment="Center"
+                                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                            </StackPanel>
+                        </appControls:ClickableBorder>
+
+                        <!-- Inlines (Hyperlink per name + Run separator) are rebuilt in
+                             AlbumPage.xaml.cs#RebuildHeaderArtistsText whenever the
+                             billed-artists list changes. -->
+                        <TextBlock x:Name="HeaderArtistsText"
+                                   Grid.Column="1"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
 
                     <!-- Inline meta: "12 songs · 38 min · 1980". -->
                     <TextBlock Text="{x:Bind ViewModel.MetaInlineLine, Mode=OneWay}"
@@ -306,6 +360,7 @@
                                    PageKey="album" VerticalAlignment="Top"
                                    ShowToolbar="False"
                                    AllowHorizontalRowScroll="False"
+                                   ForceShowArtistColumn="{x:Bind ViewModel.HasMultipleArtists, Mode=OneWay}"
                                    ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"
                                    PlayCommand="{x:Bind ViewModel.PlayTrackCommand}">
                     <tdg:TrackDataGrid.FooterContent>
@@ -349,6 +404,7 @@
                                                     Title="{x:Bind Name}"
                                                     Subtitle="{x:Bind Year}"
                                                     NavigationUri="{x:Bind Uri}"
+                                                    UseConnectedAnimation="False"
                                                     PlaceholderGlyph="&#xE93C;"
                                                     IsCircularImage="False"/>
                                             </DataTemplate>

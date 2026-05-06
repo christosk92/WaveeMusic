@@ -44,6 +44,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue;
     private CancellationTokenSource? _discoCts;
     private CancellationTokenSource? _playPendingCts;
+    private int _loadGeneration;
     private bool _disposed;
 
     // ── Backing data ──
@@ -52,19 +53,26 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     // ── UI-bound collections ──
     [ObservableProperty]
     private ObservableCollection<LazyTrackItem> _topTracks = [];
-    public ObservableCollection<LazyReleaseItem> Albums { get; } = [];
-    public ObservableCollection<LazyReleaseItem> Singles { get; } = [];
-    public ObservableCollection<LazyReleaseItem> Compilations { get; } = [];
+
+    [ObservableProperty]
+    private IReadOnlyList<LazyReleaseItem> _albums = [];
+
+    [ObservableProperty]
+    private IReadOnlyList<LazyReleaseItem> _singles = [];
+
+    [ObservableProperty]
+    private IReadOnlyList<LazyReleaseItem> _compilations = [];
 
     // ── Non-reactive collections (simple lists) ──
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasRelatedArtists))]
-    private ObservableCollection<RelatedArtistVm> _relatedArtists = [];
+    private IReadOnlyList<RelatedArtistVm> _relatedArtists = [];
 
     public bool HasRelatedArtists => RelatedArtists.Count > 0;
 
     [ObservableProperty]
-    private ObservableCollection<ConcertVm> _concerts = [];
+    [NotifyPropertyChangedFor(nameof(HasConcerts))]
+    private IReadOnlyList<ConcertVm> _concerts = [];
 
     [ObservableProperty]
     private ObservableCollection<LocationSearchResultVm> _locationSuggestions = [];
@@ -73,18 +81,18 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasExternalLinks))]
     [NotifyPropertyChangedFor(nameof(HasConnectSection))]
-    private ObservableCollection<ArtistSocialLinkVm> _externalLinks = [];
+    private IReadOnlyList<ArtistSocialLinkVm> _externalLinks = [];
 
     /// <summary>Top cities by listener count, with proportional bar widths.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasTopCities))]
     [NotifyPropertyChangedFor(nameof(HasConnectSection))]
-    private ObservableCollection<ArtistTopCityVm> _topCities = [];
+    private IReadOnlyList<ArtistTopCityVm> _topCities = [];
 
     /// <summary>Photo URLs from the artist's gallery (largest variant).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasGallery))]
-    private ObservableCollection<string> _galleryPhotos = [];
+    private IReadOnlyList<string> _galleryPhotos = [];
 
     public bool HasExternalLinks => ExternalLinks.Count > 0;
     public bool HasTopCities => TopCities.Count > 0;
@@ -441,6 +449,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         // nav and correct on every subsequent nav.
         if (ArtistId != artistId)
         {
+            Interlocked.Increment(ref _loadGeneration);
             ResetForNewArtist();
             _appliedOverviewFor = null;
             _appliedOverview = null;
@@ -465,6 +474,11 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 ex => _logger?.LogError(ex, "ArtistStore stream faulted for {ArtistId}", artistId));
         _subscriptions.Add(sub);
     }
+
+    private bool IsCurrentLoad(string artistId, int generation)
+        => !_disposed
+           && generation == Volatile.Read(ref _loadGeneration)
+           && string.Equals(ArtistId, artistId, StringComparison.Ordinal);
 
     /// <summary>
     /// Dispose the store subscription; fetches for this VM stop and any
@@ -509,7 +523,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     /// <c>_appliedOverviewFor</c> marker are intentionally preserved so a
     /// revisit to the same artist short-circuits in <see cref="ApplyOverviewState"/>
     /// without re-running the heavy <see cref="LoadAsync"/> path (which costs
-    /// ~2 s on a popular artist: rebuilds 6 ObservableCollections, reseeds
+    /// ~2 s on a popular artist: replaces section snapshots, reseeds
     /// virtualized item containers, kicks off background discography paging
     /// + release-color prefetch). The hero URLs are restored via
     /// <see cref="EnsureHeroUrls"/> in the Ready branch when LoadAsync is
@@ -668,11 +682,20 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
         TopTracks.Clear();
         _allReleases.Clear();
-        Albums.Clear();
-        Singles.Clear();
-        Compilations.Clear();
-        RelatedArtists.Clear();
-        Concerts.Clear();
+        Albums = [];
+        Singles = [];
+        Compilations = [];
+        AlbumsTotalCount = 0;
+        SinglesTotalCount = 0;
+        CompilationsTotalCount = 0;
+        HasAlbumsError = false;
+        HasSinglesError = false;
+        HasCompilationsError = false;
+        RelatedArtists = [];
+        Concerts = [];
+        ExternalLinks = [];
+        TopCities = [];
+        GalleryPhotos = [];
     }
 
     private CancellationToken CreateFreshDiscographyToken()
@@ -703,9 +726,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     /// </summary>
     private void DispatchReleases()
     {
-        Albums.Clear();
-        Singles.Clear();
-        Compilations.Clear();
+        var albums = new List<LazyReleaseItem>();
+        var singles = new List<LazyReleaseItem>();
+        var compilations = new List<LazyReleaseItem>();
 
         foreach (var group in _allReleases
             .GroupBy(r => r.Data?.Type ?? InferTypeFromId(r.Id))
@@ -714,16 +737,19 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             var sorted = group.OrderByDescending(r => r.Data?.ReleaseDate ?? DateTimeOffset.MinValue);
             var target = group.Key switch
             {
-                "ALBUM" => Albums,
-                "SINGLE" => Singles,
-                "COMPILATION" => Compilations,
-                _ => (ObservableCollection<LazyReleaseItem>?)null
+                "ALBUM" => albums,
+                "SINGLE" => singles,
+                "COMPILATION" => compilations,
+                _ => null
             };
 
             if (target == null) continue;
-            foreach (var item in sorted)
-                target.Add(item);
+            target.AddRange(sorted);
         }
+
+        Albums = albums;
+        Singles = singles;
+        Compilations = compilations;
     }
 
     private static string InferTypeFromId(string id)
@@ -744,7 +770,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     /// </summary>
     private async Task LoadAsync(ArtistOverviewResult overview, string artistId)
     {
-        if (ArtistId != artistId) return;
+        var generation = Volatile.Read(ref _loadGeneration);
+        if (!IsCurrentLoad(artistId, generation)) return;
         _appliedOverviewFor = artistId;
         _appliedOverview = overview;
         IsLoading = true;
@@ -849,10 +876,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             // Spotify's getArtistOverview GraphQL response is inconsistent: many
             // tracks come back without albumOfTrack.coverArt populated. Resolve
             // them via the extended-metadata pipeline and patch the VMs.
-            _ = EnrichMissingTopTrackImagesAsync();
 
             // ── Extended top tracks (background, parallel) ──
-            _ = LoadExtendedTopTracksAsync(ArtistId!);
 
             // ── Releases ──
             _allReleases.Clear();
@@ -860,52 +885,39 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             AddReleasesToList(overview.Singles, "SINGLE", "single-ph", overview.SinglesTotalCount);
             AddReleasesToList(overview.Compilations, "COMPILATION", "comp-ph", overview.CompilationsTotalCount);
             DispatchReleases();
-            _ = PrefetchReleaseColorsAsync(
-                _allReleases
-                    .Where(item => item.IsLoaded && item.Data != null)
-                    .Select(item => item.Data!));
 
             AlbumsTotalCount = overview.AlbumsTotalCount;
             SinglesTotalCount = overview.SinglesTotalCount;
             CompilationsTotalCount = overview.CompilationsTotalCount;
 
             // ── Background discography pagination ──
-            var discoToken = CreateFreshDiscographyToken();
-            _ = Task.Run(() => FetchRemainingDiscographyAsync(
-                overview.Albums.Count, overview.AlbumsTotalCount,
-                overview.Singles.Count, overview.SinglesTotalCount,
-                overview.Compilations.Count, overview.CompilationsTotalCount,
-                discoToken), discoToken);
 
             // ── Related artists (batch swap) ──
-            RelatedArtists = new ObservableCollection<RelatedArtistVm>(
-                overview.RelatedArtists.Select(ra => new RelatedArtistVm
-                {
-                    Id = ra.Id,
-                    Uri = ra.Uri,
-                    Name = ra.Name,
-                    ImageUrl = ra.ImageUrl
-                }));
+            RelatedArtists = overview.RelatedArtists.Select(ra => new RelatedArtistVm
+            {
+                Id = ra.Id,
+                Uri = ra.Uri,
+                Name = ra.Name,
+                ImageUrl = ra.ImageUrl
+            }).ToList();
 
             // ── Concerts (batch swap) ──
-            Concerts = new ObservableCollection<ConcertVm>(
-                overview.Concerts.Select(c => new ConcertVm
-                {
-                    Title = c.Title,
-                    Venue = c.Venue,
-                    City = c.City,
-                    DateFormatted = c.Date != default
-                        ? c.Date.ToString("MMM d").ToUpperInvariant()
-                        : "",
-                    DayOfWeek = c.Date != default
-                        ? c.Date.ToString("ddd").ToUpperInvariant()
-                        : "",
-                    Year = c.Date != default ? c.Date.Year.ToString() : "",
-                    IsFestival = c.IsFestival,
-                    IsNearUser = c.IsNearUser,
-                    Uri = c.Uri
-                }));
-            OnPropertyChanged(nameof(HasConcerts));
+            Concerts = overview.Concerts.Select(c => new ConcertVm
+            {
+                Title = c.Title,
+                Venue = c.Venue,
+                City = c.City,
+                DateFormatted = c.Date != default
+                    ? c.Date.ToString("MMM d").ToUpperInvariant()
+                    : "",
+                DayOfWeek = c.Date != default
+                    ? c.Date.ToString("ddd").ToUpperInvariant()
+                    : "",
+                Year = c.Date != default ? c.Date.Year.ToString() : "",
+                IsFestival = c.IsFestival,
+                IsNearUser = c.IsNearUser,
+                Uri = c.Uri
+            }).ToList();
 
             UserLocationName = _locationService.CurrentCity;
 
@@ -915,34 +927,33 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             OnPropertyChanged(nameof(HasWatchFeed));
 
             // ── Connect & Markets + Gallery (batch swap) ──
-            ExternalLinks = new ObservableCollection<ArtistSocialLinkVm>(
-                overview.ExternalLinks.Select(l => new ArtistSocialLinkVm
-                {
-                    Name = l.Name,
-                    Url = l.Url,
-                    Icon = Wavee.UI.WinUI.Styles.FluentGlyphs.ResolveSocialIcon(l.Url, l.Name)
-                }));
+            ExternalLinks = overview.ExternalLinks.Select(l => new ArtistSocialLinkVm
+            {
+                Name = l.Name,
+                Url = l.Url,
+                Icon = Wavee.UI.WinUI.Styles.FluentGlyphs.ResolveSocialIcon(l.Url, l.Name)
+            }).ToList();
 
             // Bar widths normalized against the largest city's listener count.
             var maxListeners = overview.TopCities.Count == 0
                 ? 1L
                 : overview.TopCities.Max(c => c.NumberOfListeners);
-            TopCities = new ObservableCollection<ArtistTopCityVm>(
-                overview.TopCities.Take(5).Select(c => new ArtistTopCityVm
-                {
-                    City = c.City,
-                    Country = c.Country,
-                    NumberOfListeners = c.NumberOfListeners,
-                    DisplayCount = FormatListenerCount(c.NumberOfListeners),
-                    RelativeWidth = maxListeners > 0
-                        ? Math.Max(8, c.NumberOfListeners * 200.0 / maxListeners)
-                        : 8
-                }));
+            TopCities = overview.TopCities.Take(5).Select(c => new ArtistTopCityVm
+            {
+                City = c.City,
+                Country = c.Country,
+                NumberOfListeners = c.NumberOfListeners,
+                DisplayCount = FormatListenerCount(c.NumberOfListeners),
+                RelativeWidth = maxListeners > 0
+                    ? Math.Max(8, c.NumberOfListeners * 200.0 / maxListeners)
+                    : 8
+            }).ToList();
 
-            GalleryPhotos = new ObservableCollection<string>(overview.GalleryPhotos);
+            GalleryPhotos = overview.GalleryPhotos.ToList();
 
             CurrentPage = 0;
             NotifyPaginationChanged();
+            _ = StartDeferredArtistWorkAsync(artistId, generation, overview);
         }
         catch (SessionException)
         {
@@ -962,6 +973,39 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     }
 
     // ── Mapping helpers ──
+
+    private async Task StartDeferredArtistWorkAsync(
+        string artistId,
+        int generation,
+        ArtistOverviewResult overview)
+    {
+        // Let ArtistPage render hero/top-tracks before starting secondary work.
+        // These tasks update below-the-fold images, color chips, extended tracks,
+        // and remaining discography pages; starting them in the same dispatcher
+        // slice as LoadAsync makes PlayerBar artist navigation feel heavy.
+        await Task.Yield();
+        await Task.Delay(48);
+
+        if (!IsCurrentLoad(artistId, generation))
+            return;
+
+        _ = EnrichMissingTopTrackImagesAsync(artistId, generation);
+        _ = LoadExtendedTopTracksAsync(artistId, generation);
+
+        var releasesSnapshot = _allReleases
+            .Where(item => item.IsLoaded && item.Data != null)
+            .Select(item => item.Data!)
+            .ToList();
+        _ = PrefetchReleaseColorsAsync(artistId, generation, releasesSnapshot);
+
+        var discoToken = CreateFreshDiscographyToken();
+        _ = Task.Run(() => FetchRemainingDiscographyAsync(
+            artistId, generation,
+            overview.Albums.Count, overview.AlbumsTotalCount,
+            overview.Singles.Count, overview.SinglesTotalCount,
+            overview.Compilations.Count, overview.CompilationsTotalCount,
+            discoToken), discoToken);
+    }
 
     private void AddReleasesToList(
         List<ArtistReleaseResult> releases,
@@ -993,7 +1037,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             _allReleases.Add(LazyReleaseItem.Placeholder($"{phPrefix}-{i}", i));
     }
 
-    private async Task PrefetchReleaseColorsAsync(IEnumerable<ArtistReleaseVm> releases)
+    private async Task PrefetchReleaseColorsAsync(
+        string artistId,
+        int generation,
+        IEnumerable<ArtistReleaseVm> releases)
     {
         var releasesByUrl = new Dictionary<string, List<ArtistReleaseVm>>(StringComparer.Ordinal);
 
@@ -1027,8 +1074,14 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             if (colors.Count == 0)
                 return;
 
+            if (!IsCurrentLoad(artistId, generation))
+                return;
+
             _dispatcherQueue.TryEnqueue(() =>
             {
+                if (!IsCurrentLoad(artistId, generation))
+                    return;
+
                 foreach (var (url, mappedReleases) in releasesByUrl)
                 {
                     if (!colors.TryGetValue(url, out var color))
@@ -1055,6 +1108,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     // ── Background discography pagination ──
 
     private async Task FetchRemainingDiscographyAsync(
+        string artistUri,
+        int generation,
         int albumsLoaded, int albumsTotal,
         int singlesLoaded, int singlesTotal,
         int compilationsLoaded, int compilationsTotal,
@@ -1063,15 +1118,15 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         var tasks = new List<Task>();
 
         if (albumsLoaded < albumsTotal)
-            tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
+            tasks.Add(FetchDiscographyGroupAsync(artistUri, generation,
                 "ALBUM", "album-ph", albumsLoaded, albumsTotal, ct));
 
         if (singlesLoaded < singlesTotal)
-            tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
+            tasks.Add(FetchDiscographyGroupAsync(artistUri, generation,
                 "SINGLE", "single-ph", singlesLoaded, singlesTotal, ct));
 
         if (compilationsLoaded < compilationsTotal)
-            tasks.Add(FetchDiscographyGroupAsync(ArtistId!,
+            tasks.Add(FetchDiscographyGroupAsync(artistUri, generation,
                 "COMPILATION", "comp-ph", compilationsLoaded, compilationsTotal, ct));
 
         if (tasks.Count > 0)
@@ -1141,6 +1196,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     private async Task FetchDiscographyGroupAsync(
         string artistUri,
+        int generation,
         string type,
         string phPrefix,
         int alreadyLoaded,
@@ -1163,6 +1219,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             }
 
             if (allReleases.Count == 0) return;
+            if (ct.IsCancellationRequested || !IsCurrentLoad(artistUri, generation))
+                return;
 
             var createdReleaseVms = new List<ArtistReleaseVm>();
             var tcs = new TaskCompletionSource();
@@ -1170,6 +1228,12 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             {
                 try
                 {
+                    if (ct.IsCancellationRequested || !IsCurrentLoad(artistUri, generation))
+                    {
+                        tcs.SetResult();
+                        return;
+                    }
+
                     foreach (var (pageOffset, releases) in allReleases)
                     {
                         int i = pageOffset;
@@ -1204,7 +1268,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 catch (Exception ex) { tcs.SetException(ex); }
             });
             await tcs.Task;
-            _ = PrefetchReleaseColorsAsync(createdReleaseVms);
+            if (IsCurrentLoad(artistUri, generation))
+                _ = PrefetchReleaseColorsAsync(artistUri, generation, createdReleaseVms);
         }
         catch (OperationCanceledException) { /* navigated away */ }
         catch (Exception ex)
@@ -1216,6 +1281,12 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             {
                 try
                 {
+                    if (!IsCurrentLoad(artistUri, generation))
+                    {
+                        tcsCleanup.SetResult();
+                        return;
+                    }
+
                     _allReleases.RemoveAll(i => !i.IsLoaded && i.Id.StartsWith(phPrefix));
                     DispatchReleases();
 
@@ -1262,9 +1333,15 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         HasSinglesError = false;
         HasCompilationsError = false;
 
+        var artistId = ArtistId;
+        if (string.IsNullOrEmpty(artistId))
+            return;
+
+        var generation = Volatile.Read(ref _loadGeneration);
         var ct = CreateFreshDiscographyToken();
 
         await Task.Run(() => FetchRemainingDiscographyAsync(
+            artistId, generation,
             albumsLoaded, AlbumsTotalCount,
             singlesLoaded, SinglesTotalCount,
             compilationsLoaded, CompilationsTotalCount,
@@ -1539,10 +1616,13 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     /// <see cref="LazyTrackItem"/> entries so <c>TrackItem</c> picks up
     /// the new <c>Track.ImageUrl</c> on the next layout pass.
     /// </summary>
-    private async Task EnrichMissingTopTrackImagesAsync()
+    private async Task EnrichMissingTopTrackImagesAsync(string artistId, int generation)
     {
         try
         {
+            if (!IsCurrentLoad(artistId, generation))
+                return;
+
             // Snapshot URIs needing enrichment (called off-dispatcher right
             // after TopTracks is replaced — safe to read without a lock).
             var snapshot = TopTracks.ToList();
@@ -1558,9 +1638,13 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
             var images = await Task.Run(() => _artistService.GetTrackImagesAsync(missing));
             if (images.Count == 0) return;
+            if (!IsCurrentLoad(artistId, generation)) return;
 
             _dispatcherQueue?.TryEnqueue(() =>
             {
+                if (!IsCurrentLoad(artistId, generation))
+                    return;
+
                 bool anyPatched = false;
                 for (int i = 0; i < TopTracks.Count; i++)
                 {
@@ -1603,12 +1687,13 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         }
     }
 
-    private async Task LoadExtendedTopTracksAsync(string artistUri)
+    private async Task LoadExtendedTopTracksAsync(string artistUri, int generation)
     {
         try
         {
             var extendedTracks = await Task.Run(async () => await _artistService.GetExtendedTopTracksAsync(artistUri));
             if (extendedTracks.Count == 0) return;
+            if (!IsCurrentLoad(artistUri, generation)) return;
 
             var existingUris = new HashSet<string>(
                 TopTracks
@@ -1619,6 +1704,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
             _dispatcherQueue?.TryEnqueue(() =>
             {
+                if (!IsCurrentLoad(artistUri, generation))
+                    return;
+
                 // Remove all placeholder items
                 for (int i = TopTracks.Count - 1; i >= 0; i--)
                 {

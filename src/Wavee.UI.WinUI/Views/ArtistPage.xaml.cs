@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Numerics;
@@ -42,6 +43,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private const int ResizeDebounceDelayMs = 150;
     private const int ScrollRestoreMaxAttempts = 12;
     private const int ScrollRestoreRetryDelayMs = 16;
+    private const int NavigationCacheTrimDelaySeconds = 45;
     private static readonly TimeSpan PageTintTransitionDuration = TimeSpan.FromMilliseconds(420);
     private const double ShyHeaderPinThresholdPx = 24;
 
@@ -72,16 +74,22 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private bool _isShyHeaderPinned;
     private bool _isShyHeaderTransitionRunning;
     private bool _shyHeaderRecheckPending;
+    private bool _suppressShyHeaderEvaluation;
+    private bool _suppressContentReveal;
     private bool _heroRevealed;
     private bool _crossfadeScheduled;
     private bool _isDisposed;
     private bool _trimmedForNavigationCache;
     private bool _discographyRepeatersDetached;
+    private bool _lowerSectionsDeferred;
     private double? _pendingNavigationScrollOffset;
     private string? _pendingNavigationScrollArtistId;
     private int _scrollRestoreGeneration;
+    private DispatcherQueueTimer? _navigationTrimTimer;
 
     public ArtistViewModel ViewModel { get; }
+
+    public ShimmerLoadGate ShimmerGate { get; } = new();
 
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
 
@@ -116,8 +124,10 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         // can be faded in independently as their data arrives — prevents the
         // hard pop where the avatar/name/buttons render blank, then suddenly
         // fill while shimmer is still on screen below.
-        ElementCompositionPreview.GetElementVisual(HeroOverlayPanel).Opacity = 0;
+        SetHeroOverlayOpacity(0);
         ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
+        ContentContainer.Visibility = Visibility.Collapsed;
+        SetLowerArtistSectionsVisibility(Visibility.Collapsed);
 
         Unloaded += ArtistPage_Unloaded;
         Loaded += ArtistPage_Loaded;
@@ -163,7 +173,11 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     private void TryShowContentNow()
     {
-        if (_showingContent || _crossfadeScheduled || ViewModel.IsLoading || string.IsNullOrEmpty(ViewModel.ArtistName))
+        if (_suppressContentReveal
+            || _showingContent
+            || _crossfadeScheduled
+            || ViewModel.IsLoading
+            || string.IsNullOrEmpty(ViewModel.ArtistName))
             return;
         // Reveal the hero immediately if we already have a name (data was
         // pre-fetched / cache-served before the page attached).
@@ -191,6 +205,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         // Hero height is user-draggable via HeroSplitter; keep the page tint
         // aligned so the fade always starts at the hero's bottom edge.
         UpdatePageTint();
+        if (_suppressShyHeaderEvaluation)
+            return;
+
         _ = EvaluateShyHeaderAsync();
     }
 
@@ -215,13 +232,34 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         _isShyHeaderPinned = false;
         _isShyHeaderTransitionRunning = false;
         _shyHeaderRecheckPending = false;
+        ForceHeroHeaderSourceState();
         // Reset to source state: hero overlay visible, floating card collapsed.
         _shyHeaderTransition?.Reset(toInitialState: true);
+        ForceHeroHeaderSourceState();
+    }
+
+    private void SuppressShyHeaderForContentReset()
+    {
+        _suppressShyHeaderEvaluation = true;
+        try { _shyHeaderTransition?.Stop(); } catch { }
+        ResetShyHeaderState();
+        if (HeroGrid != null)
+            HeroGrid.ScrollFadeProgress = 0;
+    }
+
+    private void ResumeShyHeaderAfterContentReset()
+    {
+        _suppressShyHeaderEvaluation = false;
+        ResetShyHeaderState();
+        UpdateHeroScrollFade();
     }
 
     private void PageScrollView_ViewChanged(ScrollView sender, object args)
     {
         UpdateHeroScrollFade();
+        if (_suppressShyHeaderEvaluation)
+            return;
+
         _ = EvaluateShyHeaderAsync();
     }
 
@@ -239,6 +277,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     private async Task EvaluateShyHeaderAsync()
     {
+        if (_suppressShyHeaderEvaluation)
+            return;
+
         if (_shyHeaderTransition == null || HeroOverlayPanel == null || ShyHeaderCard == null || HeroGrid == null)
             return;
 
@@ -251,6 +292,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
         while (true)
         {
+            if (_suppressShyHeaderEvaluation)
+                return;
+
             if (_isNavigatingAway || !HeroGrid.IsLoaded || !ShyHeaderHost.IsLoaded)
                 return;
 
@@ -298,32 +342,90 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     {
         if (e.PropertyName is nameof(ArtistViewModel.IsLoading))
         {
-            if (!ViewModel.IsLoading && !_showingContent && !_crossfadeScheduled)
+            if (!ViewModel.IsLoading
+                && !_showingContent
+                && !_crossfadeScheduled
+                && !_suppressContentReveal
+                && !string.IsNullOrEmpty(ViewModel.ArtistName))
             {
                 ScheduleCrossfade();
             }
         }
         else if (e.PropertyName is nameof(ArtistViewModel.ArtistName))
         {
-            RevealHeroIfReady();
+            Bindings?.Update();
+            if (!_suppressContentReveal)
+            {
+                RevealHeroIfReady();
+                TryShowContentNow();
+            }
         }
-        else if (e.PropertyName is nameof(ArtistViewModel.WatchFeed)
-                                 or nameof(ArtistViewModel.HeaderImageUrl))
+        else if (e.PropertyName is nameof(ArtistViewModel.ArtistImageUrl)
+                              or nameof(ArtistViewModel.HeaderImageUrl)
+                              or nameof(ArtistViewModel.MonthlyListeners)
+                              or nameof(ArtistViewModel.WorldRank)
+                              or nameof(ArtistViewModel.HasWorldRank)
+                              or nameof(ArtistViewModel.WorldRankNumberText)
+                              or nameof(ArtistViewModel.IsVerified)
+                              or nameof(ArtistViewModel.IsFollowing)
+                              or nameof(ArtistViewModel.IsPlayPending)
+                              or nameof(ArtistViewModel.IsArtistContextPlaying)
+                              or nameof(ArtistViewModel.IsArtistContextPaused)
+                              or nameof(ArtistViewModel.ArtistPlayButtonText)
+                              or nameof(ArtistViewModel.PaletteAccentPillBrush)
+                              or nameof(ArtistViewModel.PaletteAccentPillForegroundBrush))
         {
-            // Re-evaluate avatar collapse state whenever either input changes
-            // after the initial crossfade. SetupWatchFeedVideo is called from
-            // CrossfadeToContent — no need here.
+            Bindings?.Update();
+
+            if (e.PropertyName is nameof(ArtistViewModel.HeaderImageUrl) && _showingContent)
+                UpdateAvatarLayout(animate: true);
+        }
+        else if (e.PropertyName is nameof(ArtistViewModel.WatchFeed))
+        {
+            // Re-evaluate avatar collapse state after the initial crossfade.
+            // SetupWatchFeedVideo is called from CrossfadeToContent — no need here.
             if (_showingContent)
                 UpdateAvatarLayout(animate: true);
         }
         else if (e.PropertyName is nameof(ArtistViewModel.HeaderHeroColorHex)
                                  or nameof(ArtistViewModel.Palette))
         {
+            Bindings?.Update();
             UpdatePageTint();
         }
         else if (e.PropertyName is nameof(ArtistViewModel.CurrentPage))
         {
             AnimateTopTracksPageChange();
+        }
+        else if (e.PropertyName is nameof(ArtistViewModel.LatestReleaseName)
+                              or nameof(ArtistViewModel.LatestReleaseImageUrl)
+                              or nameof(ArtistViewModel.LatestReleaseUri)
+                              or nameof(ArtistViewModel.LatestReleaseDate)
+                              or nameof(ArtistViewModel.LatestReleaseTrackCount)
+                              or nameof(ArtistViewModel.LatestReleaseType)
+                              or nameof(ArtistViewModel.HasLatestRelease)
+                              or nameof(ArtistViewModel.LatestReleaseSubtitle))
+        {
+            // The latest-release card is nested inside a section that can be
+            // collapsed during artist swaps. WinUI occasionally misses child
+            // x:Bind updates in that path, leaving subtitle current but
+            // image/title stale. A full page binding refresh is cheap here and
+            // keeps the card coherent.
+            Bindings?.Update();
+        }
+        else if (e.PropertyName is nameof(ArtistViewModel.AlbumsGridView)
+                              or nameof(ArtistViewModel.SinglesGridView)
+                              or nameof(ArtistViewModel.CompilationsGridView)
+                              or nameof(ArtistViewModel.Albums)
+                              or nameof(ArtistViewModel.Singles)
+                              or nameof(ArtistViewModel.Compilations)
+                              or nameof(ArtistViewModel.AlbumsTotalCount)
+                              or nameof(ArtistViewModel.SinglesTotalCount)
+                              or nameof(ArtistViewModel.CompilationsTotalCount))
+        {
+            if (_lowerSectionsDeferred)
+                SetLowerArtistSectionsVisibility(Visibility.Collapsed);
+            UpdateDiscographyRepeaterBindings();
         }
     }
 
@@ -331,9 +433,33 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     {
         if (_heroRevealed || string.IsNullOrEmpty(ViewModel.ArtistName)) return;
         _heroRevealed = true;
+        ForceHeroHeaderSourceState();
+        ElementCompositionPreview.GetElementVisual(HeroOverlayPanel).Opacity = 1;
+        HeroOverlayPanel.Opacity = 0;
         AnimationBuilder.Create()
-            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(280))
+            .Opacity(from: 0, to: 1,
+                     duration: TimeSpan.FromMilliseconds(280),
+                     layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
             .Start(HeroOverlayPanel);
+    }
+
+    private void ForceHeroHeaderSourceState()
+    {
+        if (HeroOverlayPanel is not null)
+            HeroOverlayPanel.Visibility = Visibility.Visible;
+
+        if (ShyHeaderCard is not null)
+            ShyHeaderCard.Visibility = Visibility.Collapsed;
+    }
+
+    private void SetHeroOverlayOpacity(float opacity)
+    {
+        if (HeroOverlayPanel == null)
+            return;
+
+        HeroOverlayPanel.Visibility = Visibility.Visible;
+        HeroOverlayPanel.Opacity = opacity;
+        ElementCompositionPreview.GetElementVisual(HeroOverlayPanel).Opacity = opacity;
     }
 
     // Pixels of tint spill past the hero's bottom edge before the wash fully fades.
@@ -662,30 +788,33 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     {
         if (_showingContent) return;
         _showingContent = true;
+        ResumeShyHeaderAfterContentReset();
+        RevealHeroIfReady();
+        ContentContainer.Visibility = Visibility.Visible;
+        ContentContainer.Opacity = 0;
+        UpdateDiscographyRepeaterBindings();
 
-        // Slower, staggered timings (matches ProfilePage / HomePage rhythm) —
-        // 150 ms felt abrupt; 200 ms shimmer-out + 300 ms content-in @ +100 ms
-        // delay gives the visual seam more breathing room and hides any
-        // ItemsRepeater realisation work that lands inside the window.
-        AnimationBuilder.Create()
-            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200),
-                     layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
-            .Start(ShimmerContainer);
+        // 200 ms shimmer-out + 300 ms content-in @ +100 ms delay (Xaml layer
+        // because the shimmer subtree drives layout that composition-only
+        // opacity won't capture). Animation + finalization centralised in
+        // ShimmerGate; sets IsLoaded=false at the end so x:Load unrealizes
+        // the skeleton subtree.
+        await ShimmerGate.RunCrossfadeAsync(ShimmerContainer, ContentContainer,
+            CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml,
+            () => _showingContent);
 
-        AnimationBuilder.Create()
-            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
-                     delay: TimeSpan.FromMilliseconds(100),
-                     layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
-            .Start(ContentContainer);
+        if (_lowerSectionsDeferred && !_isNavigatingAway)
+        {
+            _lowerSectionsDeferred = false;
+            await Task.Yield();
+            SetLowerArtistSectionsVisibility(Visibility.Visible);
+            UpdateDiscographyRepeaterBindings();
+        }
 
-        // Collapse shimmer after the fade completes so it stops participating
-        // in measure/arrange.
-        await Task.Delay(ShimmerCollapseDelayMs);
-        if (_showingContent)
-            ShimmerContainer.Visibility = Visibility.Collapsed;
-
-        // Set up watch feed video now that the content is visible
-        SetupWatchFeedVideo();
+        // Set up watch feed video after the first content frame; MediaPlayer
+        // creation owns a swap chain and should not compete with first paint.
+        if (!_isNavigatingAway)
+            SetupWatchFeedVideo();
 
         // Decide whether to collapse the redundant circular avatar now that
         // we know the final HeaderImageUrl + WatchFeed state.
@@ -1085,6 +1214,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     public void RefreshWithParameter(object? parameter)
     {
+        CancelNavigationCacheTrim();
         _isNavigatingAway = false;
         LoadNewContent(parameter);
     }
@@ -1096,6 +1226,11 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     }
 
     public void TrimForNavigationCache()
+    {
+        ScheduleNavigationCacheTrim();
+    }
+
+    private void TrimForNavigationCacheNow()
     {
         if (_trimmedForNavigationCache)
             return;
@@ -1119,13 +1254,49 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         Bindings?.StopTracking();
     }
 
+    private void ScheduleNavigationCacheTrim()
+    {
+        if (_isDisposed || _trimmedForNavigationCache)
+            return;
+
+        var timer = _navigationTrimTimer;
+        if (timer is null)
+        {
+            timer = DispatcherQueue.CreateTimer();
+            timer.IsRepeating = false;
+            timer.Tick += NavigationTrimTimer_Tick;
+            _navigationTrimTimer = timer;
+        }
+
+        timer.Stop();
+        timer.Interval = TimeSpan.FromSeconds(NavigationCacheTrimDelaySeconds);
+        timer.Start();
+    }
+
+    private void CancelNavigationCacheTrim()
+    {
+        _navigationTrimTimer?.Stop();
+    }
+
+    private void NavigationTrimTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (_isDisposed || _trimmedForNavigationCache)
+            return;
+
+        TrimForNavigationCacheNow();
+    }
+
     public void RestoreFromNavigationCache()
     {
+        CancelNavigationCacheTrim();
         if (!_trimmedForNavigationCache)
             return;
 
         _trimmedForNavigationCache = false;
         _isNavigatingAway = false;
+        _suppressShyHeaderEvaluation = false;
+        _suppressContentReveal = false;
         ResetShyHeaderState();
         HeroGrid?.RestoreSurface();
         Bindings?.Update();
@@ -1227,15 +1398,44 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private void RestoreDiscographyRepeaters()
     {
         if (!_discographyRepeatersDetached)
+        {
+            UpdateDiscographyRepeaterBindings();
             return;
-
-        if (AlbumsGridRepeater is not null) AlbumsGridRepeater.ItemsSource = ViewModel.Albums;
-        if (AlbumsListRepeater is not null) AlbumsListRepeater.ItemsSource = ViewModel.Albums;
-        if (SinglesGridRepeater is not null) SinglesGridRepeater.ItemsSource = ViewModel.Singles;
-        if (SinglesListRepeater is not null) SinglesListRepeater.ItemsSource = ViewModel.Singles;
-        if (CompilationsShelf is not null) CompilationsShelf.ItemsSource = ViewModel.Compilations;
+        }
 
         _discographyRepeatersDetached = false;
+        UpdateDiscographyRepeaterBindings();
+    }
+
+    private void UpdateDiscographyRepeaterBindings()
+    {
+        if (_discographyRepeatersDetached)
+            return;
+
+        if (AlbumsGridRepeater is not null)
+            AlbumsGridRepeater.ItemsSource = ViewModel.AlbumsGridView ? ViewModel.Albums : null;
+        if (AlbumsListRepeater is not null)
+            AlbumsListRepeater.ItemsSource = ViewModel.AlbumsGridView ? null : ViewModel.Albums;
+
+        if (SinglesGridRepeater is not null)
+            SinglesGridRepeater.ItemsSource = ViewModel.SinglesGridView ? ViewModel.Singles : null;
+        if (SinglesListRepeater is not null)
+            SinglesListRepeater.ItemsSource = ViewModel.SinglesGridView ? null : ViewModel.Singles;
+
+        if (CompilationsShelf is not null)
+            CompilationsShelf.ItemsSource = ViewModel.Compilations;
+    }
+
+    private void SetLowerArtistSectionsVisibility(Visibility visibility)
+    {
+        if (AlbumsSection is not null) AlbumsSection.Visibility = visibility;
+        if (SinglesSection is not null) SinglesSection.Visibility = visibility;
+        if (CompilationsSection is not null) CompilationsSection.Visibility = visibility;
+        if (ConcertsSection is not null) ConcertsSection.Visibility = visibility;
+        if (RelatedArtistsShelf is not null) RelatedArtistsShelf.Visibility = visibility;
+        if (BiographySection is not null) BiographySection.Visibility = visibility;
+        if (ConnectSection is not null) ConnectSection.Visibility = visibility;
+        if (GallerySection is not null) GallerySection.Visibility = visibility;
     }
 
     private void DiscographyRepeater_ElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
@@ -1272,8 +1472,25 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        CancelNavigationCacheTrim();
+        // Re-attach compiled x:Bind to VM.PropertyChanged BEFORE LoadNewContent /
+        // ViewModel.Initialize fires PropertyChanged events for the new artist.
+        // Earlier the flow was: TabBarItem.TrimActive → Bindings.StopTracking →
+        // OnNavigatedTo set `_trimmedForNavigationCache = false` (preempting
+        // RestoreFromNavigationCache from running its Bindings.Update) → LoadNewContent
+        // pushed ResetForNewArtist + LoadAsync's scalar writes into deaf bindings →
+        // ContentFrame_Navigated fired RestoreFromNavigationCache, which early-returned
+        // because the flag was already cleared. Bindings stayed stopped, the VM's
+        // Adam-Lambert data was correct underneath, but the page's scalar TextBlocks
+        // (ArtistName, MonthlyListeners) and OneWay-bound collections (TopTracks)
+        // kept showing the previous artist's values. Calling Update() here, before
+        // the flag reset, fixes that — Update() is idempotent and re-attaches the
+        // PropertyChanged listeners stopped by an earlier StopTracking.
+        Bindings?.Update();
         _trimmedForNavigationCache = false;
         _isNavigatingAway = false;
+        _suppressShyHeaderEvaluation = false;
+        _suppressContentReveal = false;
         ResetShyHeaderState();
 
         // Rehydrate the hero surface if it was released on prior navigate-away.
@@ -1298,6 +1515,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             if (!string.IsNullOrEmpty(ViewModel.ArtistId))
                 ViewModel.Initialize(ViewModel.ArtistId);
             RestoreDiscographyRepeaters();
+            SetLowerArtistSectionsVisibility(Visibility.Visible);
             SetupWatchFeedVideo();
             TryShowContentNow();
             TryRestorePendingNavigationScroll();
@@ -1310,20 +1528,28 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private async void LoadNewContent(object? parameter)
     {
         _trimmedForNavigationCache = false;
+        CollapseExpandedAlbum();
+        TeardownWatchFeed();
         ClearPendingNavigationScrollPosition();
-        // Reset visual state for fresh load
-        PageScrollView.ScrollTo(0, 0);
-        ResetShyHeaderState();
-        if (HeroGrid != null) HeroGrid.ScrollFadeProgress = 0;
+
+        // Hide the reused page before jumping from the previous artist's scroll
+        // position. Otherwise the old bottom-state page crosses the shy-header
+        // threshold during navigation and flashes the floating header.
+        SuppressShyHeaderForContentReset();
+        _suppressContentReveal = true;
         _showingContent = false;
         _crossfadeScheduled = false;
         _heroRevealed = false;
+        _lowerSectionsDeferred = true;
         ContentContainer.Opacity = 0;
+        ContentContainer.Visibility = Visibility.Collapsed;
+        SetLowerArtistSectionsVisibility(Visibility.Collapsed);
         // Hero overlay also resets to invisible so the new artist's chrome
         // fades in on its own beat instead of inheriting the previous one.
-        ElementCompositionPreview.GetElementVisual(HeroOverlayPanel).Opacity = 0;
-        ShimmerContainer.Visibility = Visibility.Visible;
-        ShimmerContainer.Opacity = 1;
+        SetHeroOverlayOpacity(0);
+        ShimmerGate.Reset(() => ShimmerContainer, () => ContentContainer);
+        PageScrollView.ScrollToImmediate(0, 0);
+        UpdateHeroScrollFade();
         RestoreDiscographyRepeaters();
 
         if (parameter is ContentNavigationParameter navParam)
@@ -1331,15 +1557,15 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             ViewModel.Initialize(navParam.Uri);
             ViewModel.PrefillFrom(navParam);
         }
-        else if (parameter is string artistId)
+        else if (parameter is string artistIxd)
         {
-            ViewModel.Initialize(artistId);
+            ViewModel.Initialize(artistIxd);
         }
 
         // Restore persisted hero height for this artist
-         var artistI2d = ViewModel.ArtistId;
-        if (!string.IsNullOrEmpty(artistI2d))
-            RestoreHeroHeight(artistI2d);
+        var artistId = ViewModel.ArtistId;
+        if (!string.IsNullOrEmpty(artistId))
+            RestoreHeroHeight(artistId);
 
         // Initialize() above already subscribed to the ArtistStore — the store
         // emits Ready once the overview lands and the VM drives its cascade from
@@ -1355,6 +1581,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         // NavigationCacheMode=Required the same VM is reused across nav and the
         // shimmer stays stuck on cache hits. Mirrors AlbumPage / PlaylistPage.
         await Task.Yield();
+        _suppressContentReveal = false;
         if (_isNavigatingAway) return;
         TryShowContentNow();
     }
@@ -1602,6 +1829,12 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             PageScrollView.ViewChanged -= PageScrollView_ViewChanged;
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        if (_navigationTrimTimer is not null)
+        {
+            _navigationTrimTimer.Stop();
+            _navigationTrimTimer.Tick -= NavigationTrimTimer_Tick;
+            _navigationTrimTimer = null;
+        }
         CancelResizeDebounce();
         CollapseExpandedAlbum();
         TeardownWatchFeed();
@@ -1810,7 +2043,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         // user can keep arrow-navigating without a jarring focus jump.
         _galleryReturnFocus = sender;
 
-        var idx = ViewModel.GalleryPhotos.IndexOf(url);
+        var idx = ViewModel.GalleryPhotos is IList<string> photos
+            ? photos.IndexOf(url)
+            : ViewModel.GalleryPhotos.ToList().IndexOf(url);
         GalleryFlipView.SelectedIndex = Math.Max(0, idx);
         UpdateGalleryCounterText();
 

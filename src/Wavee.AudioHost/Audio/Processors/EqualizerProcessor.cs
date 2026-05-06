@@ -13,9 +13,13 @@ public sealed class EqualizerProcessor : IAudioProcessor
 {
     private readonly List<EqualizerBand> _bands = new();
     private readonly ILogger? _logger;
+    private readonly object _versionLock = new();
+    private readonly Dictionary<long, TaskCompletionSource> _versionWaiters = new();
     private AudioFormat? _format;
     private BiquadFilter[][]? _filters; // [band][channel]
     private bool _isEnabled = true;
+    private long _settingsVersion;
+    private long _processedVersion;
 
     public string ProcessorName => "Equalizer";
 
@@ -79,6 +83,33 @@ public sealed class EqualizerProcessor : IAudioProcessor
     /// and apply the new EQ immediately instead of waiting for the buffer to drain.
     /// </summary>
     public event Action? FiltersChanged;
+
+    public long CommitSettingsVersion()
+        => Interlocked.Increment(ref _settingsVersion);
+
+    public Task WaitForVersionProcessedAsync(
+        long version,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        if (version <= Volatile.Read(ref _processedVersion))
+            return Task.CompletedTask;
+
+        TaskCompletionSource waiter;
+        lock (_versionLock)
+        {
+            if (version <= _processedVersion)
+                return Task.CompletedTask;
+
+            if (!_versionWaiters.TryGetValue(version, out waiter!))
+            {
+                waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _versionWaiters.Add(version, waiter);
+            }
+        }
+
+        return WaitWithTimeoutAsync(waiter.Task, version, timeout, cancellationToken);
+    }
 
     /// <summary>
     /// Rebuilds biquad filter coefficients after band parameters have been modified externally.
@@ -150,6 +181,8 @@ public sealed class EqualizerProcessor : IAudioProcessor
         if (input.IsEmpty || _filters == null || _filters.Length == 0)
             return input;
 
+        MarkCurrentSettingsVersionProcessed();
+
         var dataLength = input.Data.Length;
         var output = ArrayPool<byte>.Shared.Rent(dataLength);
         input.Data.CopyTo(output); // Start with input data
@@ -220,6 +253,64 @@ public sealed class EqualizerProcessor : IAudioProcessor
             {
                 _filters[i][ch] = BiquadFilter.Create(_bands[i], _format.SampleRate);
             }
+        }
+    }
+
+    public void MarkCurrentSettingsVersionProcessed()
+    {
+        var version = Volatile.Read(ref _settingsVersion);
+        if (version <= Volatile.Read(ref _processedVersion))
+            return;
+
+        List<TaskCompletionSource>? completed = null;
+        lock (_versionLock)
+        {
+            if (version <= _processedVersion)
+                return;
+
+            _processedVersion = version;
+            foreach (var pair in _versionWaiters.ToArray())
+            {
+                if (pair.Key > version)
+                    continue;
+
+                _versionWaiters.Remove(pair.Key);
+                completed ??= [];
+                completed.Add(pair.Value);
+            }
+        }
+
+        if (completed is null)
+            return;
+
+        foreach (var waiter in completed)
+            waiter.TrySetResult();
+    }
+
+    private async Task WaitWithTimeoutAsync(
+        Task task,
+        long version,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        using var timeoutCts = new CancellationTokenSource(timeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken);
+
+        try
+        {
+            await task.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            lock (_versionLock)
+                _versionWaiters.Remove(version);
+            throw new TimeoutException("Equalizer settings were installed, but no audio buffer observed them before timeout.");
+        }
+        catch
+        {
+            lock (_versionLock)
+                _versionWaiters.Remove(version);
+            throw;
         }
     }
 

@@ -166,6 +166,21 @@ public sealed partial class ContentCard : UserControl
         DependencyProperty.Register(nameof(IsExternal), typeof(bool), typeof(ContentCard),
             new PropertyMetadata(false));
 
+    public static readonly DependencyProperty UseConnectedAnimationProperty =
+        DependencyProperty.Register(nameof(UseConnectedAnimation), typeof(bool), typeof(ContentCard),
+            new PropertyMetadata(true));
+
+    /// <summary>
+    /// Enables source-to-destination connected animation for same-tab navigation.
+    /// Disable for cards hosted inside the destination page itself; reusing that
+    /// page can invalidate the source subtree during the navigation event.
+    /// </summary>
+    public bool UseConnectedAnimation
+    {
+        get => (bool)GetValue(UseConnectedAnimationProperty);
+        set => SetValue(UseConnectedAnimationProperty, value);
+    }
+
     /// <summary>
     /// When true, the hover overlay shows an "open in browser" button (globe icon)
     /// instead of the play button, and the play / now-playing chrome is suppressed.
@@ -252,6 +267,10 @@ public sealed partial class ContentCard : UserControl
     private bool _hasEffectiveViewport;
     private bool _isInsideEffectiveViewport = true;
     private const int CardImageDecodeSize = 200;
+    private const double DefaultCardWidth = 160;
+    private const double CardHorizontalPadding = 16;
+    private const double CircleImageInset = 16;
+    private const double MinimumImageSide = 60;
     private string? _currentImageCacheUrl;
     private string? _pinnedImageCacheUrl;
     private string? _retryImageCacheUrl;
@@ -341,12 +360,15 @@ public sealed partial class ContentCard : UserControl
         }
 
         // EffectiveViewportChanged can report an empty/stale viewport while a
-        // navigation-cached page is being detached. The card's image source is
-        // released below, so the next attach must take a fresh viewport sample
-        // instead of trusting the old "outside viewport" result and skipping reload.
+        // navigation-cached page is being detached. The next attach must take a
+        // fresh viewport sample instead of trusting the old "outside viewport"
+        // result and skipping reload.
         _hasEffectiveViewport = false;
         _isInsideEffectiveViewport = true;
-        ReleaseImage();
+        // Do not blank the image for ordinary ItemsRepeater virtualization or
+        // quick navigation-cache detaches. Keeping the source avoids scroll-back
+        // placeholder flashes; explicit page trim paths still call ReleaseImage().
+        UnpinImageCacheUrl();
 
         // Remove passive pointer handlers using the SAME instances that were added
         if (_passiveHandlersAdded)
@@ -432,15 +454,20 @@ public sealed partial class ContentCard : UserControl
     {
         var card = (ContentCard)d;
         var url = e.NewValue as string;
+        if (card.HasLoadedImageFor(url))
+            return;
+
         if (IsImageLoadingSuspended)
         {
-            card.ReleaseImage();
+            if (!card.IsCurrentImageUrl(url))
+                card.ReleaseImage();
             return;
         }
 
         if (card._hasEffectiveViewport && !card._isInsideEffectiveViewport)
         {
-            card.ReleaseImage();
+            if (!card.IsCurrentImageUrl(url))
+                card.ReleaseImage();
             return;
         }
 
@@ -533,10 +560,7 @@ public sealed partial class ContentCard : UserControl
         _isInsideEffectiveViewport = isInsideEffectiveViewport;
 
         if (!_isInsideEffectiveViewport)
-        {
-            ReleaseImage();
             return;
-        }
 
         // Cheap short-circuit: 99% of fires are scroll noise on already-loaded
         // cards. Only act when the image was nulled (by OnUnloaded) and we
@@ -549,6 +573,7 @@ public sealed partial class ContentCard : UserControl
     public void ReleaseImage()
     {
         UnpinImageCacheUrl();
+        _currentImageCacheUrl = null;
 
         if (SquareImage != null)
         {
@@ -586,6 +611,16 @@ public sealed partial class ContentCard : UserControl
             ? CircleImageBrush?.ImageSource != null
             : SquareImage?.Source != null;
 
+    private bool HasLoadedImageFor(string? url)
+        => HasImage() && IsCurrentImageUrl(url);
+
+    private bool IsCurrentImageUrl(string? url)
+    {
+        var resolved = ResolveCardImageUrl(url);
+        return !string.IsNullOrEmpty(resolved)
+               && string.Equals(_currentImageCacheUrl, resolved, StringComparison.Ordinal);
+    }
+
     private static bool TryGetEffectiveViewportIntersection(
         FrameworkElement element,
         Rect effectiveViewport,
@@ -612,6 +647,20 @@ public sealed partial class ContentCard : UserControl
         if (SquareImage == null) return;
         if (IsImageLoadingSuspended) return;
 
+        var resolvedImageUrl = ResolveCardImageUrl(url);
+        if (string.IsNullOrEmpty(resolvedImageUrl))
+        {
+            ReleaseImage();
+            return;
+        }
+
+        if (string.Equals(_currentImageCacheUrl, resolvedImageUrl, StringComparison.Ordinal) && HasImage())
+        {
+            HidePlaceholderForCurrentMode();
+            PinImageCacheUrl(resolvedImageUrl);
+            return;
+        }
+
         // Show placeholders — they sit on top of the image via z-order
         // Image stays Visible (Collapsed causes unload on scroll)
         SquarePlaceholderIcon.Visibility = Visibility.Visible;
@@ -626,20 +675,7 @@ public sealed partial class ContentCard : UserControl
         if (CircleImageBrush != null)
             CircleImageBrush.ImageSource = null;
 
-        _currentImageCacheUrl = null;
-        if (string.IsNullOrEmpty(url))
-        {
-            UnpinImageCacheUrl();
-            return;
-        }
-
-        var httpsUrl = ResolveCardImageUrl(url);
-        if (string.IsNullOrEmpty(httpsUrl))
-        {
-            UnpinImageCacheUrl();
-            return;
-        }
-
+        var httpsUrl = resolvedImageUrl;
         _currentImageCacheUrl = httpsUrl;
         if (!string.Equals(_retryImageCacheUrl, httpsUrl, StringComparison.Ordinal))
         {
@@ -663,6 +699,19 @@ public sealed partial class ContentCard : UserControl
             SquareImage.Source = bitmap;
             // Cached BitmapImage instances may already be opened, so ImageOpened
             // will not always fire again when a virtualized card is recycled.
+            SquarePlaceholderIcon.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void HidePlaceholderForCurrentMode()
+    {
+        if (IsCircularImage)
+        {
+            if (CirclePlaceholderIcon != null)
+                CirclePlaceholderIcon.Visibility = Visibility.Collapsed;
+        }
+        else if (SquarePlaceholderIcon != null)
+        {
             SquarePlaceholderIcon.Visibility = Visibility.Collapsed;
         }
     }
@@ -732,6 +781,7 @@ public sealed partial class ContentCard : UserControl
                 CircleImageContainer.SizeChanged += OnCircleContainerSizeChanged;
                 _circleSizeHandlerAttached = true;
             }
+            StabilizeImageSlotForMeasure(ActualWidth);
         }
         else
         {
@@ -747,28 +797,56 @@ public sealed partial class ContentCard : UserControl
                     _circleSizeHandlerAttached = false;
                 }
             }
+            StabilizeImageSlotForMeasure(ActualWidth);
         }
     }
 
     private void OnCircleContainerSizeChanged(object sender, SizeChangedEventArgs e)
     {
         // Make circle diameter = container width (minus a small margin)
-        var size = Math.Max(60, e.NewSize.Width - 16);
-        if (ImageSize > 0) size = ImageSize;
-        CirclePlaceholder.Width = size;
-        CirclePlaceholder.Height = size;
-        CircleImage.Width = size;
-        CircleImage.Height = size;
+        var size = ImageSize > 0
+            ? ImageSize
+            : Math.Max(MinimumImageSide, e.NewSize.Width - CircleImageInset);
+        SetCircleImageSide(size);
     }
 
     private void SquareImageContainer_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        var side = e.NewSize.Width;
+        var side = ImageSize > 0 ? ImageSize : e.NewSize.Width;
         if (side <= 0) return;
 
         // Keep the image area square: height = width
-        SquareImageContainer.Height = side;
+        SetSquareImageSide(side);
+    }
 
+    private void SetSquareImageSide(double side)
+    {
+        if (SquareImageContainer == null || side <= 0)
+            return;
+
+        if (double.IsNaN(SquareImageContainer.Height) || Math.Abs(SquareImageContainer.Height - side) > 0.5)
+            SquareImageContainer.Height = side;
+
+        UpdateSquareImageClip(side);
+    }
+
+    private void SetCircleImageSide(double side)
+    {
+        if (side <= 0 || CirclePlaceholder == null || CircleImage == null)
+            return;
+
+        if (CircleImageContainer != null
+            && (double.IsNaN(CircleImageContainer.Height) || Math.Abs(CircleImageContainer.Height - side) > 0.5))
+            CircleImageContainer.Height = side;
+
+        CirclePlaceholder.Width = side;
+        CirclePlaceholder.Height = side;
+        CircleImage.Width = side;
+        CircleImage.Height = side;
+    }
+
+    private void UpdateSquareImageClip(double side)
+    {
         // Grid.CornerRadius only clips background paint in WinUI 3. SquareImageContainer
         // is a Grid (not a Border), so its CornerRadius does not clip child UIElements.
         // CompositionRectangleClip set on the outermost visual (GetElementVisual returns the
@@ -785,6 +863,47 @@ public sealed partial class ContentCard : UserControl
         clip.BottomLeftRadius = new System.Numerics.Vector2(4f);
         clip.BottomRightRadius = new System.Numerics.Vector2(4f);
         visual.Clip = clip;
+    }
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        StabilizeImageSlotForMeasure(availableSize.Width);
+        return base.MeasureOverride(availableSize);
+    }
+
+    private void StabilizeImageSlotForMeasure(double availableWidth)
+    {
+        if (SquareImageContainer == null)
+            return;
+
+        var cardWidth = ResolveMeasureWidth(availableWidth);
+        var contentWidth = Math.Max(MinimumImageSide, cardWidth - CardHorizontalPadding);
+
+        if (IsCircularImage)
+        {
+            EnsureCircleRealized();
+            var side = ImageSize > 0
+                ? ImageSize
+                : Math.Max(MinimumImageSide, contentWidth - CircleImageInset);
+            SetCircleImageSide(side);
+        }
+        else
+        {
+            var side = ImageSize > 0 ? ImageSize : contentWidth;
+            if (double.IsNaN(SquareImageContainer.Height) || Math.Abs(SquareImageContainer.Height - side) > 0.5)
+                SquareImageContainer.Height = side;
+        }
+    }
+
+    private double ResolveMeasureWidth(double availableWidth)
+    {
+        if (!double.IsNaN(availableWidth) && !double.IsInfinity(availableWidth) && availableWidth > 0)
+            return availableWidth;
+
+        if (ActualWidth > 0)
+            return ActualWidth;
+
+        return ImageSize > 0 ? ImageSize + CardHorizontalPadding : DefaultCardWidth;
     }
 
     private void SquareImage_ImageOpened(object sender, RoutedEventArgs e)
@@ -1067,7 +1186,7 @@ public sealed partial class ContentCard : UserControl
         if (!string.IsNullOrEmpty(NavigationUri))
         {
             var openInNewTab = Helpers.Navigation.NavigationHelpers.IsCtrlPressed();
-            if (!openInNewTab)
+            if (!openInNewTab && UseConnectedAnimation)
                 PrepareConnectedAnimation();
 
             ResetInteractionState();
@@ -1232,7 +1351,7 @@ public sealed partial class ContentCard : UserControl
                 Helpers.Navigation.NavigationHelpers.OpenArtist(param, title, openInNewTab);
                 return true;
             case "album":
-                Helpers.Navigation.NavigationHelpers.OpenAlbum(param, title, openInNewTab);
+                OpenAlbumAfterClick(param, title, openInNewTab);
                 return true;
             case "playlist":
                 Helpers.Navigation.NavigationHelpers.OpenPlaylist(param, title, openInNewTab);
@@ -1261,6 +1380,18 @@ public sealed partial class ContentCard : UserControl
         }
 
         return false;
+    }
+
+    private void OpenAlbumAfterClick(Data.Parameters.ContentNavigationParameter parameter, string title, bool openInNewTab)
+    {
+        if (!openInNewTab && DispatcherQueue is not null)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+                Helpers.Navigation.NavigationHelpers.OpenAlbum(parameter, title, openInNewTab: false));
+            return;
+        }
+
+        Helpers.Navigation.NavigationHelpers.OpenAlbum(parameter, title, openInNewTab);
     }
 
     internal bool PrepareConnectedAnimation()

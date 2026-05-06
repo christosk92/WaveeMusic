@@ -117,6 +117,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        UpdateContentGridWidth();
         UpdateVideoFocusLayout();
         ApplyMode();
         SyncContentHostWidth();
@@ -211,6 +212,7 @@ public sealed partial class ExpandedPlayerView : UserControl
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
         var width = e.NewSize.Width;
+        UpdateContentGridWidth();
         if (width < NarrowWindowBreakpointPx && Mode != ExpandedPlayerContentMode.None)
         {
             _lastUserMode = Mode;
@@ -354,6 +356,8 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void ApplyMode()
     {
+        UpdateContentGridWidth();
+
         var mode = Mode;
         var videoFocusVisible = _isVideoFocusActive;
         var videoQueueVisible = videoFocusVisible && !_isVideoTheaterMode && mode == ExpandedPlayerContentMode.Queue;
@@ -371,13 +375,20 @@ public sealed partial class ExpandedPlayerView : UserControl
             LeftColumnDef.Width = new GridLength(1, GridUnitType.Star);
             RightColumnDef.Width = new GridLength(GetVideoQueuePanelWidth());
         }
+        else if (twoColumnLayout && !compactRightLayout)
+        {
+            // The player has a concrete width; lyrics get every remaining pixel.
+            // This removes the old right-column/read-width constraint.
+            LeftColumnDef.Width = new GridLength(GetTwoColumnPlayerColumnWidth());
+            RightColumnDef.Width = new GridLength(1, GridUnitType.Star);
+        }
         else
         {
             LeftColumnDef.Width = compactRightLayout
                 ? new GridLength(0)
-                : new GridLength(twoColumnLayout ? 0.95 : 1, GridUnitType.Star);
+                : new GridLength(1, GridUnitType.Star);
             RightColumnDef.Width = rightVisible || focusVisible
-                ? new GridLength(twoColumnLayout ? 1.05 : 1, GridUnitType.Star)
+                ? new GridLength(1, GridUnitType.Star)
                 : new GridLength(0);
         }
 
@@ -423,12 +434,7 @@ public sealed partial class ExpandedPlayerView : UserControl
         // dead space on the right even when RightColumnDef is 0-width because
         // PlayerLayout's MaxWidth constrains it within column 0 only.
         Grid.SetColumnSpan(PlayerLayout, focusVisible || compactRightLayout ? 2 : 1);
-        PlayerLayout.MaxWidth = videoFocusVisible
-            ? double.PositiveInfinity
-            : focusVisible ? GetFocusPlayerMaxWidth() : GetTwoColumnPlayerMaxWidth();
-        PlayerLayout.HorizontalAlignment = videoFocusVisible
-            ? HorizontalAlignment.Stretch
-            : HorizontalAlignment.Center;
+        ApplyPlayerLayoutWidth(videoFocusVisible, focusVisible, twoColumnLayout);
         AnimateTransform(
             PlayerLayoutTransform,
             videoFocusVisible && !_isVideoTheaterMode ? 1.01 : 1.0,
@@ -516,24 +522,93 @@ public sealed partial class ExpandedPlayerView : UserControl
         return 340;
     }
 
+    private void ApplyPlayerLayoutWidth(bool videoFocusVisible, bool focusVisible, bool twoColumnLayout)
+    {
+        if (videoFocusVisible)
+        {
+            PlayerLayout.Width = double.NaN;
+            PlayerLayout.MaxWidth = double.PositiveInfinity;
+            PlayerLayout.HorizontalAlignment = HorizontalAlignment.Stretch;
+            return;
+        }
+
+        var maxWidth = focusVisible ? GetFocusPlayerMaxWidth() : GetTwoColumnPlayerMaxWidth();
+        var availableWidth = GetAvailablePlayerLayoutWidth(focusVisible, twoColumnLayout);
+
+        PlayerLayout.MaxWidth = maxWidth;
+        PlayerLayout.Width = availableWidth > 0
+            ? Math.Floor(Math.Min(maxWidth, availableWidth))
+            : double.NaN;
+        PlayerLayout.HorizontalAlignment = HorizontalAlignment.Left;
+    }
+
+    private double GetAvailablePlayerLayoutWidth(bool focusVisible, bool twoColumnLayout)
+    {
+        var contentWidth = ContentGrid.Width;
+        if (double.IsNaN(contentWidth) || contentWidth <= 0)
+            contentWidth = ContentGrid.ActualWidth > 0 ? ContentGrid.ActualWidth : RootGrid.ActualWidth;
+
+        if (contentWidth <= 0)
+            return 0;
+
+        if (focusVisible || !twoColumnLayout)
+            return contentWidth;
+
+        return Math.Min(GetTwoColumnPlayerColumnWidth(), contentWidth);
+    }
+
     private double GetFocusPlayerMaxWidth()
     {
         var width = RootGrid.ActualWidth;
-        if (width >= 1600)
-            return 780;
-        if (width >= 1280)
-            return 720;
-        return 640;
+        if (width >= 2400) return 1260;
+        if (width >= 2000) return 1180;
+        if (width >= 1700) return 1080;
+        if (width >= 1400) return 960;
+        if (width >= 1150) return 860;
+        return 700;
     }
 
     private double GetTwoColumnPlayerMaxWidth()
     {
         var width = RootGrid.ActualWidth;
-        if (width >= 1600)
-            return 760;
-        if (width >= 1280)
-            return 700;
-        return 620;
+        if (width >= 2400) return 1360;
+        if (width >= 2000) return 1240;
+        if (width >= 1700) return 1120;
+        if (width >= 1400) return 980;
+        if (width >= 1150) return 860;
+        return 700;
+    }
+
+    private double GetTwoColumnPlayerColumnWidth()
+    {
+        var maxWidth = GetTwoColumnPlayerMaxWidth();
+        var rootWidth = RootGrid.ActualWidth > 0 ? RootGrid.ActualWidth : maxWidth;
+        var rootHeight = RootGrid.ActualHeight > 0 ? RootGrid.ActualHeight : 820;
+
+        // In wide-but-not-tall popouts, artwork is height-limited. Keep the
+        // player column close to that visible footprint so lyrics start right
+        // after the player instead of after an empty max-width column.
+        var heightDrivenWidth = (rootHeight * 0.74) + 110;
+        var widthDrivenLimit = rootWidth * 0.58;
+        return Math.Clamp(
+            Math.Min(heightDrivenWidth, widthDrivenLimit),
+            Math.Min(620, maxWidth),
+            maxWidth);
+    }
+
+    private void UpdateContentGridWidth()
+    {
+        if (ContentGrid == null)
+            return;
+
+        var width = RootGrid.ActualWidth;
+        if (width <= 0)
+        {
+            ContentGrid.Width = double.NaN;
+            return;
+        }
+
+        ContentGrid.Width = Math.Floor(width);
     }
 
     private void SetCompactNowPlayingVisible(bool showCompact)
@@ -897,8 +972,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
         FullscreenLyricsCanvas.LyricsStartX = origin.X;
         FullscreenLyricsCanvas.LyricsStartY = origin.Y;
-        var explainButtonGutter = lyricsW >= 280 ? 52 : 0;
-        FullscreenLyricsCanvas.LyricsWidth = Math.Max(0, lyricsW - explainButtonGutter);
+        FullscreenLyricsCanvas.LyricsWidth = lyricsW;
         FullscreenLyricsCanvas.LyricsHeight = lyricsH;
         FullscreenLyricsCanvas.LyricsOpacity = Mode == ExpandedPlayerContentMode.Lyrics ? 1 : 0;
         FullscreenLyricsCanvas.AlbumArtRect = Rect.Empty;

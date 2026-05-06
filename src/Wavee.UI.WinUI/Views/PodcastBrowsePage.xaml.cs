@@ -1,27 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Numerics;
-using System.Threading;
 using System.Threading.Tasks;
+using Wavee.Controls.HeroCarousel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Animations;
-using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
-using Windows.Foundation;
-using Windows.UI;
-using Microsoft.UI;
 using Wavee.UI.WinUI.Controls.TabBar;
-using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
-using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
@@ -29,41 +19,6 @@ namespace Wavee.UI.WinUI.Views;
 public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDisposable
 {
     private const int ShimmerCollapseDelayMs = 250;
-    // Card geometry. Fill the content column so the first hero aligns with the
-    // page title, while still capping ultra-wide layouts for readability.
-    private const double HeroCardWidthRatio = 1.0;
-    private const double HeroCardMinWidth = 320;
-    // Bumped 760 → 1100 so the hero fills the content column the way the MS
-    // Store reference does. Combined with the side-cards repeater being
-    // collapsed, the page now has a single dominant hero panel per row.
-    private const double HeroCardMaxWidth = 1280;
-    private const double HeroCardHeight = 420;
-    private const double HeroSideColumnWidth = 380;
-    private const double HeroSideColumnSpacing = 12;
-    private const double HeroCardCornerRadius = 20;
-    private const double HeroShadowBleed = 24;
-    private const double HeroTrackGap = 16;
-    private const double HeroNextCardPeekWidth = 120;
-    // Compact browse header + carousel + pips. Keep this close to the card height
-    // so category pages feel like a catalog, not a landing-page hero.
-    private const double HeroSurfaceMinHeight = 500;
-    private const double HeroSurfaceMaxHeight = 540;
-    // Chevrons sit just inside the active card edge (MS Store-style overlap).
-    private const double HeroChevronInset = 12;
-    // Fixed-viewport carousel timings. The hero frame stays pinned while whole
-    // slides move horizontally behind the rounded clip, matching Microsoft Store.
-    private const int HeroSingleStepMs = 340;
-    private const int HeroChainStepMs = 210;
-    private const int HeroRevertStepMs = 170;
-    private const int HeroFrameMs = 33;
-    private const double HeroDragCommitDivisor = 4.0;
-    private const double HeroArtworkParallaxStrength = 0.026;
-    private const double HeroArtworkParallaxMaxShiftPx = 24;
-
-    private readonly DispatcherTimer _heroTimer = new()
-    {
-        Interval = TimeSpan.FromSeconds(6)
-    };
 
     private TabItemParameter? _tabItemParameter;
     private bool _isLoaded;
@@ -71,29 +26,11 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
     private bool _isViewModelSubscribed;
     private bool _showingContent;
     private bool _crossfadeScheduled;
-
-    // Layered hero stage state. _heroCards is parallel to ViewModel.HeroShows
-    // (one realised card per item). _currentHeroIndex is the index of the active
-    // card (the one at TranslateTransform.X=0); other cards sit off-stage.
-    private readonly List<FrameworkElement> _heroCards = new();
-    private int _currentHeroIndex = -1;
-    private CancellationTokenSource? _transitionCts;
-    private bool _isTransitioning;
-    // While a transition is in progress (animation OR drag), these describe which
-    // pair of heroes the page is between, so UpdatePageTintFromState and
-    // UpdatePageTintFromState can lerp continuously.
-    private int _transitionFromIndex = -1;
-    private int _transitionToIndex = -1;
-    private int _transitionDirection;
-    private double _transitionProgress;
-
-    // Drag/swipe state — driven by Manipulation events on HeroStage.
-    private bool _isDragging;
-    private FrameworkElement? _dragIncomingCard;
-    private int _dragIncomingIndex = -1;
-    private int _dragDirection;
+    private bool _heroEventsHooked;
 
     public PodcastBrowseViewModel ViewModel { get; }
+
+    public ShimmerLoadGate ShimmerGate { get; } = new();
 
     public TabItemParameter? TabItemParameter => _tabItemParameter;
 
@@ -104,20 +41,12 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
         ViewModel = Ioc.Default.GetRequiredService<PodcastBrowseViewModel>();
         InitializeComponent();
         PrepareLoadingVisualState(scrollToTop: false);
-        _heroTimer.Tick += HeroTimer_Tick;
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
-        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
-        // sibling does not pin this page across navigations. NavCacheMode is
-        // Disabled — page is destroyed on nav-away, no Update() partner needed.
         Bindings?.StopTracking();
-        // Page is destroyed on nav-away (NavCacheMode default = Disabled). Run
-        // the full IDisposable teardown — stops _heroTimer and -= its Tick handler
-        // (otherwise the dispatcher's timer queue keeps the page rooted), cancels
-        // _transitionCts, unhooks the VM, and disposes the VM itself.
         Dispose();
     }
 
@@ -130,8 +59,7 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
         await ViewModel.LoadAsync(parameter);
         ApplyTabParameter();
         UpdateSidebarVisibility();
-        UpdateHeroCardMetrics();
-        RebuildHeroStage();
+        SyncHeroSlides();
         TryShowContentNow();
     }
 
@@ -146,8 +74,7 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
         await ViewModel.LoadAsync(parameter);
         ApplyTabParameter();
         UpdateSidebarVisibility();
-        UpdateHeroCardMetrics();
-        RebuildHeroStage();
+        SyncHeroSlides();
         TryShowContentNow();
     }
 
@@ -170,7 +97,6 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
 
     private void PrepareLoadingVisualState(bool scrollToTop)
     {
-        _heroTimer.Stop();
         _showingContent = false;
         _crossfadeScheduled = false;
 
@@ -182,24 +108,7 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
                 new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
         }
 
-        if (HeroCarouselShimmer is not null)
-        {
-            HeroCarouselShimmer.Visibility = Visibility.Visible;
-            HeroCarouselShimmer.Opacity = 1;
-        }
-
-        if (PodcastBrowseShimmer is not null)
-        {
-            PodcastBrowseShimmer.Visibility = Visibility.Visible;
-            PodcastBrowseShimmer.Opacity = 1;
-        }
-
-        if (HeroStage is not null)
-            HeroStage.Opacity = 0;
-        if (HeroPips is not null)
-            HeroPips.Opacity = 0;
-        if (PodcastBrowseContent is not null)
-            PodcastBrowseContent.Opacity = 0;
+        ShimmerGate.Reset(() => PodcastBrowseShimmer, () => PodcastBrowseContent);
     }
 
     private void TryShowContentNow()
@@ -214,9 +123,6 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
     {
         _crossfadeScheduled = true;
 
-        // Same deferal principle as ArtistPage: wait for bindings/repeaters to
-        // measure before fading away the skeleton, otherwise shelves and hero
-        // cards can grow during the animation and visibly shift the page.
         await Task.Yield();
         await Task.Delay(16);
 
@@ -226,14 +132,11 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             return;
         }
 
-        UpdateHeroCardMetrics();
-        RebuildHeroStage();
-        UpdatePageTintFromState();
-
+        SyncHeroSlides();
         CrossfadeToContent();
     }
 
-    private async void CrossfadeToContent()
+    private void CrossfadeToContent()
     {
         if (_showingContent)
             return;
@@ -241,63 +144,47 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
         _showingContent = true;
         _crossfadeScheduled = false;
 
-        AnimationBuilder.Create()
-            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200),
-                layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
-            .Start(HeroCarouselShimmer);
-
-        AnimationBuilder.Create()
-            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200),
-                layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
-            .Start(PodcastBrowseShimmer);
-
-        AnimationBuilder.Create()
-            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
-                delay: TimeSpan.FromMilliseconds(100),
-                layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
-            .Start(HeroStage);
-
-        AnimationBuilder.Create()
-            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
-                delay: TimeSpan.FromMilliseconds(100),
-                layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
-            .Start(HeroPips);
-
-        AnimationBuilder.Create()
-            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
-                delay: TimeSpan.FromMilliseconds(100),
-                layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
-            .Start(PodcastBrowseContent);
-
-        await Task.Delay(ShimmerCollapseDelayMs);
-        if (_showingContent)
-        {
-            HeroCarouselShimmer.Visibility = Visibility.Collapsed;
-            PodcastBrowseShimmer.Visibility = Visibility.Collapsed;
-        }
-
-        UpdateHeroTimer();
+        _ = ShimmerGate.RunCrossfadeAsync(PodcastBrowseShimmer, PodcastBrowseContent, FrameworkLayer.Xaml,
+            () => _showingContent);
     }
 
     private void Page_Loaded(object sender, RoutedEventArgs e)
     {
         _isLoaded = true;
         SubscribeViewModel();
-        UpdateHeroTimer();
+        HookHeroEvents();
         UpdateSidebarVisibility();
-        UpdateHeroCardMetrics();
-        RebuildHeroStage();
-        UpdatePageTintFromState();
+        SyncHeroSlides();
         TryShowContentNow();
     }
 
     private void Page_Unloaded(object sender, RoutedEventArgs e)
     {
         _isLoaded = false;
-        _heroTimer.Stop();
-        _transitionCts?.Cancel();
+        UnhookHeroEvents();
         UnsubscribeViewModel();
     }
+
+    private void HookHeroEvents()
+    {
+        if (_heroEventsHooked || HeroCarousel is null)
+            return;
+        HeroCarousel.CtaClicked += OnHeroCtaClicked;
+        ViewModel.HeroColorsResolved += OnHeroColorsResolved;
+        _heroEventsHooked = true;
+    }
+
+    private void UnhookHeroEvents()
+    {
+        if (!_heroEventsHooked)
+            return;
+        if (HeroCarousel is not null)
+            HeroCarousel.CtaClicked -= OnHeroCtaClicked;
+        ViewModel.HeroColorsResolved -= OnHeroColorsResolved;
+        _heroEventsHooked = false;
+    }
+
+    private void OnHeroColorsResolved(object? sender, EventArgs e) => SyncHeroSlides();
 
     private void SubscribeViewModel()
     {
@@ -324,9 +211,6 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
                 if (!ViewModel.IsLoading)
                     TryShowContentNow();
                 break;
-            case nameof(ViewModel.SelectedHero):
-                _ = AnimateToHeroAsync(ViewModel.SelectedHero);
-                break;
             case nameof(ViewModel.HasAllPodcastCategories):
             case nameof(ViewModel.ShowSidebar):
             case nameof(ViewModel.ShowSidebarShimmer):
@@ -334,27 +218,9 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
                 break;
             case nameof(ViewModel.HasHeroShows):
             case nameof(ViewModel.ShowHeroShows):
-                UpdateHeroCardMetrics();
-                RebuildHeroStage();
-                UpdatePageTintFromState();
+                SyncHeroSlides();
                 break;
         }
-    }
-
-    private void Page_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        UpdateHeroCardMetrics();
-        // Re-snap card positions to the new stage width whenever we're not
-        // mid-transition. Otherwise the running animation keeps driving X.
-        if (!_isTransitioning && !_isDragging && _currentHeroIndex >= 0)
-            PositionCardsForActive(_currentHeroIndex);
-    }
-
-    private void HeroStage_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        ApplyHeroStageViewportClip();
-        if (!_isTransitioning && !_isDragging && _currentHeroIndex >= 0)
-            PositionCardsForActive(_currentHeroIndex);
     }
 
     private void UpdateSidebarVisibility()
@@ -362,820 +228,49 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
         if (CategorySidebar is null)
             return;
 
-        // Sidebar is the Zune-style "all genres" navigation. Visible whenever the
-        // master AllPodcastCategories collection has data — on the root AND on every
-        // sub-page (the master list is loaded once and reused across navigations).
-        // Also visible during the initial load so the shimmer skeleton can render.
         CategorySidebar.Visibility = ViewModel.ShowSidebar || ViewModel.ShowSidebarShimmer
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
 
-    private void UpdateHeroCardMetrics()
+    // ─── Hero carousel wiring ──────────────────────────────────────────────
+
+    private void SyncHeroSlides()
     {
-        var availableWidth = HeroCarouselHost?.ActualWidth > 0
-            ? HeroCarouselHost.ActualWidth
-            : HeroSurface?.ActualWidth > 52
-                ? HeroSurface.ActualWidth - 52
-                : ActualWidth;
-
-        if (availableWidth <= 0)
+        if (HeroCarousel is null)
             return;
-
-        var minWidth = Math.Min(HeroCardMinWidth, availableWidth);
-        var peekReserve = availableWidth >= HeroCardMinWidth + HeroNextCardPeekWidth + HeroTrackGap
-            ? HeroNextCardPeekWidth + HeroTrackGap
-            : 0;
-        var desiredWidth = (availableWidth * HeroCardWidthRatio) - peekReserve;
-        var cardWidth = Math.Round(Math.Clamp(desiredWidth, minWidth, HeroCardMaxWidth));
-        const double cardHeight = HeroCardHeight;
-
-        foreach (var hero in ViewModel.HeroShows)
-        {
-            hero.HeroCardWidth = cardWidth;
-            hero.HeroCardHeight = cardHeight;
-        }
-
-        var carouselHeight = cardHeight + (HeroShadowBleed * 2);
-        HeroSurface.Height = Math.Clamp(carouselHeight + 80, HeroSurfaceMinHeight, HeroSurfaceMaxHeight);
-        if (HeroCarouselHost is not null)
-            HeroCarouselHost.Height = carouselHeight;
-        if (HeroCarouselShimmer is not null)
-        {
-            HeroCarouselShimmer.Width = cardWidth;
-            HeroCarouselShimmer.Height = cardHeight;
-        }
-        ApplyHeroStageViewportClip();
-
-        // Chevrons sit just inside the active card's edge — overlap pattern from
-        // Microsoft Store. The card is centred, so its left edge lives at
-        // (availableWidth - cardWidth)/2; the chevron's left edge is one inset
-        // further right, putting it inside the card's rounded frame.
-        var inset = HeroChevronInset;
-        var rightInset = Math.Max(HeroChevronInset, availableWidth - cardWidth + HeroChevronInset);
-        if (HeroPrevButton is not null)
-            HeroPrevButton.Margin = new Thickness(inset, 0, 0, 0);
-        if (HeroNextButton is not null)
-            HeroNextButton.Margin = new Thickness(0, 0, rightInset, 0);
+        // Build a fresh list and assign in one shot. The control rebuilds once on
+        // ItemsSource change; per-item Slides.Add would re-rebuild for each entry.
+        var slides = new List<HeroCarouselSlide>(ViewModel.HeroShows.Count);
+        foreach (var vm in ViewModel.HeroShows)
+            slides.Add(vm.ToHeroSlide());
+        HeroCarousel.ItemsSource = slides;
     }
 
-    // ─── Layered hero stage ───────────────────────────────────────────────
-
-    private void RebuildHeroStage()
+    private void OnHeroCtaClicked(object? sender, int index)
     {
-        if (HeroStage is null)
-            return;
-
-        // Cancel any in-flight transition before tearing down.
-        _transitionCts?.Cancel();
-        _isTransitioning = false;
-        _isDragging = false;
-        _dragIncomingCard = null;
-        _dragIncomingIndex = -1;
-
-        HeroStage.Children.Clear();
-        _heroCards.Clear();
-        _currentHeroIndex = -1;
-
-        var heroes = ViewModel.HeroShows;
-        if (heroes.Count == 0)
-            return;
-
-        var template = (DataTemplate)Resources["HeroShowTemplate"];
-        if (template is null)
-            return;
-
-        // Wrap each card in a ContentControl so the framework wires DataContext
-        // through to x:Bind in the template the same way ItemsRepeater does.
-        // The ContentControl inherits the inner Button's natural size.
-        for (var i = 0; i < heroes.Count; i++)
-        {
-            var card = new ContentControl
-            {
-                Content = heroes[i],
-                ContentTemplate = template,
-                HorizontalAlignment = HorizontalAlignment.Left,
-                VerticalAlignment = VerticalAlignment.Center,
-                IsTabStop = false
-            };
-            HeroStage.Children.Add(card);
-            _heroCards.Add(card);
-        }
-
-        var initialIndex = Math.Clamp(ViewModel.SelectedHeroIndex, 0, heroes.Count - 1);
-        _currentHeroIndex = initialIndex;
-        ApplyHeroStageViewportClip();
-        PositionCardsForActive(initialIndex);
+        if (index >= 0 && index < ViewModel.HeroShows.Count)
+            ViewModel.OpenItem(ViewModel.HeroShows[index]);
     }
 
-    private void PositionCardsForActive(int activeIndex)
-    {
-        var travelDistance = GetHeroTravelDistance();
-        if (travelDistance <= 0)
-            return;
-        for (var i = 0; i < _heroCards.Count; i++)
-        {
-            var card = _heroCards[i];
-            SetCardOffsetX(card, i == activeIndex ? 0 : (i < activeIndex ? -travelDistance : travelDistance));
-            card.IsHitTestVisible = i == activeIndex;
-            // Only the active card renders. Non-active cards live off-stage in the
-            // layered model AND would otherwise leak across the sidebar / shelves
-            // because nothing clips the carousel host (we removed that clip on
-            // purpose so corners survive scroll). Visibility=Collapsed guarantees
-            // they don't paint until a transition explicitly shows them.
-            card.Visibility = i == activeIndex ? Visibility.Visible : Visibility.Collapsed;
-            Canvas.SetZIndex(card, i == activeIndex ? 5 : 1);
-            ResetCardParallax(card);
-        }
-    }
-
-    private double GetStageWidth()
-    {
-        if (HeroStage?.ActualWidth > 0)
-            return HeroStage.ActualWidth;
-        if (HeroCarouselHost?.ActualWidth > 0)
-            return HeroCarouselHost.ActualWidth;
-        return HeroCardMaxWidth;
-    }
-
-    private double GetHeroTravelDistance()
-    {
-        if (_currentHeroIndex >= 0 && _currentHeroIndex < _heroCards.Count
-            && _heroCards[_currentHeroIndex].ActualWidth > 0)
-        {
-            return _heroCards[_currentHeroIndex].ActualWidth + HeroTrackGap;
-        }
-
-        if (ViewModel.HeroShows.Count > 0 && ViewModel.HeroShows[0].HeroCardWidth > 0)
-            return ViewModel.HeroShows[0].HeroCardWidth + HeroTrackGap;
-
-        return Math.Min(GetStageWidth(), HeroCardMaxWidth) + HeroTrackGap;
-    }
-
-    private void ApplyHeroStageViewportClip()
-    {
-        if (HeroStage is null || HeroStage.ActualWidth <= 0 || HeroStage.ActualHeight <= 0)
-            return;
-
-        var cardWidth = ViewModel.HeroShows.Count > 0
-            ? ViewModel.HeroShows[0].HeroCardWidth
-            : Math.Min(GetStageWidth(), HeroCardMaxWidth);
-        if (cardWidth <= 0)
-            return;
-
-        var left = 0d;
-        var top = Math.Max(0, (HeroStage.ActualHeight - HeroCardHeight) / 2.0);
-
-        var visual = ElementCompositionPreview.GetElementVisual(HeroStage);
-        var compositor = visual.Compositor;
-        var clip = compositor.CreateRectangleClip();
-        clip.Left = (float)left;
-        clip.Top = (float)top;
-        clip.Right = (float)HeroStage.ActualWidth;
-        clip.Bottom = (float)(top + HeroCardHeight);
-        visual.Clip = clip;
-    }
-
-    private static double GetCardOffsetX(FrameworkElement element)
-        => ElementCompositionPreview.GetElementVisual(element).Offset.X;
-
-    private static void SetCardOffsetX(FrameworkElement element, double x)
-    {
-        var visual = ElementCompositionPreview.GetElementVisual(element);
-        visual.Offset = new Vector3((float)x, visual.Offset.Y, visual.Offset.Z);
-    }
-
-    private static Task AnimateCardOffsetXAsync(FrameworkElement element, double to, int durationMs, CancellationToken token)
-    {
-        var visual = ElementCompositionPreview.GetElementVisual(element);
-        var compositor = visual.Compositor;
-        var animation = compositor.CreateScalarKeyFrameAnimation();
-        animation.Duration = TimeSpan.FromMilliseconds(durationMs);
-        animation.InsertKeyFrame(
-            1f,
-            (float)to,
-            compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1.0f), new Vector2(0.30f, 1.0f)));
-
-        var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
-        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        batch.Completed += (_, _) => completion.TrySetResult();
-        visual.StartAnimation("Offset.X", animation);
-        batch.End();
-
-        if (!token.CanBeCanceled)
-            return completion.Task;
-
-        var registration = token.Register(() =>
-        {
-            visual.StopAnimation("Offset.X");
-            completion.TrySetCanceled(token);
-        });
-
-        return completion.Task.ContinueWith(
-            completed =>
-            {
-                registration.Dispose();
-                return completed;
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default).Unwrap();
-    }
-
-    private async Task AnimateToHeroAsync(PodcastBrowseItemViewModel? hero)
-    {
-        if (hero is null)
-            return;
-        var index = ViewModel.HeroShows.IndexOf(hero);
-        if (index < 0)
-            return;
-        await AnimateToIndexAsync(index);
-    }
-
-    private async Task AnimateToIndexAsync(int targetIndex)
-    {
-        if (HeroStage is null || _heroCards.Count == 0)
-            return;
-        if (targetIndex < 0 || targetIndex >= _heroCards.Count)
-            return;
-        if (targetIndex == _currentHeroIndex)
-            return;
-
-        // Cancel any in-flight transition; start fresh from current state.
-        _transitionCts?.Cancel();
-        var cts = new CancellationTokenSource();
-        _transitionCts = cts;
-        var token = cts.Token;
-        _isTransitioning = true;
-
-        try
-        {
-            // Step duration depends on whether this is a single-step (chevron / pip
-            // adjacent / drag commit) or a chained jump (pip across multiple cards).
-            var initialStepCount = Math.Abs(targetIndex - _currentHeroIndex);
-            var durationMs = initialStepCount > 1 ? HeroChainStepMs : HeroSingleStepMs;
-
-            while (_currentHeroIndex != targetIndex && !token.IsCancellationRequested)
-            {
-                var direction = Math.Sign(targetIndex - _currentHeroIndex);
-                var nextIndex = _currentHeroIndex + direction;
-                await AnimateStepAsync(_currentHeroIndex, nextIndex, direction, durationMs, token);
-                if (token.IsCancellationRequested)
-                    break;
-                _currentHeroIndex = nextIndex;
-            }
-        }
-        finally
-        {
-            _isTransitioning = false;
-            _transitionFromIndex = -1;
-            _transitionToIndex = -1;
-            _transitionDirection = 0;
-            _transitionProgress = 0;
-            if (!token.IsCancellationRequested)
-                UpdatePageTintFromState();
-        }
-    }
-
-    private async Task AnimateStepAsync(int fromIndex, int toIndex, int direction, int durationMs, CancellationToken token)
-    {
-        var travelDistance = GetHeroTravelDistance();
-        if (travelDistance <= 0)
-            return;
-
-        var fromCard = _heroCards[fromIndex];
-        var toCard = _heroCards[toIndex];
-
-        // Both cards move as a single carousel track behind the fixed rounded
-        // viewport: outgoing leaves, incoming enters, arrows stay pinned.
-        SetCardOffsetX(fromCard, 0);
-        SetCardOffsetX(toCard, direction * travelDistance);
-        // Reveal both cards for the duration of the slide; previous active goes
-        // back to Collapsed once the slide settles.
-        fromCard.Visibility = Visibility.Visible;
-        toCard.Visibility = Visibility.Visible;
-        toCard.IsHitTestVisible = false;
-        Canvas.SetZIndex(fromCard, 5);
-        Canvas.SetZIndex(toCard, 10);
-
-        _transitionFromIndex = fromIndex;
-        _transitionToIndex = toIndex;
-        _transitionDirection = direction;
-
-        var fromAnimation = AnimateCardOffsetXAsync(fromCard, -direction * travelDistance, durationMs, token);
-        var toAnimation = AnimateCardOffsetXAsync(toCard, 0, durationMs, token);
-        var startMs = Environment.TickCount64;
-        while (true)
-        {
-            if (token.IsCancellationRequested)
-                return;
-            var elapsed = Environment.TickCount64 - startMs;
-            var raw = Math.Clamp(elapsed / (double)durationMs, 0.0, 1.0);
-            var eased = EaseOutCubic(raw);
-            _transitionProgress = eased;
-
-            ApplyTransitionParallax(fromCard, toCard, eased, direction);
-            UpdatePageTintFromState();
-
-            if (raw >= 1.0)
-                break;
-            try { await Task.Delay(HeroFrameMs, token); }
-            catch (TaskCanceledException) { return; }
-        }
-
-        try { await Task.WhenAll(fromAnimation, toAnimation); }
-        catch (TaskCanceledException) { return; }
-
-        // Settle: previous active is bumped off-stage in the direction of travel
-        // and hidden so it doesn't paint over neighbours.
-        SetCardOffsetX(toCard, 0);
-        SetCardOffsetX(fromCard, -direction * travelDistance);
-        fromCard.IsHitTestVisible = false;
-        fromCard.Visibility = Visibility.Collapsed;
-        toCard.IsHitTestVisible = true;
-        Canvas.SetZIndex(fromCard, 1);
-        Canvas.SetZIndex(toCard, 5);
-        ResetCardParallax(fromCard);
-        ResetCardParallax(toCard);
-    }
-
-    // Approximation of cubic-bezier(0.32, 0.72, 0, 1) — close enough for the slide feel.
-    private static double EaseOutCubic(double t)
-    {
-        var clamped = Math.Clamp(t, 0.0, 1.0);
-        return 1 - Math.Pow(1 - clamped, 3);
-    }
-
-    // ─── Drag / Swipe ──────────────────────────────────────────────────────
-    //
-    // Manipulation events instead of raw PointerPressed/Moved/Released because
-    // each card is a Button which captures the pointer on press — that capture
-    // routes subsequent PointerMoved/Released exclusively to the Button, never
-    // to HeroStage. The manipulation system runs at a higher level and aggregates
-    // mouse / trackpad / touch / pen drags into a single Translation stream that
-    // reaches HeroStage even with a child holding the pointer.
-
-    private static void ResetCardParallax(FrameworkElement card)
-    {
-        if (FindDescendant<Border>(card, "HeroArtworkHost") is { } art)
-            SetBrushTranslateX(art, 0);
-    }
-
-    private static void ApplyTransitionParallax(FrameworkElement fromCard, FrameworkElement toCard, double progress, int direction)
-    {
-        progress = Math.Clamp(progress, 0.0, 1.0);
-
-        if (FindDescendant<Border>(fromCard, "HeroArtworkHost") is { } fromArt && fromArt.ActualWidth > 0)
-        {
-            var maxShift = Math.Min(HeroArtworkParallaxMaxShiftPx, fromArt.ActualWidth * HeroArtworkParallaxStrength);
-            SetBrushTranslateX(fromArt, direction * maxShift * progress);
-        }
-
-        if (FindDescendant<Border>(toCard, "HeroArtworkHost") is { } toArt && toArt.ActualWidth > 0)
-        {
-            var maxShift = Math.Min(HeroArtworkParallaxMaxShiftPx, toArt.ActualWidth * HeroArtworkParallaxStrength);
-            SetBrushTranslateX(toArt, -direction * maxShift * (1 - progress));
-        }
-    }
-
-    private void HeroStage_ManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
-    {
-        if (_isTransitioning) { e.Complete(); return; }
-        if (_heroCards.Count <= 1) { e.Complete(); return; }
-
-        _isDragging = true;
-        _dragIncomingCard = null;
-        _dragIncomingIndex = -1;
-        _dragDirection = 0;
-        PauseHeroAutoAdvance();
-    }
-
-    private void HeroStage_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
-    {
-        if (!_isDragging)
-            return;
-        if (_currentHeroIndex < 0 || _heroCards.Count == 0)
-            return;
-
-        var delta = e.Cumulative.Translation.X;
-        var travelDistance = GetHeroTravelDistance();
-        if (travelDistance <= 0)
-            return;
-
-        // Drag right (positive delta) reveals the previous card → direction = -1.
-        var direction = -Math.Sign(delta);
-        if (direction == 0)
-            return;
-
-        if (direction != _dragDirection || _dragIncomingCard is null)
-        {
-            if (_dragIncomingCard is not null)
-            {
-                _dragIncomingCard.Visibility = Visibility.Collapsed;
-                ResetCardParallax(_dragIncomingCard);
-            }
-            ResetCardParallax(_heroCards[_currentHeroIndex]);
-            _dragDirection = direction;
-            var incomingIndex = _currentHeroIndex + direction;
-            if (incomingIndex < 0 || incomingIndex >= _heroCards.Count)
-            {
-                _dragIncomingCard = null;
-                _dragIncomingIndex = -1;
-                return;
-            }
-            _dragIncomingIndex = incomingIndex;
-            _dragIncomingCard = _heroCards[incomingIndex];
-            _dragIncomingCard.Visibility = Visibility.Visible;
-            Canvas.SetZIndex(_dragIncomingCard, 10);
-        }
-
-        if (_dragIncomingCard is null)
-            return;
-
-        var clampedDelta = Math.Clamp(delta, -travelDistance, travelDistance);
-        // Incoming starts at direction * travelDistance (matches AnimateStepAsync) and
-        // tracks the drag delta toward 0.
-        SetCardOffsetX(_dragIncomingCard, (direction * travelDistance) + clampedDelta);
-        SetCardOffsetX(_heroCards[_currentHeroIndex], clampedDelta);
-        var progress = Math.Clamp(Math.Abs(clampedDelta) / travelDistance, 0.0, 1.0);
-        _transitionFromIndex = _currentHeroIndex;
-        _transitionToIndex = _dragIncomingIndex;
-        _transitionDirection = direction;
-        _transitionProgress = progress;
-        ApplyTransitionParallax(_heroCards[_currentHeroIndex], _dragIncomingCard, progress, direction);
-        UpdatePageTintFromState();
-    }
-
-    private async void HeroStage_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
-    {
-        if (!_isDragging)
-            return;
-        _isDragging = false;
-        UpdateHeroTimer();
-
-        if (_dragIncomingCard is null || _dragIncomingIndex < 0)
-        {
-            if (_currentHeroIndex >= 0)
-                PositionCardsForActive(_currentHeroIndex);
-            UpdatePageTintFromState();
-            return;
-        }
-
-        var travelDistance = GetHeroTravelDistance();
-        if (travelDistance <= 0)
-            return;
-        var distanceFromStart = Math.Abs(GetCardOffsetX(_dragIncomingCard) - (_dragDirection * travelDistance));
-        var threshold = travelDistance / HeroDragCommitDivisor;
-
-        if (distanceFromStart >= threshold)
-        {
-            var incoming = _dragIncomingCard;
-            var incomingIndex = _dragIncomingIndex;
-            var direction = _dragDirection;
-            _dragIncomingCard = null;
-            _dragIncomingIndex = -1;
-            await CommitDragAsync(incoming, incomingIndex, direction);
-            // Sync the VM. Because _currentHeroIndex already matches incomingIndex,
-            // the resulting AnimateToIndexAsync is a no-op.
-            ViewModel.SelectHero(incomingIndex);
-        }
-        else
-        {
-            await RevertDragAsync(_dragIncomingCard, _dragDirection);
-            if (_currentHeroIndex >= 0)
-                PositionCardsForActive(_currentHeroIndex);
-            UpdatePageTintFromState();
-        }
-    }
-
-    private async Task CommitDragAsync(FrameworkElement incoming, int incomingIndex, int direction)
-    {
-        var travelDistance = GetHeroTravelDistance();
-        if (travelDistance <= 0)
-            return;
-        var fromCard = _heroCards[_currentHeroIndex];
-        var startProgress = _transitionProgress;
-        var incomingAnimation = AnimateCardOffsetXAsync(incoming, 0, HeroChainStepMs, CancellationToken.None);
-        var fromAnimation = AnimateCardOffsetXAsync(fromCard, -direction * travelDistance, HeroChainStepMs, CancellationToken.None);
-
-        var startMs = Environment.TickCount64;
-        while (true)
-        {
-            var elapsed = Environment.TickCount64 - startMs;
-            var raw = Math.Clamp(elapsed / (double)HeroChainStepMs, 0.0, 1.0);
-            var eased = EaseOutCubic(raw);
-            _transitionProgress = startProgress + ((1.0 - startProgress) * eased);
-            ApplyTransitionParallax(fromCard, incoming, _transitionProgress, direction);
-            UpdatePageTintFromState();
-            if (raw >= 1.0)
-                break;
-            await Task.Delay(HeroFrameMs);
-        }
-        await Task.WhenAll(incomingAnimation, fromAnimation);
-
-        SetCardOffsetX(incoming, 0);
-        SetCardOffsetX(fromCard, -direction * travelDistance);
-        fromCard.IsHitTestVisible = false;
-        fromCard.Visibility = Visibility.Collapsed;
-        incoming.IsHitTestVisible = true;
-        incoming.Visibility = Visibility.Visible;
-        Canvas.SetZIndex(fromCard, 1);
-        Canvas.SetZIndex(incoming, 5);
-        ResetCardParallax(fromCard);
-        ResetCardParallax(incoming);
-        _currentHeroIndex = incomingIndex;
-        _transitionFromIndex = -1;
-        _transitionToIndex = -1;
-        _transitionDirection = 0;
-        _transitionProgress = 0;
-    }
-
-    private async Task RevertDragAsync(FrameworkElement incoming, int direction)
-    {
-        var travelDistance = GetHeroTravelDistance();
-        if (travelDistance <= 0)
-            return;
-        var activeCard = _currentHeroIndex >= 0 && _currentHeroIndex < _heroCards.Count
-            ? _heroCards[_currentHeroIndex]
-            : null;
-        var startProgress = _transitionProgress;
-        // Send the incoming card back to its starting off-stage position.
-        var endX = direction * travelDistance;
-        var incomingAnimation = AnimateCardOffsetXAsync(incoming, endX, HeroRevertStepMs, CancellationToken.None);
-        var activeAnimation = activeCard is null
-            ? Task.CompletedTask
-            : AnimateCardOffsetXAsync(activeCard, 0, HeroRevertStepMs, CancellationToken.None);
-
-        var startMs = Environment.TickCount64;
-        while (true)
-        {
-            var elapsed = Environment.TickCount64 - startMs;
-            var raw = Math.Clamp(elapsed / (double)HeroRevertStepMs, 0.0, 1.0);
-            var eased = EaseOutCubic(raw);
-            if (activeCard is not null)
-                ApplyTransitionParallax(activeCard, incoming, startProgress * (1 - eased), direction);
-            if (raw >= 1.0)
-                break;
-            await Task.Delay(HeroFrameMs);
-        }
-        await Task.WhenAll(incomingAnimation, activeAnimation);
-        SetCardOffsetX(incoming, endX);
-        if (activeCard is not null)
-            SetCardOffsetX(activeCard, 0);
-        if (activeCard is not null)
-            ResetCardParallax(activeCard);
-        ResetCardParallax(incoming);
-        // Send the reverted incoming card back to Collapsed so it stops painting.
-        incoming.Visibility = Visibility.Collapsed;
-        _transitionFromIndex = -1;
-        _transitionToIndex = -1;
-        _transitionDirection = 0;
-        _transitionProgress = 0;
-    }
-
-    private void HeroTimer_Tick(object? sender, object e)
-    {
-        // Mid-transition / mid-drag ticks are absorbed.
-        if (_isTransitioning || _isDragging)
-            return;
-        ViewModel.SelectNextHero();
-    }
-
-    private void UpdateHeroTimer()
-    {
-        if (_isLoaded && ViewModel.HeroShows.Count > 1)
-        {
-            if (!_heroTimer.IsEnabled)
-                _heroTimer.Start();
-        }
-        else
-        {
-            _heroTimer.Stop();
-        }
-    }
-
-    private void PauseHeroAutoAdvance()
-    {
-        _heroTimer.Stop();
-    }
-
-    private void RestartHeroAutoAdvance()
-    {
-        if (!_isLoaded || ViewModel.HeroShows.Count <= 1)
-            return;
-        _heroTimer.Stop();
-        _heroTimer.Start();
-    }
-
-    private static void SetBrushTranslateX(Border artHost, double x)
-    {
-        var visual = ElementCompositionPreview.GetElementVisual(artHost);
-        visual.Offset = new Vector3((float)x, visual.Offset.Y, visual.Offset.Z);
-    }
+    // ─── Sidebar / shelf interactions ──────────────────────────────────────
 
     private void BrowseItem_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: PodcastBrowseItemViewModel item } fe)
+        if (sender is not FrameworkElement { Tag: PodcastBrowseItemViewModel item })
             return;
-
-        // Hero cards are bespoke (not ContentCard) so we hand-prepare the connected
-        // animation here. Shelf items go through ContentCard.PrepareConnectedAnimation,
-        // which now picks the PodcastArt key for show:/episode: URIs.
-        if (item.Kind == PodcastBrowseItemKind.Show)
-        {
-            if (FindHeroArtwork(fe) is { } artwork)
-                ConnectedAnimationHelper.PrepareAnimation(ConnectedAnimationHelper.PodcastArt, artwork);
-        }
-
         ViewModel.OpenItem(item);
     }
-
-    private static FrameworkElement? FindHeroArtwork(DependencyObject root)
-    {
-        // Both hero templates now use a named Border with ImageBrush background.
-        return FindDescendant<Border>(root, "HeroArtworkHost")
-            ?? (FrameworkElement?)FindDescendant<Border>(root, "HeroSideArtworkHost");
-    }
-
-    private static T? FindDescendant<T>(DependencyObject root, string? name = null)
-        where T : FrameworkElement
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T element && (name is null || element.Name == name))
-                return element;
-
-            if (FindDescendant<T>(child, name) is { } nested)
-                return nested;
-        }
-        return null;
-    }
-
-    // Pointer / focus only pause + resume auto-advance — they no longer auto-select
-    // the hovered card or auto-scroll the carousel. Selection is user-driven via
-    // chevrons, PipsPager, click, or snap-scroll.
-    private void HeroCard_PointerEntered(object sender, PointerRoutedEventArgs e)
-        => PauseHeroAutoAdvance();
-
-    private void HeroCard_PointerExited(object sender, PointerRoutedEventArgs e)
-        => UpdateHeroTimer();
-
-    private void HeroCard_GotFocus(object sender, RoutedEventArgs e)
-        => PauseHeroAutoAdvance();
-
-    private void HeroCard_LostFocus(object sender, RoutedEventArgs e)
-        => UpdateHeroTimer();
 
     private async void SectionAction_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: PodcastBrowseSectionViewModel section })
-        {
             await ViewModel.ActivateSectionAsync(section);
-            UpdateHeroTimer();
-        }
     }
 
     private void BrowseBreadcrumb_ItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
     {
         ViewModel.OpenBreadcrumb(args.Index);
-    }
-
-    private void HeroRoundedClip_Loaded(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement element)
-        {
-            ApplyHeroRoundedClip(element);
-            element.DispatcherQueue.TryEnqueue(() => ApplyHeroRoundedClip(element));
-        }
-    }
-
-    private void HeroRoundedClip_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        if (sender is FrameworkElement element)
-            ApplyHeroRoundedClip(element);
-    }
-
-    private void HeroRoundedClip_Unloaded(object sender, RoutedEventArgs e)
-    {
-        if (sender is UIElement element)
-            ElementCompositionPreview.GetElementVisual(element).Clip = null;
-    }
-
-    private static void ApplyHeroRoundedClip(FrameworkElement element)
-    {
-        if (element.ActualWidth <= 0 || element.ActualHeight <= 0)
-            return;
-
-        var visual = ElementCompositionPreview.GetElementVisual(element);
-        var compositor = visual.Compositor;
-        var clip = compositor.CreateRectangleClip();
-        clip.Right = (float)element.ActualWidth;
-        clip.Bottom = (float)element.ActualHeight;
-        var radii = GetClipRadii(element);
-        clip.TopLeftRadius = radii.TopLeft;
-        clip.TopRightRadius = radii.TopRight;
-        clip.BottomLeftRadius = radii.BottomLeft;
-        clip.BottomRightRadius = radii.BottomRight;
-        visual.Clip = clip;
-    }
-
-    private static (Vector2 TopLeft, Vector2 TopRight, Vector2 BottomLeft, Vector2 BottomRight) GetClipRadii(FrameworkElement element)
-    {
-        if (element is Border border)
-            return ToVectors(border.CornerRadius);
-        if (element is Control control)
-            return ToVectors(control.CornerRadius);
-
-        // For Panel / Grid (no native CornerRadius): inherit the nearest ancestor
-        // Border or Control's CornerRadius. The HeroCardContentGrid sits directly
-        // inside HeroCardClipRoot Border (CornerRadius=20), and the side card's
-        // grid inside HeroSideCardClipRoot (CornerRadius=14).
-        var parent = VisualTreeHelper.GetParent(element);
-        while (parent is not null)
-        {
-            if (parent is Border b)
-                return ToVectors(b.CornerRadius);
-            if (parent is Control c)
-                return ToVectors(c.CornerRadius);
-            parent = VisualTreeHelper.GetParent(parent);
-        }
-
-        var fallbackRadius = new Vector2((float)HeroCardCornerRadius);
-        return (fallbackRadius, fallbackRadius, fallbackRadius, fallbackRadius);
-    }
-
-    private static (Vector2 TopLeft, Vector2 TopRight, Vector2 BottomLeft, Vector2 BottomRight) ToVectors(CornerRadius radius)
-        => (
-            new Vector2((float)radius.TopLeft),
-            new Vector2((float)radius.TopRight),
-            new Vector2((float)radius.BottomLeft),
-            new Vector2((float)radius.BottomRight));
-
-    private void HeroPrev_Click(object sender, RoutedEventArgs e)
-    {
-        ViewModel.SelectPrevHero();
-        RestartHeroAutoAdvance();
-    }
-
-    private void HeroNext_Click(object sender, RoutedEventArgs e)
-    {
-        ViewModel.SelectNextHero();
-        RestartHeroAutoAdvance();
-    }
-
-    private void HeroPips_SelectedIndexChanged(PipsPager sender, PipsPagerSelectedIndexChangedEventArgs args)
-    {
-        // Bound OneWay; the timer-driven push to SelectedPageIndex re-fires this event.
-        // Guard against re-entry so we don't bounce the timer reset for our own writes.
-        var newIndex = sender.SelectedPageIndex;
-        if (newIndex == ViewModel.SelectedHeroIndex)
-            return;
-        ViewModel.SelectHero(newIndex);
-        RestartHeroAutoAdvance();
-    }
-
-    // Drives PageTintTopStop.Color from the layered transition state.
-    // - At rest: uses the current hero's HeroPrimaryColor.
-    // - During a slide / drag: lerps between fromIndex and toIndex by progress
-    //   so the page recolors continuously as the incoming card slides in.
-    private void UpdatePageTintFromState()
-    {
-        if (PageTintTopStop is null)
-            return;
-
-        var heroes = ViewModel.HeroShows;
-        if (heroes.Count == 0)
-        {
-            PageTintTopStop.Color = Colors.Transparent;
-            return;
-        }
-
-        if (_transitionFromIndex >= 0 && _transitionToIndex >= 0
-            && _transitionFromIndex < heroes.Count && _transitionToIndex < heroes.Count)
-        {
-            PageTintTopStop.Color = LerpColor(
-                heroes[_transitionFromIndex].HeroPrimaryColor,
-                heroes[_transitionToIndex].HeroPrimaryColor,
-                (float)_transitionProgress);
-            return;
-        }
-
-        var idx = _currentHeroIndex >= 0
-            ? Math.Clamp(_currentHeroIndex, 0, heroes.Count - 1)
-            : Math.Clamp(ViewModel.SelectedHeroIndex, 0, heroes.Count - 1);
-        PageTintTopStop.Color = heroes[idx].HeroPrimaryColor;
-    }
-
-    private static Color LerpColor(Color a, Color b, float t)
-    {
-        t = Math.Clamp(t, 0f, 1f);
-        return Color.FromArgb(
-            (byte)(a.A + ((b.A - a.A) * t)),
-            (byte)(a.R + ((b.R - a.R) * t)),
-            (byte)(a.G + ((b.G - a.G) * t)),
-            (byte)(a.B + ((b.B - a.B) * t)));
     }
 
     public void Dispose()
@@ -1184,9 +279,7 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
             return;
 
         _isDisposed = true;
-        _heroTimer.Stop();
-        _heroTimer.Tick -= HeroTimer_Tick;
-        _transitionCts?.Cancel();
+        UnhookHeroEvents();
         UnsubscribeViewModel();
         ViewModel.Dispose();
     }

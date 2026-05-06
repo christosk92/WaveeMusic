@@ -272,29 +272,41 @@ public static class ImageFallbackBehavior
 
     private static void ApplyDecodePixelSize(Image image)
     {
-        if (image.Source is BitmapImage bitmapImage)
-        {
-            var width = GetDecodePixelWidth(image);
-            var height = GetDecodePixelHeight(image);
+        if (image.Source is not BitmapImage bitmapImage)
+            return;
 
-            // Note: DecodePixelWidth/Height must be set before the image loads
-            // Since binding sets the source before our callback fires, this may not
-            // work for the first load. It will work for subsequent source changes.
-            try
-            {
-                if (width > 0 && bitmapImage.DecodePixelWidth == 0)
-                {
-                    bitmapImage.DecodePixelWidth = width;
-                }
-                if (height > 0 && bitmapImage.DecodePixelHeight == 0)
-                {
-                    bitmapImage.DecodePixelHeight = height;
-                }
-            }
-            catch
-            {
-                // DecodePixelWidth/Height can't be set after image started loading
-            }
+        var width = GetDecodePixelWidth(image);
+        var height = GetDecodePixelHeight(image);
+        if (width <= 0 && height <= 0)
+            return;
+
+        // The binding sets BitmapImage.UriSource before this callback runs, so by
+        // the time we get here, decoding may already be in flight at the source
+        // resolution and any later DecodePixelWidth assignment is silently ignored.
+        // Detect that case and rebuild the BitmapImage with DecodePixelWidth set
+        // FIRST. Reassigning Image.Source re-enters OnSourceChangedForFade, but on
+        // the second pass DecodePixelWidth > 0 and this branch is skipped — bounded
+        // to one recursion level.
+        if (bitmapImage.UriSource is { } uri && bitmapImage.DecodePixelWidth == 0 && bitmapImage.DecodePixelHeight == 0)
+        {
+            var fresh = new BitmapImage();
+            if (width > 0) fresh.DecodePixelWidth = width;
+            if (height > 0) fresh.DecodePixelHeight = height;
+            fresh.UriSource = uri;
+            image.Source = fresh;
+            return;
+        }
+
+        try
+        {
+            if (width > 0 && bitmapImage.DecodePixelWidth == 0)
+                bitmapImage.DecodePixelWidth = width;
+            if (height > 0 && bitmapImage.DecodePixelHeight == 0)
+                bitmapImage.DecodePixelHeight = height;
+        }
+        catch
+        {
+            // DecodePixelWidth/Height can't be set after image started loading.
         }
     }
 

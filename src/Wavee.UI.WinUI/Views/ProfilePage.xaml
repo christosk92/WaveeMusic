@@ -15,7 +15,7 @@
     xmlns:transitions="using:CommunityToolkit.WinUI"
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
-    NavigationCacheMode="Required"
+    NavigationCacheMode="Enabled"
     Background="Transparent">
     <Page.Resources>
         <ResourceDictionary>
@@ -208,6 +208,7 @@
                          Mirrors HomePage's two-sibling pattern. ────────────── -->
                     <Grid>
                     <StackPanel x:Name="ShimmerContainer"
+                                x:Load="{x:Bind ShimmerGate.IsLoaded, Mode=OneWay}"
                                 Padding="32,16,32,32" Spacing="32"
                                 VerticalAlignment="Top">
                         <!-- Playlists section skeleton -->

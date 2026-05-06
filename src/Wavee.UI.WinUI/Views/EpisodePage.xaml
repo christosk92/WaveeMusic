@@ -18,7 +18,7 @@
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     mc:Ignorable="d"
-    NavigationCacheMode="Required"
+    NavigationCacheMode="Enabled"
     Background="Transparent">
 
     <Page.Resources>
@@ -37,6 +37,7 @@
              Mirrors the hero shape so the user perceives layout stability the
              first frame. ScheduleCrossfade fades shimmer→content over ~300 ms. -->
         <Grid x:Name="ShimmerContainer"
+              x:Load="{x:Bind ShimmerGate.IsLoaded, Mode=OneWay}"
               IsHitTestVisible="False">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>

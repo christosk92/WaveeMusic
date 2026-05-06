@@ -194,7 +194,7 @@
                         matches the Spotify/Apple Music row layout.
                     -->
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition x:Name="RowIndexColDef" Width="40"/>
+                        <ColumnDefinition x:Name="RowIndexColDef" Width="52"/>
                         <ColumnDefinition x:Name="RowHeartColDef" Width="32"/>
                         <ColumnDefinition x:Name="RowArtColDef" Width="42"/>
                         <ColumnDefinition Width="*" MinWidth="120" MaxWidth="640"/>
@@ -207,6 +207,18 @@
 
                     <!-- Row number / Now Playing icon / Play button area -->
                     <Grid Grid.Column="0">
+                        <FontIcon x:Name="RowPopularityBadge"
+                                  Glyph="&#xE735;"
+                                  Width="10"
+                                  FontSize="10"
+                                  Foreground="{ThemeResource AccentTextFillColorSecondaryBrush}"
+                                  Opacity="0.8"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Center"
+                                  Margin="2,0,0,0"
+                                  IsHitTestVisible="False"
+                                  Visibility="Collapsed"
+                                  ToolTipService.ToolTip="Popular track"/>
                         <TextBlock x:Name="RowIndexText"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -370,21 +382,17 @@
                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                        Visibility="Collapsed"
                                        VerticalAlignment="Center"/>
-                            <HyperlinkButton x:Name="RowArtistLink"
-                                             Padding="0,0,0,0"
-                                             Margin="0"
-                                             HorizontalAlignment="Left"
-                                             Visibility="Collapsed">
-                                <HyperlinkButton.ContentTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding}"
-                                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   MaxLines="1"/>
-                                    </DataTemplate>
-                                </HyperlinkButton.ContentTemplate>
-                            </HyperlinkButton>
+                            <!-- Per-artist hyperlinks. Children are built imperatively in
+                                 TrackItem.xaml.cs#RebuildArtistsSubline so each artist on a
+                                 multi-artist track is its own clickable link with comma
+                                 separators between them. Single-artist tracks render exactly
+                                 one HyperlinkButton — same visual as the previous design. -->
+                            <StackPanel x:Name="RowArtistsHost"
+                                        Orientation="Horizontal"
+                                        Spacing="0"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        Visibility="Collapsed"/>
                         </StackPanel>
                     </StackPanel>
 

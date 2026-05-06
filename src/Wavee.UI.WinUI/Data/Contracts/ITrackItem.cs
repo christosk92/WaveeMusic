@@ -140,4 +140,13 @@ public interface ITrackItem : INotifyPropertyChanged
     /// (e.g. playlist <c>formatAttributes</c>). Null when the source carries none.
     /// </summary>
     IReadOnlyDictionary<string, string>? FormatAttributes => null;
+
+    /// <summary>
+    /// Optional rich list of contributing artists with names + URIs. When non-empty,
+    /// TrackItem renders each artist as an independently-clickable hyperlink instead
+    /// of the flattened <see cref="ArtistName"/> string. DTOs that don't preserve
+    /// this list (legacy paths) leave it empty and the row falls back to
+    /// <c>(ArtistName, ArtistId)</c>.
+    /// </summary>
+    IReadOnlyList<TrackArtistRef> Artists => Array.Empty<TrackArtistRef>();
 }

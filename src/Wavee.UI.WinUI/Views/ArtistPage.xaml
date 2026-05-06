@@ -24,7 +24,7 @@
     xmlns:transitions="using:CommunityToolkit.WinUI"
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
-    NavigationCacheMode="Required"
+    NavigationCacheMode="Enabled"
     Background="Transparent">
     <Page.Resources>
         <ResourceDictionary>
@@ -370,7 +370,9 @@
             <!-- Shares Row 3 with ContentContainer so the two overlap in the same
                  layout slot. Stacking them in different rows caused content to
                  jump upward when shimmer collapsed. -->
-            <StackPanel x:Name="ShimmerContainer" Grid.Row="3" VerticalAlignment="Top">
+            <StackPanel x:Name="ShimmerContainer"
+                        x:Load="{x:Bind ShimmerGate.IsLoaded, Mode=OneWay}"
+                        Grid.Row="3" VerticalAlignment="Top">
                 <!-- Top tracks shimmer -->
                 <StackPanel Padding="32,24,32,0" Spacing="12">
                     <controls:Shimmer Width="140" Height="22" HorizontalAlignment="Left"/>

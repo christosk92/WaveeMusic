@@ -43,8 +43,10 @@
                 </toolkit:TokenView.ItemTemplate>
             </toolkit:TokenView>
 
-            <StackPanel Orientation="Horizontal"
+            <StackPanel x:Name="TagsShimmer"
+                        Orientation="Horizontal"
                         Spacing="8"
+                        x:Load="{x:Bind ViewModel.IsTagsLoading, Mode=OneWay}"
                         Visibility="{x:Bind ViewModel.IsTagsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                 <toolkit:Shimmer Width="48"  Height="28" CornerRadius="16"/>
                 <toolkit:Shimmer Width="72"  Height="28" CornerRadius="16"/>

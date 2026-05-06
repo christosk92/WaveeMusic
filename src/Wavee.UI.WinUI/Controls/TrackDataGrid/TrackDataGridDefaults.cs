@@ -83,9 +83,9 @@ public static class TrackDataGridDefaults
     {
         Key = "Index",
         HeaderResourceKey = "TrackGrid_Column_Index",
-        Length = new GridLength(40),
-        MinLength = new GridLength(40),
-        MaxLength = new GridLength(40),
+        Length = new GridLength(52),
+        MinLength = new GridLength(52),
+        MaxLength = new GridLength(52),
         HorizontalAlignment = HorizontalAlignment.Center,
         IsLocked = true,
     };

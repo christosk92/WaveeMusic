@@ -332,13 +332,18 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     private void NavigationTrimTimer_Tick(DispatcherQueueTimer sender, object args)
     {
         sender.Stop();
-        if (_isDisposed || !_isNavigatedAway || _trimmedForNavigationCache)
+        if (_isDisposed || _trimmedForNavigationCache)
             return;
 
-        TrimForNavigationCache();
+        TrimForNavigationCacheNow();
     }
 
     public void TrimForNavigationCache()
+    {
+        ScheduleNavigationCacheTrim();
+    }
+
+    private void TrimForNavigationCacheNow()
     {
         if (_trimmedForNavigationCache)
             return;
@@ -352,6 +357,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
 
     public void RestoreFromNavigationCache()
     {
+        CancelNavigationCacheTrim();
         if (!_trimmedForNavigationCache)
             return;
 

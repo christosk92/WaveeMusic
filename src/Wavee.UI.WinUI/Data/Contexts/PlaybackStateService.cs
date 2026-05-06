@@ -609,16 +609,28 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private void ApplyConnectState(string trackUri, PlaybackState connectState)
     {
         var trackId = ExtractTrackId(trackUri);
+        var metadata = connectState.Track?.Metadata;
         var trackImageUrl = connectState.Track?.ImageUrl;
         var trackImageLargeUrl = connectState.Track?.ImageLargeUrl
             ?? connectState.Track?.ImageXLargeUrl
             ?? connectState.Track?.ImageUrl;
+        var artistName = FirstNonWhiteSpace(
+            connectState.Track?.Artist,
+            TryGetMetadataValue(metadata, "artist_name"),
+            TryGetMetadataValue(metadata, "artist"),
+            TryGetMetadataValue(metadata, "album_artist_name"));
+        var artistUri = FirstNonWhiteSpace(
+            connectState.Track?.ArtistUri,
+            TryGetMetadataValue(metadata, "artist_uri"),
+            TryGetMetadataValue(metadata, "wavee.original_artist_uri"));
 
         CurrentTrackTitle = connectState.Track?.Title;
-        CurrentArtistName = connectState.Track?.Artist;
-        CurrentArtistId = connectState.Track?.ArtistUri;
+        CurrentArtistName = artistName;
+        CurrentArtistId = artistUri;
         CurrentAlbumId = connectState.Track?.AlbumUri;
-        CurrentArtists = null; // Connect state lacks per-artist data; enricher will populate
+        CurrentArtists = !string.IsNullOrWhiteSpace(artistName)
+            ? [new ArtistCredit(artistName!, artistUri)]
+            : null;
 
         // Music-video manifest_id has two sources: the resolved Track proto
         // (carried through LocalPlaybackState.VideoManifestId, merged into
@@ -632,7 +644,6 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             && meta.TryGetValue("media.manifest_id", out var m))
             manifestId = m;
         CurrentTrackManifestId = manifestId;
-        var metadata = connectState.Track?.Metadata;
         CurrentTrackIsVideo = metadata is { Count: > 0 } mediaMeta
             && mediaMeta.TryGetValue("track_player", out var player)
             && string.Equals(player, "video", StringComparison.OrdinalIgnoreCase);
@@ -710,8 +721,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             currentImageUrl);
     }
 
-    private static string? TryGetMetadataValue(IReadOnlyDictionary<string, string> metadata, string key)
-        => metadata.TryGetValue(key, out var value) ? value : null;
+    private static string? TryGetMetadataValue(IReadOnlyDictionary<string, string>? metadata, string key)
+        => metadata != null && metadata.TryGetValue(key, out var value) ? value : null;
 
     private static string? FirstNonWhiteSpace(params string?[] values)
     {
@@ -909,6 +920,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             if (tracks.Count == 0) return;
 
             _logger?.LogDebug("Queue metadata enriched: {Count} tracks", tracks.Count);
+            ApplyCurrentTrackQueueMetadata(tracks);
 
             // Update raw queue items with enriched metadata
             var updated = new List<Wavee.Audio.Queue.IQueueItem>(_rawNextQueue.Count);
@@ -944,6 +956,51 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     }
 
     // ── IRecipient<MusicVideoAvailabilityMessage> ──
+
+    private void ApplyCurrentTrackQueueMetadata(IReadOnlyDictionary<string, QueueTrackMetadata> tracks)
+    {
+        var currentUri = GetCurrentTrackUri();
+        if (string.IsNullOrWhiteSpace(currentUri) || !tracks.TryGetValue(currentUri, out var meta))
+            return;
+
+        if (string.IsNullOrWhiteSpace(CurrentTrackTitle) && !string.IsNullOrWhiteSpace(meta.Title))
+            CurrentTrackTitle = meta.Title;
+        if (string.IsNullOrWhiteSpace(CurrentArtistName) && !string.IsNullOrWhiteSpace(meta.ArtistName))
+            CurrentArtistName = meta.ArtistName;
+        if (string.IsNullOrWhiteSpace(CurrentAlbumArt) && !string.IsNullOrWhiteSpace(meta.AlbumArt))
+            CurrentAlbumArt = GetCurrentDisplayAlbumArt(meta.AlbumArt);
+        if (Duration <= 0 && meta.DurationMs > 0)
+            Duration = meta.DurationMs;
+
+        if (string.IsNullOrWhiteSpace(meta.ArtistName))
+            return;
+
+        var rawTrack = FindRawQueueTrack(currentUri);
+        var artistUri = FirstNonWhiteSpace(rawTrack?.ArtistUri, CurrentArtistId);
+        if (string.IsNullOrWhiteSpace(CurrentArtistId) && !string.IsNullOrWhiteSpace(artistUri))
+            CurrentArtistId = artistUri;
+        if (CurrentArtists is null or { Count: 0 })
+            CurrentArtists = [new ArtistCredit(meta.ArtistName, artistUri)];
+    }
+
+    private Wavee.Audio.Queue.QueueTrack? FindRawQueueTrack(string trackUri)
+    {
+        foreach (var item in _rawNextQueue)
+        {
+            if (item is Wavee.Audio.Queue.QueueTrack track
+                && string.Equals(track.Uri, trackUri, StringComparison.Ordinal))
+                return track;
+        }
+
+        foreach (var item in _rawPrevQueue)
+        {
+            if (item is Wavee.Audio.Queue.QueueTrack track
+                && string.Equals(track.Uri, trackUri, StringComparison.Ordinal))
+                return track;
+        }
+
+        return null;
+    }
 
     public void Receive(MusicVideoAvailabilityMessage message)
     {

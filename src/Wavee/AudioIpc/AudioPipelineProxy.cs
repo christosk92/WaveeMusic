@@ -262,9 +262,28 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
         => SendCommandAsync(IpcMessageTypes.SetNormalization,
             new SetNormalizationCommand { Enabled = enabled }, ct);
 
-    public Task SetEqualizerAsync(bool enabled, double[]? bandGains, CancellationToken ct = default)
-        => SendCommandAsync(IpcMessageTypes.SetEqualizer,
-            new SetEqualizerCommand { Enabled = enabled, BandGains = bandGains }, ct);
+    public async Task<EqualizerApplyResult> SetEqualizerAsync(bool enabled, double[]? bandGains, CancellationToken ct = default)
+    {
+        var result = await SendRequestAsync(IpcMessageTypes.SetEqualizer,
+            new SetEqualizerCommand { Enabled = enabled, BandGains = bandGains }, ct).ConfigureAwait(false);
+
+        if (!result.Success)
+            throw new InvalidOperationException(result.ErrorMessage ?? "AudioHost rejected equalizer settings");
+
+        if (result.Result is { } payload)
+        {
+            var applyResult = payload.Deserialize<EqualizerApplyResult>(IpcJsonContext.Default.EqualizerApplyResult);
+            if (applyResult is not null)
+                return applyResult;
+        }
+
+        return new EqualizerApplyResult
+        {
+            Installed = true,
+            ObservedAudioBuffer = false,
+            Message = "AudioHost accepted equalizer settings, but did not return verification details."
+        };
+    }
 
     public Task SwitchQualityAsync(string quality, CancellationToken ct = default)
         => SendCommandAsync(IpcMessageTypes.SwitchQuality,

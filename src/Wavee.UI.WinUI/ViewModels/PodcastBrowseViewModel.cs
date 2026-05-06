@@ -18,6 +18,7 @@ using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.Controls.HeroCarousel;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -48,6 +49,8 @@ public sealed partial class PodcastBrowseViewModel : ObservableObject, IDisposab
     private string _currentUri = RootPodcastsUri;
     private bool _disposed;
 
+    public event EventHandler? HeroColorsResolved;
+
     public ObservableCollection<PodcastBrowseItemViewModel> HeroShows { get; } = [];
     public ObservableCollection<PodcastBrowseItemViewModel> HeroSideShows { get; } = [];
     public ObservableCollection<PodcastBrowseItemViewModel> FeaturedCategories { get; } = [];
@@ -68,6 +71,7 @@ public sealed partial class PodcastBrowseViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasContent))]
     [NotifyPropertyChangedFor(nameof(ShowHeroShows))]
+    [NotifyPropertyChangedFor(nameof(ShowHeroCarousel))]
     [NotifyPropertyChangedFor(nameof(ShowInitialLoading))]
     [NotifyPropertyChangedFor(nameof(ShowNoContentMessage))]
     [NotifyPropertyChangedFor(nameof(ShowSidebarShimmer))]
@@ -105,7 +109,15 @@ public sealed partial class PodcastBrowseViewModel : ObservableObject, IDisposab
     public int SelectedHeroIndex => SelectedHero is null ? 0 : Math.Max(0, HeroShows.IndexOf(SelectedHero));
     public int HeroCount => HeroShows.Count;
     public bool HasHeroShows => HeroShows.Count > 0;
+    public bool HasHeroSideShows => HeroSideShows.Count > 0;
+    public PodcastBrowseItemViewModel? HeroSidePrimary => HeroSideShows.Count > 0 ? HeroSideShows[0] : null;
+    public PodcastBrowseItemViewModel? HeroSideSecondaryOne => HeroSideShows.Count > 1 ? HeroSideShows[1] : null;
+    public PodcastBrowseItemViewModel? HeroSideSecondaryTwo => HeroSideShows.Count > 2 ? HeroSideShows[2] : null;
+    public bool HasHeroSidePrimary => HeroSidePrimary is not null;
+    public bool HasHeroSideSecondaryOne => HeroSideSecondaryOne is not null;
+    public bool HasHeroSideSecondaryTwo => HeroSideSecondaryTwo is not null;
     public bool ShowHeroShows => !IsLoading && HasHeroShows;
+    public bool ShowHeroCarousel => IsLoading || HasHeroShows;
     public bool HasFeaturedCategories => FeaturedCategories.Count > 0;
     public bool HasEditorialShelves => EditorialShelves.Count > 0;
     public bool HasCategoryGroups => CategoryGroups.Count > 0;
@@ -296,12 +308,14 @@ public sealed partial class PodcastBrowseViewModel : ObservableObject, IDisposab
         var rootTask = GetBrowsePageCachedAsync(RootPodcastsUri, pageLimit: 10, sectionLimit: 10, ct);
         var allCategoriesTask = GetBrowsePageCachedAsync(AllCategoriesUri, pageLimit: 20, sectionLimit: 20, ct);
         var chartsTask = LoadChartShowSectionsAsync(ct);
+        // Editorial prefetches feed the "Popular in X" shelves and only act as a
+        // hero fallback if charts is empty. Fire them in the background so the
+        // first paint isn't blocked on 6 sequential HTTP fetches (~5s).
         var editorialTask = LoadEditorialPrefetchesAsync(ct);
 
         var root = await rootTask;
         var allCategories = await allCategoriesTask;
         var chartSections = await chartsTask;
-        var editorialSections = await editorialTask;
 
         IndexCategoryPaths(allCategories);
         ApplyAllPodcastCategories(allCategories);
@@ -310,24 +324,59 @@ public sealed partial class PodcastBrowseViewModel : ObservableObject, IDisposab
         ApplyCategoryGroups(allCategories);
 
         var topPodcastSection = chartSections.FirstOrDefault(static section => section.Items.Count > 0);
-        var heroSource = topPodcastSection ?? editorialSections.FirstOrDefault(static section => section.Items.Count > 0);
-        ApplyHeroShows(heroSource?.Items ?? []);
 
-        var shelves = new List<PodcastBrowseSectionViewModel>();
+        var initialShelves = new List<PodcastBrowseSectionViewModel>();
         if (topPodcastSection is not null)
         {
-            shelves.Add(CreateSectionViewModel(topPodcastSection with { Title = "Top podcasts" }, maxItems: 12));
+            initialShelves.Add(CreateSectionViewModel(topPodcastSection with { Title = "Top podcasts" }, maxItems: 12));
+            ApplyHeroShows(topPodcastSection.Items);
         }
 
-        foreach (var section in editorialSections.Where(static section => section.Items.Count > 0))
+        EditorialShelves.ReplaceWith(initialShelves);
+        RefreshContentState();
+
+        // Editorial shelves stream in once their fetches finish. If charts had no
+        // items, the first editorial section becomes the hero source.
+        _ = AppendEditorialShelvesAsync(editorialTask, hasHero: topPodcastSection is not null, ct);
+    }
+
+    private async Task AppendEditorialShelvesAsync(
+        Task<IReadOnlyList<PodcastBrowseSectionDto>> editorialTask,
+        bool hasHero,
+        CancellationToken ct)
+    {
+        IReadOnlyList<PodcastBrowseSectionDto> editorialSections;
+        try
         {
-            if (shelves.Any(existing => string.Equals(existing.Uri, section.Uri, StringComparison.Ordinal)))
-                continue;
-
-            shelves.Add(CreateSectionViewModel(section, maxItems: 12));
+            editorialSections = await editorialTask;
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Editorial shelf prefetch failed");
+            return;
         }
 
-        EditorialShelves.ReplaceWith(shelves);
+        if (ct.IsCancellationRequested) return;
+
+        if (!hasHero)
+        {
+            var fallbackHero = editorialSections.FirstOrDefault(static s => s.Items.Count > 0);
+            if (fallbackHero is not null)
+                ApplyHeroShows(fallbackHero.Items);
+        }
+
+        var existingUris = new HashSet<string>(
+            EditorialShelves.Select(s => s.Uri),
+            StringComparer.Ordinal);
+
+        foreach (var section in editorialSections.Where(static s => s.Items.Count > 0))
+        {
+            if (ct.IsCancellationRequested) return;
+            if (!existingUris.Add(section.Uri)) continue;
+            EditorialShelves.Add(CreateSectionViewModel(section, maxItems: 12));
+        }
+
         RefreshContentState();
     }
 
@@ -647,7 +696,7 @@ public sealed partial class PodcastBrowseViewModel : ObservableObject, IDisposab
             .ToList();
 
         HeroShows.ReplaceWith(heroes);
-        HeroSideShows.ReplaceWith(heroes.Skip(1).Take(2));
+        HeroSideShows.ReplaceWith(heroes.Skip(1).Take(3));
         SelectHero(HeroShows.FirstOrDefault());
         RefreshContentState();
 
@@ -687,6 +736,8 @@ public sealed partial class PodcastBrowseViewModel : ObservableObject, IDisposab
                     foreach (var item in matches)
                         item.ApplyExtractedColor(color);
                 }
+
+                HeroColorsResolved?.Invoke(this, EventArgs.Empty);
             });
         }
         catch (Exception ex)
@@ -771,7 +822,15 @@ public sealed partial class PodcastBrowseViewModel : ObservableObject, IDisposab
     private void RefreshContentState()
     {
         OnPropertyChanged(nameof(HasHeroShows));
+        OnPropertyChanged(nameof(HasHeroSideShows));
+        OnPropertyChanged(nameof(HeroSidePrimary));
+        OnPropertyChanged(nameof(HeroSideSecondaryOne));
+        OnPropertyChanged(nameof(HeroSideSecondaryTwo));
+        OnPropertyChanged(nameof(HasHeroSidePrimary));
+        OnPropertyChanged(nameof(HasHeroSideSecondaryOne));
+        OnPropertyChanged(nameof(HasHeroSideSecondaryTwo));
         OnPropertyChanged(nameof(ShowHeroShows));
+        OnPropertyChanged(nameof(ShowHeroCarousel));
         OnPropertyChanged(nameof(HasFeaturedCategories));
         OnPropertyChanged(nameof(HasEditorialShelves));
         OnPropertyChanged(nameof(HasCategoryGroups));
@@ -856,40 +915,27 @@ public sealed partial class PodcastBrowseSectionViewModel : ObservableObject
 
 public sealed partial class PodcastBrowseItemViewModel : ObservableObject
 {
+    public HeroCarouselSlide ToHeroSlide() => new()
+    {
+        ImageUri = System.Uri.TryCreate(ImageUrl, UriKind.Absolute, out var u) ? u : new Uri("about:blank"),
+        Title = Title,
+        Subtitle = Subtitle ?? string.Empty,
+        CtaText = "Listen now",
+        Tag = null,
+        Eyebrow = SourceLabel,
+        AccentColor = HeroPrimaryColor,
+        GlowColor = HeroPrimaryColor,
+        CozyTintColor = HeroPrimaryColor,
+        UseScrim = true,
+        CtaUsesGlass = false,
+        CtaStyle = HeroCarouselCtaStyle.GhostPill,
+    };
+
     private readonly PodcastBrowseItemDto _item;
 
     private const double DefaultHeroCardWidth = 260;
     private const double DefaultHeroCardFooterHeight = 0;
     private const double DefaultHeroCardArtHeight = 260;
-
-    private static readonly Color[] HeroFallbackPalette =
-    [
-        Color.FromArgb(255, 0x4F, 0x46, 0xE5),
-        Color.FromArgb(255, 0xDB, 0x2C, 0x77),
-        Color.FromArgb(255, 0xE0, 0x6E, 0x14),
-        Color.FromArgb(255, 0x12, 0x83, 0x6B),
-        Color.FromArgb(255, 0x6D, 0x28, 0xD9),
-        Color.FromArgb(255, 0xB4, 0x14, 0x14),
-        Color.FromArgb(255, 0x0E, 0x76, 0x90),
-        Color.FromArgb(255, 0xCA, 0x8A, 0x04),
-        Color.FromArgb(255, 0x9F, 0x12, 0x39),
-        Color.FromArgb(255, 0x52, 0x52, 0xD4),
-        Color.FromArgb(255, 0xC0, 0x37, 0x4D),
-        Color.FromArgb(255, 0x16, 0x65, 0x34)
-    ];
-
-    private static int StableHash(string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return 0;
-        unchecked
-        {
-            int hash = 5381;
-            foreach (var ch in value)
-                hash = ((hash << 5) + hash) ^ ch;
-            return Math.Abs(hash);
-        }
-    }
 
     [ObservableProperty]
     private bool _isSidebarSelected;
@@ -975,10 +1021,9 @@ public sealed partial class PodcastBrowseItemViewModel : ObservableObject
     private Brush _tileBorderBrush = new SolidColorBrush();
 
     /// <summary>
-    /// Primary colour fed to the per-card animated mesh-gradient shader.
-    /// Resolved (in priority order) from the DTO's <see cref="ColorHex"/>, the live
-    /// extracted-colour service result, or a deterministic fallback palette keyed by URI.
-    /// Mutable so async colour extraction can repaint after the card is already on screen.
+    /// Primary colour fed to the hero carousel shader.
+    /// Resolved from the DTO's <see cref="ColorHex"/>, then updated by live
+    /// extracted-colour results when available.
     /// </summary>
     [ObservableProperty]
     private Color _heroPrimaryColor;
@@ -990,26 +1035,15 @@ public sealed partial class PodcastBrowseItemViewModel : ObservableObject
     [ObservableProperty]
     private Color _heroAccentColor;
 
-    /// <summary>
-    /// Left-to-right scrim brush painted between the hero artwork and the title overlay.
-    /// </summary>
-    [ObservableProperty]
-    private Brush _heroScrimBrush = new SolidColorBrush();
-
-    /// <summary>
-    /// Solid brush matching <see cref="HeroPrimaryColor"/>; painted as the card's underlay.
-    /// </summary>
-    [ObservableProperty]
-    private Brush _heroPrimaryBrush = new SolidColorBrush();
-
     public PodcastBrowseItemViewModel(PodcastBrowseItemDto item)
     {
         _item = item;
 
-        if (!TintColorHelper.TryParseHex(item.ColorHex, out var color))
-            color = HeroFallbackPalette[StableHash(item.Uri ?? item.Title) % HeroFallbackPalette.Length];
-
-        ApplyPaletteFromBaseColor(color);
+        // Use the DTO ColorHex if Spotify supplied one. If not, leave the brushes
+        // at their default empty state — async IColorService extraction will fill
+        // them in from the cover art when available.
+        if (TintColorHelper.TryParseHex(item.ColorHex, out var color))
+            ApplyPaletteFromBaseColor(color);
     }
 
     /// <summary>
@@ -1039,30 +1073,6 @@ public sealed partial class PodcastBrowseItemViewModel : ObservableObject
         var heroPrimary = MakeHeroColorVibrant(TintColorHelper.BrightenForTint(color, targetMax: 235));
         HeroPrimaryColor = Color.FromArgb(255, heroPrimary.R, heroPrimary.G, heroPrimary.B);
         HeroAccentColor = RotateHeroHue(heroPrimary, 0.16);
-        HeroPrimaryBrush = new SolidColorBrush(HeroPrimaryColor);
-
-        // Scrim is a darker version of the card's identity colour with strong
-        // opacity on the left — so the title text reads cleanly while the
-        // background still feels like the card, not a pure-black slab. The
-        // gradient fades to fully transparent on the right where the artwork
-        // shows through. Reference: MS Store hero (Image #19) — left is a
-        // dark-tinted version of the card colour, not black.
-        var scrimR = (byte)(HeroPrimaryColor.R * 0.22);
-        var scrimG = (byte)(HeroPrimaryColor.G * 0.22);
-        var scrimB = (byte)(HeroPrimaryColor.B * 0.22);
-        HeroScrimBrush = new LinearGradientBrush
-        {
-            StartPoint = new Windows.Foundation.Point(0, 0.5),
-            EndPoint = new Windows.Foundation.Point(1, 0.5),
-            GradientStops =
-            {
-                new GradientStop { Color = Color.FromArgb(0xFF, scrimR, scrimG, scrimB), Offset = 0.00 },
-                new GradientStop { Color = Color.FromArgb(0xF5, scrimR, scrimG, scrimB), Offset = 0.30 },
-                new GradientStop { Color = Color.FromArgb(0xCC, scrimR, scrimG, scrimB), Offset = 0.50 },
-                new GradientStop { Color = Color.FromArgb(0x80, scrimR, scrimG, scrimB), Offset = 0.65 },
-                new GradientStop { Color = Color.FromArgb(0x00, scrimR, scrimG, scrimB), Offset = 0.82 },
-            }
-        };
     }
 
     private static int GetLongestWordLength(string value)

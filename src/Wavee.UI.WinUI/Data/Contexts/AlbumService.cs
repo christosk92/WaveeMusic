@@ -237,7 +237,9 @@ public sealed class AlbumService : IAlbumService
             Uri = r.Uri ?? $"spotify:track:{r.Id}",
             Title = r.Title ?? "",
             ArtistName = r.ArtistNames ?? "",
-            ArtistId = "",
+            // Primary artist URI (when available) so the row's first link still
+            // navigates correctly for legacy single-artist code paths.
+            ArtistId = r.Artists.FirstOrDefault()?.Uri ?? "",
             AlbumName = "",
             AlbumId = albumUri,
             Duration = r.Duration,
@@ -247,7 +249,8 @@ public sealed class AlbumService : IAlbumService
             DiscNumber = r.DiscNumber,
             IsPlayable = r.IsPlayable,
             OriginalIndex = r.TrackNumber,
-            PlayCount = r.PlayCount
+            PlayCount = r.PlayCount,
+            Artists = r.Artists
         };
     }
 
@@ -269,6 +272,7 @@ public sealed class AlbumService : IAlbumService
                 PlayCount = long.TryParse(track.Playcount, out var pc) ? pc : 0,
                 ArtistNames = string.Join(", ",
                     track.Artists?.Items?.Select(a => a.Profile?.Name ?? "") ?? []),
+                Artists = MapTrackArtists(track.Artists?.Items),
                 IsExplicit = track.ContentRating?.Label == "EXPLICIT",
                 IsPlayable = track.Playability?.Playable ?? true,
                 IsSaved = track.Saved,
@@ -277,6 +281,29 @@ public sealed class AlbumService : IAlbumService
                 DiscNumber = track.DiscNumber
             };
         }).ToList();
+    }
+
+    /// <summary>
+    /// Map the GraphQL per-track artists list to <see cref="TrackArtistRef"/>,
+    /// dropping entries with no URI (which would be unnavigable). Preserves order.
+    /// </summary>
+    private static List<TrackArtistRef> MapTrackArtists(
+        List<Wavee.Core.Http.Pathfinder.ArtistTrackArtistItem>? items)
+    {
+        if (items == null || items.Count == 0) return [];
+        var refs = new List<TrackArtistRef>(items.Count);
+        foreach (var a in items)
+        {
+            var uri = a.Uri ?? "";
+            if (string.IsNullOrEmpty(uri)) continue;
+            refs.Add(new TrackArtistRef
+            {
+                Id = uri.Split(':').LastOrDefault() ?? "",
+                Uri = uri,
+                Name = a.Profile?.Name ?? ""
+            });
+        }
+        return refs;
     }
 
     private async Task<List<AlbumTrackResult>> FetchFromApiAsync(string albumUri, CancellationToken ct)
@@ -316,6 +343,7 @@ public sealed class AlbumService : IAlbumService
                 PlayCount = long.TryParse(track.Playcount, out var pc) ? pc : 0,
                 ArtistNames = string.Join(", ",
                     track.Artists?.Items?.Select(a => a.Profile?.Name ?? "") ?? []),
+                Artists = MapTrackArtists(track.Artists?.Items),
                 IsExplicit = track.ContentRating?.Label == "EXPLICIT",
                 IsPlayable = track.Playability?.Playable ?? true,
                 IsSaved = track.Saved,

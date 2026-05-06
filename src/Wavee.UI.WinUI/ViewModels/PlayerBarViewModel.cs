@@ -19,6 +19,7 @@ using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services.Docking;
 
@@ -127,28 +128,51 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         if (CurrentArtists is { Count: > 0 } artists)
         {
-            return artists.Select(a => new MetadataItem
-            {
-                Label = a.Name,
-                Command = _navigateToArtistCommand,
-                CommandParameter = a.Uri
-            }).ToArray();
+            var items = artists
+                .Where(a => !string.IsNullOrWhiteSpace(a.Name))
+                .Select(a =>
+                {
+                    var parameter = CreateArtistNavigationParameter(a.Uri, a.Name);
+                    return new MetadataItem
+                    {
+                        Label = a.Name,
+                        Command = parameter is null ? null : _navigateToArtistCommand,
+                        CommandParameter = parameter
+                    };
+                })
+                .ToArray();
+
+            if (items.Length > 0)
+                return items;
         }
 
         if (!string.IsNullOrEmpty(ArtistName))
         {
+            var parameter = CreateArtistNavigationParameter(CurrentArtistId, ArtistName);
             return [new MetadataItem
             {
                 Label = ArtistName,
-                Command = _navigateToArtistCommand,
-                CommandParameter = CurrentArtistId
+                Command = parameter is null ? null : _navigateToArtistCommand,
+                CommandParameter = parameter
             }];
         }
 
         return null;
     }
 
-    private readonly RelayCommand<string?> _navigateToArtistCommand;
+    private static ContentNavigationParameter? CreateArtistNavigationParameter(string? artistUri, string? artistName)
+    {
+        if (string.IsNullOrWhiteSpace(artistUri))
+            return null;
+
+        return new ContentNavigationParameter
+        {
+            Uri = artistUri,
+            Title = string.IsNullOrWhiteSpace(artistName) ? "Artist" : artistName
+        };
+    }
+
+    private readonly RelayCommand<object?> _navigateToArtistCommand;
 
     // Remote device indicator
     [ObservableProperty]
@@ -266,7 +290,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _libraryDataService = libraryDataService;
         _logger = loggerFactory?.CreateLogger<PlayerBarViewModel>();
 
-        _navigateToArtistCommand = new RelayCommand<string?>(NavigateToArtist);
+        _navigateToArtistCommand = new RelayCommand<object?>(NavigateToArtist);
 
         // Sync initial state
         SyncFromService();
@@ -1277,10 +1301,26 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void NavigateToArtist(string? artistUri)
+    private void NavigateToArtist(object? parameter)
     {
-        if (string.IsNullOrEmpty(artistUri)) return;
-        NavigationHelpers.OpenArtist(artistUri, "Artist");
+        switch (parameter)
+        {
+            case ContentNavigationParameter nav when !string.IsNullOrWhiteSpace(nav.Uri):
+                NavigationHelpers.OpenArtist(nav, string.IsNullOrWhiteSpace(nav.Title) ? "Artist" : nav.Title);
+                break;
+            case string artistUri when !string.IsNullOrWhiteSpace(artistUri):
+                var title = CurrentArtists?.FirstOrDefault(a => string.Equals(a.Uri, artistUri, StringComparison.Ordinal))?.Name
+                            ?? ArtistName
+                            ?? "Artist";
+                NavigationHelpers.OpenArtist(
+                    new ContentNavigationParameter
+                    {
+                        Uri = artistUri,
+                        Title = title
+                    },
+                    title);
+                break;
+        }
     }
 
     /// <summary>

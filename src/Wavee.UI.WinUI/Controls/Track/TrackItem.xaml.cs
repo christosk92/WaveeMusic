@@ -195,6 +195,10 @@ public sealed partial class TrackItem : UserControl
         DependencyProperty.Register(nameof(ShowProgress), typeof(bool), typeof(TrackItem),
             new PropertyMetadata(false, OnColumnVisibilityChanged));
 
+    public static readonly DependencyProperty ShowPopularityBadgeProperty =
+        DependencyProperty.Register(nameof(ShowPopularityBadge), typeof(bool), typeof(TrackItem),
+            new PropertyMetadata(false, OnShowPopularityBadgeChanged));
+
     public static readonly DependencyProperty ShowAddedByColumnProperty =
         DependencyProperty.Register(nameof(ShowAddedByColumn), typeof(bool), typeof(TrackItem),
             new PropertyMetadata(false, OnColumnVisibilityChanged));
@@ -340,6 +344,12 @@ public sealed partial class TrackItem : UserControl
         set => SetValue(ShowProgressProperty, value);
     }
 
+    public bool ShowPopularityBadge
+    {
+        get => (bool)GetValue(ShowPopularityBadgeProperty);
+        set => SetValue(ShowPopularityBadgeProperty, value);
+    }
+
     public bool ShowAddedByColumn
     {
         get => (bool)GetValue(ShowAddedByColumnProperty);
@@ -430,6 +440,8 @@ public sealed partial class TrackItem : UserControl
     private string? _retriedCompactUrl;
     private string? _retriedRowUrl;
     private ITrackItem? _observedTrack;
+    private bool _isMessengerRegistered;
+    private bool _isSaveStateSubscribed;
 
     // Guards against stale color-hint applies after a virtualized row is recycled.
     // Incremented on every ResolveImageColorHint invocation; an awaiting continuation
@@ -467,8 +479,9 @@ public sealed partial class TrackItem : UserControl
         RightTapped += OnRightTapped;
         Holding += OnHolding;
 
-        // Row mode navigation links
-        RowArtistLink.Click += OnArtistLinkClick;
+        // Row mode navigation links. Per-artist links inside RowArtistsHost are
+        // wired in RebuildArtistsSubline (each link gets its own Click handler);
+        // RowAlbumLink stays a single HyperlinkButton.
         RowAlbumLink.Click += OnAlbumLinkClick;
 
         // Transient CDN/network failures: retry once per URL with a fresh BitmapImage.
@@ -502,6 +515,10 @@ public sealed partial class TrackItem : UserControl
             ApplyRowDensityPadding();
             ApplyRowColumnVisibility();
         }
+
+        RowPopularityBadge.Visibility = ShowPopularityBadge && Mode == TrackItemDisplayMode.Row
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     #endregion
@@ -568,14 +585,13 @@ public sealed partial class TrackItem : UserControl
             RowHeartButton.IsLiked = GetTrackLikedState(track);
             RowHeartButton.Visibility = Visibility.Visible;
             var artistName = track.ArtistName ?? "";
-            RowArtistLink.Content = artistName;
-            RowArtistLink.Tag = track.ArtistId;
+            RebuildArtistsSubline(track);
             // Hide the subline when ShowArtistColumn is off OR the artist name is blank
             // (e.g. local files, editorial placeholders).
-            RowArtistLink.Visibility = (ShowArtistColumn && !ShowProgress && !string.IsNullOrEmpty(artistName))
+            RowArtistsHost.Visibility = (ShowArtistColumn && !ShowProgress && !string.IsNullOrEmpty(artistName))
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-            // Must run after RowArtistLink.Visibility is set — placement depends on it.
+            // Must run after RowArtistsHost.Visibility is set — placement depends on it.
             UpdateBadgePlacement();
             RowAlbumLink.Content = track.AlbumName ?? "";
             RowAlbumLink.Tag = track.AlbumId;
@@ -592,7 +608,7 @@ public sealed partial class TrackItem : UserControl
             RowTitle.Text = "";
             RowLocalBadge.Visibility = Visibility.Collapsed;
             RowDuration.Text = "";
-            RowArtistLink.Content = "";
+            RowArtistsHost.Children.Clear();
             RowAlbumLink.Content = "";
             ApplyRowProgress(null);
             UpdateBadgePlacement();
@@ -906,6 +922,14 @@ public sealed partial class TrackItem : UserControl
         item.RowPlayCount.Text = (string?)e.NewValue ?? "";
     }
 
+    private static void OnShowPopularityBadgeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var item = (TrackItem)d;
+        item.RowPopularityBadge.Visibility = (bool)e.NewValue && item.Mode == TrackItemDisplayMode.Row
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
     private static void OnAddedByTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
@@ -1050,7 +1074,7 @@ public sealed partial class TrackItem : UserControl
 
         // Artist subline is hidden at XS too — single-line rows are how we hit the
         // 32-px target height.
-        RowArtistLink.Visibility = (ShowArtistColumn && density > 0 && !ShowProgress) ? Visibility.Visible : Visibility.Collapsed;
+        RowArtistsHost.Visibility = (ShowArtistColumn && density > 0 && !ShowProgress) ? Visibility.Visible : Visibility.Collapsed;
 
         // Keep the shimmer overlay's columns in sync so loading rows align with the
         // real row layout (and with the column headers above).
@@ -1267,10 +1291,18 @@ public sealed partial class TrackItem : UserControl
         // Subscribe to global state changes via WeakReferenceMessenger so a
         // missed Unloaded `-=` (or container recycle past Unloaded) doesn't
         // pin this TrackItem in the static event invocation list forever.
-        WeakReferenceMessenger.Default.Register<TrackItem, TrackStateRefreshMessage>(
-            this, static (r, _) => r.OnPlaybackStateChanged());
-        if (_likeService != null)
+        if (!_isMessengerRegistered)
+        {
+            WeakReferenceMessenger.Default.Register<TrackItem, TrackStateRefreshMessage>(
+                this, static (r, _) => r.OnPlaybackStateChanged());
+            _isMessengerRegistered = true;
+        }
+
+        if (_likeService != null && !_isSaveStateSubscribed)
+        {
             _likeService.SaveStateChanged += OnSaveStateChanged;
+            _isSaveStateSubscribed = true;
+        }
     }
 
     private void OnPlaybackStateChanged()
@@ -1668,9 +1700,17 @@ public sealed partial class TrackItem : UserControl
         SetCompactEqualizer(false, false);
         SetRowEqualizer(false, false);
         StopPendingBeam();
-        WeakReferenceMessenger.Default.Unregister<TrackStateRefreshMessage>(this);
-        if (_likeService != null)
+        if (_isMessengerRegistered)
+        {
+            WeakReferenceMessenger.Default.Unregister<TrackStateRefreshMessage>(this);
+            _isMessengerRegistered = false;
+        }
+
+        if (_likeService != null && _isSaveStateSubscribed)
+        {
             _likeService.SaveStateChanged -= OnSaveStateChanged;
+            _isSaveStateSubscribed = false;
+        }
 
         // Release image cache pins so off-screen containers stop blocking eviction.
         if (!string.IsNullOrEmpty(_pinnedCompactUrl))
@@ -1776,7 +1816,7 @@ public sealed partial class TrackItem : UserControl
         // the link's visibility, not just on whether ArtistName is set — that's the
         // fix for the orphan "·" on album rows where the link is collapsed but the
         // album artist name is non-empty.
-        var sublineVisible = RowArtistLink.Visibility == Visibility.Visible && !ShowProgress;
+        var sublineVisible = RowArtistsHost.Visibility == Visibility.Visible && !ShowProgress;
         if (sublineVisible)
         {
             RowExplicit.Visibility = isExplicit ? Visibility.Visible : Visibility.Collapsed;
@@ -1853,9 +1893,82 @@ public sealed partial class TrackItem : UserControl
     {
         if (sender is HyperlinkButton link && link.Tag is string artistId && !string.IsNullOrEmpty(artistId))
         {
+            // Pull the visible artist name from the inner TextBlock so navigation
+            // labels match what was clicked rather than the row's flattened
+            // ArtistName string (which may comma-join multiple names).
+            var displayName = (link.Content as TextBlock)?.Text
+                ?? link.Content as string
+                ?? "";
             ArtistClicked?.Invoke(this, artistId);
-            NavigationHelpers.OpenArtist(artistId, link.Content as string ?? "");
+            NavigationHelpers.OpenArtist(artistId, displayName);
         }
+    }
+
+    /// <summary>
+    /// Rebuild the per-artist hyperlink stack inside <see cref="RowArtistsHost"/>.
+    /// Renders one HyperlinkButton per artist with comma separators between them
+    /// when the track carries a rich <see cref="ITrackItem.Artists"/> list; falls
+    /// back to a single link from <c>(ArtistName, ArtistId)</c> for legacy DTOs
+    /// (LikedSongDto, PlaylistTrackDto, …) that haven't been upgraded yet.
+    /// </summary>
+    private void RebuildArtistsSubline(ITrackItem track)
+    {
+        RowArtistsHost.Children.Clear();
+
+        var captionStyle = (Microsoft.UI.Xaml.Style)Application.Current.Resources["CaptionTextBlockStyle"];
+        var subduedBrush = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+
+        var artists = track.Artists;
+        if (artists == null || artists.Count == 0)
+        {
+            // Single-link fallback. Empty ArtistId is fine — OnArtistLinkClick
+            // checks for empty before navigating, matching the legacy behaviour.
+            var name = track.ArtistName ?? "";
+            if (string.IsNullOrEmpty(name)) return;
+            RowArtistsHost.Children.Add(BuildArtistLink(name, track.ArtistId ?? "", captionStyle, subduedBrush));
+            return;
+        }
+
+        for (var i = 0; i < artists.Count; i++)
+        {
+            if (i > 0)
+            {
+                RowArtistsHost.Children.Add(new TextBlock
+                {
+                    Text = ", ",
+                    Style = captionStyle,
+                    Foreground = subduedBrush,
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+            }
+            var a = artists[i];
+            RowArtistsHost.Children.Add(BuildArtistLink(a.Name, a.Uri, captionStyle, subduedBrush));
+        }
+    }
+
+    private HyperlinkButton BuildArtistLink(
+        string name,
+        string artistTag,
+        Microsoft.UI.Xaml.Style captionStyle,
+        Brush subduedBrush)
+    {
+        var link = new HyperlinkButton
+        {
+            Padding = new Thickness(0),
+            Margin = new Thickness(0),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Tag = artistTag,
+            Content = new TextBlock
+            {
+                Text = name,
+                Style = captionStyle,
+                Foreground = subduedBrush,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxLines = 1,
+            }
+        };
+        link.Click += OnArtistLinkClick;
+        return link;
     }
 
     private void OnAlbumLinkClick(object sender, RoutedEventArgs e)

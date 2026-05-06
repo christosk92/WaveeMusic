@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -7,6 +6,7 @@ using CommunityToolkit.WinUI.Animations;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls;
@@ -34,6 +34,8 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
     public AlbumViewModel ViewModel { get; }
 
+    public ShimmerLoadGate ShimmerGate { get; } = new();
+
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
 
     public event EventHandler<TabItemParameter>? ContentChanged;
@@ -53,6 +55,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             item is ViewModels.LazyTrackItem lazy && lazy.Data is Data.DTOs.AlbumTrackDto dto
                 ? dto.PlayCountFormatted
                 : "";
+        TrackGrid.PopularityBadgeSelector = ViewModel.IsPopularTrack;
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
@@ -67,9 +70,8 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
 
         // Other-versions flyout is built dynamically — the data shape (name + year +
-        // type) is uniform per album but the count varies, so we rebuild on every
-        // collection change rather than templating it in XAML.
-        ViewModel.AlternateReleases.CollectionChanged += AlternateReleases_CollectionChanged;
+        // type) is uniform per album but the count varies.
+        // ViewModel_PropertyChanged rebuilds it when AlternateReleases changes.
         RebuildOtherVersionsFlyout();
 
         // Seed the VM with the current theme so palette brushes are correct as soon
@@ -95,6 +97,52 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             if (action == "schedule")
                 ScheduleCrossfade();
         }
+        else if (e.PropertyName == nameof(AlbumViewModel.AlternateReleases))
+        {
+            RebuildOtherVersionsFlyout();
+        }
+        else if (e.PropertyName == nameof(AlbumViewModel.HeaderArtistLinks))
+        {
+            RebuildHeaderArtistsText();
+        }
+    }
+
+    /// <summary>
+    /// Rebuild the inline content of <c>HeaderArtistsText</c> from the current
+    /// <see cref="AlbumViewModel.HeaderArtistLinks"/>. Inline <c>Hyperlink</c>s
+    /// per name + <c>Run</c> separators give the names line natural typographic
+    /// wrapping (no orphan ", " on the second row), which a horizontal
+    /// ItemsControl can't deliver inside the header's narrow Grid column.
+    /// </summary>
+    private void RebuildHeaderArtistsText()
+    {
+        if (HeaderArtistsText == null) return;
+        HeaderArtistsText.Inlines.Clear();
+
+        var links = ViewModel.HeaderArtistLinks;
+        if (links == null || links.Count == 0) return;
+
+        for (var i = 0; i < links.Count; i++)
+        {
+            if (i > 0)
+            {
+                HeaderArtistsText.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = ", " });
+            }
+            var entry = links[i];
+            var hyperlink = new Microsoft.UI.Xaml.Documents.Hyperlink
+            {
+                UnderlineStyle = Microsoft.UI.Xaml.Documents.UnderlineStyle.None,
+            };
+            hyperlink.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = entry.Name });
+            var capturedUri = entry.Uri;
+            var capturedName = entry.Name;
+            hyperlink.Click += (_, _) =>
+            {
+                if (string.IsNullOrEmpty(capturedUri)) return;
+                NavigationHelpers.OpenArtist(capturedUri, capturedName, NavigationHelpers.IsCtrlPressed());
+            };
+            HeaderArtistsText.Inlines.Add(hyperlink);
+        }
     }
 
     private void OnActualThemeChanged(FrameworkElement sender, object args)
@@ -107,6 +155,10 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         _logger?.LogDebug(
             "[xfade][album:{Id}] loaded showing={Showing} scheduled={Scheduled} navAway={NavAway}",
             XfadeLog.Tag(ViewModel.AlbumId), _showingContent, _crossfadeScheduled, _isNavigatingAway);
+        // Re-emit the inline header names from the current VM state — covers the
+        // warm-cache navigation path where ApplyDetail runs before the page is
+        // fully constructed and PropertyChanged finds HeaderArtistsText null.
+        RebuildHeaderArtistsText();
 
     }
 
@@ -133,7 +185,6 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         ActualThemeChanged -= OnActualThemeChanged;
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-        ViewModel.AlternateReleases.CollectionChanged -= AlternateReleases_CollectionChanged;
         TrackGrid.Dispose();
         if (OtherVersionsFlyout != null)
             OtherVersionsFlyout.Items.Clear();
@@ -184,25 +235,19 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         if (_showingContent) return;
         _showingContent = true;
 
-        var shimmerVisualOpacity = ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity;
-        var contentVisualOpacity = ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity;
-        _logger?.LogDebug(
-            "[xfade][album:{Id}] xfade.start shimmerXaml={ShimmerXaml} shimmerVisual={ShimmerVisual} contentVisual={ContentVisual} shimmerVisible={ShimmerVisible}",
-            XfadeLog.Tag(ViewModel.AlbumId), ShimmerContainer.Opacity, shimmerVisualOpacity, contentVisualOpacity, ShimmerContainer.Visibility);
+        if (ShimmerContainer is not null)
+        {
+            var shimmerVisualOpacity = ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity;
+            var contentVisualOpacity = ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity;
+            _logger?.LogDebug(
+                "[xfade][album:{Id}] xfade.start shimmerXaml={ShimmerXaml} shimmerVisual={ShimmerVisual} contentVisual={ContentVisual} shimmerVisible={ShimmerVisible}",
+                XfadeLog.Tag(ViewModel.AlbumId), ShimmerContainer.Opacity, shimmerVisualOpacity, contentVisualOpacity, ShimmerContainer.Visibility);
+        }
 
-        AnimationBuilder.Create()
-            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200))
-            .Start(ShimmerContainer);
-
-        AnimationBuilder.Create()
-            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
-                     delay: TimeSpan.FromMilliseconds(100))
-            .Start(ContentContainer);
-
-        await Task.Delay(250);
+        await ShimmerGate.RunCrossfadeAsync(ShimmerContainer, ContentContainer,
+            continuePredicate: () => _showingContent);
         if (_showingContent)
         {
-            ShimmerContainer.Visibility = Visibility.Collapsed;
             _logger?.LogDebug(
                 "[xfade][album:{Id}] xfade.shimmerCollapsed contentVisual={ContentVisual}",
                 XfadeLog.Tag(ViewModel.AlbumId), ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity);
@@ -219,9 +264,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         _isNavigatingAway = false;
         _showingContent = false;
         _crossfadeScheduled = false;
-        ShimmerContainer.Visibility = Visibility.Visible;
-        ShimmerContainer.Opacity = 1;
-        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
+        ShimmerGate.Reset(() => ShimmerContainer, () => ContentContainer);
         var shimmerVisualOpacity = ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity;
         _logger?.LogDebug(
             "[xfade][album:{Id}] reset shimmerXaml={ShimmerXaml} shimmerVisual={ShimmerVisual} navAway={NavAway}",
@@ -237,10 +280,14 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
         _showingContent = true;
         _crossfadeScheduled = false;
-        ShimmerContainer.Visibility = Visibility.Collapsed;
-        ShimmerContainer.Opacity = 0;
+        ShimmerGate.IsLoaded = false;
+        if (ShimmerContainer is not null)
+        {
+            ShimmerContainer.Visibility = Visibility.Collapsed;
+            ShimmerContainer.Opacity = 0;
+            ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 0;
+        }
         ContentContainer.Opacity = 1;
-        ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 0;
         ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 1;
 
         UpdateLayout();
@@ -427,9 +474,6 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
     // ── Other versions flyout ───────────────────────────────────────────────
 
-    private void AlternateReleases_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-        => RebuildOtherVersionsFlyout();
-
     private void RebuildOtherVersionsFlyout()
     {
         if (OtherVersionsFlyout == null) return;
@@ -473,18 +517,42 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             Title = release.Name,
             ImageUrl = release.CoverArtUrl
         };
-        NavigationHelpers.OpenAlbum(param, release.Name ?? "Album", NavigationHelpers.IsCtrlPressed());
+        OpenAlbumAfterCurrentEvent(param, release.Name ?? "Album", NavigationHelpers.IsCtrlPressed());
     }
 
     // ── Click handlers ───────────────────────────────────────────────────────
 
-    private void Artist_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Opens the all-artists Flyout attached to the AvatarStack so users can
+    /// reach every distinct artist on the album — including track-only featureds
+    /// not in the album billing.
+    /// </summary>
+    private void ArtistsAvatarStack_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
-        if (!string.IsNullOrEmpty(ViewModel.ArtistId))
+        if (sender is FrameworkElement fe)
         {
-            var openInNewTab = NavigationHelpers.IsCtrlPressed();
-            NavigationHelpers.OpenArtist(ViewModel.ArtistId, ViewModel.ArtistName ?? "Artist", openInNewTab);
+            FlyoutBase.ShowAttachedFlyout(fe);
+            e.Handled = true;
         }
+    }
+
+    /// <summary>
+    /// Navigate to the clicked artist from the all-artists flyout list, then
+    /// dismiss the flyout so the user lands on ArtistPage cleanly.
+    /// </summary>
+    private void ArtistsFlyoutList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not AlbumArtistResult artist) return;
+        var uri = artist.Uri;
+        var id = artist.Id;
+        var target = !string.IsNullOrEmpty(uri) ? uri
+                   : !string.IsNullOrEmpty(id) ? id
+                   : null;
+        if (string.IsNullOrEmpty(target)) return;
+
+        var openInNewTab = NavigationHelpers.IsCtrlPressed();
+        NavigationHelpers.OpenArtist(target, artist.Name ?? "Artist", openInNewTab);
+        ArtistsFlyout.Hide();
     }
 
     private void RelatedAlbum_Click(object sender, EventArgs e)
@@ -503,7 +571,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
                 Title = album.Name,
                 ImageUrl = album.ImageUrl
             };
-            NavigationHelpers.OpenAlbum(param, album.Name ?? "Album", NavigationHelpers.IsCtrlPressed());
+            OpenAlbumAfterCurrentEvent(param, album.Name ?? "Album", NavigationHelpers.IsCtrlPressed());
             return;
         }
 
@@ -515,8 +583,23 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
                 Title = card.Title,
                 ImageUrl = card.ImageUrl
             };
-            NavigationHelpers.OpenAlbum(param, card.Title ?? "Album", NavigationHelpers.IsCtrlPressed());
+            OpenAlbumAfterCurrentEvent(param, card.Title ?? "Album", NavigationHelpers.IsCtrlPressed());
         }
+    }
+
+    private void OpenAlbumAfterCurrentEvent(ContentNavigationParameter parameter, string title, bool openInNewTab)
+    {
+        if (!openInNewTab && DispatcherQueue is not null)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!_isDisposed)
+                    NavigationHelpers.OpenAlbum(parameter, title, openInNewTab: false);
+            });
+            return;
+        }
+
+        NavigationHelpers.OpenAlbum(parameter, title, openInNewTab);
     }
 
     private void MerchItem_Click(object sender, EventArgs e)

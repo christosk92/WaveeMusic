@@ -128,10 +128,35 @@ public sealed record AlbumTrackResult
     public TimeSpan Duration { get; init; }
     public long PlayCount { get; init; }
     public string? ArtistNames { get; init; }
+    public List<TrackArtistRef> Artists { get; init; } = [];
     public bool IsExplicit { get; init; }
     public bool IsPlayable { get; init; }
     public bool IsSaved { get; init; }
     public bool HasVideo { get; init; }
     public int TrackNumber { get; init; }
     public int DiscNumber { get; init; }
+}
+
+/// <summary>
+/// Lightweight artist reference carried by track-level data. Preserves the
+/// per-track artist list with URIs so multi-artist tracks (collabs, soundtracks)
+/// render every contributor as an independently-clickable hyperlink.
+/// </summary>
+public sealed record TrackArtistRef
+{
+    public required string Id { get; init; }
+    public required string Uri { get; init; }
+    public required string Name { get; init; }
+}
+
+/// <summary>
+/// Projection of an album-billed artist for the header names line. Carries
+/// <see cref="IsFirst"/> so the comma separator preceding each entry can be
+/// hidden on the first item without a converter that walks the parent list.
+/// </summary>
+public sealed record HeaderArtistLink
+{
+    public required string Name { get; init; }
+    public required string Uri { get; init; }
+    public required bool IsFirst { get; init; }
 }

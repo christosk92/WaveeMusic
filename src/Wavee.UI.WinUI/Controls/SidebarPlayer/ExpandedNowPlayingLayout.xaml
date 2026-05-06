@@ -594,7 +594,8 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0"
+            <TextBlock x:Name="ElapsedTimeText"
+                       Grid.Column="0"
                        Text="{x:Bind ViewModel.PositionText, Mode=OneWay}"
                        FontSize="11"
                        Opacity="0.6"
@@ -608,7 +609,8 @@
                                              IsBuffering="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
                                              SeekStarted="ProgressBar_SeekStarted"
                                              SeekCommitted="ProgressBar_SeekCommitted" />
-            <TextBlock Grid.Column="2"
+            <TextBlock x:Name="DurationTimeText"
+                       Grid.Column="2"
                        Text="{x:Bind ViewModel.DurationText, Mode=OneWay}"
                        FontSize="11"
                        Opacity="0.6"
@@ -616,57 +618,68 @@
         </Grid>
 
         <!-- Transport — apple-style: shuffle | prev | PLAY (large) | next | repeat -->
+        <Grid
+            x:Name="MusicTransportFrame"
+            Grid.Row="3"
+            HorizontalAlignment="Left">
         <StackPanel
                     x:Name="MusicTransportRow"
-                    Grid.Row="3"
                     Orientation="Horizontal"
                     HorizontalAlignment="Center"
                     Spacing="12">
-            <ToggleButton Style="{StaticResource SubtleToggleButtonStyle}"
+            <ToggleButton x:Name="ShuffleButton"
+                          Style="{StaticResource SubtleToggleButtonStyle}"
                           Width="40" Height="40" Padding="0"
                           IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
                           Command="{x:Bind ViewModel.ToggleShuffleCommand}"
                           ToolTipService.ToolTip="Shuffle">
-                <FontIcon Glyph="&#xE8B1;" FontSize="16" />
+                <FontIcon x:Name="ShuffleIcon" Glyph="&#xE8B1;" FontSize="16" />
             </ToggleButton>
-            <Button Style="{StaticResource TransparentButtonStyle}"
+            <Button x:Name="SkipBackwardButton"
+                    Style="{StaticResource TransparentButtonStyle}"
                     Width="40" Height="40" Padding="0"
                     Command="{x:Bind ViewModel.SkipBackwardCommand}"
                     Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                     ToolTipService.ToolTip="Back 15 seconds">
-                <TextBlock Text="-15" FontSize="12" FontWeight="SemiBold" />
+                <TextBlock x:Name="SkipBackwardText" Text="-15" FontSize="12" FontWeight="SemiBold" />
             </Button>
-            <Button Style="{StaticResource TransparentButtonStyle}"
+            <Button x:Name="PreviousButton"
+                    Style="{StaticResource TransparentButtonStyle}"
                     Width="44" Height="44" Padding="0"
                     Command="{x:Bind ViewModel.PreviousCommand}"
                     ToolTipService.ToolTip="Previous">
-                <FontIcon Glyph="&#xF8AC;" FontSize="20" />
+                <FontIcon x:Name="PreviousIcon" Glyph="&#xF8AC;" FontSize="20" />
             </Button>
-            <Button Style="{StaticResource TransparentButtonStyle}"
+            <Button x:Name="PlayPauseButton"
+                    Style="{StaticResource TransparentButtonStyle}"
                     Width="60" Height="60" Padding="0"
                     Command="{x:Bind ViewModel.PlayPauseCommand}"
                     ToolTipService.ToolTip="Play/Pause">
                 <playback:PlaybackActionContent
+                    x:Name="PlayPauseActionContent"
                     IconSize="28"
                     SpinnerSize="32"
                     IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
                     IsPending="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
                     ActionForeground="{ThemeResource TextFillColorPrimaryBrush}" />
             </Button>
-            <Button Style="{StaticResource TransparentButtonStyle}"
+            <Button x:Name="NextButton"
+                    Style="{StaticResource TransparentButtonStyle}"
                     Width="44" Height="44" Padding="0"
                     Command="{x:Bind ViewModel.NextCommand}"
                     ToolTipService.ToolTip="Next">
-                <FontIcon Glyph="&#xF8AD;" FontSize="20" />
+                <FontIcon x:Name="NextIcon" Glyph="&#xF8AD;" FontSize="20" />
             </Button>
-            <Button Style="{StaticResource TransparentButtonStyle}"
+            <Button x:Name="SkipForwardButton"
+                    Style="{StaticResource TransparentButtonStyle}"
                     Width="40" Height="40" Padding="0"
                     Command="{x:Bind ViewModel.SkipForwardCommand}"
                     Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                     ToolTipService.ToolTip="Forward 15 seconds">
-                <TextBlock Text="+15" FontSize="12" FontWeight="SemiBold" />
+                <TextBlock x:Name="SkipForwardText" Text="+15" FontSize="12" FontWeight="SemiBold" />
             </Button>
-            <Button Style="{StaticResource TransparentButtonStyle}"
+            <Button x:Name="PlaybackSpeedButton"
+                    Style="{StaticResource TransparentButtonStyle}"
                     Width="48" Height="40" Padding="0"
                     Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                     ToolTipService.ToolTip="Playback speed">
@@ -683,17 +696,20 @@
                         <MenuFlyoutItem Text="3x" Command="{x:Bind ViewModel.SetPlaybackSpeedCommand}" CommandParameter="3" />
                     </MenuFlyout>
                 </Button.Flyout>
-                <TextBlock Text="{x:Bind ViewModel.PlaybackSpeedText, Mode=OneWay}" FontSize="12" FontWeight="SemiBold" />
+                <TextBlock x:Name="PlaybackSpeedText" Text="{x:Bind ViewModel.PlaybackSpeedText, Mode=OneWay}" FontSize="12" FontWeight="SemiBold" />
             </Button>
-            <ToggleButton Style="{StaticResource SubtleToggleButtonStyle}"
+            <ToggleButton x:Name="RepeatButton"
+                          Style="{StaticResource SubtleToggleButtonStyle}"
                           Width="40" Height="40" Padding="0"
                           IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
                           Command="{x:Bind ViewModel.ToggleRepeatCommand}"
                           ToolTipService.ToolTip="Repeat">
-                <FontIcon Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
+                <FontIcon x:Name="RepeatIcon"
+                          Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
                           FontSize="16" />
             </ToggleButton>
         </StackPanel>
+        </Grid>
 
         <Grid
             x:Name="VideoControlBar"

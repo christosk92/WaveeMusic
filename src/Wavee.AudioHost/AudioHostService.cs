@@ -432,9 +432,25 @@ internal sealed class AudioHostService : IAsyncDisposable
             case IpcMessageTypes.SetEqualizer:
             {
                 var cmd = IpcPayloadHelper.Deserialize<SetEqualizerCommand>(msg);
-                if (cmd != null)
-                    _engine.SetEqualizerEnabled(cmd.Enabled, cmd.BandGains);
-                await SendOk(msg.Id, ct);
+                var result = cmd == null
+                    ? null
+                    : await _engine.SetEqualizerEnabledAsync(cmd.Enabled, cmd.BandGains, ct);
+                if (result == null)
+                {
+                    await SendCommandResult(msg.Id, success: false,
+                        errorMessage: "Equalizer processor is not available in AudioHost", ct);
+                    break;
+                }
+
+                var resultJson = IpcPayloadHelper.SerializeToUtf8(result);
+                using var resultDoc = System.Text.Json.JsonDocument.Parse(resultJson);
+                await _transport!.SendAsync(IpcMessageTypes.CommandResult,
+                    IpcPayloadHelper.SerializeToUtf8(new CommandResultMessage
+                    {
+                        RequestId = msg.Id,
+                        Success = true,
+                        Result = resultDoc.RootElement.Clone()
+                    }), ct: ct);
                 break;
             }
             case IpcMessageTypes.SwitchAudioOutput:

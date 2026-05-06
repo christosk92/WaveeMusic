@@ -1037,6 +1037,8 @@ public static class AppLifecycleHelper
                 initialVolumePercent: clusterVol,
                 audioCacheDirectory: audioCacheDirectory,
                 CancellationToken.None);
+            var settingsForAudioPipeline = Ioc.Default.GetService<ISettingsService>();
+            await ApplyAudioPipelineSettingsAsync(proxy, settingsForAudioPipeline, logger, CancellationToken.None);
 
             // Create PlaybackOrchestrator — owns queue, track resolution, remote commands
             var spClient = (SpClient)session.SpClient;
@@ -1129,6 +1131,7 @@ public static class AppLifecycleHelper
             // Wire up orchestrator (not raw proxy) as the local engine
             var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
             executor?.EnableLocalPlayback(orchestrator);
+            executor?.EnableAudioPipelineControl(proxy);
 
             // Bidirectional mode uses orchestrator's queue-enriched state stream
             session.PlaybackState?.EnableBidirectionalMode(
@@ -1287,6 +1290,8 @@ public static class AppLifecycleHelper
                         newOrch.AutoplayEnabledProvider = () => settingsForAutoplay.Settings.AutoplayEnabled;
                     var exec = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
                     exec?.EnableLocalPlayback(newOrch);
+                    exec?.EnableAudioPipelineControl(newProxy);
+                    _ = ApplyAudioPipelineSettingsAsync(newProxy, settingsForAutoplay, logger, CancellationToken.None);
                     session.PlaybackState?.EnableBidirectionalMode(
                         newOrch, spClient, session, suppressClusterUpdates: false);
                     profiler?.SetAudioUnderrunProvider(() => newProxy.UnderrunCount);
@@ -1313,6 +1318,34 @@ public static class AppLifecycleHelper
 
             // In-process fallback was removed — all audio goes through AudioHost
             logger?.LogError("Out-of-process audio failed. No fallback available.");
+        }
+    }
+
+    private static async Task ApplyAudioPipelineSettingsAsync(
+        Wavee.AudioIpc.AudioPipelineProxy proxy,
+        ISettingsService? settingsService,
+        Microsoft.Extensions.Logging.ILogger? logger,
+        CancellationToken ct)
+    {
+        if (settingsService is null)
+            return;
+
+        try
+        {
+            var settings = settingsService.Settings;
+            await proxy.SetNormalizationEnabledAsync(settings.NormalizationEnabled, ct).ConfigureAwait(false);
+            await proxy.SetEqualizerAsync(settings.EqualizerEnabled, settings.EqualizerBandGains, ct)
+                .ConfigureAwait(false);
+
+            logger?.LogInformation(
+                "AudioHost pipeline settings applied: normalization={Normalization}, eq={Eq}, bands={Bands}",
+                settings.NormalizationEnabled,
+                settings.EqualizerEnabled,
+                settings.EqualizerBandGains?.Length ?? 0);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger?.LogWarning(ex, "Failed to apply saved AudioHost pipeline settings");
         }
     }
 

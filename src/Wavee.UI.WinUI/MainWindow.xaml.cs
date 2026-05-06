@@ -191,13 +191,18 @@ public sealed partial class MainWindow : WindowEx
     // is kept as a fallback for hide-to-tray / explicit hide paths.
 
     private static readonly TimeSpan MinimizeReleaseDelay = TimeSpan.FromMilliseconds(1500);
-    private static readonly TimeSpan DeactivateReleaseDelay = TimeSpan.FromSeconds(30);
 
     private void OnActivatedForMemoryRelease(object sender, WindowActivatedEventArgs args)
     {
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
-            ScheduleMemoryRelease(DeactivateReleaseDelay, "deactivated");
+            // Do not trim merely because the user alt-tabbed away. A music app
+            // commonly sits deactivated while playback continues; trimming the
+            // working set here evicts hot WinUI/XAML/composition pages from RAM
+            // and the next navigation feels like a cold start. Keep aggressive
+            // release for minimize/hidden only, where the user explicitly moved
+            // the UI out of sight.
+            CancelPendingRelease();
         }
         else
         {

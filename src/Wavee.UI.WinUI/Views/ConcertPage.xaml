@@ -68,6 +68,7 @@
                     Spacing="40"
                     MaxWidth="1240"
                     HorizontalAlignment="Stretch"
+                    x:Load="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
                     Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
 
             <!-- Landscape hero tile (matches StoreHero's 480-tall feature tile). -->

@@ -12,6 +12,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -31,6 +32,7 @@
                 <ComboBoxItem x:Uid="Controls_Settings_AudioSettingsSection__ComboBoxItem_4" Content="Treble Boost"/>
                 <ComboBoxItem x:Uid="Controls_Settings_AudioSettingsSection__ComboBoxItem_5" Content="Vocal"/>
                 <ComboBoxItem x:Uid="Controls_Settings_AudioSettingsSection__ComboBoxItem_6" Content="Radio"/>
+                <ComboBoxItem Content="EQ Proof"/>
             </ComboBox>
 
             <ToggleSwitch x:Uid="Controls_Settings_AudioSettingsSection__ToggleSwitch_7" Grid.Column="2" Header="Equalizer"
@@ -47,7 +49,26 @@
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                    FontSize="12" Margin="0,0,0,12"/>
 
-        <eq:EqualizerCurveControl Grid.Row="2"
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Margin="0,0,0,12"
+                    VerticalAlignment="Center">
+            <ProgressRing Width="14"
+                          Height="14"
+                          IsActive="{x:Bind ViewModel.IsEqualizerApplying, Mode=OneWay}"
+                          Visibility="{x:Bind ViewModel.IsEqualizerApplying, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+            <FontIcon FontFamily="Segoe MDL2 Assets"
+                      Glyph="&#xE73E;"
+                      FontSize="12"
+                      Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                      Visibility="{x:Bind ViewModel.EqualizerApplySucceeded, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+            <TextBlock Text="{x:Bind ViewModel.EqualizerApplyStatus, Mode=OneWay}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       FontSize="12"/>
+        </StackPanel>
+
+        <eq:EqualizerCurveControl Grid.Row="3"
                                   Bands="{x:Bind ViewModel.EqBands, Mode=OneWay}"
                                   MinHeight="250" MaxHeight="400"/>
     </Grid>

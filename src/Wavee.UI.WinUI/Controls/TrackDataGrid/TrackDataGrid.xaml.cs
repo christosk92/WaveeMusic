@@ -239,6 +239,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 container.Margin = _preferredDensity == 0 ? new Thickness(0) : new Thickness(0, 2, 0, 2);
                 item.RowDensity = _preferredDensity;
                 item.PlayCommand = PlayCommand;
+                item.ShowPopularityBadge = ShouldShowPopularityBadge(args.Item);
                 item.SetAlternatingBorder(IsAlternateRow(args.Item, args.ItemIndex), UseCardRows);
                 item.IsLoading = args.Item is ITrackItem { IsLoaded: false };
                 SyncLazyRowSubscription(container, item, args.Item);
@@ -250,7 +251,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 // Column show/hide flags — batched so the setters trigger one layout pass.
                 item.BeginBatchUpdate();
                 item.ShowAlbumArt        = ColumnVisible("TrackArt");
-                item.ShowArtistColumn    = PageKey != TrackDataGridDefaults.AlbumPageKey;
+                item.ShowArtistColumn    = ResolveShowArtistColumn();
                 item.ShowAlbumColumn     = ColumnVisible("Album");
                 item.ShowAddedByColumn   = AddedByVisible && ColumnVisible("AddedBy");
                 item.ShowDateAdded       = ColumnVisible("DateAdded");
@@ -341,12 +342,13 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     {
         row.PlayCommand = PlayCommand;
         row.RowDensity = _preferredDensity;
+        row.ShowPopularityBadge = ShouldShowPopularityBadge(sourceItem);
         row.SetAlternatingBorder(IsAlternateRow(sourceItem, itemIndex), UseCardRows);
         row.IsLoading = sourceItem is ITrackItem { IsLoaded: false };
 
         row.BeginBatchUpdate();
         row.ShowAlbumArt = ColumnVisible("TrackArt");
-        row.ShowArtistColumn = PageKey != TrackDataGridDefaults.AlbumPageKey;
+        row.ShowArtistColumn = ResolveShowArtistColumn();
         row.ShowAlbumColumn = ColumnVisible("Album");
         row.ShowAddedByColumn = AddedByVisible && ColumnVisible("AddedBy");
         row.ShowDateAdded = ColumnVisible("DateAdded");
@@ -406,6 +408,28 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         container.Margin = _preferredDensity == 0 ? new Thickness(0) : new Thickness(0, 2, 0, 2);
     }
 
+    private bool ShouldShowPopularityBadge(object? row)
+    {
+        if (row is null || PopularityBadgeSelector is null)
+            return false;
+
+        try { return PopularityBadgeSelector(row); }
+        catch { return false; }
+    }
+
+    private void RefreshPopularityBadges()
+    {
+        foreach (var item in RowsList.Items)
+        {
+            if (RowsList.ContainerFromItem(item) is not ListViewItem container) continue;
+            if (container.ContentTemplateRoot is not Track.TrackItem row) continue;
+            row.ShowPopularityBadge = ShouldShowPopularityBadge(item);
+        }
+
+        foreach (var row in _itemsViewRows.ToArray())
+            row.ShowPopularityBadge = ShouldShowPopularityBadge(row.Track);
+    }
+
     private void ApplyFormattedCells(Track.TrackItem item, object? row)
     {
         if (row is null) return;
@@ -425,6 +449,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             item.AddedByText = string.Empty;
             item.AddedByAvatarUrl = null;
         }
+
+        item.ShowPopularityBadge = ShouldShowPopularityBadge(row);
     }
 
     // Plain click on an already-selected row must deselect it. The native ListView
@@ -568,7 +594,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             ti.BeginBatchUpdate();
             ti.ShowAlbumArt = ColumnVisible("TrackArt");
             ti.ShowAlbumColumn = ColumnVisible("Album");
-            ti.ShowArtistColumn = PageKey != TrackDataGridDefaults.AlbumPageKey;
+            ti.ShowArtistColumn = ResolveShowArtistColumn();
             ti.ShowAddedByColumn = addedByShow;
             ti.ShowDateAdded = ColumnVisible("DateAdded");
             ti.ShowPlayCount = ColumnVisible("PlayCount");
@@ -707,6 +733,37 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         get => (string)GetValue(PageKeyProperty);
         set => SetValue(PageKeyProperty, value);
     }
+
+    /// <summary>
+    /// Force the per-row artist subline to render even when the page-key default
+    /// hides it. Album pages default to <c>false</c> because most albums are
+    /// single-artist and the artist is implied by the page; soundtracks /
+    /// compilations / collaborations override this to <c>true</c> so the row
+    /// surfaces the per-track contributor.
+    /// </summary>
+    public static readonly DependencyProperty ForceShowArtistColumnProperty =
+        DependencyProperty.Register(
+            nameof(ForceShowArtistColumn),
+            typeof(bool),
+            typeof(TrackDataGrid),
+            new PropertyMetadata(false, OnForceShowArtistColumnChanged));
+
+    public bool ForceShowArtistColumn
+    {
+        get => (bool)GetValue(ForceShowArtistColumnProperty);
+        set => SetValue(ForceShowArtistColumnProperty, value);
+    }
+
+    private static void OnForceShowArtistColumnChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        => ((TrackDataGrid)d).RefreshRowShowFlags();
+
+    /// <summary>
+    /// Resolve whether a row should show the artist subline. Single source of
+    /// truth so the four call sites (<c>RowsList_ContainerContentChanging</c>,
+    /// <c>ConfigureItemsViewRow</c>, <c>RefreshRowShowFlags</c>) stay aligned.
+    /// </summary>
+    private bool ResolveShowArtistColumn() =>
+        ForceShowArtistColumn || PageKey != TrackDataGridDefaults.AlbumPageKey;
 
     public static readonly DependencyProperty ItemsSourceProperty =
         DependencyProperty.Register(nameof(ItemsSource), typeof(IEnumerable), typeof(TrackDataGrid),
@@ -1043,6 +1100,28 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     {
         get => (Func<object, string>?)GetValue(PlayCountFormatterProperty);
         set => SetValue(PlayCountFormatterProperty, value);
+    }
+
+    public static readonly DependencyProperty PopularityBadgeSelectorProperty =
+        DependencyProperty.Register(nameof(PopularityBadgeSelector), typeof(Func<object, bool>), typeof(TrackDataGrid),
+            new PropertyMetadata(null, OnPopularityBadgeSelectorChanged));
+
+    /// <summary>
+    /// Optional per-row selector for a small leading "popular" badge in
+    /// <see cref="Track.TrackItem"/> row mode. AlbumPage uses play-count ranking;
+    /// other pages can opt in with their own scoring without TrackItem knowing
+    /// page-specific DTOs.
+    /// </summary>
+    public Func<object, bool>? PopularityBadgeSelector
+    {
+        get => (Func<object, bool>?)GetValue(PopularityBadgeSelectorProperty);
+        set => SetValue(PopularityBadgeSelectorProperty, value);
+    }
+
+    private static void OnPopularityBadgeSelectorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackDataGrid grid)
+            grid.RefreshPopularityBadges();
     }
 
     public static readonly DependencyProperty ShowToolbarProperty =
@@ -1761,6 +1840,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         SelectionChangedCommand = null;
         DateAddedFormatter = null;
         PlayCountFormatter = null;
+        PopularityBadgeSelector = null;
         AddedByFormatter = null;
         GroupKeySelector = null;
         GroupHeaderSelector = null;

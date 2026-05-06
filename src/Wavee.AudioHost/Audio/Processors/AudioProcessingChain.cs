@@ -89,7 +89,11 @@ public sealed class AudioProcessingChain
         foreach (var processor in _processors)
         {
             if (processor.IsEnabled)
+            {
+                if (processor is EqualizerProcessor eq)
+                    eq.MarkCurrentSettingsVersionProcessed();
                 processor.ProcessInPlace(span);
+            }
         }
 
         return new AudioBuffer(pipelineBuffer, dataLength, input.PositionMs);

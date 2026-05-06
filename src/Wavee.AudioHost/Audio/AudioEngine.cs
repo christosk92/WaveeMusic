@@ -276,9 +276,12 @@ public sealed class AudioEngine : IAsyncDisposable
             p.IsEnabled = enabled;
     }
 
-    public void SetEqualizerEnabled(bool enabled, double[]? bandGains = null)
+    public async Task<EqualizerApplyResult?> SetEqualizerEnabledAsync(
+        bool enabled,
+        double[]? bandGains = null,
+        CancellationToken ct = default)
     {
-        if (_userEq == null) return;
+        if (_userEq == null) return null;
         _userEq.IsEnabled = enabled;
         if (bandGains != null && _userEq.Bands.Count >= bandGains.Length)
         {
@@ -286,6 +289,35 @@ public sealed class AudioEngine : IAsyncDisposable
                 _userEq.Bands[i].GainDb = bandGains[i];
             _userEq.RefreshFilters();
         }
+
+        var version = _userEq.CommitSettingsVersion();
+        EngineState state;
+        lock (_stateLock)
+            state = _currentState;
+
+        var hasActiveAudio = state.IsPlaying && !state.IsPaused && !state.IsBuffering;
+        var observedAudioBuffer = false;
+
+        if (enabled && hasActiveAudio)
+        {
+            await _userEq.WaitForVersionProcessedAsync(version, TimeSpan.FromSeconds(3), ct).ConfigureAwait(false);
+            observedAudioBuffer = true;
+        }
+
+        _logger?.LogInformation(
+            "[AudioEngine] Equalizer installed: enabled={Enabled}, bands={Bands}, version={Version}, observedAudio={ObservedAudio}, state={IsPlaying}/{IsPaused}/{IsBuffering}",
+            enabled, bandGains?.Length ?? 0, version, observedAudioBuffer, state.IsPlaying, state.IsPaused, state.IsBuffering);
+        return new EqualizerApplyResult
+        {
+            Installed = true,
+            ObservedAudioBuffer = observedAudioBuffer,
+            Version = version,
+            Message = observedAudioBuffer
+                ? "EQ settings were observed by a processed audio buffer."
+                : enabled
+                    ? "EQ settings are installed; playback is paused/stopped so no audio buffer has verified them yet."
+                    : "EQ disabled in AudioHost."
+        };
     }
 
     // ── Deferred playback loop (instant start from head data) ──

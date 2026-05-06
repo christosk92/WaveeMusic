@@ -3,315 +3,21 @@
     x:Class="Wavee.UI.WinUI.Views.PodcastBrowsePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:animations="using:CommunityToolkit.WinUI.Animations"
-    xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:helpers="using:Wavee.UI.WinUI.Helpers"
+    xmlns:hero="using:Wavee.Controls.HeroCarousel"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:media="using:CommunityToolkit.WinUI.Media"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
-    xmlns:winUi="using:CommunityToolkit.WinUI"
     mc:Ignorable="d"
     Background="Transparent"
     Loaded="Page_Loaded"
-    SizeChanged="Page_SizeChanged"
     Unloaded="Page_Unloaded">
 
     <Page.Resources>
         <ResourceDictionary>
-            <ResourceDictionary.ThemeDictionaries>
-                <ResourceDictionary x:Key="Light">
-                    <RadialGradientBrush x:Key="OverlayRadialGradient"
-                                         Center="0.5,0.22"
-                                         GradientOrigin="0.5,0.22"
-                                         RadiusX="0.92" RadiusY="0.82">
-                        <GradientStop Offset="0" Color="#FFFFFFFF"/>
-                        <GradientStop Offset="0.55" Color="#CCFFFFFF"/>
-                        <GradientStop Offset="0.95" Color="#00FFFFFF"/>
-                    </RadialGradientBrush>
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="Dark">
-                    <RadialGradientBrush x:Key="OverlayRadialGradient"
-                                         Center="0.5,0.22"
-                                         GradientOrigin="0.5,0.22"
-                                         RadiusX="0.92" RadiusY="0.82">
-                        <GradientStop Offset="0" Color="#FF000000"/>
-                        <GradientStop Offset="0.55" Color="#A0000000"/>
-                        <GradientStop Offset="0.95" Color="#00000000"/>
-                    </RadialGradientBrush>
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="HighContrast">
-                    <RadialGradientBrush x:Key="OverlayRadialGradient"
-                                         Center="0.5,0.22"
-                                         GradientOrigin="0.5,0.22"
-                                         RadiusX="0.92" RadiusY="0.82">
-                        <GradientStop Offset="0" Color="{ThemeResource SystemColorWindowColor}"/>
-                        <GradientStop Offset="0.95" Color="Transparent"/>
-                    </RadialGradientBrush>
-                </ResourceDictionary>
-            </ResourceDictionary.ThemeDictionaries>
-
-            <LinearGradientBrush x:Key="WordmarkBrush" StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Offset="0.0" Color="#FFFFFFFF"/>
-                <GradientStop Offset="0.5" Color="#FFE6E6EA"/>
-                <GradientStop Offset="1.0" Color="#FFFFFFFF"/>
-            </LinearGradientBrush>
-
-            <!-- ─── Hero card (Microsoft Store editorial tile) ───
-                 Layered like the HTML prototype:
-                   z0  AnimatedHeroBackground   ComputeSharp mesh-gradient shader (PrimaryColor / AccentColor)
-                   z1  Image                    Podcast artwork, full-bleed, anchored right
-                   z2  Border (LinearGradient)  Left-half dark scrim for text legibility
-                   z3  StackPanel               Title / Subtitle / SourceLabel; settles in when active
-            -->
-            <DataTemplate x:Key="HeroShowTemplate" x:DataType="vm:PodcastBrowseItemViewModel">
-                <Button
-                    Width="{x:Bind HeroCardWidth, Mode=OneWay}"
-                    Height="{x:Bind HeroCardHeight, Mode=OneWay}"
-                    Padding="0"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Canvas.ZIndex="{x:Bind HeroZIndex, Mode=OneWay}"
-                    Click="BrowseItem_Click"
-                    CornerRadius="20"
-                    GotFocus="HeroCard_GotFocus"
-                    HorizontalContentAlignment="Stretch"
-                    LostFocus="HeroCard_LostFocus"
-                    PointerEntered="HeroCard_PointerEntered"
-                    PointerExited="HeroCard_PointerExited"
-                    Loaded="HeroRoundedClip_Loaded"
-                    SizeChanged="HeroRoundedClip_SizeChanged"
-                    Unloaded="HeroRoundedClip_Unloaded"
-                    Tag="{x:Bind}"
-                    UseSystemFocusVisuals="True"
-                    VerticalContentAlignment="Stretch"
-                    helpers:HeroCardAnimations.IsSelected="{x:Bind IsHeroSelected, Mode=OneWay}"
-                    winUi:VisualExtensions.NormalizedCenterPoint="0.5,0.5">
-                    <winUi:Effects.Shadow>
-                        <!-- Shadow Color is the hero's identity colour, not black, so adjacent
-                             cards' overlapping shadows produce a colored "glow" halo (MS Store
-                             style) instead of a darker gap. InnerContentClipMode="None" because
-                             every inner layer is already intrinsically rounded. -->
-                        <media:AttachedCardShadow
-                            BlurRadius="3"
-                            Color="{x:Bind HeroPrimaryColor, Mode=OneWay}"
-                            CornerRadius="20"
-                            InnerContentClipMode="None"
-                            Offset="0,1"
-                            Opacity="0.10"/>
-                    </winUi:Effects.Shadow>
-                    <Border
-                        x:Name="HeroCardClipRoot"
-                        CornerRadius="20"
-                        Background="{x:Bind HeroPrimaryBrush, Mode=OneWay}"
-                        BorderBrush="Transparent"
-                        BorderThickness="0">
-                        <!-- Background = HeroPrimaryBrush is a defense-in-depth fallback in case
-                             the shader fails to render; the shader (alpha=1) covers it in normal
-                             operation. BorderBrush+BorderThickness="1" gives the subtle inset
-                             rim highlight from the prototype (inset 0 0 0 1px rgba(255,255,255,0.06)).
-                             Border.CornerRadius rounds both the Background brush AND the stroke
-                             natively, so neither bleeds. The shader self-clips in Win2D (see
-                             AnimatedHeroBackground.OnDraw), and every other layer is intrinsically
-                             rounded (artwork ImageBrush in Border, scrim Border w/ CornerRadius). -->
-                        <Grid x:Name="HeroCardContentGrid">
-                            <!-- z0  bg: animated mesh-gradient shader. Self-clips at the
-                                 card's 20 px outer radius via ClipCornerRadius. -->
-                            <cards:AnimatedHeroBackground
-                                HorizontalAlignment="Stretch"
-                                VerticalAlignment="Stretch"
-                                PrimaryColor="{x:Bind HeroPrimaryColor, Mode=OneWay}"
-                                AccentColor="{x:Bind HeroAccentColor, Mode=OneWay}"
-                                ClipCornerRadius="20"/>
-
-                            <!-- z1  art: full-card-bleed background image (matches the
-                                 hero-carousel.html prototype's `background: url(...) center
-                                 right / cover` pattern). The scrim above (z2) fades the
-                                 left half to dark for text legibility, so the artwork
-                                 doesn't compete with the title. Stretching the artwork
-                                 across the whole card lets the whole slide move as one
-                                 flat editorial layer during carousel pushes. Border.Background+ImageBrush
-                                 is intrinsically clipped to CornerRadius. -->
-                            <Border
-                                x:Name="HeroArtworkHost"
-                                CornerRadius="20"
-                                Margin="-28,0"
-                                HorizontalAlignment="Stretch"
-                                VerticalAlignment="Stretch">
-                                <Border.Background>
-                                    <ImageBrush
-                                        Stretch="UniformToFill"
-                                        ImageSource="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='840'}"/>
-                                </Border.Background>
-                            </Border>
-
-                            <!-- z2  scrim: tinted-dark linear gradient on the left for text
-                                 legibility. Hue is the podcast's extracted identity colour
-                                 (HeroScrimBrush, built from ColorHex on the item VM). Border
-                                 with CornerRadius natively clips its Background brush, so the
-                                 scrim is intrinsically rounded — no composition clip needed. -->
-                            <Border
-                                CornerRadius="20"
-                                Background="{x:Bind HeroScrimBrush, Mode=OneWay}"/>
-
-                            <!-- z3  content: settles in when the card becomes active -->
-                            <StackPanel
-                                x:Name="HeroTextPanel"
-                                Padding="56,0,56,56"
-                                MaxWidth="{x:Bind HeroContentMaxWidth, Mode=OneWay}"
-                                HorizontalAlignment="Left"
-                                VerticalAlignment="Bottom"
-                                Opacity="{x:Bind HeroContentOpacity, Mode=OneWay}"
-                                Spacing="14"
-                                IsHitTestVisible="False">
-                                <animations:Implicit.ShowAnimations>
-                                    <animations:OpacityAnimation From="0" To="1" Duration="0:0:0.50"/>
-                                    <animations:TranslationAnimation From="-16,0,0" To="0" Duration="0:0:0.55"/>
-                                </animations:Implicit.ShowAnimations>
-                                <animations:Implicit.HideAnimations>
-                                    <animations:OpacityAnimation To="0" Duration="0:0:0.18"/>
-                                </animations:Implicit.HideAnimations>
-                                <Border
-                                    HorizontalAlignment="Left"
-                                    Padding="10,4"
-                                    Background="#52000000"
-                                    BorderBrush="#0AFFFFFF"
-                                    BorderThickness="0.5"
-                                    CornerRadius="6">
-                                    <TextBlock
-                                        Text="{x:Bind SourceLabel, Mode=OneWay}"
-                                        FontSize="12"
-                                        FontWeight="SemiBold"
-                                        CharacterSpacing="80"
-                                        Foreground="#FFFFFFFF"
-                                        TextTrimming="CharacterEllipsis"
-                                        MaxLines="1"/>
-                                </Border>
-                                <TextBlock
-                                    Text="{x:Bind Title, Mode=OneWay}"
-                                    Style="{StaticResource TitleLargeTextBlockStyle}"
-                                    FontSize="{x:Bind HeroTitleFontSize, Mode=OneWay}"
-                                    LineHeight="{x:Bind HeroTitleLineHeight, Mode=OneWay}"
-                                    MaxWidth="{x:Bind HeroTitleMaxWidth, Mode=OneWay}"
-                                    FontWeight="Bold"
-                                    Foreground="#FFFFFFFF"
-                                    TextTrimming="WordEllipsis"
-                                    TextWrapping="Wrap"
-                                    MaxLines="2"/>
-                                <TextBlock
-                                    Text="{x:Bind Subtitle, Mode=OneWay}"
-                                    Style="{StaticResource BodyTextBlockStyle}"
-                                    FontSize="17"
-                                    LineHeight="24"
-                                    Foreground="#D9FFFFFF"
-                                    TextTrimming="CharacterEllipsis"
-                                    TextWrapping="WrapWholeWords"
-                                    MaxLines="2"/>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                </Button>
-            </DataTemplate>
-
-            <!-- ─── Hero side card (companion to the main hero, MS-Store-style 1:1 cover on the right) ─── -->
-            <DataTemplate x:Key="HeroSideCardTemplate" x:DataType="vm:PodcastBrowseItemViewModel">
-                <Button
-                    Width="380"
-                    Height="204"
-                    Padding="0"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Click="BrowseItem_Click"
-                    CornerRadius="14"
-                    HorizontalContentAlignment="Stretch"
-                    VerticalContentAlignment="Stretch"
-                    Loaded="HeroRoundedClip_Loaded"
-                    SizeChanged="HeroRoundedClip_SizeChanged"
-                    Unloaded="HeroRoundedClip_Unloaded"
-                    Tag="{x:Bind}"
-                    UseSystemFocusVisuals="True">
-                    <winUi:Effects.Shadow>
-                        <media:AttachedCardShadow
-                            BlurRadius="10"
-                            Color="{x:Bind HeroPrimaryColor, Mode=OneWay}"
-                            CornerRadius="14"
-                            InnerContentClipMode="None"
-                            Offset="0,6"
-                            Opacity="0.40"/>
-                    </winUi:Effects.Shadow>
-                    <Border
-                        x:Name="HeroSideCardClipRoot"
-                        CornerRadius="14"
-                        Background="{x:Bind HeroPrimaryBrush, Mode=OneWay}"
-                        BorderBrush="#08FFFFFF"
-                        BorderThickness="1">
-                        <Grid x:Name="HeroSideCardContentGrid">
-                            <cards:AnimatedHeroBackground
-                                HorizontalAlignment="Stretch"
-                                VerticalAlignment="Stretch"
-                                PrimaryColor="{x:Bind HeroPrimaryColor, Mode=OneWay}"
-                                AccentColor="{x:Bind HeroAccentColor, Mode=OneWay}"
-                                ClipCornerRadius="14"/>
-                            <Border
-                                x:Name="HeroSideArtworkHost"
-                                Width="156"
-                                Height="156"
-                                CornerRadius="10"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Center"
-                                Margin="0,0,16,0"
-                                Visibility="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                                <Border.Background>
-                                    <ImageBrush
-                                        Stretch="UniformToFill"
-                                        ImageSource="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='312'}"/>
-                                </Border.Background>
-                            </Border>
-                            <Border
-                                CornerRadius="14"
-                                Background="{x:Bind HeroScrimBrush, Mode=OneWay}"/>
-                            <StackPanel
-                                Padding="20,18,200,18"
-                                HorizontalAlignment="Left"
-                                VerticalAlignment="Bottom"
-                                Spacing="6"
-                                IsHitTestVisible="False">
-                                <Border
-                                    HorizontalAlignment="Left"
-                                    Padding="8,2"
-                                    Background="#8C000000"
-                                    BorderBrush="#14FFFFFF"
-                                    BorderThickness="1"
-                                    CornerRadius="4">
-                                    <TextBlock
-                                        Text="{x:Bind SourceLabel, Mode=OneWay}"
-                                        FontSize="10"
-                                        FontWeight="SemiBold"
-                                        CharacterSpacing="60"
-                                        Foreground="#FFFFFFFF"
-                                        TextTrimming="CharacterEllipsis"
-                                        MaxLines="1"/>
-                                </Border>
-                                <TextBlock
-                                    Text="{x:Bind Title, Mode=OneWay}"
-                                    FontSize="20"
-                                    LineHeight="22"
-                                    FontWeight="Bold"
-                                    Foreground="#FFFFFFFF"
-                                    TextTrimming="WordEllipsis"
-                                    TextWrapping="Wrap"
-                                    MaxLines="2"/>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                </Button>
-            </DataTemplate>
-
-            <!-- ─── Editorial-shelf show card (delegates to ContentCard) ─── -->
             <DataTemplate x:Key="PodcastShowContentCardTemplate" x:DataType="vm:PodcastBrowseItemViewModel">
                 <cards:ContentCard
                     Title="{x:Bind Title, Mode=OneWay}"
@@ -320,120 +26,129 @@
                     PlaceholderColorHex="{x:Bind ColorHex, Mode=OneWay}"
                     PlaceholderGlyph="&#xEC05;"
                     NavigationUri="{x:Bind Uri, Mode=OneWay}"
-                    NavigationTitle="{x:Bind Title, Mode=OneWay}"/>
+                    NavigationTitle="{x:Bind Title, Mode=OneWay}" />
             </DataTemplate>
 
-            <!-- ─── Featured-category tile (kept; rotated motif is its identity) ─── -->
-            <DataTemplate x:Key="CategoryTileTemplate" x:DataType="vm:PodcastBrowseItemViewModel">
+            <DataTemplate x:Key="HeroSideCardTemplate" x:DataType="vm:PodcastBrowseItemViewModel">
                 <Button
-                    Width="178"
-                    Height="92"
+                    MinWidth="0"
                     Padding="0"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    VerticalContentAlignment="Stretch"
                     Background="Transparent"
                     BorderThickness="0"
                     Click="BrowseItem_Click"
                     Tag="{x:Bind}"
                     UseSystemFocusVisuals="True">
                     <Border
-                        Background="{x:Bind TileBrush}"
-                        BorderBrush="{x:Bind TileBorderBrush}"
-                        BorderThickness="1"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        Background="#202020"
                         CornerRadius="8">
-                        <Grid Padding="12">
-                            <Border
-                                Width="76"
-                                Height="76"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Bottom"
-                                Margin="0,0,-18,-20"
-                                CornerRadius="6"
-                                Opacity="0.86"
-                                RenderTransformOrigin="0.5,0.5">
-                                <Border.RenderTransform>
-                                    <RotateTransform Angle="12"/>
-                                </Border.RenderTransform>
-                                <Grid Background="{x:Bind TileTintBrush}">
-                                    <FontIcon
-                                        Glyph="&#xEC05;"
-                                        FontSize="24"
-                                        Opacity="0.35"
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"/>
-                                    <Image
-                                        Source="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='152'}"
-                                        Stretch="UniformToFill"
-                                        Visibility="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
-                                        behaviors:ImageFallbackBehavior.HideOnError="True"
-                                        behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                        behaviors:ImageFallbackBehavior.DecodePixelWidth="152"/>
-                                </Grid>
+                        <Grid>
+                            <Border CornerRadius="8">
+                                <Border.Background>
+                                    <ImageBrush
+                                        ImageSource="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='420'}"
+                                        Stretch="UniformToFill" />
+                                </Border.Background>
                             </Border>
+
+                            <Border CornerRadius="8">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                                        <GradientStop Offset="0.0" Color="#22000000" />
+                                        <GradientStop Offset="0.52" Color="#56000000" />
+                                        <GradientStop Offset="1.0" Color="#DE000000" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+
+                            <Border CornerRadius="8">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                                        <GradientStop Offset="0.0" Color="#80000000" />
+                                        <GradientStop Offset="0.48" Color="#1C000000" />
+                                        <GradientStop Offset="1.0" Color="#00000000" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+
                             <TextBlock
+                                Margin="20,0,20,18"
+                                VerticalAlignment="Bottom"
                                 Text="{x:Bind Title, Mode=OneWay}"
+                                FontSize="19"
                                 FontWeight="SemiBold"
-                                TextWrapping="WrapWholeWords"
+                                Foreground="White"
                                 MaxLines="2"
-                                VerticalAlignment="Top"/>
+                                TextTrimming="CharacterEllipsis"
+                                TextWrapping="WrapWholeWords" />
                         </Grid>
                     </Border>
                 </Button>
             </DataTemplate>
 
-            <!-- ─── Editorial shelf (custom header + ShelfScroller, mirrors HomePage) ─── -->
             <DataTemplate x:Key="EditorialShelfTemplate" x:DataType="vm:PodcastBrowseSectionViewModel">
-                <StackPanel Margin="0,0,-32,20" Spacing="10">
+                <StackPanel Margin="0,0,-32,18" Spacing="10">
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
+
                         <StackPanel Spacing="2" VerticalAlignment="Center">
                             <TextBlock
                                 Text="{x:Bind Title}"
                                 Style="{StaticResource SubtitleTextBlockStyle}"
-                                FontWeight="Bold"/>
+                                FontWeight="Bold" />
                             <TextBlock
                                 Text="{x:Bind Subtitle}"
                                 FontSize="12"
                                 CharacterSpacing="80"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                 TextTrimming="CharacterEllipsis"
-                                Visibility="{x:Bind Subtitle, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                Visibility="{x:Bind Subtitle, Converter={StaticResource NullToVisibilityConverter}}" />
                         </StackPanel>
+
                         <Button
                             Grid.Column="1"
-                            VerticalAlignment="Center"
                             MinWidth="0"
                             Padding="10,4"
-                            FontSize="12"
+                            VerticalAlignment="Center"
                             Background="Transparent"
                             BorderThickness="0"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Content="{x:Bind ActionText, Mode=OneWay}"
                             Click="SectionAction_Click"
+                            Content="{x:Bind ActionText, Mode=OneWay}"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Tag="{x:Bind}"
-                            Visibility="{x:Bind HasAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            Visibility="{x:Bind HasAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
                         <StackPanel
                             Grid.Column="2"
-                            Orientation="Horizontal"
-                            Spacing="4"
+                            Margin="0,0,32,0"
                             VerticalAlignment="Center"
-                            Margin="0,0,32,0">
+                            Orientation="Horizontal"
+                            Spacing="4">
                             <Button
                                 Style="{StaticResource ShelfChevronButtonStyle}"
                                 Command="{Binding ElementName=PART_Shelf, Path=PageLeftCommand}"
                                 Visibility="{Binding ElementName=PART_Shelf, Path=HasOverflow, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <FontIcon Glyph="&#xE76B;" FontSize="12"/>
+                                <FontIcon FontSize="12" Glyph="&#xE76B;" />
                             </Button>
                             <Button
                                 Style="{StaticResource ShelfChevronButtonStyle}"
                                 Command="{Binding ElementName=PART_Shelf, Path=PageRightCommand}"
                                 Visibility="{Binding ElementName=PART_Shelf, Path=HasOverflow, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <FontIcon Glyph="&#xE76C;" FontSize="12"/>
+                                <FontIcon FontSize="12" Glyph="&#xE76C;" />
                             </Button>
                         </StackPanel>
                     </Grid>
+
                     <Grid>
                         <shelf:ShelfScroller
                             x:Name="PART_Shelf"
@@ -442,29 +157,13 @@
                             ItemTemplate="{StaticResource PodcastShowContentCardTemplate}"
                             MinItemWidth="160"
                             MaxItemWidth="200"
-                            Spacing="14"/>
+                            Spacing="14" />
                         <Border
-                            HorizontalAlignment="Right"
                             Width="140"
+                            HorizontalAlignment="Right"
                             IsHitTestVisible="False"
-                            Background="{ThemeResource ShelfFadeRightBrush}"/>
+                            Background="{ThemeResource ShelfFadeRightBrush}" />
                     </Grid>
-                </StackPanel>
-            </DataTemplate>
-
-            <DataTemplate x:Key="CategoryGroupTemplate" x:DataType="vm:PodcastBrowseSectionViewModel">
-                <StackPanel Spacing="12" Margin="0,0,0,28">
-                    <TextBlock
-                        Text="{x:Bind Title, Mode=OneWay}"
-                        FontSize="20"
-                        FontWeight="Bold"/>
-                    <ItemsRepeater
-                        ItemsSource="{x:Bind Items, Mode=OneWay}"
-                        ItemTemplate="{StaticResource CategoryTileTemplate}">
-                        <ItemsRepeater.Layout>
-                            <UniformGridLayout MinItemWidth="178" MinColumnSpacing="10" MinRowSpacing="10"/>
-                        </ItemsRepeater.Layout>
-                    </ItemsRepeater>
                 </StackPanel>
             </DataTemplate>
         </ResourceDictionary>
@@ -472,218 +171,123 @@
 
     <Grid Padding="12,8,12,0">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="232" />
+            <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
-
-        <!-- Page tint: soft global color shift painted BEHIND the rest of the
-             page (sidebar + content + shelves). Top stop's Color is driven
-             from code-behind by the layered transition state — lerps continuously
-             between adjacent heroes' HeroPrimaryColor as the user scrolls/swipes.
-             Bottom stop is Transparent so the tint dissolves into the shelf
-             area below. Spans both columns and uses a negative margin to fully
-             cover the page Padding edges; IsHitTestVisible=False so it doesn't
-             block clicks on anything above it. Sits FIRST in the Grid so it
-             renders below the sidebar and content. -->
-        <Border
-            x:Name="PageTintLayer"
-            Grid.Column="0"
-            Grid.ColumnSpan="2"
-            Margin="-12,-8,-12,0"
-            Opacity="0.35"
-            IsHitTestVisible="False">
-            <Border.Background>
-                <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
-                    <GradientStop x:Name="PageTintTopStop" Offset="0" Color="Transparent"/>
-                    <GradientStop Offset="1" Color="Transparent"/>
-                </LinearGradientBrush>
-            </Border.Background>
-        </Border>
 
         <Border
             x:Name="CategorySidebar"
             Grid.Column="0"
-            Width="220"
-            Margin="0,0,12,0"
-            VerticalAlignment="Stretch"
+            Margin="0,0,16,0"
             Visibility="Collapsed">
-            <Grid RowSpacing="12">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <Border
-                    Grid.Row="0"
-                    Width="220"
-                    Padding="10,6"
-                    HorizontalAlignment="Left"
-                    Canvas.ZIndex="4"
-                    CornerRadius="16"
-                    Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    Visibility="{x:Bind ViewModel.ShowBreadcrumbs, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <muxc:BreadcrumbBar
-                        HorizontalAlignment="Stretch"
-                        ItemsSource="{x:Bind ViewModel.BreadcrumbItems, Mode=OneWay}"
-                        ItemClicked="BrowseBreadcrumb_ItemClicked"/>
-                </Border>
-                <Grid Grid.Row="1">
+            <Grid>
                 <ScrollView
-                    Width="220"
-                    HorizontalAlignment="Left"
                     ContentOrientation="Vertical"
-                    VerticalScrollMode="Auto"
-                    VerticalScrollBarVisibility="Auto"
-                    HorizontalScrollMode="Disabled"
                     HorizontalScrollBarVisibility="Hidden"
+                    HorizontalScrollMode="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    VerticalScrollMode="Auto"
                     Visibility="{x:Bind ViewModel.ShowSidebar, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <StackPanel Spacing="16">
-                        <muxc:ItemsRepeater
-                            ItemsSource="{x:Bind ViewModel.AllPodcastCategories, Mode=OneWay}">
+                    <StackPanel Padding="0,6,0,28" Spacing="16">
+                        <muxc:ItemsRepeater ItemsSource="{x:Bind ViewModel.AllPodcastCategories, Mode=OneWay}">
                             <muxc:ItemsRepeater.ItemTemplate>
                                 <DataTemplate x:DataType="vm:PodcastBrowseSectionViewModel">
-                                    <StackPanel Spacing="8" Margin="0,0,0,2">
+                                    <StackPanel Spacing="7">
                                         <TextBlock
                                             Text="{x:Bind Title, Converter={StaticResource StringToUpperConverter}}"
                                             FontSize="11"
                                             CharacterSpacing="180"
                                             FontWeight="SemiBold"
                                             Opacity="0.55"
-                                            TextTrimming="CharacterEllipsis"/>
-                                        <muxc:ItemsRepeater
-                                            ItemsSource="{x:Bind Items, Mode=OneWay}">
+                                            TextTrimming="CharacterEllipsis" />
+
+                                        <muxc:ItemsRepeater ItemsSource="{x:Bind Items, Mode=OneWay}">
                                             <muxc:ItemsRepeater.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:PodcastBrowseItemViewModel">
                                                     <Button
-                                                        Click="BrowseItem_Click"
-                                                        Tag="{x:Bind}"
-                                                        Padding="0"
                                                         MinWidth="0"
+                                                        MinHeight="0"
+                                                        Padding="8,5"
                                                         HorizontalAlignment="Stretch"
                                                         HorizontalContentAlignment="Stretch"
                                                         Background="Transparent"
                                                         BorderThickness="0"
+                                                        Click="BrowseItem_Click"
+                                                        Tag="{x:Bind}"
                                                         UseSystemFocusVisuals="True">
-                                                        <Grid MinHeight="30" Padding="8,5" ColumnSpacing="8">
+                                                        <Grid MinHeight="24" ColumnSpacing="8">
                                                             <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
                                                             </Grid.ColumnDefinitions>
+
                                                             <Border
                                                                 Grid.ColumnSpan="2"
-                                                                Margin="-8,-3,-8,-3"
+                                                                Margin="-8,-4,-8,-4"
                                                                 Background="{x:Bind TileTintBrush}"
                                                                 CornerRadius="7"
-                                                                Opacity="0.9"
-                                                                Visibility="{x:Bind IsSidebarSelected, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                                <animations:Implicit.ShowAnimations>
-                                                                    <animations:OpacityAnimation From="0" To="0.9" Duration="0:0:0.18"/>
-                                                                    <animations:ScaleAnimation From="0.96,0.96,1" To="1,1,1" Duration="0:0:0.22"/>
-                                                                </animations:Implicit.ShowAnimations>
-                                                                <animations:Implicit.HideAnimations>
-                                                                    <animations:OpacityAnimation To="0" Duration="0:0:0.12"/>
-                                                                </animations:Implicit.HideAnimations>
-                                                            </Border>
+                                                                Opacity="0.95"
+                                                                Visibility="{x:Bind IsSidebarSelected, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
                                                             <Border
                                                                 Width="3"
                                                                 Height="16"
-                                                                CornerRadius="2"
-                                                                Background="{x:Bind TileBorderBrush}"
                                                                 VerticalAlignment="Center"
-                                                                Visibility="{x:Bind IsSidebarSelected, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                                <animations:Implicit.ShowAnimations>
-                                                                    <animations:OpacityAnimation From="0" To="1" Duration="0:0:0.16"/>
-                                                                    <animations:TranslationAnimation From="-6,0,0" To="0" Duration="0:0:0.22"/>
-                                                                </animations:Implicit.ShowAnimations>
-                                                            </Border>
-                                                            <Grid Grid.Column="1" VerticalAlignment="Center">
-                                                                <TextBlock
-                                                                    Text="{x:Bind Title, Converter={StaticResource StringToUpperConverter}}"
-                                                                    FontSize="11"
-                                                                    CharacterSpacing="100"
-                                                                    FontWeight="SemiBold"
-                                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                    TextTrimming="CharacterEllipsis"
-                                                                    Visibility="{x:Bind IsSidebarSelected, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                                                <TextBlock
-                                                                    Text="{x:Bind Title, Converter={StaticResource StringToUpperConverter}}"
-                                                                    FontSize="11"
-                                                                    CharacterSpacing="100"
-                                                                    FontWeight="SemiBold"
-                                                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                                                    TextTrimming="CharacterEllipsis"
-                                                                    Visibility="{x:Bind IsSidebarSelected, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                                    <animations:Implicit.ShowAnimations>
-                                                                        <animations:OpacityAnimation From="0" To="1" Duration="0:0:0.18"/>
-                                                                        <animations:TranslationAnimation From="4,0,0" To="0" Duration="0:0:0.2"/>
-                                                                    </animations:Implicit.ShowAnimations>
-                                                                </TextBlock>
-                                                            </Grid>
+                                                                Background="{x:Bind TileBorderBrush}"
+                                                                CornerRadius="2"
+                                                                Visibility="{x:Bind IsSidebarSelected, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                                                            <TextBlock
+                                                                Grid.Column="1"
+                                                                VerticalAlignment="Center"
+                                                                Text="{x:Bind Title, Converter={StaticResource StringToUpperConverter}}"
+                                                                FontSize="11"
+                                                                CharacterSpacing="100"
+                                                                FontWeight="SemiBold"
+                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                TextTrimming="CharacterEllipsis" />
                                                         </Grid>
                                                     </Button>
                                                 </DataTemplate>
                                             </muxc:ItemsRepeater.ItemTemplate>
                                             <muxc:ItemsRepeater.Layout>
-                                                <muxc:StackLayout Orientation="Vertical" Spacing="2"/>
+                                                <muxc:StackLayout Orientation="Vertical" Spacing="2" />
                                             </muxc:ItemsRepeater.Layout>
                                         </muxc:ItemsRepeater>
                                     </StackPanel>
                                 </DataTemplate>
                             </muxc:ItemsRepeater.ItemTemplate>
                             <muxc:ItemsRepeater.Layout>
-                                <muxc:StackLayout Orientation="Vertical" Spacing="16"/>
+                                <muxc:StackLayout Orientation="Vertical" Spacing="16" />
                             </muxc:ItemsRepeater.Layout>
                         </muxc:ItemsRepeater>
                     </StackPanel>
                 </ScrollView>
 
-                <!-- Sidebar shimmer skeleton — matches the live category list's
-                     uppercase 11 px section header + tracked row layout so the
-                     swap-in is visually quiet on first load. -->
                 <StackPanel
                     x:Name="CategorySidebarShimmer"
+                    Padding="0,6,0,0"
                     IsHitTestVisible="False"
                     Spacing="16"
-                    Width="220"
-                    HorizontalAlignment="Left"
                     Visibility="{x:Bind ViewModel.ShowSidebarShimmer, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <StackPanel Spacing="8">
-                        <controls:Shimmer Width="64"  Height="11" CornerRadius="3" HorizontalAlignment="Left" Opacity="0.55"/>
-                        <StackPanel Spacing="4">
-                            <controls:Shimmer Width="120" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="96"  Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                        </StackPanel>
+                        <controls:Shimmer Width="64" Height="11" HorizontalAlignment="Left" CornerRadius="3" Opacity="0.55" />
+                        <controls:Shimmer Width="120" Height="14" HorizontalAlignment="Left" CornerRadius="4" />
+                        <controls:Shimmer Width="96" Height="14" HorizontalAlignment="Left" CornerRadius="4" />
                     </StackPanel>
                     <StackPanel Spacing="8">
-                        <controls:Shimmer Width="132" Height="11" CornerRadius="3" HorizontalAlignment="Left" Opacity="0.55"/>
-                        <StackPanel Spacing="4">
-                            <controls:Shimmer Width="84"  Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="108" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="140" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="72"  Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="96"  Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="120" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="64"  Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                        </StackPanel>
+                        <controls:Shimmer Width="132" Height="11" HorizontalAlignment="Left" CornerRadius="3" Opacity="0.55" />
+                        <controls:Shimmer Width="84" Height="14" HorizontalAlignment="Left" CornerRadius="4" />
+                        <controls:Shimmer Width="108" Height="14" HorizontalAlignment="Left" CornerRadius="4" />
+                        <controls:Shimmer Width="140" Height="14" HorizontalAlignment="Left" CornerRadius="4" />
+                        <controls:Shimmer Width="72" Height="14" HorizontalAlignment="Left" CornerRadius="4" />
                     </StackPanel>
                     <StackPanel Spacing="8">
-                        <controls:Shimmer Width="108" Height="11" CornerRadius="3" HorizontalAlignment="Left" Opacity="0.55"/>
-                        <StackPanel Spacing="4">
-                            <controls:Shimmer Width="116" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="84"  Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </StackPanel>
-                    <StackPanel Spacing="8">
-                        <controls:Shimmer Width="148" Height="11" CornerRadius="3" HorizontalAlignment="Left" Opacity="0.55"/>
-                        <StackPanel Spacing="4">
-                            <controls:Shimmer Width="92"  Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="128" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                            <controls:Shimmer Width="76"  Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                        </StackPanel>
+                        <controls:Shimmer Width="108" Height="11" HorizontalAlignment="Left" CornerRadius="3" Opacity="0.55" />
+                        <controls:Shimmer Width="116" Height="14" HorizontalAlignment="Left" CornerRadius="4" />
+                        <controls:Shimmer Width="84" Height="14" HorizontalAlignment="Left" CornerRadius="4" />
                     </StackPanel>
                 </StackPanel>
-                </Grid>
             </Grid>
         </Border>
 
@@ -691,318 +295,198 @@
             x:Name="MainScroll"
             Grid.Column="1"
             ContentOrientation="Vertical"
-            VerticalScrollMode="Auto"
-            VerticalScrollBarVisibility="Auto"
+            HorizontalScrollBarVisibility="Hidden"
             HorizontalScrollMode="Disabled"
-            HorizontalScrollBarVisibility="Hidden">
-            <StackPanel Spacing="8">
-                <!-- ════════════════════════════════════════════════════════════
-                     HERO SURFACE — cinematic, AI-Dev-Gallery layered backdrop
-                     ════════════════════════════════════════════════════════════ -->
-                <Grid
-                    x:Name="HeroSurface"
-                    Background="Transparent">
-                    <!-- Each card carries its own animated mesh-gradient shader + artwork +
-                         color-tinted scrim, so the page-level acrylic / header tint /
-                         blurred backdrop / radial vignette / bottom gradient are all gone. -->
+            VerticalScrollBarVisibility="Auto"
+            VerticalScrollMode="Auto">
+            <StackPanel Spacing="18">
+                <Grid Margin="0,6,4,0" ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="420" />
+                    </Grid.ColumnDefinitions>
 
-                    <!-- Hero content stack -->
-                    <Grid Padding="8,0,8,8" RowSpacing="8">
+                    <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                        <muxc:BreadcrumbBar
+                            Margin="0,0,0,2"
+                            HorizontalAlignment="Left"
+                            ItemClicked="BrowseBreadcrumb_ItemClicked"
+                            ItemsSource="{x:Bind ViewModel.BreadcrumbItems, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.ShowBreadcrumbs, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        <TextBlock
+                            Text="{x:Bind ViewModel.Title, Mode=OneWay}"
+                            FontSize="38"
+                            FontWeight="Bold"
+                            LineHeight="44"
+                            MaxLines="2"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Text="{x:Bind ViewModel.Subtitle, Mode=OneWay}"
+                            FontSize="13"
+                            CharacterSpacing="20"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            LineHeight="18"
+                            MaxLines="1"
+                            TextTrimming="CharacterEllipsis"
+                            Visibility="{x:Bind ViewModel.Subtitle, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
+                    </StackPanel>
+
+                    <TextBox
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        PlaceholderText="{x:Bind ViewModel.SearchPlaceholder, Mode=OneWay}" />
+                </Grid>
+
+                <Grid
+                    MaxWidth="1420"
+                    Margin="0,12,4,0"
+                    HorizontalAlignment="Left"
+                    ColumnSpacing="12"
+                    Visibility="{x:Bind ViewModel.ShowHeroCarousel, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="920" />
+                        <ColumnDefinition Width="488" />
+                    </Grid.ColumnDefinitions>
+
+                    <hero:HeroCarouselView
+                        x:Name="HeroCarousel"
+                        Grid.Column="0"
+                        HorizontalAlignment="Stretch"
+                        AutoAdvanceInterval="0:0:6"
+                        Background="Transparent"
+                        IsAutoAdvanceEnabled="{x:Bind ViewModel.HasHeroShows, Mode=OneWay}"
+                        IsLoopingEnabled="True"
+                        PauseAutoAdvanceOnInteraction="True"
+                        ShowPips="True"
+                        UseColorWash="True"
+                        UseGlow="True"
+                        MaxStageWidth="920"
+                        UseShimmerPlaceholder="True"
+                        UseSpotlight="True" />
+
+                    <Grid
+                        Grid.Column="1"
+                        Height="517.5"
+                        Margin="0"
+                        VerticalAlignment="Top"
+                        RowSpacing="12"
+                        Visibility="{x:Bind ViewModel.HasHeroSideShows, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="2*" />
+                            <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
 
-                        <Grid Grid.Row="0" ColumnSpacing="16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
-                                <TextBlock
-                                    Text="{x:Bind ViewModel.Title, Mode=OneWay}"
-                                    FontSize="38"
-                                    FontWeight="Bold"
-                                    CharacterSpacing="0"
-                                    LineHeight="44"
-                                    TextAlignment="Left"
-                                    TextWrapping="Wrap"
-                                    TextTrimming="CharacterEllipsis"
-                                    MaxLines="2"
-                                    Foreground="{StaticResource WordmarkBrush}"/>
-                                <TextBlock
-                                    Text="{x:Bind ViewModel.Subtitle, Mode=OneWay}"
-                                    FontSize="13"
-                                    CharacterSpacing="20"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    LineHeight="18"
-                                    TextTrimming="CharacterEllipsis"
-                                    MaxLines="1"
-                                    Visibility="{x:Bind ViewModel.Subtitle, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
-                            </StackPanel>
-                            <TextBox
-                                Grid.Column="1"
-                                Width="360"
-                                VerticalAlignment="Center"
-                                HorizontalAlignment="Right"
-                                PlaceholderText="{x:Bind ViewModel.SearchPlaceholder, Mode=OneWay}"/>
-                        </Grid>
+                        <ContentControl
+                            Grid.Row="0"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch"
+                            Content="{x:Bind ViewModel.HeroSidePrimary, Mode=OneWay}"
+                            ContentTemplate="{StaticResource HeroSideCardTemplate}"
+                            Visibility="{x:Bind ViewModel.HasHeroSidePrimary, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
 
                         <Grid Grid.Row="1" ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="0" Spacing="4" VerticalAlignment="Bottom">
-                            <Grid x:Name="HeroCarouselHost" MinHeight="468">
-                                <!-- Loading skeleton shares the exact hero-card footprint so
-                                     category swaps don't resize the carousel before content lands. -->
-                                <Border
-                                    x:Name="HeroCarouselShimmer"
-                                    Width="900"
-                                    Height="420"
-                                    CornerRadius="20"
-                                    Background="#15151A"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    IsHitTestVisible="False"
-                                    Loaded="HeroRoundedClip_Loaded"
-                                    SizeChanged="HeroRoundedClip_SizeChanged"
-                                    Unloaded="HeroRoundedClip_Unloaded">
-                                    <Grid>
-                                        <Border Margin="-2" Background="#15151A"/>
-                                        <cards:AnimatedHeroBackground
-                                            HorizontalAlignment="Stretch"
-                                            VerticalAlignment="Stretch"
-                                            PrimaryColor="#FF7E50F0"
-                                            AccentColor="#FF25E6FF"
-                                            ClipCornerRadius="20"/>
-                                        <Border Margin="-2">
-                                            <Border.Background>
-                                                <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
-                                                    <GradientStop Color="#E0000000" Offset="0"/>
-                                                    <GradientStop Color="#AA000000" Offset="0.28"/>
-                                                    <GradientStop Color="#44000000" Offset="0.52"/>
-                                                    <GradientStop Color="#00000000" Offset="0.70"/>
-                                                </LinearGradientBrush>
-                                            </Border.Background>
-                                        </Border>
-                                        <StackPanel
-                                            Padding="56,0,56,56"
-                                            MaxWidth="620"
-                                            HorizontalAlignment="Left"
-                                            VerticalAlignment="Bottom"
-                                            Spacing="14">
-                                            <controls:Shimmer Width="92" Height="25" CornerRadius="6" HorizontalAlignment="Left"/>
-                                            <controls:Shimmer Width="420" Height="54" CornerRadius="8" HorizontalAlignment="Left"/>
-                                            <controls:Shimmer Width="320" Height="20" CornerRadius="6" HorizontalAlignment="Left"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
+                            <ContentControl
+                                Grid.Column="0"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalContentAlignment="Stretch"
+                                Content="{x:Bind ViewModel.HeroSideSecondaryOne, Mode=OneWay}"
+                                ContentTemplate="{StaticResource HeroSideCardTemplate}"
+                                Visibility="{x:Bind ViewModel.HasHeroSideSecondaryOne, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
 
-                                <!-- Layered hero stage. Cards are populated in code-behind from
-                                     HeroShowTemplate (one realised instance per ViewModel.HeroShows
-                                     item) and stacked at the centred position. The active card sits
-                                     at TranslateTransform.X=0; non-active cards sit off-stage at
-                                     ±cardWidth. Transitions push the outgoing and incoming cards
-                                     together behind HeroStage's fixed rounded viewport clip, matching
-                                     the Microsoft Store carousel motion. -->
-                                <Grid
-                                    x:Name="HeroStage"
-                                    Opacity="0"
-                                    Margin="0"
-                                    Background="Transparent"
-                                    Visibility="{x:Bind ViewModel.ShowHeroShows, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                    SizeChanged="HeroStage_SizeChanged"
-                                    ManipulationMode="TranslateX"
-                                    ManipulationStarted="HeroStage_ManipulationStarted"
-                                    ManipulationDelta="HeroStage_ManipulationDelta"
-                                    ManipulationCompleted="HeroStage_ManipulationCompleted"/>
-
-                                <!-- Edge chevrons; positioned via HeroPrevButton.Margin / HeroNextButton.Margin
-                                     in code-behind so they sit just outside the centred active card. -->
-                                <Button
-                                    x:Name="HeroPrevButton"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Center"
-                                    Width="44"
-                                    Height="44"
-                                    CornerRadius="22"
-                                    Padding="0"
-                                    Background="#5C141416"
-                                    BorderBrush="#1AFFFFFF"
-                                    BorderThickness="1"
-                                    Foreground="#FFFFFFFF"
-                                    Click="HeroPrev_Click"
-                                    Visibility="{x:Bind ViewModel.ShowHeroShows, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <FontIcon Glyph="&#xE76B;" FontSize="14"/>
-                                </Button>
-                                <Button
-                                    x:Name="HeroNextButton"
-                                    HorizontalAlignment="Right"
-                                    VerticalAlignment="Center"
-                                    Width="44"
-                                    Height="44"
-                                    CornerRadius="22"
-                                    Padding="0"
-                                    Background="#5C141416"
-                                    BorderBrush="#1AFFFFFF"
-                                    BorderThickness="1"
-                                    Foreground="#FFFFFFFF"
-                                    Click="HeroNext_Click"
-                                    Visibility="{x:Bind ViewModel.ShowHeroShows, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <FontIcon Glyph="&#xE76C;" FontSize="14"/>
-                                </Button>
-                            </Grid>
-
-                            <muxc:PipsPager
-                                x:Name="HeroPips"
-                                Opacity="0"
-                                HorizontalAlignment="Center"
-                                Margin="0,2,0,0"
-                                MaxVisiblePips="6"
-                                NumberOfPages="{x:Bind ViewModel.HeroCount, Mode=OneWay}"
-                                SelectedPageIndex="{x:Bind ViewModel.SelectedHeroIndex, Mode=OneWay}"
-                                SelectedIndexChanged="HeroPips_SelectedIndexChanged"
-                                Visibility="{x:Bind ViewModel.ShowHeroShows, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                            </StackPanel>
-
-                            <!-- Side cards hidden — they fight the hero visually and don't
-                                 match the Microsoft Store reference (one big hero card per
-                                 row, no adjacent side panels). The repeater stays in the
-                                 tree so the binding/VM logic is preserved if we want to
-                                 bring it back later for a different layout. -->
-                            <muxc:ItemsRepeater
+                            <ContentControl
                                 Grid.Column="1"
-                                Visibility="Collapsed"
-                                VerticalAlignment="Center"
-                                ItemsSource="{x:Bind ViewModel.HeroSideShows, Mode=OneWay}"
-                                ItemTemplate="{StaticResource HeroSideCardTemplate}">
-                                <muxc:ItemsRepeater.Layout>
-                                    <muxc:StackLayout Orientation="Vertical" Spacing="8"/>
-                                </muxc:ItemsRepeater.Layout>
-                            </muxc:ItemsRepeater>
+                                HorizontalContentAlignment="Stretch"
+                                VerticalContentAlignment="Stretch"
+                                Content="{x:Bind ViewModel.HeroSideSecondaryTwo, Mode=OneWay}"
+                                ContentTemplate="{StaticResource HeroSideCardTemplate}"
+                                Visibility="{x:Bind ViewModel.HasHeroSideSecondaryTwo, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                         </Grid>
                     </Grid>
                 </Grid>
 
-                <!-- ════════════════════════════════════════════════════════════
-                     BODY: optional Zune sidebar (root only) + content column
-                     ════════════════════════════════════════════════════════════ -->
-                <Grid
-                    x:Name="PodcastBrowseBodyHost"
-                    MinHeight="360">
+                <Grid x:Name="PodcastBrowseBodyHost" MinHeight="360">
                     <StackPanel
                         x:Name="PodcastBrowseShimmer"
+                        x:Load="{x:Bind ShimmerGate.IsLoaded, Mode=OneWay}"
                         IsHitTestVisible="False"
                         Spacing="14"
                         VerticalAlignment="Top">
                         <StackPanel Margin="0,0,-32,20" Spacing="10">
                             <Grid ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Spacing="6" VerticalAlignment="Center">
-                                    <controls:Shimmer Width="180" Height="24" CornerRadius="6" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="240" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
+                                    <controls:Shimmer Width="180" Height="24" HorizontalAlignment="Left" CornerRadius="6" />
+                                    <controls:Shimmer Width="240" Height="12" HorizontalAlignment="Left" CornerRadius="4" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="0,0,32,0">
-                                    <controls:Shimmer Width="32" Height="32" CornerRadius="16"/>
-                                    <controls:Shimmer Width="32" Height="32" CornerRadius="16"/>
+                                <StackPanel Grid.Column="1" Margin="0,0,32,0" Orientation="Horizontal" Spacing="4">
+                                    <controls:Shimmer Width="32" Height="32" CornerRadius="16" />
+                                    <controls:Shimmer Width="32" Height="32" CornerRadius="16" />
                                 </StackPanel>
                             </Grid>
                             <StackPanel Orientation="Horizontal" Spacing="14">
                                 <StackPanel Width="180" Spacing="8">
-                                    <controls:Shimmer Width="180" Height="180" CornerRadius="8"/>
-                                    <controls:Shimmer Width="150" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="96" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
+                                    <controls:Shimmer Width="180" Height="180" CornerRadius="8" />
+                                    <controls:Shimmer Width="150" Height="14" HorizontalAlignment="Left" CornerRadius="4" />
+                                    <controls:Shimmer Width="96" Height="12" HorizontalAlignment="Left" CornerRadius="4" />
                                 </StackPanel>
                                 <StackPanel Width="180" Spacing="8">
-                                    <controls:Shimmer Width="180" Height="180" CornerRadius="8"/>
-                                    <controls:Shimmer Width="132" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="108" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
+                                    <controls:Shimmer Width="180" Height="180" CornerRadius="8" />
+                                    <controls:Shimmer Width="132" Height="14" HorizontalAlignment="Left" CornerRadius="4" />
+                                    <controls:Shimmer Width="108" Height="12" HorizontalAlignment="Left" CornerRadius="4" />
                                 </StackPanel>
                                 <StackPanel Width="180" Spacing="8">
-                                    <controls:Shimmer Width="180" Height="180" CornerRadius="8"/>
-                                    <controls:Shimmer Width="164" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="88" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
+                                    <controls:Shimmer Width="180" Height="180" CornerRadius="8" />
+                                    <controls:Shimmer Width="164" Height="14" HorizontalAlignment="Left" CornerRadius="4" />
+                                    <controls:Shimmer Width="88" Height="12" HorizontalAlignment="Left" CornerRadius="4" />
                                 </StackPanel>
                                 <StackPanel Width="180" Spacing="8">
-                                    <controls:Shimmer Width="180" Height="180" CornerRadius="8"/>
-                                    <controls:Shimmer Width="128" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="72" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </StackPanel>
-                        <StackPanel Margin="0,0,-32,20" Spacing="10">
-                            <controls:Shimmer Width="150" Height="24" CornerRadius="6" HorizontalAlignment="Left"/>
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <StackPanel Width="180" Spacing="8">
-                                    <controls:Shimmer Width="180" Height="180" CornerRadius="8"/>
-                                    <controls:Shimmer Width="140" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="86" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
-                                </StackPanel>
-                                <StackPanel Width="180" Spacing="8">
-                                    <controls:Shimmer Width="180" Height="180" CornerRadius="8"/>
-                                    <controls:Shimmer Width="112" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="96" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
-                                </StackPanel>
-                                <StackPanel Width="180" Spacing="8">
-                                    <controls:Shimmer Width="180" Height="180" CornerRadius="8"/>
-                                    <controls:Shimmer Width="156" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="74" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
-                                </StackPanel>
-                                <StackPanel Width="180" Spacing="8">
-                                    <controls:Shimmer Width="180" Height="180" CornerRadius="8"/>
-                                    <controls:Shimmer Width="122" Height="14" CornerRadius="4" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="88" Height="12" CornerRadius="4" HorizontalAlignment="Left"/>
+                                    <controls:Shimmer Width="180" Height="180" CornerRadius="8" />
+                                    <controls:Shimmer Width="128" Height="14" HorizontalAlignment="Left" CornerRadius="4" />
+                                    <controls:Shimmer Width="72" Height="12" HorizontalAlignment="Left" CornerRadius="4" />
                                 </StackPanel>
                             </StackPanel>
                         </StackPanel>
                     </StackPanel>
 
-                    <!-- Zune-style ALL-CAPS genre sidebar — every podcast category, grouped
-                         by section, scrollable. Visibility set in code-behind via
-                         UpdateSidebarVisibility() so it shows whenever AllPodcastCategories
-                         has data, on root AND sub-pages. -->
-                    <!-- Body column -->
                     <StackPanel
                         x:Name="PodcastBrowseContent"
                         Opacity="0"
                         Spacing="20"
                         VerticalAlignment="Top">
-                        <animations:Implicit.ShowAnimations>
-                            <animations:OpacityAnimation From="0" To="1" Duration="0:0:0.25"/>
-                            <animations:TranslationAnimation From="0,18,0" To="0" Duration="0:0:0.35"/>
-                        </animations:Implicit.ShowAnimations>
                         <InfoBar
                             IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
                             Severity="Error"
                             Title="Podcast browse failed"
                             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-                            IsClosable="False"/>
+                            IsClosable="False" />
 
                         <muxc:ItemsRepeater
                             ItemsSource="{x:Bind ViewModel.EditorialShelves, Mode=OneWay}"
                             ItemTemplate="{StaticResource EditorialShelfTemplate}"
                             Visibility="{x:Bind ViewModel.HasEditorialShelves, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                             <muxc:ItemsRepeater.Layout>
-                                <muxc:StackLayout Orientation="Vertical" Spacing="0"/>
+                                <muxc:StackLayout Orientation="Vertical" Spacing="0" />
                             </muxc:ItemsRepeater.Layout>
                         </muxc:ItemsRepeater>
 
                         <TextBlock
+                            HorizontalAlignment="Center"
                             Text="No podcast browse content was returned."
                             Style="{StaticResource BodyTextBlockStyle}"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            HorizontalAlignment="Center"
-                            Visibility="{x:Bind ViewModel.ShowNoContentMessage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            Visibility="{x:Bind ViewModel.ShowNoContentMessage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                     </StackPanel>
                 </Grid>
             </StackPanel>
         </ScrollView>
-
     </Grid>
 </Page>

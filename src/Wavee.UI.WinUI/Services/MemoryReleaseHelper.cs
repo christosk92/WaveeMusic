@@ -13,7 +13,7 @@ namespace Wavee.UI.WinUI.Services;
 /// Normally calling <see cref="GC.Collect()"/> manually is an antipattern, but
 /// this helper is used at deliberate "the user can't see us" moments where a
 /// brief stutter is acceptable in exchange for the working set actually shrinking:
-/// closing a tab, minimizing the window, the window losing focus for a long time.
+/// closing a tab, minimizing the window, or explicit diagnostics actions.
 /// </para>
 ///
 /// <para>

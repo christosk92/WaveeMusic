@@ -189,6 +189,21 @@ public sealed class SetEqualizerCommand
     public double[]? BandGains { get; init; }
 }
 
+public sealed class EqualizerApplyResult
+{
+    [JsonPropertyName("installed")]
+    public bool Installed { get; init; }
+
+    [JsonPropertyName("observedAudioBuffer")]
+    public bool ObservedAudioBuffer { get; init; }
+
+    [JsonPropertyName("version")]
+    public long Version { get; init; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; init; }
+}
+
 /// <summary>
 /// Switch the local PortAudio output device to the one at the given index.
 /// </summary>
@@ -637,6 +652,7 @@ public static class IpcMessageTypes
 [JsonSerializable(typeof(SetNormalizationCommand))]
 [JsonSerializable(typeof(SwitchQualityCommand))]
 [JsonSerializable(typeof(SetEqualizerCommand))]
+[JsonSerializable(typeof(EqualizerApplyResult))]
 [JsonSerializable(typeof(SwitchAudioOutputCommand))]
 [JsonSerializable(typeof(AudioOutputDeviceDto))]
 [JsonSerializable(typeof(AudioOutputDeviceDto[]))]

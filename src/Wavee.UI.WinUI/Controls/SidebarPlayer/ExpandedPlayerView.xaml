@@ -41,15 +41,17 @@
             IsHitTestVisible="False" />
 
         <!-- 2-column content. -->
-        <Grid>
+        <Grid
+            x:Name="ContentGrid"
+            HorizontalAlignment="Left">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="LeftColumnDef" Width="*" />
                 <ColumnDefinition x:Name="RightColumnDef" Width="*" />
             </Grid.ColumnDefinitions>
 
             <!-- Left column — Apple-Music-style player layout. MaxWidth caps how
-                 wide the player grows on huge windows; below that the column
-                 shrinks proportionally with the right column (both Width="*"). -->
+                 wide the player grows on huge windows; code-behind assigns
+                 a responsive left-aligned Width so lyrics can use the rest. -->
             <sidebarplayer:ExpandedNowPlayingLayout
                 x:Name="PlayerLayout"
                 Grid.Column="0"

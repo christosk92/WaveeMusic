@@ -210,6 +210,7 @@ docs/superpowers/
 # host-side coding agents. None of these are source.
 .codex-ai-compile/
 .codex-dotnet-home/
+.codex-dumps/
 .codex-har-inspect/
 .dotnet-cli-home/
 .dotnet-home/

@@ -1075,7 +1075,9 @@
                         <!-- Loading shimmer skeleton — placeholder rows that
                              mimic the watch-next row layout while the SEO
                              recommender call is in flight. -->
-                        <ItemsControl Visibility="{x:Bind ViewModel.IsRecommendedLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                        <ItemsControl x:Name="RecommendedShimmer"
+                                      x:Load="{x:Bind ViewModel.IsRecommendedLoading, Mode=OneWay}"
+                                      Visibility="{x:Bind ViewModel.IsRecommendedLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                       VerticalAlignment="Top">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>

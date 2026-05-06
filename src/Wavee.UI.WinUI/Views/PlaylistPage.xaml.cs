@@ -17,6 +17,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls;
+using Wavee.UI.WinUI.Controls.AvatarStack;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.TabBar;
@@ -65,6 +66,8 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     private const byte HeroScrimMaxAlpha = 0xB0;
 
     public PlaylistViewModel ViewModel { get; }
+
+    public ShimmerLoadGate ShimmerGate { get; } = new();
 
     public PlaylistPage()
     {
@@ -157,6 +160,8 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     private void PlaylistPage_Unloaded(object sender, RoutedEventArgs e)
     {
         _isNavigatingAway = true;
+        _heroImageSurface?.Dispose();
+        _heroImageSurface = null;
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs ev)
@@ -259,18 +264,8 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         if (_showingContent) return;
         _showingContent = true;
 
-        AnimationBuilder.Create()
-            .Opacity(from: 1, to: 0, duration: TimeSpan.FromMilliseconds(200))
-            .Start(ShimmerContainer);
-
-        AnimationBuilder.Create()
-            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(300),
-                     delay: TimeSpan.FromMilliseconds(100))
-            .Start(WidePlaylistScroller);
-
-        await Task.Delay(250);
-        if (_showingContent && !_isNarrowMode)
-            ShimmerContainer.Visibility = Visibility.Collapsed;
+        await ShimmerGate.RunCrossfadeAsync(ShimmerContainer, WidePlaylistScroller,
+            continuePredicate: () => _showingContent);
     }
 
     private void ResetCrossfadeForNewLoad()
@@ -283,14 +278,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         _isNavigatingAway = false;
         _showingContent = false;
         _crossfadeScheduled = false;
-        // Narrow mode keeps the whole left column collapsed via VisualState —
-        // honour that and don't force shimmer visible there.
-        if (!_isNarrowMode)
-        {
-            ShimmerContainer.Visibility = Visibility.Visible;
-            ShimmerContainer.Opacity = 1;
-        }
-        ElementCompositionPreview.GetElementVisual(WidePlaylistScroller).Opacity = 0;
+        ShimmerGate.Reset(() => ShimmerContainer, () => WidePlaylistScroller);
     }
 
     private void PlaylistPage_ActualThemeChanged(FrameworkElement sender, object args)
@@ -1005,10 +993,6 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     private void RebuildCollaboratorStack()
     {
         const int MaxVisible = 4;
-        const int AvatarSize = 28;        // visible PersonPicture diameter
-        const int RingThickness = 2;      // halo width on each side
-        const int OuterSize = AvatarSize + 2 * RingThickness;
-        const int Overlap = 12;           // pixels each frame pulls left over its neighbour
 
         CollaboratorStackHost.Children.Clear();
 
@@ -1016,89 +1000,21 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         if (members.Count == 0) return;
 
         var visible = Math.Min(members.Count, MaxVisible);
-        var hasOverflow = members.Count > visible;
+        var overflow = Math.Max(0, members.Count - visible);
 
-        // Page-base brush gives the ring the same colour as the surface behind
-        // the panel — so the halo reads as transparent space between stacked
-        // avatars (matching Spotify's stacked-profile-picture pattern).
-        var ringBrush = (Brush)Application.Current.Resources["SolidBackgroundFillColorBaseBrush"];
-
-        for (int i = 0; i < visible; i++)
+        // Reusable AvatarStack control owns the avatar layout math (28dp
+        // PersonPicture, 2dp halo, 12dp overlap, "+N" badge). Same control
+        // drives the album-page header so visuals stay in sync.
+        var stack = new AvatarStack
         {
-            var m = members[i];
-
-            // PersonPicture handles every fallback we need: image when set,
-            // initials from DisplayName when no image, and a generic person
-            // glyph when neither is available. Avoids the previous
-            // "solid blue circle" look for unsourced avatars (e.g. Lauti).
-            var person = new Microsoft.UI.Xaml.Controls.PersonPicture
-            {
-                Width = AvatarSize,
-                Height = AvatarSize,
-                DisplayName = string.IsNullOrWhiteSpace(m.DisplayName) ? m.Username : m.DisplayName,
-            };
-            if (!string.IsNullOrEmpty(m.AvatarUrl))
-            {
-                // Resolver may hand back either a https URL or spotify:image:{hex};
-                // route both through ToHttpsUrl so PersonPicture always gets a
-                // loadable URI.
-                var httpsUrl = Helpers.SpotifyImageHelper.ToHttpsUrl(m.AvatarUrl) ?? m.AvatarUrl;
-                if (Uri.TryCreate(httpsUrl, UriKind.Absolute, out var avatarUri))
-                {
-                    person.ProfilePicture = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(avatarUri)
-                    {
-                        DecodePixelWidth = AvatarSize * 2
-                    };
-                }
-            }
-
-            // Outer Border carries the ring colour as its Background; Padding
-            // pushes PersonPicture inward by RingThickness on every side. So
-            // the visible result is a 32-px disc with a 2-px ring halo
-            // wrapping a 28-px PersonPicture inside.
-            var frame = new Border
-            {
-                Width = OuterSize,
-                Height = OuterSize,
-                CornerRadius = new CornerRadius(OuterSize / 2.0),
-                Background = ringBrush,
-                Padding = new Thickness(RingThickness),
-                // Negative-left margin produces the overlap; the front frame's
-                // own ring background masks the back frame's content cleanly.
-                Margin = i == 0 ? new Thickness(0) : new Thickness(-Overlap, 0, 0, 0),
-                Child = person,
-            };
-            ToolTipService.SetToolTip(frame, m.DisplayName ?? m.Username);
-            CollaboratorStackHost.Children.Add(frame);
-        }
-
-        if (hasOverflow)
-        {
-            var more = new Border
-            {
-                Width = OuterSize,
-                Height = OuterSize,
-                CornerRadius = new CornerRadius(OuterSize / 2.0),
-                Background = ringBrush,
-                Padding = new Thickness(RingThickness),
-                Margin = new Thickness(-Overlap, 0, 0, 0),
-                Child = new Border
-                {
-                    Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"],
-                    CornerRadius = new CornerRadius(AvatarSize / 2.0),
-                    Child = new TextBlock
-                    {
-                        Text = "+" + (members.Count - visible),
-                        FontSize = 10,
-                        FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                        VerticalAlignment = VerticalAlignment.Center,
-                        Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
-                    }
-                },
-            };
-            CollaboratorStackHost.Children.Add(more);
-        }
+            MaxVisible = MaxVisible,
+            Items = members.Take(visible).Select(m => new AvatarStackItem(
+                DisplayName: string.IsNullOrWhiteSpace(m.DisplayName) ? m.Username : m.DisplayName,
+                ImageUrl: m.AvatarUrl)).ToList(),
+            OverflowCount = overflow,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        CollaboratorStackHost.Children.Add(stack);
 
         // Trailing label so a new user understands what the avatar cluster
         // actually means. Picks a phrase based on context: "Open to

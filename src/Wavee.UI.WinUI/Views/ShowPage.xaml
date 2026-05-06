@@ -18,7 +18,7 @@
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     mc:Ignorable="d"
-    NavigationCacheMode="Required"
+    NavigationCacheMode="Enabled"
     Background="Transparent">
 
     <Page.Resources>
@@ -40,6 +40,9 @@
              user sees the page shape stabilise immediately. ScheduleCrossfade
              in code-behind fades shimmer to content over ~300 ms. -->
         <Grid x:Name="ShimmerContainer"
+              x:Load="{x:Bind ShimmerGate.IsLoaded, Mode=OneWay}"
+              MaxWidth="1160"
+              HorizontalAlignment="Stretch"
               IsHitTestVisible="False">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -152,7 +155,9 @@
 
         <!-- Content. Composition Opacity starts at 0 (set in code-behind);
              ScheduleCrossfade fades it to 1 once IsLoading flips false. -->
-        <Grid x:Name="ContentContainer">
+        <Grid x:Name="ContentContainer"
+              MaxWidth="1160"
+              HorizontalAlignment="Stretch">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>

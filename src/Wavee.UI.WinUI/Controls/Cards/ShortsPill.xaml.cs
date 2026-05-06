@@ -22,6 +22,7 @@ public sealed partial class ShortsPill : UserControl
     private bool _isPointerOver;
     private bool _isPlaybackPending;
     private int _playbackPendingVersion;
+    private string? _currentImageUrl;
 
     public static readonly DependencyProperty ImageUrlProperty =
         DependencyProperty.Register(nameof(ImageUrl), typeof(string), typeof(ShortsPill),
@@ -263,13 +264,31 @@ public sealed partial class ShortsPill : UserControl
         if (!string.IsNullOrEmpty(ImageUrl))
         {
             var httpsUrl = SpotifyImageHelper.ToHttpsUrl(ImageUrl);
+            if (string.IsNullOrEmpty(httpsUrl))
+            {
+                _currentImageUrl = null;
+                PillImage.Source = null;
+                PlaceholderIcon.Visibility = Visibility.Visible;
+                return;
+            }
+
+            if (string.Equals(_currentImageUrl, httpsUrl, StringComparison.Ordinal)
+                && PillImage.Source != null)
+            {
+                PlaceholderIcon.Visibility = Visibility.Collapsed;
+                ImageContainer.Background = null;
+                return;
+            }
+
             _imageCache ??= CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<ImageCacheService>();
+            _currentImageUrl = httpsUrl;
             PillImage.Source = _imageCache?.GetOrCreate(httpsUrl, 100);
             PlaceholderIcon.Visibility = Visibility.Collapsed;
             ImageContainer.Background = null;
         }
         else
         {
+            _currentImageUrl = null;
             PillImage.Source = null;
 
             // Liked Songs: heart icon on purple gradient

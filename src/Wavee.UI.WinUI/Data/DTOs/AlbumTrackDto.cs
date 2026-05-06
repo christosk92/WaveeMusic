@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Data.DTOs;
@@ -33,6 +34,13 @@ public sealed record AlbumTrackDto : ITrackItem
     public bool IsLoaded => true;
     public bool IsLiked { get; set; }
     public long PlayCount { get; init; }
+
+    /// <summary>
+    /// Per-track artists with URIs preserved. Empty for cached payloads written
+    /// before this field existed; TrackItem falls back to <c>ArtistName</c> +
+    /// <c>ArtistId</c> in that case.
+    /// </summary>
+    public IReadOnlyList<TrackArtistRef> Artists { get; init; } = Array.Empty<TrackArtistRef>();
 
     /// <summary>
     /// Duration formatted as "m:ss" or "h:mm:ss".

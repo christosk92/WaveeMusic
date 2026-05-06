@@ -97,6 +97,7 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         ControlsOverlay.AddHandler(PointerMovedEvent, new PointerEventHandler(ControlsOverlay_PointerMoved), true);
 
         SizeChanged += OnSizeChanged;
+        Unloaded += OnUnloaded;
         ActualThemeChanged += (_, _) => ApplyViewModelTheme();
         ApplyViewModelTheme();
 
@@ -157,6 +158,20 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
     private void OnLyricsSeekRequested(object? sender, TimeSpan position)
     {
         ViewModel.Player?.CommitSeekFromBar(position.TotalMilliseconds);
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        // LoadedImageSurface owns native WIC bytes that bypass ImageCacheService;
+        // dispose explicitly so the page tearing down doesn't strand them.
+        _artistHeaderSurface?.Dispose();
+        _artistHeaderSurface = null;
+        if (_artistHeaderBlurVisual != null)
+        {
+            ElementCompositionPreview.SetElementChildVisual(ArtistHeaderBlurHost, null);
+            _artistHeaderBlurVisual.Dispose();
+            _artistHeaderBlurVisual = null;
+        }
     }
 
     private void UpdateArtistHeaderBlur(string? imageUrl)

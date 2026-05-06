@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Threading;
@@ -15,6 +14,7 @@ using Windows.UI;
 using Wavee.Core.Data;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
+using Wavee.UI.WinUI.Controls.AvatarStack;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
@@ -51,6 +51,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
     /// <summary>All loaded tracks (unfiltered). Null until loaded.</summary>
     private List<LazyTrackItem> _allTracks = [];
+    private HashSet<string> _popularTrackIds = new(StringComparer.Ordinal);
 
     private string _albumId = "";
     private string _albumName = "";
@@ -77,8 +78,17 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private string _totalDuration = "";
     private IReadOnlyList<object> _selectedItems = Array.Empty<object>();
     private IReadOnlyList<PlaylistSummaryDto> _playlists = Array.Empty<PlaylistSummaryDto>();
-    private ObservableCollection<AlbumRelatedResult> _moreByArtist = [];
-    private ObservableCollection<AlbumMerchItemResult> _merchItems = [];
+    private IReadOnlyList<AlbumRelatedResult> _moreByArtist = [];
+    private IReadOnlyList<AlbumMerchItemResult> _merchItems = [];
+
+    // Multi-artist surfaces (header AvatarStack + flyout). _artists is the
+    // album-billed list (drives the avatars), _allDistinctArtists is billed
+    // followed by track-only artists deduped by URI (drives the flyout).
+    private IReadOnlyList<AlbumArtistResult> _artists = [];
+    private IReadOnlyList<AlbumArtistResult> _allDistinctArtists = [];
+    private IReadOnlyList<AvatarStackItem> _artistAvatarItems = [];
+    private IReadOnlyList<HeaderArtistLink> _headerArtistLinks = [];
+    private int _overflowArtistCount;
 
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
@@ -152,6 +162,74 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         get => _artistImageUrl;
         private set => this.RaiseAndSetIfChanged(ref _artistImageUrl, value);
     }
+
+    /// <summary>
+    /// Album-billed artists (from <c>albumUnion.artists.items</c>). Drives the
+    /// stacked-avatar strip in the header and the inline names line below it.
+    /// </summary>
+    public IReadOnlyList<AlbumArtistResult> Artists
+    {
+        get => _artists;
+        private set => this.RaiseAndSetIfChanged(ref _artists, value);
+    }
+
+    /// <summary>
+    /// Every distinct artist on the album: billed artists first, then track-only
+    /// contributors deduped by URI. Drives the artists Flyout opened from the
+    /// avatar stack so users can navigate to featured guests not in the billing.
+    /// </summary>
+    public IReadOnlyList<AlbumArtistResult> AllDistinctArtists
+    {
+        get => _allDistinctArtists;
+        private set
+        {
+            this.RaiseAndSetIfChanged(ref _allDistinctArtists, value);
+            this.RaisePropertyChanged(nameof(HasMultipleArtists));
+        }
+    }
+
+    /// <summary>
+    /// Avatar items for the header <c>AvatarStack</c>, projected from
+    /// <see cref="Artists"/>. Pre-projected here so the XAML can bind directly
+    /// without a converter per page.
+    /// </summary>
+    public IReadOnlyList<AvatarStackItem> ArtistAvatarItems
+    {
+        get => _artistAvatarItems;
+        private set => this.RaiseAndSetIfChanged(ref _artistAvatarItems, value);
+    }
+
+    /// <summary>
+    /// Number of additional distinct artists beyond <see cref="Artists"/>.
+    /// Drives the trailing <c>+N</c> badge on the avatar stack — non-zero when
+    /// the album has track-only contributors that aren't in the billing.
+    /// </summary>
+    public int OverflowArtistCount
+    {
+        get => _overflowArtistCount;
+        private set => this.RaiseAndSetIfChanged(ref _overflowArtistCount, value);
+    }
+
+    /// <summary>
+    /// Per-name link projections for the header artists line. Each entry
+    /// carries <c>IsFirst</c> so the comma separator preceding the entry can
+    /// hide on item 0 without page-side index logic.
+    /// </summary>
+    public IReadOnlyList<HeaderArtistLink> HeaderArtistLinks
+    {
+        get => _headerArtistLinks;
+        private set => this.RaiseAndSetIfChanged(ref _headerArtistLinks, value);
+    }
+
+    /// <summary>
+    /// True when the album has more than one distinct artist anywhere
+    /// (billed + per-track unioned). Soundtracks, compilations, and any
+    /// album with featured guests are detected here. Drives the per-row
+    /// artist column on the album track grid — the default suppresses it on
+    /// album pages because most albums are single-artist, but for collabs
+    /// the artist names are essential context.
+    /// </summary>
+    public bool HasMultipleArtists => _allDistinctArtists.Count > 1;
 
     /// <summary>
     /// Release year.
@@ -357,7 +435,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// <summary>
     /// More albums by the same artist.
     /// </summary>
-    public ObservableCollection<AlbumRelatedResult> MoreByArtist
+    public IReadOnlyList<AlbumRelatedResult> MoreByArtist
     {
         get => _moreByArtist;
         private set => this.RaiseAndSetIfChanged(ref _moreByArtist, value);
@@ -380,7 +458,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// <summary>
     /// Merchandise items for this album.
     /// </summary>
-    public ObservableCollection<AlbumMerchItemResult> MerchItems
+    public IReadOnlyList<AlbumMerchItemResult> MerchItems
     {
         get => _merchItems;
         private set => this.RaiseAndSetIfChanged(ref _merchItems, value);
@@ -390,8 +468,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
     // ── Alternate releases (deluxe / remaster / anniversary editions of THIS album) ──
 
-    private ObservableCollection<AlbumAlternateReleaseResult> _alternateReleases = [];
-    public ObservableCollection<AlbumAlternateReleaseResult> AlternateReleases
+    private IReadOnlyList<AlbumAlternateReleaseResult> _alternateReleases = [];
+    public IReadOnlyList<AlbumAlternateReleaseResult> AlternateReleases
     {
         get => _alternateReleases;
         private set => this.RaiseAndSetIfChanged(ref _alternateReleases, value);
@@ -596,10 +674,10 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             PreReleaseRelative = null;
             MetaInlineLine = null;
             HasAlternateReleases = false;
-            AlternateReleases.Clear();
+            AlternateReleases = [];
             HasMoreByArtist = false;
-            MoreByArtist.Clear();
-            MerchItems.Clear();
+            MoreByArtist = [];
+            MerchItems = [];
             this.RaisePropertyChanged(nameof(HasMerch));
             this.RaisePropertyChanged(nameof(AlbumTypeUpper));
             PaletteBackdropBrush = null;
@@ -613,6 +691,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             IsLoading = !preserveHeaderPrefill || string.IsNullOrEmpty(AlbumImageUrl);
             IsLoadingTracks = true;
             _allTracks = [];
+            _popularTrackIds.Clear();
             FilteredTracks = Enumerable.Range(0, 10)
                 .Select(i => LazyTrackItem.Placeholder($"ph-{i}", i + 1))
                 .ToList();
@@ -671,11 +750,12 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
         FilteredTracks = Array.Empty<LazyTrackItem>();
         _allTracks = [];
-        AlternateReleases.Clear();
+        _popularTrackIds.Clear();
+        AlternateReleases = [];
         HasAlternateReleases = false;
-        MoreByArtist.Clear();
+        MoreByArtist = [];
         HasMoreByArtist = false;
-        MerchItems.Clear();
+        MerchItems = [];
         this.RaisePropertyChanged(nameof(HasMerch));
     }
 
@@ -756,6 +836,39 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         };
 
         FilteredTracks = result.ToList();
+    }
+
+    public bool IsPopularTrack(object? row)
+    {
+        if (_popularTrackIds.Count == 0)
+            return false;
+
+        return row switch
+        {
+            LazyTrackItem { Data: AlbumTrackDto track } => _popularTrackIds.Contains(track.Id),
+            LazyTrackItem lazy => _popularTrackIds.Contains(lazy.Id),
+            AlbumTrackDto track => _popularTrackIds.Contains(track.Id),
+            ITrackItem track => _popularTrackIds.Contains(track.Id),
+            _ => false
+        };
+    }
+
+    private static HashSet<string> BuildPopularTrackIdSet(IReadOnlyList<AlbumTrackDto> tracks)
+    {
+        var count = tracks.Count switch
+        {
+            <= 0 => 0,
+            <= 4 => 1,
+            <= 9 => 2,
+            _ => 3
+        };
+
+        return tracks
+            .Where(t => t.PlayCount > 0 && !string.IsNullOrWhiteSpace(t.Id))
+            .OrderByDescending(t => t.PlayCount)
+            .Take(count)
+            .Select(t => t.Id)
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     private static string FormatDuration(double totalSeconds)
@@ -921,6 +1034,42 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
                 if (!string.IsNullOrEmpty(firstArtist.Name)) ArtistName = firstArtist.Name;
                 if (!string.IsNullOrEmpty(firstArtist.ImageUrl)) ArtistImageUrl = firstArtist.ImageUrl;
             }
+
+            // Header multi-artist surfaces. Billed artists drive the avatar
+            // strip; the flyout lists the union of billed + per-track
+            // contributors deduped by URI so featured guests on individual
+            // tracks become reachable from the header.
+            var billed = detail.Artists ?? [];
+            Artists = billed;
+            ArtistAvatarItems = billed
+                .Select(a => new AvatarStackItem(a.Name ?? "", a.ImageUrl))
+                .ToList();
+            HeaderArtistLinks = billed
+                .Select((a, idx) => new HeaderArtistLink
+                {
+                    Name = a.Name ?? "",
+                    Uri = a.Uri ?? "",
+                    IsFirst = idx == 0
+                })
+                .ToList();
+            var billedUris = new HashSet<string>(
+                billed.Where(a => !string.IsNullOrEmpty(a.Uri)).Select(a => a.Uri!),
+                StringComparer.Ordinal);
+            var trackExtras = (detail.Tracks ?? [])
+                .SelectMany(t => t.Artists ?? (IReadOnlyList<TrackArtistRef>)Array.Empty<TrackArtistRef>())
+                .Where(a => !string.IsNullOrEmpty(a.Uri) && !billedUris.Contains(a.Uri))
+                .GroupBy(a => a.Uri, StringComparer.Ordinal)
+                .Select(g => g.First())
+                .Select(a => new AlbumArtistResult
+                {
+                    Id = a.Id,
+                    Uri = a.Uri,
+                    Name = a.Name,
+                    ImageUrl = null
+                })
+                .ToList();
+            AllDistinctArtists = billed.Concat(trackExtras).ToList();
+            OverflowArtistCount = trackExtras.Count;
             if (detail.ReleaseDate.Year > 0)
                 Year = detail.ReleaseDate.Year;
             if (!string.IsNullOrEmpty(detail.Type))
@@ -947,6 +1096,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             _allTracks = detail.Tracks
                 .Select((t, i) => LazyTrackItem.Loaded(t.Id, i + 1, t))
                 .ToList();
+            _popularTrackIds = BuildPopularTrackIdSet(detail.Tracks);
 
             TotalTracks = _allTracks.Count;
             TotalDuration = FormatDuration(_allTracks.Sum(t => t.Duration.TotalSeconds));
@@ -960,16 +1110,12 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             ApplyFilterAndSort();
 
             // Related albums
-            MoreByArtist.Clear();
-            foreach (var r in detail.MoreByArtist)
-                MoreByArtist.Add(r);
+            MoreByArtist = detail.MoreByArtist.ToList();
             HasMoreByArtist = MoreByArtist.Count > 0;
             HasNoRelatedAlbums = !HasMoreByArtist;
 
             // Alternate releases (deluxe / remaster / anniversary editions of THIS album)
-            AlternateReleases.Clear();
-            foreach (var alt in detail.AlternateReleases)
-                AlternateReleases.Add(alt);
+            AlternateReleases = detail.AlternateReleases.ToList();
             HasAlternateReleases = AlternateReleases.Count > 0;
 
             // Pre-release banner
@@ -1195,9 +1341,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         try
         {
             var items = await Task.Run(async () => await _albumService.GetMerchAsync(albumUri));
-            MerchItems.Clear();
-            foreach (var item in items)
-                MerchItems.Add(item);
+            MerchItems = items.ToList();
             this.RaisePropertyChanged(nameof(HasMerch));
         }
         catch (Exception ex)
@@ -1250,10 +1394,11 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         DetachLongLivedServices();
 
         _allTracks.Clear();
+        _popularTrackIds.Clear();
         FilteredTracks = Array.Empty<LazyTrackItem>();
-        AlternateReleases.Clear();
-        MoreByArtist.Clear();
-        MerchItems.Clear();
+        AlternateReleases = [];
+        MoreByArtist = [];
+        MerchItems = [];
         Playlists = Array.Empty<PlaylistSummaryDto>();
     }
 }
