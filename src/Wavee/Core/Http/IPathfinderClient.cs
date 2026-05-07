@@ -63,6 +63,15 @@ public interface IPathfinderClient
         CancellationToken ct = default);
 
     /// <summary>
+    /// Fetches the flat top-level Browse All surface (Music / Podcasts /
+    /// Audiobooks / Live Events / genres / moods / charts / …). Each item
+    /// carries <c>title.transformedLabel</c> + <c>backgroundColor.hex</c> +
+    /// a <c>spotify:page:</c> or <c>spotify:xlink:</c> URI.
+    /// </summary>
+    Task<BrowseAllResponse> GetBrowseAllAsync(
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Fetches a comprehensive artist overview including profile, discography, top tracks, and related artists.
     /// </summary>
     /// <param name="artistUri">Spotify artist URI (e.g. "spotify:artist:xxx").</param>

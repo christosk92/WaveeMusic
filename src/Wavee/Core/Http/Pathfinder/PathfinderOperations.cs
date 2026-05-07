@@ -115,6 +115,13 @@ internal static class PathfinderOperations
     public const string BrowseSection = "browseSection";
     public const string BrowseSectionHash = "b13c1cccbfcb6947753c2613411b3566485c21fd5f36d80a80bb64be61ba2d51";
 
+    // Top-level "Browse all" surface — flat list of category entries
+    // (Music / Podcasts / Audiobooks / Live Events / genres / moods / charts /…),
+    // each with title.transformedLabel + backgroundColor.hex + uri. Drives the
+    // genre selector at the bottom of Home.
+    public const string BrowseAll = "browseAll";
+    public const string BrowseAllHash = "dbd8b55e09a58afc52eab438bc228ba28fd72ac2f2148c6c26354980e4579001";
+
     // "More podcasts you might like" carousel for the Show detail page.
     public const string InternalLinkRecommenderShow = "internalLinkRecommenderShow";
     public const string InternalLinkRecommenderShowHash = "6c369ff272a666b31fef1629c169925a1bd80f372195396c82304142cacd89e8";

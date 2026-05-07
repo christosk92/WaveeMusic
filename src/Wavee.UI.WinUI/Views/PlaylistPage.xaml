@@ -69,7 +69,7 @@
                 IsHitTestVisible="False"/>
 
         <Grid x:Name="TwoColumnGrid"
-              MaxWidth="1160"
+              MaxWidth="2400"
               HorizontalAlignment="Stretch"
               Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
             <Grid.ColumnDefinitions>

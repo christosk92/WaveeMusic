@@ -115,6 +115,7 @@ public sealed class PathfinderClient : IPathfinderClient
             or PathfinderOperations.QueryShowMetadataV2
             or PathfinderOperations.BrowsePage
             or PathfinderOperations.BrowseSection
+            or PathfinderOperations.BrowseAll
             or PathfinderOperations.InternalLinkRecommenderShow
             or PathfinderOperations.GetCommentsForEntity
             or PathfinderOperations.GetReplies
@@ -338,6 +339,18 @@ public sealed class PathfinderClient : IPathfinderClient
             PathfinderOperations.Home,
             hash,
             HomeJsonContext.Default.HomeResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<BrowseAllResponse> GetBrowseAllAsync(CancellationToken ct = default)
+    {
+        var variables = new BrowseAllVariables();
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.BrowseAll,
+            PathfinderOperations.BrowseAllHash,
+            BrowseAllJsonContext.Default.BrowseAllResponse,
             ct);
     }
 
@@ -1048,6 +1061,10 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is BrowseSectionVariables bsv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(bsv, BrowseSectionVariablesJsonContext.Default.BrowseSectionVariables);
+        }
+        else if (variables is BrowseAllVariables bav)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(bav, BrowseAllJsonContext.Default.BrowseAllVariables);
         }
         else if (variables is QueryNpvEpisodeChaptersVariables qnecv)
         {

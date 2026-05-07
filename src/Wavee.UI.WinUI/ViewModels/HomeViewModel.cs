@@ -69,6 +69,13 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     [ObservableProperty]
     private ObservableCollection<HomeChipViewModel> _displayedChips = [];
 
+    /// <summary>
+    /// Adapter feeding the redesigned hero band + side rail + region buckets.
+    /// Lives in <c>ViewModels/Home/HomeHeroAdapter.cs</c>; subscribes to
+    /// <see cref="Sections"/> + <see cref="FeaturedItem"/> changes.
+    /// </summary>
+    public ViewModels.Home.HomeHeroAdapter HeroAdapter { get; }
+
     // ── Hero band (greeting + featured "pick up where you left off") ──
     // Mirrors the album/playlist palette pipeline so the hero feels like a
     // sibling of those pages — backdrop wash is derived from the featured
@@ -185,6 +192,11 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         {
             Title = "Home"
         };
+
+        // Hero adapter must subscribe AFTER Sections is initialised — the
+        // [ObservableProperty] field initializer runs before the ctor body, so
+        // _sections is non-null by the time we reach here.
+        HeroAdapter = new ViewModels.Home.HomeHeroAdapter(this);
 
         Diagnostics.LiveInstanceTracker.Register(this);
     }
@@ -1467,7 +1479,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             case "page":
             case "section":
             case "genre":
-                Helpers.Navigation.NavigationHelpers.OpenPodcastBrowse(param, openInNewTab);
+                Helpers.Navigation.NavigationHelpers.OpenBrowsePage(param, openInNewTab);
                 break;
         }
     }
@@ -1561,6 +1573,59 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         }
     }
 
+    // ── Live carousel accent → page bleed ─────────────────────────────
+    // HeroCarousel publishes CurrentAccent every InteractionTracker tick
+    // (per-frame RGB lerp between adjacent slides' seed accents). The
+    // page-level radial bleed follows that signal so the whole page
+    // reads as one cohesive surface as slides transition.
+    //
+    // HeroBackdropBrush is intentionally NOT touched here — it's tied to
+    // FeaturedItem and consumed by the mini-player + other downstream
+    // surfaces; live-updating it would smear the wrong colour into them.
+
+    private Color? _lastCarouselBleedAccent;
+    private const int CarouselBleedDeltaThreshold = 4;
+
+    /// <summary>
+    /// Update <see cref="PageBleedBrush"/> from the live carousel accent.
+    /// Throttles to skip updates with RGB delta &lt; 4/256 from the last
+    /// applied colour so the 60 fps callback doesn't thrash a UI-thread
+    /// brush.
+    /// </summary>
+    public void UpdatePageBleedFromCarousel(Color accent)
+    {
+        if (_lastCarouselBleedAccent is { } prev
+            && Math.Abs(prev.R - accent.R) < CarouselBleedDeltaThreshold
+            && Math.Abs(prev.G - accent.G) < CarouselBleedDeltaThreshold
+            && Math.Abs(prev.B - accent.B) < CarouselBleedDeltaThreshold)
+        {
+            return;
+        }
+
+        _lastCarouselBleedAccent = accent;
+
+        // Mirrors the bleed-build branch of ApplyTheme. The carousel-published
+        // accent is already a final RGB colour (no hex parse needed) — just
+        // lift for tint legibility.
+        var lifted = TintColorHelper.BrightenForTint(accent, targetMax: 220);
+        var radial = new RadialGradientBrush
+        {
+            Center = new Windows.Foundation.Point(0.0, 0.0),
+            GradientOrigin = new Windows.Foundation.Point(0.0, 0.0),
+            RadiusX = 1.0,
+            RadiusY = 1.0,
+            MappingMode = Microsoft.UI.Xaml.Media.BrushMappingMode.RelativeToBoundingBox,
+        };
+        radial.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)(_isDarkTheme ? 130 : 80), lifted.R, lifted.G, lifted.B), Offset = 0.0 });
+        radial.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)(_isDarkTheme ? 60 : 40), lifted.R, lifted.G, lifted.B), Offset = 0.5 });
+        radial.GradientStops.Add(new GradientStop { Color = Color.FromArgb(0, lifted.R, lifted.G, lifted.B), Offset = 1.0 });
+        PageBleedBrush = radial;
+    }
+
+    /// <summary>Resets the carousel-bleed throttle so a fresh nav cycle
+    /// always paints the next accent rather than skipping as below-threshold.</summary>
+    public void ResetCarouselBleedThrottle() => _lastCarouselBleedAccent = null;
+
     private static Color? TryParseHex(string? hex)
     {
         if (string.IsNullOrEmpty(hex)) return null;
@@ -1607,6 +1672,32 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         _localProgressSub?.Dispose();
 
         CancelBaselineEnrichment();
+
+        HeroAdapter.Dispose();
+    }
+
+    /// <summary>
+    /// Fetches the top-level Browse All surface (genres / moods / charts /…).
+    /// Internal helper for <c>HomeHeroAdapter.LoadBrowseAsync</c> — keeps the
+    /// session encapsulated in the VM rather than handing a session reference
+    /// to the adapter.
+    /// </summary>
+    internal async Task<Wavee.Core.Http.Pathfinder.BrowseAllResponse?> FetchBrowseAllAsync(CancellationToken ct)
+    {
+        if (_session == null || !_session.IsConnected()) return null;
+        try
+        {
+            return await _session.Pathfinder.GetBrowseAllAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to fetch Browse All categories");
+            return null;
+        }
     }
 
     private bool _longLivedAttached;
@@ -2219,13 +2310,18 @@ internal sealed record HomeBaselineEnrichment(
 
 public sealed class HomeBaselinePreviewTrack
 {
-    public string? Uri { get; init; }
-    public string? Name { get; init; }
-    public string? CoverArtUrl { get; init; }
-    public string? ColorHex { get; init; }
-    public string? CanvasUrl { get; init; }
-    public string? CanvasThumbnailUrl { get; init; }
-    public string? AudioPreviewUrl { get; init; }
+    // `set;` (not `init;`) because the XAML type info generator scans every
+    // public type in any namespace referenced by `xmlns:vm="using:...ViewModels"`
+    // and emits setter shims for each property — init-only properties trip
+    // CS8852 in XamlTypeInfo.g.cs. This type isn't bound from XAML, so the
+    // looser accessor is harmless.
+    public string? Uri { get; set; }
+    public string? Name { get; set; }
+    public string? CoverArtUrl { get; set; }
+    public string? ColorHex { get; set; }
+    public string? CanvasUrl { get; set; }
+    public string? CanvasThumbnailUrl { get; set; }
+    public string? AudioPreviewUrl { get; set; }
 }
 
 public sealed partial class HomeChipViewModel : ObservableObject

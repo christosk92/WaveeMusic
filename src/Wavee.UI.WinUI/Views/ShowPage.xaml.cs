@@ -23,25 +23,32 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable
+public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable, IContentPageHost
 {
-    private const int ShimmerCollapseDelayMs = 250;
-
     private readonly ILogger? _logger;
     private readonly INotificationService? _notificationService;
     private readonly ISettingsService _settings;
-    private bool _showingContent;
-    private bool _crossfadeScheduled;
-    private bool _isNavigatingAway;
     private bool _isDisposed;
 
     public ShowViewModel ViewModel { get; }
 
-    public ShimmerLoadGate ShimmerGate { get; } = new();
+    public ContentPageController PageController { get; }
+
+    public ShimmerLoadGate ShimmerGate => PageController.ShimmerGate;
 
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
 
     public event EventHandler<TabItemParameter>? ContentChanged;
+
+    // ── IContentPageHost ─────────────────────────────────────────────────────
+    FrameworkElement? IContentPageHost.ShimmerContainer => ShimmerContainer;
+    FrameworkElement IContentPageHost.ContentContainer => ContentContainer;
+    FrameworkLayer IContentPageHost.CrossfadeLayer => FrameworkLayer.Xaml;
+    string IContentPageHost.PageIdForLogging => $"show:{ViewModel.ShowUri ?? "?"}";
+    bool IContentPageHost.IsLoading => ViewModel.IsLoading;
+    // HasError keeps the error-state UI flow working: TryShowContentNow proceeds
+    // even with empty ShowName so the error pane can fade in.
+    bool IContentPageHost.HasContent => !string.IsNullOrEmpty(ViewModel.ShowName) || ViewModel.HasError;
 
     public ShowPage()
     {
@@ -49,6 +56,7 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
         _logger = Ioc.Default.GetService<ILogger<ShowPage>>();
         _notificationService = Ioc.Default.GetService<INotificationService>();
         _settings = Ioc.Default.GetRequiredService<ISettingsService>();
+        PageController = new ContentPageController(this, _logger);
         InitializeComponent();
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
@@ -67,6 +75,7 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.show.onNavigatedFrom");
         base.OnNavigatedFrom(e);
         // Cleanup is in TrimForNavigationCache below — TabBarItem invokes that
         // around Frame.Navigate. Under NavigationCacheMode=Required the page
@@ -89,7 +98,10 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
     {
         if (!_trimmedForNavigationCache) return;
         _trimmedForNavigationCache = false;
-        Bindings?.Update();
+        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.show.bindingsUpdate"))
+        {
+            Bindings?.Update();
+        }
     }
 
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
@@ -98,10 +110,7 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(ShowViewModel.IsLoading))
-        {
-            if (!ViewModel.IsLoading && !_showingContent && !_crossfadeScheduled)
-                TryShowContentNow();
-        }
+            PageController.OnIsLoadingChanged();
     }
 
     private void OnActualThemeChanged(FrameworkElement sender, object args)
@@ -109,19 +118,19 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
 
     private void ShowPage_Loaded(object sender, RoutedEventArgs e)
     {
-        _isNavigatingAway = false;
+        PageController.IsNavigatingAway = false;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
 
         if (!ViewModel.IsLoading)
-            TryShowContentNow();
+            PageController.TryShowContentNow();
 
         TryHandlePendingPodcastArtConnectedAnimation();
     }
 
     private void ShowPage_Unloaded(object sender, RoutedEventArgs e)
     {
-        _isNavigatingAway = true;
+        PageController.IsNavigatingAway = true;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
     }
 
@@ -138,73 +147,11 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
         (ViewModel as IDisposable)?.Dispose();
     }
 
-    // Crossfade — copy of the AlbumPage pattern. Yield twice so XAML measures
-    // the freshly bound content tree before the fade starts; collapse shimmer
-    // after the fade completes so it stops participating in measure/arrange.
-    private async void ScheduleCrossfade()
-    {
-        _crossfadeScheduled = true;
-        await Task.Yield();
-        await Task.Delay(16);
-        if (_isNavigatingAway || _showingContent || ViewModel.IsLoading)
-        {
-            _crossfadeScheduled = false;
-            return;
-        }
-
-        CrossfadeToContent();
-    }
-
-    private async void CrossfadeToContent()
-    {
-        if (_showingContent) return;
-        _showingContent = true;
-        _crossfadeScheduled = false;
-
-        await ShimmerGate.RunCrossfadeAsync(ShimmerContainer, ContentContainer, FrameworkLayer.Xaml,
-            () => _showingContent);
-    }
-
-    private void TryShowContentNow()
-    {
-        if (_showingContent ||
-            _crossfadeScheduled ||
-            ViewModel.IsLoading ||
-            (string.IsNullOrEmpty(ViewModel.ShowName) && !ViewModel.HasError))
-        {
-            return;
-        }
-
-        ScheduleCrossfade();
-    }
-
-    private void SnapCrossfadeToContent()
-    {
-        _showingContent = true;
-        _crossfadeScheduled = false;
-        ShimmerGate.IsLoaded = false;
-        if (ShimmerContainer is not null)
-        {
-            ShimmerContainer.Visibility = Visibility.Collapsed;
-            ShimmerContainer.Opacity = 0;
-            ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 0;
-        }
-        ContentContainer.Opacity = 1;
-        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 1;
-    }
-
-    private void ResetCrossfadeForNewLoad()
-    {
-        _isNavigatingAway = false;
-        _showingContent = false;
-        _crossfadeScheduled = false;
-        ShimmerGate.Reset(() => ShimmerContainer, () => ContentContainer);
-    }
-
     // ── Navigation ──────────────────────────────────────────────────────────
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.show.onNavigatedTo");
         base.OnNavigatedTo(e);
         LoadNewContent(e.Parameter);
     }
@@ -220,7 +167,7 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
 
     private async void LoadNewContent(object? parameter)
     {
-        ResetCrossfadeForNewLoad();
+        PageController.ResetForNewLoad();
 
         ContentNavigationParameter? navigationParameter = null;
         var showUri = parameter switch
@@ -240,10 +187,10 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
         TryHandlePendingPodcastArtConnectedAnimation();
 
         await Task.Yield();
-        if (_isNavigatingAway)
+        if (PageController.IsNavigatingAway)
             return;
 
-        TryShowContentNow();
+        PageController.TryShowContentNow();
     }
 
     private bool TryHandlePendingPodcastArtConnectedAnimation()
@@ -254,8 +201,11 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
             return false;
         }
 
-        SnapCrossfadeToContent();
-        UpdateLayout();
+        PageController.MarkContentShownDirectly();
+        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.show.updateLayout"))
+        {
+            UpdateLayout();
+        }
         return ConnectedAnimationHelper.TryStartAnimation(
             ConnectedAnimationHelper.PodcastArt,
             CoverContainer);

@@ -148,6 +148,7 @@ public sealed partial class PlayerFloatingWindow : WindowEx
     private void DisposeWindowResources()
     {
         if (_disposed) return;
+        System.Diagnostics.Debug.WriteLine("[mem] PlayerFloatingWindow.DisposeWindowResources");
         _disposed = true;
 
         if (_backdropTintTimer != null)

@@ -37,6 +37,13 @@
       <Deploy Solution="Debug|ARM64" />
       <Deploy Solution="Release|ARM64" />
     </Project>
+    <Project Path="../../Users/ChristosKarapasias/test/Klankhuis/src/Klankhuis.Hero/Klankhuis.Hero.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
 
     <!-- AudioHost is x64-only by design (LoadLibrarys Spotify.dll which is
          x86_64-native). Pin Project=x64 regardless of solution platform.
@@ -56,15 +63,6 @@
     <!-- WinUI control library: declares x86;x64;ARM64 (no AnyCPU). Map
          Unpackaged → packaged AND remap *|Any CPU → x64. -->
     <Project Path="src/Wavee.Controls.Lyrics/Wavee.Controls.Lyrics.csproj">
-      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
-      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
-      <Platform Solution="*|ARM64" Project="ARM64" />
-      <Platform Solution="*|x64" Project="x64" />
-      <Platform Solution="*|x86" Project="x86" />
-    </Project>
-
-    <!-- WinUI control library: Microsoft Store-style hero carousel. -->
-    <Project Path="src/Wavee.Controls.HeroCarousel/Wavee.Controls.HeroCarousel.csproj">
       <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
       <BuildType Solution="Release-Unpackaged|*" Project="Release" />
       <Platform Solution="*|ARM64" Project="ARM64" />

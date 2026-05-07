@@ -38,31 +38,19 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     private DispatcherQueueTimer? _navigationTrimTimer;
     private HomePageSleepState? _pendingSleepState;
 
-    // Shy header — pinned compact card morphs in via TransitionHelper once the
-    // user scrolls past most of the in-flow hero. Mirrors ArtistPage exactly:
-    // single helper instance, single pin-state bool, run-guard + recheck flag
-    // for ViewChanged event coalescing.
-    // Pin once almost the full hero has scrolled out of view (residual = the
-    // px of hero still on-screen at the moment of pin). Small residual = pin
-    // happens late, which feels right because the HeroSpacer wrapper now
-    // reserves the layout — there's no reason to pin early to "save space".
-    private const double ShyHeaderHeroResidualPx = 20;
-    private const double ShyHeaderHysteresisPx = 16;
-    private const double ShyHeaderHeroFallbackPx = 140;
     private const int NavigationCacheTrimDelaySeconds = 45;
     private const int ScrollRestoreMaxAttempts = 12;
     private const int ScrollRestoreRetryDelayMs = 16;
-    private CommunityToolkit.WinUI.TransitionHelper? _shyHeaderTransition;
-    private bool _isShyHeaderPinned;
-    private bool _isShyHeaderTransitionRunning;
-    private bool _shyHeaderRecheckPending;
     private bool _isRestoringScroll;
     private int _scrollRestoreGeneration;
-    // Captured max-height of the in-flow hero. HeroOverlayPanel IS the
-    // TransitionHelper Source, so its ActualHeight collapses to 0 once pinned
-    // (SourceToggleMethod=ByVisibility). Reading the live value would make
-    // pinOffset drop to 0 → unpin can never trigger. Only ever grow this value.
-    private double _heroMeasuredHeightPx;
+
+    // HeroCarousel.CurrentAccent registration token — set in HomePage_Loaded,
+    // cleared in HomePage_Unloaded. The carousel publishes a per-frame RGB-lerped
+    // colour as the InteractionTracker scrubs between slides; we pipe that into
+    // HomeViewModel.UpdatePageBleedFromCarousel so the page-level radial bleed
+    // follows the active slide cohesively.
+    private long _heroAccentToken;
+    private bool _heroWired;
 
     public HomeViewModel ViewModel { get; }
 
@@ -77,20 +65,11 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         _cache = Ioc.Default.GetService<HomeFeedCache>();
         InitializeComponent();
 
-        // Set the section template selector here (was deferred to HomePage_Loaded
-        // for startup perf) — Sections can be populated before Loaded fires
-        // (cached-feed path), and a null ItemTemplate at that moment causes
-        // ItemsRepeater to fall back to rendering each item as
-        // "Wavee.UI.WinUI.ViewModels.HomeSection" via ToString. Setting it now
-        // costs nothing because the template construction is just dictionary
-        // lookups against the page's already-loaded Resources.
-        SectionsRepeater.ItemTemplate = new HomeSectionTemplateSelector
-        {
-            ShortsTemplate = (DataTemplate)Resources["ShortsSectionTemplate"],
-            GenericTemplate = (DataTemplate)Resources["GenericSectionTemplate"],
-            BaselineTemplate = (DataTemplate)Resources["BaselineSectionTemplate"]
-        };
-
+        // Section template selector is now declared as a XAML resource
+        // (HomePage.xaml's HomeSectionTemplateSelector key) and bound into
+        // each HomeRegionView via the SectionTemplateSelector DP. The outer
+        // RegionsRepeater binds to ViewModel.HeroAdapter.Regions; the inner
+        // per-region repeater inside HomeRegionView applies the selector.
         Loaded += HomePage_Loaded;
         Unloaded += HomePage_Unloaded;
 
@@ -100,14 +79,6 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         // HighContrast for light).
         ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
         ActualThemeChanged += (_, _) => ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
-    }
-
-    private void FeaturedItem_Click(object sender, RoutedEventArgs e)
-    {
-        var item = ViewModel.FeaturedItem;
-        if (item is null) return;
-        var openInNewTab = NavigationHelpers.IsCtrlPressed();
-        HomeViewModel.NavigateToItem(item, openInNewTab);
     }
 
     private bool _showingContent;
@@ -145,28 +116,9 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         Loaded -= HomePage_Loaded;
 
         // Deferred setup — moved from constructor so InitializeComponent returns faster.
-        // (SectionsRepeater.ItemTemplate is set in the constructor — see comment there.)
         ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
 
-        // Shy header wiring. ContentContainer is the page's vertical scroller —
-        // ViewChanged drives the pin evaluation. EnsureShyHeaderTransition wires
-        // the Source/Target on the Resource-declared TransitionHelper (XAML
-        // resources can't ElementName-bind, hence the code-behind hookup).
-        ContentContainer.ViewChanged += ContentContainer_ViewChanged;
-        HeroOverlayPanel.SizeChanged += HeroOverlayPanel_SizeChanged;
-
-        // Loaded fires AFTER initial layout — by now HeroOverlayPanel has been
-        // measured at least once and the SizeChanged we just subscribed to has
-        // already missed its first event. Sync the cached height + spacer
-        // MinHeight here so the layout-reservation isn't 0 at first pin.
-        if (HeroOverlayPanel.ActualHeight > _heroMeasuredHeightPx)
-        {
-            _heroMeasuredHeightPx = HeroOverlayPanel.ActualHeight;
-            HeroSpacer.MinHeight = _heroMeasuredHeightPx;
-        }
-
-        ResetShyHeaderState();
-        UpdatePageBleedOpacity();
+        WireHeroBand();
 
         WeakReferenceMessenger.Default.Register<AuthStatusChangedMessage>(this, (r, m) =>
         {
@@ -258,6 +210,45 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     private void HomePage_Unloaded(object sender, RoutedEventArgs e)
     {
         CleanupSubscriptions();
+        UnwireHeroBand();
+    }
+
+    /// <summary>
+    /// Wire the HeroHalo to the HaloBackdrop element + subscribe to the
+    /// carousel's per-frame accent. Idempotent — guarded by <c>_heroWired</c>
+    /// so re-entry from a nav-cache restore doesn't double-subscribe.
+    /// </summary>
+    private void WireHeroBand()
+    {
+        if (_heroWired || HomeHero is null || HaloBackdrop is null) return;
+        Klankhuis.Hero.Controls.HeroHalo.SetSource(HaloBackdrop, HomeHero);
+        _heroAccentToken = HomeHero.RegisterPropertyChangedCallback(
+            Klankhuis.Hero.Controls.HeroCarousel.CurrentAccentProperty, OnHeroAccentChanged);
+        _heroWired = true;
+        // Seed the page bleed with the initial slide's accent so the first
+        // paint already reads cohesively rather than waiting for the first
+        // tracker tick.
+        ViewModel.UpdatePageBleedFromCarousel(HomeHero.CurrentAccent);
+    }
+
+    private void UnwireHeroBand()
+    {
+        if (!_heroWired) return;
+        if (HomeHero is not null && _heroAccentToken != 0)
+        {
+            HomeHero.UnregisterPropertyChangedCallback(
+                Klankhuis.Hero.Controls.HeroCarousel.CurrentAccentProperty, _heroAccentToken);
+        }
+        if (HaloBackdrop is not null)
+            Klankhuis.Hero.Controls.HeroHalo.SetSource(HaloBackdrop, null);
+        _heroAccentToken = 0;
+        _heroWired = false;
+    }
+
+    private void OnHeroAccentChanged(DependencyObject sender, DependencyProperty dp)
+    {
+        if (_isDisposed || HomeHero is null) return;
+        ViewModel.UpdatePageBleedFromCarousel(HomeHero.CurrentAccent);
     }
 
     public void RefreshWithParameter(object? parameter)
@@ -269,23 +260,32 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
-        base.OnNavigatedTo(e);
-        _isNavigatedAway = false;
-        CancelNavigationCacheTrim();
-        // Re-attach compiled x:Bind to VM.PropertyChanged before any rehydrate
-        // path runs. Idempotent; safe on first entry too.
-        Bindings?.Update();
-
-        if (_trimmedForNavigationCache)
+        // Bracket only the synchronous prefix — the using-scope disposes BEFORE
+        // the first await so the per-nav stage time excludes async work that
+        // runs after Frame.Navigate has returned.
+        using (Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.home.onNavigatedTo"))
         {
-            RestoreFromNavigationCache();
-            return;
-        }
+            base.OnNavigatedTo(e);
+            _isNavigatedAway = false;
+            CancelNavigationCacheTrim();
+            // Re-attach compiled x:Bind to VM.PropertyChanged before any rehydrate
+            // path runs. Idempotent; safe on first entry too.
+            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.home.bindingsUpdate"))
+            {
+                Bindings?.Update();
+            }
 
-        // Rehydrate rebuilds Sections + Chips from the cached home-feed
-        // response — paired with HibernateForNavigation on OnNavigatedFrom.
-        // Cheap (no network); avoids holding the parsed tree while away.
-        ViewModel.ResumeFromNavigationCache();
+            if (_trimmedForNavigationCache)
+            {
+                RestoreFromNavigationCache();
+                return;
+            }
+
+            // Rehydrate rebuilds Sections + Chips from the cached home-feed
+            // response — paired with HibernateForNavigation on OnNavigatedFrom.
+            // Cheap (no network); avoids holding the parsed tree while away.
+            ViewModel.ResumeFromNavigationCache();
+        }
         await ViewModel.RefreshLocalSectionAsync();
     }
 
@@ -351,7 +351,10 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         _trimmedForNavigationCache = true;
         _pendingSleepState = new HomePageSleepState(ContentContainer?.VerticalOffset ?? 0);
         ViewModel.HibernateForNavigation();
-        ResetShyHeaderState();
+        // Clear the carousel-bleed delta-throttle so the next accent applied
+        // after RestoreFromNavigationCache always paints, even if it falls
+        // within 4/256 of the stale pre-trim value.
+        ViewModel.ResetCarouselBleedThrottle();
         DetachSectionsRepeater();
     }
 
@@ -402,179 +405,24 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>(this);
         if (_cache != null)
             _cache.DataRefreshed -= OnCacheDataRefreshed;
-        if (ContentContainer != null)
-            ContentContainer.ViewChanged -= ContentContainer_ViewChanged;
-        if (HeroOverlayPanel != null)
-            HeroOverlayPanel.SizeChanged -= HeroOverlayPanel_SizeChanged;
     }
 
     private void DetachSectionsRepeater()
     {
-        if (_sectionsDetachedForNavigationCache || SectionsRepeater == null)
+        if (_sectionsDetachedForNavigationCache || RegionsRepeater == null)
             return;
 
-        SectionsRepeater.ItemsSource = null;
+        RegionsRepeater.ItemsSource = null;
         _sectionsDetachedForNavigationCache = true;
     }
 
     private void AttachSectionsRepeater()
     {
-        if (!_sectionsDetachedForNavigationCache || SectionsRepeater == null)
+        if (!_sectionsDetachedForNavigationCache || RegionsRepeater == null)
             return;
 
-        SectionsRepeater.ItemsSource = ViewModel.Sections;
+        RegionsRepeater.ItemsSource = ViewModel.HeroAdapter.Regions;
         _sectionsDetachedForNavigationCache = false;
-    }
-
-    // ── Shy header ──────────────────────────────────────────────────────────
-    // Mirrors ArtistPage.xaml.cs structure: single helper instance, single
-    // pin-state bool, async coalescing loop for ViewChanged events. Threshold
-    // uses a cached max-ever HeroOverlayPanel height (NOT the live ActualHeight
-    // — see _heroMeasuredHeightPx field comment) plus 16 px of hysteresis to
-    // absorb the StackPanel-reflow ViewChanged echo when the hero collapses.
-
-    private void EnsureShyHeaderTransition()
-    {
-        if (_shyHeaderTransition != null)
-            return;
-
-        if (ShyHeaderCard == null)
-            return;
-
-        if (Resources.TryGetValue("HomeShyHeaderTransition", out var resource)
-            && resource is CommunityToolkit.WinUI.TransitionHelper helper)
-        {
-            helper.Source = HeroOverlayPanel;
-            helper.Target = ShyHeaderCard;
-            _shyHeaderTransition = helper;
-        }
-    }
-
-    private void ResetShyHeaderState()
-    {
-        _isShyHeaderPinned = false;
-        _isShyHeaderTransitionRunning = false;
-        _shyHeaderRecheckPending = false;
-        _heroMeasuredHeightPx = 0;
-        _shyHeaderTransition?.Reset(toInitialState: true);
-    }
-
-    private bool EnsureShyHeaderRealized()
-    {
-        if (ShyHeaderHost != null && ShyHeaderCard != null)
-        {
-            EnsureShyHeaderTransition();
-            return _shyHeaderTransition != null;
-        }
-
-        _ = FindName(nameof(ShyHeaderHost));
-        EnsureShyHeaderTransition();
-        return ShyHeaderHost != null && ShyHeaderCard != null && _shyHeaderTransition != null;
-    }
-
-    private void HeroOverlayPanel_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        // Only ever grow. The TransitionHelper collapses HeroOverlayPanel when
-        // pinning (ByVisibility) → ActualHeight=0 fires here. Ignore that drop.
-        if (e.NewSize.Height > _heroMeasuredHeightPx)
-        {
-            _heroMeasuredHeightPx = e.NewSize.Height;
-            // Pin the spacer to the measured height so the StackPanel layout
-            // stays put when HeroOverlayPanel collapses — prevents the visual
-            // jump that "pushes content up" the moment the shy header pins.
-            if (HeroSpacer != null)
-                HeroSpacer.MinHeight = _heroMeasuredHeightPx;
-        }
-    }
-
-    private void ContentContainer_ViewChanged(ScrollView sender, object args)
-    {
-        UpdatePageBleedOpacity();
-        if (_isRestoringScroll)
-            return;
-
-        _ = EvaluateShyHeaderAsync();
-    }
-
-    private void UpdatePageBleedOpacity()
-    {
-        if (PageBleedHost == null || ContentContainer == null) return;
-
-        // Fade the top-left page bleed as the user scrolls past the hero.
-        // Fully visible at offset 0, fully invisible by the time the hero
-        // is mostly out of view. Uses the same cached measured height the
-        // shy-header pin logic uses, with a 60 px head-start so the bleed
-        // is already nearly gone by the time pin triggers.
-        double heroH = _heroMeasuredHeightPx > 0 ? _heroMeasuredHeightPx : ShyHeaderHeroFallbackPx;
-        double fadeDistance = Math.Max(80, heroH - 40);
-        double progress = Math.Clamp(ContentContainer.VerticalOffset / fadeDistance, 0.0, 1.0);
-        PageBleedHost.Opacity = 1.0 - progress;
-    }
-
-    private async Task EvaluateShyHeaderAsync()
-    {
-        if (HeroOverlayPanel == null || ContentContainer == null)
-            return;
-        if (_isRestoringScroll)
-            return;
-
-        if (_isShyHeaderTransitionRunning)
-        {
-            // Coalesce: re-check once the in-flight transition lands so a
-            // burst of ViewChanged events doesn't stack animations.
-            _shyHeaderRecheckPending = true;
-            return;
-        }
-
-        while (true)
-        {
-            if (_isDisposed || !HeroOverlayPanel.IsLoaded)
-                return;
-
-            // Use the cached max-ever-measured hero height — see field comment
-            // for why HeroOverlayPanel.ActualHeight isn't safe to read here.
-            double heroH = _heroMeasuredHeightPx > 0 ? _heroMeasuredHeightPx : ShyHeaderHeroFallbackPx;
-            double pinOffset = Math.Max(0, heroH - ShyHeaderHeroResidualPx);
-            double unpinOffset = Math.Max(0, pinOffset - ShyHeaderHysteresisPx);
-
-            // Hysteresis: once pinned, the user has to scroll back past the
-            // lower threshold to unpin. Absorbs the secondary ViewChanged echo
-            // that fires when the in-flow hero collapses.
-            double activeThreshold = _isShyHeaderPinned ? unpinOffset : pinOffset;
-            bool shouldPin = ContentContainer.VerticalOffset >= activeThreshold;
-
-            if (shouldPin == _isShyHeaderPinned)
-                return;
-
-            if (!EnsureShyHeaderRealized() || _shyHeaderTransition == null)
-                return;
-
-            _isShyHeaderTransitionRunning = true;
-            _shyHeaderRecheckPending = false;
-
-            try
-            {
-                if (shouldPin)
-                    await _shyHeaderTransition.StartAsync();
-                else
-                    await _shyHeaderTransition.ReverseAsync();
-
-                _isShyHeaderPinned = shouldPin;
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogDebug(ex, "Home shy-header transition skipped.");
-                return;
-            }
-            finally
-            {
-                _isShyHeaderTransitionRunning = false;
-            }
-
-            // Loop only if a scroll event arrived during the transition.
-            if (!_shyHeaderRecheckPending)
-                return;
-        }
     }
 
     private void TryApplyPendingSleepState()
@@ -607,7 +455,6 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         _scrollRestoreGeneration++;
         _isRestoringScroll = true;
         ContentCard.IsImageLoadingSuspended = true;
-        try { _shyHeaderTransition?.Stop(); } catch { }
     }
 
     private void CancelScrollRestore()
@@ -650,40 +497,6 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
 
         _isRestoringScroll = false;
         ContentCard.IsImageLoadingSuspended = false;
-        SnapShyHeaderToCurrentScroll();
-    }
-
-    private void SnapShyHeaderToCurrentScroll()
-    {
-        if (HeroOverlayPanel == null || ContentContainer == null)
-            return;
-
-        if (HeroOverlayPanel.ActualHeight > _heroMeasuredHeightPx)
-        {
-            _heroMeasuredHeightPx = HeroOverlayPanel.ActualHeight;
-            if (HeroSpacer != null)
-                HeroSpacer.MinHeight = _heroMeasuredHeightPx;
-        }
-
-        UpdatePageBleedOpacity();
-
-        double heroH = _heroMeasuredHeightPx > 0 ? _heroMeasuredHeightPx : ShyHeaderHeroFallbackPx;
-        double pinOffset = Math.Max(0, heroH - ShyHeaderHeroResidualPx);
-        var shouldPin = ContentContainer.VerticalOffset >= pinOffset;
-
-        if (shouldPin)
-        {
-            if (EnsureShyHeaderRealized())
-                _shyHeaderTransition?.Reset(toInitialState: false);
-        }
-        else
-        {
-            _shyHeaderTransition?.Reset(toInitialState: true);
-        }
-
-        _isShyHeaderPinned = shouldPin;
-        _isShyHeaderTransitionRunning = false;
-        _shyHeaderRecheckPending = false;
     }
 
     // ── Card click handlers (used by both ContentCard and baseline buttons) ──
@@ -937,7 +750,12 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         // Close the flyout
        // CustomizeFlyout.Hide();
 
-        // Find the section index in the displayed Sections collection
+        // TODO(region-redesign): the outer repeater is now RegionsRepeater
+        // bound to HeroAdapter.Regions, not Sections directly. Scroll-to-section
+        // by URI now needs to walk regions → sections → resolve the section's
+        // visual element. The Customize flyout that called this is currently
+        // unwired (no XAML reference), so this method is dead code; left as
+        // a no-op until the flyout is reintroduced.
         var sectionIndex = -1;
         for (int i = 0; i < ViewModel.Sections.Count; i++)
         {
@@ -951,7 +769,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         if (sectionIndex < 0) return;
 
         // Get the element from the ItemsRepeater and scroll to it
-        var element = SectionsRepeater.TryGetElement(sectionIndex);
+        var element = RegionsRepeater.TryGetElement(sectionIndex);
         if (element is FrameworkElement fe)
         {
             // Scroll into view

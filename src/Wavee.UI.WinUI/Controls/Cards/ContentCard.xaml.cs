@@ -985,8 +985,10 @@ public sealed partial class ContentCard : UserControl
                 .Start(CardRoot);
         }
 
-        if (CardShadow != null)
-            CardShadow.Opacity = 0.25;
+        // Image opacity: muted at rest (0.85), full on hover. Cheap snap; the
+        // 1.03 scale animation above already carries the motion of the pop.
+        if (SquareImage != null) SquareImage.Opacity = 1.0;
+        if (CircleImage != null) CircleImage.Opacity = 1.0;
     }
 
     private async void Card_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -1017,8 +1019,9 @@ public sealed partial class ContentCard : UserControl
                 .Start(CardRoot);
         }
 
-        if (CardShadow != null)
-            CardShadow.Opacity = 0;
+        // Restore the muted resting state for the image.
+        if (SquareImage != null) SquareImage.Opacity = 0.85;
+        if (CircleImage != null) CircleImage.Opacity = 0.85;
     }
 
     // ── Press animation ──
@@ -1365,7 +1368,7 @@ public sealed partial class ContentCard : UserControl
             case "page":
             case "section":
             case "genre":
-                Helpers.Navigation.NavigationHelpers.OpenPodcastBrowse(param, openInNewTab);
+                Helpers.Navigation.NavigationHelpers.OpenBrowsePage(param, openInNewTab);
                 return true;
             case "show":
                 Helpers.Navigation.NavigationHelpers.OpenShowPage(param, openInNewTab);
@@ -1503,8 +1506,8 @@ public sealed partial class ContentCard : UserControl
             visual.Scale = System.Numerics.Vector3.One;
         }
 
-        if (CardShadow != null)
-            CardShadow.Opacity = 0;
+        if (SquareImage != null) SquareImage.Opacity = 0.85;
+        if (CircleImage != null) CircleImage.Opacity = 0.85;
 
         if (!_isPlaybackPending)
             StopPendingBeam();

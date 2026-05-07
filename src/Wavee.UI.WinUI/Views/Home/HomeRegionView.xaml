@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Views.Home.HomeRegionView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <!-- Region band: full-bleed mica tint behind a caps eyebrow + 28 px header
+         + nested ItemsRepeater of sections. The negative horizontal margin
+         pushes the band past the page-level 32 px Padding so the gradient
+         tint reaches edge to edge. -->
+    <Grid x:Name="RegionRoot"
+          Margin="-32,0,-32,0"
+          Padding="32,28,32,8">
+
+        <!-- Mica tint background. Two GradientStop colours updated imperatively
+             from Region.AccentColor (TintWeak ≈ α 0x10, TintStrong ≈ α 0x18). -->
+        <Grid.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                <GradientStop x:Name="TintStop0" Offset="0"    Color="Transparent"/>
+                <GradientStop x:Name="TintStop1" Offset="0.18" Color="Transparent"/>
+                <GradientStop x:Name="TintStop2" Offset="0.82" Color="Transparent"/>
+                <GradientStop x:Name="TintStop3" Offset="1"    Color="Transparent"/>
+            </LinearGradientBrush>
+        </Grid.Background>
+
+        <StackPanel Spacing="0">
+            <TextBlock
+                x:Name="EyebrowText"
+                FontSize="11"
+                FontWeight="SemiBold"
+                CharacterSpacing="140"
+                Opacity="0.85"/>
+
+            <TextBlock
+                x:Name="HeaderText"
+                FontSize="28"
+                FontWeight="SemiBold"
+                Margin="0,4,0,18"
+                Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+
+            <ItemsRepeater x:Name="SectionsRepeater">
+                <ItemsRepeater.Layout>
+                    <StackLayout Orientation="Vertical" Spacing="20"/>
+                </ItemsRepeater.Layout>
+            </ItemsRepeater>
+        </StackPanel>
+    </Grid>
+</UserControl>

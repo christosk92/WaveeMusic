@@ -22,6 +22,7 @@
           BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
           BorderThickness="1"
           Padding="8,8,8,12"
+          SizeChanged="CardRoot_SizeChanged"
           PointerEntered="CardRoot_PointerEntered"
           PointerExited="CardRoot_PointerExited"
           Tapped="CardRoot_Tapped">
@@ -34,7 +35,7 @@
             <Grid x:Name="CoverContainer"
                   CornerRadius="14"
                   Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                  HorizontalAlignment="Stretch"
+                  HorizontalAlignment="Left"
                   SizeChanged="CoverContainer_SizeChanged">
                 <Grid.RenderTransform>
                     <ScaleTransform x:Name="CoverScale" ScaleX="1.0" ScaleY="1.0"/>

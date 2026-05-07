@@ -550,6 +550,13 @@ public static class AppLifecycleHelper
                     UiOperationProfiler.Instance = profiler;
                     return profiler;
                 })
+                .AddSingleton(sp =>
+                {
+                    var diag = new Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics(
+                        sp.GetService<ILogger<Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics>>());
+                    Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance = diag;
+                    return diag;
+                })
                 .AddSingleton(inMemorySink)
                 .AddSingleton<Wavee.Connect.Diagnostics.IRemoteStateRecorder>(sp =>
                     new Wavee.UI.WinUI.Services.RemoteStateRecorder(
@@ -775,6 +782,7 @@ public static class AppLifecycleHelper
                 .AddTransient<ShowViewModel>()
                 .AddTransient<EpisodePageViewModel>()
                 .AddTransient<PodcastBrowseViewModel>()
+                .AddTransient<BrowseViewModel>()
                 .AddTransient<LibraryPageViewModel>()
                 .AddTransient<AlbumsLibraryViewModel>()
                 .AddTransient<ArtistsLibraryViewModel>()
@@ -790,24 +798,8 @@ public static class AppLifecycleHelper
                         sp.GetService<IAuthState>(),
                         sp.GetService<ILogger<ProfileViewModel>>()))
                 .AddTransient<SpotifyConnectViewModel>()
-                // Video page + mini-player VMs. Singletons so the mini-player
-                // (mounted at shell level) keeps its subscriptions stable
-                // across page navigation; same for the page VM since the
-                // page can be re-navigated.
-                .AddSingleton<VideoPlayerPageViewModel>(sp =>
-                    new VideoPlayerPageViewModel(
-                        sp.GetRequiredService<Services.IActiveVideoSurfaceService>(),
-                        sp.GetService<Wavee.UI.Contracts.IPlaybackStateService>(),
-                        sp.GetService<Wavee.Core.Library.Local.ILocalLibraryService>(),
-                        // IPathfinderClient is exposed off ISession (not a top-level
-                        // DI service), same as every other VM that uses Pathfinder
-                        // (line 740 below for MiniVideoPlayer, plus the album/
-                        // artist/playlist VMs above). Pre-fix this pulled
-                        // GetService<IPathfinderClient>() which silently returned
-                        // null, leaving npv + recommender API calls unfired.
-                        sp.GetRequiredService<Wavee.Core.Session.ISession>().Pathfinder,
-                        sp.GetService<IExtendedMetadataClient>(),
-                        sp.GetService<ILogger<VideoPlayerPageViewModel>>()))
+                // Mini-player VM. Singleton so it keeps its subscriptions
+                // stable across page navigation (mounted at shell level).
                 .AddSingleton<MiniVideoPlayerViewModel>(sp =>
                     new MiniVideoPlayerViewModel(
                         sp.GetRequiredService<Services.IActiveVideoSurfaceService>(),

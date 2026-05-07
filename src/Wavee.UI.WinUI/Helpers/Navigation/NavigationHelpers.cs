@@ -187,6 +187,21 @@ public static class NavigationHelpers
     }
 
     /// <summary>
+    /// Generic destination for any <c>spotify:page:</c> URI surfaced by Pathfinder
+    /// (Music / Podcasts / Audiobooks / Pop / Hip-Hop / Mood / etc.). Renders a
+    /// HomePage-style hero band + section shelves driven by the <c>browsePage</c>
+    /// persistedQuery. Sub-page tile clicks recurse here.
+    /// </summary>
+    public static void OpenBrowsePage(ContentNavigationParameter parameter, bool openInNewTab = false)
+    {
+        var header = string.IsNullOrWhiteSpace(parameter.Title)
+            ? "Browse"
+            : parameter.Title!;
+
+        Navigate(typeof(BrowsePage), parameter, header, CreateIconSource(typeof(BrowsePage), parameter), openInNewTab);
+    }
+
+    /// <summary>
     /// Open a podcast show as a standalone show page. Use this for browse/search
     /// surfaces where the user is exploring, not drilling into their library.
     /// </summary>
@@ -491,6 +506,9 @@ public static class NavigationHelpers
         if (pageType == typeof(PodcastBrowsePage))
             return new FontIconSource { Glyph = "\uEC05" };
 
+        if (pageType == typeof(BrowsePage))
+            return new SymbolIconSource { Symbol = Symbol.Globe };
+
         if (pageType == typeof(LocalLibraryPage))
             return new SymbolIconSource { Symbol = Symbol.Folder };
 
@@ -549,6 +567,9 @@ public static class NavigationHelpers
 
         if (pageType == typeof(PodcastBrowsePage))
             return (parameter as ContentNavigationParameter)?.Title ?? "Podcasts";
+
+        if (pageType == typeof(BrowsePage))
+            return (parameter as ContentNavigationParameter)?.Title ?? "Browse";
 
         if (pageType == typeof(LibraryPage))
         {

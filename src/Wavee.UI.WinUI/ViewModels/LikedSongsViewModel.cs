@@ -42,6 +42,18 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
     private readonly DispatcherQueue _dispatcherQueue;
     private bool _disposed;
     private bool _syncAlreadyRequested;
+    // Guard against the descriptor-fetch feedback loop:
+    //   LoadAsync → TryTriggerDescriptorFetch → fetcher.EnqueueAsync →
+    //   FetchCompleted event → OnDescriptorFetchCompleted → LoadAsync → …
+    // The fetcher fires FetchCompleted unconditionally (even when the cache
+    // is already warm), so without a guard we cycle forever, rebuilding
+    // FilterChips and FilteredSongs on every iteration. Set on the FIRST
+    // trigger; subsequent LoadAsync passes (including the one OnDescriptor-
+    // FetchCompleted enqueues) skip the fetch. Library-level changes
+    // (DataChanged) currently don't reset this — acceptable trade-off; if a
+    // newly-synced song needs descriptor enrichment, expose a refresh path
+    // that resets this flag explicitly rather than re-arming the cycle.
+    private bool _descriptorFetchTriggered;
 
     private List<LikedSongDto> _allSongs = [];
     // Cached result of GetLikedSongFiltersAsync so we can re-run BuildFilterChips after
@@ -399,6 +411,13 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
     private void TryTriggerDescriptorFetch()
     {
         if (_allSongs.Count == 0) return;
+
+        // One-shot per session — see _descriptorFetchTriggered field comment for the
+        // feedback-loop rationale. The fetcher's FetchCompleted event re-runs
+        // LoadAsync; without this guard we cycle indefinitely and the chip row +
+        // tracklist visibly flicker on every iteration.
+        if (_descriptorFetchTriggered) return;
+        _descriptorFetchTriggered = true;
 
         var hasAnyCachedTags = _allSongs.Any(s => s.Tags.Count > 0);
         if (!hasAnyCachedTags)

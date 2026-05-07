@@ -180,6 +180,68 @@ public sealed class PathfinderBrowseContentData
 
     [JsonPropertyName("uri")]
     public string? Uri { get; init; }
+
+    // ── Playlist / album fields (for rendering shelves like Home does) ──
+
+    [JsonPropertyName("description")]
+    public string? Description { get; init; }
+
+    /// <summary>Playlist images. Album cover lives on <see cref="CoverArt"/>; playlists use this nested shape.</summary>
+    [JsonPropertyName("images")]
+    public PathfinderBrowseImageList? Images { get; init; }
+
+    /// <summary>Playlist owner. Drives the "by Spotify" subtitle on playlist cards.</summary>
+    [JsonPropertyName("ownerV2")]
+    public PathfinderBrowseOwnerWrapper? OwnerV2 { get; init; }
+
+    /// <summary>Album artists. Drives the artist-name subtitle on album cards.</summary>
+    [JsonPropertyName("artists")]
+    public PathfinderBrowseArtistList? Artists { get; init; }
+}
+
+public sealed class PathfinderBrowseImageList
+{
+    [JsonPropertyName("items")]
+    public List<PathfinderBrowseImageEntry>? Items { get; init; }
+}
+
+public sealed class PathfinderBrowseImageEntry
+{
+    [JsonPropertyName("sources")]
+    public List<PathfinderBrowseImageSource>? Sources { get; init; }
+}
+
+public sealed class PathfinderBrowseOwnerWrapper
+{
+    [JsonPropertyName("data")]
+    public PathfinderBrowseOwner? Data { get; init; }
+}
+
+public sealed class PathfinderBrowseOwner
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+}
+
+public sealed class PathfinderBrowseArtistList
+{
+    [JsonPropertyName("items")]
+    public List<PathfinderBrowseArtist>? Items { get; init; }
+}
+
+public sealed class PathfinderBrowseArtist
+{
+    [JsonPropertyName("profile")]
+    public PathfinderBrowseArtistProfile? Profile { get; init; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; init; }
+}
+
+public sealed class PathfinderBrowseArtistProfile
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
 }
 
 public sealed class PathfinderBrowseCardRepresentation

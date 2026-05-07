@@ -270,6 +270,12 @@ public sealed partial class MainWindow : WindowEx
         sender.Stop();
         sender.Tick -= OnMemoryReleaseTick;
         _alreadyReleasedSinceLastFocus = true;
+        // Diagnostic breadcrumb — this fires on the UI thread. If a stall lines up
+        // with one of these timestamps, MemoryReleaseHelper.ReleaseWorkingSet is
+        // very likely the cause. NavigationDiagnostics records the [memrel] event.
+        _memoryReleaseLogger?.LogInformation(
+            "[memrel-tick] reason={Reason} thread={Tid}",
+            _pendingReleaseReason, Environment.CurrentManagedThreadId);
         MemoryReleaseHelper.ReleaseWorkingSet(_memoryReleaseLogger, _pendingReleaseReason);
     }
 

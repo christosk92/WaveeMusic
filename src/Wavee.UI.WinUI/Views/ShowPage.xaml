@@ -41,7 +41,7 @@
              in code-behind fades shimmer to content over ~300 ms. -->
         <Grid x:Name="ShimmerContainer"
               x:Load="{x:Bind ShimmerGate.IsLoaded, Mode=OneWay}"
-              MaxWidth="1160"
+              MaxWidth="2400"
               HorizontalAlignment="Stretch"
               IsHitTestVisible="False">
             <Grid.RowDefinitions>
@@ -156,7 +156,7 @@
         <!-- Content. Composition Opacity starts at 0 (set in code-behind);
              ScheduleCrossfade fades it to 1 once IsLoading flips false. -->
         <Grid x:Name="ContentContainer"
-              MaxWidth="1160"
+              MaxWidth="2400"
               HorizontalAlignment="Stretch">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>

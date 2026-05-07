@@ -106,6 +106,11 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     private string? _pendingPageName;
     private bool _skipNextNavigationCacheTrim;
 
+    // Parallel correlation id for NavigationDiagnostics (per-stage timing + GC
+    // / page-fault / memory-release correlation). Independent of the ETW navId
+    // above so the two systems can be enabled/disabled independently.
+    private long _pendingDiagNavId;
+
     private TabItemParameter? _navigationParameter;
     public DateTimeOffset LastActivatedAtUtc { get; private set; } = DateTimeOffset.UtcNow;
 
@@ -124,11 +129,19 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
                     WaveeNavigationEventSource.Log.Navigating(navId, _navigationParameter.InitialPageType.Name, "Restore");
                     _pendingNavId = navId;
                     _pendingPageName = _navigationParameter.InitialPageType.Name;
+                    var restoreDiagNavId = NavigationDiagnostics.Instance?.BeginNav(
+                        _navigationParameter.InitialPageType.Name, "Restore") ?? 0;
+                    _pendingDiagNavId = restoreDiagNavId;
 
-                    TryNavigateFrame(
-                        _navigationParameter.InitialPageType,
-                        _navigationParameter.NavigationParameter,
-                        new DrillInNavigationTransitionInfo());
+                    using (NavigationDiagnostics.Instance?.Stage(restoreDiagNavId, "frameNavigate"))
+                    {
+                        TryNavigateFrame(
+                            _navigationParameter.InitialPageType,
+                            _navigationParameter.NavigationParameter,
+                            new DrillInNavigationTransitionInfo());
+                    }
+                    if (restoreDiagNavId != 0)
+                        NavigationDiagnostics.Instance?.EndNav(restoreDiagNavId);
                 }
                 else
                 {
@@ -197,6 +210,12 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             WaveeNavigationEventSource.Log.Navigated(_pendingNavId, $"{pageName}.Failed");
             _pendingNavId = 0;
             _pendingPageName = null;
+        }
+
+        if (_pendingDiagNavId != 0)
+        {
+            NavigationDiagnostics.Instance?.EndNav(_pendingDiagNavId);
+            _pendingDiagNavId = 0;
         }
 
         if (_previousContent != null)
@@ -274,6 +293,11 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         var navId = WaveeNavigationEventSource.Log.NextNavId();
         WaveeNavigationEventSource.Log.Navigating(navId, pageType.Name, suppressTransition ? "Suppressed" : "DrillIn");
 
+        // Per-stage timing correlator. Snapshots GC counts, working set, page faults
+        // at click time so EndNav can report deltas. See NavigationDiagnostics.
+        var diagSource = suppressTransition ? "Suppressed" : "DrillIn";
+        var diagNavId = NavigationDiagnostics.Instance?.BeginNav(pageType.Name, diagSource) ?? 0;
+
         var oldParameter = _navigationParameter;
 
         _navigationParameter = new TabItemParameter
@@ -293,6 +317,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             {
                 // Same page, same parameter — no Frame.Navigate will fire, so close the pair now.
                 WaveeNavigationEventSource.Log.Navigated(navId, pageType.Name);
+                NavigationDiagnostics.Instance?.EndNav(diagNavId);
                 return;
             }
 
@@ -305,14 +330,19 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
                 {
                     try
                     {
-                        refreshable.RefreshWithParameter(parameter);
+                        using (NavigationDiagnostics.Instance?.Stage(diagNavId, "refreshWithParameter"))
+                        {
+                            refreshable.RefreshWithParameter(parameter);
+                        }
                         // RefreshWithParameter is synchronous from our caller's perspective; close the pair.
                         WaveeNavigationEventSource.Log.Navigated(navId, pageType.Name);
+                        NavigationDiagnostics.Instance?.EndNav(diagNavId);
                     }
                     catch (Exception ex)
                     {
                         _pendingNavId = navId;
                         _pendingPageName = pageType.Name;
+                        _pendingDiagNavId = diagNavId;
                         ShowNavigationError(pageType, parameter, ex);
                     }
 
@@ -328,14 +358,23 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         // Real Frame.Navigate path — stash the nav id so ContentFrame_Navigated can close the pair.
         _pendingNavId = navId;
         _pendingPageName = pageType.Name;
+        _pendingDiagNavId = diagNavId;
 
         var transition = suppressTransition
             ? (NavigationTransitionInfo)new SuppressNavigationTransitionInfo()
             : new DrillInNavigationTransitionInfo();
         _skipNextNavigationCacheTrim = suppressTransition;
-        if (!TryNavigateFrame(pageType, parameter, transition))
-            _skipNextNavigationCacheTrim = false;
+        using (NavigationDiagnostics.Instance?.Stage(diagNavId, "frameNavigate"))
+        {
+            if (!TryNavigateFrame(pageType, parameter, transition))
+                _skipNextNavigationCacheTrim = false;
+        }
         MarkActivated();
+        // Close the diagnostics nav AFTER the Stage scope above has disposed.
+        // ContentFrame_Navigated ran synchronously inside TryNavigateFrame and
+        // already added its own stages; we now stamp the final summary line.
+        if (diagNavId != 0)
+            NavigationDiagnostics.Instance?.EndNav(diagNavId);
     }
 
     public void MarkActivated() => LastActivatedAtUtc = DateTimeOffset.UtcNow;
@@ -415,10 +454,18 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             _pendingNavId = WaveeNavigationEventSource.Log.NextNavId();
             _pendingPageName = _navigationParameter.InitialPageType.Name;
             WaveeNavigationEventSource.Log.Navigating(_pendingNavId, _pendingPageName, "WakeFallback");
-            TryNavigateFrame(
-                _navigationParameter.InitialPageType,
-                _navigationParameter.NavigationParameter,
-                new DrillInNavigationTransitionInfo());
+            var wakeDiagNavId = NavigationDiagnostics.Instance?.BeginNav(
+                _pendingPageName, "WakeFallback") ?? 0;
+            _pendingDiagNavId = wakeDiagNavId;
+            using (NavigationDiagnostics.Instance?.Stage(wakeDiagNavId, "frameNavigate"))
+            {
+                TryNavigateFrame(
+                    _navigationParameter.InitialPageType,
+                    _navigationParameter.NavigationParameter,
+                    new DrillInNavigationTransitionInfo());
+            }
+            if (wakeDiagNavId != 0)
+                NavigationDiagnostics.Instance?.EndNav(wakeDiagNavId);
         }
 
         _sleepSnapshot = null;
@@ -438,14 +485,22 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     {
         NavigationGcCoordinator.BeginCriticalWindow(NavigationGcWindow, "frame-navigating");
 
-        if (_skipNextNavigationCacheTrim)
-            _skipNextNavigationCacheTrim = false;
-        else
-            TrimActiveContentForNavigationCache();
+        // This handler runs synchronously inside ContentFrame.Navigate, BEFORE
+        // the new page is realized and BEFORE OnNavigatedFrom on the outgoing
+        // page. The Trim call below invokes Hibernate + Bindings.StopTracking
+        // on the outgoing page — large pages with many bound properties spend
+        // real time here. Bracket so it shows up on the [nav] line.
+        using (NavigationDiagnostics.Instance?.Stage(_pendingDiagNavId, "frameNavigating"))
+        {
+            if (_skipNextNavigationCacheTrim)
+                _skipNextNavigationCacheTrim = false;
+            else
+                TrimActiveContentForNavigationCache();
 
-        _contentPendingDisposal = ShouldDisposeAfterNavigation(ContentFrame.Content)
-            ? ContentFrame.Content as IDisposable
-            : null;
+            _contentPendingDisposal = ShouldDisposeAfterNavigation(ContentFrame.Content)
+                ? ContentFrame.Content as IDisposable
+                : null;
+        }
     }
 
     private void ContentFrame_Navigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
@@ -464,38 +519,53 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             _pendingPageName = null;
         }
 
-        // Forward navigation event for external subscribers
-        Navigated?.Invoke(this, e);
+        var navIdForDiag = _pendingDiagNavId;
+        _pendingDiagNavId = 0;
 
-        RestoreActiveContentFromNavigationCache();
-
-        // Unsubscribe from previous page's ContentChanged to prevent leak
-        if (_previousContent != null)
-            _previousContent.ContentChanged -= TabItemContent_ContentChanged;
-
-        var contentToDispose = _contentPendingDisposal;
-        _contentPendingDisposal = null;
-        if (contentToDispose != null && !ReferenceEquals(contentToDispose, ContentFrame.Content))
-            contentToDispose.Dispose();
-
-        _previousContent = TabItemContent;
-
-        if (TabItemContent != null)
-            TabItemContent.ContentChanged += TabItemContent_ContentChanged;
-
-        if (_pendingSleepRestoreState != null
-            && _pendingSleepRestorePageType != null
-            && e.SourcePageType == _pendingSleepRestorePageType
-            && ContentFrame.Content is ITabSleepParticipant sleepParticipant)
+        using (NavigationDiagnostics.Instance?.Stage(navIdForDiag, "frameNavigated"))
         {
-            sleepParticipant.RestoreSleepState(_pendingSleepRestoreState);
-            _pendingSleepRestoreState = null;
-            _pendingSleepRestorePageType = null;
+            // Forward navigation event for external subscribers
+            Navigated?.Invoke(this, e);
+
+            using (NavigationDiagnostics.Instance?.Stage(navIdForDiag, "restoreFromNavCache"))
+            {
+                RestoreActiveContentFromNavigationCache();
+            }
+
+            // Unsubscribe from previous page's ContentChanged to prevent leak
+            if (_previousContent != null)
+                _previousContent.ContentChanged -= TabItemContent_ContentChanged;
+
+            var contentToDispose = _contentPendingDisposal;
+            _contentPendingDisposal = null;
+            if (contentToDispose != null && !ReferenceEquals(contentToDispose, ContentFrame.Content))
+                contentToDispose.Dispose();
+
+            _previousContent = TabItemContent;
+
+            if (TabItemContent != null)
+                TabItemContent.ContentChanged += TabItemContent_ContentChanged;
+
+            if (_pendingSleepRestoreState != null
+                && _pendingSleepRestorePageType != null
+                && e.SourcePageType == _pendingSleepRestorePageType
+                && ContentFrame.Content is ITabSleepParticipant sleepParticipant)
+            {
+                sleepParticipant.RestoreSleepState(_pendingSleepRestoreState);
+                _pendingSleepRestoreState = null;
+                _pendingSleepRestorePageType = null;
+            }
+
+            // Cap BackStack to prevent unbounded growth
+            while (ContentFrame.BackStack.Count > MaxBackStackSize)
+                ContentFrame.BackStack.RemoveAt(0);
         }
 
-        // Cap BackStack to prevent unbounded growth
-        while (ContentFrame.BackStack.Count > MaxBackStackSize)
-            ContentFrame.BackStack.RemoveAt(0);
+        // EndNav is NOT called here. ContentFrame_Navigated runs synchronously
+        // inside the originating Frame.Navigate call; the entry-point method
+        // (Navigate / NavigationParameter setter / Wake fallback) calls EndNav
+        // after its own surrounding Stage scopes have closed, so frameNavigate +
+        // frameNavigated + restoreFromNavCache all land in the per-nav summary.
     }
 
     private void TabItemContent_ContentChanged(object? sender, TabItemParameter e)

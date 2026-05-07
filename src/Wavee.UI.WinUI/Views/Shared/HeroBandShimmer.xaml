@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Views.Shared.HeroBandShimmer"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <Grid Height="420">
+        <!-- Single 14 px-rounded shimmer rectangle approximating the carousel
+             surface, sized to match HeroBandPanel's 420 px so there's no
+             vertical jump when the crossfade swaps in the real band. -->
+        <controls:Shimmer CornerRadius="14"/>
+
+        <!-- Faint internal cluster bottom-left mimicking the slide overlay
+             (eyebrow + title + tagline + CTA pair). Helps the shimmer read as
+             a hero band rather than a generic placeholder. -->
+        <StackPanel HorizontalAlignment="Left"
+                    VerticalAlignment="Bottom"
+                    Margin="40,0,0,40"
+                    Spacing="14">
+            <controls:Shimmer Width="80" Height="11" CornerRadius="3"/>
+            <controls:Shimmer Width="280" Height="32" CornerRadius="6"/>
+            <controls:Shimmer Width="200" Height="14" CornerRadius="4"/>
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                <controls:Shimmer Width="64" Height="32" CornerRadius="6"/>
+                <controls:Shimmer Width="64" Height="32" CornerRadius="6"/>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</UserControl>

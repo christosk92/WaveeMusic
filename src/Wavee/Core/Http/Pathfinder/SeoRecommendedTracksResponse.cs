@@ -3,9 +3,11 @@ using System.Text.Json.Serialization;
 
 namespace Wavee.Core.Http.Pathfinder;
 
-// Response shape for the internalLinkRecommenderTrack persisted query. Used
-// by VideoPlayerPageViewModel to populate the YouTube-style "Up next"
-// vertical list on the Now Playing video page.
+// Response shape for the internalLinkRecommenderTrack persisted query.
+// Currently unused — the bespoke video-page "Up next" list it fed was retired
+// when VideoPlayerPage collapsed onto the shared ExpandedPlayerView. Kept
+// because the URL/params/shape encode reverse-engineered details that would
+// be expensive to re-derive.
 
 public sealed class SeoRecommendedTracksResponse
 {

@@ -21,24 +21,31 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable
+public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable, IContentPageHost
 {
     private readonly ILogger? _logger;
     private readonly INotificationService? _notificationService;
     private readonly ISettingsService _settings;
-    private bool _showingContent;
-    private bool _crossfadeScheduled;
-    private bool _isNavigatingAway;
     private bool _isDisposed;
     private bool _trimmedForNavigationCache;
 
     public AlbumViewModel ViewModel { get; }
 
-    public ShimmerLoadGate ShimmerGate { get; } = new();
+    public ContentPageController PageController { get; }
+
+    public ShimmerLoadGate ShimmerGate => PageController.ShimmerGate;
 
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
 
     public event EventHandler<TabItemParameter>? ContentChanged;
+
+    // ── IContentPageHost ─────────────────────────────────────────────────────
+    FrameworkElement? IContentPageHost.ShimmerContainer => ShimmerContainer;
+    FrameworkElement IContentPageHost.ContentContainer => ContentContainer;
+    FrameworkLayer IContentPageHost.CrossfadeLayer => FrameworkLayer.Composition;
+    string IContentPageHost.PageIdForLogging => $"album:{XfadeLog.Tag(ViewModel.AlbumId)}";
+    bool IContentPageHost.IsLoading => ViewModel.IsLoading;
+    bool IContentPageHost.HasContent => !string.IsNullOrEmpty(ViewModel.AlbumName);
 
     public AlbumPage()
     {
@@ -46,6 +53,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         _logger = Ioc.Default.GetService<ILogger<AlbumPage>>();
         _notificationService = Ioc.Default.GetService<INotificationService>();
         _settings = Ioc.Default.GetRequiredService<ISettingsService>();
+        PageController = new ContentPageController(this, _logger);
         InitializeComponent();
 
         // PlayCount column formatter — TrackDataGrid's PlayCount column uses this
@@ -85,26 +93,11 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(AlbumViewModel.IsLoading))
-        {
-            string action;
-            if (ViewModel.IsLoading) action = "skip-still-loading";
-            else if (_showingContent) action = "skip-already-shown";
-            else if (_crossfadeScheduled) action = "skip-already-scheduled";
-            else action = "schedule";
-            _logger?.LogDebug(
-                "[xfade][album:{Id}] propchg.isLoading val={Val} showing={Showing} scheduled={Scheduled} action={Action}",
-                XfadeLog.Tag(ViewModel.AlbumId), ViewModel.IsLoading, _showingContent, _crossfadeScheduled, action);
-            if (action == "schedule")
-                ScheduleCrossfade();
-        }
+            PageController.OnIsLoadingChanged();
         else if (e.PropertyName == nameof(AlbumViewModel.AlternateReleases))
-        {
             RebuildOtherVersionsFlyout();
-        }
         else if (e.PropertyName == nameof(AlbumViewModel.HeaderArtistLinks))
-        {
             RebuildHeaderArtistsText();
-        }
     }
 
     /// <summary>
@@ -152,27 +145,19 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
     private void AlbumPage_Loaded(object sender, RoutedEventArgs e)
     {
-        _logger?.LogDebug(
-            "[xfade][album:{Id}] loaded showing={Showing} scheduled={Scheduled} navAway={NavAway}",
-            XfadeLog.Tag(ViewModel.AlbumId), _showingContent, _crossfadeScheduled, _isNavigatingAway);
         // Re-emit the inline header names from the current VM state — covers the
         // warm-cache navigation path where ApplyDetail runs before the page is
         // fully constructed and PropertyChanged finds HeaderArtistsText null.
         RebuildHeaderArtistsText();
-
     }
 
     private void AlbumPage_Unloaded(object sender, RoutedEventArgs e)
     {
-        _logger?.LogDebug(
-            "[xfade][album:{Id}] unloaded showing={Showing} scheduled={Scheduled}",
-            XfadeLog.Tag(ViewModel.AlbumId), _showingContent, _crossfadeScheduled);
-        // Under NavigationCacheMode=Required the Page is reused across N
-        // navigations and the (singleton-via-cache) VM lives with it — keep the
-        // constructor's PropertyChanged subscription attached for the page's
-        // lifetime. Unhooking here would leave the cached page deaf to the next
-        // IsLoading=false transition on cold cache, stuck on shimmer.
-        _isNavigatingAway = true;
+        // Under NavigationCacheMode=Enabled the Page may be reused across N
+        // navigations until LRU eviction. Keep the ctor's PropertyChanged
+        // subscription attached for the page's lifetime — unhooking here would
+        // leave the cached page deaf to the next IsLoading=false transition.
+        PageController.IsNavigatingAway = true;
     }
 
     public void Dispose()
@@ -191,86 +176,6 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         (ViewModel as IDisposable)?.Dispose();
     }
 
-    // ── Crossfade ──
-    // Mirrors ProfilePage / ArtistPage: yield twice so XAML has time to
-    // propagate bindings + measure the inner panels before the fade starts;
-    // collapse shimmer once it has fully faded out so it stops participating
-    // in measure/arrange.
-
-    private async void ScheduleCrossfade()
-    {
-        _logger?.LogDebug(
-            "[xfade][album:{Id}] schedule.enter showing={Showing} scheduled={Scheduled} navAway={NavAway} isLoading={IsLoading}",
-            XfadeLog.Tag(ViewModel.AlbumId), _showingContent, _crossfadeScheduled, _isNavigatingAway, ViewModel.IsLoading);
-        _crossfadeScheduled = true;
-        await Task.Yield();
-        await Task.Delay(16);
-        var bail = _isNavigatingAway || _showingContent;
-        _logger?.LogDebug(
-            "[xfade][album:{Id}] schedule.gate navAway={NavAway} showing={Showing} action={Action}",
-            XfadeLog.Tag(ViewModel.AlbumId), _isNavigatingAway, _showingContent, bail ? "bail" : "run");
-        if (bail) return;
-        CrossfadeToContent();
-    }
-
-    // Warm-cache fallback for the same-id re-navigation path. AlbumViewModel.Initialize
-    // (line 538) early-exits when the incoming AlbumId matches the current one, so
-    // IsLoading stays at its previous value (false) and ApplyDetailAsync's
-    // IsLoading = false write is a no-op that fires no PropertyChanged. Without this
-    // helper, the IsLoading-driven ScheduleCrossfade in ViewModel_PropertyChanged
-    // never runs and the page paints empty (shimmer composition opacity stuck at 0
-    // from the prior fade, content composition opacity at 0 from the reset).
-    // Confirmed by [xfade] capture: state.ready freshness=Fresh + two
-    // propset.isLoading old=false new=false changed=false events, schedule.enter
-    // never observed.
-    private void TryShowContentNow()
-    {
-        if (_showingContent || _crossfadeScheduled || ViewModel.IsLoading || string.IsNullOrEmpty(ViewModel.AlbumName))
-            return;
-        ScheduleCrossfade();
-    }
-
-    private async void CrossfadeToContent()
-    {
-        if (_showingContent) return;
-        _showingContent = true;
-
-        if (ShimmerContainer is not null)
-        {
-            var shimmerVisualOpacity = ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity;
-            var contentVisualOpacity = ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity;
-            _logger?.LogDebug(
-                "[xfade][album:{Id}] xfade.start shimmerXaml={ShimmerXaml} shimmerVisual={ShimmerVisual} contentVisual={ContentVisual} shimmerVisible={ShimmerVisible}",
-                XfadeLog.Tag(ViewModel.AlbumId), ShimmerContainer.Opacity, shimmerVisualOpacity, contentVisualOpacity, ShimmerContainer.Visibility);
-        }
-
-        await ShimmerGate.RunCrossfadeAsync(ShimmerContainer, ContentContainer,
-            continuePredicate: () => _showingContent);
-        if (_showingContent)
-        {
-            _logger?.LogDebug(
-                "[xfade][album:{Id}] xfade.shimmerCollapsed contentVisual={ContentVisual}",
-                XfadeLog.Tag(ViewModel.AlbumId), ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity);
-        }
-    }
-
-    private void ResetCrossfadeForNewLoad()
-    {
-        // Clear the navigation-away gate — Unloaded sets _isNavigatingAway = true
-        // and Frame caches the page instance, so on re-attach the gate is stale
-        // and ScheduleCrossfade's post-yield guard bails on every load.
-        // Confirmed by [xfade] capture: load.enter and reset both reported
-        // navAway=true on a same-id Frame.Navigate to a cached AlbumPage.
-        _isNavigatingAway = false;
-        _showingContent = false;
-        _crossfadeScheduled = false;
-        ShimmerGate.Reset(() => ShimmerContainer, () => ContentContainer);
-        var shimmerVisualOpacity = ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity;
-        _logger?.LogDebug(
-            "[xfade][album:{Id}] reset shimmerXaml={ShimmerXaml} shimmerVisual={ShimmerVisual} navAway={NavAway}",
-            XfadeLog.Tag(ViewModel.AlbumId), ShimmerContainer.Opacity, shimmerVisualOpacity, _isNavigatingAway);
-    }
-
     // ── Navigation ───────────────────────────────────────────────────────────
 
     private bool TryHandlePendingAlbumArtConnectedAnimation()
@@ -278,19 +183,13 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         if (!ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.AlbumArt))
             return false;
 
-        _showingContent = true;
-        _crossfadeScheduled = false;
-        ShimmerGate.IsLoaded = false;
-        if (ShimmerContainer is not null)
-        {
-            ShimmerContainer.Visibility = Visibility.Collapsed;
-            ShimmerContainer.Opacity = 0;
-            ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 0;
-        }
-        ContentContainer.Opacity = 1;
-        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 1;
+        // Skip the standard crossfade — connected animation paints content directly.
+        PageController.MarkContentShownDirectly();
 
-        UpdateLayout();
+        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.updateLayout"))
+        {
+            UpdateLayout();
+        }
         var started = ConnectedAnimationHelper.TryStartAnimation(
             ConnectedAnimationHelper.AlbumArt,
             AlbumArtContainer);
@@ -303,6 +202,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.album.onNavigatedTo");
         var incomingId = e.Parameter is ContentNavigationParameter nav ? nav.Uri
                        : e.Parameter as string;
         var sameId = !string.IsNullOrEmpty(incomingId) && string.Equals(incomingId, ViewModel.AlbumId, StringComparison.Ordinal);
@@ -315,6 +215,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.album.onNavigatedFrom");
         _logger?.LogDebug("[xfade][album:{Id}] nav.from", XfadeLog.Tag(ViewModel.AlbumId));
         base.OnNavigatedFrom(e);
         // Hibernate also releases FilteredTracks / MoreByArtist / AlternateReleases /
@@ -344,13 +245,19 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             return;
 
         _trimmedForNavigationCache = false;
-        Bindings?.Update();
+        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.bindingsUpdate"))
+        {
+            Bindings?.Update();
+        }
         if (string.IsNullOrEmpty(ViewModel.AlbumId))
             return;
 
-        ResetCrossfadeForNewLoad();
-        ViewModel.Activate(ViewModel.AlbumId);
-        DispatcherQueue.TryEnqueue(TryShowContentNow);
+        PageController.ResetForNewLoad();
+        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.activate"))
+        {
+            ViewModel.Activate(ViewModel.AlbumId);
+        }
+        DispatcherQueue.TryEnqueue(PageController.TryShowContentNow);
     }
 
     // Same-tab navigation between two albums reuses this Page instance and never
@@ -373,13 +280,11 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
     {
         _trimmedForNavigationCache = false;
         _logger?.LogDebug(
-            "[xfade][album:{Id}] load.enter showing={Showing} scheduled={Scheduled} navAway={NavAway}",
-            XfadeLog.Tag(ViewModel.AlbumId), _showingContent, _crossfadeScheduled, _isNavigatingAway);
+            "[xfade][album:{Id}] load.enter",
+            XfadeLog.Tag(ViewModel.AlbumId));
 
-        // Reset shimmer/content visual state for the fresh load — mirrors
-        // ArtistPage's LoadNewContent reset so the next album fades in
-        // cleanly instead of inheriting the previous album's faded-in chrome.
-        ResetCrossfadeForNewLoad();
+        // Reset shimmer/content visual state for the fresh load.
+        PageController.ResetForNewLoad();
 
         var hasPendingAlbumArtAnimation =
             ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.AlbumArt);
@@ -422,7 +327,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             {
                 var uri = connectedAnimationNav.Uri;
                 await Task.Yield();
-                if (!_isNavigatingAway)
+                if (!PageController.IsNavigatingAway)
                     ViewModel.Activate(uri, preserveHeaderPrefill: true);
             }
 
@@ -438,8 +343,8 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             ViewModel.Activate(connectedAnimationNav.Uri, preserveHeaderPrefill: true);
 
         await Task.Yield();
-        if (_isNavigatingAway) return;
-        TryShowContentNow();
+        if (PageController.IsNavigatingAway) return;
+        PageController.TryShowContentNow();
     }
 
     // ── Left-panel sizing ────────────────────────────────────────────────────

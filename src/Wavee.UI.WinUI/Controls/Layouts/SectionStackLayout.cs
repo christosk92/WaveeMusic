@@ -44,11 +44,12 @@ public sealed class SectionStackLayout : VirtualizingLayout
 
     /// <summary>
     /// Extra pixels on top and bottom of <see cref="VirtualizingLayoutContext.RealizationRect"/>
-    /// in which we still keep items realized. Keep this below a full viewport so
-    /// wheel scrolling has runway without retaining several off-screen shelves
-    /// and their decoded images.
+    /// in which we still keep items realized. Roughly +1 viewport-page in each
+    /// direction on a typical desktop window — gives wheel scrolling enough
+    /// runway that the next shelf has fully realized before it enters view,
+    /// without holding more than a couple of pages of decoded images at once.
     /// </summary>
-    private const double RealizationBufferPx = 480.0;
+    private const double RealizationBufferPx = 1280.0;
 
     public static readonly DependencyProperty SpacingProperty =
         DependencyProperty.Register(nameof(Spacing), typeof(double), typeof(SectionStackLayout),

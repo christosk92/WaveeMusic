@@ -44,6 +44,10 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
     private const int FadeDurationMs = 180;
     private bool _overlayVisible = true;
 
+    // Tracked so OnUnloaded can Stop() it — otherwise the framework's
+    // animation clock keeps a reference to OverlayButtons after detach.
+    private Storyboard? _overlayFadeStoryboard;
+
     // Drag state. Translation on the UserControl shifts the visual position
     // without affecting layout. Pointer coords are read relative to the
     // parent container so the reference frame stays stable while the
@@ -98,8 +102,11 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
         _hideTimer = dq.CreateTimer();
         _hideTimer.Interval = TimeSpan.FromMilliseconds(IdleHideMs);
         _hideTimer.IsRepeating = false;
-        _hideTimer.Tick += (_, _) => FadeOverlay(visible: false);
+        _hideTimer.Tick += OnHideTimerTick;
     }
+
+    private void OnHideTimerTick(DispatcherQueueTimer sender, object args)
+        => FadeOverlay(visible: false);
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -117,9 +124,18 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        System.Diagnostics.Debug.WriteLine("[mem] MiniVideoPlayer.OnUnloaded");
         _surface.ReleaseSurface(this);
         _surface.ActiveSurfaceChanged -= OnActiveVideoSurfaceStateChanged;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        if (_hideTimer is not null)
+        {
+            _hideTimer.Stop();
+            _hideTimer.Tick -= OnHideTimerTick;
+            _hideTimer = null;
+        }
+        _overlayFadeStoryboard?.Stop();
+        _overlayFadeStoryboard = null;
         Loaded -= OnLoaded;
         Unloaded -= OnUnloaded;
     }
@@ -278,8 +294,10 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
             return;
         _overlayVisible = visible;
 
+        _overlayFadeStoryboard?.Stop();
         var sb = new Storyboard();
         AddOpacityAnimation(sb, OverlayButtons, visible ? 1.0 : 0.0);
+        _overlayFadeStoryboard = sb;
         sb.Begin();
 
         // Block hit-testing on the buttons while invisible so a stray click

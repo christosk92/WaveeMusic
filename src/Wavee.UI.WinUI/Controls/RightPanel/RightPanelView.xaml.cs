@@ -191,6 +191,7 @@ public sealed partial class RightPanelView : UserControl
 
     private void RightPanelView_Loaded(object sender, RoutedEventArgs e)
     {
+        System.Diagnostics.Debug.WriteLine("[mem] RightPanelView.Loaded");
         if (_themeColors != null && !_themeColorsSubscribed)
         {
             _themeColors.ThemeChanged += OnThemeColorsChanged;
@@ -237,6 +238,7 @@ public sealed partial class RightPanelView : UserControl
 
     private void RightPanelView_Unloaded(object sender, RoutedEventArgs e)
     {
+        System.Diagnostics.Debug.WriteLine("[mem] RightPanelView.Unloaded");
         if (_themeColors != null && _themeColorsSubscribed)
         {
             _themeColors.ThemeChanged -= OnThemeColorsChanged;
@@ -312,6 +314,7 @@ public sealed partial class RightPanelView : UserControl
 
         if (_lyricsVm == null) return;
 
+        System.Diagnostics.Debug.WriteLine("[mem] RightPanelView.InitializeLyrics");
         _lyricsInitialized = true;
 
         // Configure the canvas
@@ -370,6 +373,7 @@ public sealed partial class RightPanelView : UserControl
     {
         if (!_lyricsInitialized) return;
 
+        System.Diagnostics.Debug.WriteLine("[mem] RightPanelView.TeardownLyrics");
         if (_positionTimer != null)
         {
             _positionTimer.Stop();
@@ -382,6 +386,13 @@ public sealed partial class RightPanelView : UserControl
             _scrollResetTimer.Stop();
             _scrollResetTimer.Tick -= OnScrollResetTimerTick;
             _scrollResetTimer = null;
+        }
+
+        if (_lyricsHoverExplainHideTimer != null)
+        {
+            _lyricsHoverExplainHideTimer.Stop();
+            _lyricsHoverExplainHideTimer.Tick -= OnLyricsHoverExplainHideTimerTick;
+            _lyricsHoverExplainHideTimer = null;
         }
 
         if (_lyricsVm != null)
@@ -2019,7 +2030,14 @@ public sealed partial class RightPanelView : UserControl
         TrackDetailsPlays.Text = track.PlayCountFormatted;
         TrackDetailsArtwork.Source = string.IsNullOrEmpty(track.ImageUrl)
             ? null
-            : new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(track.ImageUrl));
+            : new Microsoft.UI.Xaml.Media.Imaging.BitmapImage
+            {
+                UriSource = new Uri(track.ImageUrl),
+                DecodePixelType = Microsoft.UI.Xaml.Media.Imaging.DecodePixelType.Logical,
+                // Border is 180×180 — cap decode at 360 (×2 for HiDPI) so we don't
+                // hold a full-source ~1.6 MB pixel buffer per track.
+                DecodePixelWidth = 360,
+            };
     }
 
     private void EnsureDetailsTreeLoaded()

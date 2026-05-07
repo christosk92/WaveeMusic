@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Views.Shared.SectionShelvesView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <UserControl.Resources>
+        <!-- Default item template — ContentCard handles its own click dispatch
+             (NavigationUri routes spotify:playlist:/album:/show:/page: clicks
+             via NavigationHelpers). PlaceholderColorHex shows briefly while
+             the artwork loads, so sub-page tinted tiles get a coloured bg
+             until their cardRepresentation artwork resolves. -->
+        <DataTemplate x:Key="DefaultBrowseItemTemplate" x:DataType="vm:HomeSectionItem">
+            <cards:ContentCard
+                ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                Title="{x:Bind Title, Mode=OneWay}"
+                Subtitle="{x:Bind Subtitle, Mode=OneWay}"
+                PlaceholderColorHex="{x:Bind ColorHex, Mode=OneWay}"
+                IsCircularImage="False"
+                NavigationUri="{x:Bind Uri, Mode=OneWay}"
+                NavigationTitle="{x:Bind Title, Mode=OneWay}"/>
+        </DataTemplate>
+
+        <!-- Section template: title + horizontal shelf of cards. Consumers can
+             swap the item template via ItemTemplateSelector DP; the default is
+             DefaultBrowseItemTemplate above. -->
+        <DataTemplate x:Key="SectionTemplate" x:DataType="vm:HomeSection">
+            <StackPanel Margin="0,0,0,28">
+                <TextBlock
+                    Text="{x:Bind Title}"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    FontSize="18"
+                    FontWeight="SemiBold"
+                    Margin="0,0,0,12"/>
+                <shelf:ShelfScroller
+                    ItemsSourceIdentity="{x:Bind SectionUri, Mode=OneWay}"
+                    ItemsSource="{x:Bind Items, Mode=OneWay}"
+                    ItemTemplate="{StaticResource DefaultBrowseItemTemplate}"
+                    MinItemWidth="180" MaxItemWidth="220" Spacing="14"/>
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <ItemsRepeater
+        x:Name="SectionsRepeater"
+        ItemTemplate="{StaticResource SectionTemplate}">
+        <ItemsRepeater.Layout>
+            <StackLayout Orientation="Vertical" Spacing="0"/>
+        </ItemsRepeater.Layout>
+    </ItemsRepeater>
+</UserControl>

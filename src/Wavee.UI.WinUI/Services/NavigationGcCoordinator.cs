@@ -1,18 +1,36 @@
 using System;
+using System.Runtime;
 using System.Threading;
 using Microsoft.Extensions.Logging;
 
 namespace Wavee.UI.WinUI.Services;
 
 /// <summary>
-/// Defers explicit, blocking memory-release passes while navigation is likely
-/// parsing XAML, realising containers, loading images, or crossfading content.
-/// Pure ref-counted boolean — the previous <c>GC.TryStartNoGCRegion</c> attempt
-/// turned out to do more harm than good (allocation-budget exhaustion forced a
-/// catch-up Gen2 right at navigation completion, the late-nav hiccup). The
-/// runtime team's own guidance is unambiguous: <em>"For any normal kind of
-/// applications, YOU DON'T NEED TO DO THIS. You are likely to make your
-/// application run slower or blow up memory."</em> So we don't.
+/// Two jobs while navigation is in flight:
+/// <list type="number">
+/// <item>Defer explicit working-set trims so they don't pile faults onto the
+/// critical click-to-paint path.</item>
+/// <item>Suppress implicit Gen2 collections by flipping
+/// <see cref="GCSettings.LatencyMode"/> to <see cref="GCLatencyMode.SustainedLowLatency"/>
+/// for the duration of the window. Without this, the runtime can fire a full
+/// blocking compact <em>during</em> a navigation if the allocation budget happens
+/// to tip over — exactly the "stall then BOOM" symptom captured in nav-health
+/// report nav #34 (143 ms refresh, gen0/1/2 all +1, managedΔ=-7.7 MB).</item>
+/// </list>
+///
+/// <para>
+/// SustainedLowLatency only suppresses <strong>Gen2</strong>. Gen0/Gen1 still
+/// collect normally — those are sub-millisecond and don't show up as stalls.
+/// The 4-second window cap (callers pass duration) bounds heap growth: once the
+/// window closes the runtime can perform any deferred Gen2 it judges necessary.
+/// </para>
+///
+/// <para>
+/// We do <em>not</em> use <c>GC.TryStartNoGCRegion</c>. An earlier attempt with
+/// it caused allocation-budget exhaustion to force a catch-up Gen2 right at
+/// navigation completion (the late-nav hiccup). LatencyMode is the documented,
+/// well-behaved mechanism for this.
+/// </para>
 /// </summary>
 public static class NavigationGcCoordinator
 {
@@ -21,6 +39,12 @@ public static class NavigationGcCoordinator
     private static int _deferredReleaseCount;
     private static string? _deferredReason;
     private static ILogger? _deferredLogger;
+
+    // The latency mode that was in effect before any critical window opened.
+    // Saved on the 0 → 1 transition, restored on the N → 0 transition. Using a
+    // nullable so we can tell "no window has opened yet" apart from "window
+    // open and we saved the mode".
+    private static GCLatencyMode? _priorLatencyMode;
 
     public static bool IsNavigationCritical
     {
@@ -38,6 +62,24 @@ public static class NavigationGcCoordinator
 
         lock (Gate)
         {
+            // 0 → 1: stash the prior latency mode and switch the runtime into
+            // SustainedLowLatency for the duration of the window. Subsequent
+            // BeginCriticalWindow calls (multiple concurrent nav reasons) just
+            // bump the ref count.
+            if (_activeWindows == 0)
+            {
+                try
+                {
+                    _priorLatencyMode = GCSettings.LatencyMode;
+                    GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+                }
+                catch
+                {
+                    // GCSettings.LatencyMode setter is well-behaved on .NET 10
+                    // but treat it as best-effort — diagnostics over correctness.
+                    _priorLatencyMode = null;
+                }
+            }
             _activeWindows++;
         }
 
@@ -92,6 +134,24 @@ public static class NavigationGcCoordinator
 
             if (_activeWindows > 0)
                 return;
+
+            // N → 0: restore the latency mode the runtime had before we flipped it.
+            // Any deferred Gen2 the runtime chose not to fire during the window can
+            // happen now — that's exactly the desired ordering (after the user is
+            // past the click, not during it).
+            if (_priorLatencyMode.HasValue)
+            {
+                try
+                {
+                    GCSettings.LatencyMode = _priorLatencyMode.Value;
+                }
+                catch
+                {
+                    // best-effort restore; if it fails we stay on SustainedLowLatency
+                    // until the next BeginCriticalWindow re-attempts the round trip.
+                }
+                _priorLatencyMode = null;
+            }
 
             if (_deferredReleaseCount == 0)
                 return;

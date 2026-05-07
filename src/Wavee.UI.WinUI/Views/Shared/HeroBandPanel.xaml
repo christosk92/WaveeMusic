@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Views.Shared.HeroBandPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:hero="using:Klankhuis.Hero.Controls"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <!-- HaloBackdrop is a transparent sibling of the carousel; HeroHalo
+         renders the composition shadow on this element so the halo's
+         render slot can extend past the carousel's bounds. The carousel
+         itself is drawn on top. -->
+    <Grid>
+        <Grid x:Name="HaloBackdrop"
+              Background="Transparent"
+              IsHitTestVisible="False"/>
+
+        <hero:HeroCarousel x:Name="Carousel"
+                           CornerRadius="14"
+                           VerticalAlignment="Stretch"/>
+    </Grid>
+</UserControl>

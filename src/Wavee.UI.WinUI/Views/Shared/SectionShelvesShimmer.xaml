@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Views.Shared.SectionShelvesShimmer"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <UserControl.Resources>
+        <!-- One card stack: 180 px square cover + two text lines.
+             Mirrors ContentCard's silhouette so swap-in doesn't reflow. -->
+        <Style x:Key="CardStackStyle" TargetType="StackPanel">
+            <Setter Property="Width" Value="180"/>
+            <Setter Property="Spacing" Value="8"/>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- Four shelves — matches the typical browse-page section count. Each
+         shelf has a title shimmer + 5 card stacks. Card sizes / paddings
+         mirror SectionShelvesView's defaults so there's no layout shift
+         when the real shelves fade in. -->
+    <StackPanel Spacing="28">
+
+        <!-- Shelf 1 -->
+        <StackPanel Spacing="12">
+            <controls:Shimmer Height="18" Width="200" HorizontalAlignment="Left" CornerRadius="4"/>
+            <StackPanel Orientation="Horizontal" Spacing="14">
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="140" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="120" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="80" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="150" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="110" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="130" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="90" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="70" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Shelf 2 -->
+        <StackPanel Spacing="12">
+            <controls:Shimmer Height="18" Width="160" HorizontalAlignment="Left" CornerRadius="4"/>
+            <StackPanel Orientation="Horizontal" Spacing="14">
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="130" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="90" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="110" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="80" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="140" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="120" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="70" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="60" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Shelf 3 -->
+        <StackPanel Spacing="12">
+            <controls:Shimmer Height="18" Width="220" HorizontalAlignment="Left" CornerRadius="4"/>
+            <StackPanel Orientation="Horizontal" Spacing="14">
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="140" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="120" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="80" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="150" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="90" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="110" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="70" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="130" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="85" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Shelf 4 -->
+        <StackPanel Spacing="12">
+            <controls:Shimmer Height="18" Width="180" HorizontalAlignment="Left" CornerRadius="4"/>
+            <StackPanel Orientation="Horizontal" Spacing="14">
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="120" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="80" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="140" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="95" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="75" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="130" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="85" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+                <StackPanel Style="{StaticResource CardStackStyle}">
+                    <controls:Shimmer Height="180" CornerRadius="4"/>
+                    <controls:Shimmer Height="14" Width="115" HorizontalAlignment="Left" CornerRadius="4"/>
+                    <controls:Shimmer Height="12" Width="65" HorizontalAlignment="Left" CornerRadius="4"/>
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+
+    </StackPanel>
+</UserControl>

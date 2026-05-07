@@ -119,6 +119,22 @@
                 <diag:IpcLineChart x:Name="RttChart" Height="180"/>
             </Border>
 
+            <controls:SettingsCard Margin="0,0,0,12"
+                                   Header="Navigation Health Report"
+                                   Description="Copies a snapshot of recent navigation timings, GC counts, working-set deltas, page faults, and the last MemoryReleaseHelper event. Paste into a bug report after reproducing the stall-then-BOOM hang.">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE7C3;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <TextBlock Text="{x:Bind ViewModel.NavigationReportStatus, Mode=OneWay}"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                    <Button Content="Copy report"
+                            Command="{x:Bind ViewModel.CopyNavigationHealthReportCommand}"/>
+                </StackPanel>
+            </controls:SettingsCard>
+
             <controls:SettingsExpander x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsExpander_9" Margin="0,0,0,12"
                                        Header="Clock Synchronization"
                                        Description="NTP-style sync with Spotify's server clock">

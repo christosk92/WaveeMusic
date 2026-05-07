@@ -42,9 +42,6 @@
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
               BorderThickness="1"
               Padding="8,8,8,12">
-            <winUi:Effects.Shadow>
-                <ui:AttachedCardShadow x:Name="CardShadow" Opacity="0" BlurRadius="16" Offset="0,4" CornerRadius="4"/>
-            </winUi:Effects.Shadow>
             <!-- Shimmer overlay — instantiated lazily only when a card is in the IsLoading
                  state (passive/placeholder mode). Skipping creation cuts ~3 framework elements
                  × ~310 cards = ~930 elements from the HomePage realization burst. -->
@@ -71,6 +68,7 @@
                               VerticalAlignment="Center"/>
                     <Image x:Name="SquareImage"
                            Stretch="UniformToFill"
+                           Opacity="0.85"
                            ImageOpened="SquareImage_ImageOpened"
                            ImageFailed="SquareImage_ImageFailed"/>
 
@@ -149,6 +147,7 @@
                               HorizontalAlignment="Center"
                               VerticalAlignment="Center"/>
                     <Ellipse x:Name="CircleImage"
+                             Opacity="0.85"
                              HorizontalAlignment="Center"
                              VerticalAlignment="Center">
                         <Ellipse.Fill>

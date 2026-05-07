@@ -89,6 +89,17 @@ internal static class SpotifyImageHelper
         => !string.IsNullOrEmpty(uri) && uri.StartsWith(MosaicPrefix, StringComparison.Ordinal);
 
     /// <summary>
+    /// Predicate version of <see cref="ToHttpsUrl"/>: returns true iff the URI
+    /// would resolve to a single loadable HTTPS URL. Mosaic URIs resolve to
+    /// null here (use <see cref="TryParseMosaicTileUrls"/> instead) — callers
+    /// who need a single image (hero artwork, ContentCard) should gate on
+    /// this rather than just <c>!string.IsNullOrEmpty</c> so non-empty mosaic
+    /// strings don't sneak through and render black.
+    /// </summary>
+    public static bool CanResolveToHttpsUrl(string? spotifyUri)
+        => !string.IsNullOrEmpty(ToHttpsUrl(spotifyUri));
+
+    /// <summary>
     /// Parses "spotify:mosaic:id1:id2:id3:id4" into the 4 individual CDN URLs that compose the
     /// mosaic. Each id is a regular i.scdn.co image hash (same format as <c>spotify:image:</c>),
     /// so the tiles can be loaded via the standard image pipeline. Returns false when the URI

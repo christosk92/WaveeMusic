@@ -31,7 +31,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipant, IDisposable
+public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipant, IDisposable, IContentPageHost
 {
     private readonly ILogger? _logger;
     private readonly ISettingsService _settings;
@@ -40,12 +40,6 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     // view state (filter text) when the bound playlist actually changes.
     private string? _lastPlaylistId;
 
-    // Shimmer→content crossfade state. Mirrors AlbumPage / ArtistPage / ProfilePage:
-    // ScheduleCrossfade waits Task.Yield + 16 ms so layout settles before the fade,
-    // and the shimmer is collapsed only after its fade-out completes.
-    private bool _showingContent;
-    private bool _crossfadeScheduled;
-    private bool _isNavigatingAway;
     private bool _isDisposed;
     private bool _trimmedForNavigationCache;
 
@@ -67,13 +61,24 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
     public PlaylistViewModel ViewModel { get; }
 
-    public ShimmerLoadGate ShimmerGate { get; } = new();
+    public ContentPageController PageController { get; }
+
+    public ShimmerLoadGate ShimmerGate => PageController.ShimmerGate;
+
+    // ── IContentPageHost ─────────────────────────────────────────────────────
+    FrameworkElement? IContentPageHost.ShimmerContainer => ShimmerContainer;
+    FrameworkElement IContentPageHost.ContentContainer => WidePlaylistScroller;
+    FrameworkLayer IContentPageHost.CrossfadeLayer => FrameworkLayer.Composition;
+    string IContentPageHost.PageIdForLogging => $"playlist:{XfadeLog.Tag(ViewModel.PlaylistId)}";
+    bool IContentPageHost.IsLoading => ViewModel.IsLoading;
+    bool IContentPageHost.HasContent => !string.IsNullOrEmpty(ViewModel.PlaylistName);
 
     public PlaylistPage()
     {
         ViewModel = Ioc.Default.GetRequiredService<PlaylistViewModel>();
         _logger = Ioc.Default.GetService<ILogger<PlaylistPage>>();
         _settings = Ioc.Default.GetRequiredService<ISettingsService>();
+        PageController = new ContentPageController(this, _logger);
         InitializeComponent();
 
         Func<object, string> addedFormatter = item =>
@@ -159,7 +164,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
     private void PlaylistPage_Unloaded(object sender, RoutedEventArgs e)
     {
-        _isNavigatingAway = true;
+        PageController.IsNavigatingAway = true;
         _heroImageSurface?.Dispose();
         _heroImageSurface = null;
     }
@@ -176,18 +181,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         else if (ev.PropertyName == nameof(PlaylistViewModel.PlaylistDescription))
             RebuildDescriptionInlines();
         else if (ev.PropertyName == nameof(PlaylistViewModel.IsLoading))
-        {
-            string action;
-            if (ViewModel.IsLoading) action = "skip-still-loading";
-            else if (_showingContent) action = "skip-already-shown";
-            else if (_crossfadeScheduled) action = "skip-already-scheduled";
-            else action = "schedule";
-            _logger?.LogDebug(
-                "[xfade][playlist:{Id}] propchg.isLoading val={Val} showing={Showing} scheduled={Scheduled} action={Action}",
-                XfadeLog.Tag(ViewModel.PlaylistId), ViewModel.IsLoading, _showingContent, _crossfadeScheduled, action);
-            if (action == "schedule")
-                ScheduleCrossfade();
-        }
+            PageController.OnIsLoadingChanged();
     }
 
     private void Collaborators_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -236,50 +230,6 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         (ViewModel as IDisposable)?.Dispose();
     }
 
-    private async void ScheduleCrossfade()
-    {
-        _crossfadeScheduled = true;
-        await Task.Yield();
-        await Task.Delay(16);
-        if (_isNavigatingAway || _showingContent) return;
-        CrossfadeToContent();
-    }
-
-    // Warm-cache fallback for the same-id re-navigation path. PlaylistViewModel.Activate
-    // (line 645) early-exits the inner state-reset block when PlaylistId matches the
-    // current one, so IsLoading stays at its previous value (false) and ApplyDetailState's
-    // IsLoading = false write is a no-op that fires no PropertyChanged. Without this
-    // helper, the IsLoading-driven ScheduleCrossfade above never runs and the hero/title
-    // shimmer stays pinned over an invisible WidePlaylistScroller. Mirrors AlbumPage's
-    // TryShowContentNow — same architecture, same fix.
-    private void TryShowContentNow()
-    {
-        if (_showingContent || _crossfadeScheduled || ViewModel.IsLoading || string.IsNullOrEmpty(ViewModel.PlaylistName))
-            return;
-        ScheduleCrossfade();
-    }
-
-    private async void CrossfadeToContent()
-    {
-        if (_showingContent) return;
-        _showingContent = true;
-
-        await ShimmerGate.RunCrossfadeAsync(ShimmerContainer, WidePlaylistScroller,
-            continuePredicate: () => _showingContent);
-    }
-
-    private void ResetCrossfadeForNewLoad()
-    {
-        // Clear the navigation-away gate — Unloaded sets _isNavigatingAway = true
-        // and Frame caches the page instance, so on re-attach the gate is stale
-        // and ScheduleCrossfade's post-yield guard bails on every load. Same
-        // pattern proven by AlbumPage [xfade] log capture for the cached-page
-        // re-attach path.
-        _isNavigatingAway = false;
-        _showingContent = false;
-        _crossfadeScheduled = false;
-        ShimmerGate.Reset(() => ShimmerContainer, () => WidePlaylistScroller);
-    }
 
     private void PlaylistPage_ActualThemeChanged(FrameworkElement sender, object args)
     {
@@ -322,16 +272,14 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         if (!ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PlaylistArt))
             return false;
 
-        _showingContent = true;
-        _crossfadeScheduled = false;
-        ShimmerContainer.Visibility = Visibility.Collapsed;
-        ShimmerContainer.Opacity = 0;
-        WidePlaylistScroller.Opacity = 1;
-        ElementCompositionPreview.GetElementVisual(ShimmerContainer).Opacity = 0;
-        ElementCompositionPreview.GetElementVisual(WidePlaylistScroller).Opacity = 1;
+        // Skip the standard crossfade — connected animation paints content directly.
+        PageController.MarkContentShownDirectly();
         TwoColumnGrid.Opacity = 1;
 
-        UpdateLayout();
+        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.playlist.updateLayout"))
+        {
+            UpdateLayout();
+        }
         var started = ConnectedAnimationHelper.TryStartAnimation(
             ConnectedAnimationHelper.PlaylistArt,
             PlaylistArtContainer);
@@ -344,6 +292,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.playlist.onNavigatedTo");
         base.OnNavigatedTo(e);
         LoadParameter(e.Parameter);
     }
@@ -368,7 +317,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         var hasPendingPlaylistArtAnimation =
             ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PlaylistArt);
 
-        ResetCrossfadeForNewLoad();
+        PageController.ResetForNewLoad();
 
         string? playlistId = null;
         Data.Parameters.ContentNavigationParameter? connectedAnimationNav = null;
@@ -427,7 +376,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             {
                 var uri = connectedAnimationNav.Uri;
                 await Task.Yield();
-                if (!_isNavigatingAway)
+                if (!PageController.IsNavigatingAway)
                     ViewModel.Activate(uri, preserveHeaderPrefill: true);
             }
 
@@ -443,8 +392,8 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             ViewModel.Activate(connectedAnimationNav.Uri, preserveHeaderPrefill: true);
 
         await Task.Yield();
-        if (_isNavigatingAway) return;
-        TryShowContentNow();
+        if (PageController.IsNavigatingAway) return;
+        PageController.TryShowContentNow();
     }
 
     /// <summary>
@@ -474,6 +423,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.playlist.onNavigatedFrom");
         base.OnNavigatedFrom(e);
         // Hibernate also releases FilteredTracks / Collaborators / SessionControlChips
         // — bound collections that keep realized item containers alive while this
@@ -503,7 +453,10 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             return;
 
         _trimmedForNavigationCache = false;
-        Bindings?.Update();
+        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.playlist.bindingsUpdate"))
+        {
+            Bindings?.Update();
+        }
         if (!string.IsNullOrEmpty(ViewModel.PlaylistId))
             LoadParameter(ViewModel.PlaylistId);
     }

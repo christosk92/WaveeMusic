@@ -41,6 +41,9 @@ public sealed partial class ExpandedPlayerView : UserControl
     private DispatcherQueueTimer? _lyricsScrollResetTimer;
     private DispatcherQueueTimer? _lyricsRenderPulseTimer;
     private DispatcherQueueTimer? _lyricsTimelineSyncTimer;
+    // Tracked storyboard — Stop()'d on Unloaded so the framework's animation
+    // clock doesn't pin PlayerLayoutTransform after detach.
+    private Storyboard? _playerLayoutTransformStoryboard;
     private bool _lyricsCanvasInitialized;
     private bool _lyricsConsumerActive;
     private bool _pendingLyricsLayoutRetry;
@@ -117,6 +120,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        System.Diagnostics.Debug.WriteLine("[mem] ExpandedPlayerView.OnLoaded");
         UpdateContentGridWidth();
         UpdateVideoFocusLayout();
         ApplyMode();
@@ -127,6 +131,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        System.Diagnostics.Debug.WriteLine("[mem] ExpandedPlayerView.OnUnloaded");
         ReleaseHeavyResources();
         _videoSurface.ActiveSurfaceChanged -= OnActiveVideoSurfaceChanged;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
@@ -135,6 +140,7 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     internal void ReleaseHeavyResources()
     {
+        System.Diagnostics.Debug.WriteLine("[mem] ExpandedPlayerView.ReleaseHeavyResources");
         PlayerLayout.SetVideoSurfaceEnabled(false);
         PlayerLayout.SetCanTakeVideoSurfaceFromVideoPage(false);
         PlayerLayout.SetVideoPresentationMode(false);
@@ -166,6 +172,16 @@ public sealed partial class ExpandedPlayerView : UserControl
             _lyricsTimelineSyncTimer.Tick -= OnLyricsTimelineSyncTimerTick;
             _lyricsTimelineSyncTimer = null;
         }
+
+        if (_lyricsHoverExplainHideTimer != null)
+        {
+            _lyricsHoverExplainHideTimer.Stop();
+            _lyricsHoverExplainHideTimer.Tick -= OnLyricsHoverExplainHideTimerTick;
+            _lyricsHoverExplainHideTimer = null;
+        }
+
+        _playerLayoutTransformStoryboard?.Stop();
+        _playerLayoutTransformStoryboard = null;
 
         if (_surfaceTintTimer != null)
         {
@@ -539,7 +555,13 @@ public sealed partial class ExpandedPlayerView : UserControl
         PlayerLayout.Width = availableWidth > 0
             ? Math.Floor(Math.Min(maxWidth, availableWidth))
             : double.NaN;
-        PlayerLayout.HorizontalAlignment = HorizontalAlignment.Left;
+        // Focus mode (no Lyrics/Queue panel) spans both grid columns. Centre
+        // the player there so the layout doesn't sit pinned to the left with
+        // dead space on the right; in two-column mode it stays Left, anchored
+        // next to the lyrics/queue panel.
+        PlayerLayout.HorizontalAlignment = focusVisible
+            ? HorizontalAlignment.Center
+            : HorizontalAlignment.Left;
     }
 
     private double GetAvailablePlayerLayoutWidth(bool focusVisible, bool twoColumnLayout)
@@ -621,15 +643,17 @@ public sealed partial class ExpandedPlayerView : UserControl
         CompactNowPlayingHeader.Visibility = showCompact ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private static void AnimateTransform(CompositeTransform transform, double scale, double translateY, int durationMs)
+    private void AnimateTransform(CompositeTransform transform, double scale, double translateY, int durationMs)
     {
         var duration = TimeSpan.FromMilliseconds(durationMs);
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        _playerLayoutTransformStoryboard?.Stop();
         var storyboard = new Storyboard();
 
         AddAnimation(storyboard, transform, nameof(CompositeTransform.ScaleX), scale, duration, easing);
         AddAnimation(storyboard, transform, nameof(CompositeTransform.ScaleY), scale, duration, easing);
         AddAnimation(storyboard, transform, nameof(CompositeTransform.TranslateY), translateY, duration, easing);
+        _playerLayoutTransformStoryboard = storyboard;
         storyboard.Begin();
     }
 

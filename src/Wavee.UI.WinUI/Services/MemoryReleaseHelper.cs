@@ -6,29 +6,34 @@ using Microsoft.Extensions.Logging;
 namespace Wavee.UI.WinUI.Services;
 
 /// <summary>
-/// Forces an aggressive managed GC pass and gives DirectComposition a chance to
-/// release retained GPU resources back to the OS.
+/// Asks Windows to trim pages the process can release from its working set.
 ///
 /// <para>
-/// Normally calling <see cref="GC.Collect()"/> manually is an antipattern, but
-/// this helper is used at deliberate "the user can't see us" moments where a
-/// brief stutter is acceptable in exchange for the working set actually shrinking:
-/// closing a tab, minimizing the window, or explicit diagnostics actions.
+/// Previously this helper also performed an explicit
+/// <c>GC.Collect(2, blocking: true, compacting: true)</c> before the trim, on
+/// the theory that compacting first let Windows reclaim more pages. In practice
+/// that produced 60+ forced Gen2 compacts per session (one per nav critical
+/// window, one per memory-budget tick, one per refocus, one at startup) — each
+/// a stop-the-world pause of 100–500 ms that froze the UI thread. Captured in
+/// nav-health reports as the canonical "stall then BOOM" signature.
 /// </para>
 ///
 /// <para>
-/// The two-pass collection is intentional. The first compacting collect releases
-/// managed memory and queues the finalizers that <c>CompositionObject</c> uses to
-/// drop retained DirectX resources; the second collect after
-/// <see cref="GC.WaitForPendingFinalizers"/> reclaims the now-unreachable wrappers
-/// the finalizers freed up.
+/// DATAS GC tunes itself; manual <c>GC.Collect</c> calls fight that and produce
+/// the pathological Gen0 ≈ Gen1 ≈ Gen2 ratio. The trim alone is enough — it
+/// returns unused committed pages to the OS without pausing the runtime, which
+/// is what Task Manager's Memory column reflects anyway. If the runtime decides
+/// a Gen2 is genuinely warranted, it will fire one — concurrently and far more
+/// briefly than a forced compacting collect.
 /// </para>
 /// </summary>
 public static class MemoryReleaseHelper
 {
     /// <summary>
-    /// Runs the GC dance and logs before/after managed + working set sizes.
-    /// Safe to call from any thread.
+    /// Trims the working set and logs before/after working-set size. Safe to
+    /// call from any thread; defers if a navigation critical window is open
+    /// (working-set trim still triggers minor page faults on the next access,
+    /// so we wait until the user is past the click).
     /// </summary>
     public static void ReleaseWorkingSet(ILogger? logger = null, string reason = "")
     {
@@ -42,26 +47,34 @@ public static class MemoryReleaseHelper
     {
         long beforeManaged = GC.GetTotalMemory(false);
         long beforeWorkingSet = SafeWorkingSet();
+        int gen2Before = GC.CollectionCount(2);
+        int threadId = Environment.CurrentManagedThreadId;
+        var sw = Stopwatch.StartNew();
 
-        // GCCollectionMode.Forced (not Aggressive) is the recommended production
-        // hint — Aggressive surfaces latent corruption on certain configs
-        // (dotnet/runtime#126903) and is overkill for the working-set trim path.
-        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
         TrimWorkingSet(logger, reason);
 
+        sw.Stop();
         long afterManaged = GC.GetTotalMemory(false);
         long afterWorkingSet = SafeWorkingSet();
+        int gen2After = GC.CollectionCount(2);
 
         logger?.LogInformation(
-            "MemoryRelease ({Reason}): managed {BeforeMb:F1} → {AfterMb:F1} MB ({DeltaMb:+0.0;-0.0;0} MB), " +
-            "working set {BeforeWsMb:F1} → {AfterWsMb:F1} MB ({DeltaWsMb:+0.0;-0.0;0} MB)",
+            "MemoryRelease ({Reason}): trim {BeforeWsMb:F1} → {AfterWsMb:F1} MB ({DeltaWsMb:+0.0;-0.0;0} MB) in {DurMs:F1} ms",
             string.IsNullOrEmpty(reason) ? "manual" : reason,
-            beforeManaged / 1048576.0, afterManaged / 1048576.0,
-            (afterManaged - beforeManaged) / 1048576.0,
             beforeWorkingSet / 1048576.0, afterWorkingSet / 1048576.0,
-            (afterWorkingSet - beforeWorkingSet) / 1048576.0);
+            (afterWorkingSet - beforeWorkingSet) / 1048576.0,
+            sw.Elapsed.TotalMilliseconds);
+
+        // Still recorded into NavigationDiagnostics: durations should now be
+        // ~1 ms (just the SetProcessWorkingSetSize syscall). If a future [stall]
+        // line shows a [memrel] with durMs > 50, that's a signal something is
+        // wrong with the trim path.
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.RecordMemoryRelease(
+            string.IsNullOrEmpty(reason) ? "manual" : reason,
+            threadId, sw.Elapsed.TotalMilliseconds,
+            gen2Before, gen2After,
+            beforeWorkingSet, afterWorkingSet,
+            beforeManaged, afterManaged);
     }
 
     /// <summary>

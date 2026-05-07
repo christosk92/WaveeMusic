@@ -5,10 +5,12 @@ namespace Wavee.UI.WinUI.Services;
 
 /// <summary>
 /// A UI surface that hosts a <c>MediaPlayerElement</c> and can attach/detach
-/// from a shared <see cref="MediaPlayer"/>. The two consumers in the app are
-/// <c>VideoPlayerPage</c> (the full page) and <c>MiniVideoPlayer</c> (the
-/// bottom-right floating widget). At most one consumer holds the binding at
-/// any moment; <see cref="IActiveVideoSurfaceService"/> arbitrates the handoff.
+/// from a shared <see cref="MediaPlayer"/>. Consumers in the app are
+/// <c>ExpandedNowPlayingLayout</c> (used by the popout window, the sidebar's
+/// expanded layout, and the now-playing page through <c>ExpandedPlayerView</c>),
+/// <c>SidebarPlayerWidget</c>, and <c>MiniVideoPlayer</c> (the bottom-right
+/// floating widget). At most one consumer holds the binding at any moment;
+/// <see cref="IActiveVideoSurfaceService"/> arbitrates the handoff.
 /// </summary>
 public interface IMediaSurfaceConsumer
 {

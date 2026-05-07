@@ -22,7 +22,7 @@ internal sealed class UiHealthMonitor : IDisposable
     // ── Configuration ──
     private const int TickIntervalMs = 16; // ~60 fps target
     public int WarnThresholdMs { get; set; } = 50;
-    public int CriticalThresholdMs { get; set; } = 150;
+    public int CriticalThresholdMs { get; set; } = 100;
 
     // ── State ──
     private long _lastTickTimestamp;
@@ -165,6 +165,10 @@ internal sealed class UiHealthMonitor : IDisposable
                 {
                     _logger?.LogError("UI CRITICAL STALL: {ElapsedMs:F0}ms (frame #{Frame})", elapsedMs, _totalFrames);
                 }
+                // Hand off to NavigationDiagnostics for a correlated snapshot
+                // (recent navs + last memory release + page-fault deltas).
+                Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.OnUiStallDetected(
+                    elapsedMs, _totalFrames, gen2Delta);
             }
             else if (elapsedMs > WarnThresholdMs)
             {

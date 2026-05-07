@@ -15,5 +15,6 @@ public enum NavigationPageType
     Feedback,
     Show,
     Episode,
-    PodcastBrowse
+    PodcastBrowse,
+    Browse
 }

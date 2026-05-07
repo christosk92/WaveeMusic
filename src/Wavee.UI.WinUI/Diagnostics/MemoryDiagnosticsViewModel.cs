@@ -111,7 +111,7 @@ public sealed partial class MemoryDiagnosticsViewModel : ObservableObject, IDisp
     {
         var logger = Ioc.Default.GetService<ILogger<MemoryDiagnosticsViewModel>>();
         MemoryReleaseHelper.ReleaseWorkingSet(logger, "diagnostics");
-        SetAction("Released working set (managed GC + finalizers)");
+        SetAction("Trimmed working set (no GC — runtime self-tunes)");
         _service.SampleNow();
     }
 

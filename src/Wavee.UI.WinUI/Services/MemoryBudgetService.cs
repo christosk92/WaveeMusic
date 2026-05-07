@@ -169,16 +169,13 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
 
         try
         {
-            // Single compacting Gen2 + finalizer drain + non-aggressive sweep.
-            // The earlier double-Aggressive pattern doubled the pause for
-            // marginal benefit; GCCollectionMode.Aggressive also triggered
-            // dotnet/runtime#126903-class corruption on certain configs.
-            // GCCollectionMode.Forced is the standard "run full GC now" hint
-            // recommended by every production tuning guide.
-            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
+            // Just trim working set. Earlier this also did
+            // GC.Collect(Gen2, blocking: true, compacting: true) on every
+            // 10-second pressure tick, which was responsible for ~60% of the
+            // forced Gen2 compacts in a session and the "stall then BOOM"
+            // navigation hangs (see nav-health report from 2026-05-07). DATAS
+            // GC self-tunes; manual collects fight it and produce a Gen0 ≈
+            // Gen1 ≈ Gen2 counter ratio that is impossible organically.
             MemoryReleaseHelper.TrimWorkingSet(_logger, reason);
         }
         catch (Exception ex)

@@ -63,6 +63,11 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
     private DispatcherQueueTimer? _videoOverlayHideTimer;
     private double _appliedAudioChromeScale = -1;
 
+    // Tracked storyboards — Stop()'d on Unloaded so the framework's animation
+    // clock doesn't pin VideoOverlayChrome / MediaFrameTransform after detach.
+    private Storyboard? _videoOverlayFadeStoryboard;
+    private Storyboard? _mediaFrameTransformStoryboard;
+
     public event EventHandler<bool>? TheaterModeChanged;
     public event EventHandler? FitVideoWindowRequested;
     public event EventHandler? QueueRequested;
@@ -93,6 +98,7 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        System.Diagnostics.Debug.WriteLine("[mem] ExpandedNowPlayingLayout.OnLoaded");
         EnsureVideoOverlayHideTimer();
         SubscribeEvents();
         ViewModel.SetSurfaceVisible("widget", true);
@@ -103,6 +109,7 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        System.Diagnostics.Debug.WriteLine("[mem] ExpandedNowPlayingLayout.OnUnloaded");
         ViewModel.SetSurfaceVisible("widget", false);
         ReleaseVideoSurfaceOwnership();
         UnsubscribeEvents();
@@ -112,6 +119,10 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
             _videoOverlayHideTimer.Tick -= OnVideoOverlayHideTimerTick;
             _videoOverlayHideTimer = null;
         }
+        _videoOverlayFadeStoryboard?.Stop();
+        _videoOverlayFadeStoryboard = null;
+        _mediaFrameTransformStoryboard?.Stop();
+        _mediaFrameTransformStoryboard = null;
     }
 
     private void SubscribeEvents()
@@ -831,6 +842,7 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
         _videoOverlayVisible = visible;
         VideoOverlay.IsHitTestVisible = visible;
 
+        _videoOverlayFadeStoryboard?.Stop();
         var storyboard = new Storyboard();
         AddAnimation(
             storyboard,
@@ -839,18 +851,21 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
             targetOpacity,
             TimeSpan.FromMilliseconds(VideoOverlayFadeMs),
             new CubicEase { EasingMode = EasingMode.EaseOut });
+        _videoOverlayFadeStoryboard = storyboard;
         storyboard.Begin();
     }
 
-    private static void AnimateTransform(CompositeTransform transform, double scale, double translateY, int durationMs)
+    private void AnimateTransform(CompositeTransform transform, double scale, double translateY, int durationMs)
     {
         var duration = System.TimeSpan.FromMilliseconds(durationMs);
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        _mediaFrameTransformStoryboard?.Stop();
         var storyboard = new Storyboard();
 
         AddAnimation(storyboard, transform, nameof(CompositeTransform.ScaleX), scale, duration, easing);
         AddAnimation(storyboard, transform, nameof(CompositeTransform.ScaleY), scale, duration, easing);
         AddAnimation(storyboard, transform, nameof(CompositeTransform.TranslateY), translateY, duration, easing);
+        _mediaFrameTransformStoryboard = storyboard;
         storyboard.Begin();
     }
 

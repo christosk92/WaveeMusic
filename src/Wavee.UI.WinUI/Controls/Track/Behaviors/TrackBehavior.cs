@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -129,6 +130,47 @@ public static class TrackBehavior
 
     #endregion
 
+    #region DisableSingleTapPlay Property
+
+    /// <summary>
+    /// Per-container opt-out of single-tap-to-play. Set on an ancestor element
+    /// (typically the page-level container or a specific <c>TrackDataGrid</c>)
+    /// to force every track underneath to require a double-tap regardless of
+    /// the user's global <c>TrackClickBehavior</c> setting. Used on the
+    /// podcasts library page where accidental single-taps on long-form
+    /// content are particularly costly.
+    /// </summary>
+    public static readonly DependencyProperty DisableSingleTapPlayProperty =
+        DependencyProperty.RegisterAttached(
+            "DisableSingleTapPlay",
+            typeof(bool),
+            typeof(TrackBehavior),
+            new PropertyMetadata(false));
+
+    public static bool GetDisableSingleTapPlay(DependencyObject obj) =>
+        (bool)obj.GetValue(DisableSingleTapPlayProperty);
+
+    public static void SetDisableSingleTapPlay(DependencyObject obj, bool value) =>
+        obj.SetValue(DisableSingleTapPlayProperty, value);
+
+    /// <summary>
+    /// Walk the visual tree from <paramref name="from"/> up to the root,
+    /// returning <see langword="true"/> as soon as an ancestor with
+    /// <see cref="DisableSingleTapPlayProperty"/> set to <see langword="true"/>
+    /// is found. Cheap because the tree is shallow (a few dozen elements
+    /// at most) and the check short-circuits on first hit.
+    /// </summary>
+    private static bool IsSingleTapPlayDisabledForElement(DependencyObject? from)
+    {
+        for (var node = from; node is not null; node = VisualTreeHelper.GetParent(node))
+        {
+            if (GetDisableSingleTapPlay(node)) return true;
+        }
+        return false;
+    }
+
+    #endregion
+
     #region IsPointerOver Property (read-only)
 
     public static readonly DependencyProperty IsPointerOverProperty =
@@ -157,6 +199,11 @@ public static class TrackBehavior
 
         // Only handle single-tap play if configured
         if (settings.Settings.TrackClickBehavior != "SingleTap") return;
+
+        // Per-container opt-out: e.g. the podcasts library page sets
+        // TrackBehavior.DisableSingleTapPlay=true so an accidental tap
+        // on a 90-min episode never starts playback.
+        if (IsSingleTapPlayDisabledForElement(d)) return;
 
         HandleTrackPlay(d, e.OriginalSource as FrameworkElement);
         e.Handled = true;

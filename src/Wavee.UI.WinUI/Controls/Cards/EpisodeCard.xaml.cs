@@ -219,13 +219,29 @@ public sealed partial class EpisodeCard : UserControl
 
     // ── Layout / image ───────────────────────────────────────────────────
 
+    private void CardRoot_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Drive a 1:1 square cover from the outer card's known width. Setting
+        // Width AND Height atomically here (rather than letting the cover's
+        // own SizeChanged race with the StackPanel measure pass) is what makes
+        // the square enforcement reliable — without this, episode thumbnails
+        // (16:9 native) sometimes commit their natural aspect into the layout
+        // before our height-clamp lands, leaving the card with a wide cover
+        // mixed in among square podcast/album covers.
+        if (CoverContainer is null) return;
+
+        var pad = CardRoot.Padding;
+        var coverSize = e.NewSize.Width - pad.Left - pad.Right;
+        if (coverSize <= 0) return;
+
+        if (Math.Abs(CoverContainer.Width - coverSize) > 0.5)
+            CoverContainer.Width = coverSize;
+        if (Math.Abs(CoverContainer.Height - coverSize) > 0.5)
+            CoverContainer.Height = coverSize;
+    }
+
     private void CoverContainer_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        // Square enforcement — no other constraint sets the height, so without
-        // this the cover collapses to whatever the placeholder glyph needs.
-        if (e.NewSize.Width > 0 && Math.Abs(CoverContainer.Height - e.NewSize.Width) > 0.5)
-            CoverContainer.Height = e.NewSize.Width;
-
         // ScaleTransform pivot = center of cover. RenderTransformOrigin would
         // do this declaratively but the property is on UIElement, not Grid in
         // this context, so we pin the transform's centre by setting the

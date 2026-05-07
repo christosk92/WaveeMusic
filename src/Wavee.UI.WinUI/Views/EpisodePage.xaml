@@ -68,7 +68,7 @@
                 HorizontalScrollBarVisibility="Hidden">
                 <StackPanel Spacing="24"
                             Margin="40,16,40,40"
-                            MaxWidth="1160"
+                            MaxWidth="2400"
                             HorizontalAlignment="Stretch">
                     <Grid ColumnSpacing="28">
                         <Grid.ColumnDefinitions>
@@ -215,7 +215,7 @@
                 <StackPanel x:Name="EpisodeContentStack"
                             Spacing="24"
                             Margin="40,16,40,40"
-                            MaxWidth="1160"
+                            MaxWidth="2400"
                             HorizontalAlignment="Stretch"
                             SizeChanged="EpisodeContentStack_SizeChanged">
 

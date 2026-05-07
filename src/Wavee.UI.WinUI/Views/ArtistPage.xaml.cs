@@ -1221,6 +1221,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.onNavigatedFrom");
         base.OnNavigatedFrom(e);
         TrimForNavigationCache();
     }
@@ -1299,11 +1300,17 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         _suppressContentReveal = false;
         ResetShyHeaderState();
         HeroGrid?.RestoreSurface();
-        Bindings?.Update();
+        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.artist.bindingsUpdate"))
+        {
+            Bindings?.Update();
+        }
 
         if (!string.IsNullOrEmpty(ViewModel.ArtistId))
         {
-            ViewModel.Initialize(ViewModel.ArtistId);
+            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.artist.initialize"))
+            {
+                ViewModel.Initialize(ViewModel.ArtistId);
+            }
             RestoreDiscographyRepeaters();
             SetupWatchFeedVideo();
             TryShowContentNow();
@@ -1471,6 +1478,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.onNavigatedTo");
         base.OnNavigatedTo(e);
         CancelNavigationCacheTrim();
         // Re-attach compiled x:Bind to VM.PropertyChanged BEFORE LoadNewContent /

@@ -1272,6 +1272,31 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         catch (Exception ex) { _logger?.LogDebug(ex, "Failed to open logs folder"); }
     }
 
+    [ObservableProperty]
+    private string _navigationReportStatus = "";
+
+    [RelayCommand]
+    private void CopyNavigationHealthReport()
+    {
+        try
+        {
+            var diag = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance;
+            var report = diag?.GenerateReport()
+                ?? "Navigation diagnostics not initialized.";
+
+            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            package.SetText(report);
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+
+            NavigationReportStatus = $"Copied {report.Length} chars to clipboard at {DateTime.Now:HH:mm:ss}";
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to copy navigation health report");
+            NavigationReportStatus = "Copy failed — see log for details.";
+        }
+    }
+
     // ── Equalizer ──
 
     private static readonly int[] EqFrequencies = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];

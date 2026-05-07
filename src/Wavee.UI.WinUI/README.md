@@ -64,7 +64,7 @@ Wavee.UI.WinUI/
 | `ArtistsLibraryView`  | Saved artists.                                                                      |
 | `AlbumsLibraryView`   | Saved albums.                                                                       |
 | `LocalLibraryPage`    | Local audio + video files indexed from disk by `LocalIndexerHostedService`.         |
-| `VideoPlayerPage`     | Full-screen video — Spotify videos via PlayReady DRM, plus local files.             |
+| `VideoPlayerPage`     | Now-playing page — thin host for the same `ExpandedPlayerView` the popout window uses. |
 | `ProfilePage`         | User profile, friends, listening stats.                                             |
 | `SettingsPage`        | Theme, audio device, EQ, playback, diagnostics, storage, language.                  |
 | `ConcertPage`         | Concert / live event info via Pathfinder.                                           |

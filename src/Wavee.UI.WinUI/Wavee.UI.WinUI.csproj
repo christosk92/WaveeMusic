@@ -141,8 +141,12 @@
 		<ProjectReference Include="..\Wavee.Playback.Contracts\Wavee.Playback.Contracts.csproj" />
 		<!-- Lyrics rendering control -->
 		<ProjectReference Include="..\Wavee.Controls.Lyrics\Wavee.Controls.Lyrics.csproj" />
-		<!-- Microsoft Store-style hero carousel control -->
-		<ProjectReference Include="..\Wavee.Controls.HeroCarousel\Wavee.Controls.HeroCarousel.csproj" />
+		<!-- Microsoft Store-style hero carousel control (HeroCarousel + HeroHalo + SideCard).
+		     Sibling repo at C:\Users\ChristosKarapasias\test\Klankhuis. Same target framework
+		     and same ComputeSharp / Win2D / WinAppSDK / Shimmer versions as this project — no
+		     transitive package conflicts. Klankhuis pulls in ComputeSharp.D2D1 (the non-WinUI
+		     base) which resolves transitively at the matching 3.2.0. -->
+		<ProjectReference Include="..\..\..\..\Users\ChristosKarapasias\test\Klankhuis\src\Klankhuis.Hero\Klankhuis.Hero.csproj" />
 		<!-- Multi-provider lyrics search & parsing (QQ, Kugou, Netease) -->
 		<ProjectReference Include="..\..\vendor\Lyricify.Lyrics.Helper\Lyricify.Lyrics.Helper.csproj" />
 	</ItemGroup>

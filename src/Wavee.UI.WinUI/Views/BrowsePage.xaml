@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.BrowsePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:home="using:Wavee.UI.WinUI.ViewModels.Home"
+    xmlns:homeViews="using:Wavee.UI.WinUI.Views.Home"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
+    xmlns:shared="using:Wavee.UI.WinUI.Views.Shared"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:local="using:Wavee.UI.WinUI.Views"
+    mc:Ignorable="d"
+    Background="Transparent"
+    Loaded="Page_Loaded"
+    Unloaded="Page_Unloaded">
+
+    <Page.Resources>
+        <ResourceDictionary>
+            <converters:NullToVisibilityConverter x:Key="NullToCollapsedConverter"/>
+
+            <!-- Item template for the editorial shelves' inner cards. Identical
+                 to SectionShelvesView's DefaultBrowseItemTemplate; copied here
+                 so the page-local section template can reference it without
+                 cross-control resource lookups. -->
+            <DataTemplate x:Key="BrowseEditorialItemTemplate" x:DataType="vm:HomeSectionItem">
+                <cards:ContentCard
+                    ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                    Title="{x:Bind Title, Mode=OneWay}"
+                    Subtitle="{x:Bind Subtitle, Mode=OneWay}"
+                    PlaceholderColorHex="{x:Bind ColorHex, Mode=OneWay}"
+                    IsCircularImage="False"
+                    NavigationUri="{x:Bind Uri, Mode=OneWay}"
+                    NavigationTitle="{x:Bind Title, Mode=OneWay}"/>
+            </DataTemplate>
+
+            <!-- Section template used by HomeRegionView's inner SectionsRepeater
+                 via HomeSectionTemplateSelector → GenericTemplate. Mirrors
+                 SectionShelvesView's SectionTemplate but page-local so the
+                 region's mica band wraps the editorial shelves cleanly. -->
+            <DataTemplate x:Key="BrowseEditorialSectionTemplate" x:DataType="vm:HomeSection">
+                <StackPanel Margin="0,0,0,28">
+                    <TextBlock
+                        Text="{x:Bind Title}"
+                        Style="{StaticResource SubtitleTextBlockStyle}"
+                        FontSize="18"
+                        FontWeight="SemiBold"
+                        Margin="0,0,0,12"/>
+                    <shelf:ShelfScroller
+                        ItemsSourceIdentity="{x:Bind SectionUri, Mode=OneWay}"
+                        ItemsSource="{x:Bind Items, Mode=OneWay}"
+                        ItemTemplate="{StaticResource BrowseEditorialItemTemplate}"
+                        MinItemWidth="180" MaxItemWidth="220" Spacing="14"/>
+                </StackPanel>
+            </DataTemplate>
+
+            <!-- HomePage's selector is in the Wavee.UI.WinUI.Views namespace.
+                 Only GenericTemplate is wired — Browse never produces Shorts
+                 or Baseline sections (the selector defaults unset slots back
+                 to GenericTemplate). -->
+            <local:HomeSectionTemplateSelector x:Key="HomeSectionTemplateSelector"
+                GenericTemplate="{StaticResource BrowseEditorialSectionTemplate}"/>
+
+            <!-- One chip group: caps eyebrow + UniformGridLayout of BrowseChip.
+                 Mirrors BrowseAllSection.xaml lines 17-43 so the Browse root
+                 page renders the BrowseGridSectionData identically to the
+                 destination "Discover something new" subpage. -->
+            <DataTemplate x:Key="BrowseChipGroupTemplate" x:DataType="home:BrowseAllGroup">
+                <StackPanel Margin="0,0,0,14">
+                    <TextBlock
+                        Text="{x:Bind Eyebrow}"
+                        FontSize="9.5"
+                        FontWeight="SemiBold"
+                        CharacterSpacing="140"
+                        Opacity="0.6"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        Margin="0,0,0,6"/>
+                    <ItemsRepeater ItemsSource="{x:Bind Items}">
+                        <ItemsRepeater.Layout>
+                            <UniformGridLayout
+                                MinItemWidth="140"
+                                MinItemHeight="28"
+                                MinRowSpacing="3"
+                                MinColumnSpacing="6"
+                                ItemsStretch="Fill"/>
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="home:BrowseAllItem">
+                                <homeViews:BrowseChip Item="{x:Bind}"/>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </DataTemplate>
+        </ResourceDictionary>
+    </Page.Resources>
+
+    <ScrollViewer x:Name="RootScrollViewer"
+                  HorizontalScrollMode="Disabled"
+                  VerticalScrollBarVisibility="Auto"
+                  Padding="0">
+        <Grid>
+            <!-- Real content. Initial Opacity=0 set in code-behind on Loaded so
+                 it doesn't paint until the crossfade reveals it; XAML default
+                 (1.0) would briefly flash before the fade-in starts.
+                 Padding 32 horizontal matches HomePage so HomeRegionView's
+                 -32 horizontal margin bleeds the mica band edge-to-edge. -->
+
+            <StackPanel x:Name="ContentContainer"
+                        Padding="32,28,32,40"
+                        Spacing="0">
+                <TextBlock Text="BROWSE"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Opacity="0.78"
+                           CharacterSpacing="140"
+                           Margin="0,0,0,4"/>
+                <TextBlock Text="{x:Bind ViewModel.Title, Mode=OneWay}"
+                           FontSize="44"
+                           FontWeight="SemiBold"
+                           LineHeight="48"
+                           Margin="0,0,0,0"/>
+
+                <shared:HeroBandPanel x:Name="HeroBand"
+                                      Slides="{x:Bind ViewModel.HeroSlides, Mode=OneWay}"
+                                      Height="420"
+                                      Margin="0,24,0,28"/>
+
+                <!-- Editorial shelves wrapped in one HomeRegion band — eyebrow,
+                     header, and accent gradient identical to the homepage's
+                     region treatment. Outer ItemsRepeater (vs binding a single
+                     HomeRegionView) keeps the door open for future multi-region
+                     pages without further XAML changes. -->
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.PageRegions, Mode=OneWay}">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Orientation="Vertical" Spacing="0"/>
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="home:HomeRegion">
+                            <homeViews:HomeRegionView
+                                Region="{x:Bind}"
+                                SectionTemplateSelector="{StaticResource HomeSectionTemplateSelector}"/>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+
+                <!-- Category chips, grouped by BrowseAllGrouper. Reuses the
+                     existing BrowseChip control + grouping taxonomy — same
+                     visual language as the destination "Discover something new"
+                     subpage. Margin pushes it past the hero / region spacing. -->
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.BrowseGroups, Mode=OneWay}"
+                               ItemTemplate="{StaticResource BrowseChipGroupTemplate}"
+                               Margin="0,8,0,0">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Orientation="Vertical" Spacing="0"/>
+                    </ItemsRepeater.Layout>
+                </ItemsRepeater>
+
+                <!-- "Explore all categories" CTA — separate full-width button
+                     below the chip groups (per user direction; not folded into
+                     the grid). Visibility collapses when the response had no
+                     BrowseRelatedSectionData. -->
+                <Button
+                    Visibility="{x:Bind ViewModel.BrowseCta, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"
+                    Content="{x:Bind ViewModel.BrowseCta.Label, Mode=OneWay, FallbackValue='Explore all categories'}"
+                    Command="{x:Bind ViewModel.NavigateToCtaCommand}"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    Margin="0,12,0,0"
+                    Padding="16,14"
+                    FontWeight="SemiBold"/>
+
+                <!-- Error state — sits inside ContentContainer so it shares the
+                     crossfade. Mutually exclusive with the section shelves; if
+                     HasError is true, Sections is typically empty so the error
+                     is visually centered. -->
+                <StackPanel Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                            HorizontalAlignment="Center"
+                            Margin="0,40,0,40"
+                            Spacing="8">
+                    <TextBlock Text="Couldn't load this browse page"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                               FontSize="13"
+                               Opacity="0.7"
+                               HorizontalAlignment="Center"
+                               TextWrapping="Wrap"
+                               MaxWidth="480"/>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Loading skeleton — overlays the same vertical real estate as
+                 ContentContainer. Padding mirrors the content StackPanel so
+                 there's no edge jump on swap. Crossfaded out + Content set to
+                 null in code-behind once data arrives, freeing the placeholder
+                 retained heap. -->
+            <StackPanel x:Name="ShimmerContainer"
+                        Padding="32,28,32,40"
+                        Spacing="0"
+                        IsHitTestVisible="False">
+                <controls:Shimmer Width="80" Height="11" CornerRadius="3"
+                                  HorizontalAlignment="Left"
+                                  Margin="0,0,0,4"/>
+                <controls:Shimmer Width="280" Height="44" CornerRadius="6"
+                                  HorizontalAlignment="Left"
+                                  Margin="0,0,0,24"/>
+                <shared:HeroBandShimmer Margin="0,0,0,28"/>
+                <shared:SectionShelvesShimmer/>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</Page>

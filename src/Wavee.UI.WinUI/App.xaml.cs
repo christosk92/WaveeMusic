@@ -225,36 +225,14 @@ public partial class App : Application
                 Ioc.Default.GetRequiredService<Data.Contexts.LibrarySyncOrchestrator>();
                 Ioc.Default.GetRequiredService<Data.Contracts.IActivityService>();
                 Ioc.Default.GetRequiredService<Services.UiOperationProfiler>();
+                Ioc.Default.GetRequiredService<Diagnostics.NavigationDiagnostics>();
             });
 
-        // One-shot post-startup heap compaction. Startup allocates aggressively across
-        // many code paths (XAML parse, DI graph construction, library sync, home feed),
-        // leaving gen2 + LOH fragmented. Scheduling a single compacting GC ~5s after the
-        // window is active reclaims the post-startup slack with one short pause that
-        // lands while the user is still orienting themselves — invisible in practice.
-        // This is a one-off, not a periodic loop.
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(5));
-                // GCCollectionMode.Forced is the standard "run full GC now" hint;
-                // Aggressive evicts shorter-lived objects from older generations and
-                // is more likely to surface latent corruption (dotnet/runtime#126903).
-                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-                GC.Collect(
-                    generation: GC.MaxGeneration,
-                    mode: GCCollectionMode.Forced,
-                    blocking: true,
-                    compacting: true);
-                GC.WaitForPendingFinalizers();
-                GC.Collect();
-            }
-            catch
-            {
-                // Best-effort; if the GC hint fails for any reason we just keep running.
-            }
-        });
+        // (Post-startup forced Gen2 compact removed. It produced one of the ~65
+        // forced Gen2 compacts per session that were responsible for navigation
+        // stalls and a pathological Gen0 ≈ Gen1 ≈ Gen2 counter ratio. DATAS GC
+        // self-tunes the post-startup slack as part of its normal heap-count
+        // adaptation — no manual hint needed.)
     }
 
     /// <summary>
