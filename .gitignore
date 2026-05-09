@@ -216,12 +216,12 @@ test/windbg_vot_script.txt
 # Out-of-tree dev tooling and per-user state — kept local, not in source control.
 # - worker/: Cloudflare Worker for feedback-proxy (separate deploy lifecycle)
 # - scripts/: Local diagnostic / WPA-profiling scripts
-# - docs/superpowers/specs/: superpowers-skill working specs
+# - docs/: design/research/superpowers working notes, prototypes, captures
 # - .dotnet-cli/: project-scoped dotnet SDK install (per-machine path)
 # - .claude/: Claude Code per-user settings + memory
 worker/
 scripts/
-docs/superpowers/specs/
+docs/
 .dotnet-cli/
 .claude/
 
@@ -238,11 +238,6 @@ signing/metadata.json
 # Protocol-capture binaries / Spotify reverse-engineering scratch.
 # Anything in bodies/ is research material, not source.
 bodies/
-
-# Superpowers planning files: working notes the workflow generates and
-# discards each session. Already gitignored under docs/superpowers/specs/;
-# include the broader subtree so /loop and /plan output never leaks.
-docs/superpowers/
 
 # Various AI-tool sandbox/cache directories created at the repo root by
 # host-side coding agents. None of these are source.

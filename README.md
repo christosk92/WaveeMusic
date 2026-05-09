@@ -6,7 +6,7 @@ A modern, open-source Spotify desktop client for Windows — built with .NET 10 
 ![WinUI](https://img.shields.io/badge/WinUI-3-0078D4?logo=windows)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-![Wavee](screenshots/home.png)
+![Wavee](screenshots/screenshot-1.jpg)
 
 ## What it is
 
@@ -47,24 +47,20 @@ A **Spotify Premium** account is required, and the app is intended for personal 
 
 ## Screenshots
 
-### Desktop app
-
 <table>
   <tr>
-    <td><img src="screenshots/app_1.png" alt="App Screenshot 1" width="400"></td>
-    <td><img src="screenshots/app_2.png" alt="App Screenshot 2" width="400"></td>
+    <td><img src="screenshots/screenshot-2.jpg" alt="Screenshot 2" width="400"></td>
+    <td><img src="screenshots/screenshot-3.jpg" alt="Screenshot 3" width="400"></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="screenshots/app_3.png" alt="App Screenshot 3" width="810"></td>
+    <td><img src="screenshots/screenshot-4.jpg" alt="Screenshot 4" width="400"></td>
+    <td><img src="screenshots/screenshot-5.jpg" alt="Screenshot 5" width="400"></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="screenshots/album_app.png" alt="Album Page" width="810"></td>
+    <td><img src="screenshots/screenshot-6.jpg" alt="Screenshot 6" width="400"></td>
+    <td><img src="screenshots/screenshot-7.jpg" alt="Screenshot 7" width="400"></td>
   </tr>
 </table>
-
-### Console
-
-![Console](screenshots/console.png)
 
 ## Quick start
 
