@@ -244,6 +244,8 @@ public sealed class StopPreviewAnalysisCommand
 }
 
 // PlayPlay is Spotify property. UI → AudioHost RPC for AES-key derivation.
+// PackJson carries the manifest pack the UI selected; AudioHost rebuilds the
+// PlayPlayConfig from it and instantiates the emulator (cached by pack id).
 public sealed class DerivePlayPlayKeyCommand
 {
     [JsonPropertyName("obfuscatedKeyHex")]
@@ -254,6 +256,9 @@ public sealed class DerivePlayPlayKeyCommand
 
     [JsonPropertyName("spotifyDllPath")]
     public required string SpotifyDllPath { get; init; }
+
+    [JsonPropertyName("packJson")]
+    public required string PackJson { get; init; }
 }
 
 public sealed class DerivePlayPlayKeyResult

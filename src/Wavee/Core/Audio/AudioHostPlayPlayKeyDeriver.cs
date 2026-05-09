@@ -13,7 +13,7 @@ public sealed class AudioHostPlayPlayKeyDeriver : IPlayPlayKeyDeriver
 {
     private readonly ISpClient _spClient;
     private readonly Func<AudioPipelineProxy?> _proxyResolver;
-    private readonly string _spotifyDllPath;
+    private readonly RuntimeAsset _runtime;
     private readonly ICacheService? _cacheService;
     private readonly ILogger? _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -21,18 +21,17 @@ public sealed class AudioHostPlayPlayKeyDeriver : IPlayPlayKeyDeriver
     public AudioHostPlayPlayKeyDeriver(
         ISpClient spClient,
         Func<AudioPipelineProxy?> proxyResolver,
-        string spotifyDllPath,
+        RuntimeAsset runtime,
         ICacheService? cacheService = null,
         ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(spClient);
         ArgumentNullException.ThrowIfNull(proxyResolver);
-        if (string.IsNullOrWhiteSpace(spotifyDllPath))
-            throw new ArgumentException("spotifyDllPath is required", nameof(spotifyDllPath));
+        ArgumentNullException.ThrowIfNull(runtime);
 
         _spClient = spClient;
         _proxyResolver = proxyResolver;
-        _spotifyDllPath = spotifyDllPath;
+        _runtime = runtime;
         _cacheService = cacheService;
         _logger = logger;
     }
@@ -60,8 +59,8 @@ public sealed class AudioHostPlayPlayKeyDeriver : IPlayPlayKeyDeriver
 
         if (obfuscatedKey is null || obfuscatedKey.Length != 16)
         {
-            obfuscatedKey = await _spClient.ResolvePlayPlayObfuscatedKeyAsync(fileId, cancellationToken)
-                .ConfigureAwait(false);
+            obfuscatedKey = await _spClient.ResolvePlayPlayObfuscatedKeyAsync(
+                fileId, _runtime.Config.PlayPlayToken.AsMemory(), cancellationToken).ConfigureAwait(false);
             if (obfuscatedKey.Length != 16)
                 throw new InvalidOperationException(
                     $"PlayPlay license returned obfuscated_key with length {obfuscatedKey.Length}, expected 16");
@@ -84,7 +83,7 @@ public sealed class AudioHostPlayPlayKeyDeriver : IPlayPlayKeyDeriver
 
             _logger?.LogDebug("Requesting PlayPlay derivation from AudioHost for {FileId}", fileId);
             var aes = await proxy.DerivePlayPlayKeyAsync(
-                obfuscatedKey, contentId16, _spotifyDllPath, cancellationToken).ConfigureAwait(false);
+                obfuscatedKey, contentId16, _runtime.Path, _runtime.PackJson, cancellationToken).ConfigureAwait(false);
             _logger?.LogInformation("PlayPlay key derived via AudioHost for {FileId}", fileId);
             return aes;
         }

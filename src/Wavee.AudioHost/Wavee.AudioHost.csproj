@@ -18,11 +18,11 @@
         <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
 
         <!--
-            x64-only. AudioHost loads Spotify.dll (x86_64) directly to derive
-            PlayPlay AES keys, so the host process must be x86_64 too. On
-            ARM64 Windows the OS's built-in x64 emulation runs this exe; the
-            ARM64-native WinUI process talks to it over the existing named
-            pipe (length-prefixed JSON, request IDs).
+            x64-only. AudioHost loads the audio runtime support pack (an x64
+            PE) directly to derive PlayPlay AES keys, so the host process must
+            be x86_64 too. On ARM64 Windows the OS's built-in x64 emulation
+            runs this exe; the ARM64-native WinUI process talks to it over the
+            existing named pipe (length-prefixed JSON, request IDs).
         -->
         <Platforms>x64</Platforms>
         <Platform Condition="'$(Platform)' == ''">x64</Platform>

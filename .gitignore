@@ -165,11 +165,49 @@ perf-traces/
 # abuse). Tracks are chunked per user request and not stored to disk.
 # PlayPlay keys are only cached in obfuscated form and still require the same
 # algorithm to read. The stubs alongside (PlayPlayConstants.Stub.cs,
-# PlayPlayKeyEmulator.Stub.cs, Program.Stub.cs) keep the build green; the
-# runtime feature stays disabled when the real files are absent.
-Wavee/Core/Audio/PlayPlayConstants.cs
-Wavee.AudioHost/PlayPlay/PlayPlayKeyEmulator.cs
-Wavee.PlayPlay.Tests/Program.cs
+# PlayPlayKeyEmulator.Stub.cs, AudioRuntimeProvisioner.Stub.cs, Program.Stub.cs)
+# keep the build green; the runtime feature stays disabled when the real files
+# are absent.
+src/Wavee/Core/Audio/PlayPlayConstants.cs
+src/Wavee/Core/Audio/AudioRuntimeProvisioner.cs
+src/Wavee/Core/Audio/RuntimeManifest.cs
+src/Wavee.AudioHost/PlayPlay/PlayPlayKeyEmulator.cs
+test/Wavee.PlayPlay.Tests/Program.cs
+test/Wavee.PlayPlay.Tests/vectors_*.json
+
+# Local-only RE / experimentation harnesses (bearer tokens, captured cipher
+# state, encrypted .ogg fixtures, debugger transcripts). These were used during
+# the Phase A0 spike + Phase 1 development; never committed.
+test/Wavee.PlayPlay.X64.SanityCheck/
+test/Wavee.PlayPlay.Arm64.SanityCheck/
+test/Wavee.PlayPlay.Arm64.AutoFinder/
+test/find_aes_key/
+test/find_aes_key2/
+test/verify_keys/
+test/verify_keys2/
+test/verify_keys3/
+test/verify_unplayplay/
+test/verify_fiddler/
+test/parse_har/
+test/snapshot_call/
+test/test_c3f6b0d6_v88/
+test/test_field4/
+test/test_pipeline/
+test/test_v483_alive/
+test/test_v485_token/
+test/test_v88_with_v89_token/
+test/quick_aes_guess/
+test/quick_aes_guess.csx
+test/analyze_pairs/
+test/fetch_encrypted/
+test/encrypted_oggs/
+test/auto_attach.ps1
+test/auto_clean_attach.ps1
+test/clean_attach.ps1
+test/unplayplay_e2e.py
+test/unplayplay_test.py
+test/windbg_clean_*.txt
+test/windbg_vot_script.txt
 
 # Local Spotify.dll copies (binary belongs to Spotify; verified at runtime
 # against a SHA-256 baked into PlayPlayConstants).

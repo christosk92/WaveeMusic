@@ -141,6 +141,49 @@ Three Spotify-property files are gitignored. The build still compiles via stub f
 
 Everything else works without these: auth, session management, Spotify Connect (controller + target), all metadata APIs, UI, library sync, search, lyrics, music videos via PlayReady, Connect commands, telemetry.
 
+## Audio runtime support pack provisioning
+
+The PlayPlay key-derivation path needs an x86_64 PE binary on disk that
+`PlayPlayKeyEmulator` can `LoadLibrary` and call into (`vm_runtime_init` +
+`vm_object_transform` at config-supplied RVAs). On a fresh install, that
+binary is **not** present — it's not bundled with WaveeMusic.
+
+`Wavee.Core.Audio.AudioRuntimeProvisioner` is the first-run hook that fetches
+the binary. The flow:
+
+1. `AppLifecycleHelper.InitializeOutOfProcessAudioAsync` constructs an
+   `AudioRuntimeProvisioner` with the shared `HttpClient`.
+2. The provisioner GETs `https://cproducts.dev/r/manifest.json`, falling back
+   to a disk-cached copy at `%LOCALAPPDATA%\Wavee\PlayPlay\manifest.json` if
+   the network fetch fails.
+3. The manifest lists active runtime packs in priority order. For each pack
+   the provisioner checks
+   `%LOCALAPPDATA%\Wavee\PlayPlay\packs\<pack-id>\Spotify.dll` for a SHA-256
+   match; on miss it GETs `pack.url`, XOR-unwraps the response with a key
+   derived from a fixed phrase, verifies SHA-256, and atomic-writes to the
+   per-pack cache directory.
+4. On success, the provisioner returns a `RuntimeAsset(path, config, packJson)`
+   record. `AudioHostPlayPlayKeyDeriver` registers itself with the session
+   using that asset; the path and the pack's serialised JSON go over the IPC
+   pipe to AudioHost on every derivation request, where `AudioHostService`
+   parses the JSON, builds the `PlayPlayConfig`, and lazily instantiates a
+   `PlayPlayKeyEmulator(path, config, logger)`.
+5. On any failure the deriver simply isn't registered; `AudioKeyManager`
+   falls back to AP-only key resolution and the app loads normally.
+
+All version-specific configuration — token bytes, expected SHA, RVAs, init
+value, AES extraction strategy — lives in the manifest, not in WaveeMusic
+source. New runtime packs are published server-side without a client redeploy.
+
+The operator-side tooling (wrap script, manifest upload, blob URL
+management) lives at `C:\WAVEE\wavee-dev-helpers\` — a sibling directory,
+not part of this repo. See its `AGENTS.md` for the rotation runbook.
+Do **not** commit anything from that directory into this repo, and keep new
+code in this codebase neutral about what the support pack actually contains
+(generic terms like "audio runtime support pack" rather than naming any
+upstream binary). When editing PlayPlay-touching code, commit messages and
+doc comments stay neutral too.
+
 ## Custom MSBuild targets to be aware of
 
 In `Wavee.UI.WinUI.csproj`:

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Wavee.Core.Audio;
 
 namespace Wavee.AudioHost.PlayPlay;
 
@@ -11,9 +12,10 @@ namespace Wavee.AudioHost.PlayPlay;
 // audio-key source.
 public sealed class PlayPlayKeyEmulator : IDisposable
 {
-    public PlayPlayKeyEmulator(string spotifyDllPath, ILogger logger)
+    public PlayPlayKeyEmulator(string spotifyDllPath, PlayPlayConfig config, ILogger logger)
     {
         _ = spotifyDllPath;
+        _ = config;
         _ = logger;
     }
 

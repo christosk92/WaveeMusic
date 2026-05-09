@@ -44,6 +44,10 @@
       <Platform Solution="*|x64" Project="x64" />
       <Platform Solution="*|x86" Project="x86" />
     </Project>
+    <Project Path="ConsoleApp1/ConsoleApp1.csproj" Id="f5a54964-b3ca-4498-a38e-98a3b7eba1e3">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+    </Project>
 
     <!-- AudioHost is x64-only by design (LoadLibrarys Spotify.dll which is
          x86_64-native). Pin Project=x64 regardless of solution platform.

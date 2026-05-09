@@ -57,6 +57,19 @@
       <Compile Remove="Core\Audio\PlayPlayConstants.Stub.cs" />
     </ItemGroup>
 
+    <!--
+      First-run runtime support pack provisioner (Spotify property; not bundled
+      in the public repo). When the real Core/Audio/AudioRuntimeProvisioner.cs
+      exists, drop the stub. When it doesn't, AudioRuntimeProvisioner.Stub.cs
+      provides a no-op implementation that always returns null — the deriver
+      simply isn't registered and PlayPlay stays disabled. The real file also
+      ships with Core/Audio/RuntimeManifest.cs alongside; both are
+      gitignored together.
+    -->
+    <ItemGroup Condition="Exists('Core\Audio\AudioRuntimeProvisioner.cs')">
+      <Compile Remove="Core\Audio\AudioRuntimeProvisioner.Stub.cs" />
+    </ItemGroup>
+
     <ItemGroup>
       <InternalsVisibleTo Include="Wavee.Tests" />
       <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />

@@ -19,11 +19,10 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
 
-  <!--
-    Reference AudioHost so we can call PlayPlayKeyEmulator directly without
-    an IPC round-trip. This is the post-merge test path: AudioHost itself
-    holds the emulator class; tests exercise it in-process.
-  -->
+  <ItemGroup>
+    <None Update="vectors_x64_v1_2_88_483.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Wavee.AudioHost\Wavee.AudioHost.csproj" />
   </ItemGroup>

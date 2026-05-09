@@ -342,17 +342,20 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
         ReadOnlyMemory<byte> obfuscatedKey,
         ReadOnlyMemory<byte> contentId16,
         string spotifyDllPath,
+        string packJson,
         CancellationToken ct = default)
     {
         if (obfuscatedKey.Length != 16) throw new ArgumentException("obfuscated key must be 16 bytes", nameof(obfuscatedKey));
         if (contentId16.Length != 16) throw new ArgumentException("content id must be 16 bytes", nameof(contentId16));
         if (string.IsNullOrWhiteSpace(spotifyDllPath)) throw new ArgumentException("spotifyDllPath required", nameof(spotifyDllPath));
+        if (string.IsNullOrWhiteSpace(packJson)) throw new ArgumentException("packJson required", nameof(packJson));
 
         var cmd = new DerivePlayPlayKeyCommand
         {
             ObfuscatedKeyHex = Convert.ToHexString(obfuscatedKey.Span).ToLowerInvariant(),
             ContentIdHex = Convert.ToHexString(contentId16.Span).ToLowerInvariant(),
             SpotifyDllPath = spotifyDllPath,
+            PackJson = packJson,
         };
 
         var result = await SendRequestAsync(IpcMessageTypes.DerivePlayPlayKey, cmd, ct).ConfigureAwait(false);

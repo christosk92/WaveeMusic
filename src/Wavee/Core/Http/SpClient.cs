@@ -431,18 +431,15 @@ public sealed class SpClient : ISpClient
         return response;
     }
 
-    // PlayPlay is Spotify property. 16-byte token required by the gateway.
-    private static readonly byte[] PlayPlayToken =
-    [
-        0x02, 0x7B, 0x23, 0xA2, 0x44, 0x2C, 0x86, 0xCA,
-        0x4B, 0x00, 0x4D, 0xDF, 0xEF, 0x29, 0x19, 0x54,
-    ];
-
     /// <inheritdoc />
     public async Task<byte[]> ResolvePlayPlayObfuscatedKeyAsync(
         FileId fileId,
+        ReadOnlyMemory<byte> playPlayToken = default,
         CancellationToken cancellationToken = default)
     {
+        if (playPlayToken.IsEmpty)
+            throw new ArgumentException("playPlayToken is required", nameof(playPlayToken));
+        var token = playPlayToken.ToArray();
         if (!fileId.IsValid)
             throw new ArgumentException("FileId is not valid", nameof(fileId));
 
@@ -465,7 +462,7 @@ public sealed class SpClient : ISpClient
             var body = new PlayPlayLicenseRequest
             {
                 Version = 5,
-                Token = ByteString.CopyFrom(PlayPlayToken),
+                Token = ByteString.CopyFrom(token),
                 Interactivity = Interactivity.Interactive,
                 ContentType = ContentType.AudioTrack,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),

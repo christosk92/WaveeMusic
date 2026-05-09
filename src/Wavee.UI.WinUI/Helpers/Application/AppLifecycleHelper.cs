@@ -1050,38 +1050,42 @@ public static class AppLifecycleHelper
                 session.SetCacheService(cacheService);
             }
 
-            // PlayPlay fallback: AudioHost (x86_64, runs under WoA x64 emulation
-            // on ARM64 hosts) loads Spotify.dll directly and exposes a
-            // DerivePlayPlayKey RPC over the same named pipe used for playback.
-            // Register the deriver on the session before the first
-            // RequestAudioKeyAsync — same lifecycle constraint as the cache.
+            // First-run audio runtime initialisation for DRM-protected playback.
+            // The provisioner fetches the active manifest, downloads / verifies
+            // the support pack on first launch, and returns a RuntimeAsset the
+            // deriver can be wired against. On any failure the deriver simply
+            // isn't registered and audio key resolution falls back to AP-only.
             try
             {
-                var dll = Wavee.Core.Audio.SpotifyDllLocator.Locate(logger: logger);
                 var manager = _audioProcessManager;
-                if (dll is not null && manager is not null)
+                Wavee.Core.Audio.RuntimeAsset? runtime = null;
+                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
+                {
+                    var provisioner = new Wavee.Core.Audio.AudioRuntimeProvisioner(httpClient, logger);
+                    runtime = await provisioner.EnsureAvailableAsync(cts.Token).ConfigureAwait(false);
+                }
+
+                if (runtime is not null && manager is not null)
                 {
                     var deriver = new Wavee.Core.Audio.AudioHostPlayPlayKeyDeriver(
                         spClient,
                         proxyResolver: () => manager.Proxy,
-                        spotifyDllPath: dll,
+                        runtime: runtime,
                         cacheService: cacheService,
                         logger: logger);
                     session.SetPlayPlayKeyDeriver(deriver);
                     logger?.LogInformation(
-                        "PlayPlay fallback enabled via AudioHost (Spotify.dll v{Version}, dll={Dll})",
-                        Wavee.Core.Audio.PlayPlayConstants.SpotifyClientVersion, dll);
+                        "audio runtime ready (pack v{Version} at {Path})",
+                        runtime.Config.Version, runtime.Path);
                 }
                 else
                 {
-                    logger?.LogInformation(
-                        "PlayPlay fallback disabled: Spotify.dll v{Version} not found or AudioHost manager not initialised",
-                        Wavee.Core.Audio.PlayPlayConstants.SpotifyClientVersion);
+                    logger?.LogInformation("audio runtime unavailable; PlayPlay disabled this session");
                 }
             }
             catch (Exception ex)
             {
-                logger?.LogWarning(ex, "PlayPlay fallback failed to initialise; AP-only mode");
+                logger?.LogWarning(ex, "audio runtime initialisation skipped; AP-only mode");
             }
 
             // Resolve the head-files URL template lazily from the session so we pick

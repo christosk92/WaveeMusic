@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Reactive.Linq;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Wavee.AudioHost.Audio;
 using Wavee.AudioHost.Audio.Abstractions;
@@ -9,6 +10,7 @@ using Wavee.AudioHost.Audio.Processors;
 using Wavee.AudioHost.Audio.Sinks;
 using Wavee.AudioHost.Audio.Streaming;
 using Wavee.AudioHost.PlayPlay;
+using Wavee.Core.Audio;
 using Wavee.Playback.Contracts;
 
 namespace Wavee.AudioHost;
@@ -52,10 +54,12 @@ internal sealed class AudioHostService : IAsyncDisposable
     private Timer? _deviceRefreshDebounceTimer;
     private readonly object _deviceRefreshLock = new();
 
-    // PlayPlay AES-key derivation (lazy — only constructed on first request).
-    // Derivations are serialized through the pipe message loop so a single
-    // instance is fine without extra locking.
+    // PlayPlay AES-key derivation (lazy — constructed on first request, kept
+    // alive while the active pack id matches; rebuilt if the UI side ever sends
+    // a different pack mid-session). Derivations are serialized through the
+    // pipe message loop so a single instance is fine without extra locking.
     private PlayPlayKeyEmulator? _playPlayEmu;
+    private string? _playPlayActivePackId;
 
     public AudioHostService(
         string pipeName,
@@ -541,7 +545,13 @@ internal sealed class AudioHostService : IAsyncDisposable
 
                 try
                 {
-                    _playPlayEmu ??= new PlayPlayKeyEmulator(cmd.SpotifyDllPath, _logger);
+                    var (config, packId) = ParsePackJson(cmd.PackJson);
+                    if (_playPlayEmu is null || _playPlayActivePackId != packId)
+                    {
+                        _playPlayEmu?.Dispose();
+                        _playPlayEmu = new PlayPlayKeyEmulator(cmd.SpotifyDllPath, config, _logger);
+                        _playPlayActivePackId = packId;
+                    }
 
                     var aes = _playPlayEmu.DeriveAesKey(
                         Convert.FromHexString(cmd.ObfuscatedKeyHex),
@@ -806,5 +816,59 @@ internal sealed class AudioHostService : IAsyncDisposable
         _playPlayEmu?.Dispose();
 
         _cts.Dispose();
+    }
+
+    // Build a PlayPlayConfig from the PackJson sent by the UI side. Parsed via
+    // JsonDocument (no DTO type) since AudioHost has zero project references
+    // on Wavee where the manifest types live.
+    private static (PlayPlayConfig Config, string PackId) ParsePackJson(string packJson)
+    {
+        if (string.IsNullOrWhiteSpace(packJson))
+            throw new InvalidOperationException("packJson missing");
+
+        using var doc = System.Text.Json.JsonDocument.Parse(packJson);
+        var root = doc.RootElement;
+
+        string Str(string name) => root.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String
+            ? v.GetString() ?? ""
+            : "";
+        int Int(string name, int def) => root.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
+            ? v.GetInt32()
+            : def;
+
+        var packId = Str("id");
+        var arch = Str("arch").Equals("Arm64", StringComparison.OrdinalIgnoreCase)
+            ? Architecture.Arm64
+            : Architecture.X64;
+
+        var config = new PlayPlayConfig(
+            Version: Str("spotify_version"),
+            Arch: arch,
+            Sha256: Convert.FromHexString(Str("sha256_hex")),
+            PlayPlayToken: Convert.FromHexString(Str("playplay_token_hex")),
+            VmInitValue: Convert.FromHexString(Str("vm_init_value_hex")),
+            AnalysisBase: ParseHex(Str("analysis_base_hex")),
+            VmRuntimeInitVa: ParseHex(Str("vm_runtime_init_va_hex")),
+            VmObjectTransformVa: ParseHex(Str("vm_object_transform_va_hex")),
+            RuntimeContextVa: ParseHex(Str("runtime_context_va_hex")),
+            FillRandomBytesVa: ParseHex(Str("fill_random_bytes_va_hex")),
+            AesKey: new AesKeyExtraction.TriggerRipBreakpoint(
+                RipVa: ParseHex(Str("trigger_rip_va_hex")),
+                ContextRegOffset: Int("trigger_rip_reg_offset", 0x88)),
+            VmObjectSize: Int("vm_object_size", 144),
+            RtContextSize: Int("rt_context_size", 16),
+            DerivedKeySize: Int("derived_key_size", 24),
+            ObfuscatedKeySize: Int("obfuscated_key_size", 16),
+            InitValueSize: Int("init_value_size", 16),
+            ContentIdSize: Int("content_id_size", 16),
+            KeySize: Int("key_size", 16));
+
+        return (config, packId);
+    }
+
+    private static ulong ParseHex(string hex)
+    {
+        var s = hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? hex.AsSpan(2) : hex.AsSpan();
+        return ulong.Parse(s, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture);
     }
 }

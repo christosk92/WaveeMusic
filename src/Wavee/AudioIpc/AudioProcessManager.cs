@@ -125,32 +125,21 @@ public sealed class AudioProcessManager : IAsyncDisposable
         // Expected: {solutionDir}/src/Wavee.UI.WinUI/bin/[{Platform}/]{Config}/{Tfm}/AppX/
         // (Note: .NET 10 WinUI output has NO RID subfolder between Tfm and AppX.)
         var baseDir = AppContext.BaseDirectory;
-        var (solutionRoot, platform, config) = ResolveBuildLayout(baseDir);
+        var (solutionRoot, _, config) = ResolveBuildLayout(baseDir);
         _logger?.LogDebug(
-            "AudioHost layout resolved: solutionRoot={Root} platform={Platform} config={Config}",
-            solutionRoot ?? "<none>", platform ?? "<none>", config ?? "<none>");
+            "AudioHost layout resolved: solutionRoot={Root} config={Config}",
+            solutionRoot ?? "<none>", config ?? "<none>");
 
         var candidates = new List<string>
         {
-            // Packaged MSIX layout: AudioHost lives in its own subdir to
-            // keep its (x64) dependency graph separate from the WinUI app's
-            // (ARM64-or-x64) payload. Wavee.UI.WinUI.csproj's MSBuild
-            // targets stage it there for both F5 deploy and sideload.
+            // Packaged MSIX layout: AudioHost lives in its own subdir.
             Path.Combine(baseDir, "Wavee.AudioHost", "Wavee.AudioHost.exe"),
-            // Same directory (legacy / single-arch packages, side-by-side
-            // dev deploys).
             Path.Combine(baseDir, "Wavee.AudioHost.exe"),
         };
 
         if (solutionRoot is not null)
         {
             var audioHostBin = Path.Combine(solutionRoot, "src", "Wavee.AudioHost", "bin");
-
-            // AudioHost is x64-only (loads Spotify.dll directly for PlayPlay).
-            // Build output is always bin/x64/{Config}/net10.0/win-x64/ (or
-            // bin/{Config}/... when invoked without -p:Platform). Don't probe
-            // bin/<host-platform>/ — on ARM64 builds that path can contain a
-            // half-built output from a stale build pipeline.
             var configs = config is not null
                 ? new[] { config, config == "Debug" ? "Release" : "Debug" }
                 : new[] { "Debug", "Release" };
