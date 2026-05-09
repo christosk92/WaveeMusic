@@ -53,6 +53,19 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
 {
     private static readonly Color FallbackAccent = Color.FromArgb(255, 0x60, 0xCD, 0xFF);
     private const int MaxHeroSlides = 6;
+    private const int MaxPodcastEditorialSlots = 2;
+
+    /// <summary>
+    /// Per-app-launch shuffle seed. Stable within a session (so tab-switch
+    /// back doesn't re-randomise the hero) but fresh on every cold-start
+    /// (so consecutive launches see a different first editorial slide).
+    /// Spotify's home is server-deterministic, so without this rotation
+    /// every restart shows identical content.
+    /// </summary>
+    private static readonly int _sessionSeed = Guid.NewGuid().GetHashCode();
+
+    private static bool IsPodcastFacet(string? facet) =>
+        facet is "podcasts-chip" or "podcasts-following-chip" or "audiobooks-chip";
 
     private readonly HomeViewModel _host;
     private readonly DispatcherQueue _dispatcherQueue;
@@ -270,16 +283,35 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
                 seenUris.Add(featured.Uri!);
         }
 
-        // Slides 1..N — first item of qualifying editorial sections.
-        // Iterate in section order. Skip Shorts/Recents (no editorial value)
-        // and dedupe by item URI.
-        foreach (var section in _host.Sections)
+        // Slides 1..MaxHeroSlides−1 — first item of each editorial section,
+        // after:
+        //   1. dropping Shorts (those drive the side-rail shortcut cards
+        //      exclusively, so they never duplicate into the hero) +
+        //      RecentlyPlayed (no editorial value),
+        //   2. filtering podcast sections when the active facet isn't a
+        //      podcast-style chip,
+        //   3. shuffling stable-per-session so consecutive cold-starts see a
+        //      different first editorial slide,
+        //   4. capping at 2 podcast slots so the hero never goes all-podcast
+        //      even on the unfaceted default view.
+        var allowPodcasts = IsPodcastFacet(_host.CurrentFacet);
+        var editorialCandidates = _host.Sections
+            .Where(s => s.SectionType is not (HomeSectionType.Shorts or HomeSectionType.RecentlyPlayed))
+            .Where(s => allowPodcasts || !s.IsPodcastSection)
+            .OrderBy(s => HashCode.Combine(_sessionSeed, s.Title ?? string.Empty))
+            .ToList();
+
+        var podcastSlotsUsed = 0;
+        foreach (var section in editorialCandidates)
         {
             if (slides.Count >= MaxHeroSlides) break;
-
-            if (section.SectionType is HomeSectionType.Shorts or HomeSectionType.RecentlyPlayed)
-                continue;
             if (section.Items.Count == 0) continue;
+
+            if (section.IsPodcastSection)
+            {
+                if (podcastSlotsUsed >= MaxPodcastEditorialSlots) continue;
+                podcastSlotsUsed++;
+            }
 
             var first = section.Items[0];
             if (string.IsNullOrEmpty(first.ImageUrl)) continue;

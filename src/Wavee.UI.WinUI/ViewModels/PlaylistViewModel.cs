@@ -84,6 +84,19 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     // reproduces what Spotify Connect clients expect to see.
     private IReadOnlyDictionary<string, string>? _playlistFormatAttributes;
 
+    /// <summary>True when the current playlist's <c>format</c> attribute is
+    /// <c>"chart"</c> (Top 50 / Viral 50 / Podcast Charts / etc.). Drives
+    /// the chart sub-stat line in the header and per-row status badges.</summary>
+    [ObservableProperty]
+    private bool _isChart;
+
+    /// <summary>Single dot-separated chart-context line shown beneath
+    /// <see cref="MetaInlineLine"/> on chart playlists, e.g.
+    /// <c>"Updated May 1 · 8 new entries"</c>. Empty for non-chart
+    /// playlists; <see cref="IsChart"/> drives visibility.</summary>
+    [ObservableProperty]
+    private string _chartHeaderLine = string.Empty;
+
     // Current 24-byte playlist revision. Needed when POSTing to the
     // session-control signals endpoint.
     private byte[]? _currentRevision;
@@ -385,6 +398,32 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 parts.Add(FollowerCountFormatted);
             return string.Join(" · ", parts);
         }
+    }
+
+    /// <summary>
+    /// Recomputes <see cref="IsChart"/> and <see cref="ChartHeaderLine"/>
+    /// from the current <c>_playlistFormatAttributes</c>. Called whenever
+    /// the playlist detail changes — non-chart playlists land with
+    /// <see cref="IsChart"/> false and the chart line empty.
+    /// </summary>
+    private void RecomputeChartHeader()
+    {
+        var info = ChartPlaylistInfo.From(_playlistFormatAttributes);
+        IsChart = info is not null;
+        if (info is null)
+        {
+            ChartHeaderLine = string.Empty;
+            return;
+        }
+        var parts = new List<string>(2);
+        if (info.LastUpdated is { } when)
+            parts.Add(AppLocalization.Format(
+                "Playlist_Chart_Updated", when.ToLocalTime().ToString("MMM d")));
+        if (info.NewEntriesCount is > 0 and var n)
+            parts.Add(n == 1
+                ? AppLocalization.GetString("Playlist_Chart_NewEntriesOne")
+                : AppLocalization.Format("Playlist_Chart_NewEntriesMany", n));
+        ChartHeaderLine = string.Join(" · ", parts);
     }
 
     /// <summary>True if the current user follows this playlist (heart filled).
@@ -753,24 +792,36 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             FollowerCount = 0;
             TotalTracks = 0;
             _playlistFormatAttributes = null;
+            RecomputeChartHeader();
             _currentRevision = null;
             _sessionControlGroupId = null;
             TotalDuration = string.Empty;
             HasAnyAddedAt = false;
 
-            // Reset granular capability gates so a stale "owner-only" affordance
-            // doesn't briefly leak into a viewer-mode playlist render.
-            CanEditMetadata = false;
-            CanEditName = false;
-            CanEditDescription = false;
-            CanEditPicture = false;
-            CanEditCollaborative = false;
-            CanDelete = false;
+            // Reset granular capability gates and remaining collaborator
+            // state on a low-priority dispatch so they don't add to the
+            // synchronous PropertyChanged storm before first paint. None
+            // of these affect the visible shimmer/hero/IsLoadingTracks gate.
+            // Capability gates only matter for owner affordances which are
+            // already x:Load-gated in the XAML; the brief window where
+            // they remain at their previous values is invisible.
+            _dispatcherQueue?.TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                () =>
+                {
+                    CanEditMetadata = false;
+                    CanEditName = false;
+                    CanEditDescription = false;
+                    CanEditPicture = false;
+                    CanEditCollaborative = false;
+                    CanDelete = false;
 
-            // Drop the previous playlist's collaborator state.
-            Collaborators.Clear();
-            HasCollaborators = false;
-            LatestInviteLink = null;
+                    // Drop the previous playlist's collaborator state. (The
+                    // earlier Collaborators.Clear() above already covered the
+                    // collection; this duplicate-clear was a merge artifact —
+                    // collapsing it under the same low-priority block.)
+                    LatestInviteLink = null;
+                });
 
             // Drop chips from the previous playlist before the new DTO arrives
             // so they don't flicker visible during the reload.
@@ -944,6 +995,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         }
         HeaderImageUrl = string.IsNullOrWhiteSpace(detail.HeaderImageUrl) ? null : detail.HeaderImageUrl;
         _playlistFormatAttributes = detail.FormatAttributes;
+        RecomputeChartHeader();
         _currentRevision = detail.Revision;
         _sessionControlGroupId = detail.SessionControlGroupId;
         BuildSessionControlChips(detail.SessionControlOptions);

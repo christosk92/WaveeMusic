@@ -18,12 +18,17 @@ namespace Wavee.UI.WinUI.Services;
 /// </summary>
 public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
 {
-    // Steady-state private bytes after the x:Bind / VM-singleton-sub leak fix
-    // sit at 400-600 MB. Headroom to 1.5 GB keeps the budget service quiet for
-    // normal sessions; it only fires for genuine pathological growth. Earlier
-    // 800 MB threshold caused a periodic blocking compacting Gen2 every cooldown
-    // window once the leak held us at 838 MB — felt as recurring stutter.
-    public const long DefaultBudgetBytes = 1_500L * 1024 * 1024;
+    // Lowered from 1.5 GB → 800 MB after the 2026-05-08 native-heap diagnosis.
+    // VMMap shows ~440 MB lives in the OS COMPATABILITY heap (BitmapImage decode,
+    // WinRT marshalling, page composition retention) and ~580 MB in the .NET
+    // runtime's reserved private region. The earlier 800 MB threshold caused
+    // recurring stutter only because a separate x:Bind/VM-sub leak held the
+    // process at 838 MB indefinitely; with that leak fixed and pages now nulling
+    // their image Sources on Unloaded, steady-state should sit ~500-600 MB and
+    // 800 MB cleanly catches genuine growth without firing on healthy sessions.
+    // The TrimWorkingSet path no longer GC.Collects so escalation cost is just
+    // a syscall, not a UI-thread freeze.
+    public const long DefaultBudgetBytes = 800L * 1024 * 1024;
 
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan NormalCooldown = TimeSpan.FromSeconds(30);
@@ -58,10 +63,82 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
         _timer = new PeriodicTimer(CheckInterval);
         _loopTask = RunAsync(_cts.Token);
 
+        // OS memory-pressure signal. Fires when *the system* (not just our
+        // budget) considers the app's usage to have grown into a higher band
+        // (None → Low → Medium → High → OverLimit). Subscribing turns the
+        // budget service from a fixed-threshold gate into a reactive cleaner —
+        // when Windows says "you're under pressure" we shed caches immediately
+        // instead of waiting for the next 10-second poll tick to notice we
+        // crossed our own absolute threshold.
+        try
+        {
+            Windows.System.MemoryManager.AppMemoryUsageIncreased += OnAppMemoryUsageIncreased;
+            Windows.System.MemoryManager.AppMemoryUsageLimitChanging += OnAppMemoryUsageLimitChanging;
+            _memoryPressureHooked = true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Memory budget: failed to subscribe to MemoryManager events");
+        }
+
         _logger?.LogInformation(
-            "Memory budget monitor started. Budget={BudgetMb:F0}MB interval={Interval}",
+            "Memory budget monitor started. Budget={BudgetMb:F0}MB interval={Interval} osPressureHook={Hook}",
             _budgetBytes / 1048576.0,
-            CheckInterval);
+            CheckInterval,
+            _memoryPressureHooked);
+    }
+
+    private bool _memoryPressureHooked;
+
+    private void OnAppMemoryUsageIncreased(object? sender, object args)
+    {
+        // Bypass the cooldown — the OS doesn't raise this every tick; if it
+        // fires we should respond.
+        _lastReleaseAt = DateTimeOffset.MinValue;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                _logger?.LogInformation(
+                    "Memory budget: OS reported AppMemoryUsageIncreased (level={Level}) — running eviction",
+                    Windows.System.MemoryManager.AppMemoryUsageLevel);
+                if (_cts is { } cts)
+                    await CheckAsync(cts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Memory budget: OS-pressure-driven eviction failed");
+            }
+        });
+    }
+
+    private void OnAppMemoryUsageLimitChanging(object? sender, Windows.System.AppMemoryUsageLimitChangingEventArgs args)
+    {
+        // The OS is about to lower our usage limit. If our current usage
+        // exceeds the *new* limit, we're about to be killed unless we shed
+        // memory now. Run eviction synchronously-ish (fire-and-forget Task)
+        // before the limit takes effect.
+        if (args.NewLimit < args.OldLimit)
+        {
+            _lastReleaseAt = DateTimeOffset.MinValue;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    _logger?.LogWarning(
+                        "Memory budget: OS lowering limit {OldMb:F0}MB → {NewMb:F0}MB — eviction now",
+                        args.OldLimit / 1048576.0, args.NewLimit / 1048576.0);
+                    if (_cts is { } cts)
+                        await CheckAsync(cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Memory budget: limit-change eviction failed");
+                }
+            });
+        }
     }
 
     private async Task RunAsync(CancellationToken ct)
@@ -200,8 +277,22 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
         }
     }
 
+    private void UnhookMemoryPressure()
+    {
+        if (!_memoryPressureHooked) return;
+        try
+        {
+            Windows.System.MemoryManager.AppMemoryUsageIncreased -= OnAppMemoryUsageIncreased;
+            Windows.System.MemoryManager.AppMemoryUsageLimitChanging -= OnAppMemoryUsageLimitChanging;
+        }
+        catch { }
+        _memoryPressureHooked = false;
+    }
+
     public async ValueTask DisposeAsync()
     {
+        UnhookMemoryPressure();
+
         if (_cts is not null)
         {
             await _cts.CancelAsync().ConfigureAwait(false);
@@ -222,6 +313,7 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
 
     public void Dispose()
     {
+        UnhookMemoryPressure();
         try { _cts?.Cancel(); } catch { }
         _cts?.Dispose();
         _cts = null;

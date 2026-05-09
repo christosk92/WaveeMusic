@@ -673,12 +673,22 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             PreReleaseFormatted = null;
             PreReleaseRelative = null;
             MetaInlineLine = null;
-            HasAlternateReleases = false;
-            AlternateReleases = [];
-            HasMoreByArtist = false;
-            MoreByArtist = [];
-            MerchItems = [];
-            this.RaisePropertyChanged(nameof(HasMerch));
+            // Defer the rare/below-the-fold shelves to a low-priority
+            // dispatch — these are all x:Load-gated in AlbumPage.xaml so
+            // their reset doesn't affect first paint. Cuts the
+            // PropertyChanged storm before the hero/track-list shimmer
+            // commits.
+            _dispatcherQueue.TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                () =>
+                {
+                    HasAlternateReleases = false;
+                    AlternateReleases = [];
+                    HasMoreByArtist = false;
+                    MoreByArtist = [];
+                    MerchItems = [];
+                    this.RaisePropertyChanged(nameof(HasMerch));
+                });
             this.RaisePropertyChanged(nameof(AlbumTypeUpper));
             PaletteBackdropBrush = null;
             PaletteAccentPillBrush = null;

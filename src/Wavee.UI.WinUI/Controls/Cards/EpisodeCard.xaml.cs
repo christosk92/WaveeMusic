@@ -36,6 +36,7 @@ public sealed partial class EpisodeCard : UserControl
         _imageCache = Ioc.Default.GetService<ImageCacheService>();
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
 
@@ -46,6 +47,24 @@ public sealed partial class EpisodeCard : UserControl
             _boundItem.PropertyChanged -= OnItemPropertyChanged;
             _boundItem = null;
         }
+
+        // Drop the native decoded surface so the WinUI compositor releases it.
+        // Also restore the placeholder + clear the URL cache so when the card is
+        // recycled (same instance rebound via ItemsRepeater) RenderAll
+        // re-fetches the image instead of hitting the early-out cache-equal
+        // branch and leaving the cover area blank.
+        if (CoverImage != null) CoverImage.Source = null;
+        if (CoverPlaceholderIcon != null) CoverPlaceholderIcon.Visibility = Visibility.Visible;
+        _currentCoverImageUrl = null;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        // ItemsRepeater can recycle a card back to the same DataContext.
+        // OnDataContextChanged doesn't fire in that case, so we re-trigger
+        // RenderAll here when the cover was nulled by the previous Unloaded.
+        if (_boundItem != null && CoverImage?.Source == null)
+            RenderAll();
     }
 
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
@@ -80,7 +99,10 @@ public sealed partial class EpisodeCard : UserControl
 
         // Cover image — bind via Source so we don't have to manage placeholder
         // visibility manually; CoverImage_ImageOpened hides the glyph.
-        var imageUrl = SpotifyImageHelper.ToHttpsUrl(item?.ImageUrl) ?? item?.ImageUrl;
+        // Prefer the medium CDN flavor (~300 px) for ~200 px card slot —
+        // distinct image-id from large/small, ~10× less bandwidth than the 640 px.
+        var rawImageUrl = item?.BestMediumImageUrl ?? item?.ImageUrl;
+        var imageUrl = SpotifyImageHelper.ToHttpsUrl(rawImageUrl) ?? rawImageUrl;
         if (!string.IsNullOrEmpty(imageUrl))
         {
             if (string.Equals(_currentCoverImageUrl, imageUrl, StringComparison.Ordinal)
@@ -234,9 +256,17 @@ public sealed partial class EpisodeCard : UserControl
         var coverSize = e.NewSize.Width - pad.Left - pad.Right;
         if (coverSize <= 0) return;
 
-        if (Math.Abs(CoverContainer.Width - coverSize) > 0.5)
+        // First layout: CoverContainer.Width / .Height are NaN (auto). The
+        // earlier `Math.Abs(NaN - x) > 0.5` guard was always false on NaN, so
+        // the assignment was *skipped* and the container fell back to the
+        // image's natural aspect (16:9 for video podcast thumbnails). Use
+        // double.IsNaN as the trigger and only skip when we're already at the
+        // target value to avoid layout-loop churn.
+        if (double.IsNaN(CoverContainer.Width)
+            || Math.Abs(CoverContainer.Width - coverSize) > 0.5)
             CoverContainer.Width = coverSize;
-        if (Math.Abs(CoverContainer.Height - coverSize) > 0.5)
+        if (double.IsNaN(CoverContainer.Height)
+            || Math.Abs(CoverContainer.Height - coverSize) > 0.5)
             CoverContainer.Height = coverSize;
     }
 

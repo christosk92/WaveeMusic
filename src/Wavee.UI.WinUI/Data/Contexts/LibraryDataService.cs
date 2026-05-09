@@ -1052,6 +1052,9 @@ public sealed class LibraryDataService : ILibraryDataService
                 AlbumName = track.Album?.Name ?? "",
                 AlbumId = GetSpotifyUri(track.Album?.Gid, SpotifyIdType.Album) ?? "",
                 ImageUrl = GetImageUrl(track.Album, Image.Types.Size.Default),
+                // 48 px row art reads ImageSmallUrl first; the Small flavor is
+                // a distinct CDN image-id (~80 px), ~10× smaller bytes than Default.
+                ImageSmallUrl = GetImageUrl(track.Album, Image.Types.Size.Small),
                 Duration = TimeSpan.FromMilliseconds(track.Duration),
                 AddedAt = item.AddedAt?.LocalDateTime,
                 AddedBy = item.AddedBy,

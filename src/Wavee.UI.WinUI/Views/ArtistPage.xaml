@@ -117,10 +117,8 @@
         <ScrollView x:Name="PageScrollView">
             <Grid>
             <Grid.RowDefinitions>
-                <!-- MinHeight = enough to fit eyebrow + name + stats + action
-                     row + padding (avatar 120 + 24 padding ≈ 280). Splitter
-                     respects this so the user can't shrink the hero past the
-                     point where the bottom-anchored content gets clipped. -->
+                <!-- Window-driven height set in OnSizeChanged (45% of page,
+                     min 200). Min/Max preserved as guard rails. -->
                 <RowDefinition x:Name="HeroRow" Height="300" MinHeight="280" MaxHeight="700"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
@@ -356,14 +354,6 @@
                 </hero:HeroHeader.OverlayContent>
             </hero:HeroHeader>
 
-            <controls1:GridSplitter
-                x:Name="HeroSplitter"
-                Grid.Row="1"
-                Orientation="Vertical"
-                Height="8"
-                HorizontalAlignment="Stretch"
-                ResizeCompleted="HeroSplitter_ResizeCompleted"/>
-
             <!-- ═══════════════════════════════════════════════ -->
             <!-- SHIMMER LOADING SKELETON (sections below hero)  -->
             <!-- ═══════════════════════════════════════════════ -->
@@ -409,8 +399,8 @@
                         </Grid>
                     </StackPanel>
                 </StackPanel>
-                <!-- Discography shimmer -->
-                <StackPanel Padding="32,24,32,32" Spacing="12">
+                <!-- Albums shelf shimmer -->
+                <StackPanel Padding="32,24,32,0" Spacing="12">
                     <controls:Shimmer Width="120" Height="22" HorizontalAlignment="Left"/>
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <StackPanel Spacing="8">
@@ -435,6 +425,69 @@
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
+                <!-- Singles shelf shimmer -->
+                <StackPanel Padding="32,24,32,0" Spacing="12">
+                    <controls:Shimmer Width="100" Height="22" HorizontalAlignment="Left"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <StackPanel Spacing="8">
+                            <controls:Shimmer Width="160" Height="160" CornerRadius="8"/>
+                            <controls:Shimmer Width="130" Height="14" HorizontalAlignment="Left"/>
+                            <controls:Shimmer Width="55" Height="12" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8">
+                            <controls:Shimmer Width="160" Height="160" CornerRadius="8"/>
+                            <controls:Shimmer Width="100" Height="14" HorizontalAlignment="Left"/>
+                            <controls:Shimmer Width="50" Height="12" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8">
+                            <controls:Shimmer Width="160" Height="160" CornerRadius="8"/>
+                            <controls:Shimmer Width="120" Height="14" HorizontalAlignment="Left"/>
+                            <controls:Shimmer Width="65" Height="12" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8">
+                            <controls:Shimmer Width="160" Height="160" CornerRadius="8"/>
+                            <controls:Shimmer Width="140" Height="14" HorizontalAlignment="Left"/>
+                            <controls:Shimmer Width="60" Height="12" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+                <!-- Related artists shimmer (circular avatars) -->
+                <StackPanel Padding="32,24,32,0" Spacing="12">
+                    <controls:Shimmer Width="140" Height="22" HorizontalAlignment="Left"/>
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <StackPanel Spacing="8" HorizontalAlignment="Center">
+                            <controls:Shimmer Width="140" Height="140" CornerRadius="70"/>
+                            <controls:Shimmer Width="100" Height="14" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" HorizontalAlignment="Center">
+                            <controls:Shimmer Width="140" Height="140" CornerRadius="70"/>
+                            <controls:Shimmer Width="120" Height="14" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" HorizontalAlignment="Center">
+                            <controls:Shimmer Width="140" Height="140" CornerRadius="70"/>
+                            <controls:Shimmer Width="90" Height="14" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" HorizontalAlignment="Center">
+                            <controls:Shimmer Width="140" Height="140" CornerRadius="70"/>
+                            <controls:Shimmer Width="110" Height="14" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8" HorizontalAlignment="Center">
+                            <controls:Shimmer Width="140" Height="140" CornerRadius="70"/>
+                            <controls:Shimmer Width="130" Height="14" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+                <!-- Biography shimmer -->
+                <StackPanel Padding="32,24,32,32" Spacing="12">
+                    <controls:Shimmer Width="100" Height="22" HorizontalAlignment="Left"/>
+                    <StackPanel Spacing="8">
+                        <controls:Shimmer Height="14" HorizontalAlignment="Stretch"/>
+                        <controls:Shimmer Height="14" HorizontalAlignment="Stretch"/>
+                        <controls:Shimmer Width="600" Height="14" HorizontalAlignment="Left"/>
+                        <controls:Shimmer Height="14" HorizontalAlignment="Stretch"/>
+                        <controls:Shimmer Width="420" Height="14" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </StackPanel>
             </StackPanel>
 
             <!-- ═══════════════════════════════════════════════ -->
@@ -449,7 +502,11 @@
                      tracks stack uses the full width as before. -->
                 <Grid ColumnSpacing="20">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
+                        <!-- Bound to VM so the column resolves to its final width
+                             before ContentContainer flips Visible at the start of
+                             the crossfade. An x:Load expansion 0→280 mid-fade
+                             previously slid the top tracks column sideways. -->
+                        <ColumnDefinition Width="{x:Bind ViewModel.PinnedColumnWidth, Mode=OneWay}"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 

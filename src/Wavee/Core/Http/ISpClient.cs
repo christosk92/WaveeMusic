@@ -107,6 +107,7 @@ public interface ISpClient
     /// </remarks>
     Task<byte[]> ResolvePlayPlayObfuscatedKeyAsync(
         FileId fileId,
+        ReadOnlyMemory<byte> playPlayToken = default,
         CancellationToken cancellationToken = default);
 
     /// <summary>

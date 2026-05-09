@@ -578,7 +578,10 @@ public sealed partial class ContentCard : UserControl
         if (SquareImage != null)
         {
             SquareImage.Source = null;
-            SquareImage.Opacity = 1;
+            // Reset to invisible — fade-in animation snaps from current
+            // opacity, so leaving this at 1 caused a 1 → 0 → 0.85 flash on
+            // the next ImageOpened. The XAML default is 0 too.
+            SquareImage.Opacity = 0;
         }
 
         if (CircleImageBrush != null)
@@ -683,9 +686,15 @@ public sealed partial class ContentCard : UserControl
             _retryImageLoadCount = 0;
         }
 
-        // Use the shared LRU bitmap cache via DI
-        var bitmap = _imageCache?.GetOrCreate(httpsUrl, CardImageDecodeSize) ?? new BitmapImage(new Uri(httpsUrl)) { DecodePixelWidth = CardImageDecodeSize, DecodePixelType = DecodePixelType.Logical };
-        PinImageCacheUrl(httpsUrl);
+        // Use the shared LRU bitmap cache via DI. Unpin the previous URL
+        // first, then GetOrCreate(pin: true) which pins atomically inside
+        // the cache's write lock — without that ordering the just-added
+        // entry can be self-evicted when the cache is full of pinned
+        // visible cards.
+        UnpinImageCacheUrl();
+        _pinnedImageCacheUrl = httpsUrl;
+        var bitmap = _imageCache?.GetOrCreate(httpsUrl, CardImageDecodeSize, pin: true)
+            ?? new BitmapImage(new Uri(httpsUrl)) { DecodePixelWidth = CardImageDecodeSize, DecodePixelType = DecodePixelType.Logical };
 
         if (IsCircularImage)
         {
@@ -697,9 +706,16 @@ public sealed partial class ContentCard : UserControl
         else
         {
             SquareImage.Source = bitmap;
-            // Cached BitmapImage instances may already be opened, so ImageOpened
-            // will not always fire again when a virtualized card is recycled.
+            // Cached BitmapImage instances may already be opened, so
+            // ImageOpened will not always fire again when a virtualized
+            // card is recycled. Detect that here and snap straight to the
+            // resting opacity so the card renders immediately instead of
+            // hanging at 0 waiting for an event that won't come.
             SquarePlaceholderIcon.Visibility = Visibility.Collapsed;
+            if (bitmap.PixelWidth > 0)
+            {
+                SquareImage.Opacity = 0.85;
+            }
         }
     }
 
@@ -910,9 +926,13 @@ public sealed partial class ContentCard : UserControl
     {
         SquarePlaceholderIcon.Visibility = Visibility.Collapsed;
 
-        // Fade in using XAML framework layer (not composition — avoids layer multiply bugs)
+        // Fade in using XAML framework layer (not composition — avoids layer multiply bugs).
+        // No explicit `from` — let the animation pick up SquareImage's current
+        // opacity (0 from XAML default, or 0.85 if a cached bitmap snapped it
+        // already). End at the resting opacity (0.85), not 1.0 — hover
+        // handlers manage the 0.85 ↔ 1.0 toggle on their own.
         CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
-            .Opacity(from: 0, to: 1,
+            .Opacity(to: 0.85,
                      duration: TimeSpan.FromMilliseconds(250),
                      layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
             .Start(SquareImage);

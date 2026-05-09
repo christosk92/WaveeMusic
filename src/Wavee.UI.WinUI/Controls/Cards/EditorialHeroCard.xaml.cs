@@ -90,6 +90,9 @@ public sealed partial class EditorialHeroCard : UserControl
 
         _lastBakedUri = null;
         _lastBakedSize = default;
+
+        // Drop the native decoded surface so the WinUI compositor releases it.
+        if (HeroImage != null) HeroImage.Source = null;
     }
 
     private void BackdropHost_SizeChanged(object sender, SizeChangedEventArgs e)

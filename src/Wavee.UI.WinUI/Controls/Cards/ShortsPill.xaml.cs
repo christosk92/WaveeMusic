@@ -93,6 +93,9 @@ public sealed partial class ShortsPill : UserControl
         ResetInteractionState();
         StopPendingBeam();
         WeakReferenceMessenger.Default.UnregisterAll(this);
+
+        // Drop the native decoded surface so the WinUI compositor releases it.
+        if (PillImage != null) PillImage.Source = null;
     }
 
     private void OnNowPlayingChanged(object recipient, NowPlayingChangedMessage msg)

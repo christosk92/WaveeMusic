@@ -116,7 +116,9 @@ public sealed partial class ShowEpisodeRow : UserControl
         {
             try
             {
-                CoverImage.Source = new BitmapImage(new Uri(episode.CoverArtUrl));
+                var bmp = new BitmapImage { DecodePixelWidth = 128 };
+                bmp.UriSource = new Uri(episode.CoverArtUrl);
+                CoverImage.Source = bmp;
             }
             catch
             {

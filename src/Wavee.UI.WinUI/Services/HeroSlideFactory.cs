@@ -2,6 +2,7 @@ using System;
 using System.Windows.Input;
 using Klankhuis.Hero.Controls;
 using Wavee.UI.WinUI.Helpers;
+using Wavee.UI.WinUI.Styles;
 using Wavee.UI.WinUI.ViewModels;
 using Windows.UI;
 
@@ -38,11 +39,14 @@ public static class HeroSlideFactory
         Color? overrideAccent = null,
         bool useImageAsBackground = true)
     {
+        var isRecentlySaved = item.IsRecentlySaved;
         return new HeroCarouselItem
         {
             Eyebrow = eyebrow,
             Title = item.Title ?? string.Empty,
             Tagline = item.Subtitle ?? string.Empty,
+            TaglineIconGlyph = isRecentlySaved ? FluentGlyphs.CheckMark : string.Empty,
+            TaglineIconColor = Color.FromArgb(255, 0x1E, 0xD7, 0x60),
             ImageUri = TryMakeImageUri(item.ImageUrl),
             Accent = overrideAccent ?? ParseAccentOrFallback(item.ColorHex),
             PrimaryCtaText = primaryCta,

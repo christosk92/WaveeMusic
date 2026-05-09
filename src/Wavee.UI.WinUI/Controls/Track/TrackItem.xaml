@@ -246,6 +246,30 @@
                                                            IconSize="14"
                                                            ActionForeground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
                         </Button>
+
+                        <!--
+                            Chart status badge for chart-format playlists (Top 50 etc.).
+                            Anchors at the bottom-center of the same 52-px Index slot;
+                            position number above stays put (current_pos already matches
+                            the row index). Visibility + glyph driven from code-behind
+                            (ApplyChartStatus).
+                        -->
+                        <StackPanel x:Name="RowChartStatusContainer"
+                                    Orientation="Horizontal"
+                                    Spacing="2"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Margin="0,0,4,0"
+                                    Visibility="Collapsed"
+                                    IsHitTestVisible="False">
+                            <FontIcon x:Name="RowChartStatusGlyph"
+                                      FontSize="9"
+                                      VerticalAlignment="Center"/>
+                            <TextBlock x:Name="RowChartStatusDelta"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       FontSize="9"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Grid>
 
                     <!-- Heart button -->

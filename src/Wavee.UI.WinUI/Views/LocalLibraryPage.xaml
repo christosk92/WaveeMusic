@@ -54,7 +54,7 @@
         </StackPanel>
 
         <!-- Album list -->
-        <ScrollViewer Grid.Row="1"
+        <ScrollView Grid.Row="1"
                       VerticalScrollBarVisibility="Auto"
                       Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Invert}">
             <ItemsRepeater ItemsSource="{x:Bind ViewModel.Albums}">
@@ -130,6 +130,6 @@
                     </DataTemplate>
                 </ItemsRepeater.ItemTemplate>
             </ItemsRepeater>
-        </ScrollViewer>
+        </ScrollView>
     </Grid>
 </Page>

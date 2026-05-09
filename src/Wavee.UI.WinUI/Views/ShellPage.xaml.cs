@@ -665,10 +665,25 @@ public sealed partial class ShellPage : Page
                     NavigationHelpers.OpenPodcastBrowse(openInNewTab);
                     break;
                 default:
-                    // Handle playlist navigation (tags starting with "spotify:playlist:")
+                    // Handle playlist navigation (tags starting with "spotify:playlist:").
+                    // Pass a ContentNavigationParameter (not just the raw URI string) so
+                    // PlaylistPage.LoadParameter takes the prefill branch — without this,
+                    // sidebar nav skips PrefillFrom entirely and the hero (cover + title)
+                    // stays empty until PlaylistStore.Observe pushes Ready, which can
+                    // be hundreds of ms behind a fast track-cache hit. Sidebar already
+                    // knows both fields (model.Text is the playlist name, model.ImageUrl
+                    // is the cover URL), so prefilling is free.
                     if (tag.StartsWith("spotify:playlist:"))
                     {
-                        NavigationHelpers.OpenPlaylist(tag, model.Text, openInNewTab);
+                        NavigationHelpers.OpenPlaylist(
+                            new Data.Parameters.ContentNavigationParameter
+                            {
+                                Uri = tag,
+                                Title = model.Text,
+                                ImageUrl = model.ImageUrl
+                            },
+                            model.Text,
+                            openInNewTab);
                     }
                     break;
             }

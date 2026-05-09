@@ -18,6 +18,13 @@ public sealed record LikedSongDto : ITrackItem
     public required string AlbumName { get; init; }
     public required string AlbumId { get; init; }
     public string? ImageUrl { get; init; }
+
+    /// <summary>
+    /// ~80 px CDN flavor for the 48 px track-row art. Distinct
+    /// image-id from <see cref="ImageUrl"/>.
+    /// </summary>
+    public string? ImageSmallUrl { get; init; }
+
     public TimeSpan Duration { get; init; }
     public DateTime AddedAt { get; init; }
     public bool IsExplicit { get; init; }

@@ -68,7 +68,7 @@
                               VerticalAlignment="Center"/>
                     <Image x:Name="SquareImage"
                            Stretch="UniformToFill"
-                           Opacity="0.85"
+                           Opacity="0"
                            ImageOpened="SquareImage_ImageOpened"
                            ImageFailed="SquareImage_ImageFailed"/>
 

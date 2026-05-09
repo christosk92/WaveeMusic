@@ -89,6 +89,71 @@ internal static class SpotifyImageHelper
         => !string.IsNullOrEmpty(uri) && uri.StartsWith(MosaicPrefix, StringComparison.Ordinal);
 
     /// <summary>
+    /// Bucket Spotify CDN image sources by width into Small / Medium / Large URLs.
+    /// Each bucket maps to a different image-id on i.scdn.co — distinct bytes, not
+    /// just decode-size hints. Buckets:
+    /// <list type="bullet">
+    /// <item><description>Small: width &lt; 200 (target ~80-150 px) — track row, avatar, thumbnail.</description></item>
+    /// <item><description>Medium: 200 ≤ width &lt; 500 (target ~300 px) — card / shelf tile.</description></item>
+    /// <item><description>Large: width ≥ 500 (target ~640 px) — hero / backdrop.</description></item>
+    /// </list>
+    /// Within Small/Medium picks the largest within bucket (closest to bucket ceiling);
+    /// within Large picks the smallest within bucket (avoids wasteful 4K covers).
+    /// </summary>
+    public static (string? Small, string? Medium, string? Large) BucketSources<T>(
+        IEnumerable<T>? sources,
+        Func<T, string?> urlSelector,
+        Func<T, int?> widthSelector)
+    {
+        if (sources is null) return default;
+
+        string? smallU = null, mediumU = null, largeU = null;
+        var smallW = -1;
+        var mediumW = -1;
+        var largeW = -1;
+
+        foreach (var src in sources)
+        {
+            var url = urlSelector(src);
+            if (string.IsNullOrEmpty(url)) continue;
+            var w = widthSelector(src) ?? 0;
+
+            if (w < 200)
+            {
+                if (w > smallW) { smallW = w; smallU = url; }
+            }
+            else if (w < 500)
+            {
+                if (w > mediumW) { mediumW = w; mediumU = url; }
+            }
+            else
+            {
+                if (largeW < 0 || w < largeW) { largeW = w; largeU = url; }
+            }
+        }
+
+        return (smallU, mediumU, largeU);
+    }
+
+    /// <summary>
+    /// Slot-aware URL picker. Given the three flavors and a decode size hint,
+    /// returns the URL whose CDN-side dimensions best match the slot. Buckets
+    /// align with <c>ImageCacheService.SnapToBucket</c>'s 64/128/256/512 ladder.
+    /// Falls back across flavors if the requested bucket is missing.
+    /// </summary>
+    public static string? PickByDecodeSize(
+        string? smallUrl,
+        string? mediumUrl,
+        string? largeUrl,
+        int decodePixelSize)
+    {
+        if (decodePixelSize <= 0) return largeUrl ?? mediumUrl ?? smallUrl;
+        if (decodePixelSize <= 128) return smallUrl ?? mediumUrl ?? largeUrl;
+        if (decodePixelSize <= 256) return mediumUrl ?? smallUrl ?? largeUrl;
+        return largeUrl ?? mediumUrl ?? smallUrl;
+    }
+
+    /// <summary>
     /// Predicate version of <see cref="ToHttpsUrl"/>: returns true iff the URI
     /// would resolve to a single loadable HTTPS URL. Mosaic URIs resolve to
     /// null here (use <see cref="TryParseMosaicTileUrls"/> instead) — callers

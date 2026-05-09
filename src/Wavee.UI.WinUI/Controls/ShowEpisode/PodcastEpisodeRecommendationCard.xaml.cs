@@ -81,7 +81,9 @@ public sealed partial class PodcastEpisodeRecommendationCard : UserControl
 
         CoverImage.Visibility = Visibility.Visible;
         CoverPlaceholderIcon.Visibility = Visibility.Collapsed;
-        CoverImage.Source = new BitmapImage(uri);
+        var bmp = new BitmapImage { DecodePixelWidth = 256 };
+        bmp.UriSource = uri;
+        CoverImage.Source = bmp;
     }
 
     private void CardRoot_PointerEntered(object sender, PointerRoutedEventArgs e)

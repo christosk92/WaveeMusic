@@ -40,6 +40,15 @@ public sealed partial class ArtistCircleCard : UserControl
     {
         InitializeComponent();
         UpdateSize(80);
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        // Drop the native decoded surface so the WinUI compositor releases it.
+        // OnImageUrlChanged re-fetches via ImageCacheService when the row is
+        // recycled, so dropping the Source here doesn't break re-realization.
+        if (CardImage != null) CardImage.Source = null;
     }
 
     private static void OnImageUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

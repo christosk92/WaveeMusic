@@ -47,9 +47,20 @@ public interface ITrackItem : INotifyPropertyChanged
     string AlbumId { get; }
 
     /// <summary>
-    /// Album artwork URL.
+    /// Album artwork URL. Typically the largest CDN flavor available;
+    /// hero pre-fill and connected-animation hand-offs use this directly.
     /// </summary>
     string? ImageUrl { get; }
+
+    /// <summary>
+    /// CDN image variant ≲150 px wide for 48 px row slots. Distinct
+    /// image-id from <see cref="ImageUrl"/> — different bytes on
+    /// <c>i.scdn.co</c>, not just a decode hint. Defaults to <c>null</c>
+    /// so implementations that don't yet surface a small flavor still
+    /// work; <see cref="Wavee.UI.WinUI.Controls.Track.TrackItem"/> falls
+    /// back to <see cref="ImageUrl"/> when this is null.
+    /// </summary>
+    string? ImageSmallUrl => null;
 
     /// <summary>
     /// Track duration.

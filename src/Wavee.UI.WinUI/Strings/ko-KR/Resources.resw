@@ -18,6 +18,48 @@
   <data name="AppDisplayName" xml:space="preserve">
     <value>Wavee</value>
   </data>
+  <data name="BrowseAll_Eyebrow_Top" xml:space="preserve">
+    <value>주요 콘텐츠</value>
+  </data>
+  <data name="BrowseAll_Eyebrow_ForYou" xml:space="preserve">
+    <value>당신을 위한</value>
+  </data>
+  <data name="BrowseAll_Eyebrow_Genres" xml:space="preserve">
+    <value>장르</value>
+  </data>
+  <data name="BrowseAll_Eyebrow_MoodAndActivity" xml:space="preserve">
+    <value>분위기 및 활동</value>
+  </data>
+  <data name="BrowseAll_Eyebrow_Charts" xml:space="preserve">
+    <value>차트</value>
+  </data>
+  <data name="BrowseAll_Eyebrow_More" xml:space="preserve">
+    <value>기타</value>
+  </data>
+  <data name="Playlist_Chart_Updated" xml:space="preserve">
+    <value>{0} 업데이트됨</value>
+  </data>
+  <data name="Playlist_Chart_NewEntriesOne" xml:space="preserve">
+    <value>신규 진입 1곡</value>
+  </data>
+  <data name="Playlist_Chart_NewEntriesMany" xml:space="preserve">
+    <value>신규 진입 {0}곡</value>
+  </data>
+  <data name="Playlist_Chart_New" xml:space="preserve">
+    <value>신규</value>
+  </data>
+  <data name="Playlist_Chart_TooltipUp" xml:space="preserve">
+    <value>#{1}에서 {0}계단 상승</value>
+  </data>
+  <data name="Playlist_Chart_TooltipDown" xml:space="preserve">
+    <value>#{1}에서 {0}계단 하락</value>
+  </data>
+  <data name="Playlist_Chart_TooltipEqual" xml:space="preserve">
+    <value>순위 유지</value>
+  </data>
+  <data name="Playlist_Chart_TooltipNew" xml:space="preserve">
+    <value>신규 진입</value>
+  </data>
   <data name="CardMenu_OpenAlbum" xml:space="preserve">
     <value>앨범 열기</value>
   </data>

@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Wavee.Core.Data;
 using Wavee.Core.Http;
@@ -317,9 +318,16 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [NotifyPropertyChangedFor(nameof(HasPinnedItem))]
     [NotifyPropertyChangedFor(nameof(HasPinnedComment))]
     [NotifyPropertyChangedFor(nameof(PinnedBackdropImageUrl))]
+    [NotifyPropertyChangedFor(nameof(PinnedColumnWidth))]
     private ArtistPinnedItemResult? _pinnedItem;
     [ObservableProperty] private ArtistWatchFeedResult? _watchFeed;
     public bool HasPinnedItem => PinnedItem != null;
+
+    // Bound to the pinned-card column on ArtistPage so the column is sized BEFORE
+    // ContentContainer flips Collapsed→Visible at the start of the crossfade. An
+    // x:Load realization on Auto-width column expanded 0→280 mid-fade, sliding
+    // top tracks sideways. Resolving column width via binding keeps layout stable.
+    public GridLength PinnedColumnWidth => HasPinnedItem ? new GridLength(280) : new GridLength(0);
     public bool HasWatchFeed => WatchFeed != null;
 
     /// <summary>True when the pinned item has a non-empty artist note
@@ -551,6 +559,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         LatestReleaseImageUrl = null;
         PinnedItem = null;
         OnPropertyChanged(nameof(HasPinnedItem));
+        OnPropertyChanged(nameof(PinnedColumnWidth));
     }
 
     private void ApplyOverviewState(EntityState<ArtistOverviewResult> state, string expectedArtistId)
@@ -648,6 +657,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         {
             PinnedItem = overview.PinnedItem;
             OnPropertyChanged(nameof(HasPinnedItem));
+            OnPropertyChanged(nameof(PinnedColumnWidth));
         }
     }
 
@@ -691,11 +701,21 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         HasAlbumsError = false;
         HasSinglesError = false;
         HasCompilationsError = false;
-        RelatedArtists = [];
-        Concerts = [];
-        ExternalLinks = [];
-        TopCities = [];
-        GalleryPhotos = [];
+        // These five collections are all x:Load-gated in ArtistPage.xaml
+        // (RelatedArtists / Concerts / ExternalLinks / TopCities / Gallery
+        // sections). Their reset doesn't gate first paint — defer to a
+        // low-priority dispatch so we don't pile PropertyChanged events
+        // onto the synchronous reset before the hero / top tracks paint.
+        _dispatcherQueue?.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                RelatedArtists = [];
+                Concerts = [];
+                ExternalLinks = [];
+                TopCities = [];
+                GalleryPhotos = [];
+            });
     }
 
     private CancellationToken CreateFreshDiscographyToken()
@@ -924,6 +944,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             PinnedItem = overview.PinnedItem;
             WatchFeed = overview.WatchFeed;
             OnPropertyChanged(nameof(HasPinnedItem));
+            OnPropertyChanged(nameof(PinnedColumnWidth));
             OnPropertyChanged(nameof(HasWatchFeed));
 
             // ── Connect & Markets + Gallery (batch swap) ──

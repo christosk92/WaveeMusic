@@ -377,7 +377,9 @@ public sealed partial class SearchResultHeroCard : UserControl
         _bleedBrush?.Dispose();
         _bleedBrush = null;
         _bleedSurface?.Dispose();
-        _bleedSurface = LoadedImageSurface.StartLoadFromUri(new Uri(httpsUrl));
+        _bleedSurface = LoadedImageSurface.StartLoadFromUri(
+            new Uri(httpsUrl),
+            new Windows.Foundation.Size(640, 640));
 
         var compositor = ElementCompositionPreview.GetElementVisual(BleedSurfaceHost).Compositor;
         _bleedBrush = compositor.CreateSurfaceBrush(_bleedSurface);
@@ -512,6 +514,10 @@ public sealed partial class SearchResultHeroCard : UserControl
         }
         ClearBleedSurface();
         _currentBleedImageUrl = null;
+
+        // Drop the XAML Image native decoded surface (the bleed visual above
+        // is composition; this is the foreground artwork).
+        if (ArtworkImage != null) ArtworkImage.Source = null;
     }
 
     private void OnPlaybackStateChanged()

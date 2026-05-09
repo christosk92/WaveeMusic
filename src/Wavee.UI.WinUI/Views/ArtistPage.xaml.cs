@@ -59,7 +59,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private readonly ISettingsService _settings;
     private bool _showingContent;
     private bool _isNavigatingAway;
-    private bool _heroHeightPersisted;
     private LinearGradientBrush? _pageTintBrush;
     private GradientStop? _pageTintStartStop;
     private GradientStop? _pageTintHeroStop;
@@ -81,7 +80,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private bool _isDisposed;
     private bool _trimmedForNavigationCache;
     private bool _discographyRepeatersDetached;
-    private bool _lowerSectionsDeferred;
     private double? _pendingNavigationScrollOffset;
     private string? _pendingNavigationScrollArtistId;
     private int _scrollRestoreGeneration;
@@ -127,7 +125,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         SetHeroOverlayOpacity(0);
         ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
         ContentContainer.Visibility = Visibility.Collapsed;
-        SetLowerArtistSectionsVisibility(Visibility.Collapsed);
 
         Unloaded += ArtistPage_Unloaded;
         Loaded += ArtistPage_Loaded;
@@ -200,14 +197,35 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         CrossfadeToContent();
     }
 
+    // Debounce timer that coalesces hero-resize ticks (window drags fire
+    // dozens per second; UpdatePageTint re-targets gradient brushes which
+    // is non-trivial on every tick).
+    private Microsoft.UI.Xaml.DispatcherTimer? _heroResizeDebounce;
+
     private void HeroGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        // Hero height is user-draggable via HeroSplitter; keep the page tint
-        // aligned so the fade always starts at the hero's bottom edge.
+        // Window-driven hero resize: keep the page tint aligned so the fade
+        // always starts at the hero's bottom edge. Coalesce the high-frequency
+        // ticks of a window drag through a 50 ms debounce — UpdatePageTint and
+        // the shy-header evaluation only need to settle once the resize stops.
+        if (_heroResizeDebounce is null)
+        {
+            _heroResizeDebounce = new Microsoft.UI.Xaml.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(50),
+            };
+            _heroResizeDebounce.Tick += OnHeroResizeDebounceTick;
+        }
+        _heroResizeDebounce.Stop();
+        _heroResizeDebounce.Start();
+    }
+
+    private void OnHeroResizeDebounceTick(object? sender, object e)
+    {
+        _heroResizeDebounce?.Stop();
         UpdatePageTint();
         if (_suppressShyHeaderEvaluation)
             return;
-
         _ = EvaluateShyHeaderAsync();
     }
 
@@ -356,7 +374,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             Bindings?.Update();
             if (!_suppressContentReveal)
             {
-                RevealHeroIfReady();
                 TryShowContentNow();
             }
         }
@@ -423,8 +440,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
                               or nameof(ArtistViewModel.SinglesTotalCount)
                               or nameof(ArtistViewModel.CompilationsTotalCount))
         {
-            if (_lowerSectionsDeferred)
-                SetLowerArtistSectionsVisibility(Visibility.Collapsed);
             UpdateDiscographyRepeaterBindings();
         }
     }
@@ -472,8 +487,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         EnsurePageTintBrush();
 
         // Size the rectangle to the current hero height plus a fixed spill tail.
-        // This keeps the fade anchored to the hero's bottom edge even as the
-        // user drags HeroSplitter to resize.
+        // This keeps the fade anchored to the hero's bottom edge as the window resizes.
         double heroH = HeroGrid.ActualHeight > 0 ? HeroGrid.ActualHeight : HeroRow.MinHeight;
         double totalH = heroH + PageTintSpillPx;
         PageTintFill.Height = totalH;
@@ -803,14 +817,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml,
             () => _showingContent);
 
-        if (_lowerSectionsDeferred && !_isNavigatingAway)
-        {
-            _lowerSectionsDeferred = false;
-            await Task.Yield();
-            SetLowerArtistSectionsVisibility(Visibility.Visible);
-            UpdateDiscographyRepeaterBindings();
-        }
-
         // Set up watch feed video after the first content frame; MediaPlayer
         // creation owns a swap chain and should not compete with first paint.
         if (!_isNavigatingAway)
@@ -852,8 +858,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        // Hero height = 45% of page height (min 200), unless the user has manually resized
-        if (HeroRow != null && !_heroHeightPersisted)
+        // Hero height = 45% of page height (min 200).
+        if (HeroRow != null)
             HeroRow.Height = new GridLength(Math.Max(200, e.NewSize.Height * 0.45), GridUnitType.Pixel);
 
         // Debounced recompute of expanded panel position
@@ -1299,7 +1305,11 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         _suppressShyHeaderEvaluation = false;
         _suppressContentReveal = false;
         ResetShyHeaderState();
-        HeroGrid?.RestoreSurface();
+        // Defer the hero-surface rehydration to a low-priority dispatch
+        // (same rationale as OnNavigatedTo above).
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () => HeroGrid?.RestoreSurface());
         using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.artist.bindingsUpdate"))
         {
             Bindings?.Update();
@@ -1433,18 +1443,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             CompilationsShelf.ItemsSource = ViewModel.Compilations;
     }
 
-    private void SetLowerArtistSectionsVisibility(Visibility visibility)
-    {
-        if (AlbumsSection is not null) AlbumsSection.Visibility = visibility;
-        if (SinglesSection is not null) SinglesSection.Visibility = visibility;
-        if (CompilationsSection is not null) CompilationsSection.Visibility = visibility;
-        if (ConcertsSection is not null) ConcertsSection.Visibility = visibility;
-        if (RelatedArtistsShelf is not null) RelatedArtistsShelf.Visibility = visibility;
-        if (BiographySection is not null) BiographySection.Visibility = visibility;
-        if (ConnectSection is not null) ConnectSection.Visibility = visibility;
-        if (GallerySection is not null) GallerySection.Visibility = visibility;
-    }
-
     private void DiscographyRepeater_ElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
         => ReleaseImagesInSubtree(args.Element);
 
@@ -1503,7 +1501,13 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
         // Rehydrate the hero surface if it was released on prior navigate-away.
         // No-op on first visit (LoadImage's URL-equality guard short-circuits).
-        HeroGrid?.RestoreSurface();
+        // Deferred to a low-priority dispatch so it runs AFTER first paint —
+        // the palette gradient already paints behind it, so the user sees the
+        // hero land via fade-in once the surface is ready (5-8 ms saved off
+        // OnNavigatedTo synchronous cost).
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () => HeroGrid?.RestoreSurface());
 
         // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
         // ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);
@@ -1523,7 +1527,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             if (!string.IsNullOrEmpty(ViewModel.ArtistId))
                 ViewModel.Initialize(ViewModel.ArtistId);
             RestoreDiscographyRepeaters();
-            SetLowerArtistSectionsVisibility(Visibility.Visible);
             SetupWatchFeedVideo();
             TryShowContentNow();
             TryRestorePendingNavigationScroll();
@@ -1548,10 +1551,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         _showingContent = false;
         _crossfadeScheduled = false;
         _heroRevealed = false;
-        _lowerSectionsDeferred = true;
         ContentContainer.Opacity = 0;
         ContentContainer.Visibility = Visibility.Collapsed;
-        SetLowerArtistSectionsVisibility(Visibility.Collapsed);
         // Hero overlay also resets to invisible so the new artist's chrome
         // fades in on its own beat instead of inheriting the previous one.
         SetHeroOverlayOpacity(0);
@@ -1570,11 +1571,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             ViewModel.Initialize(artistIxd);
         }
 
-        // Restore persisted hero height for this artist
-        var artistId = ViewModel.ArtistId;
-        if (!string.IsNullOrEmpty(artistId))
-            RestoreHeroHeight(artistId);
-
         // Initialize() above already subscribed to the ArtistStore — the store
         // emits Ready once the overview lands and the VM drives its cascade from
         // there. No explicit load command needed.
@@ -1592,30 +1588,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         _suppressContentReveal = false;
         if (_isNavigatingAway) return;
         TryShowContentNow();
-    }
-
-    private void RestoreHeroHeight(string artistId)
-    {
-        var key = $"artist:{artistId}";
-        if (_settings.Settings.PanelWidths.TryGetValue(key, out var saved))
-        {
-            var height = Math.Clamp(saved, 200, 700);
-            HeroRow.Height = new GridLength(height, GridUnitType.Pixel);
-            _heroHeightPersisted = true;
-        }
-        else
-        {
-            _heroHeightPersisted = false;
-        }
-    }
-
-    private void HeroSplitter_ResizeCompleted(object? sender, GridSplitterResizeCompletedEventArgs e)
-    {
-        var artistId = ViewModel.ArtistId;
-        if (string.IsNullOrEmpty(artistId)) return;
-
-        _heroHeightPersisted = true;
-        _settings.Update(s => s.PanelWidths[$"artist:{artistId}"] = e.NewHeight);
     }
 
     private void Release_Click(object sender, RoutedEventArgs e)

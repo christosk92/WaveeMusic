@@ -60,7 +60,7 @@
              empty "Unknown"-looking card, stale image, etc.). -->
             <DataTemplate x:Key="PlaylistCardTemplate" x:DataType="vm:HomeSectionItem">
                 <cards:ContentCard
-                ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                ImageUrl="{x:Bind BestMediumImageUrl, Mode=OneWay}"
                 Title="{x:Bind Title, Mode=OneWay}"
                 Subtitle="{x:Bind Subtitle, Mode=OneWay}"
                 PlaceholderColorHex="{x:Bind ColorHex, Mode=OneWay}"
@@ -72,7 +72,7 @@
             <!-- Artist card: circular image, centered text -->
             <DataTemplate x:Key="ArtistCardTemplate" x:DataType="vm:HomeSectionItem">
                 <cards:ContentCard
-                ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                ImageUrl="{x:Bind BestMediumImageUrl, Mode=OneWay}"
                 Title="{x:Bind Title, Mode=OneWay}"
                 Subtitle="{x:Bind Subtitle, Mode=OneWay}"
                 PlaceholderColorHex="{x:Bind ColorHex, Mode=OneWay}"
@@ -130,7 +130,7 @@
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="vm:HomeSectionItem">
                                 <cards:ShortsPill
-                                ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                                ImageUrl="{x:Bind BestSmallImageUrl, Mode=OneWay}"
                                 Title="{x:Bind Title, Mode=OneWay}"
                                 Item="{x:Bind}"/>
                             </DataTemplate>
@@ -674,21 +674,41 @@
                     </Button>
                 </Grid>
 
-                <!-- Hero band: HeroCarousel left + 3-card side rail right.
-                     Height is pinned (420 px) so the carousel and the
-                     row-weighted side-rail Grid land at exactly the same
-                     extent — without the pin the SideCard MinHeight (120)
-                     and the carousel's own MinHeight (380) drift apart.
-                     HaloBackdrop is a transparent sibling spanning column 0
-                     to host the HeroHalo composition shadow. VSM collapses
-                     the side rail below 1100 px. -->
-                <Grid x:Name="HeroBand" Height="480" Margin="0,4,0,12">
+                <!-- Hero band — three responsive layouts:
+                       Wide   ≥1500 px : original layout — HeroCarousel left
+                                         (full Row 0 height) + WideSideRail
+                                         right (3 cards stacked vertically,
+                                         2*/1*/1* row weights). The hero gets
+                                         the room Klankhuis was designed for
+                                         (≥1100 px text-column slack), so the
+                                         title renders without char-by-char
+                                         wrapping.
+                       Medium ≥900 px  : hero spans the full row 0; below it,
+                                         StackedShortcuts shows the 1-big +
+                                         2-stacked layout (Image 5 reference).
+                       Narrow <900 px  : hero spans the full row 0; below it,
+                                         StackedShortcuts collapses Card0 to
+                                         a full-width banner with Card1 +
+                                         Card2 side-by-side underneath
+                                         (Image 6 reference).
+                     The two rail variants (WideSideRail vs StackedShortcuts)
+                     coexist in markup; the outer VSM swaps Visibility +
+                     spans Hero across both columns when collapsing. The
+                     duplicated SideCard markup is intentional — both sets
+                     bind to the same SideCard0/1/2 view-model properties so
+                     data stays single-source. -->
+                <Grid x:Name="HeroBand" Margin="0,4,0,12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="480"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
                     <Grid x:Name="HaloBackdrop"
+                          Grid.Row="0"
                           Grid.Column="0"
                           Background="Transparent"
                           IsHitTestVisible="False"
@@ -697,13 +717,17 @@
                           hero:HeroHalo.Intensity="0.45"/>
 
                     <hero:HeroCarousel x:Name="HomeHero"
+                        Grid.Row="0"
                         Grid.Column="0"
                         VerticalAlignment="Stretch"
                         Autoplay="True"
                         AutoplayInterval="0:0:7"
                         ItemsSource="{x:Bind ViewModel.HeroAdapter.HeroSlides, Mode=OneWay}"/>
 
-                    <Grid x:Name="HomeSideRail"
+                    <!-- Wide-only side rail: original 320 px, 3 cards
+                         stacked vertically next to the hero. -->
+                    <Grid x:Name="WideSideRail"
+                          Grid.Row="0"
                           Grid.Column="1"
                           Width="320"
                           Margin="20,0,0,0">
@@ -717,10 +741,6 @@
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard0.Eyebrow, Mode=OneWay}"
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard0.Accent, Mode=OneWay}"
                                        ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard0.ImageUri, Mode=OneWay}"/>
-                        <!-- MinHeight="0" overrides the SideCard style's
-                             default 120 px floor so the small cards reflow
-                             cleanly into the row-weighted slot instead of
-                             painting past the row and clipping the label. -->
                         <hero:SideCard Grid.Row="1" Margin="0,6,0,6" MinHeight="0"
                                        Label="{x:Bind ViewModel.HeroAdapter.SideCard1.Label, Mode=OneWay}"
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard1.Eyebrow, Mode=OneWay}"
@@ -733,19 +753,103 @@
                                        ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard2.ImageUri, Mode=OneWay}"/>
                     </Grid>
 
+                    <!-- Below-hero shortcuts (Medium + Narrow). 6 columns of
+                         equal weight; cards' Grid.Row / Grid.Column /
+                         Grid.ColumnSpan / Grid.RowSpan flip per inner VSM.
+                         Default markup matches Medium (1 big left + 2 stacked
+                         right with 4/2 column split). Narrow state collapses
+                         to Card0 banner + Card1/Card2 horizontal.
+                         Visible only in Medium/Narrow (set by outer VSM). -->
+                    <Grid x:Name="StackedShortcuts"
+                          Grid.Row="1"
+                          Grid.Column="0"
+                          Grid.ColumnSpan="2"
+                          Margin="0,12,0,0"
+                          Visibility="Collapsed"
+                          RowSpacing="12"
+                          ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="140"/>
+                            <RowDefinition Height="140"/>
+                        </Grid.RowDefinitions>
+
+                        <hero:SideCard x:Name="StackedCard0"
+                                       Grid.Row="0" Grid.Column="0"
+                                       Grid.ColumnSpan="4" Grid.RowSpan="2"
+                                       Big="True"
+                                       Label="{x:Bind ViewModel.HeroAdapter.SideCard0.Label, Mode=OneWay}"
+                                       Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard0.Eyebrow, Mode=OneWay}"
+                                       Accent="{x:Bind ViewModel.HeroAdapter.SideCard0.Accent, Mode=OneWay}"
+                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard0.ImageUri, Mode=OneWay}"/>
+                        <hero:SideCard x:Name="StackedCard1"
+                                       Grid.Row="0" Grid.Column="4" Grid.ColumnSpan="2"
+                                       MinHeight="0"
+                                       Label="{x:Bind ViewModel.HeroAdapter.SideCard1.Label, Mode=OneWay}"
+                                       Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard1.Eyebrow, Mode=OneWay}"
+                                       Accent="{x:Bind ViewModel.HeroAdapter.SideCard1.Accent, Mode=OneWay}"
+                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard1.ImageUri, Mode=OneWay}"/>
+                        <hero:SideCard x:Name="StackedCard2"
+                                       Grid.Row="1" Grid.Column="4" Grid.ColumnSpan="2"
+                                       MinHeight="0"
+                                       Label="{x:Bind ViewModel.HeroAdapter.SideCard2.Label, Mode=OneWay}"
+                                       Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard2.Eyebrow, Mode=OneWay}"
+                                       Accent="{x:Bind ViewModel.HeroAdapter.SideCard2.Accent, Mode=OneWay}"
+                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard2.ImageUri, Mode=OneWay}"/>
+
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup>
+                                <VisualState x:Name="StackedMediumState">
+                                    <VisualState.StateTriggers>
+                                        <AdaptiveTrigger MinWindowWidth="900"/>
+                                    </VisualState.StateTriggers>
+                                </VisualState>
+                                <VisualState x:Name="StackedNarrowState">
+                                    <VisualState.StateTriggers>
+                                        <AdaptiveTrigger MinWindowWidth="0"/>
+                                    </VisualState.StateTriggers>
+                                    <VisualState.Setters>
+                                        <Setter Target="StackedCard0.(Grid.ColumnSpan)" Value="6"/>
+                                        <Setter Target="StackedCard0.(Grid.RowSpan)" Value="1"/>
+                                        <Setter Target="StackedCard1.(Grid.Row)" Value="1"/>
+                                        <Setter Target="StackedCard1.(Grid.Column)" Value="0"/>
+                                        <Setter Target="StackedCard1.(Grid.ColumnSpan)" Value="3"/>
+                                        <Setter Target="StackedCard2.(Grid.Row)" Value="1"/>
+                                        <Setter Target="StackedCard2.(Grid.Column)" Value="3"/>
+                                        <Setter Target="StackedCard2.(Grid.ColumnSpan)" Value="3"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+
+                    <!-- Outer VSM: at ≥1500 px keep the wide 2-column
+                         layout; below that, hide WideSideRail, show
+                         StackedShortcuts beneath, and let the hero span
+                         both columns so the carousel gets the full row. -->
                     <VisualStateManager.VisualStateGroups>
                         <VisualStateGroup>
-                            <VisualState x:Name="WideState">
+                            <VisualState x:Name="HeroBandWideState">
                                 <VisualState.StateTriggers>
-                                    <AdaptiveTrigger MinWindowWidth="1100"/>
+                                    <AdaptiveTrigger MinWindowWidth="1500"/>
                                 </VisualState.StateTriggers>
                             </VisualState>
-                            <VisualState x:Name="NarrowState">
+                            <VisualState x:Name="HeroBandStackedState">
                                 <VisualState.StateTriggers>
                                     <AdaptiveTrigger MinWindowWidth="0"/>
                                 </VisualState.StateTriggers>
                                 <VisualState.Setters>
-                                    <Setter Target="HomeSideRail.Visibility" Value="Collapsed"/>
+                                    <Setter Target="HomeHero.(Grid.ColumnSpan)" Value="2"/>
+                                    <Setter Target="HaloBackdrop.(Grid.ColumnSpan)" Value="2"/>
+                                    <Setter Target="WideSideRail.Visibility" Value="Collapsed"/>
+                                    <Setter Target="StackedShortcuts.Visibility" Value="Visible"/>
                                 </VisualState.Setters>
                             </VisualState>
                         </VisualStateGroup>

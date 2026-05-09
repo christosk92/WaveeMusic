@@ -188,7 +188,11 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
         using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.updateLayout"))
         {
-            UpdateLayout();
+            // Element-scoped: see PlaylistPage for the rationale. Lays out
+            // the AlbumArtContainer's parent chain only so connected
+            // animation can read its destination rect — siblings (track
+            // list, more-by-artist, merch shelf) settle one frame later.
+            AlbumArtContainer.UpdateLayout();
         }
         var started = ConnectedAnimationHelper.TryStartAnimation(
             ConnectedAnimationHelper.AlbumArt,
@@ -373,8 +377,13 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
     // Keep the cover square as the splitter resizes the left column.
     private void AlbumArtContainer_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (sender is Border border && e.NewSize.Width > 0)
-            border.Height = e.NewSize.Width;
+        if (sender is not Border border || e.NewSize.Width <= 0) return;
+        var target = e.NewSize.Width;
+        // Suppress redundant assignments — every measure pass fires SizeChanged
+        // and re-assigning Height re-enters the layout queue, pulsing the cover
+        // during the loading→content transition.
+        if (Math.Abs(border.Height - target) < 0.5) return;
+        border.Height = target;
     }
 
     // ── Other versions flyout ───────────────────────────────────────────────

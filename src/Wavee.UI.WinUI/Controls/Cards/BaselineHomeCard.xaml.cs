@@ -92,6 +92,7 @@ public sealed partial class BaselineHomeCard : UserControl
 
     public BaselineHomeCard()
     {
+        Unloaded += OnUnloaded;
         _imageCache = Ioc.Default.GetService<ImageCacheService>();
         _previewPlaybackCoordinator = Ioc.Default.GetService<ICardPreviewPlaybackCoordinator>();
         _sharedCanvasPreviewService = Ioc.Default.GetService<ISharedCardCanvasPreviewService>();
@@ -99,6 +100,15 @@ public sealed partial class BaselineHomeCard : UserControl
         _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
         _highlightService = Ioc.Default.GetService<NowPlayingHighlightService>();
         InitializeComponent();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        // Drop the native decoded surfaces so the WinUI compositor releases
+        // them. The Hero / CoverThumb assignment paths re-fetch via
+        // ImageCacheService when the card is recycled.
+        if (HeroImage != null) HeroImage.Source = null;
+        if (CoverThumbImage != null) CoverThumbImage.Source = null;
     }
 
     [Conditional("DEBUG")]
@@ -256,7 +266,7 @@ public sealed partial class BaselineHomeCard : UserControl
 
         LoadImages(
             GetActiveHeroImageUrl(item, activePreviewTrack),
-            activePreviewTrack?.CoverArtUrl ?? item.ImageUrl);
+            activePreviewTrack?.CoverArtUrl ?? item.BestMediumImageUrl);
         ApplyColor(activePreviewTrack?.ColorHex ?? item.HeroColorHex ?? item.ColorHex);
         UpdateLoadingState(item.IsBaselineLoading);
     }
@@ -1882,7 +1892,7 @@ public sealed partial class BaselineHomeCard : UserControl
             ?? track?.CoverArtUrl
             ?? item?.HeroImageUrl
             ?? item?.CanvasThumbnailUrl
-            ?? item?.ImageUrl;
+            ?? item?.BestLargeImageUrl;
     }
 
     private static Color ParseHexColor(string hex)

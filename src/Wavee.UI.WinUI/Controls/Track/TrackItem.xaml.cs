@@ -24,6 +24,7 @@ using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.Playback;
 using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.Styles;
 
 namespace Wavee.UI.WinUI.Controls.Track;
 
@@ -560,7 +561,7 @@ public sealed partial class TrackItem : UserControl
             UpdateBadgePlacement();
             CompactHeartButton.IsLiked = GetTrackLikedState(track);
             CompactHeartButton.Visibility = Visibility.Visible;
-            ApplyCompactAlbumArt(track.ImageUrl);
+            ApplyCompactAlbumArt(track.ImageSmallUrl ?? track.ImageUrl);
         }
         else
         {
@@ -596,12 +597,14 @@ public sealed partial class TrackItem : UserControl
             RowAlbumLink.Content = track.AlbumName ?? "";
             RowAlbumLink.Tag = track.AlbumId;
             ApplyRowProgress(track);
-            ApplyRowAlbumArt(track.ImageUrl);
+            ApplyRowAlbumArt(track.ImageSmallUrl ?? track.ImageUrl);
 
             // Row index
             RowIndexText.Text = (track.OriginalIndex > 0)
                 ? track.OriginalIndex.ToString()
                 : RowIndex > 0 ? RowIndex.ToString() : "";
+
+            ApplyChartStatus(track);
         }
         else
         {
@@ -613,8 +616,82 @@ public sealed partial class TrackItem : UserControl
             ApplyRowProgress(null);
             UpdateBadgePlacement();
             ApplyRowAlbumArt(null);
+            ApplyChartStatus(null);
         }
     }
+
+    /// <summary>
+    /// Renders the chart-status badge in the bottom of the Index slot for
+    /// chart-format playlists (Top 50 etc.). Inert for any track whose
+    /// <c>FormatAttributes</c> doesn't carry chart fields — the slot
+    /// reverts to the centered position number.
+    /// </summary>
+    private void ApplyChartStatus(ITrackItem? track)
+    {
+        var info = (track as PlaylistTrackDto)?.Chart;
+        if (info is null)
+        {
+            RowChartStatusContainer.Visibility = Visibility.Collapsed;
+            RowIndexText.HorizontalAlignment = HorizontalAlignment.Center;
+            RowIndexText.Margin = new Thickness(0);
+            return;
+        }
+        RowChartStatusContainer.Visibility = Visibility.Visible;
+        RowIndexText.HorizontalAlignment = HorizontalAlignment.Left;
+        RowIndexText.Margin = new Thickness(6, 0, 0, 0);
+        RowChartStatusGlyph.Visibility = Visibility.Visible;
+
+        switch (info.Status)
+        {
+            case ChartStatus.Up:
+                RowChartStatusGlyph.Glyph = FluentGlyphs.ChartUp;
+                RowChartStatusGlyph.Foreground =
+                    (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"];
+                RowChartStatusDelta.Foreground =
+                    (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"];
+                RowChartStatusDelta.Text = info.Delta is > 0
+                    ? info.Delta!.Value.ToString()
+                    : string.Empty;
+                break;
+            case ChartStatus.Down:
+                RowChartStatusGlyph.Glyph = FluentGlyphs.ChartDown;
+                RowChartStatusGlyph.Foreground =
+                    (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
+                RowChartStatusDelta.Foreground =
+                    (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
+                RowChartStatusDelta.Text = info.Delta is < 0
+                    ? (-info.Delta!.Value).ToString()
+                    : string.Empty;
+                break;
+            case ChartStatus.Equal:
+                RowChartStatusGlyph.Glyph = FluentGlyphs.ChartEqual;
+                RowChartStatusGlyph.Foreground =
+                    (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"];
+                RowChartStatusDelta.Text = string.Empty;
+                break;
+            case ChartStatus.New:
+                RowChartStatusGlyph.Visibility = Visibility.Collapsed;
+                RowChartStatusDelta.Foreground =
+                    (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
+                RowChartStatusDelta.Text =
+                    AppLocalization.GetString("Playlist_Chart_New");
+                break;
+        }
+        ToolTipService.SetToolTip(RowChartStatusContainer, BuildChartTooltip(info));
+    }
+
+    private static string BuildChartTooltip(ChartTrackInfo info) => info.Status switch
+    {
+        ChartStatus.Up    => AppLocalization.Format(
+                                "Playlist_Chart_TooltipUp",
+                                info.Delta, info.PreviousPosition),
+        ChartStatus.Down  => AppLocalization.Format(
+                                "Playlist_Chart_TooltipDown",
+                                info.Delta is int d ? -d : 0, info.PreviousPosition),
+        ChartStatus.Equal => AppLocalization.GetString("Playlist_Chart_TooltipEqual"),
+        ChartStatus.New   => AppLocalization.GetString("Playlist_Chart_TooltipNew"),
+        _                 => string.Empty,
+    };
 
     private void ApplyRowProgress(ITrackItem? track)
     {
@@ -694,9 +771,11 @@ public sealed partial class TrackItem : UserControl
             return;
 
         _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
-        CompactAlbumArt.Source = _cachedImageCache?.GetOrCreate(httpsUrl, 48);
+        // Atomic pin-on-insert avoids the self-eviction race where the
+        // just-added entry was the only unpinned candidate when the cache
+        // was full of pinned visible cards.
+        CompactAlbumArt.Source = _cachedImageCache?.GetOrCreate(httpsUrl, 48, pin: true);
         CompactAlbumArt.Opacity = 1;
-        _cachedImageCache?.Pin(httpsUrl, 48);
         _pinnedCompactUrl = httpsUrl;
     }
 
@@ -733,9 +812,9 @@ public sealed partial class TrackItem : UserControl
         // (FadeInOnLoad) and fully covers the icon once opaque.
         RowArtPlaceholder.Visibility = Visibility.Visible;
         _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
-        RowAlbumArt.Source = _cachedImageCache?.GetOrCreate(httpsUrl, 48);
+        // Atomic pin-on-insert (same race fix as the compact path above).
+        RowAlbumArt.Source = _cachedImageCache?.GetOrCreate(httpsUrl, 48, pin: true);
         RowAlbumArt.Opacity = 1;
-        _cachedImageCache?.Pin(httpsUrl, 48);
         _pinnedRowUrl = httpsUrl;
         RowAlbumArt.Visibility = Visibility.Visible;
     }
@@ -1723,6 +1802,15 @@ public sealed partial class TrackItem : UserControl
             _cachedImageCache?.Unpin(_pinnedRowUrl, 48);
             _pinnedRowUrl = null;
         }
+
+        // Null the Image.Source on Unloaded — without this, the WinUI compositor
+        // visual keeps the native decoded surface alive even after the BitmapImage
+        // managed wrapper is unreferenced. With ItemsRepeater recycling thousands
+        // of TrackItems across nav, those native surfaces add up to hundreds of
+        // MB. The matching ApplyXxxAlbumArt path in OnLoaded re-fetches via the
+        // ImageCacheService, which is decode-bucketed so the next render is cheap.
+        if (RowAlbumArt != null) RowAlbumArt.Source = null;
+        if (CompactAlbumArt != null) CompactAlbumArt.Source = null;
     }
 
     private void ObserveTrack(ITrackItem? track)

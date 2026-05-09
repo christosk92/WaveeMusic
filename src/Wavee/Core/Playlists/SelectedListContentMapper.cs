@@ -94,7 +94,13 @@ public static class SelectedListContentMapper
             BasePermission = MapBasePermission(content.OwnerUsername, currentUsername, content.Capabilities),
             Capabilities = MapCapabilities(content.Capabilities, content.AbuseReportingEnabled),
             Items = items,
-            FormatAttributes = ExtractFormatAttributes(content.Attributes?.FormatAttributes),
+            // The proto's top-level `Format` field (field 11) lives separately from
+            // `FormatAttributes` (field 12) — but downstream code (chart-mode detection,
+            // editorial chrome) finds it cleanest to read both as one dict. Inject the
+            // sibling `format` value as a synthetic key here so consumers stay simple.
+            FormatAttributes = ExtractFormatAttributes(
+                content.Attributes?.FormatAttributes,
+                content.Attributes?.Format),
             AvailableSignals = ExtractAvailableSignals(content.Contents),
             HasContentsSnapshot = content.Contents != null,
             FetchedAt = fetchedAt
@@ -274,16 +280,25 @@ public static class SelectedListContentMapper
     // internal so PlaylistDiffApplier (same assembly) can reuse this when merging
     // ItemAttributesPartialState / ListAttributesPartialState payloads.
     internal static IReadOnlyDictionary<string, string> ExtractFormatAttributes(
-        Google.Protobuf.Collections.RepeatedField<FormatListAttribute>? attrs)
+        Google.Protobuf.Collections.RepeatedField<FormatListAttribute>? attrs,
+        string? format = null)
     {
-        if (attrs is null || attrs.Count == 0)
+        var hasFormat = !string.IsNullOrEmpty(format);
+        var attrCount = attrs?.Count ?? 0;
+        if (attrCount == 0 && !hasFormat)
             return _emptyAttributes;
-        var dict = new Dictionary<string, string>(attrs.Count, StringComparer.Ordinal);
-        foreach (var attr in attrs)
+        var dict = new Dictionary<string, string>(
+            attrCount + (hasFormat ? 1 : 0),
+            StringComparer.Ordinal);
+        if (attrs is not null)
         {
-            if (string.IsNullOrEmpty(attr.Key)) continue;
-            dict[attr.Key] = attr.Value ?? string.Empty;
+            foreach (var attr in attrs)
+            {
+                if (string.IsNullOrEmpty(attr.Key)) continue;
+                dict[attr.Key] = attr.Value ?? string.Empty;
+            }
         }
+        if (hasFormat) dict["format"] = format!;
         return dict;
     }
 

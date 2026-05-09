@@ -18,6 +18,15 @@ public sealed record PlaylistTrackDto : ITrackItem
     public required string AlbumName { get; init; }
     public required string AlbumId { get; init; }
     public string? ImageUrl { get; init; }
+
+    /// <summary>
+    /// ~80 px CDN flavor for the 48 px track-row art. Distinct
+    /// image-id from <see cref="ImageUrl"/>; falls back to the
+    /// largest variant when the source side didn't surface a small
+    /// flavor (older mocks, non-protobuf paths).
+    /// </summary>
+    public string? ImageSmallUrl { get; init; }
+
     public TimeSpan Duration { get; init; }
     /// <summary>
     /// When the track was added to the playlist, or <c>null</c> when the playlist's
@@ -94,6 +103,26 @@ public sealed record PlaylistTrackDto : ITrackItem
     /// user-authored playlists.
     /// </summary>
     public IReadOnlyDictionary<string, string>? FormatAttributes { get; init; }
+
+    /// <summary>
+    /// Cached chart-position info parsed out of <see cref="FormatAttributes"/>
+    /// — non-null on chart playlists (Top 50 etc.), null elsewhere. Caching
+    /// avoids re-parsing on every row redraw.
+    /// </summary>
+    private ChartTrackInfo? _chart;
+    private bool _chartResolved;
+    public ChartTrackInfo? Chart
+    {
+        get
+        {
+            if (!_chartResolved)
+            {
+                _chart = ChartTrackInfo.From(FormatAttributes);
+                _chartResolved = true;
+            }
+            return _chart;
+        }
+    }
 
     /// <summary>
     /// Duration formatted as "m:ss" or "h:mm:ss".

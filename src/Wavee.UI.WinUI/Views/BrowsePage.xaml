@@ -29,7 +29,7 @@
                  cross-control resource lookups. -->
             <DataTemplate x:Key="BrowseEditorialItemTemplate" x:DataType="vm:HomeSectionItem">
                 <cards:ContentCard
-                    ImageUrl="{x:Bind ImageUrl, Mode=OneWay}"
+                    ImageUrl="{x:Bind BestMediumImageUrl, Mode=OneWay}"
                     Title="{x:Bind Title, Mode=OneWay}"
                     Subtitle="{x:Bind Subtitle, Mode=OneWay}"
                     PlaceholderColorHex="{x:Bind ColorHex, Mode=OneWay}"
@@ -99,7 +99,7 @@
         </ResourceDictionary>
     </Page.Resources>
 
-    <ScrollViewer x:Name="RootScrollViewer"
+    <ScrollView x:Name="RootScrollViewer"
                   HorizontalScrollMode="Disabled"
                   VerticalScrollBarVisibility="Auto"
                   Padding="0">
@@ -214,5 +214,5 @@
                 <shared:SectionShelvesShimmer/>
             </StackPanel>
         </Grid>
-    </ScrollViewer>
+    </ScrollView>
 </Page>

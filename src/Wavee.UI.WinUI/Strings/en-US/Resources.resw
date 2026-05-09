@@ -18,6 +18,48 @@
   <data name="AppDisplayName" xml:space="preserve">
     <value>Wavee</value>
   </data>
+  <data name="BrowseAll_Eyebrow_Top" xml:space="preserve">
+    <value>TOP</value>
+  </data>
+  <data name="BrowseAll_Eyebrow_ForYou" xml:space="preserve">
+    <value>FOR YOU</value>
+  </data>
+  <data name="BrowseAll_Eyebrow_Genres" xml:space="preserve">
+    <value>GENRES</value>
+  </data>
+  <data name="BrowseAll_Eyebrow_MoodAndActivity" xml:space="preserve">
+    <value>MOOD &amp; ACTIVITY</value>
+  </data>
+  <data name="BrowseAll_Eyebrow_Charts" xml:space="preserve">
+    <value>CHARTS</value>
+  </data>
+  <data name="BrowseAll_Eyebrow_More" xml:space="preserve">
+    <value>MORE</value>
+  </data>
+  <data name="Playlist_Chart_Updated" xml:space="preserve">
+    <value>Updated {0}</value>
+  </data>
+  <data name="Playlist_Chart_NewEntriesOne" xml:space="preserve">
+    <value>1 new entry</value>
+  </data>
+  <data name="Playlist_Chart_NewEntriesMany" xml:space="preserve">
+    <value>{0} new entries</value>
+  </data>
+  <data name="Playlist_Chart_New" xml:space="preserve">
+    <value>NEW</value>
+  </data>
+  <data name="Playlist_Chart_TooltipUp" xml:space="preserve">
+    <value>Up {0} from #{1}</value>
+  </data>
+  <data name="Playlist_Chart_TooltipDown" xml:space="preserve">
+    <value>Down {0} from #{1}</value>
+  </data>
+  <data name="Playlist_Chart_TooltipEqual" xml:space="preserve">
+    <value>Holding position</value>
+  </data>
+  <data name="Playlist_Chart_TooltipNew" xml:space="preserve">
+    <value>New entry</value>
+  </data>
   <data name="CardMenu_Open" xml:space="preserve">
     <value>Open</value>
   </data>

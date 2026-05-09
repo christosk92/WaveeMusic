@@ -26,8 +26,11 @@ public sealed class ImageCacheCleanupAdapter : ICleanableCache
     {
         var svc = Ioc.Default.GetService<ImageCacheService>();
         if (svc == null) return Task.FromResult(0);
-        var before = svc.Count;
-        svc.Clear();
-        return Task.FromResult(before);
+        // Soft clear: keep entries that visible cards have pinned. The full
+        // Clear() (which also wipes _pinCounts) used to be called here, which
+        // yanked bitmaps out from under on-screen cards on memory-budget
+        // escalation. ClearUnpinned still sheds memory (cold off-screen
+        // entries) without breaking the active UI.
+        return Task.FromResult(svc.ClearUnpinned());
     }
 }

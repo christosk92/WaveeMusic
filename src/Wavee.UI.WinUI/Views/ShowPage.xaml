@@ -632,8 +632,9 @@
         <StackPanel HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     Spacing="12"
+                    x:Name="haserrorPanel"
                     Padding="32"
-                    Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    x:Load="{x:Bind ViewModel.HasError, Mode=OneWay}">
             <FontIcon Glyph="&#xE783;" FontSize="36" Opacity="0.6" HorizontalAlignment="Center"/>
             <TextBlock Text="We couldn't load this show."
                        Style="{StaticResource SubtitleTextBlockStyle}"

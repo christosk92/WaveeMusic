@@ -189,6 +189,9 @@ public sealed partial class SearchResultRowCard : UserControl
 
         NowPlayingEqualizer.IsActive = false;
         StopPendingBeam();
+
+        // Drop the native decoded surface so the WinUI compositor releases it.
+        if (ThumbnailImage != null) ThumbnailImage.Source = null;
     }
 
     private void OnPlaybackStateChanged()

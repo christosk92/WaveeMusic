@@ -137,10 +137,9 @@ internal static class BrowseResponseMapper
 
     private static HomeSectionItem MapPlaylist(PathfinderBrowseSectionItem entry, PathfinderBrowseContentData data)
     {
-        var imageUrl = data.Images?.Items?
-            .FirstOrDefault()?.Sources?
-            .OrderByDescending(s => s.Width ?? 0)
-            .FirstOrDefault()?.Url;
+        var (small, medium, large) = SpotifyImageHelper.BucketSources(
+            data.Images?.Items?.FirstOrDefault()?.Sources,
+            s => s.Url, s => s.Width);
 
         // Description can carry HTML (<a href="spotify:..."> etc.) — strip for
         // the card subtitle, fall back to the owner name when there's nothing.
@@ -152,16 +151,18 @@ internal static class BrowseResponseMapper
             Uri = data.Uri ?? entry.Uri,
             Title = data.Name,
             Subtitle = subtitle,
-            ImageUrl = imageUrl,
+            ImageUrl = large ?? medium ?? small,
+            ImageSmallUrl = small,
+            ImageMediumUrl = medium,
+            ImageLargeUrl = large,
             ContentType = HomeContentType.Playlist
         };
     }
 
     private static HomeSectionItem MapAlbum(PathfinderBrowseSectionItem entry, PathfinderBrowseContentData data)
     {
-        var imageUrl = data.CoverArt?.Sources?
-            .OrderByDescending(s => s.Width ?? 0)
-            .FirstOrDefault()?.Url;
+        var (small, medium, large) = SpotifyImageHelper.BucketSources(
+            data.CoverArt?.Sources, s => s.Url, s => s.Width);
 
         var artistName = data.Artists?.Items?.FirstOrDefault()?.Profile?.Name;
 
@@ -170,23 +171,28 @@ internal static class BrowseResponseMapper
             Uri = data.Uri ?? entry.Uri,
             Title = data.Name,
             Subtitle = artistName ?? "Album",
-            ImageUrl = imageUrl,
+            ImageUrl = large ?? medium ?? small,
+            ImageSmallUrl = small,
+            ImageMediumUrl = medium,
+            ImageLargeUrl = large,
             ContentType = HomeContentType.Album
         };
     }
 
     private static HomeSectionItem MapPodcast(PathfinderBrowseSectionItem entry, PathfinderBrowseContentData data)
     {
-        var imageUrl = data.CoverArt?.Sources?
-            .OrderByDescending(s => s.Width ?? 0)
-            .FirstOrDefault()?.Url;
+        var (small, medium, large) = SpotifyImageHelper.BucketSources(
+            data.CoverArt?.Sources, s => s.Url, s => s.Width);
 
         return new HomeSectionItem
         {
             Uri = data.Uri ?? entry.Uri,
             Title = data.Name,
             Subtitle = data.Publisher?.Name,
-            ImageUrl = imageUrl,
+            ImageUrl = large ?? medium ?? small,
+            ImageSmallUrl = small,
+            ImageMediumUrl = medium,
+            ImageLargeUrl = large,
             ContentType = HomeContentType.Podcast
         };
     }
@@ -204,16 +210,18 @@ internal static class BrowseResponseMapper
         var label = card.Title?.TransformedLabel;
         if (string.IsNullOrEmpty(label)) return null;
 
-        var imageUrl = card.Artwork?.Sources?
-            .OrderByDescending(s => s.Width ?? 0)
-            .FirstOrDefault()?.Url;
+        var (small, medium, large) = SpotifyImageHelper.BucketSources(
+            card.Artwork?.Sources, s => s.Url, s => s.Width);
 
         return new HomeSectionItem
         {
             Uri = entry.Uri,
             Title = label,
             Subtitle = "Browse",
-            ImageUrl = imageUrl,
+            ImageUrl = large ?? medium ?? small,
+            ImageSmallUrl = small,
+            ImageMediumUrl = medium,
+            ImageLargeUrl = large,
             ContentType = HomeContentType.Unknown,
             ColorHex = card.BackgroundColor?.Hex
         };

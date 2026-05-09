@@ -25,11 +25,18 @@ public sealed class ImageCacheService
     private readonly ReaderWriterLockSlim _rwLock = new();
     private readonly int _maxSize;
 
-    // 60 BitmapImages (~1 MB each unmanaged at 512x512) caps the worst-case unmanaged
-    // footprint near 60 MB, down from ~100-200 MB with the previous default of 100.
-    // Large enough to cover a typical page of album art + player bar + queue without
-    // constant re-fetching.
-    public ImageCacheService(int maxSize = 60)
+    // Cap raised 60 → 200 (2026-05-08). At 60, multi-shelf pages (Home,
+    // Artist) routinely fill the cache with all-pinned visible cards, which
+    // tripped the GetOrCreate-evicts-its-own-just-added-entry race when the
+    // caller pinned AFTER GetOrCreate returned (TrimToCapacity walked
+    // pinned-only entries to .First and evicted the new unpinned one,
+    // leaving an orphaned pin in _pinCounts and a cache that didn't hold
+    // the bitmap). The atomic `pin: true` overload below fixes the race
+    // for new code; the higher cap means the race no longer fires for
+    // typical cards either, since cache rarely hits capacity. Worst-case
+    // unmanaged footprint at 200 × ≤1 MB (512-bucket) ≈ 200 MB; typical
+    // mix of 64/128/256 buckets averages ~50 KB → 10 MB ceiling.
+    public ImageCacheService(int maxSize = 200)
     {
         _maxSize = maxSize;
     }
@@ -70,8 +77,19 @@ public sealed class ImageCacheService
     /// <summary>
     /// Gets a cached BitmapImage or creates a new one. The BitmapImage's UriSource
     /// is set, triggering async download. Returns immediately.
+    ///
+    /// <para>
+    /// Pass <paramref name="pin"/> = <c>true</c> when the caller intends to hold
+    /// the entry (visible Image control). This pins atomically inside the
+    /// write lock BEFORE TrimToCapacity runs — required to prevent the
+    /// self-eviction race where a freshly-added entry is the only unpinned
+    /// candidate when the cache is otherwise full of pinned entries (which
+    /// produced an orphaned pin: count incremented but cache no longer holds
+    /// the bitmap). Callers that pin must still call <see cref="Unpin"/> on
+    /// teardown.
+    /// </para>
     /// </summary>
-    public BitmapImage? GetOrCreate(string? uri, int decodePixelSize = 0)
+    public BitmapImage? GetOrCreate(string? uri, int decodePixelSize = 0, bool pin = false)
     {
         if (string.IsNullOrEmpty(uri)) return null;
         // Snap the requested decode size to a fixed bucket before lookup so callers
@@ -98,6 +116,7 @@ public sealed class ImageCacheService
                         _lruList.Remove(node);
                         _lruList.AddFirst(node);
                     }
+                    if (pin) BumpPin(key);
                     return image;
                 }
                 finally { _rwLock.ExitWriteLock(); }
@@ -128,6 +147,7 @@ public sealed class ImageCacheService
                     _lruList.Remove(existing);
                     _lruList.AddFirst(existing);
                 }
+                if (pin) BumpPin(key);
                 return refreshed.Image;
             }
 
@@ -135,6 +155,11 @@ public sealed class ImageCacheService
             var entry = new CacheEntry(bitmap, tick);
             var newNode = _lruList.AddFirst(new KeyValuePair<CacheKey, CacheEntry>(key, entry));
             _cache[key] = newNode;
+
+            // Pin BEFORE trim so the just-added entry can't be evicted by its own
+            // TrimToCapacity sweep (the historical race). Pinned entries are
+            // skipped during the trim walk.
+            if (pin) BumpPin(key);
 
             // Evict oldest unpinned entries if over capacity. Pinned entries (held by
             // visible Image controls) are skipped so we don't force WinUI to re-decode
@@ -144,6 +169,12 @@ public sealed class ImageCacheService
             return bitmap;
         }
         finally { _rwLock.ExitWriteLock(); }
+    }
+
+    private void BumpPin(CacheKey key)
+    {
+        _pinCounts.TryGetValue(key, out var count);
+        _pinCounts[key] = count + 1;
     }
 
     /// <summary>
@@ -159,8 +190,7 @@ public sealed class ImageCacheService
         _rwLock.EnterWriteLock();
         try
         {
-            _pinCounts.TryGetValue(key, out var count);
-            _pinCounts[key] = count + 1;
+            BumpPin(key);
         }
         finally { _rwLock.ExitWriteLock(); }
     }
@@ -276,6 +306,36 @@ public sealed class ImageCacheService
             _cache.Clear();
             _lruList.Clear();
             _pinCounts.Clear();
+        }
+        finally { _rwLock.ExitWriteLock(); }
+    }
+
+    /// <summary>
+    /// Soft clear used by memory-pressure escalation. Removes every UNPINNED
+    /// LRU entry but keeps pinned entries (and their pin counts) intact, so
+    /// images on currently-visible cards survive a budget overshoot. The
+    /// hard <see cref="Clear"/> still exists for sign-out / user-switch paths
+    /// where we genuinely want to drop everything.
+    /// </summary>
+    public int ClearUnpinned()
+    {
+        _rwLock.EnterWriteLock();
+        try
+        {
+            var removed = 0;
+            var node = _lruList.Last;
+            while (node is not null)
+            {
+                var prev = node.Previous;
+                if (!_pinCounts.ContainsKey(node.Value.Key))
+                {
+                    _cache.Remove(node.Value.Key);
+                    _lruList.Remove(node);
+                    removed++;
+                }
+                node = prev;
+            }
+            return removed;
         }
         finally { _rwLock.ExitWriteLock(); }
     }

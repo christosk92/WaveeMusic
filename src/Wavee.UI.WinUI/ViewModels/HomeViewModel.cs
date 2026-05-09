@@ -28,6 +28,15 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private readonly Wavee.Core.Session.ISession? _session;
     private readonly ISettingsService? _settingsService;
     private readonly Services.HomeFeedCache? _homeFeedCache;
+
+    /// <summary>
+    /// Active chip facet driving the home feed (e.g. <c>"music-chip"</c>,
+    /// <c>"podcasts-chip"</c>, <c>"audiobooks-chip"</c>, or null/empty for
+    /// the default unfaceted view). Exposed so adapters like
+    /// <c>HomeHeroAdapter</c> can decide whether to filter podcast
+    /// sections out of the hero on music-tab views.
+    /// </summary>
+    public string? CurrentFacet => _homeFeedCache?.CurrentFacet;
     private readonly Services.RecentlyPlayedService? _recentlyPlayedService;
     private readonly Services.HomeResponseParserFactory _parserFactory;
     private readonly IAuthState? _authState;
@@ -2057,6 +2066,9 @@ public sealed class HomeSectionItem : ObservableObject
     private string? _title;
     private string? _subtitle;
     private string? _imageUrl;
+    private string? _imageSmallUrl;
+    private string? _imageMediumUrl;
+    private string? _imageLargeUrl;
     private HomeContentType _contentType;
     private string? _colorHex;
     private string? _placeholderGlyph;
@@ -2091,7 +2103,77 @@ public sealed class HomeSectionItem : ObservableObject
     public string? ImageUrl
     {
         get => _imageUrl;
-        set => SetProperty(ref _imageUrl, value);
+        set
+        {
+            if (SetProperty(ref _imageUrl, value))
+                RaiseBestUrlPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// CDN image variant ≲150 px wide. Distinct image-id from Medium/Large
+    /// (different bytes, not a decode hint). Use via
+    /// <see cref="Helpers.SpotifyImageHelper.PickByDecodeSize"/> when the
+    /// consumer knows its slot size.
+    /// </summary>
+    public string? ImageSmallUrl
+    {
+        get => _imageSmallUrl;
+        set
+        {
+            if (SetProperty(ref _imageSmallUrl, value))
+                RaiseBestUrlPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// CDN image variant ~300 px wide.
+    /// </summary>
+    public string? ImageMediumUrl
+    {
+        get => _imageMediumUrl;
+        set
+        {
+            if (SetProperty(ref _imageMediumUrl, value))
+                RaiseBestUrlPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// CDN image variant ≥500 px wide (typically 640).
+    /// </summary>
+    public string? ImageLargeUrl
+    {
+        get => _imageLargeUrl;
+        set
+        {
+            if (SetProperty(ref _imageLargeUrl, value))
+                RaiseBestUrlPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Best URL for a small slot (≤128 px decode — track row, avatar, pill).
+    /// Falls back across flavors so card bindings always resolve to a usable
+    /// URL even when Spotify only returned 1-2 sizes. Mirrors
+    /// <see cref="Helpers.SpotifyImageHelper.PickByDecodeSize"/> at decode size 64.
+    /// </summary>
+    public string? BestSmallImageUrl
+        => _imageSmallUrl ?? _imageMediumUrl ?? _imageLargeUrl ?? _imageUrl;
+
+    /// <summary>Best URL for a medium slot (~200-256 px — card / shelf tile).</summary>
+    public string? BestMediumImageUrl
+        => _imageMediumUrl ?? _imageSmallUrl ?? _imageLargeUrl ?? _imageUrl;
+
+    /// <summary>Best URL for a large slot (≥512 px — hero / backdrop).</summary>
+    public string? BestLargeImageUrl
+        => _imageLargeUrl ?? _imageMediumUrl ?? _imageSmallUrl ?? _imageUrl;
+
+    private void RaiseBestUrlPropertyChanged()
+    {
+        OnPropertyChanged(nameof(BestSmallImageUrl));
+        OnPropertyChanged(nameof(BestMediumImageUrl));
+        OnPropertyChanged(nameof(BestLargeImageUrl));
     }
 
     public HomeContentType ContentType

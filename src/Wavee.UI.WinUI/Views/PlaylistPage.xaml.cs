@@ -278,7 +278,15 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
         using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.playlist.updateLayout"))
         {
-            UpdateLayout();
+            // Element-scoped UpdateLayout: walks up the parent chain to lay
+            // out enough to position PlaylistArtContainer for the connected
+            // animation, but skips siblings (side rail, action buttons,
+            // description, TrackDataGrid). Microsoft docs flag UpdateLayout
+            // as taboo in general — narrowing the scope is the closest we
+            // can get while still satisfying the connected-anim handshake
+            // (the destination must be measured before TryStartAnimation
+            // computes its target rect).
+            PlaylistArtContainer.UpdateLayout();
         }
         var started = ConnectedAnimationHelper.TryStartAnimation(
             ConnectedAnimationHelper.PlaylistArt,
@@ -646,16 +654,22 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         _settings.Update(s => s.PanelWidths[$"playlist:{playlistId}"] = e.NewWidth);
     }
 
+    // Tracks the last applied VSM state so we don't re-fire GoToState on
+    // every wide-mode resize tick (the third branch of this handler used
+    // to do that — VSM is a no-op when state matches but it still costs
+    // a state-machine roundtrip per tick of a width drag).
+    private string? _lastVsmState;
+
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         var shouldBeNarrow = e.NewSize.Width < 600;
+        var targetState = shouldBeNarrow ? "NarrowState" : "WideState";
 
         if (shouldBeNarrow && !_isNarrowMode)
         {
             _isNarrowMode = true;
             LeftPanelColumn.MinWidth = 0;
             LeftPanelColumn.Width = new GridLength(0);
-            VisualStateManager.GoToState(this, "NarrowState", true);
         }
         else if (!shouldBeNarrow && _isNarrowMode)
         {
@@ -666,12 +680,12 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
                 RestorePlaylistPanelWidth(playlistId);
             else
                 LeftPanelColumn.Width = new GridLength(200, GridUnitType.Pixel);
-
-            VisualStateManager.GoToState(this, "WideState", true);
         }
-        else if (!shouldBeNarrow && !_isNarrowMode)
+
+        if (_lastVsmState != targetState)
         {
-            VisualStateManager.GoToState(this, "WideState", true);
+            _lastVsmState = targetState;
+            VisualStateManager.GoToState(this, targetState, true);
         }
     }
 

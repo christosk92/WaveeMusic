@@ -204,7 +204,9 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
         PageController.MarkContentShownDirectly();
         using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.show.updateLayout"))
         {
-            UpdateLayout();
+            // Element-scoped: see PlaylistPage for the rationale. Lays
+            // out the CoverContainer's parent chain only.
+            CoverContainer.UpdateLayout();
         }
         return ConnectedAnimationHelper.TryStartAnimation(
             ConnectedAnimationHelper.PodcastArt,

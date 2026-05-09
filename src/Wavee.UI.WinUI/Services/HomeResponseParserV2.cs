@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Styles;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -258,6 +259,7 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
                        ?? ExtractImageUrlFromJson(typedEntityPayload);
         var subtitle = BuildSubtitle(entityData, contentType, formatAttributes);
         var colorHex = ExtractColorFromJson(typedEntityPayload);
+        var isRecentlySaved = formatAttributes?.Any(a => a.Key == "recent_type_saved") == true;
 
         var item = new HomeSectionItem
         {
@@ -266,7 +268,8 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
             Subtitle = subtitle,
             ImageUrl = imageUrl,
             ContentType = contentType,
-            ColorHex = colorHex
+            ColorHex = colorHex,
+            IsRecentlySaved = isRecentlySaved
         };
 
         // Episode-specific surface — only populated if the entity actually
@@ -326,8 +329,8 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
         var data = content.GetEpisodeData();
         if (data == null) return null;
 
-        var imageUrl = data.CoverArt?.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url
-                       ?? data.PodcastV2?.Data?.CoverArt?.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url;
+        var sources = data.CoverArt?.Sources ?? data.PodcastV2?.Data?.CoverArt?.Sources;
+        var (small, medium, large) = SpotifyImageHelper.BucketSources(sources, s => s.Url, s => s.Width);
         var publisherName = data.PodcastV2?.Data?.Name ?? data.PodcastV2?.Data?.Publisher?.Name;
 
         return new HomeSectionItem
@@ -335,7 +338,10 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
             Uri = data.Uri ?? uri,
             Title = data.Name,
             Subtitle = publisherName,
-            ImageUrl = imageUrl,
+            ImageUrl = large ?? medium ?? small,
+            ImageSmallUrl = small,
+            ImageMediumUrl = medium,
+            ImageLargeUrl = large,
             ContentType = HomeContentType.Episode,
             DurationMs = data.Duration?.TotalMilliseconds,
             PlayedPositionMs = data.PlayedState?.PlayPositionMilliseconds,
@@ -351,12 +357,16 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
     {
         var data = content.GetAlbumData();
         if (data == null) return null;
+        var (small, medium, large) = SpotifyImageHelper.BucketSources(data.CoverArt?.Sources, s => s.Url, s => s.Width);
         return new HomeSectionItem
         {
             Uri = data.Uri ?? uri,
             Title = data.Name,
             Subtitle = data.Artists?.Items?.FirstOrDefault()?.Profile?.Name ?? "Album",
-            ImageUrl = data.CoverArt?.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url,
+            ImageUrl = large ?? medium ?? small,
+            ImageSmallUrl = small,
+            ImageMediumUrl = medium,
+            ImageLargeUrl = large,
             ContentType = HomeContentType.Album,
             ColorHex = data.CoverArt?.ExtractedColors?.ColorDark?.Hex
         };
@@ -366,12 +376,16 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
     {
         var data = content.GetArtistData();
         if (data == null) return null;
+        var (small, medium, large) = SpotifyImageHelper.BucketSources(data.Visuals?.AvatarImage?.Sources, s => s.Url, s => s.Width);
         return new HomeSectionItem
         {
             Uri = data.Uri ?? uri,
             Title = data.Profile?.Name,
             Subtitle = "Artist",
-            ImageUrl = data.Visuals?.AvatarImage?.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url,
+            ImageUrl = large ?? medium ?? small,
+            ImageSmallUrl = small,
+            ImageMediumUrl = medium,
+            ImageLargeUrl = large,
             ContentType = HomeContentType.Artist,
             ColorHex = data.Visuals?.AvatarImage?.ExtractedColors?.ColorDark?.Hex
         };
@@ -381,15 +395,20 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
     {
         var data = content.GetPlaylistData();
         if (data == null) return null;
+        var firstImage = data.Images?.Items?.FirstOrDefault();
+        var (small, medium, large) = SpotifyImageHelper.BucketSources(firstImage?.Sources, s => s.Url, s => s.Width);
         return new HomeSectionItem
         {
             Uri = data.Uri ?? uri,
             Title = data.Name,
             Subtitle = Helpers.SpotifyHtmlHelper.StripHtml(data.Description) is { Length: > 0 } desc
                 ? desc : data.OwnerV2?.Data?.Name,
-            ImageUrl = data.Images?.Items?.FirstOrDefault()?.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url,
+            ImageUrl = large ?? medium ?? small,
+            ImageSmallUrl = small,
+            ImageMediumUrl = medium,
+            ImageLargeUrl = large,
             ContentType = HomeContentType.Playlist,
-            ColorHex = data.Images?.Items?.FirstOrDefault()?.ExtractedColors?.ColorDark?.Hex
+            ColorHex = firstImage?.ExtractedColors?.ColorDark?.Hex
         };
     }
 
@@ -397,12 +416,16 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
     {
         var data = content.GetPodcastData();
         if (data == null) return null;
+        var (small, medium, large) = SpotifyImageHelper.BucketSources(data.CoverArt?.Sources, s => s.Url, s => s.Width);
         return new HomeSectionItem
         {
             Uri = data.Uri ?? uri,
             Title = data.Name,
             Subtitle = data.Publisher?.Name,
-            ImageUrl = data.CoverArt?.Sources?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url,
+            ImageUrl = large ?? medium ?? small,
+            ImageSmallUrl = small,
+            ImageMediumUrl = medium,
+            ImageLargeUrl = large,
             ContentType = HomeContentType.Podcast
         };
     }

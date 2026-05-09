@@ -104,6 +104,15 @@ public static class FluentGlyphs
     public const string Video = "";
 
     /// <summary>Devices2 — remote-device cluster icon (E703).</summary>
+    // ---- Chart status (chart-format playlists) -------------------------
+    /// <summary>CaretSolidUp - EDDB. Chart track trending up vs. previous period.</summary>
+    public const string ChartUp = "\uEDDB";
+    /// <summary>CaretSolidDown - EDDC. Chart track trending down vs. previous period.</summary>
+    public const string ChartDown = "\uEDDC";
+    /// <summary>Remove (horizontal minus) - E738. Chart track holding position.</summary>
+    public const string ChartEqual = "\uE738";
+
+    /// <summary>Devices2 \u2014 remote-device cluster icon (E703).</summary>
     public const string DeviceRemote = "\uE703";
     /// <summary>CheckMark - E73E. Used for the "Played" podcast-episode state.</summary>
     public const string CheckMark = "\uE73E";

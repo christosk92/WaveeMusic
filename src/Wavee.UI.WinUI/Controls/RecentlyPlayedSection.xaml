@@ -13,7 +13,7 @@
     <UserControl.Resources>
         <DataTemplate x:Key="DefaultCardTemplate" x:DataType="vm:HomeSectionItem">
             <cards:ContentCard
-                ImageUrl="{x:Bind ImageUrl}"
+                ImageUrl="{x:Bind BestMediumImageUrl, Mode=OneWay}"
                 Title="{x:Bind Title}"
                 Subtitle="{x:Bind Subtitle}"
                 PlaceholderColorHex="{x:Bind ColorHex}"
@@ -25,7 +25,7 @@
 
         <DataTemplate x:Key="ArtistCardTemplate" x:DataType="vm:HomeSectionItem">
             <cards:ContentCard
-                ImageUrl="{x:Bind ImageUrl}"
+                ImageUrl="{x:Bind BestMediumImageUrl, Mode=OneWay}"
                 Title="{x:Bind Title}"
                 Subtitle="{x:Bind Subtitle}"
                 PlaceholderColorHex="{x:Bind ColorHex}"

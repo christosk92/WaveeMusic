@@ -376,10 +376,19 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         ListeningSummaryLine = "";
         ArchiveSummaryLine = "";
 
-        Topics.Clear();
-        this.RaisePropertyChanged(nameof(HasTopics));
-        Recommendations.Clear();
-        this.RaisePropertyChanged(nameof(HasRecommendations));
+        // Topics + Recommendations are below-the-fold sections; their reset
+        // doesn't gate first paint of the hero / episode list. Defer to a
+        // low-priority dispatch so the PropertyChanged storm settles after
+        // the visible shimmer commits.
+        _dispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                Topics.Clear();
+                this.RaisePropertyChanged(nameof(HasTopics));
+                Recommendations.Clear();
+                this.RaisePropertyChanged(nameof(HasRecommendations));
+            });
 
         _allEpisodes = new List<ShowEpisodeDto>();
         FilteredEpisodes = Array.Empty<ShowEpisodeDto>();

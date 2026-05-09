@@ -231,6 +231,16 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            TextWrapping="Wrap"/>
 
+                <!-- 4b. Chart sub-stat line — only shown for chart-format playlists.
+                     "Updated May 1 · 8 new entries". Empty / collapsed otherwise. -->
+                <TextBlock Text="{x:Bind ViewModel.ChartHeaderLine, Mode=OneWay}"
+                           Visibility="{x:Bind ViewModel.IsChart, Mode=OneWay,
+                               Converter={StaticResource BoolToVisibilityConverter}}"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,2,0,0"
+                           TextWrapping="Wrap"/>
+
                 <!-- 5. Action row — Play (primary accent w/ label) + small icon-only
                      Shuffle / Heart / Share / Overflow. WrapPanel so buttons flow to
                      a second row when the panel is too narrow to fit them inline
@@ -324,14 +334,14 @@
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Placeholder="Add a description"
                     Committed="PlaylistDescriptionEditor_Committed"
-                    Visibility="{x:Bind ViewModel.CanEditDescription, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    x:Load="{x:Bind ViewModel.CanEditDescription, Mode=OneWay}"/>
 
                 <!-- 7. Session control chips: editorial / algorithmic playlists ship
                      a session_control_display group; chip row re-personalises the
                      playlist on click. Now left-aligned to match panel direction. -->
                 <Grid HorizontalAlignment="Left" Margin="0,8,0,0"
-                      Visibility="{x:Bind ViewModel.HasSessionControlChips, Mode=OneWay,
-                                   Converter={StaticResource BoolToVisibilityConverter}}">
+                      x:Name="TokenViewPanel"
+                      x:Load="{x:Bind ViewModel.HasSessionControlChips, Mode=OneWay}">
                     <sessionTokens:SessionTokenView
                         IsWrapped="True"
                         CanRemoveTokens="False"

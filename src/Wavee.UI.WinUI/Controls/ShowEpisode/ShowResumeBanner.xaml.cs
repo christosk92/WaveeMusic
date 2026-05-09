@@ -221,7 +221,9 @@ public sealed partial class ShowResumeBanner : UserControl
 
         try
         {
-            BackdropImage.Source = new BitmapImage(new Uri(url));
+            var bmp = new BitmapImage { DecodePixelWidth = 640 };
+            bmp.UriSource = new Uri(url);
+            BackdropImage.Source = bmp;
         }
         catch
         {
