@@ -42,6 +42,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
     private bool _isDisposed;
     private bool _trimmedForNavigationCache;
+    private string? _lastRestoredPlaylistId;
 
     // Composition resources for the left-anchored hero backdrop. Surface is
     // (re)loaded whenever HeaderImageUrl changes. Null when no header image.
@@ -447,6 +448,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             return;
 
         _trimmedForNavigationCache = true;
+        _lastRestoredPlaylistId = ViewModel.PlaylistId;
         ViewModel.Hibernate();
         ReleaseHeaderBackgroundSurface();
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
@@ -461,9 +463,16 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             return;
 
         _trimmedForNavigationCache = false;
-        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.playlist.bindingsUpdate"))
+        // Skip the page-wide x:Bind re-evaluation when returning to the same
+        // playlist we just left — bindings still point at the same data.
+        var samePlaylist = !string.IsNullOrEmpty(_lastRestoredPlaylistId)
+            && string.Equals(_lastRestoredPlaylistId, ViewModel.PlaylistId, StringComparison.Ordinal);
+        if (!samePlaylist)
         {
-            Bindings?.Update();
+            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.playlist.bindingsUpdate"))
+            {
+                Bindings?.Update();
+            }
         }
         if (!string.IsNullOrEmpty(ViewModel.PlaylistId))
             LoadParameter(ViewModel.PlaylistId);

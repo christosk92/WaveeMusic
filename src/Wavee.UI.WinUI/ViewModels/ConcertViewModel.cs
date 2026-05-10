@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -151,21 +152,28 @@ public sealed partial class ConcertViewModel : ObservableObject
         var bgTint = Color.FromArgb(255, tier.BackgroundTintedR, tier.BackgroundTintedG, tier.BackgroundTintedB);
         var accent = Color.FromArgb(255, tier.TextAccentR, tier.TextAccentG, tier.TextAccentB);
 
+        // Light mode: blend palette colors toward white before applying alpha so
+        // a dark-cover headliner doesn't drag the page dark. Dark mode unchanged.
+        var heroBg     = isDark ? bg     : TintColorHelper.LightTint(bg);
+        var heroBgTint = isDark ? bgTint : TintColorHelper.LightTint(bgTint);
+        var washColor  = isDark ? bg     : TintColorHelper.LightTint(bg);
+
         // Page-wide subtle wash — the palette bg at low alpha over the app bg.
         PaletteBackdropBrush = new SolidColorBrush(Color.FromArgb(
-            (byte)(isDark ? 60 : 38), bg.R, bg.G, bg.B));
+            (byte)(isDark ? 60 : 38), washColor.R, washColor.G, washColor.B));
 
         // Hero feature-tile overlay gradient: palette-tinted ink on the left → transparent.
         // Left uses the TintedBase (deeper) so text on top stays readable.
+        var (a0, a1, a2, a3) = isDark ? (240, 176, 80, 0) : (140, 100, 50, 0);
         var heroGrad = new LinearGradientBrush
         {
             StartPoint = new Windows.Foundation.Point(0, 0),
             EndPoint = new Windows.Foundation.Point(1, 0),
         };
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(240, bgTint.R, bgTint.G, bgTint.B), Offset = 0.0 });
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(176, bg.R, bg.G, bg.B),         Offset = 0.35 });
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(80,  bg.R, bg.G, bg.B),         Offset = 0.65 });
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(0,   bg.R, bg.G, bg.B),         Offset = 1.0 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a0, heroBgTint.R, heroBgTint.G, heroBgTint.B), Offset = 0.0 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a1, heroBg.R,     heroBg.G,     heroBg.B),     Offset = 0.35 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a2, heroBg.R,     heroBg.G,     heroBg.B),     Offset = 0.65 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a3, heroBg.R,     heroBg.G,     heroBg.B),     Offset = 1.0 });
         PaletteHeroGradientBrush = heroGrad;
 
         // Accent pill inside the hero: palette's bright accent as fill, white text on it.

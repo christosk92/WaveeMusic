@@ -339,8 +339,11 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     [NotifyPropertyChangedFor(nameof(CanRemove))]
     private IReadOnlyList<object> _selectedItems = Array.Empty<object>();
 
-    [ObservableProperty]
-    private IReadOnlyList<PlaylistSummaryDto> _playlists = Array.Empty<PlaylistSummaryDto>();
+    // Stable instance mutated in place — see Tier 1 rationale on bound
+    // collections elsewhere in the project. Used by the "Add to playlist"
+    // dropdown bound through ItemsRepeater.
+    private readonly ObservableCollection<PlaylistSummaryDto> _playlists = [];
+    public IReadOnlyList<PlaylistSummaryDto> Playlists => _playlists;
 
     /// <summary>
     /// Track rows bound to TrackListView. Holds either real <see cref="PlaylistTrackDto"/>s
@@ -1579,24 +1582,34 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         var bg = Color.FromArgb(255, tier.BackgroundR, tier.BackgroundG, tier.BackgroundB);
         var bgTint = Color.FromArgb(255, tier.BackgroundTintedR, tier.BackgroundTintedG, tier.BackgroundTintedB);
-        var accent = Color.FromArgb(255, tier.TextAccentR, tier.TextAccentG, tier.TextAccentB);
+        // Lifted accent base — same shape as Artist/Show. Replaces raw TextAccent
+        // (which was ≈ Spotify green for most playlists) so the play button reads
+        // as part of the cover-derived identity in both Light and Dark.
+        var accentBase = TintColorHelper.BrightenForTint(bgTint, targetMax: 210);
+
+        // Light mode: blend palette colors toward white before applying alpha so
+        // dark covers don't drag the page dark. Dark mode unchanged.
+        var heroBg     = isDark ? bg     : TintColorHelper.LightTint(bg);
+        var heroBgTint = isDark ? bgTint : TintColorHelper.LightTint(bgTint);
+        var washColor  = isDark ? bg     : TintColorHelper.LightTint(bg);
 
         PaletteBackdropBrush = new SolidColorBrush(Color.FromArgb(
-            (byte)(isDark ? 60 : 38), bg.R, bg.G, bg.B));
+            (byte)(isDark ? 60 : 38), washColor.R, washColor.G, washColor.B));
 
+        var (a0, a1, a2, a3) = isDark ? (240, 176, 80, 0) : (140, 100, 50, 0);
         var heroGrad = new LinearGradientBrush
         {
             StartPoint = new Windows.Foundation.Point(0, 0),
             EndPoint = new Windows.Foundation.Point(1, 0),
         };
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(240, bgTint.R, bgTint.G, bgTint.B), Offset = 0.0 });
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(176, bg.R, bg.G, bg.B),         Offset = 0.35 });
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(80,  bg.R, bg.G, bg.B),         Offset = 0.65 });
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(0,   bg.R, bg.G, bg.B),         Offset = 1.0 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a0, heroBgTint.R, heroBgTint.G, heroBgTint.B), Offset = 0.0 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a1, heroBg.R,     heroBg.G,     heroBg.B),     Offset = 0.35 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a2, heroBg.R,     heroBg.G,     heroBg.B),     Offset = 0.65 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a3, heroBg.R,     heroBg.G,     heroBg.B),     Offset = 1.0 });
         PaletteHeroGradientBrush = heroGrad;
 
-        PaletteAccentPillBrush = new SolidColorBrush(accent);
-        var accentLuma = (accent.R * 299 + accent.G * 587 + accent.B * 114) / 1000;
+        PaletteAccentPillBrush = new SolidColorBrush(accentBase);
+        var accentLuma = (accentBase.R * 299 + accentBase.G * 587 + accentBase.B * 114) / 1000;
         PaletteAccentPillForegroundBrush = new SolidColorBrush(
             accentLuma > 160 ? Color.FromArgb(255, 0, 0, 0) : Color.FromArgb(255, 255, 255, 255));
     }
@@ -1853,7 +1866,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             _dispatcherQueue.TryEnqueue(() =>
             {
                 if (_disposed) return;
-                Playlists = list;
+                _playlists.ReplaceWith(list);
             });
         }
         catch (Exception ex)

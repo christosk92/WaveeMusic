@@ -16,6 +16,31 @@
     Loaded="Card_Loaded"
     Unloaded="Card_Unloaded">
 
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <!-- Subtle light overlay so the preview visualizer reads on a
+                         light card without darkening the album art beneath. -->
+                    <LinearGradientBrush x:Key="HomeBaselineCardPreviewOverlayBrush"
+                                         StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#00F4F4F4" Offset="0"/>
+                        <GradientStop Color="#22F4F4F4" Offset="0.34"/>
+                        <GradientStop Color="#5AF4F4F4" Offset="1"/>
+                    </LinearGradientBrush>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <LinearGradientBrush x:Key="HomeBaselineCardPreviewOverlayBrush"
+                                         StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#00101010" Offset="0"/>
+                        <GradientStop Color="#22101010" Offset="0.34"/>
+                        <GradientStop Color="#5A101010" Offset="1"/>
+                    </LinearGradientBrush>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
     <Viewbox
         Stretch="Uniform"
         StretchDirection="Both"
@@ -96,15 +121,8 @@
                 Opacity="1"
                 Visibility="Collapsed"
                 IsHitTestVisible="False">
-                <Border VerticalAlignment="Stretch">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                            <GradientStop Color="#00101010" Offset="0"/>
-                            <GradientStop Color="#22101010" Offset="0.34"/>
-                            <GradientStop Color="#5A101010" Offset="1"/>
-                        </LinearGradientBrush>
-                    </Border.Background>
-                </Border>
+                <Border VerticalAlignment="Stretch"
+                        Background="{ThemeResource HomeBaselineCardPreviewOverlayBrush}"/>
                 <cards:PreviewAudioVisualizer
                     x:Name="PreviewVisualizer"
                     Visibility="Collapsed"

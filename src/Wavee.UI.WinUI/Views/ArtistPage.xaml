@@ -53,8 +53,11 @@
                     <SolidColorBrush x:Key="PinnedItemForegroundBrush" Color="#1A1A1A"/>
                     <SolidColorBrush x:Key="PinnedItemAvatarBorderBrush" Color="#33000000"/>
                     <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="#33000000"/>
-                    <SolidColorBrush x:Key="WorldRankBadgeBackgroundBrush" Color="#17000000"/>
-                    <SolidColorBrush x:Key="WorldRankBadgeBorderBrush" Color="#2A000000"/>
+                    <!-- Bright translucent white pill — matches the Dark variant's
+                         shape (#24FFFFFF / #45FFFFFF) since the hero scrim now
+                         reads white-tinted in Light mode after the LightTint blend. -->
+                    <SolidColorBrush x:Key="WorldRankBadgeBackgroundBrush" Color="#26FFFFFF"/>
+                    <SolidColorBrush x:Key="WorldRankBadgeBorderBrush"     Color="#4DFFFFFF"/>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
                     <SolidColorBrush x:Key="PinnedItemNormalBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}"/>

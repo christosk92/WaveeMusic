@@ -959,11 +959,16 @@ public sealed partial class ExpandedPlayerView : UserControl
         if (_lyricsVm == null || FullscreenLyricsCanvas == null) return;
 
         var isDark = ActualTheme != ElementTheme.Light;
-        var foreground = isDark ? Colors.White : Colors.Black;
+        // Active line gets pure black/white for emphasis; off and upcoming lines
+        // get a softer gray so the queue reads de-emphasized. Mirrors RightPanelView.
+        var activeFg = isDark ? Colors.White : Colors.Black;
+        var offFg = isDark
+            ? Color.FromArgb(0xFF, 0xC0, 0xC0, 0xC0)
+            : Color.FromArgb(0xFF, 0x55, 0x55, 0x55);
         var palette = _lyricsVm.WindowStatus.WindowPalette;
-        palette.NonCurrentLineFillColor = foreground;
-        palette.PlayedCurrentLineFillColor = foreground;
-        palette.UnplayedCurrentLineFillColor = foreground;
+        palette.NonCurrentLineFillColor = offFg;
+        palette.PlayedCurrentLineFillColor = activeFg;
+        palette.UnplayedCurrentLineFillColor = offFg;
         palette.ThemeType = isDark ? ElementTheme.Dark : ElementTheme.Light;
         FullscreenLyricsCanvas.SetNowPlayingPalette(palette);
         ApplyCanvasSurfaceTint(_viewModel.AlbumArtColor);

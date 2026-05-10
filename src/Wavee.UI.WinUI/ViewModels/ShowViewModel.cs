@@ -581,8 +581,11 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         var bg = Color.FromArgb(255, tier.BackgroundR, tier.BackgroundG, tier.BackgroundB);
         var bgTint = Color.FromArgb(255, tier.BackgroundTintedR, tier.BackgroundTintedG, tier.BackgroundTintedB);
 
+        // Light mode: blend toward white before applying alpha so dark covers
+        // don't drag the page dark. Dark mode unchanged.
+        var washColor = isDark ? bg : TintColorHelper.LightTint(bg);
         PaletteBackdropBrush = new SolidColorBrush(Color.FromArgb(
-            (byte)(isDark ? 60 : 38), bg.R, bg.G, bg.B));
+            (byte)(isDark ? 60 : 38), washColor.R, washColor.G, washColor.B));
 
         // Cover-derived accent. Mirrors ArtistViewModel.ApplyTheme: Spotify's
         // TextBrightAccent often resolves to brand green (#1DB954) regardless of

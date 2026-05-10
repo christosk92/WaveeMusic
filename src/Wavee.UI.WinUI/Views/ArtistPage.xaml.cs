@@ -79,6 +79,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private bool _crossfadeScheduled;
     private bool _isDisposed;
     private bool _trimmedForNavigationCache;
+    private string? _lastRestoredArtistId;
     private bool _discographyRepeatersDetached;
     private double? _pendingNavigationScrollOffset;
     private string? _pendingNavigationScrollArtistId;
@@ -1244,6 +1245,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
         CaptureNavigationScrollPosition();
         _trimmedForNavigationCache = true;
+        _lastRestoredArtistId = ViewModel.ArtistId;
         _isNavigatingAway = true;
         CancelResizeDebounce();
         CollapseExpandedAlbum();
@@ -1310,9 +1312,16 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         DispatcherQueue.TryEnqueue(
             Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
             () => HeroGrid?.RestoreSurface());
-        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.artist.bindingsUpdate"))
+        // Skip the page-wide x:Bind re-evaluation when returning to the same
+        // artist we just left — every binding still points at the same data.
+        var sameArtist = !string.IsNullOrEmpty(_lastRestoredArtistId)
+            && string.Equals(_lastRestoredArtistId, ViewModel.ArtistId, StringComparison.Ordinal);
+        if (!sameArtist)
         {
-            Bindings?.Update();
+            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.artist.bindingsUpdate"))
+            {
+                Bindings?.Update();
+            }
         }
 
         if (!string.IsNullOrEmpty(ViewModel.ArtistId))

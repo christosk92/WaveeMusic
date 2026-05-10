@@ -295,12 +295,19 @@ public sealed partial class RightPanelView : UserControl
         if (_lyricsVm == null) return;
 
         bool isDark = ActualTheme != ElementTheme.Light;
-        var fg = isDark ? Colors.White : Colors.Black;
+        // Active (played + currently-playing) line: pure black/white for emphasis.
+        // Off-current and upcoming lines: softer gray/light-gray so the queue reads
+        // as de-emphasized instead of competing with the active line. Was pure
+        // black on white in Light mode, which the user flagged as too dark.
+        var activeFg = isDark ? Colors.White : Colors.Black;
+        var offFg = isDark
+            ? Color.FromArgb(0xFF, 0xC0, 0xC0, 0xC0)
+            : Color.FromArgb(0xFF, 0x55, 0x55, 0x55);
 
         var palette = _lyricsVm.WindowStatus.WindowPalette;
-        palette.NonCurrentLineFillColor = fg;
-        palette.PlayedCurrentLineFillColor = fg;
-        palette.UnplayedCurrentLineFillColor = fg;
+        palette.NonCurrentLineFillColor = offFg;
+        palette.PlayedCurrentLineFillColor = activeFg;
+        palette.UnplayedCurrentLineFillColor = offFg;
         palette.ThemeType = isDark
             ? Microsoft.UI.Xaml.ElementTheme.Dark
             : Microsoft.UI.Xaml.ElementTheme.Light;

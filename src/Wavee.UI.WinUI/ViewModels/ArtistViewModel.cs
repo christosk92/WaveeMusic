@@ -21,6 +21,7 @@ using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Data.Stores;
+using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Helpers;
 using Windows.UI;
 
@@ -52,48 +53,45 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private readonly List<LazyReleaseItem> _allReleases = [];
 
     // ── UI-bound collections ──
-    [ObservableProperty]
-    private ObservableCollection<LazyTrackItem> _topTracks = [];
+    // Bound collections kept as stable instances and mutated in place. Assigning
+    // a new reference forces ItemsRepeater/ListView to recycle every realized
+    // container; mutating the same instance lets the binding stay subscribed
+    // and avoids a full rebuild on cached-page restore. `Has*` derived
+    // properties must be raised manually after each mutation since they no
+    // longer ride on a property-replacement event.
+    private readonly ObservableCollection<LazyTrackItem> _topTracks = [];
+    public ObservableCollection<LazyTrackItem> TopTracks => _topTracks;
 
-    [ObservableProperty]
-    private IReadOnlyList<LazyReleaseItem> _albums = [];
+    private readonly ObservableCollection<LazyReleaseItem> _albums = [];
+    public IReadOnlyList<LazyReleaseItem> Albums => _albums;
 
-    [ObservableProperty]
-    private IReadOnlyList<LazyReleaseItem> _singles = [];
+    private readonly ObservableCollection<LazyReleaseItem> _singles = [];
+    public IReadOnlyList<LazyReleaseItem> Singles => _singles;
 
-    [ObservableProperty]
-    private IReadOnlyList<LazyReleaseItem> _compilations = [];
+    private readonly ObservableCollection<LazyReleaseItem> _compilations = [];
+    public IReadOnlyList<LazyReleaseItem> Compilations => _compilations;
 
-    // ── Non-reactive collections (simple lists) ──
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasRelatedArtists))]
-    private IReadOnlyList<RelatedArtistVm> _relatedArtists = [];
-
+    private readonly ObservableCollection<RelatedArtistVm> _relatedArtists = [];
+    public IReadOnlyList<RelatedArtistVm> RelatedArtists => _relatedArtists;
     public bool HasRelatedArtists => RelatedArtists.Count > 0;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasConcerts))]
-    private IReadOnlyList<ConcertVm> _concerts = [];
+    private readonly ObservableCollection<ConcertVm> _concerts = [];
+    public IReadOnlyList<ConcertVm> Concerts => _concerts;
 
     [ObservableProperty]
     private ObservableCollection<LocationSearchResultVm> _locationSuggestions = [];
 
     /// <summary>Artist's external links (Twitter, Instagram, YouTube, etc.).</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasExternalLinks))]
-    [NotifyPropertyChangedFor(nameof(HasConnectSection))]
-    private IReadOnlyList<ArtistSocialLinkVm> _externalLinks = [];
+    private readonly ObservableCollection<ArtistSocialLinkVm> _externalLinks = [];
+    public IReadOnlyList<ArtistSocialLinkVm> ExternalLinks => _externalLinks;
 
     /// <summary>Top cities by listener count, with proportional bar widths.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasTopCities))]
-    [NotifyPropertyChangedFor(nameof(HasConnectSection))]
-    private IReadOnlyList<ArtistTopCityVm> _topCities = [];
+    private readonly ObservableCollection<ArtistTopCityVm> _topCities = [];
+    public IReadOnlyList<ArtistTopCityVm> TopCities => _topCities;
 
     /// <summary>Photo URLs from the artist's gallery (largest variant).</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasGallery))]
-    private IReadOnlyList<string> _galleryPhotos = [];
+    private readonly ObservableCollection<string> _galleryPhotos = [];
+    public IReadOnlyList<string> GalleryPhotos => _galleryPhotos;
 
     public bool HasExternalLinks => ExternalLinks.Count > 0;
     public bool HasTopCities => TopCities.Count > 0;
@@ -692,9 +690,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
         TopTracks.Clear();
         _allReleases.Clear();
-        Albums = [];
-        Singles = [];
-        Compilations = [];
+        _albums.Clear();
+        _singles.Clear();
+        _compilations.Clear();
         AlbumsTotalCount = 0;
         SinglesTotalCount = 0;
         CompilationsTotalCount = 0;
@@ -710,11 +708,17 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
             () =>
             {
-                RelatedArtists = [];
-                Concerts = [];
-                ExternalLinks = [];
-                TopCities = [];
-                GalleryPhotos = [];
+                _relatedArtists.Clear();
+                _concerts.Clear();
+                _externalLinks.Clear();
+                _topCities.Clear();
+                _galleryPhotos.Clear();
+                OnPropertyChanged(nameof(HasRelatedArtists));
+                OnPropertyChanged(nameof(HasConcerts));
+                OnPropertyChanged(nameof(HasExternalLinks));
+                OnPropertyChanged(nameof(HasTopCities));
+                OnPropertyChanged(nameof(HasConnectSection));
+                OnPropertyChanged(nameof(HasGallery));
             });
     }
 
@@ -767,9 +771,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             target.AddRange(sorted);
         }
 
-        Albums = albums;
-        Singles = singles;
-        Compilations = compilations;
+        _albums.ReplaceWith(albums);
+        _singles.ReplaceWith(singles);
+        _compilations.ReplaceWith(compilations);
     }
 
     private static string InferTypeFromId(string id)
@@ -890,7 +894,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 newTracks.Add(LazyTrackItem.Placeholder($"placeholder-{idx}", idx));
                 idx++;
             }
-            TopTracks = newTracks;
+            _topTracks.ReplaceWith(newTracks);
+            NotifyPaginationChanged();
 
             // ── Backfill missing cover art (background, parallel) ──
             // Spotify's getArtistOverview GraphQL response is inconsistent: many
@@ -913,16 +918,17 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             // ── Background discography pagination ──
 
             // ── Related artists (batch swap) ──
-            RelatedArtists = overview.RelatedArtists.Select(ra => new RelatedArtistVm
+            _relatedArtists.ReplaceWith(overview.RelatedArtists.Select(ra => new RelatedArtistVm
             {
                 Id = ra.Id,
                 Uri = ra.Uri,
                 Name = ra.Name,
                 ImageUrl = ra.ImageUrl
-            }).ToList();
+            }));
+            OnPropertyChanged(nameof(HasRelatedArtists));
 
             // ── Concerts (batch swap) ──
-            Concerts = overview.Concerts.Select(c => new ConcertVm
+            _concerts.ReplaceWith(overview.Concerts.Select(c => new ConcertVm
             {
                 Title = c.Title,
                 Venue = c.Venue,
@@ -937,7 +943,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 IsFestival = c.IsFestival,
                 IsNearUser = c.IsNearUser,
                 Uri = c.Uri
-            }).ToList();
+            }));
+            OnPropertyChanged(nameof(HasConcerts));
 
             UserLocationName = _locationService.CurrentCity;
 
@@ -948,18 +955,19 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             OnPropertyChanged(nameof(HasWatchFeed));
 
             // ── Connect & Markets + Gallery (batch swap) ──
-            ExternalLinks = overview.ExternalLinks.Select(l => new ArtistSocialLinkVm
+            _externalLinks.ReplaceWith(overview.ExternalLinks.Select(l => new ArtistSocialLinkVm
             {
                 Name = l.Name,
                 Url = l.Url,
                 Icon = Wavee.UI.WinUI.Styles.FluentGlyphs.ResolveSocialIcon(l.Url, l.Name)
-            }).ToList();
+            }));
+            OnPropertyChanged(nameof(HasExternalLinks));
 
             // Bar widths normalized against the largest city's listener count.
             var maxListeners = overview.TopCities.Count == 0
                 ? 1L
                 : overview.TopCities.Max(c => c.NumberOfListeners);
-            TopCities = overview.TopCities.Take(5).Select(c => new ArtistTopCityVm
+            _topCities.ReplaceWith(overview.TopCities.Take(5).Select(c => new ArtistTopCityVm
             {
                 City = c.City,
                 Country = c.Country,
@@ -968,9 +976,12 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 RelativeWidth = maxListeners > 0
                     ? Math.Max(8, c.NumberOfListeners * 200.0 / maxListeners)
                     : 8
-            }).ToList();
+            }));
+            OnPropertyChanged(nameof(HasTopCities));
+            OnPropertyChanged(nameof(HasConnectSection));
 
-            GalleryPhotos = overview.GalleryPhotos.ToList();
+            _galleryPhotos.ReplaceWith(overview.GalleryPhotos);
+            OnPropertyChanged(nameof(HasGallery));
 
             CurrentPage = 0;
             NotifyPaginationChanged();
@@ -1616,8 +1627,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         NotifyPaginationChanged();
     }
 
-    partial void OnTopTracksChanged(ObservableCollection<LazyTrackItem> value) => NotifyPaginationChanged();
-
     partial void OnArtistNameChanged(string? value)
     {
         if (TabItemParameter != null && !string.IsNullOrEmpty(value))
@@ -1829,19 +1838,26 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         // artist accent look identical (and disconnected from the visual).
         var accentBase = TintColorHelper.BrightenForTint(bgTint, targetMax: 210);
 
-        // Section bar — full-alpha lifted accent, matches Home AccentLineBrush.
-        SectionAccentBrush = new SolidColorBrush(Color.FromArgb(255, accentBase.R, accentBase.G, accentBase.B));
+        // Section bar — lifted accent. Drop alpha in Light mode so the bar reads
+        // as an accent rather than a stoplight against the lighter page.
+        SectionAccentBrush = new SolidColorBrush(Color.FromArgb(
+            (byte)(isDark ? 255 : 200), accentBase.R, accentBase.G, accentBase.B));
 
         // Hero scrim — same alpha cadence used by AlbumViewModel/PlaylistViewModel.
+        // Light mode blends palette colors toward white and cuts alphas so dark
+        // covers don't drag the page dark.
+        var heroBg     = isDark ? bg     : TintColorHelper.LightTint(bg);
+        var heroBgTint = isDark ? bgTint : TintColorHelper.LightTint(bgTint);
+        var (a0, a1, a2, a3) = isDark ? (240, 176, 80, 0) : (140, 100, 50, 0);
         var heroGrad = new LinearGradientBrush
         {
             StartPoint = new Windows.Foundation.Point(0, 0),
             EndPoint = new Windows.Foundation.Point(1, 0),
         };
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(240, bgTint.R, bgTint.G, bgTint.B), Offset = 0.0 });
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(176, bg.R, bg.G, bg.B),         Offset = 0.35 });
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(80,  bg.R, bg.G, bg.B),         Offset = 0.65 });
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(0,   bg.R, bg.G, bg.B),         Offset = 1.0 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a0, heroBgTint.R, heroBgTint.G, heroBgTint.B), Offset = 0.0 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a1, heroBg.R,     heroBg.G,     heroBg.B),     Offset = 0.35 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a2, heroBg.R,     heroBg.G,     heroBg.B),     Offset = 0.65 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a3, heroBg.R,     heroBg.G,     heroBg.B),     Offset = 1.0 });
         PaletteHeroGradientBrush = heroGrad;
 
         // Play button — same lifted accent as the section bar so the page

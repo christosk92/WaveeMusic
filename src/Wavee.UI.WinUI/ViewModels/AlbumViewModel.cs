@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Threading;
@@ -23,6 +24,7 @@ using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Data.Stores;
 using Wavee.UI.WinUI.Diagnostics;
 using Wavee.UI.WinUI.Extensions;
+using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -77,9 +79,13 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private int _totalTracks;
     private string _totalDuration = "";
     private IReadOnlyList<object> _selectedItems = Array.Empty<object>();
-    private IReadOnlyList<PlaylistSummaryDto> _playlists = Array.Empty<PlaylistSummaryDto>();
-    private IReadOnlyList<AlbumRelatedResult> _moreByArtist = [];
-    private IReadOnlyList<AlbumMerchItemResult> _merchItems = [];
+    private readonly ObservableCollection<PlaylistSummaryDto> _playlists = [];
+    // Bound collections kept as stable instances and mutated in place. Assigning
+    // a new list reference here forces ItemsRepeater/ListView to recycle every
+    // realized container; mutating the same instance lets the binding stay
+    // subscribed and avoids a full rebuild on cached-page restore.
+    private readonly ObservableCollection<AlbumRelatedResult> _moreByArtist = [];
+    private readonly ObservableCollection<AlbumMerchItemResult> _merchItems = [];
 
     // Multi-artist surfaces (header AvatarStack + flyout). _artists is the
     // album-billed list (drives the avatars), _allDistinctArtists is billed
@@ -426,20 +432,12 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// <summary>
     /// User's playlists for "Add to playlist" menu.
     /// </summary>
-    public IReadOnlyList<PlaylistSummaryDto> Playlists
-    {
-        get => _playlists;
-        private set => this.RaiseAndSetIfChanged(ref _playlists, value);
-    }
+    public IReadOnlyList<PlaylistSummaryDto> Playlists => _playlists;
 
     /// <summary>
     /// More albums by the same artist.
     /// </summary>
-    public IReadOnlyList<AlbumRelatedResult> MoreByArtist
-    {
-        get => _moreByArtist;
-        private set => this.RaiseAndSetIfChanged(ref _moreByArtist, value);
-    }
+    public IReadOnlyList<AlbumRelatedResult> MoreByArtist => _moreByArtist;
 
     private bool _hasMoreByArtist;
     public bool HasMoreByArtist
@@ -458,22 +456,14 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// <summary>
     /// Merchandise items for this album.
     /// </summary>
-    public IReadOnlyList<AlbumMerchItemResult> MerchItems
-    {
-        get => _merchItems;
-        private set => this.RaiseAndSetIfChanged(ref _merchItems, value);
-    }
+    public IReadOnlyList<AlbumMerchItemResult> MerchItems => _merchItems;
 
     public bool HasMerch => MerchItems.Count > 0;
 
     // ── Alternate releases (deluxe / remaster / anniversary editions of THIS album) ──
 
-    private IReadOnlyList<AlbumAlternateReleaseResult> _alternateReleases = [];
-    public IReadOnlyList<AlbumAlternateReleaseResult> AlternateReleases
-    {
-        get => _alternateReleases;
-        private set => this.RaiseAndSetIfChanged(ref _alternateReleases, value);
-    }
+    private readonly ObservableCollection<AlbumAlternateReleaseResult> _alternateReleases = [];
+    public IReadOnlyList<AlbumAlternateReleaseResult> AlternateReleases => _alternateReleases;
 
     private bool _hasAlternateReleases;
     public bool HasAlternateReleases
@@ -578,14 +568,12 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public string AlbumTypeUpper => AlbumType?.ToUpperInvariant() ?? "ALBUM";
 
     /// <summary>
-    /// Filtered and sorted tracks for UI binding. Replaced wholesale on load/filter/sort.
+    /// Filtered and sorted tracks for UI binding. Stable instance — mutate via
+    /// <see cref="ObservableCollectionExtensions.ReplaceWith{T}"/> / Clear so the
+    /// bound ListView keeps its CollectionChanged subscription across navs.
     /// </summary>
-    private IReadOnlyList<LazyTrackItem> _filteredTracks = Array.Empty<LazyTrackItem>();
-    public IReadOnlyList<LazyTrackItem> FilteredTracks
-    {
-        get => _filteredTracks;
-        private set => this.RaiseAndSetIfChanged(ref _filteredTracks, value);
-    }
+    private readonly ObservableCollection<LazyTrackItem> _filteredTracks = [];
+    public IReadOnlyList<LazyTrackItem> FilteredTracks => _filteredTracks;
 
     // Sort indicator properties for column headers
     public bool IsSortingByTitle => CurrentSortColumn == AlbumSortColumn.Title;
@@ -683,10 +671,10 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
                 () =>
                 {
                     HasAlternateReleases = false;
-                    AlternateReleases = [];
+                    _alternateReleases.Clear();
                     HasMoreByArtist = false;
-                    MoreByArtist = [];
-                    MerchItems = [];
+                    _moreByArtist.Clear();
+                    _merchItems.Clear();
                     this.RaisePropertyChanged(nameof(HasMerch));
                 });
             this.RaisePropertyChanged(nameof(AlbumTypeUpper));
@@ -702,9 +690,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             IsLoadingTracks = true;
             _allTracks = [];
             _popularTrackIds.Clear();
-            FilteredTracks = Enumerable.Range(0, 10)
-                .Select(i => LazyTrackItem.Placeholder($"ph-{i}", i + 1))
-                .ToList();
+            _filteredTracks.ReplaceWith(Enumerable.Range(0, 10)
+                .Select(i => LazyTrackItem.Placeholder($"ph-{i}", i + 1)));
         }
 
         AlbumId = albumId;
@@ -758,14 +745,14 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         Deactivate();
         _appliedDetailFor = null;
 
-        FilteredTracks = Array.Empty<LazyTrackItem>();
+        _filteredTracks.Clear();
         _allTracks = [];
         _popularTrackIds.Clear();
-        AlternateReleases = [];
+        _alternateReleases.Clear();
         HasAlternateReleases = false;
-        MoreByArtist = [];
+        _moreByArtist.Clear();
         HasMoreByArtist = false;
-        MerchItems = [];
+        _merchItems.Clear();
         this.RaisePropertyChanged(nameof(HasMerch));
     }
 
@@ -845,7 +832,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             _ => result // already in track order
         };
 
-        FilteredTracks = result.ToList();
+        _filteredTracks.ReplaceWith(result);
     }
 
     public bool IsPopularTrack(object? row)
@@ -959,24 +946,34 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
         var bg = Color.FromArgb(255, tier.BackgroundR, tier.BackgroundG, tier.BackgroundB);
         var bgTint = Color.FromArgb(255, tier.BackgroundTintedR, tier.BackgroundTintedG, tier.BackgroundTintedB);
-        var accent = Color.FromArgb(255, tier.TextAccentR, tier.TextAccentG, tier.TextAccentB);
+        // Lifted accent base — same shape as Artist/Show. Replaces raw TextAccent
+        // (which was ≈ Spotify green for most albums) so the play button reads as
+        // part of the cover-derived identity in both Light and Dark.
+        var accentBase = TintColorHelper.BrightenForTint(bgTint, targetMax: 210);
+
+        // Light mode: blend palette colors toward white before applying alpha so
+        // dark covers don't drag the page dark. Dark mode unchanged.
+        var heroBg     = isDark ? bg     : TintColorHelper.LightTint(bg);
+        var heroBgTint = isDark ? bgTint : TintColorHelper.LightTint(bgTint);
+        var washColor  = isDark ? bg     : TintColorHelper.LightTint(bg);
 
         PaletteBackdropBrush = new SolidColorBrush(Color.FromArgb(
-            (byte)(isDark ? 60 : 38), bg.R, bg.G, bg.B));
+            (byte)(isDark ? 60 : 38), washColor.R, washColor.G, washColor.B));
 
+        var (a0, a1, a2, a3) = isDark ? (240, 176, 80, 0) : (140, 100, 50, 0);
         var heroGrad = new LinearGradientBrush
         {
             StartPoint = new Windows.Foundation.Point(0, 0),
             EndPoint = new Windows.Foundation.Point(1, 0),
         };
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(240, bgTint.R, bgTint.G, bgTint.B), Offset = 0.0 });
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(176, bg.R, bg.G, bg.B),         Offset = 0.35 });
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(80,  bg.R, bg.G, bg.B),         Offset = 0.65 });
-        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb(0,   bg.R, bg.G, bg.B),         Offset = 1.0 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a0, heroBgTint.R, heroBgTint.G, heroBgTint.B), Offset = 0.0 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a1, heroBg.R,     heroBg.G,     heroBg.B),     Offset = 0.35 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a2, heroBg.R,     heroBg.G,     heroBg.B),     Offset = 0.65 });
+        heroGrad.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)a3, heroBg.R,     heroBg.G,     heroBg.B),     Offset = 1.0 });
         PaletteHeroGradientBrush = heroGrad;
 
-        PaletteAccentPillBrush = new SolidColorBrush(accent);
-        var accentLuma = (accent.R * 299 + accent.G * 587 + accent.B * 114) / 1000;
+        PaletteAccentPillBrush = new SolidColorBrush(accentBase);
+        var accentLuma = (accentBase.R * 299 + accentBase.G * 587 + accentBase.B * 114) / 1000;
         PaletteAccentPillForegroundBrush = new SolidColorBrush(
             accentLuma > 160 ? Color.FromArgb(255, 0, 0, 0) : Color.FromArgb(255, 255, 255, 255));
     }
@@ -1023,9 +1020,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             // Show shimmer placeholders immediately if we don't have any tracks yet.
             if (_allTracks.Count == 0)
             {
-                FilteredTracks = Enumerable.Range(0, 10)
-                    .Select(i => LazyTrackItem.Placeholder($"ph-{i}", i + 1))
-                    .ToList();
+                _filteredTracks.ReplaceWith(Enumerable.Range(0, 10)
+                    .Select(i => LazyTrackItem.Placeholder($"ph-{i}", i + 1)));
             }
 
             // Rootlist for "Add to playlist" — fire-and-forget so it doesn't block detail render.
@@ -1120,12 +1116,12 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             ApplyFilterAndSort();
 
             // Related albums
-            MoreByArtist = detail.MoreByArtist.ToList();
+            _moreByArtist.ReplaceWith(detail.MoreByArtist);
             HasMoreByArtist = MoreByArtist.Count > 0;
             HasNoRelatedAlbums = !HasMoreByArtist;
 
             // Alternate releases (deluxe / remaster / anniversary editions of THIS album)
-            AlternateReleases = detail.AlternateReleases.ToList();
+            _alternateReleases.ReplaceWith(detail.AlternateReleases);
             HasAlternateReleases = AlternateReleases.Count > 0;
 
             // Pre-release banner
@@ -1183,7 +1179,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             _dispatcherQueue.TryEnqueue(() =>
             {
                 if (!_disposed)
-                    Playlists = list;
+                    _playlists.ReplaceWith(list);
             });
         }
         catch (Exception ex)
@@ -1351,7 +1347,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         try
         {
             var items = await Task.Run(async () => await _albumService.GetMerchAsync(albumUri));
-            MerchItems = items.ToList();
+            _merchItems.ReplaceWith(items);
             this.RaisePropertyChanged(nameof(HasMerch));
         }
         catch (Exception ex)
@@ -1405,10 +1401,10 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
         _allTracks.Clear();
         _popularTrackIds.Clear();
-        FilteredTracks = Array.Empty<LazyTrackItem>();
-        AlternateReleases = [];
-        MoreByArtist = [];
-        MerchItems = [];
-        Playlists = Array.Empty<PlaylistSummaryDto>();
+        _filteredTracks.Clear();
+        _alternateReleases.Clear();
+        _moreByArtist.Clear();
+        _merchItems.Clear();
+        _playlists.Clear();
     }
 }

@@ -313,7 +313,6 @@
                 SelectionMode="Extended">
                 <ListView.ItemContainerTransitions>
                     <TransitionCollection>
-                        <EntranceThemeTransition IsStaggeringEnabled="False"/>
                         <AddDeleteThemeTransition/>
                     </TransitionCollection>
                 </ListView.ItemContainerTransitions>

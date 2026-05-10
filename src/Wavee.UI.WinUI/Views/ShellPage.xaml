@@ -150,13 +150,7 @@
                                 x:Name="TabContentPresenter"
                                 Content="{x:Bind ViewModel.SelectedTabItem.ContentFrame, Mode=OneWay}"
                                 HorizontalAlignment="Stretch"
-                                VerticalAlignment="Stretch">
-                                <ContentPresenter.ContentTransitions>
-                                    <TransitionCollection>
-                                        <EntranceThemeTransition/>
-                                    </TransitionCollection>
-                                </ContentPresenter.ContentTransitions>
-                            </ContentPresenter>
+                                VerticalAlignment="Stretch"/>
                         </Border>
                     </Border>
 

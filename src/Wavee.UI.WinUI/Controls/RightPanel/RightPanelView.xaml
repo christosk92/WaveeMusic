@@ -57,19 +57,6 @@
                     <SolidColorBrush x:Key="RightPanelTabActiveForegroundBrush" Color="#FFF3F7FA"/>
                     <SolidColorBrush x:Key="RightPanelTabInactiveForegroundBrush" Color="#AFC7D3DB"/>
                 </ResourceDictionary>
-                <ResourceDictionary x:Key="Default">
-                    <AcrylicBrush x:Key="DetailsCardBrush"
-                                  TintColor="#10161C"
-                                  TintOpacity="0.38"
-                                  TintLuminosityOpacity="0.76"
-                                  FallbackColor="#CC10161C"/>
-                    <SolidColorBrush x:Key="RightPanelTabRailBackgroundBrush" Color="#4D1C2330"/>
-                    <SolidColorBrush x:Key="RightPanelTabRailBorderBrush" Color="#16FFFFFF"/>
-                    <SolidColorBrush x:Key="RightPanelTabActivePillBrush" Color="#FF2E3D4A"/>
-                    <SolidColorBrush x:Key="RightPanelTabActiveBorderBrush" Color="#1CFFFFFF"/>
-                    <SolidColorBrush x:Key="RightPanelTabActiveForegroundBrush" Color="#FFF3F7FA"/>
-                    <SolidColorBrush x:Key="RightPanelTabInactiveForegroundBrush" Color="#AFC7D3DB"/>
-                </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
             <Style x:Key="RightPanelTabButtonStyle" TargetType="Button">
                 <Setter Property="Background" Value="Transparent"/>

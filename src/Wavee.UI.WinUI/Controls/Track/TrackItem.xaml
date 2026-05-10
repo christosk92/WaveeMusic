@@ -69,8 +69,8 @@
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                     <Grid>
                         <FontIcon x:Name="CompactArtPlaceholder"
-                                  Glyph="&#xE8D6;" FontSize="18" Opacity="0.35"
-                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                  Glyph="&#xE8D6;" FontSize="18" Opacity="0.55"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         <Image x:Name="CompactAlbumArt" Stretch="UniformToFill"
                                behaviors:ImageFallbackBehavior.HideOnError="True"
@@ -281,7 +281,8 @@
                     <Border x:Name="RowAlbumArtBorder" Grid.Column="2" Width="34" Height="34" CornerRadius="4"
                             Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                         <Grid>
-                            <FontIcon x:Name="RowArtPlaceholder" Glyph="&#xE8D6;" FontSize="16" Opacity="0.3"
+                            <FontIcon x:Name="RowArtPlaceholder" Glyph="&#xE8D6;" FontSize="16" Opacity="0.55"
+                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             <Image x:Name="RowAlbumArt" Stretch="UniformToFill"
                                    behaviors:ImageFallbackBehavior.HideOnError="True"

@@ -44,7 +44,17 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private string _filterText = string.Empty;
     private bool _disposed;
     private readonly HashSet<Track.TrackItem> _itemsViewRows = new();
-    private readonly Dictionary<Track.TrackItem, Action> _itemsViewLazyRowCleanups = new();
+    // Centralized LazyTrackItem.PropertyChanged subscription book-keeping. One
+    // shared handler (_lazyItemHandler) is attached at most once per source
+    // LazyTrackItem; the realized row is looked up via _rowByLazyItem on
+    // notification. This replaces the previous per-row subscription model
+    // (~50× simultaneous closures) and shrinks the WinRT reference-tracker walk
+    // accordingly. Lifecycle: source membership owned by _visibleRows
+    // CollectionChanged; row↔item mapping owned by container Loaded/Unloaded.
+    private readonly Dictionary<LazyTrackItem, Track.TrackItem> _rowByLazyItem = new();
+    private readonly Dictionary<Track.TrackItem, LazyTrackItem> _lazyItemByRow = new();
+    private readonly HashSet<LazyTrackItem> _subscribedLazyItems = new();
+    private PropertyChangedEventHandler? _lazyItemHandler;
     public event EventHandler<ITrackItem>? RowSelected;
 
     // Size-slider stops (matches the XS/S/M/L/XL segmentation in the view flyout).
@@ -59,6 +69,9 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         ApplyGroupHeaderTemplate();
         RowsList.ItemsSource = _visibleRows;
         RowsItemsView.ItemsSource = _visibleRows;
+        // Centralized subscription bus (see field comment).
+        _lazyItemHandler = OnAnyLazyItemPropertyChanged;
+        _visibleRows.CollectionChanged += OnVisibleRowsCollectionChanged;
         RowsList.ContainerContentChanging += RowsList_ContainerContentChanging;
         RowsList.SelectionChanged += RowsList_SelectionChanged;
         RowsList.Loaded += RowsList_Loaded;
@@ -224,7 +237,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         if (args.ItemContainer is not ListViewItem container) return;
         if (args.InRecycleQueue)
         {
-            ClearLazyRowSubscription(container);
+            if (container.ContentTemplateRoot is Track.TrackItem recycledRow)
+                UnregisterRow(recycledRow);
             return;
         }
         if (container.ContentTemplateRoot is not Track.TrackItem item) return;
@@ -242,7 +256,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 item.ShowPopularityBadge = ShouldShowPopularityBadge(args.Item);
                 item.SetAlternatingBorder(IsAlternateRow(args.Item, args.ItemIndex), UseCardRows);
                 item.IsLoading = args.Item is ITrackItem { IsLoaded: false };
-                SyncLazyRowSubscription(container, item, args.Item);
+                RegisterRowForLazyItem(item, args.Item as LazyTrackItem);
                 WireContainerToggleHandlers(container);
                 args.RegisterUpdateCallback(RowsList_ContainerContentChanging);
                 break;
@@ -276,43 +290,98 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         }
     }
 
-    private void SyncLazyRowSubscription(ListViewItem container, Track.TrackItem row, object? sourceItem)
+    // ── Centralized LazyTrackItem subscription bus ─────────────────────────
+    // Source-membership lifecycle: subscribe/unsubscribe per item from
+    // _visibleRows.CollectionChanged. Row↔item mapping lifecycle: maintained
+    // by the two row paths below.
+
+    private void OnVisibleRowsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        ClearLazyRowSubscription(container);
-
-        if (sourceItem is not LazyTrackItem lazy)
-            return;
-
-        PropertyChangedEventHandler handler = (_, e) =>
+        switch (e.Action)
         {
-            if (e.PropertyName is not (nameof(LazyTrackItem.IsLoaded)
-                or nameof(LazyTrackItem.Data)
-                or nameof(ITrackItem.AddedAtFormatted)
-                or nameof(ITrackItem.PlayCountFormatted)))
-            {
-                return;
-            }
-
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                if (!ReferenceEquals(container.Content, lazy)) return;
-                if (container.ContentTemplateRoot is not Track.TrackItem currentRow) return;
-
-                currentRow.IsLoading = !lazy.IsLoaded;
-                if (lazy.IsLoaded)
-                    ApplyFormattedCells(currentRow, lazy);
-            });
-        };
-
-        lazy.PropertyChanged += handler;
-        container.Tag = (Action)(() => lazy.PropertyChanged -= handler);
+            case NotifyCollectionChangedAction.Add:
+                if (e.NewItems is not null)
+                    foreach (var x in e.NewItems) if (x is LazyTrackItem lazy) SubscribeLazyItem(lazy);
+                break;
+            case NotifyCollectionChangedAction.Remove:
+                if (e.OldItems is not null)
+                    foreach (var x in e.OldItems) if (x is LazyTrackItem lazy) UnsubscribeLazyItem(lazy);
+                break;
+            case NotifyCollectionChangedAction.Replace:
+                if (e.OldItems is not null)
+                    foreach (var x in e.OldItems) if (x is LazyTrackItem lazy) UnsubscribeLazyItem(lazy);
+                if (e.NewItems is not null)
+                    foreach (var x in e.NewItems) if (x is LazyTrackItem lazy) SubscribeLazyItem(lazy);
+                break;
+            case NotifyCollectionChangedAction.Reset:
+                // ReplaceWith fires a single Reset; reconcile by diffing the
+                // current source against what we think we're subscribed to.
+                ResyncLazyItemSubscriptions();
+                break;
+        }
     }
 
-    private static void ClearLazyRowSubscription(ListViewItem container)
+    private void SubscribeLazyItem(LazyTrackItem lazy)
     {
-        if (container.Tag is not Action cleanup) return;
-        cleanup();
-        container.Tag = null;
+        if (_subscribedLazyItems.Add(lazy) && _lazyItemHandler is not null)
+            lazy.PropertyChanged += _lazyItemHandler;
+    }
+
+    private void UnsubscribeLazyItem(LazyTrackItem lazy)
+    {
+        if (_subscribedLazyItems.Remove(lazy) && _lazyItemHandler is not null)
+            lazy.PropertyChanged -= _lazyItemHandler;
+    }
+
+    private void ResyncLazyItemSubscriptions()
+    {
+        var current = new HashSet<LazyTrackItem>();
+        foreach (var item in _visibleRows)
+            if (item is LazyTrackItem lazy) current.Add(lazy);
+
+        // Drop any subscription whose item is no longer in the source.
+        if (_subscribedLazyItems.Count > 0)
+        {
+            var toDrop = new List<LazyTrackItem>();
+            foreach (var lazy in _subscribedLazyItems)
+                if (!current.Contains(lazy)) toDrop.Add(lazy);
+            foreach (var lazy in toDrop) UnsubscribeLazyItem(lazy);
+        }
+
+        foreach (var lazy in current) SubscribeLazyItem(lazy);
+    }
+
+    private void OnAnyLazyItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not LazyTrackItem lazy) return;
+        if (e.PropertyName is not (nameof(LazyTrackItem.IsLoaded)
+            or nameof(LazyTrackItem.Data)
+            or nameof(ITrackItem.AddedAtFormatted)
+            or nameof(ITrackItem.PlayCountFormatted))) return;
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_rowByLazyItem.TryGetValue(lazy, out var row)) return;
+            if (!ReferenceEquals(row.Track, lazy)) return;
+            row.IsLoading = !lazy.IsLoaded;
+            if (lazy.IsLoaded)
+                ApplyFormattedCells(row, lazy);
+        });
+    }
+
+    private void RegisterRowForLazyItem(Track.TrackItem row, LazyTrackItem? lazy)
+    {
+        UnregisterRow(row);
+        if (lazy is null) return;
+        _rowByLazyItem[lazy] = row;
+        _lazyItemByRow[row] = lazy;
+    }
+
+    private void UnregisterRow(Track.TrackItem row)
+    {
+        if (!_lazyItemByRow.Remove(row, out var lazy)) return;
+        if (_rowByLazyItem.TryGetValue(lazy, out var mapped) && ReferenceEquals(mapped, row))
+            _rowByLazyItem.Remove(lazy);
     }
 
     private void RowsItemsViewTrackItem_Loaded(object sender, RoutedEventArgs e)
@@ -324,7 +393,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         var sourceItem = row.Track;
         var index = sourceItem is null ? -1 : _visibleRows.IndexOf(sourceItem);
         ConfigureItemsViewRow(row, sourceItem, index);
-        SyncLazyRowSubscription(row, sourceItem);
+        RegisterRowForLazyItem(row, sourceItem as LazyTrackItem);
         ApplyItemsViewContainerDensity(row);
         row.IsSelected = sourceItem is not null && RowsItemsView.SelectedItems.Contains(sourceItem);
     }
@@ -335,7 +404,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             return;
 
         _itemsViewRows.Remove(row);
-        ClearLazyRowSubscription(row);
+        UnregisterRow(row);
     }
 
     private void ConfigureItemsViewRow(Track.TrackItem row, object? sourceItem, int itemIndex)
@@ -358,45 +427,6 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         row.EndBatchUpdate();
 
         ApplyFormattedCells(row, sourceItem);
-    }
-
-    private void SyncLazyRowSubscription(Track.TrackItem row, object? sourceItem)
-    {
-        ClearLazyRowSubscription(row);
-
-        if (sourceItem is not LazyTrackItem lazy)
-            return;
-
-        PropertyChangedEventHandler handler = (_, e) =>
-        {
-            if (e.PropertyName is not (nameof(LazyTrackItem.IsLoaded)
-                or nameof(LazyTrackItem.Data)
-                or nameof(ITrackItem.AddedAtFormatted)
-                or nameof(ITrackItem.PlayCountFormatted)))
-            {
-                return;
-            }
-
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                if (!ReferenceEquals(row.Track, lazy)) return;
-
-                row.IsLoading = !lazy.IsLoaded;
-                if (lazy.IsLoaded)
-                    ApplyFormattedCells(row, lazy);
-            });
-        };
-
-        lazy.PropertyChanged += handler;
-        _itemsViewLazyRowCleanups[row] = () => lazy.PropertyChanged -= handler;
-    }
-
-    private void ClearLazyRowSubscription(Track.TrackItem row)
-    {
-        if (!_itemsViewLazyRowCleanups.Remove(row, out var cleanup))
-            return;
-
-        cleanup();
     }
 
     private void ApplyItemsViewContainerDensity(Track.TrackItem row)
@@ -1796,17 +1826,24 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         {
             if (RowsList.ContainerFromItem(item) is not ListViewItem container)
                 continue;
-
-            ClearLazyRowSubscription(container);
             if (_containerPointerPressedHandler is not null)
                 container.RemoveHandler(UIElement.PointerPressedEvent, _containerPointerPressedHandler);
             if (_containerTappedHandler is not null)
                 container.RemoveHandler(UIElement.TappedEvent, _containerTappedHandler);
         }
-        foreach (var row in _itemsViewRows.ToArray())
-            ClearLazyRowSubscription(row);
         _itemsViewRows.Clear();
-        _itemsViewLazyRowCleanups.Clear();
+
+        // Tear down the centralized LazyTrackItem subscription bus.
+        _visibleRows.CollectionChanged -= OnVisibleRowsCollectionChanged;
+        if (_lazyItemHandler is not null)
+        {
+            foreach (var lazy in _subscribedLazyItems)
+                lazy.PropertyChanged -= _lazyItemHandler;
+        }
+        _subscribedLazyItems.Clear();
+        _rowByLazyItem.Clear();
+        _lazyItemByRow.Clear();
+        _lazyItemHandler = null;
 
         if (_subscribedSource is not null)
             _subscribedSource.CollectionChanged -= OnSourceCollectionChanged;

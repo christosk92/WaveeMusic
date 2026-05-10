@@ -8,8 +8,15 @@ namespace Wavee.UI.WinUI.Services;
 /// <summary>
 /// Two jobs while navigation is in flight:
 /// <list type="number">
-/// <item>Defer explicit working-set trims so they don't pile faults onto the
-/// critical click-to-paint path.</item>
+/// <item>Suppress per-nav working-set trims. Callers that request a trim
+/// during a nav window (via <see cref="TryDeferRelease"/>) are deferred —
+/// and then dropped when the window closes. <see cref="MemoryBudgetService"/>
+/// stays the single authority for "actually trim working set" decisions
+/// (10 s timer + OS pressure events). The previous behaviour was to fire
+/// the deferred trim 250 ms post-nav, which called
+/// <c>SetProcessWorkingSetSize(-1, -1)</c> and forced the OS to evict pages
+/// the very next nav had to hard-fault back in — a self-inflicted stutter
+/// on rapid back-and-forth navigation.</item>
 /// <item>Suppress implicit Gen2 collections by flipping
 /// <see cref="GCSettings.LatencyMode"/> to <see cref="GCLatencyMode.SustainedLowLatency"/>
 /// for the duration of the window. Without this, the runtime can fire a full
@@ -122,11 +129,6 @@ public static class NavigationGcCoordinator
 
     private static void EndCriticalWindow(string reason)
     {
-        int pendingCount = 0;
-        string? pendingReason = null;
-        ILogger? pendingLogger = null;
-        var shouldRunDeferredRelease = false;
-
         lock (Gate)
         {
             if (_activeWindows > 0)
@@ -153,28 +155,20 @@ public static class NavigationGcCoordinator
                 _priorLatencyMode = null;
             }
 
-            if (_deferredReleaseCount == 0)
-                return;
-
-            pendingCount = _deferredReleaseCount;
-            pendingReason = _deferredReason;
-            pendingLogger = _deferredLogger;
-            _deferredReleaseCount = 0;
-            _deferredReason = null;
-            _deferredLogger = null;
-            shouldRunDeferredRelease = true;
+            // Drain deferred-release state without executing the trim. Per-nav
+            // working-set trimming is now owned exclusively by MemoryBudgetService;
+            // firing it here forced page-out that the next nav had to fault back in.
+            if (_deferredReleaseCount > 0)
+            {
+                _deferredLogger?.LogDebug(
+                    "MemoryRelease deferrals dropped post-nav (count={Count}, reason={Reason}). " +
+                    "Working-set trim now owned exclusively by MemoryBudgetService.",
+                    _deferredReleaseCount, _deferredReason ?? reason);
+                _deferredReleaseCount = 0;
+                _deferredReason = null;
+                _deferredLogger = null;
+            }
         }
-
-        if (!shouldRunDeferredRelease)
-            return;
-
-        _ = ThreadPool.QueueUserWorkItem(_ =>
-        {
-            Thread.Sleep(250);
-            MemoryReleaseHelper.ReleaseWorkingSetNow(
-                pendingLogger,
-                $"deferred-after-navigation:{pendingReason ?? reason}:{pendingCount}");
-        });
     }
 
     private sealed class TimerState

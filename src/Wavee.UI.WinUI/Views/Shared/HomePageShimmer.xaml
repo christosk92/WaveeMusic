@@ -1,0 +1,453 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Views.Shared.HomePageShimmer"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <UserControl.Resources>
+        <!-- One generic-shelf card stack: 220 px square cover + title + subtitle.
+             Mirrors ContentCard's silhouette at the ShelfScroller's MinItemWidth=220. -->
+        <Style x:Key="ShelfCardStackStyle" TargetType="StackPanel">
+            <Setter Property="Width" Value="220"/>
+            <Setter Property="Spacing" Value="8"/>
+        </Style>
+
+        <!-- Baseline grid card stack: image + title + 2 subtitle lines, ~380 px tall. -->
+        <Style x:Key="BaselineCardStackStyle" TargetType="StackPanel">
+            <Setter Property="Spacing" Value="10"/>
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel Padding="32,24,32,24" Spacing="20">
+
+        <!-- ════════════════════════════════════════════════════════════
+             1. GREETING BAND (mirrors HomePage.xaml:598–675)
+             ════════════════════════════════════════════════════════════ -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Spacing="14" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
+                    <StackPanel VerticalAlignment="Center" Spacing="6">
+                        <controls:Shimmer Width="200" Height="24" CornerRadius="6"/>
+                        <controls:Shimmer Width="140" Height="12" CornerRadius="6"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Filter chip pulses. Match real chip Padding 14,6 + ~13 FontSize → ~28 px tall. -->
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <controls:Shimmer Width="64" Height="28" CornerRadius="14"/>
+                    <controls:Shimmer Width="80" Height="28" CornerRadius="14"/>
+                    <controls:Shimmer Width="72" Height="28" CornerRadius="14"/>
+                    <controls:Shimmer Width="88" Height="28" CornerRadius="14"/>
+                </StackPanel>
+
+                <!-- Visual-identity accent line (matches HomePage.xaml:656–661). -->
+                <Border Height="3"
+                        Width="120"
+                        HorizontalAlignment="Left"
+                        CornerRadius="1.5"
+                        Margin="0,4,0,0"
+                        Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+            </StackPanel>
+
+            <controls:Shimmer Grid.Column="1"
+                              Width="32" Height="32"
+                              CornerRadius="4"
+                              VerticalAlignment="Top"
+                              Margin="0,4,0,0"/>
+        </Grid>
+
+        <!-- ════════════════════════════════════════════════════════════
+             2. HERO BAND (mirrors HomePage.xaml:700–857)
+             VSM copied from real hero: wide ≥1500 px, stacked otherwise,
+             with inner ≥900 / <900 split for StackedShortcuts.
+             ════════════════════════════════════════════════════════════ -->
+        <Grid x:Name="HeroBand" Margin="0,4,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="480"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Hero placeholder: 14 px-rounded shimmer rectangle with a
+                 bottom-left text + CTA cluster mimicking the slide overlay. -->
+            <Grid x:Name="HeroSurface" Grid.Row="0" Grid.Column="0">
+                <Border CornerRadius="14"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <controls:Shimmer CornerRadius="14"/>
+                </Border>
+                <StackPanel HorizontalAlignment="Left"
+                            VerticalAlignment="Bottom"
+                            Margin="40,0,0,40"
+                            Spacing="14">
+                    <controls:Shimmer Width="80"  Height="11" CornerRadius="3"/>
+                    <controls:Shimmer Width="280" Height="32" CornerRadius="6"/>
+                    <controls:Shimmer Width="200" Height="14" CornerRadius="4"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                        <controls:Shimmer Width="96" Height="36" CornerRadius="18"/>
+                        <controls:Shimmer Width="96" Height="36" CornerRadius="18"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+
+            <!-- Wide-only side rail: 320 px, 3 cards stacked vertically (2*/1*/1*). -->
+            <Grid x:Name="WideSideRail"
+                  Grid.Row="0"
+                  Grid.Column="1"
+                  Width="320"
+                  Margin="20,0,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="2*"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Border Grid.Row="0" Margin="0,0,0,6" CornerRadius="14"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <controls:Shimmer CornerRadius="14"/>
+                </Border>
+                <Border Grid.Row="1" Margin="0,6,0,6" CornerRadius="14"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <controls:Shimmer CornerRadius="14"/>
+                </Border>
+                <Border Grid.Row="2" Margin="0,6,0,0" CornerRadius="14"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <controls:Shimmer CornerRadius="14"/>
+                </Border>
+            </Grid>
+
+            <!-- Stacked shortcuts (Medium + Narrow). Default markup matches
+                 Medium (1 big left + 2 stacked right). Narrow VSM collapses
+                 Card0 to a banner with Card1/Card2 side-by-side underneath.
+                 Visible only when outer VSM is in stacked state. -->
+            <Grid x:Name="StackedShortcuts"
+                  Grid.Row="1"
+                  Grid.Column="0"
+                  Grid.ColumnSpan="2"
+                  Margin="0,12,0,0"
+                  Visibility="Collapsed"
+                  RowSpacing="12"
+                  ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="140"/>
+                    <RowDefinition Height="140"/>
+                </Grid.RowDefinitions>
+
+                <Border x:Name="StackedCard0"
+                        Grid.Row="0" Grid.Column="0"
+                        Grid.ColumnSpan="4" Grid.RowSpan="2"
+                        CornerRadius="14"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <controls:Shimmer CornerRadius="14"/>
+                </Border>
+                <Border x:Name="StackedCard1"
+                        Grid.Row="0" Grid.Column="4" Grid.ColumnSpan="2"
+                        CornerRadius="14"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <controls:Shimmer CornerRadius="14"/>
+                </Border>
+                <Border x:Name="StackedCard2"
+                        Grid.Row="1" Grid.Column="4" Grid.ColumnSpan="2"
+                        CornerRadius="14"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <controls:Shimmer CornerRadius="14"/>
+                </Border>
+
+                <VisualStateManager.VisualStateGroups>
+                    <VisualStateGroup>
+                        <VisualState x:Name="StackedMediumState">
+                            <VisualState.StateTriggers>
+                                <AdaptiveTrigger MinWindowWidth="900"/>
+                            </VisualState.StateTriggers>
+                        </VisualState>
+                        <VisualState x:Name="StackedNarrowState">
+                            <VisualState.StateTriggers>
+                                <AdaptiveTrigger MinWindowWidth="0"/>
+                            </VisualState.StateTriggers>
+                            <VisualState.Setters>
+                                <Setter Target="StackedCard0.(Grid.ColumnSpan)" Value="6"/>
+                                <Setter Target="StackedCard0.(Grid.RowSpan)" Value="1"/>
+                                <Setter Target="StackedCard1.(Grid.Row)" Value="1"/>
+                                <Setter Target="StackedCard1.(Grid.Column)" Value="0"/>
+                                <Setter Target="StackedCard1.(Grid.ColumnSpan)" Value="3"/>
+                                <Setter Target="StackedCard2.(Grid.Row)" Value="1"/>
+                                <Setter Target="StackedCard2.(Grid.Column)" Value="3"/>
+                                <Setter Target="StackedCard2.(Grid.ColumnSpan)" Value="3"/>
+                            </VisualState.Setters>
+                        </VisualState>
+                    </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+            </Grid>
+
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup>
+                    <VisualState x:Name="HeroBandWideState">
+                        <VisualState.StateTriggers>
+                            <AdaptiveTrigger MinWindowWidth="1500"/>
+                        </VisualState.StateTriggers>
+                    </VisualState>
+                    <VisualState x:Name="HeroBandStackedState">
+                        <VisualState.StateTriggers>
+                            <AdaptiveTrigger MinWindowWidth="0"/>
+                        </VisualState.StateTriggers>
+                        <VisualState.Setters>
+                            <Setter Target="HeroSurface.(Grid.ColumnSpan)" Value="2"/>
+                            <Setter Target="WideSideRail.Visibility" Value="Collapsed"/>
+                            <Setter Target="StackedShortcuts.Visibility" Value="Visible"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+        </Grid>
+
+        <!-- ════════════════════════════════════════════════════════════
+             3. REGION 1 — 2 generic shelves (e.g. Made for you / Recently played)
+             ════════════════════════════════════════════════════════════ -->
+        <Grid Margin="-32,0,-32,0" Padding="32,28,32,8">
+            <Grid.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Offset="0"    Color="Transparent"/>
+                    <GradientStop Offset="0.18" Color="{ThemeResource SubtleFillColorSecondary}"/>
+                    <GradientStop Offset="0.82" Color="{ThemeResource SubtleFillColorSecondary}"/>
+                    <GradientStop Offset="1"    Color="Transparent"/>
+                </LinearGradientBrush>
+            </Grid.Background>
+            <StackPanel Spacing="0">
+                <controls:Shimmer Width="80"  Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                <controls:Shimmer Width="280" Height="28" CornerRadius="6" HorizontalAlignment="Left" Margin="0,4,0,18"/>
+
+                <StackPanel Spacing="20">
+
+                    <!-- Shelf A -->
+                    <StackPanel Margin="0,0,0,8">
+                        <Grid Margin="0,0,0,12" ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="3" Height="22" CornerRadius="1.5"
+                                    Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
+                                    VerticalAlignment="Center"/>
+                            <controls:Shimmer Grid.Column="1" Height="22" Width="180"
+                                              HorizontalAlignment="Left" CornerRadius="6"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                                <controls:Shimmer Height="220" CornerRadius="6"/>
+                                <controls:Shimmer Height="14" Width="140" HorizontalAlignment="Left" CornerRadius="4"/>
+                                <controls:Shimmer Height="12" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                            </StackPanel>
+                            <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                                <controls:Shimmer Height="220" CornerRadius="6"/>
+                                <controls:Shimmer Height="14" Width="120" HorizontalAlignment="Left" CornerRadius="4"/>
+                                <controls:Shimmer Height="12" Width="80"  HorizontalAlignment="Left" CornerRadius="4"/>
+                            </StackPanel>
+                            <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                                <controls:Shimmer Height="220" CornerRadius="6"/>
+                                <controls:Shimmer Height="14" Width="150" HorizontalAlignment="Left" CornerRadius="4"/>
+                                <controls:Shimmer Height="12" Width="110" HorizontalAlignment="Left" CornerRadius="4"/>
+                            </StackPanel>
+                            <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                                <controls:Shimmer Height="220" CornerRadius="6"/>
+                                <controls:Shimmer Height="14" Width="130" HorizontalAlignment="Left" CornerRadius="4"/>
+                                <controls:Shimmer Height="12" Width="90"  HorizontalAlignment="Left" CornerRadius="4"/>
+                            </StackPanel>
+                            <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                                <controls:Shimmer Height="220" CornerRadius="6"/>
+                                <controls:Shimmer Height="14" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                                <controls:Shimmer Height="12" Width="70"  HorizontalAlignment="Left" CornerRadius="4"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Shelf B -->
+                    <StackPanel Margin="0,0,0,8">
+                        <Grid Margin="0,0,0,12" ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="3" Height="22" CornerRadius="1.5"
+                                    Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
+                                    VerticalAlignment="Center"/>
+                            <controls:Shimmer Grid.Column="1" Height="22" Width="160"
+                                              HorizontalAlignment="Left" CornerRadius="6"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                                <controls:Shimmer Height="220" CornerRadius="6"/>
+                                <controls:Shimmer Height="14" Width="130" HorizontalAlignment="Left" CornerRadius="4"/>
+                                <controls:Shimmer Height="12" Width="90"  HorizontalAlignment="Left" CornerRadius="4"/>
+                            </StackPanel>
+                            <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                                <controls:Shimmer Height="220" CornerRadius="6"/>
+                                <controls:Shimmer Height="14" Width="110" HorizontalAlignment="Left" CornerRadius="4"/>
+                                <controls:Shimmer Height="12" Width="80"  HorizontalAlignment="Left" CornerRadius="4"/>
+                            </StackPanel>
+                            <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                                <controls:Shimmer Height="220" CornerRadius="6"/>
+                                <controls:Shimmer Height="14" Width="140" HorizontalAlignment="Left" CornerRadius="4"/>
+                                <controls:Shimmer Height="12" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                            </StackPanel>
+                            <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                                <controls:Shimmer Height="220" CornerRadius="6"/>
+                                <controls:Shimmer Height="14" Width="120" HorizontalAlignment="Left" CornerRadius="4"/>
+                                <controls:Shimmer Height="12" Width="70"  HorizontalAlignment="Left" CornerRadius="4"/>
+                            </StackPanel>
+                            <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                                <controls:Shimmer Height="220" CornerRadius="6"/>
+                                <controls:Shimmer Height="14" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                                <controls:Shimmer Height="12" Width="60"  HorizontalAlignment="Left" CornerRadius="4"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+
+        <!-- ════════════════════════════════════════════════════════════
+             4. REGION 2 — 1 baseline grid (e.g. Jump back in)
+             ════════════════════════════════════════════════════════════ -->
+        <Grid Margin="-32,0,-32,0" Padding="32,28,32,8">
+            <Grid.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Offset="0"    Color="Transparent"/>
+                    <GradientStop Offset="0.18" Color="{ThemeResource SubtleFillColorSecondary}"/>
+                    <GradientStop Offset="0.82" Color="{ThemeResource SubtleFillColorSecondary}"/>
+                    <GradientStop Offset="1"    Color="Transparent"/>
+                </LinearGradientBrush>
+            </Grid.Background>
+            <StackPanel Spacing="0">
+                <controls:Shimmer Width="80"  Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                <controls:Shimmer Width="240" Height="28" CornerRadius="6" HorizontalAlignment="Left" Margin="0,4,0,18"/>
+
+                <StackPanel Margin="0,0,0,8" Spacing="12">
+                    <Grid Margin="0,0,0,0" ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Width="3" Height="22" CornerRadius="1.5"
+                                Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
+                                VerticalAlignment="Center"/>
+                        <controls:Shimmer Grid.Column="1" Height="22" Width="200"
+                                          HorizontalAlignment="Left" CornerRadius="6"/>
+                    </Grid>
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Style="{StaticResource BaselineCardStackStyle}">
+                            <controls:Shimmer Height="220" CornerRadius="6"/>
+                            <controls:Shimmer Height="16" Width="180" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="140" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="100" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Style="{StaticResource BaselineCardStackStyle}">
+                            <controls:Shimmer Height="220" CornerRadius="6"/>
+                            <controls:Shimmer Height="16" Width="160" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="120" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="90"  HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Style="{StaticResource BaselineCardStackStyle}">
+                            <controls:Shimmer Height="220" CornerRadius="6"/>
+                            <controls:Shimmer Height="16" Width="170" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="130" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="110" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="3" Style="{StaticResource BaselineCardStackStyle}">
+                            <controls:Shimmer Height="220" CornerRadius="6"/>
+                            <controls:Shimmer Height="16" Width="150" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="115" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="14" Width="85"  HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+
+        <!-- ════════════════════════════════════════════════════════════
+             5. REGION 3 — 1 generic shelf (e.g. Fresh finds)
+             ════════════════════════════════════════════════════════════ -->
+        <Grid Margin="-32,0,-32,0" Padding="32,28,32,8">
+            <Grid.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Offset="0"    Color="Transparent"/>
+                    <GradientStop Offset="0.18" Color="{ThemeResource SubtleFillColorSecondary}"/>
+                    <GradientStop Offset="0.82" Color="{ThemeResource SubtleFillColorSecondary}"/>
+                    <GradientStop Offset="1"    Color="Transparent"/>
+                </LinearGradientBrush>
+            </Grid.Background>
+            <StackPanel Spacing="0">
+                <controls:Shimmer Width="80"  Height="11" CornerRadius="3" HorizontalAlignment="Left"/>
+                <controls:Shimmer Width="220" Height="28" CornerRadius="6" HorizontalAlignment="Left" Margin="0,4,0,18"/>
+
+                <StackPanel Margin="0,0,0,8">
+                    <Grid Margin="0,0,0,12" ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Width="3" Height="22" CornerRadius="1.5"
+                                Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
+                                VerticalAlignment="Center"/>
+                        <controls:Shimmer Grid.Column="1" Height="22" Width="170"
+                                          HorizontalAlignment="Left" CornerRadius="6"/>
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                            <controls:Shimmer Height="220" CornerRadius="6"/>
+                            <controls:Shimmer Height="14" Width="135" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="95"  HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                            <controls:Shimmer Height="220" CornerRadius="6"/>
+                            <controls:Shimmer Height="14" Width="115" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="80"  HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                            <controls:Shimmer Height="220" CornerRadius="6"/>
+                            <controls:Shimmer Height="14" Width="145" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="105" HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                            <controls:Shimmer Height="220" CornerRadius="6"/>
+                            <controls:Shimmer Height="14" Width="125" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="85"  HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource ShelfCardStackStyle}">
+                            <controls:Shimmer Height="220" CornerRadius="6"/>
+                            <controls:Shimmer Height="14" Width="105" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Height="12" Width="70"  HorizontalAlignment="Left" CornerRadius="4"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+
+    </StackPanel>
+</UserControl>

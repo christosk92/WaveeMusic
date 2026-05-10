@@ -1493,8 +1493,14 @@ public sealed partial class TrackItem : UserControl
         if (wasBuffering && !_isBuffering && isThisTrack)
             ResetHoverVisualState();
 
-        // Title accent color
-        var accentBrush = _themeColors?.AccentText ?? (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
+        // Title accent color. In Light mode, AccentTextFillColorPrimaryBrush
+        // resolves to a saturated bright accent (red on default Windows accent),
+        // which overpowers neighboring rows. Use the secondary variant in Light
+        // for de-emphasis; Dark keeps primary so the active row still pops.
+        var accentResource = ActualTheme == ElementTheme.Light
+            ? "AccentTextFillColorSecondaryBrush"
+            : "AccentTextFillColorPrimaryBrush";
+        var accentBrush = _themeColors?.AccentText ?? (Brush)Application.Current.Resources[accentResource];
         var normalBrush = _themeColors?.TextPrimary ?? (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
 
         if (Mode == TrackItemDisplayMode.Compact)

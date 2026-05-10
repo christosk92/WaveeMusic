@@ -28,6 +28,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
     private readonly ISettingsService _settings;
     private bool _isDisposed;
     private bool _trimmedForNavigationCache;
+    private string? _lastRestoredAlbumId;
 
     public AlbumViewModel ViewModel { get; }
 
@@ -236,6 +237,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             return;
 
         _trimmedForNavigationCache = true;
+        _lastRestoredAlbumId = ViewModel.AlbumId;
         ViewModel.Hibernate();
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
         // sibling is no longer rooted by the (singleton-store-subscribed) VM —
@@ -249,9 +251,17 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             return;
 
         _trimmedForNavigationCache = false;
-        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.bindingsUpdate"))
+        // Bindings.Update() re-evaluates every compiled x:Bind on the page. Skip
+        // it when the user is returning to the same album they just left —
+        // nothing in the binding graph actually changed in that case.
+        var sameAlbum = !string.IsNullOrEmpty(_lastRestoredAlbumId)
+            && string.Equals(_lastRestoredAlbumId, ViewModel.AlbumId, StringComparison.Ordinal);
+        if (!sameAlbum)
         {
-            Bindings?.Update();
+            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.bindingsUpdate"))
+            {
+                Bindings?.Update();
+            }
         }
         if (string.IsNullOrEmpty(ViewModel.AlbumId))
             return;

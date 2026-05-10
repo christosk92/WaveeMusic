@@ -28,6 +28,31 @@ internal static class TintColorHelper
             (byte)Math.Min(255, Math.Round(color.B * factor)));
     }
 
+    /// <summary>
+    /// Linear blend between two colors. Alpha is taken from <paramref name="from"/>;
+    /// only RGB is interpolated. <paramref name="ratio"/> is clamped to [0, 1] —
+    /// 0 returns the source color unchanged, 1 returns the target.
+    /// </summary>
+    public static Color BlendToward(Color from, Color to, double ratio)
+    {
+        ratio = Math.Clamp(ratio, 0.0, 1.0);
+        return Color.FromArgb(
+            from.A,
+            (byte)Math.Round(from.R + (to.R - from.R) * ratio),
+            (byte)Math.Round(from.G + (to.G - from.G) * ratio),
+            (byte)Math.Round(from.B + (to.B - from.B) * ratio));
+    }
+
+    /// <summary>
+    /// Lift a palette color toward white for Light-mode page washes / hero scrim.
+    /// The palette tones Spotify ships are tuned for ~100% opaque dark backgrounds;
+    /// dropping them onto a white theme — even at low alpha — leaves a darkened
+    /// veil. Pre-blending toward white with <paramref name="whiteWeight"/> retains
+    /// ~30% of the palette's hue while letting the page read pastel.
+    /// </summary>
+    public static Color LightTint(Color paletteColor, double whiteWeight = 0.7) =>
+        BlendToward(paletteColor, Color.FromArgb(255, 255, 255, 255), whiteWeight);
+
     public static bool TryParseHex(string? hex, out Color color)
     {
         color = default;
