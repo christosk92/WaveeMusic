@@ -10,8 +10,10 @@ using Microsoft.Extensions.Logging;
 using Wavee.Connect.Diagnostics;
 using Wavee.Core;
 using Wavee.Core.Audio;
+using Wavee.Core.Http.InspiredByMix;
 using Wavee.Core.Http.Lyrics;
 using Wavee.Core.Http.Presence;
+using Wavee.Core.Http.RadioApollo;
 using Wavee.Core.Session;
 using Wavee.Protocol.Collection;
 using Wavee.Protocol.ExtendedMetadata;
@@ -911,6 +913,109 @@ public sealed class SpClient : ISpClient
             context.Pages.Count > 0 ? context.Pages[0].Tracks.Count : 0);
 
         return context;
+    }
+
+    /// <inheritdoc />
+    public async Task<RadioApolloResponse> GetRadioApolloAutoplayAsync(
+        string seedTrackId,
+        IReadOnlyList<string> prevTrackIds,
+        int count = 50,
+        int pageNum = 2,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(seedTrackId);
+
+        // Path contains a Spotify URI with literal colons. RFC 3986 allows
+        // colons inside path segments (only forbidden at the start of the
+        // first path segment), so we don't escape them — matches what desktop
+        // sends on the wire.
+        var prevTracksCsv = string.Join(',', prevTrackIds.Where(s => !string.IsNullOrEmpty(s)));
+        var salt = Random.Shared.Next(100_000, 999_999);
+        var url =
+            $"{_baseUrl}/radio-apollo/v3/tracks/spotify:station:track:{seedTrackId}" +
+            $"?salt={salt}&autoplay=true&count={count}&isVideo=false" +
+            $"&prev_tracks={prevTracksCsv}&pageNum={pageNum}&minimal=true";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        _logger?.LogDebug(
+            "Resolving radio-apollo autoplay for seed: spotify:station:track:{Seed} with {PrevCount} prev tracks",
+            seedTrackId, prevTrackIds.Count);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            throw new SpClientException(SpClientFailureReason.NotFound, $"Radio-apollo not available for: {seedTrackId}");
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+        if ((int)response.StatusCode >= 500)
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (string.IsNullOrEmpty(json))
+            throw new SpClientException(SpClientFailureReason.NotFound, $"Radio-apollo returned empty body for: {seedTrackId}");
+
+        var raw = JsonSerializer.Deserialize(json, RadioApolloJsonContext.Default.RadioApolloRawResponse)
+                  ?? throw new SpClientException(SpClientFailureReason.ServerError, "Radio-apollo returned malformed JSON");
+
+        var tracks = (raw.Tracks ?? new List<RadioApolloRawTrack>())
+            .Where(t => !string.IsNullOrEmpty(t.Uri))
+            .Select(t => new RadioApolloTrack(t.Uri!, t.Uid, t.Metadata?.DecisionId))
+            .ToList();
+
+        _logger?.LogDebug(
+            "Radio-apollo resolved: tracks={Count}, nextPage={HasNext}",
+            tracks.Count, !string.IsNullOrEmpty(raw.NextPageUrl));
+
+        return new RadioApolloResponse(tracks, raw.NextPageUrl, raw.CorrelationId);
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> GetInspiredByMixPlaylistAsync(
+        string seedUri,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(seedUri);
+
+        // Spotify accepts literal colons in the path (e.g. spotify:artist:<id>) —
+        // RFC 3986 allows ':' inside path segments. Same handling as radio-apollo.
+        var url = $"{_baseUrl}/inspiredby-mix/v2/seed_to_playlist/{seedUri}?response-format=json";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+
+        _logger?.LogDebug("Resolving inspired-by-mix playlist for seed: {Seed}", seedUri);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+        if ((int)response.StatusCode >= 500)
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (string.IsNullOrEmpty(json)) return null;
+
+        var raw = JsonSerializer.Deserialize(json, InspiredByMixJsonContext.Default.InspiredByMixRawResponse);
+        var playlistUri = raw?.MediaItems?.FirstOrDefault(m => !string.IsNullOrEmpty(m.Uri))?.Uri;
+
+        _logger?.LogDebug("Inspired-by-mix resolved: seed={Seed} → {Playlist}",
+            seedUri, playlistUri ?? "<none>");
+
+        return playlistUri;
     }
 
     /// <summary>

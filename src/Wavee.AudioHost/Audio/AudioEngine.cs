@@ -1,9 +1,11 @@
+using System.Diagnostics;
 using System.Reactive.Subjects;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Wavee.AudioHost.Audio.Abstractions;
 using Wavee.AudioHost.Audio.Decoders;
 using Wavee.AudioHost.Audio.Processors;
+using Wavee.AudioHost.Audio.Sinks;
 using Wavee.AudioHost.Audio.Streaming;
 using Wavee.Playback.Contracts;
 
@@ -63,6 +65,9 @@ public sealed class AudioEngine : IAsyncDisposable
     // composition layout/paint) on the UI side. 5 s halves it vs the prior
     // 2 s with no UX impact.
     private const long PositionPublishIntervalMs = 5000;
+
+    // Per-seek sequence counter for [seek-trace] correlation across phases and components.
+    private static int _seekTraceSeq;
 
     public AudioEngine(
         IAudioSink audioSink,
@@ -246,6 +251,10 @@ public sealed class AudioEngine : IAsyncDisposable
     {
         lock (_seekLock)
             _pendingSeekMs = positionMs;
+        // Visibility log so we can correlate "Seek confirmation timed out" UI errors with
+        // whether the command actually reached AudioEngine. If this fires but no
+        // [seek-trace] BEGIN follows, the playback loop is wedged.
+        _logger?.LogDebug("[seek-trace] SeekAsync received target={Target}ms (pendingSet)", positionMs);
         return Task.CompletedTask;
     }
 
@@ -420,11 +429,49 @@ public sealed class AudioEngine : IAsyncDisposable
         // Single decode loop — seek handled inline without restarting
         long lastPublishMs = startPositionMs;
 
+        // [seek-perf] state: set when a seek is processed; cleared when the
+        // first PCM bytes for that seek are written to the sink and we emit
+        // one summary log line.
+        long seekStartTs = 0;
+        long seekFlushDoneTs = 0;
+        long seekDecoderDoneTs = 0;
+        bool seekTelemetryPending = false;
+        long pendingSeekTargetMs = 0;
+
+        long iterCount = 0;
+        long lastIterLogTs = Stopwatch.GetTimestamp();
+
+        // Decoder-recreate loop. Phase 3's forward-bisection materializes pages
+        // mid-file in NVorbis _pageOffsets, leaving a sparse gap between the
+        // sequentially-discovered early pages and the materialized one. A later
+        // backward seek into that gap would land on the wrong page (resolved
+        // granule above target → negative rollForward → wrong audio position).
+        // We detect that case below and re-enter this loop with a fresh
+        // VorbisReader (rebuilt _pageOffsets densely from start).
+        long currentStartPos = startPositionMs;
+        long lastForwardSeekTargetMs = -1;
+        bool needsRecreate = false;
+        while (true)
+        {
+            needsRecreate = false;
         await foreach (var buffer in decoder.DecodeAsync(
-            decodingStream, startPositionMs,
+            decodingStream, currentStartPos,
             title => { lock (_stateLock) _currentState = _currentState with { Title = title }; PublishState(); },
             ct))
         {
+            iterCount++;
+            // Heartbeat: log iteration count once per ~3 s so we can tell from logs whether
+            // the playback loop is iterating (audio producing buffers) vs hung. If a seek
+            // command comes in but no [seek-trace] BEGIN follows, this heartbeat tells us
+            // whether the loop iterated at all in that window.
+            var nowTs = Stopwatch.GetTimestamp();
+            if (TicksToMs(lastIterLogTs, nowTs) > 3000)
+            {
+                _logger?.LogDebug("[seek-trace] loop heartbeat iter={N} pendingSeek={Pending}",
+                    iterCount, _pendingSeekMs.HasValue);
+                lastIterLogTs = nowTs;
+            }
+
             // Check for pending seek — call SeekTo on decoder inline
             long? seekTarget;
             lock (_seekLock)
@@ -435,16 +482,119 @@ public sealed class AudioEngine : IAsyncDisposable
 
             if (seekTarget.HasValue)
             {
+                var seq = Interlocked.Increment(ref _seekTraceSeq);
+                Wavee.AudioHost.Diagnostics.SeekTrace.CurrentSeq = seq;
+                seekStartTs = Stopwatch.GetTimestamp();
+                _logger?.LogDebug("[seek-trace] seq={Seq} BEGIN target={Target}ms duration={Duration}ms",
+                    seq, seekTarget.Value, cmd.DurationMs);
+
+                // Backward seek that crosses a previously materialized forward target?
+                // NVorbis _pageOffsets is sparse in that range — bisecting would land on
+                // the wrong page (out-of-place materialized one). Recreate the decoder
+                // so it rebuilds _pageOffsets densely from byte 0.
+                if (lastForwardSeekTargetMs > 0 && seekTarget.Value < lastForwardSeekTargetMs)
+                {
+                    _logger?.LogDebug("[seek-trace] seq={Seq} backward crosses materialized (target={Target}ms < lastForward={LastFwd}ms) — recreate decoder", seq, seekTarget.Value, lastForwardSeekTargetMs);
+
+                    // Kick off predictive prefetch BEFORE the recreate. The fresh decoder
+                    // will immediately run Phase 3 forward bisection from byte 0, and
+                    // without these bytes in flight, each probe pays a ~500 ms cold CDN
+                    // fetch (5 of them = ~2.5 s seek). With prefetch in flight the
+                    // probes serve from cache after one ~250–500 ms TTFB.
+                    if (cmd.DurationMs > 0 && lazyStream.CanSeek)
+                    {
+                        var streamLen = lazyStream.Length;
+                        if (streamLen > 0)
+                        {
+                            var estimatedByte = (long)((double)seekTarget.Value / cmd.DurationMs * streamLen);
+                            var prefetchStart = Math.Max(0, estimatedByte - 256 * 1024);
+                            var prefetchLen = (int)Math.Min(768 * 1024, streamLen - prefetchStart);
+                            if (prefetchLen > 0)
+                            {
+                                _logger?.LogDebug("[seek-trace] seq={Seq} prefetch (recreate) start={Start} len={Len}KB",
+                                    seq, prefetchStart, prefetchLen / 1024);
+                                _ = lazyStream.PrefetchRangeAsync(prefetchStart, prefetchLen, ct);
+                            }
+                        }
+                    }
+
+                    buffer.Return();
+                    await _audioSink.FlushAsync();
+                    _audioSink.SetBasePosition(seekTarget.Value);
+                    lastPublishMs = seekTarget.Value;
+                    currentStartPos = seekTarget.Value;
+                    lastForwardSeekTargetMs = -1; // fresh decoder gets dense _pageOffsets
+                    needsRecreate = true;
+                    pendingSeekTargetMs = seekTarget.Value;
+                    seekTelemetryPending = true;
+
+                    lock (_stateLock)
+                    {
+                        _currentState = _currentState with
+                        {
+                            PositionMs = seekTarget.Value,
+                            IsPlaying = true,
+                            IsPaused = false,
+                            IsBuffering = false,
+                            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                        };
+                    }
+                    PublishState();
+                    break; // exit await foreach → outer while recreates decoder
+                }
+
+                // Track forward seeks so we know when a future backward seek crosses
+                // a materialized page.
+                if (seekTarget.Value > lastPublishMs)
+                {
+                    lastForwardSeekTargetMs = seekTarget.Value;
+                }
+
                 buffer.Return();
                 await _audioSink.FlushAsync();
+                seekFlushDoneTs = Stopwatch.GetTimestamp();
+                _logger?.LogDebug("[seek-trace] seq={Seq} flush done elapsed={Ms:F1}ms",
+                    seq, TicksToMs(seekStartTs, seekFlushDoneTs));
                 _audioSink.SetBasePosition(seekTarget.Value);
                 lastPublishMs = seekTarget.Value;
+
+                // Predictive prefetch for the bisection's convergence region. Runs for
+                // both forward AND backward seeks — the decoder-recreate path makes
+                // backward seeks safe to go through the Phase 3 bisection, and that
+                // bisection benefits from cached bytes around target the same way.
+                // (Backward bytes are NOT always already cached — the bg loop only
+                // fetches forward from current playback, so a backward seek past a
+                // prior forward jump finds a fetch-gap there.)
+                if (cmd.DurationMs > 0 && lazyStream.CanSeek)
+                {
+                    var streamLen = lazyStream.Length;
+                    if (streamLen > 0)
+                    {
+                        var estimatedByte = (long)((double)seekTarget.Value / cmd.DurationMs * streamLen);
+                        var prefetchStart = Math.Max(0, estimatedByte - 256 * 1024);
+                        var prefetchLen = (int)Math.Min(768 * 1024, streamLen - prefetchStart);
+                        if (prefetchLen > 0)
+                        {
+                            _logger?.LogDebug("[seek-trace] seq={Seq} prefetch start={Start} len={Len}KB",
+                                seq, prefetchStart, prefetchLen / 1024);
+                            _ = lazyStream.PrefetchRangeAsync(prefetchStart, prefetchLen, ct);
+                        }
+                    }
+                }
+
                 // Decoder seeks via VorbisReader.TimePosition on next ReadSamples call
+                _logger?.LogDebug("[seek-trace] seq={Seq} decoder.SeekTo BEGIN", seq);
                 decoder.SeekTo(seekTarget.Value);
-                // Tell the downloader to abort the prefetch burst it queued for the
-                // *old* read horizon. Without this, those fetches finish in parallel
-                // with the new horizon's fetches — the 3 MB pile-up bug.
+                seekDecoderDoneTs = Stopwatch.GetTimestamp();
+                _logger?.LogDebug("[seek-trace] seq={Seq} decoder.SeekTo END elapsed={Ms:F1}ms",
+                    seq, TicksToMs(seekFlushDoneTs, seekDecoderDoneTs));
+                // Tell the downloader the read pointer jumped. The in-flight
+                // bg fetch is intentionally NOT cancelled (NotifySeek docs).
                 lazyStream.NotifySeek();
+                _logger?.LogDebug("[seek-trace] seq={Seq} NotifySeek done; awaiting first decode buffer", seq);
+
+                pendingSeekTargetMs = seekTarget.Value;
+                seekTelemetryPending = true;
 
                 // Seek should be visible to UI/Connect immediately, not after interval tick.
                 lock (_stateLock)
@@ -463,7 +613,42 @@ public sealed class AudioEngine : IAsyncDisposable
             }
 
             var processed = _processingChain.Process(buffer);
+            long firstDecodeTs = 0;
+            if (seekTelemetryPending)
+            {
+                firstDecodeTs = Stopwatch.GetTimestamp();
+                _logger?.LogDebug("[seek-trace] seq={Seq} first decode buffer received elapsed={Ms:F1}ms",
+                    Wavee.AudioHost.Diagnostics.SeekTrace.CurrentSeq,
+                    TicksToMs(seekDecoderDoneTs, firstDecodeTs));
+            }
+            var writeStartTs = Stopwatch.GetTimestamp();
             await _audioSink.WriteAsync(processed.Data, ct);
+            // If WriteAsync is suspiciously slow (sink ring buffer full + device
+            // truly stalled, not just normal back-pressure), log it. Normal writes
+            // at 1× playback against a 2-s ring buffer block ~150 ms each when the
+            // decoder produces faster than the device drains — that's expected
+            // throughput regulation, not a bug. > 500 ms still catches genuine
+            // stalls (device removed, callback frozen, etc.).
+            var writeMs = TicksToMs(writeStartTs, Stopwatch.GetTimestamp());
+            if (writeMs > 500)
+            {
+                _logger?.LogDebug("[seek-trace] slow WriteAsync elapsed={Ms:F1}ms iter={N}", writeMs, iterCount);
+            }
+            if (seekTelemetryPending)
+            {
+                var firstWriteTs = Stopwatch.GetTimestamp();
+                var unmuteTs = (_audioSink as PortAudioSink)?.LastUnmuteAtTicks ?? 0;
+                _logger?.LogDebug(
+                    "[seek-perf] target={Target}ms flush={Flush:F1}ms decoderSeek={DecoderSeek:F1}ms firstDecode={FirstDecode:F1}ms firstWrite={FirstWrite:F1}ms unmute={Unmute}ms total={Total:F1}ms",
+                    pendingSeekTargetMs,
+                    TicksToMs(seekStartTs, seekFlushDoneTs),
+                    TicksToMs(seekFlushDoneTs, seekDecoderDoneTs),
+                    TicksToMs(seekDecoderDoneTs, firstDecodeTs),
+                    TicksToMs(firstDecodeTs, firstWriteTs),
+                    unmuteTs > seekStartTs ? TicksToMs(seekStartTs, unmuteTs).ToString("F1") : "pending",
+                    TicksToMs(seekStartTs, firstWriteTs));
+                seekTelemetryPending = false;
+            }
             processed.Return();
             if (!ReferenceEquals(processed, buffer)) buffer.Return();
 
@@ -486,6 +671,19 @@ public sealed class AudioEngine : IAsyncDisposable
             }
         }
 
+            if (!needsRecreate) break; // normal completion — exit the recreate while loop
+
+            // Recreate the decoder. lazyStream is reused; resetting its position to 0
+            // makes the SkipStream constructor put us at the Spotify header offset, then
+            // the new VorbisReader reads the 3 Vorbis header packets (cached in head data,
+            // ~1 ms) and we await foreach again with currentStartPos as the target.
+            _logger?.LogDebug("[seek-trace] decoder recreate begin (newStartPos={Start}ms)", currentStartPos);
+            try { lazyStream.Position = 0; } catch { /* ignore */ }
+            // VorbisDecoder caches its reader keyed on the input stream; the previous
+            // DecodeAsync's finally already disposed and nulled the cache, so the next
+            // DecodeAsync call below will create a fresh VorbisReader.
+        }
+
         await _audioSink.DrainAsync(ct);
 
         var finalPosition = _audioSink.PlaybackPositionMs;
@@ -502,6 +700,14 @@ public sealed class AudioEngine : IAsyncDisposable
         PublishState();
         _logger?.LogInformation("Track finished: {TrackUri}", cmd.TrackUri);
         _trackCompletedSubject.OnNext(cmd.TrackUri);
+    }
+
+    // Stopwatch tick delta → milliseconds. Returns 0 when either tick is unset
+    // so the [seek-perf] line stays meaningful even on the first decoded buffer.
+    private static double TicksToMs(long startTs, long endTs)
+    {
+        if (startTs == 0 || endTs == 0 || endTs < startTs) return 0d;
+        return (endTs - startTs) * 1000d / Stopwatch.Frequency;
     }
 
     // ── Local-file playback loop ──

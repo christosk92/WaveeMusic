@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows.Input;
+using CommunityToolkit.Mvvm.DependencyInjection;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Styles;
@@ -44,7 +46,7 @@ public static class AlbumContextMenuBuilder
         items.Add(new ContextMenuItemModel
         {
             Text = AppLocalization.GetString("PlaylistMenu_Shuffle"),
-            Glyph = FluentGlyphs.Shuffle,
+            Glyph = FluentGlyphs.Shuffle,
             AccentIconStyleKey = "App.AccentIcons.Media.Shuffle",
             Command = ctx.ShuffleCommand,
             Invoke = ctx.ShuffleCommand is null ? () => Debug.WriteLine($"ShuffleAlbum: {uri}") : null,
@@ -56,7 +58,7 @@ public static class AlbumContextMenuBuilder
             Text = AppLocalization.GetString(ctx.IsSaved
                 ? "CardMenu_RemoveFromLibrary"
                 : "CardMenu_SaveToLibrary"),
-            Glyph = ctx.IsSaved ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline,
+            Glyph = ctx.IsSaved ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline,
             AccentIconStyleKey = ctx.IsSaved ? "App.AccentIcons.Media.Saved" : "App.AccentIcons.Media.Save",
             Command = ctx.ToggleSaveCommand,
             Invoke = ctx.ToggleSaveCommand is null ? () => Debug.WriteLine($"ToggleAlbumSave: {uri}") : null,
@@ -88,7 +90,8 @@ public static class AlbumContextMenuBuilder
         {
             Text = AppLocalization.GetString("AlbumMenu_AlbumRadio"),
             Glyph = FluentGlyphs.Radio,
-            Invoke = () => Debug.WriteLine($"AlbumRadio: {uri}")
+            Invoke = () => _ = Ioc.Default.GetService<IPlaybackStateService>()
+                                ?.StartRadioAsync(uri, ctx.AlbumName is { Length: > 0 } name ? $"{name} Radio" : "Album Radio")
         });
 
         items.Add(new ContextMenuItemModel

@@ -169,17 +169,37 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
                 "No active device and no local playback engine available.");
         }
 
-        // Remote: always use dict for JSON serialization
+        // Remote routing.
         _logger?.LogInformation("[Executor] {Endpoint}: routing REMOTE → device={Target}", endpoint, target);
         var waitForAck = ShouldWaitForAck(endpoint);
         var ackTimeout = GetAckTimeout(endpoint);
-        var result = await _client.SendCommandAsync(
-            target,
-            endpoint,
-            data,
-            waitForAck: waitForAck,
-            ackTimeout: ackTimeout,
-            ct: ct).ConfigureAwait(false);
+
+        ConnectCommandResult result;
+        if (endpoint == "play" && typedPlayCommand != null)
+        {
+            // Strongly-typed envelope (built inside ConnectCommandClient)
+            // matches Spotify desktop's wire shape 1:1 — prepare_play_options,
+            // play_options, full play_origin, intent_id, connection_type,
+            // restrictions, conditional `pages` per context kind.
+            result = await _client.SendPlayCommandAsync(
+                target,
+                typedPlayCommand,
+                waitForAck: waitForAck,
+                ackTimeout: ackTimeout,
+                ct: ct).ConfigureAwait(false);
+        }
+        else
+        {
+            // Pause / skip / seek / volume / shuffle / repeat — keep the
+            // existing dict path until we extend envelope coverage to them.
+            result = await _client.SendCommandAsync(
+                target,
+                endpoint,
+                data,
+                waitForAck: waitForAck,
+                ackTimeout: ackTimeout,
+                ct: ct).ConfigureAwait(false);
+        }
 
         if (result.IsSuccess)
             _logger?.LogInformation("[Executor] {Endpoint} OK (remote, waitAck={WaitAck})", endpoint, waitForAck);
@@ -192,7 +212,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
     private static TimeSpan GetAckTimeout(string endpoint) => endpoint switch
     {
         // Keep play/start slightly higher than transport toggles.
-        "play" or "add_to_queue" or "transfer" => TimeSpan.FromMilliseconds(2500),
+        "play" or "add_to_queue" or "set_queue" or "transfer" => TimeSpan.FromMilliseconds(2500),
 
         // Interactive transport commands should fail fast if no confirmation arrives.
         "pause" or "resume" or "skip_next" or "skip_prev" or "seek_to" => TimeSpan.FromMilliseconds(1500),
@@ -210,7 +230,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         // the HTTP 200 from /connect-state/v1/connect/transfer is already a server-side
         // confirmation — the dealer ack is a secondary signal that often doesn't arrive
         // within the 2.5s window when the target device is slow to pick up the command.
-        "play" or "add_to_queue" or "pause" or "resume" or "skip_next" or "skip_prev" or "seek_to"
+        "play" or "add_to_queue" or "set_queue" or "pause" or "resume" or "skip_next" or "skip_prev" or "seek_to"
             or "set_shuffling_context" or "set_repeating_context" or "set_repeating_track" or "set_options" or "set_volume"
             or "transfer" => false,
         _ => true
@@ -366,8 +386,11 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         PlaybackContextType.Artist     => "artist",
         PlaybackContextType.Show       => "show",
         PlaybackContextType.Episode    => "episode",
-        PlaybackContextType.LikedSongs => "collection",
-        _                              => "wavee"
+        // Spotify desktop sends "your_library" (not "collection") for Liked
+        // Songs transfer-play. Using their value avoids being classified as
+        // an unknown surface server-side.
+        PlaybackContextType.LikedSongs => "your_library",
+        _                              => "your_library"
     };
 
     private static string? PlayOriginFeatureForUri(string contextUri) =>
@@ -378,7 +401,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             _ when contextUri.StartsWith("spotify:artist:",   StringComparison.Ordinal) => "artist",
             _ when contextUri.StartsWith("spotify:show:",     StringComparison.Ordinal) => "show",
             _ when contextUri.StartsWith("spotify:episode:",  StringComparison.Ordinal) => "episode",
-            _ when contextUri.Contains("collection",          StringComparison.OrdinalIgnoreCase) => "collection",
+            _ when contextUri.Contains("collection",          StringComparison.OrdinalIgnoreCase) => "your_library",
             _ => null
         };
 
@@ -432,16 +455,138 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             ["value"] = (int)(Math.Clamp(volumePercent, 0, 100) / 100.0 * 65535)
         }, ct);
 
+    /// <summary>
+    /// "Add to Queue" — appends the track to the user queue.
+    /// Locally: post-context bucket (plays after context exhausts).
+    /// Remotely: appended at the tail of the remote's user queue via set_queue
+    /// (Spotify Connect doesn't model a separate post-context bucket).
+    /// </summary>
     public Task<PlaybackResult> AddToQueueAsync(string trackUri, CancellationToken ct)
-        => SendAsync("add_to_queue", new Dictionary<string, object>
+        => SendQueueMutationAsync(trackUri, atHead: false, ct);
+
+    /// <summary>
+    /// "Play Next" — inserts the track at the head of the user queue so it
+    /// plays immediately after the current track. Local + remote both supported;
+    /// remote sends set_queue with the new entry at index 0 (uid="q0").
+    /// </summary>
+    public Task<PlaybackResult> PlayNextAsync(string trackUri, CancellationToken ct)
+        => SendQueueMutationAsync(trackUri, atHead: true, ct);
+
+    private async Task<PlaybackResult> SendQueueMutationAsync(
+        string trackUri, bool atHead, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(trackUri))
+            return PlaybackResult.Failure(PlaybackErrorKind.Unknown, "Track URI is required.");
+
+        var target = GetTargetDeviceId();
+        var selfId = _session.Config.DeviceId;
+        var op = atHead ? "play_next" : "add_to_queue";
+
+        // LOCAL — drive the orchestrator's PlaybackQueue directly.
+        if (string.IsNullOrEmpty(target) || target == selfId)
         {
-            ["track"] = new Dictionary<string, object>
+            if (_localEngine == null)
             {
-                ["uri"] = trackUri,
-                ["provider"] = "queue",
-                ["metadata"] = new Dictionary<string, string>()
+                _logger?.LogWarning(
+                    "[Executor] {Op}: no local engine and no active device — command dropped",
+                    op);
+                return PlaybackResult.Failure(
+                    PlaybackErrorKind.DeviceUnavailable,
+                    "No active device and no local playback engine available.");
             }
-        }, ct);
+
+            try
+            {
+                _logger?.LogInformation("[Executor] {Op}: routing LOCAL → {Uri}", op, trackUri);
+                if (atHead)
+                    await _localEngine.PlayNextAsync(trackUri, ct).ConfigureAwait(false);
+                else
+                    await _localEngine.EnqueueAsync(trackUri, ct).ConfigureAwait(false);
+                return PlaybackResult.Success();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[Executor] {Op} FAILED (local engine threw)", op);
+                return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
+            }
+        }
+
+        // REMOTE — send set_queue with the full user-queue snapshot to mimic
+        // the desktop client. Connect doesn't expose a "post-context" bucket,
+        // so atHead=false collapses to "append at tail of remote user queue".
+        var body = BuildSetQueueBody(trackUri, atHead);
+        _logger?.LogInformation(
+            "[Executor] {Op}: routing REMOTE set_queue → device={Target}, queueSize={Size}",
+            op, target, ((System.Collections.ICollection)body["next_tracks"]).Count);
+
+        var result = await _client.SendCommandAsync(
+            target,
+            "set_queue",
+            body,
+            waitForAck: false,
+            ackTimeout: TimeSpan.FromMilliseconds(2000),
+            ct: ct).ConfigureAwait(false);
+
+        if (result.IsSuccess)
+            _logger?.LogInformation("[Executor] {Op} OK (remote set_queue)", op);
+        else
+            _logger?.LogWarning("[Executor] {Op} FAILED (remote set_queue): {Error}", op, result.ErrorMessage);
+
+        return ToPlaybackResult(result);
+    }
+
+    /// <summary>
+    /// Builds the JSON body for set_queue: a full snapshot of the remote
+    /// user queue with the new track inserted at index 0 (Play Next) or
+    /// appended at the tail (Add to Queue). Existing queued entries are
+    /// read from the latest cluster state via PlaybackStateManager and
+    /// emitted with bare metadata (the remote already has rich data for
+    /// them).
+    /// </summary>
+    private Dictionary<string, object> BuildSetQueueBody(string trackUri, bool atHead)
+    {
+        // Read currently-queued tracks from the remote cluster snapshot. Tracks
+        // with IsUserQueued=true are the "user queue" entries (provider="queue").
+        var clusterNext = _session.PlaybackState?.CurrentState.NextTracks
+                          ?? (IReadOnlyList<TrackReference>)System.Array.Empty<TrackReference>();
+
+        var existingQueued = new List<object>();
+        foreach (var t in clusterNext)
+        {
+            if (!t.IsUserQueued) continue;
+            existingQueued.Add(new Dictionary<string, object>
+            {
+                ["uri"] = t.Uri,
+                ["provider"] = "queue",
+                ["metadata"] = new Dictionary<string, string> { ["is_queued"] = "true" }
+            });
+        }
+
+        var newEntry = new Dictionary<string, object>
+        {
+            ["uri"] = trackUri,
+            ["uid"] = "q0",
+            ["provider"] = "queue",
+            ["metadata"] = new Dictionary<string, string> { ["is_queued"] = "true" }
+        };
+
+        var nextTracks = new List<object>(existingQueued.Count + 1);
+        if (atHead)
+        {
+            nextTracks.Add(newEntry);
+            nextTracks.AddRange(existingQueued);
+        }
+        else
+        {
+            nextTracks.AddRange(existingQueued);
+            nextTracks.Add(newEntry);
+        }
+
+        return new Dictionary<string, object>
+        {
+            ["next_tracks"] = nextTracks
+        };
+    }
 
     private async Task<PlaybackResult> RouteToLocalEngineAsync(
         IPlaybackEngine engine, string endpoint, Dictionary<string, object>? data, CancellationToken ct)

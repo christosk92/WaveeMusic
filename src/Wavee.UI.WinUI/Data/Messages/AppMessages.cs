@@ -238,6 +238,14 @@ public sealed class DockedPlayerWithFloatingPlayerVisibilityChangedMessage(bool 
     : ValueChangedMessage<bool>(isVisible);
 
 /// <summary>
+/// Sent when the user toggles whether playback should continue with
+/// recommended similar tracks after a context ends. Sent by both the
+/// Settings page and the Queue panel pill so each can stay in sync.
+/// </summary>
+public sealed class AutoplayEnabledChangedMessage(bool isEnabled)
+    : ValueChangedMessage<bool>(isEnabled);
+
+/// <summary>
 /// Sent when the main app window is reactivated after being deactivated.
 /// </summary>
 public sealed class MainWindowFocusReturnedMessage;

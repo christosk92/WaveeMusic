@@ -34,7 +34,13 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     private readonly RangeSet _downloadedRanges = new();
     private readonly FileStream _tempFile;
     private readonly string _tempFilePath;
-    private readonly SemaphoreSlim _fetchLock = new(1, 1);
+    // Allow 2 concurrent HTTP fetches so the on-demand fetch for a seek target
+    // can start in parallel with an in-flight background prefetch — the bg
+    // fetch is no longer cancelled on seek (see NotifySeek) and would otherwise
+    // hold the lock for hundreds of ms after the user moved on. HttpClient is
+    // thread-safe for concurrent SendAsync; temp-file writes target distinct
+    // ranges; RangeSet is internally guarded.
+    private readonly SemaphoreSlim _fetchLock = new(2, 2);
     private readonly ArrayPool<byte> _bufferPool = ArrayPool<byte>.Shared;
     private readonly CancellationTokenSource _disposeCts = new();
 
@@ -46,9 +52,14 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     private int _currentThroughput;
 
     // Signaled by FetchChunkAsync whenever new data is written to the temp file.
-    // EnsureDataAvailable waits on this instead of doing its own HTTP request,
-    // which avoids _fetchLock contention with the background download loop.
+    // Kept so waiting readers can be released during disposal and for future
+    // passive wait paths; seek-critical reads issue their own priority fetch.
     private readonly ManualResetEventSlim _newDataAvailable = new(false);
+
+    // Released by NotifySeek to wake the background loop out of its idle Task.Delay
+    // without cancelling the in-flight FetchChunkAsync (whose cancellation would
+    // close the warm TCP+TLS connection, paying a fresh handshake on the next fetch).
+    private readonly SemaphoreSlim _seekWakeSignal = new(0, 1);
 
     // Background download state
     private Task? _backgroundDownloadTask;
@@ -281,30 +292,28 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         if (_downloadedRanges.ContainsRange(start, end))
             return;
 
-        // Passive wait: instead of launching a competing HTTP request that fights
-        // the background download for _fetchLock, we wait for the background
-        // download to deliver the data. It signals _newDataAvailable after every chunk.
-        while (!_downloadedRanges.ContainsRange(start, end))
+        // [seek-trace] only when we actually have to wait — fast-path returns above.
+        var traceSeq = Wavee.AudioHost.Diagnostics.SeekTrace.CurrentSeq;
+        var traceStart = System.Diagnostics.Stopwatch.GetTimestamp();
+        var bufferedAheadKb = _downloadedRanges.ContainedLengthFrom(_position) / 1024;
+        _logger?.LogDebug(
+            "[seek-trace] seq={Seq} PD.wait need=[{Start}-{End}] pos={Pos} downloaded_ahead={KB}KB",
+            traceSeq, start, end, _position, bufferedAheadKb);
+
+        try
+        {
+            FetchRangeAsync(start, end, _disposeCts.Token).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException) when (_disposeCts.IsCancellationRequested)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-
-            // Reset before re-checking to close the race window: any Set() that
-            // fires after our ContainsRange check will be visible to the next Wait().
-            _newDataAvailable.Reset();
-
-            if (_downloadedRanges.ContainsRange(start, end))
-                return;
-
-            if (!_newDataAvailable.Wait(TimeSpan.FromSeconds(30), _disposeCts.Token))
-            {
-                // Timeout -- background download may have stalled. Fall back to
-                // a direct on-demand fetch so playback doesn't hang forever.
-                _logger?.LogWarning(
-                    "Waited 30s for data at pos={Position}, falling back to on-demand fetch", start);
-                Task.Run(() => FetchRangeAsync(start, end, _disposeCts.Token)).GetAwaiter().GetResult();
-                return;
-            }
+            throw;
         }
+
+        var totalMs = (System.Diagnostics.Stopwatch.GetTimestamp() - traceStart) * 1000d
+                      / System.Diagnostics.Stopwatch.Frequency;
+        _logger?.LogDebug("[seek-trace] seq={Seq} PD.wait resolved elapsed={Ms:F1}ms",
+            traceSeq, totalMs);
     }
 
     private async Task EnsureDataAvailableAsync(long start, int length, CancellationToken cancellationToken)
@@ -375,6 +384,14 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
             {
+                // Don't retry-and-warn when the caller cancelled (e.g. seek
+                // rotated the bg fetch CTS). The cancellation is expected;
+                // surfacing it as "Fetch failed attempt 1/5" muddies real
+                // failure logs and would otherwise enter a 1+2+4 s backoff
+                // storm if Task.Delay below didn't observe the cancellation.
+                if (cancellationToken.IsCancellationRequested)
+                    throw new OperationCanceledException(cancellationToken);
+
                 retryCount++;
                 var willRetry = retryCount < _params.MaxRetries;
 
@@ -527,18 +544,29 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     }
 
     /// <summary>
-    /// Tells the downloader the read pointer just jumped (e.g. user seek), so any
-    /// in-flight prefetch for the *old* read horizon should be aborted. The loop
-    /// itself stays alive and re-plans its next chunk against the new
-    /// <c>_position</c>. Safe to call repeatedly (e.g. rapid slider drag).
+    /// Tells the downloader the read pointer just jumped (e.g. user seek). The
+    /// in-flight prefetch is intentionally NOT cancelled — cancelling it
+    /// disposes the HTTP response mid-stream, which closes the warm TCP+TLS
+    /// connection and forces the next fetch (for the seek target) to pay a
+    /// full handshake. The bytes the bg fetch is still pulling land in
+    /// <c>_downloadedRanges</c> and remain useful. We rotate
+    /// <c>_backgroundFetchCts</c> so the *next* loop iteration plans against
+    /// the new <c>_position</c>, and rely on the relaxed <c>_fetchLock</c>
+    /// (2 concurrent) + warm HttpClient pool to let the on-demand seek-target
+    /// fetch race ahead in parallel.
     /// </summary>
     public void NotifySeek()
     {
-        CancellationTokenSource? toCancel;
         lock (_fetchCtsLock)
         {
             if (_backgroundDownloadCts == null) return; // not running
-            toCancel = _backgroundFetchCts;
+            // The previous _backgroundFetchCts is intentionally NOT cancelled
+            // and NOT disposed: the in-flight FetchChunkAsync still holds a
+            // child CTS linked to its token (line ~398 inside FetchChunkAsync)
+            // and disposing the parent while subscribed would throw
+            // ObjectDisposedException. Let GC reclaim it once the request
+            // finishes; CancellationTokenSource has no unmanaged resources
+            // unless WaitHandle was accessed.
             _backgroundFetchCts = CancellationTokenSource.CreateLinkedTokenSource(_backgroundDownloadCts.Token);
         }
         // Enter random-access mode for ~2 s. The loop will only fetch one
@@ -546,12 +574,9 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         // full-buffer prefetch burst on top of the decoder pre-roll the user
         // is actually waiting on.
         Volatile.Write(ref _postSeekRecoveryUntilTick, Environment.TickCount64 + PostSeekRecoveryMs);
-        if (toCancel != null)
-        {
-            try { toCancel.Cancel(); } catch (ObjectDisposedException) { }
-            toCancel.Dispose();
-            _logger?.LogDebug("[Download] Seek: cancelled in-flight prefetch for file {FileId}", _fileId.ToBase16());
-        }
+        // Wake the bg loop out of any idle Task.Delay so it re-plans against
+        // the new _position now, not after the 200/500 ms timer fires.
+        try { _seekWakeSignal.Release(); } catch (SemaphoreFullException) { }
     }
 
     // Approximate bytes-per-second for OGG Vorbis 320 kbps (typical format).
@@ -590,13 +615,13 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
 
                 if (bufferedAhead >= readAheadBytes)
                 {
-                    // Enough data buffered -- wait before checking again.
-                    // Wake up when playback advances (consumes buffer) or after 500ms.
+                    // Enough data buffered -- wait before checking again. Wakes
+                    // up early on seek (NotifySeek releases _seekWakeSignal),
+                    // otherwise after 500 ms.
                     try
                     {
-                        await Task.Delay(500, fetchToken);
+                        await _seekWakeSignal.WaitAsync(500, loopToken);
                     }
-                    catch (OperationCanceledException) when (!loopToken.IsCancellationRequested) { continue; }
                     catch (OperationCanceledException) { break; }
                     continue;
                 }
@@ -626,9 +651,9 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
                     try { await FetchRangeAsync(gap.Start, chunkEnd, fetchToken); }
                     catch (OperationCanceledException) when (!loopToken.IsCancellationRequested) { continue; }
 
-                    // Throttle: no rush since playback buffer is healthy
-                    try { await Task.Delay(200, fetchToken); }
-                    catch (OperationCanceledException) when (!loopToken.IsCancellationRequested) { continue; }
+                    // Throttle: no rush since playback buffer is healthy.
+                    // Wakes early on seek so we re-plan against new _position.
+                    try { await _seekWakeSignal.WaitAsync(200, loopToken); }
                     catch (OperationCanceledException) { break; }
                     continue;
                 }
@@ -733,6 +758,7 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
             _newDataAvailable.Set(); // Unblock any waiting reader
             _newDataAvailable.Dispose();
             _fetchLock.Dispose();
+            _seekWakeSignal.Dispose();
             _tempFile.Dispose();
 
             // Delete temp file if it still exists
@@ -773,6 +799,7 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         _newDataAvailable.Set(); // Unblock any waiting reader
         _newDataAvailable.Dispose();
         _fetchLock.Dispose();
+        _seekWakeSignal.Dispose();
         await _tempFile.DisposeAsync();
 
         try

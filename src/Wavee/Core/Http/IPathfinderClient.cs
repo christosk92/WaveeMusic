@@ -23,6 +23,64 @@ public interface IPathfinderClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Per-chip query for the Search page's Playlists tab — paginates the playlists
+    /// section beyond what <see cref="SearchAsync"/> returns. Mirrors the Spotify
+    /// desktop "searchPlaylists" persisted query.
+    /// </summary>
+    /// <param name="query">Search term.</param>
+    /// <param name="limit">Page size (desktop default: 30).</param>
+    /// <param name="offset">Offset for pagination.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A <see cref="SearchResult"/> populated with playlists only; track/artist/album lists will be empty, but <see cref="SearchResult.TotalPlaylists"/> reflects the server-side total.</returns>
+    Task<SearchResult> SearchPlaylistsAsync(
+        string query,
+        int limit = 30,
+        int offset = 0,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Per-chip query for the Search page's Songs tab. Mirrors desktop "searchTracks".</summary>
+    Task<SearchResult> SearchTracksAsync(
+        string query,
+        int limit = 20,
+        int offset = 0,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Per-chip query for the Search page's Albums tab. Mirrors desktop "searchAlbums".</summary>
+    Task<SearchResult> SearchAlbumsAsync(
+        string query,
+        int limit = 30,
+        int offset = 0,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Per-chip query for the Search page's Podcasts tab — show entities only. Mirrors desktop "searchPodcasts". The desktop UI fires this in parallel with <see cref="SearchFullEpisodesAsync"/>.</summary>
+    Task<SearchResult> SearchPodcastsAsync(
+        string query,
+        int limit = 30,
+        int offset = 0,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Per-chip query for the Search page's Users tab. Mirrors desktop "searchUsers".</summary>
+    Task<SearchResult> SearchUsersAsync(
+        string query,
+        int limit = 30,
+        int offset = 0,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Per-chip query for the Search page's Genres tab. Mirrors desktop "searchGenres".</summary>
+    Task<SearchResult> SearchGenresAsync(
+        string query,
+        int limit = 30,
+        int offset = 0,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Per-chip query for individual podcast episodes. Mirrors desktop "searchFullEpisodes" — uses a slimmer variables payload than other chips.</summary>
+    Task<SearchResult> SearchFullEpisodesAsync(
+        string query,
+        int limit = 30,
+        int offset = 0,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Retrieves the current user's top artists and tracks.
     /// </summary>
     /// <param name="artistLimit">Maximum number of top artists to return (default 10).</param>

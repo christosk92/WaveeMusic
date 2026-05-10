@@ -159,6 +159,20 @@ public interface IPlaybackEngine
     /// active or the current video source is not switchable.
     /// </summary>
     Task SwitchToAudioAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// "Play Next" — inserts the track at the head of the user queue so it
+    /// plays immediately after the current track, then context resumes.
+    /// No-op for engines that don't own a queue.
+    /// </summary>
+    Task PlayNextAsync(string trackUri, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// "Add to Queue" — appends the track to the post-context bucket so it
+    /// plays AFTER the current context exhausts (and before autoplay).
+    /// No-op for engines that don't own a queue.
+    /// </summary>
+    Task EnqueueAsync(string trackUri, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

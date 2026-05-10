@@ -161,14 +161,33 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     void PlayTrack(string trackId, PlaybackContextInfo? context = null);
 
     /// <summary>
-    /// Adds a track to the end of the user queue.
+    /// Starts a Spotify "Inspired by …" radio mix seeded from a track,
+    /// artist, or album URI. Resolves to a playlist URI server-side and
+    /// then plays it via the standard playlist flow. Fire-and-forget;
+    /// failures log internally.
+    /// </summary>
+    /// <param name="seedUri">"spotify:track:&lt;id&gt;" / "spotify:artist:&lt;id&gt;" / "spotify:album:&lt;id&gt;".</param>
+    /// <param name="displayName">Optional placeholder shown until the playlist resolves.</param>
+    System.Threading.Tasks.Task StartRadioAsync(string seedUri, string? displayName = null);
+
+    /// <summary>
+    /// "Add to Queue" — adds a track so it plays AFTER the current context
+    /// finishes (post-context bucket on local; tail of remote user queue on
+    /// remote, since Connect doesn't model post-context).
     /// </summary>
     void AddToQueue(string trackId);
 
     /// <summary>
-    /// Adds multiple tracks to the end of the user queue.
+    /// "Add to Queue" (multi) — same semantics as the single-track overload,
+    /// applied per track in order.
     /// </summary>
     void AddToQueue(IEnumerable<string> trackIds);
+
+    /// <summary>
+    /// "Play Next" — inserts a track at the head of the user queue so it
+    /// plays immediately after the current track, then context resumes.
+    /// </summary>
+    void PlayNext(string trackId);
 
     /// <summary>
     /// Replaces the queue, sets the playback context, and loads the track at startIndex as current.

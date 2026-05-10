@@ -810,7 +810,8 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetService<ILogger<SearchViewModel>>(),
-                        sp.GetService<Wavee.Core.Library.Local.ILocalLibraryService>()))
+                        sp.GetService<Wavee.Core.Library.Local.ILocalLibraryService>(),
+                        sp.GetService<Wavee.UI.WinUI.Data.Contracts.ISearchService>()))
                 .AddTransient<DebugViewModel>()
                 .AddTransient<FeedbackViewModel>(sp =>
                     new FeedbackViewModel(

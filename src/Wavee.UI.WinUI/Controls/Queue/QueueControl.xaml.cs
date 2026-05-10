@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -17,6 +18,7 @@ using Wavee.UI.Contracts;
 using Wavee.UI.Enums;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.Services;
@@ -69,6 +71,7 @@ public sealed partial class QueueControl : UserControl
         InputSystemCursor.Create(InputSystemCursorShape.Hand);
 
     private readonly IPlaybackStateService? _playbackService;
+    private readonly ISettingsService? _settingsService;
     private readonly ITrackColorHintService? _colorHintService;
     private readonly ImageCacheService? _imageCache;
     private readonly ILogger? _logger;
@@ -81,16 +84,23 @@ public sealed partial class QueueControl : UserControl
     {
         InitializeComponent();
 
-        _playbackService = Ioc.Default.GetService<IPlaybackStateService>();
+        _playbackService  = Ioc.Default.GetService<IPlaybackStateService>();
+        _settingsService  = Ioc.Default.GetService<ISettingsService>();
         _colorHintService = Ioc.Default.GetService<ITrackColorHintService>();
-        _imageCache = Ioc.Default.GetService<ImageCacheService>();
-        _logger = Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger("QueueControl");
+        _imageCache       = Ioc.Default.GetService<ImageCacheService>();
+        _logger           = Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger("QueueControl");
 
         if (_playbackService is INotifyPropertyChanged pc)
         {
             pc.PropertyChanged += OnPropertyChanged;
             Unloaded += (_, _) => pc.PropertyChanged -= OnPropertyChanged;
         }
+
+        WeakReferenceMessenger.Default.Register<AutoplayEnabledChangedMessage>(this, (_, msg) =>
+        {
+            DispatcherQueue.TryEnqueue(() => InfiniteButton.IsChecked = msg.Value);
+        });
+        Unloaded += (_, _) => WeakReferenceMessenger.Default.UnregisterAll(this);
 
         Loaded += (_, _) => Refresh();
     }
@@ -143,16 +153,21 @@ public sealed partial class QueueControl : UserControl
             NowPlayingEqualizer.IsActive = _playbackService.IsPlaying;
         }
 
-        // ── Categorize raw queue items into three buckets ──
-        var userQueued = new List<QueueDisplayItem>();
-        var nextFrom   = new List<QueueDisplayItem>();
-        var autoplay   = new List<QueueDisplayItem>();
+        // ── Categorize raw queue items into four buckets ──
+        // Render order matches play order: Play-Next (head of user queue) → context → post-context → autoplay
+        var userQueued   = new List<QueueDisplayItem>();
+        var nextFrom     = new List<QueueDisplayItem>();
+        var postContext  = new List<QueueDisplayItem>();
+        var autoplay     = new List<QueueDisplayItem>();
         QueueDelimiter? delimiter = null;
 
         foreach (var item in rawNextQueue)
         {
             switch (item)
             {
+                case QueueTrack t when t.IsPostContext:
+                    postContext.Add(ToDisplay(t, 1.0));
+                    break;
                 case QueueTrack t when t.IsUserQueued:
                     userQueued.Add(ToDisplay(t, 1.0));
                     break;
@@ -175,6 +190,7 @@ public sealed partial class QueueControl : UserControl
         bool hasAutoplay = autoplay.Count > 0;
         ResolveArtworkTints(userQueued);
         ResolveArtworkTints(nextFrom);
+        ResolveArtworkTints(postContext);
         ResolveArtworkTints(autoplay);
 
         // ── Pill states ──
@@ -183,7 +199,7 @@ public sealed partial class QueueControl : UserControl
         RepeatGlyph.Glyph = _playbackService.RepeatMode == RepeatMode.Track
             ? "\uE8ED"   // RepeatOne
             : "\uE8EE";  // RepeatAll
-        InfiniteButton.IsChecked = hasAutoplay;
+        InfiniteButton.IsChecked = _settingsService?.Settings.AutoplayEnabled ?? true;
         CrossfadeButton.IsChecked = false;
 
         // ── User Queue section ──
@@ -210,6 +226,18 @@ public sealed partial class QueueControl : UserControl
             NextUpRepeater.ItemsSource = null;
         }
 
+        // ── Queued later section (post-context bucket, plays after this context) ──
+        PostContextSection.Visibility = postContext.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (postContext.Count > 0)
+        {
+            PostContextHeader.Text = $"QUEUED LATER · {postContext.Count}";
+            PostContextRepeater.ItemsSource = postContext;
+        }
+        else
+        {
+            PostContextRepeater.ItemsSource = null;
+        }
+
         // ── Autoplay section (similar music, dimmed) ──
         AutoPlaySection.Visibility = hasAutoplay ? Visibility.Visible : Visibility.Collapsed;
         if (hasAutoplay)
@@ -229,7 +257,7 @@ public sealed partial class QueueControl : UserControl
         }
 
         // ── Empty state ──
-        EmptyState.Visibility = !hasTrack && userQueued.Count == 0 && nextFrom.Count == 0 && !hasAutoplay
+        EmptyState.Visibility = !hasTrack && userQueued.Count == 0 && nextFrom.Count == 0 && postContext.Count == 0 && !hasAutoplay
             ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -316,10 +344,13 @@ public sealed partial class QueueControl : UserControl
 
     private void InfiniteButton_Click(object sender, RoutedEventArgs e)
     {
-        // No backend autoplay toggle API yet — the checked state is driven by whether
-        // autoplay tracks are present in the queue. Let the button toggle visually for
-        // now; Refresh() will correct it on the next state update.
-        _logger?.LogInformation("Queue pill: autoplay toggled (no-op, API pending)");
+        if (_settingsService == null) return;
+        var current = _settingsService.Settings.AutoplayEnabled;
+        var desired = !current;
+        _logger?.LogInformation("Queue pill: autoplay → {State}", desired);
+        _settingsService.Update(s => s.AutoplayEnabled = desired);
+        InfiniteButton.IsChecked = desired;
+        WeakReferenceMessenger.Default.Send(new AutoplayEnabledChangedMessage(desired));
     }
 
     private void CrossfadeButton_Click(object sender, RoutedEventArgs e)

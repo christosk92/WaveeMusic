@@ -123,6 +123,16 @@ namespace NVorbis
 
             _currentPosition = 0;
             ResetDecoder();
+
+            // Forward the bytes-per-sample hint (derived from the Vorbis ID
+            // header's nominal bitrate) to the underlying StreamPageReader.
+            // Used by FindPageForwardByteBisection's first probe so it lands
+            // near the target byte (instead of midpoint) — typical seek then
+            // costs one cold CDN fetch instead of three or four.
+            if (_packetProvider is Ogg.PacketProvider oggPp)
+            {
+                oggPp.SetByteRateHint(NominalBitrate, _sampleRate);
+            }
             return true;
         }
 
@@ -395,19 +405,36 @@ namespace NVorbis
                 }
                 if (copyLen > 0)
                 {
-                    if (ClipSamples)
+                    int written = ClipSamples
+                        ? ClippingCopyBuffer(buffer, idx, copyLen)
+                        : CopyBuffer(buffer, idx, copyLen);
+                    idx += written;
+                    // Defense-in-depth: if the copy returned 0 even though copyLen > 0
+                    // (because Clipping/CopyBuffer's per-iteration bounds guard tripped
+                    // — e.g. _prevPacketStart wrapped huge after a negative-rollForward
+                    // SeekTo, see SeekTo clamp), force-advance the packet so the outer
+                    // loop doesn't spin re-clamping to 0 forever.
+                    if (written == 0)
                     {
-                        idx += ClippingCopyBuffer(buffer, idx, copyLen);
-                    }
-                    else
-                    {
-                        idx += CopyBuffer(buffer, idx, copyLen);
+                        _prevPacketStart = _prevPacketEnd;
                     }
                 }
                 else if (_prevPacketEnd - _prevPacketStart > 0)
                 {
                     // Buffer exhausted before the logical packet end — force a packet
                     // advance so we don't spin re-clamping to 0.
+                    _prevPacketStart = _prevPacketEnd;
+                }
+                else if (_prevPacketStart != _prevPacketEnd)
+                {
+                    // Defense-in-depth: copyLen <= 0 AND start > end. This can happen
+                    // if SeekTo's rollForward overshoots the resolved packet's valid
+                    // sample count and the SeekTo clamp didn't catch it. Without this
+                    // branch the loop neither advances (start != end at line 351) nor
+                    // copies (copyLen <= 0) nor force-advances (else-if above is
+                    // false because end - start < 0). Force a clean advance to
+                    // unblock the next ReadNextPacket. Worst case: lose pre-roll
+                    // smoothing for one packet (small audible click).
                     _prevPacketStart = _prevPacketEnd;
                 }
             }
@@ -429,7 +456,16 @@ namespace NVorbis
             {
                 for (var ch = 0; ch < _channels; ch++)
                 {
-                    target[idx++] = Utils.ClipValue(_prevPacketBuf[ch][_prevPacketStart], ref _hasClipped);
+                    // Defensive bounds check: after a backward seek the upstream
+                    // _prevPacketStart += rollForward at SeekTo:660 can land past
+                    // some channel buffers (different channels can have different
+                    // pooled lengths after ResetDecoder + 2-packet pre-roll). Bail
+                    // safely so the outer loop in ReadSamples advances to the next
+                    // packet instead of crashing playback.
+                    var bufCh = _prevPacketBuf[ch];
+                    if (bufCh == null || (uint)_prevPacketStart >= (uint)bufCh.Length)
+                        return idx - targetIndex;
+                    target[idx++] = Utils.ClipValue(bufCh[_prevPacketStart], ref _hasClipped);
                 }
             }
             return idx - targetIndex;
@@ -442,7 +478,11 @@ namespace NVorbis
             {
                 for (var ch = 0; ch < _channels; ch++)
                 {
-                    target[idx++] = _prevPacketBuf[ch][_prevPacketStart];
+                    // See ClippingCopyBuffer for the rationale on this guard.
+                    var bufCh = _prevPacketBuf[ch];
+                    if (bufCh == null || (uint)_prevPacketStart >= (uint)bufCh.Length)
+                        return idx - targetIndex;
+                    target[idx++] = bufCh[_prevPacketStart];
                 }
             }
             return idx - targetIndex;
@@ -598,6 +638,11 @@ namespace NVorbis
             if (_packetProvider == null) throw new ObjectDisposedException(nameof(StreamDecoder));
             if (!_packetProvider.CanSeek) throw new InvalidOperationException("Seek is not supported by the Contracts.IPacketProvider instance.");
 
+            var traceEnabled = NVorbisDiagnostics.IsEnabled;
+            var traceStart = traceEnabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
+            if (traceEnabled)
+                NVorbisDiagnostics.Log($"[seek-trace] NV.SeekTo BEGIN sample={samplePosition} origin={seekOrigin}");
+
             switch (seekOrigin)
             {
                 case SeekOrigin.Begin:
@@ -616,6 +661,8 @@ namespace NVorbis
             if (samplePosition < 0) throw new ArgumentOutOfRangeException(nameof(samplePosition));
 
             int rollForward;
+            long bisectStart = 0;
+            if (traceEnabled) bisectStart = System.Diagnostics.Stopwatch.GetTimestamp();
             if (samplePosition == 0)
             {
                 // short circuit for the looping case...
@@ -628,11 +675,19 @@ namespace NVorbis
                 var pos = _packetProvider.SeekTo(samplePosition, 1, GetPacketGranules);
                 rollForward = (int)(samplePosition - pos);
             }
+            if (traceEnabled)
+            {
+                var bisectMs = (System.Diagnostics.Stopwatch.GetTimestamp() - bisectStart) * 1000d
+                               / System.Diagnostics.Stopwatch.Frequency;
+                NVorbisDiagnostics.Log($"[seek-trace] NV.SeekTo packetProvider.SeekTo done elapsed={bisectMs:F1}ms rollForward={rollForward}");
+            }
 
             // clear out old data
             ResetDecoder();
             _hasPosition = true;
 
+            long prerollStart = 0;
+            if (traceEnabled) prerollStart = System.Diagnostics.Stopwatch.GetTimestamp();
             // read the pre-roll packet
             if (!ReadNextPacket(0, out _))
             {
@@ -644,9 +699,19 @@ namespace NVorbis
                 }
                 _prevPacketStart = _prevPacketStop;
                 _currentPosition = samplePosition;
+                if (traceEnabled)
+                    NVorbisDiagnostics.Log("[seek-trace] NV.SeekTo END (eos pre-roll branch)");
                 return;
             }
+            if (traceEnabled)
+            {
+                var prerollMs = (System.Diagnostics.Stopwatch.GetTimestamp() - prerollStart) * 1000d
+                                / System.Diagnostics.Stopwatch.Frequency;
+                NVorbisDiagnostics.Log($"[seek-trace] NV.SeekTo pre-roll packet read elapsed={prerollMs:F1}ms");
+            }
 
+            long targetStart = 0;
+            if (traceEnabled) targetStart = System.Diagnostics.Stopwatch.GetTimestamp();
             // read the actual packet
             if (!ReadNextPacket(0, out _))
             {
@@ -655,10 +720,70 @@ namespace NVorbis
                 _eosFound = true;
                 throw new InvalidOperationException("Could not read pre-roll packet!  Try seeking again prior to reading more samples.");
             }
+            if (traceEnabled)
+            {
+                var targetMs = (System.Diagnostics.Stopwatch.GetTimestamp() - targetStart) * 1000d
+                               / System.Diagnostics.Stopwatch.Frequency;
+                NVorbisDiagnostics.Log($"[seek-trace] NV.SeekTo target packet read elapsed={targetMs:F1}ms");
+            }
 
             // adjust our indexes to match what we want
             _prevPacketStart += rollForward;
             _currentPosition = samplePosition;
+
+            // Clamp _prevPacketStart to the smallest channel buffer length so
+            // ReadSamples starts in-bounds across every channel. Belt-and-braces
+            // alongside the per-iteration guards in ClippingCopyBuffer/CopyBuffer:
+            // the outer ReadSamples clamp uses a precomputed minAvailable but
+            // can't catch a buffer that becomes too short after the clamp runs.
+            if (_prevPacketBuf != null)
+            {
+                var minLen = int.MaxValue;
+                for (var c = 0; c < _channels; c++)
+                {
+                    var len = _prevPacketBuf[c]?.Length ?? 0;
+                    if (len < minLen) minLen = len;
+                }
+                if (minLen != int.MaxValue && _prevPacketStart > minLen)
+                    _prevPacketStart = minLen;
+            }
+            // Critical: also clamp to _prevPacketEnd. If rollForward overshoots
+            // the packet's valid sample count (which can happen when the seek
+            // resolved to a packet whose granule is way before target — e.g.
+            // NormalizePacketIndex walked back several pages on a tight target),
+            // _prevPacketStart > _prevPacketEnd makes the ReadSamples loop
+            // (StreamDecoder.Read at lines 348–423) neither advance via the
+            // ReadNextPacket branch (`_prevPacketStart == _prevPacketEnd`) nor
+            // via the else-if at 417 (`_prevPacketEnd - _prevPacketStart > 0`).
+            // The loop spins forever, the playback thread hangs, and audio goes
+            // silent post-seek with no error. Clamping here forces a clean
+            // packet-advance on the next ReadSamples iteration (small audible
+            // skip equivalent to losing one packet worth of pre-roll, vs total
+            // audio loss).
+            if (_prevPacketStart > _prevPacketEnd)
+            {
+                _prevPacketStart = _prevPacketEnd;
+            }
+            // Also clamp NEGATIVE _prevPacketStart. This happens on backward
+            // seeks where _packetProvider.SeekTo returns a resolved_granule
+            // ABOVE target (e.g. when sparse _pageOffsets — caused by Phase 3
+            // forward-seek materialization — make FindPageBisection land on an
+            // out-of-place materialized page whose granule is way past target).
+            // rollForward = target - resolved becomes hugely negative; the
+            // unsigned cast in ClippingCopyBuffer's bounds check then wraps to
+            // a giant positive number, returns 0, and the outer Read loop
+            // spins (copyLen > 0 → never hits the force-advance else-if).
+            if (_prevPacketStart < 0)
+            {
+                _prevPacketStart = 0;
+            }
+
+            if (traceEnabled)
+            {
+                var totalMs = (System.Diagnostics.Stopwatch.GetTimestamp() - traceStart) * 1000d
+                              / System.Diagnostics.Stopwatch.Frequency;
+                NVorbisDiagnostics.Log($"[seek-trace] NV.SeekTo END total={totalMs:F1}ms");
+            }
         }
 
         private int GetPacketGranules(IPacket curPacket)

@@ -570,6 +570,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         // wired in AppLifecycleHelper, so this mutation takes effect on the
         // next end-of-context evaluation with no further plumbing.
         _settingsService.Update(s => s.AutoplayEnabled = value);
+        WeakReferenceMessenger.Default.Send(new AutoplayEnabledChangedMessage(value));
     }
 
     // ── Verbose logging ──

@@ -1,6 +1,7 @@
 using Wavee.Core.Audio;
 using Wavee.Core.Http.Lyrics;
 using Wavee.Core.Http.Presence;
+using Wavee.Core.Http.RadioApollo;
 using Wavee.Protocol.Collection;
 using Wavee.Protocol.Resumption;
 using Wavee.Protocol.Storage;
@@ -155,6 +156,40 @@ public interface ISpClient
     Task<Protocol.Context.Context> ResolveAutoplayAsync(
         string contextUri,
         IReadOnlyList<string> recentTrackUris,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches autoplay recommendations seeded from a single track via the
+    /// radio-apollo endpoint — the path Spotify desktop uses when continuing
+    /// playback after a single-track (no real context) play. Returns a flat
+    /// JSON tracks list, distinct from <see cref="ResolveAutoplayAsync"/>'s
+    /// protobuf context shape.
+    /// </summary>
+    /// <param name="seedTrackId">Bare track ID (no "spotify:track:" prefix).</param>
+    /// <param name="prevTrackIds">Bare IDs of recently played tracks to seed recommendations.</param>
+    /// <param name="count">Number of tracks to request. Desktop uses 50.</param>
+    /// <param name="pageNum">Page cursor. Desktop opens with 2.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<RadioApolloResponse> GetRadioApolloAutoplayAsync(
+        string seedTrackId,
+        IReadOnlyList<string> prevTrackIds,
+        int count = 50,
+        int pageNum = 2,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves a Spotify "Inspired by …" radio playlist for a track / artist /
+    /// album seed URI. Used by the right-click "Go to … radio" actions —
+    /// the server returns a single playlist URI which the client then plays
+    /// via the standard playlist flow.
+    /// </summary>
+    /// <param name="seedUri">
+    /// Spotify URI: "spotify:track:&lt;id&gt;", "spotify:artist:&lt;id&gt;",
+    /// or "spotify:album:&lt;id&gt;".
+    /// </param>
+    /// <returns>The playlist URI to play, or null if the service returned no items.</returns>
+    Task<string?> GetInspiredByMixPlaylistAsync(
+        string seedUri,
         CancellationToken cancellationToken = default);
 
     /// <summary>

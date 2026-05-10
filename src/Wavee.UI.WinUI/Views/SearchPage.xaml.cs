@@ -27,6 +27,7 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
     private bool _sleepFilterRestoreRequested;
     private bool _trimmedForNavigationCache;
     private bool _viewModelEventsAttached;
+    private bool _scrollHandlerAttached;
     private bool _isDisposed;
 
     public SearchPage()
@@ -43,11 +44,50 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         AttachViewModelEvents();
+        AttachLoadMoreSentinel();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         DetachViewModelEvents();
+        DetachLoadMoreSentinel();
+    }
+
+    private void AttachLoadMoreSentinel()
+    {
+        if (_scrollHandlerAttached || LoadMoreSentinel == null) return;
+        // EffectiveViewportChanged fires only when the sentinel's intersection with an
+        // ancestor scroller changes — not every scroll frame. As we append items the
+        // sentinel pushes further down, so it stays silent until the user scrolls back
+        // near it. This avoids the layout-feedback loop a raw ScrollView.ViewChanged
+        // handler would create.
+        LoadMoreSentinel.EffectiveViewportChanged += OnLoadMoreSentinelViewportChanged;
+        _scrollHandlerAttached = true;
+    }
+
+    private void DetachLoadMoreSentinel()
+    {
+        if (!_scrollHandlerAttached || LoadMoreSentinel == null) return;
+        LoadMoreSentinel.EffectiveViewportChanged -= OnLoadMoreSentinelViewportChanged;
+        _scrollHandlerAttached = false;
+    }
+
+    private void OnLoadMoreSentinelViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
+    {
+        // Fire only when the sentinel actually intersects (or is within ~300px of) the
+        // effective viewport. ViewModel.LoadMoreAsync short-circuits if a fetch is in
+        // flight or the chip has nothing more to fetch.
+        if (!ViewModel.CanLoadMore) return;
+
+        // EffectiveViewport reports MinValue when the element isn't realised at all —
+        // ignore that, it's not "at the bottom", it's "off-screen entirely".
+        var ev = args.EffectiveViewport;
+        if (ev.Y == double.MinValue || ev.Height == double.MinValue) return;
+
+        // BringIntoViewDistance{X,Y} is the distance the element would need to scroll
+        // to enter the viewport. <= 300 means "near the bottom".
+        if (args.BringIntoViewDistanceY <= 300)
+            _ = ViewModel.LoadMoreAsync();
     }
     
 
@@ -59,6 +99,7 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
         Loaded -= OnLoaded;
         Unloaded -= OnUnloaded;
         DetachViewModelEvents();
+        DetachLoadMoreSentinel();
     }
 
     private void AttachViewModelEvents()
@@ -147,6 +188,9 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
                 "Artists" => SearchFilterType.Artists,
                 "Albums" => SearchFilterType.Albums,
                 "Playlists" => SearchFilterType.Playlists,
+                "Podcasts" => SearchFilterType.Podcasts,
+                "Users" => SearchFilterType.Users,
+                "Genres" => SearchFilterType.Genres,
                 _ => SearchFilterType.All
             };
         }
@@ -263,6 +307,9 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
         FilterArtists.IsChecked = ViewModel.SelectedFilter == SearchFilterType.Artists;
         FilterAlbums.IsChecked = ViewModel.SelectedFilter == SearchFilterType.Albums;
         FilterPlaylists.IsChecked = ViewModel.SelectedFilter == SearchFilterType.Playlists;
+        FilterPodcasts.IsChecked = ViewModel.SelectedFilter == SearchFilterType.Podcasts;
+        FilterUsers.IsChecked = ViewModel.SelectedFilter == SearchFilterType.Users;
+        FilterGenres.IsChecked = ViewModel.SelectedFilter == SearchFilterType.Genres;
     }
 
     private sealed record SearchPageSleepState(

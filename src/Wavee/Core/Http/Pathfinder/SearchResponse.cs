@@ -40,7 +40,241 @@ public sealed class SearchV2
 
     [JsonPropertyName("topResultsV2")]
     public TopResults? TopResultsV2 { get; init; }
+
+    // Podcasts/Users/Genres/Episodes have dedicated chip ops that return full pages,
+    // so they're modeled as full *Page types. The same fields appear in the
+    // searchTopResultsList response carrying only `totalCount` — Items + PagingInfo
+    // simply deserialize as null in that case.
+    [JsonPropertyName("podcasts")]
+    public PodcastPage? Podcasts { get; init; }
+
+    [JsonPropertyName("users")]
+    public UserPage? Users { get; init; }
+
+    [JsonPropertyName("genres")]
+    public GenrePage? Genres { get; init; }
+
+    [JsonPropertyName("episodes")]
+    public EpisodePage? Episodes { get; init; }
+
+    // Audiobooks + Authors don't have captured chip ops yet — keep as count-only
+    // until we have hashes to fire dedicated chip queries.
+    [JsonPropertyName("audiobooks")]
+    public SectionTotalCount? Audiobooks { get; init; }
+
+    [JsonPropertyName("authors")]
+    public SectionTotalCount? Authors { get; init; }
 }
+
+/// <summary>
+/// Minimal section page that carries only a total count — used for sections we
+/// don't render full pages for yet but want to expose chip badges for.
+/// </summary>
+public sealed class SectionTotalCount
+{
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
+
+    [JsonPropertyName("pagingInfo")]
+    public PagingInfo? PagingInfo { get; init; }
+}
+
+/// <summary>
+/// Pagination info shared by every section page — drives "load more" decisions.
+/// <c>NextOffset == null</c> means the section is fully fetched.
+/// </summary>
+public sealed class PagingInfo
+{
+    [JsonPropertyName("limit")]
+    public int Limit { get; init; }
+
+    [JsonPropertyName("nextOffset")]
+    public int? NextOffset { get; init; }
+}
+
+#region Podcasts (shows)
+
+public sealed class PodcastPage
+{
+    [JsonPropertyName("items")]
+    public List<PodcastResponseWrapper>? Items { get; init; }
+
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
+
+    [JsonPropertyName("pagingInfo")]
+    public PagingInfo? PagingInfo { get; init; }
+}
+
+public sealed class PodcastResponseWrapper
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; init; }
+
+    [JsonPropertyName("data")]
+    public PodcastData? Data { get; init; }
+}
+
+public sealed class PodcastData
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; init; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; init; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+
+    [JsonPropertyName("coverArt")]
+    public CoverArt? CoverArt { get; init; }
+
+    [JsonPropertyName("publisher")]
+    public PodcastPublisher? Publisher { get; init; }
+
+    [JsonPropertyName("mediaType")]
+    public string? MediaType { get; init; }
+}
+
+public sealed class PodcastPublisher
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+}
+
+#endregion
+
+#region Users
+
+public sealed class UserPage
+{
+    [JsonPropertyName("items")]
+    public List<UserResponseWrapper>? Items { get; init; }
+
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
+
+    [JsonPropertyName("pagingInfo")]
+    public PagingInfo? PagingInfo { get; init; }
+}
+
+public sealed class UserResponseWrapper
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; init; }
+
+    [JsonPropertyName("data")]
+    public UserData? Data { get; init; }
+}
+
+public sealed class UserData
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; init; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; init; }
+
+    [JsonPropertyName("displayName")]
+    public string? DisplayName { get; init; }
+
+    [JsonPropertyName("username")]
+    public string? Username { get; init; }
+
+    [JsonPropertyName("avatar")]
+    public CoverArt? Avatar { get; init; }
+}
+
+#endregion
+
+#region Genres
+
+public sealed class GenrePage
+{
+    [JsonPropertyName("items")]
+    public List<GenreResponseWrapper>? Items { get; init; }
+
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
+
+    [JsonPropertyName("pagingInfo")]
+    public PagingInfo? PagingInfo { get; init; }
+}
+
+public sealed class GenreResponseWrapper
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; init; }
+
+    [JsonPropertyName("data")]
+    public GenreData? Data { get; init; }
+}
+
+public sealed class GenreData
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; init; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; init; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+
+    [JsonPropertyName("image")]
+    public CoverArt? Image { get; init; }
+}
+
+#endregion
+
+#region Episodes
+
+public sealed class EpisodePage
+{
+    [JsonPropertyName("items")]
+    public List<EpisodeResponseWrapper>? Items { get; init; }
+
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
+
+    [JsonPropertyName("pagingInfo")]
+    public PagingInfo? PagingInfo { get; init; }
+}
+
+public sealed class EpisodeResponseWrapper
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; init; }
+
+    [JsonPropertyName("data")]
+    public EpisodeData? Data { get; init; }
+}
+
+public sealed class EpisodeData
+{
+    [JsonPropertyName("__typename")]
+    public string? TypeName { get; init; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; init; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; init; }
+
+    [JsonPropertyName("coverArt")]
+    public CoverArt? CoverArt { get; init; }
+
+    [JsonPropertyName("duration")]
+    public Duration? Duration { get; init; }
+
+    [JsonPropertyName("podcastV2")]
+    public PodcastResponseWrapper? PodcastV2 { get; init; }
+}
+
+#endregion
 
 #region Tracks
 
@@ -54,6 +288,9 @@ public sealed class TrackPage
 
     [JsonPropertyName("totalCount")]
     public int TotalCount { get; init; }
+
+    [JsonPropertyName("pagingInfo")]
+    public PagingInfo? PagingInfo { get; init; }
 }
 
 /// <summary>
@@ -145,6 +382,9 @@ public sealed class ArtistPage
 
     [JsonPropertyName("totalCount")]
     public int TotalCount { get; init; }
+
+    [JsonPropertyName("pagingInfo")]
+    public PagingInfo? PagingInfo { get; init; }
 }
 
 /// <summary>
@@ -233,6 +473,9 @@ public sealed class AlbumPage
 
     [JsonPropertyName("totalCount")]
     public int TotalCount { get; init; }
+
+    [JsonPropertyName("pagingInfo")]
+    public PagingInfo? PagingInfo { get; init; }
 }
 
 /// <summary>
@@ -300,6 +543,9 @@ public sealed class PlaylistPage
 
     [JsonPropertyName("totalCount")]
     public int TotalCount { get; init; }
+
+    [JsonPropertyName("pagingInfo")]
+    public PagingInfo? PagingInfo { get; init; }
 }
 
 /// <summary>
@@ -481,18 +727,31 @@ public sealed class SearchResult
     public int TotalArtists { get; init; }
     public int TotalAlbums { get; init; }
     public int TotalPlaylists { get; init; }
+    public int TotalPodcasts { get; init; }
+    public int TotalAudiobooks { get; init; }
+    public int TotalUsers { get; init; }
+    public int TotalAuthors { get; init; }
+    public int TotalEpisodes { get; init; }
+    public int TotalGenres { get; init; }
 
     /// <summary>
     /// Creates a SearchResult from a PathfinderSearchResponse.
     /// </summary>
     public static SearchResult FromResponse(PathfinderSearchResponse response)
     {
+        var sv = response.Data?.SearchV2;
         var result = new SearchResult
         {
-            TotalTracks = response.Data?.SearchV2?.TracksV2?.TotalCount ?? 0,
-            TotalArtists = response.Data?.SearchV2?.Artists?.TotalCount ?? 0,
-            TotalAlbums = response.Data?.SearchV2?.AlbumsV2?.TotalCount ?? 0,
-            TotalPlaylists = response.Data?.SearchV2?.Playlists?.TotalCount ?? 0
+            TotalTracks = sv?.TracksV2?.TotalCount ?? 0,
+            TotalArtists = sv?.Artists?.TotalCount ?? 0,
+            TotalAlbums = sv?.AlbumsV2?.TotalCount ?? 0,
+            TotalPlaylists = sv?.Playlists?.TotalCount ?? 0,
+            TotalPodcasts = sv?.Podcasts?.TotalCount ?? 0,
+            TotalAudiobooks = sv?.Audiobooks?.TotalCount ?? 0,
+            TotalUsers = sv?.Users?.TotalCount ?? 0,
+            TotalAuthors = sv?.Authors?.TotalCount ?? 0,
+            TotalEpisodes = sv?.Episodes?.TotalCount ?? 0,
+            TotalGenres = sv?.Genres?.TotalCount ?? 0
         };
         var seenKeys = new HashSet<string>(StringComparer.Ordinal);
 
@@ -601,6 +860,83 @@ public sealed class SearchResult
             }
         }
 
+        // Add podcasts (shows)
+        if (response.Data?.SearchV2?.Podcasts?.Items != null)
+        {
+            foreach (var wrapper in response.Data.SearchV2.Podcasts.Items)
+            {
+                var podcast = wrapper.Data;
+                if (podcast?.Uri == null) continue;
+
+                AddItem(new SearchResultItem
+                {
+                    Type = SearchResultType.Podcast,
+                    Uri = podcast.Uri,
+                    Name = podcast.Name ?? "Unknown",
+                    PublisherName = podcast.Publisher?.Name,
+                    ImageUrl = podcast.CoverArt?.Sources?.FirstOrDefault()?.Url
+                });
+            }
+        }
+
+        // Add users
+        if (response.Data?.SearchV2?.Users?.Items != null)
+        {
+            foreach (var wrapper in response.Data.SearchV2.Users.Items)
+            {
+                var user = wrapper.Data;
+                if (user?.Uri == null) continue;
+
+                AddItem(new SearchResultItem
+                {
+                    Type = SearchResultType.User,
+                    Uri = user.Uri,
+                    Name = user.DisplayName ?? user.Username ?? "Unknown",
+                    ImageUrl = user.Avatar?.Sources?.FirstOrDefault()?.Url
+                });
+            }
+        }
+
+        // Add genres
+        if (response.Data?.SearchV2?.Genres?.Items != null)
+        {
+            foreach (var wrapper in response.Data.SearchV2.Genres.Items)
+            {
+                var genre = wrapper.Data;
+                if (genre?.Uri == null) continue;
+
+                AddItem(new SearchResultItem
+                {
+                    Type = SearchResultType.Genre,
+                    Uri = genre.Uri,
+                    Name = genre.Name ?? "Unknown",
+                    ImageUrl = genre.Image?.Sources?.FirstOrDefault()?.Url
+                });
+            }
+        }
+
+        // Add episodes
+        if (response.Data?.SearchV2?.Episodes?.Items != null)
+        {
+            foreach (var wrapper in response.Data.SearchV2.Episodes.Items)
+            {
+                var episode = wrapper.Data;
+                if (episode?.Uri == null) continue;
+
+                AddItem(new SearchResultItem
+                {
+                    Type = SearchResultType.Episode,
+                    Uri = episode.Uri,
+                    Name = episode.Name ?? "Unknown",
+                    Description = episode.Description,
+                    DurationMs = episode.Duration?.TotalMilliseconds ?? 0,
+                    ImageUrl = episode.CoverArt?.Sources?.FirstOrDefault()?.Url,
+                    ParentName = episode.PodcastV2?.Data?.Name,
+                    ParentUri = episode.PodcastV2?.Data?.Uri
+                });
+            }
+        }
+
         // Extract top result from topResultsV2
         var topItems = response.Data?.SearchV2?.TopResultsV2?.ItemsV2;
         if (topItems is { Count: > 0 })
@@ -700,6 +1036,50 @@ public sealed class SearchResult
                         && srcs[0].TryGetProperty("url", out var pu) ? pu.GetString() : null,
                     SectionLabel = sectionLabel,
                 },
+                "PodcastResponseWrapper" => new SearchResultItem
+                {
+                    Type = SearchResultType.Podcast,
+                    Uri = uri,
+                    Name = data.TryGetProperty("name", out var podn) ? podn.GetString() ?? "Unknown" : "Unknown",
+                    PublisherName = GetNestedString(data, "publisher", "name"),
+                    ImageUrl = GetFirstImageUrl(data, "coverArt"),
+                    SectionLabel = sectionLabel,
+                },
+                "EpisodeResponseWrapper" => new SearchResultItem
+                {
+                    Type = SearchResultType.Episode,
+                    Uri = uri,
+                    Name = data.TryGetProperty("name", out var en) ? en.GetString() ?? "Unknown" : "Unknown",
+                    Description = data.TryGetProperty("description", out var ed) ? ed.GetString() : null,
+                    DurationMs = data.TryGetProperty("duration", out var edur)
+                        && edur.TryGetProperty("totalMilliseconds", out var ems) ? ems.GetInt64() : 0,
+                    ImageUrl = GetFirstImageUrl(data, "coverArt"),
+                    ParentName = data.TryGetProperty("podcastV2", out var pv)
+                        && pv.TryGetProperty("data", out var pvd)
+                        && pvd.TryGetProperty("name", out var pvn) ? pvn.GetString() : null,
+                    ParentUri = data.TryGetProperty("podcastV2", out var pv2)
+                        && pv2.TryGetProperty("data", out var pv2d)
+                        && pv2d.TryGetProperty("uri", out var pv2u) ? pv2u.GetString() : null,
+                    SectionLabel = sectionLabel,
+                },
+                "UserResponseWrapper" => new SearchResultItem
+                {
+                    Type = SearchResultType.User,
+                    Uri = uri,
+                    Name = (data.TryGetProperty("displayName", out var udn) ? udn.GetString() : null)
+                        ?? (data.TryGetProperty("username", out var un) ? un.GetString() : null)
+                        ?? "Unknown",
+                    ImageUrl = GetFirstImageUrl(data, "avatar"),
+                    SectionLabel = sectionLabel,
+                },
+                "GenreResponseWrapper" => new SearchResultItem
+                {
+                    Type = SearchResultType.Genre,
+                    Uri = uri,
+                    Name = data.TryGetProperty("name", out var gn) ? gn.GetString() ?? "Unknown" : "Unknown",
+                    ImageUrl = GetFirstImageUrl(data, "image"),
+                    SectionLabel = sectionLabel,
+                },
                 _ => null
             };
         }
@@ -779,7 +1159,11 @@ public enum SearchResultType
     Track,
     Artist,
     Album,
-    Playlist
+    Playlist,
+    Podcast,
+    Episode,
+    User,
+    Genre
 }
 
 public enum SearchScope
@@ -813,6 +1197,13 @@ public sealed class SearchResultItem
     // Playlist specific
     public string? OwnerName { get; init; }
     public string? Description { get; init; }
+
+    // Podcast specific
+    public string? PublisherName { get; init; }
+
+    // Episode specific — links back to its parent show.
+    public string? ParentName { get; init; }
+    public string? ParentUri { get; init; }
 
     // Common
     public string? ImageUrl { get; init; }
@@ -856,6 +1247,14 @@ public sealed class SearchResultItem
             SearchResultType.Playlist => string.IsNullOrWhiteSpace(OwnerName)
                 ? "Playlist"
                 : $"Playlist · {OwnerName}",
+            SearchResultType.Podcast => string.IsNullOrWhiteSpace(PublisherName)
+                ? "Podcast"
+                : $"Podcast · {PublisherName}",
+            SearchResultType.Episode => string.IsNullOrWhiteSpace(ParentName)
+                ? "Episode"
+                : $"Episode · {ParentName}",
+            SearchResultType.User => "Profile",
+            SearchResultType.Genre => "Genre",
             _ => Name
         };
     }
@@ -868,6 +1267,10 @@ public sealed class SearchResultItem
             SearchResultType.Artist => "Artist",
             SearchResultType.Album => "Album",
             SearchResultType.Playlist => "Playlist",
+            SearchResultType.Podcast => "Podcast",
+            SearchResultType.Episode => "Episode",
+            SearchResultType.User => "Profile",
+            SearchResultType.Genre => "Genre",
             _ => "Result"
         };
     }
@@ -876,7 +1279,7 @@ public sealed class SearchResultItem
     {
         return Type switch
         {
-            SearchResultType.Track => "\uE768",
+            SearchResultType.Track or SearchResultType.Episode => "\uE768",
             _ => "\uE76C"
         };
     }
@@ -889,6 +1292,10 @@ public sealed class SearchResultItem
             SearchResultType.Artist => "\uE77B",
             SearchResultType.Album => "\uE93C",
             SearchResultType.Playlist => "\uE142",
+            SearchResultType.Podcast => "\uE9E9",
+            SearchResultType.Episode => "\uE93B",
+            SearchResultType.User => "\uE77B",
+            SearchResultType.Genre => "\uE8FD",
             _ => "\uE721"
         };
     }

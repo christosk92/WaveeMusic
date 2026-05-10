@@ -461,6 +461,9 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         public Task<PlaybackResult> AddToQueueAsync(string trackUri, CancellationToken ct = default)
             => Task.FromResult(PlaybackResult.Success());
 
+        public Task<PlaybackResult> PlayNextAsync(string trackUri, CancellationToken ct = default)
+            => Task.FromResult(PlaybackResult.Success());
+
         public Task<PlaybackResult> TransferPlaybackAsync(string deviceId, bool startPlaying = true, CancellationToken ct = default)
             => Task.FromResult(PlaybackResult.Success());
 
@@ -608,6 +611,10 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         }
 
         public void AddToQueue(IEnumerable<string> trackIds)
+        {
+        }
+
+        public void PlayNext(string trackId)
         {
         }
 

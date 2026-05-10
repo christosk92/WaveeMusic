@@ -45,6 +45,18 @@
                                  Click="FilterChip_Click" Tag="Albums"
                                  Style="{StaticResource DefaultToggleButtonStyle}"
                                  CornerRadius="19" MinHeight="38" MinWidth="0" Padding="18,8"/>
+                    <RadioButton x:Name="FilterPodcasts" Content="Podcasts" GroupName="SearchFilter"
+                                 Click="FilterChip_Click" Tag="Podcasts"
+                                 Style="{StaticResource DefaultToggleButtonStyle}"
+                                 CornerRadius="19" MinHeight="38" MinWidth="0" Padding="18,8"/>
+                    <RadioButton x:Name="FilterUsers" Content="Profiles" GroupName="SearchFilter"
+                                 Click="FilterChip_Click" Tag="Users"
+                                 Style="{StaticResource DefaultToggleButtonStyle}"
+                                 CornerRadius="19" MinHeight="38" MinWidth="0" Padding="18,8"/>
+                    <RadioButton x:Name="FilterGenres" Content="Genres" GroupName="SearchFilter"
+                                 Click="FilterChip_Click" Tag="Genres"
+                                 Style="{StaticResource DefaultToggleButtonStyle}"
+                                 CornerRadius="19" MinHeight="38" MinWidth="0" Padding="18,8"/>
                 </StackPanel>
             </ScrollViewer>
 
@@ -182,6 +194,12 @@
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>
+
+                <!-- Infinite-scroll sentinel: a 1px element placed at the end of the chip
+                     results. EffectiveViewportChanged on this element drives LoadMoreAsync
+                     calls when it nears the viewport. Doesn't fire on every scroll frame
+                     the way ScrollView.ViewChanged would, so no layout-feedback loop. -->
+                <Border x:Name="LoadMoreSentinel" Height="1" HorizontalAlignment="Stretch"/>
 
                 <controls:ErrorStateView
                     Margin="0,40,0,0"

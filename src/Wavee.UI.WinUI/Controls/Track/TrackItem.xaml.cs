@@ -64,6 +64,10 @@ public sealed partial class TrackItem : UserControl
         DependencyProperty.Register(nameof(AddToQueueCommand), typeof(ICommand), typeof(TrackItem),
             new PropertyMetadata(null));
 
+    public static readonly DependencyProperty PlayNextCommandProperty =
+        DependencyProperty.Register(nameof(PlayNextCommand), typeof(ICommand), typeof(TrackItem),
+            new PropertyMetadata(null));
+
     public static readonly DependencyProperty RemoveCommandProperty =
         DependencyProperty.Register(nameof(RemoveCommand), typeof(ICommand), typeof(TrackItem),
             new PropertyMetadata(null));
@@ -277,6 +281,12 @@ public sealed partial class TrackItem : UserControl
     {
         get => (ICommand?)GetValue(AddToQueueCommandProperty);
         set => SetValue(AddToQueueCommandProperty, value);
+    }
+
+    public ICommand? PlayNextCommand
+    {
+        get => (ICommand?)GetValue(PlayNextCommandProperty);
+        set => SetValue(PlayNextCommandProperty, value);
     }
 
     public ICommand? RemoveCommand
@@ -2112,6 +2122,7 @@ public sealed partial class TrackItem : UserControl
         var ctx = new TrackMenuContext
         {
             PlayCommand = PlayCommand,
+            PlayNextCommand = PlayNextCommand,
             AddToQueueCommand = AddToQueueCommand,
             RemoveCommand = RemoveCommand,
             RemoveLabel = RemoveCommandLabel

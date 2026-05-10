@@ -29,6 +29,18 @@ namespace NVorbis.Ogg
             StreamSerial = streamSerial;
         }
 
+        // Forwards a bytes-per-sample hint (derived from the Vorbis ID header's
+        // nominal bitrate + sample rate) to StreamPageReader so its forward-seek
+        // bisection can seed the first probe near the target byte. Called once
+        // by StreamDecoder after parsing the ID header.
+        internal void SetByteRateHint(int nominalBitrate, int sampleRate)
+        {
+            if (_reader is StreamPageReader spr && nominalBitrate > 0 && sampleRate > 0)
+            {
+                spr.BytesPerSampleHint = (double)nominalBitrate / 8 / sampleRate;
+            }
+        }
+
         public long GetGranuleCount()
         {
             if (_reader == null) throw new ObjectDisposedException(nameof(PacketProvider));
@@ -57,8 +69,30 @@ namespace NVorbis.Ogg
         {
             if (_reader == null) throw new ObjectDisposedException(nameof(PacketProvider));
 
+            var traceEnabled = NVorbisDiagnostics.IsEnabled;
+            var traceStart = traceEnabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
+            if (traceEnabled)
+                NVorbisDiagnostics.Log($"[seek-trace] PP.SeekTo BEGIN granule={granulePos} preRoll={preRoll}");
+
+            long findPageStart = 0;
+            if (traceEnabled) findPageStart = System.Diagnostics.Stopwatch.GetTimestamp();
             int pageIndex = _reader.FindPage(granulePos);
+            if (traceEnabled)
+            {
+                var ms = (System.Diagnostics.Stopwatch.GetTimestamp() - findPageStart) * 1000d
+                         / System.Diagnostics.Stopwatch.Frequency;
+                NVorbisDiagnostics.Log($"[seek-trace] PP.SeekTo FindPage done pageIdx={pageIndex} elapsed={ms:F1}ms");
+            }
+
+            long findPacketStart = 0;
+            if (traceEnabled) findPacketStart = System.Diagnostics.Stopwatch.GetTimestamp();
             int packetIndex = FindPacket(pageIndex, preRoll, ref granulePos, getPacketGranuleCount);
+            if (traceEnabled)
+            {
+                var ms = (System.Diagnostics.Stopwatch.GetTimestamp() - findPacketStart) * 1000d
+                         / System.Diagnostics.Stopwatch.Frequency;
+                NVorbisDiagnostics.Log($"[seek-trace] PP.SeekTo FindPacket done packetIdx={packetIndex} elapsed={ms:F1}ms");
+            }
 
             if (!NormalizePacketIndex(ref pageIndex, ref packetIndex))
             {
@@ -68,6 +102,13 @@ namespace NVorbis.Ogg
             _lastPacket = null;
             _pageIndex = pageIndex;
             _packetIndex = packetIndex;
+
+            if (traceEnabled)
+            {
+                var totalMs = (System.Diagnostics.Stopwatch.GetTimestamp() - traceStart) * 1000d
+                              / System.Diagnostics.Stopwatch.Frequency;
+                NVorbisDiagnostics.Log($"[seek-trace] PP.SeekTo END resolved_granule={granulePos} total={totalMs:F1}ms");
+            }
             return granulePos;
         }
 

@@ -514,8 +514,10 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 }
 
                 // Volume (convert 0-65535 → 0-100 for UI)
-                // Suppress command feedback: remote state sync should NOT trigger set_volume back
-                if (state.Changes.HasFlag(StateChanges.Volume) || state.Changes.HasFlag(StateChanges.ActiveDevice))
+                // Suppress command feedback: remote state sync should NOT trigger set_volume back.
+                // Only re-apply on actual volume changes — coupling to ActiveDevice caused the
+                // slider to spuriously snap whenever the device list / self-announcement changed.
+                if (state.Changes.HasFlag(StateChanges.Volume))
                 {
                     var uiVolume = state.Volume / 655.35;
                     // Don't overwrite to 0 if the remote volume is uninitialized
@@ -1508,6 +1510,36 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             });
     }
 
+    public async Task StartRadioAsync(string seedUri, string? displayName = null)
+    {
+        if (string.IsNullOrWhiteSpace(seedUri)) return;
+        _logger?.LogInformation("[Cmd] StartRadio: seed={Seed}", seedUri);
+
+        string? playlistUri;
+        try
+        {
+            playlistUri = await _session.SpClient.GetInspiredByMixPlaylistAsync(seedUri);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "[Cmd] StartRadio FAILED resolving seed={Seed}", seedUri);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(playlistUri))
+        {
+            _logger?.LogWarning("[Cmd] StartRadio: no playlist returned for seed={Seed}", seedUri);
+            return;
+        }
+
+        PlayContext(new PlaybackContextInfo
+        {
+            ContextUri = playlistUri,
+            Type = PlaybackContextType.Playlist,
+            Name = displayName
+        });
+    }
+
     public void PlayTrack(string trackId, PlaybackContextInfo? context = null)
     {
         _logger?.LogInformation("[Cmd] PlayTrack: trackId={TrackId}, context={Context}", trackId, context?.ContextUri ?? "<none>");
@@ -1547,6 +1579,15 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] AddToQueue FAILED: trackId={TrackId}", trackId);
             });
         }
+    }
+
+    public void PlayNext(string trackId)
+    {
+        _logger?.LogInformation("[Cmd] PlayNext: trackId={TrackId}", trackId);
+        _ = _playbackService.PlayNextAsync(trackId).ContinueWith(t =>
+        {
+            if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] PlayNext FAILED: trackId={TrackId}", trackId);
+        });
     }
 
     public void LoadQueue(IReadOnlyList<QueueItem> items, PlaybackContextInfo context, int startIndex = 0)

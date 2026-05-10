@@ -21,9 +21,9 @@ public sealed class PathfinderRequest
     /// </summary>
     public static PathfinderRequest CreateSearchRequest(
         string searchTerm,
-        int limit = 10,
+        int limit = 50,
         int offset = 0,
-        int numberOfTopResults = 5)
+        int numberOfTopResults = 50)
     {
         return new PathfinderRequest
         {
@@ -37,6 +37,8 @@ public sealed class PathfinderRequest
                 IncludeArtistHasConcertsField = false,
                 IncludePreReleases = true,
                 IncludeAuthors = true,
+                IncludeEpisodeContentRatingsV2 = false,
+                IsPrefix = null,
                 SectionFilters = ["GENERIC", "VIDEO_CONTENT"]
             },
             OperationName = PathfinderOperations.SearchTopResultsList,
@@ -46,6 +48,42 @@ public sealed class PathfinderRequest
                 {
                     Version = 1,
                     Sha256Hash = PathfinderOperations.SearchTopResultsListHash
+                }
+            }
+        };
+    }
+
+    /// <summary>
+    /// Creates a per-chip "searchPlaylists" request — fired when the user selects
+    /// the Playlists chip on the Search page and paginates within that section.
+    /// Mirrors the desktop 1.2.89.539 capture exactly.
+    /// </summary>
+    public static PathfinderRequest CreateSearchPlaylistsRequest(
+        string searchTerm,
+        int limit = 30,
+        int offset = 0,
+        int numberOfTopResults = 20)
+    {
+        return new PathfinderRequest
+        {
+            Variables = new FilteredSearchVariables
+            {
+                SearchTerm = searchTerm,
+                Limit = limit,
+                Offset = offset,
+                NumberOfTopResults = numberOfTopResults,
+                IncludeAudiobooks = true,
+                IncludeAuthors = true,
+                IncludePreReleases = false,
+                IncludeEpisodeContentRatingsV2 = false
+            },
+            OperationName = PathfinderOperations.SearchPlaylists,
+            Extensions = new QueryExtensions
+            {
+                PersistedQuery = new PersistedQuery
+                {
+                    Version = 1,
+                    Sha256Hash = PathfinderOperations.SearchPlaylistsHash
                 }
             }
         };
@@ -64,25 +102,54 @@ public sealed class SearchVariables
     public int Offset { get; init; }
 
     [JsonPropertyName("limit")]
-    public int Limit { get; init; } = 10;
+    public int Limit { get; init; } = 50;
 
     [JsonPropertyName("numberOfTopResults")]
-    public int NumberOfTopResults { get; init; } = 5;
-
-    [JsonPropertyName("includeAudiobooks")]
-    public bool IncludeAudiobooks { get; init; } = true;
+    public int NumberOfTopResults { get; init; } = 50;
 
     [JsonPropertyName("includeArtistHasConcertsField")]
     public bool IncludeArtistHasConcertsField { get; init; }
 
-    [JsonPropertyName("includePreReleases")]
-    public bool IncludePreReleases { get; init; } = true;
+    [JsonPropertyName("includeAudiobooks")]
+    public bool IncludeAudiobooks { get; init; } = true;
 
     [JsonPropertyName("includeAuthors")]
     public bool IncludeAuthors { get; init; } = true;
 
+    [JsonPropertyName("includePreReleases")]
+    public bool IncludePreReleases { get; init; } = true;
+
+    [JsonPropertyName("includeEpisodeContentRatingsV2")]
+    public bool IncludeEpisodeContentRatingsV2 { get; init; }
+
+    // Source-gen context sets DefaultIgnoreCondition = WhenWritingNull globally;
+    // override here so null serializes as "isPrefix": null to match the desktop wire format.
+    [JsonPropertyName("isPrefix")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public bool? IsPrefix { get; init; }
+
     [JsonPropertyName("sectionFilters")]
     public string[] SectionFilters { get; init; } = ["GENERIC", "VIDEO_CONTENT"];
+}
+
+/// <summary>
+/// Variables for the searchFullEpisodes chip query — uses a slimmer payload than the
+/// other per-chip ops (no numberOfTopResults / includeAudiobooks / includeAuthors /
+/// includePreReleases). Mirrors the desktop 1.2.89.539 capture exactly.
+/// </summary>
+public sealed class EpisodeSearchVariables
+{
+    [JsonPropertyName("searchTerm")]
+    public required string SearchTerm { get; init; }
+
+    [JsonPropertyName("offset")]
+    public int Offset { get; init; }
+
+    [JsonPropertyName("limit")]
+    public int Limit { get; init; } = 30;
+
+    [JsonPropertyName("includeEpisodeContentRatingsV2")]
+    public bool IncludeEpisodeContentRatingsV2 { get; init; }
 }
 
 public sealed class FilteredSearchVariables
@@ -107,6 +174,9 @@ public sealed class FilteredSearchVariables
 
     [JsonPropertyName("includePreReleases")]
     public bool IncludePreReleases { get; init; }
+
+    [JsonPropertyName("includeEpisodeContentRatingsV2")]
+    public bool IncludeEpisodeContentRatingsV2 { get; init; }
 }
 
 /// <summary>
@@ -164,6 +234,9 @@ public sealed class SearchSuggestionsVariables
 
     [JsonPropertyName("includeAuthors")]
     public bool IncludeAuthors { get; init; } = true;
+
+    [JsonPropertyName("includeEpisodeContentRatingsV2")]
+    public bool IncludeEpisodeContentRatingsV2 { get; init; }
 }
 
 [JsonSerializable(typeof(SearchSuggestionsVariables))]

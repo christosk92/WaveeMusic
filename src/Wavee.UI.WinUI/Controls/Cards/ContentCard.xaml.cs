@@ -1423,6 +1423,14 @@ public sealed partial class ContentCard : UserControl
         if (string.IsNullOrEmpty(uri) || IsCircularImage)
             return false;
 
+        // Don't snapshot before the source bitmap has decoded — the morph would
+        // start from an empty rect and pop into the cover mid-flight. Mirrors
+        // the PixelWidth > 0 readiness check used at LoadImage's resting-opacity
+        // snap (line 715). Cold-cache cards just fall back to the standard
+        // shimmer crossfade reveal, which looks correct.
+        if (SquareImage?.Source is not Microsoft.UI.Xaml.Media.Imaging.BitmapImage bmp || bmp.PixelWidth <= 0)
+            return false;
+
         var parts = uri.Split(':');
         if (parts.Length < 3)
             return false;

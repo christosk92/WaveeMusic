@@ -119,4 +119,12 @@ public static class SpotifyClientIdentity
     /// User-Agent (<c>Win32_x86_64</c> on Windows).
     /// </summary>
     public const string AppPlatform = "Win32_x86_64";
+
+    /// <summary>
+    /// xpui-snapshot version string used in <c>play_origin.feature_version</c>
+    /// for connect-state remote play commands. Captured from a real desktop
+    /// client; mimics the web-based player snapshot identifier the Connect
+    /// server expects on transfer-play. Refresh alongside <see cref="DesktopSemver"/>.
+    /// </summary>
+    public const string XpuiSnapshotVersion = "xpui-snapshot_2026-05-06_1778061618835_fb3c63a";
 }

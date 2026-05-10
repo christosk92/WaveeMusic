@@ -70,7 +70,18 @@ public interface IPlaybackService : INotifyPropertyChanged
 
     // ── Queue ──
 
+    /// <summary>
+    /// "Add to Queue" — appends the track so it plays AFTER the current context
+    /// finishes (post-context bucket on local; tail of remote user queue on
+    /// remote, since Connect doesn't model post-context).
+    /// </summary>
     Task<PlaybackResult> AddToQueueAsync(string trackUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// "Play Next" — inserts the track at the head of the user queue so it
+    /// plays immediately after the current track, then context resumes.
+    /// </summary>
+    Task<PlaybackResult> PlayNextAsync(string trackUri, CancellationToken ct = default);
 
     // ── Device ──
 

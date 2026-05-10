@@ -26,6 +26,51 @@ namespace NVorbis.Ogg
 
         protected long StreamPosition => _stream?.Position ?? throw new ObjectDisposedException(nameof(PageReaderBase));
 
+        /// <summary>
+        /// Length of the underlying stream in bytes. Used by StreamPageReader's
+        /// byte-position bisection as the upper anchor for forward seeks. Returns
+        /// 0 when the stream doesn't support Length (non-seekable or unknown size).
+        /// </summary>
+        public long StreamLength
+        {
+            get
+            {
+                if (_stream == null) return 0;
+                try { return _stream.CanSeek ? _stream.Length : 0; }
+                catch (NotSupportedException) { return 0; }
+            }
+        }
+
+        public int PeekRawAt(long offset, byte[] buffer, int bufferOffset, int count)
+        {
+            if (_stream == null || !_stream.CanSeek) return 0;
+            // Diagnostic-only: bypass scan logic, just read raw bytes at offset
+            // and restore the stream position. No lock acquisition (caller's
+            // responsibility — typically holds _reader.Lock during a probe).
+            var saved = _stream.Position;
+            try
+            {
+                _stream.Position = offset;
+                var read = 0;
+                while (read < count)
+                {
+                    var n = _stream.Read(buffer, bufferOffset + read, count - read);
+                    if (n <= 0) break;
+                    read += n;
+                }
+                return read;
+            }
+            catch
+            {
+                return 0;
+            }
+            finally
+            {
+                try { _stream.Position = saved; }
+                catch { }
+            }
+        }
+
         public long ContainerBits { get; private set; }
 
         public long WasteBits { get; private set; }
@@ -33,7 +78,7 @@ namespace NVorbis.Ogg
         private bool VerifyPage(byte[] headerBuf, int index, int cnt, out byte[] pageBuf, out int bytesRead)
         {
             var segCnt = headerBuf[index + 26];
-            if (cnt - index < index + 27 + segCnt)
+            if (cnt < index + 27 + segCnt)
             {
                 pageBuf = null;
                 bytesRead = 0;
@@ -134,30 +179,37 @@ namespace NVorbis.Ogg
         {
             if (buffer[index] == 0x4f && buffer[index + 1] == 0x67 && buffer[index + 2] == 0x67 && buffer[index + 3] == 0x53)
             {
-                if (cnt < 27)
+                var headerEnd = index + 27;
+                if (cnt < headerEnd)
                 {
+                    var needed = headerEnd - cnt;
                     if (isFromReadNextPage)
                     {
-                        cnt += FillHeader(buffer, 27 - cnt + index, 27 - cnt);
+                        cnt += FillHeader(buffer, cnt, needed);
                     }
                     else
                     {
-                        cnt += EnsureRead(buffer, 27 - cnt + index, 27 - cnt);
+                        cnt += EnsureRead(buffer, cnt, needed);
                     }
                 }
 
-                if (cnt >= 27)
+                if (cnt >= headerEnd)
                 {
                     var segCnt = buffer[index + 26];
-                    if (isFromReadNextPage)
+                    var segmentEnd = headerEnd + segCnt;
+                    if (cnt < segmentEnd)
                     {
-                        cnt += FillHeader(buffer, index + 27, segCnt);
+                        var needed = segmentEnd - cnt;
+                        if (isFromReadNextPage)
+                        {
+                            cnt += FillHeader(buffer, cnt, needed);
+                        }
+                        else
+                        {
+                            cnt += EnsureRead(buffer, cnt, needed);
+                        }
                     }
-                    else
-                    {
-                        cnt += EnsureRead(buffer, index + 27, segCnt);
-                    }
-                    if (cnt == index + 27 + segCnt)
+                    if (cnt >= segmentEnd)
                     {
                         return true;
                     }

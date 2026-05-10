@@ -24,7 +24,10 @@ public enum SearchFilterType
     Songs,
     Artists,
     Albums,
-    Playlists
+    Playlists,
+    Podcasts,
+    Users,
+    Genres
 }
 
 /// <summary>
@@ -41,11 +44,26 @@ public sealed class SearchSectionViewModel
 public sealed partial class SearchViewModel : ObservableObject, ITabBarItemContent
 {
     private readonly IPathfinderClient _pathfinderClient;
+    private readonly ISearchService? _searchService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ILogger? _logger;
     private readonly List<SearchResultItem> _allItems = [];
     private int _requestVersion;
     private bool _isHibernated;
+
+    // Generic chip pagination state — only one chip is active at a time, so a
+    // single set of fields drives every per-chip page (Songs/Artists/Albums/
+    // Playlists/Podcasts/Users/Genres).
+    private int _chipOffset;
+    private int _chipTotal;
+    private bool _chipHasMore;
+    private bool _chipLoadingMore;
+
+    private static int ChipPageSize(SearchFilterType filter) => filter switch
+    {
+        SearchFilterType.Songs => 20,                     // matches desktop searchTracks default
+        _ => 30                                           // every other per-chip op uses 30
+    };
 
     // Process-wide result cache (TTL 5 min). Survives SearchViewModel disposal so
     // tab-sleep wake (which re-instantiates the page + VM and re-fires LoadAsync via
@@ -55,7 +73,9 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     private sealed record CachedResult(
         IReadOnlyList<SearchResultItem> Items,
         SearchResultItem? TopResult,
-        DateTimeOffset At);
+        DateTimeOffset At,
+        int ChipTotal,
+        bool ChipHasMore);
     private static readonly Dictionary<string, CachedResult> _resultCache =
         new(StringComparer.Ordinal);
     private static readonly object _resultCacheGate = new();
@@ -123,12 +143,14 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         IPathfinderClient pathfinderClient,
         IPlaybackStateService playbackStateService,
         ILogger<SearchViewModel>? logger = null,
-        Wavee.Core.Library.Local.ILocalLibraryService? localLibrary = null)
+        Wavee.Core.Library.Local.ILocalLibraryService? localLibrary = null,
+        ISearchService? searchService = null)
     {
         _pathfinderClient = pathfinderClient;
         _playbackStateService = playbackStateService;
         _logger = logger;
         _localLibrary = localLibrary;
+        _searchService = searchService;
 
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, null)
         {
@@ -156,6 +178,9 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         UpdateVisibleResults();
     }
 
+    /// <summary>True when the active chip has more server-side items than we've fetched.</summary>
+    public bool CanLoadMore => SelectedFilter != SearchFilterType.All && _chipHasMore && !_chipLoadingMore;
+
     public async Task LoadAsync(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -163,8 +188,8 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
 
         _isHibernated = false;
         var requestVersion = ++_requestVersion;
-        var scope = GetSearchScope();
-        var cacheKey = BuildCacheKey(query, scope);
+        var filterAtRequest = SelectedFilter;
+        var cacheKey = BuildCacheKey(query, filterAtRequest);
 
         // Cache hit: rehydrate without a network round-trip. Covers the tab-sleep
         // wake path (page recreated, VM recreated, OnNavigatedTo re-fires with the
@@ -182,8 +207,21 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
             _allItems.AddRange(cached.Items);
             DispatchResults(cached.Items);
             TopResult = cached.TopResult;
+            if (filterAtRequest == SearchFilterType.All)
+            {
+                _chipOffset = 0;
+                _chipTotal = 0;
+                _chipHasMore = false;
+            }
+            else
+            {
+                _chipOffset = cached.Items.Count;
+                _chipTotal = cached.ChipTotal;
+                _chipHasMore = cached.ChipHasMore;
+            }
             UpdateVisibleResults();
             UpdateEmptyState();
+            OnPropertyChanged(nameof(CanLoadMore));
 
             TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, query)
             {
@@ -201,13 +239,44 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
 
         try
         {
-            // Spotify search + local-library search run in parallel. Local is
-            // optional — if the service isn't registered (very early startup),
-            // fall back to Spotify-only.
+            // Chip dispatch — every non-All filter has its own paginated server query
+            // matching the desktop client. All chips go through ISearchService for the
+            // unified ChipPageResult shape; All goes through the existing PathfinderClient
+            // SearchAsync flow that also merges local-library results.
+            if (filterAtRequest != SearchFilterType.All && _searchService != null)
+            {
+                var pageSize = ChipPageSize(filterAtRequest);
+                var chipResult = await DispatchChipAsync(filterAtRequest, query, offset: 0, limit: pageSize);
+
+                if (requestVersion != _requestVersion)
+                    return;
+
+                var items = chipResult.Items.ToList();
+                _allItems.Clear();
+                _allItems.AddRange(items);
+                DispatchResults(items);
+                TopResult = null;
+                _chipOffset = items.Count;
+                _chipTotal = chipResult.TotalCount;
+                _chipHasMore = chipResult.HasMore;
+                UpdateVisibleResults();
+
+                StoreCachedResult(cacheKey, items, topResult: null, chipTotal: chipResult.TotalCount, chipHasMore: chipResult.HasMore);
+                OnPropertyChanged(nameof(CanLoadMore));
+
+                TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, query)
+                {
+                    Title = AppLocalization.Format("Search_TabTitle", query)
+                };
+                ContentChanged?.Invoke(this, TabItemParameter);
+                return;
+            }
+
+            // All filter — searchTopResultsList + local-library merge.
             var spotifyTask = Task.Run(() => _pathfinderClient.SearchAsync(
                 query,
-                scope,
-                limit: 30));
+                SearchScope.All,
+                limit: 50));
             var localTask = _localLibrary is null
                 ? Task.FromResult<IReadOnlyList<Wavee.Core.Library.Local.LocalSearchResult>>(Array.Empty<Wavee.Core.Library.Local.LocalSearchResult>())
                 : _localLibrary.SearchAsync(query, limit: 12);
@@ -228,9 +297,13 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
             _allItems.AddRange(mergedItems);
             DispatchResults(mergedItems);
             TopResult = result.TopResult;
+            _chipOffset = 0;
+            _chipTotal = 0;
+            _chipHasMore = false;
             UpdateVisibleResults();
 
-            StoreCachedResult(cacheKey, mergedItems, result.TopResult);
+            StoreCachedResult(cacheKey, mergedItems, result.TopResult, chipTotal: 0, chipHasMore: false);
+            OnPropertyChanged(nameof(CanLoadMore));
 
             TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, query)
             {
@@ -404,12 +477,19 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     {
         VisibleResults.Clear();
 
+        // For chips other than All, _allItems already contains only the chip's results
+        // (the network response is the single chip operation). The Where filter is a
+        // belt-and-suspenders pass for the rare case where mixed types sneak through —
+        // e.g. the Podcasts chip merges shows + episodes server-side, both kept here.
         IEnumerable<SearchResultItem> filtered = SelectedFilter switch
         {
             SearchFilterType.Songs => _allItems.Where(static item => item.Type == SearchResultType.Track),
             SearchFilterType.Artists => _allItems.Where(static item => item.Type == SearchResultType.Artist),
             SearchFilterType.Albums => _allItems.Where(static item => item.Type == SearchResultType.Album),
             SearchFilterType.Playlists => _allItems.Where(static item => item.Type == SearchResultType.Playlist),
+            SearchFilterType.Podcasts => _allItems.Where(static item => item.Type is SearchResultType.Podcast or SearchResultType.Episode),
+            SearchFilterType.Users => _allItems.Where(static item => item.Type == SearchResultType.User),
+            SearchFilterType.Genres => _allItems.Where(static item => item.Type == SearchResultType.Genre),
             _ => _allItems
         };
 
@@ -445,17 +525,82 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         ShowEmptyState = !IsLoading && !HasError && !ShowHeroCard && VisibleResults.Count == 0;
     }
 
-    private SearchScope GetSearchScope()
+    /// <summary>Each filter has its own cache slot — every chip fires a distinct server query.</summary>
+    private static string BuildCacheKey(string query, SearchFilterType filter)
+        => string.Concat(query.Trim().ToLowerInvariant(), "|", filter.ToString());
+
+    /// <summary>Routes a chip filter to the matching <see cref="ISearchService"/> method.</summary>
+    private Task<ChipPageResult> DispatchChipAsync(SearchFilterType filter, string query, int offset, int limit)
     {
-        return SelectedFilter switch
+        if (_searchService is null)
+            return Task.FromResult(new ChipPageResult(System.Array.Empty<SearchResultItem>(), 0, false));
+
+        return filter switch
         {
-            SearchFilterType.Artists => SearchScope.Artists,
-            _ => SearchScope.All
+            SearchFilterType.Songs => _searchService.SearchTracksAsync(query, offset, limit),
+            SearchFilterType.Artists => _searchService.SearchArtistsAsync(query, offset, limit),
+            SearchFilterType.Albums => _searchService.SearchAlbumsAsync(query, offset, limit),
+            SearchFilterType.Playlists => _searchService.SearchPlaylistsAsync(query, offset, limit),
+            SearchFilterType.Podcasts => _searchService.SearchPodcastsAsync(query, offset, limit),
+            SearchFilterType.Users => _searchService.SearchUsersAsync(query, offset, limit),
+            SearchFilterType.Genres => _searchService.SearchGenresAsync(query, offset, limit),
+            _ => Task.FromResult(new ChipPageResult(System.Array.Empty<SearchResultItem>(), 0, false))
         };
     }
 
-    private static string BuildCacheKey(string query, SearchScope scope)
-        => string.Concat(query.Trim().ToLowerInvariant(), "|", scope.ToString());
+    /// <summary>
+    /// Append the next page of chip results. Called by the SearchPage scroll handler
+    /// when the user scrolls near the bottom of the chip list. Safe to call multiple
+    /// times — short-circuits if a fetch is already in flight or there's nothing left.
+    /// </summary>
+    public async Task LoadMoreAsync()
+    {
+        if (!CanLoadMore || string.IsNullOrWhiteSpace(Query)) return;
+
+        var filterAtRequest = SelectedFilter;
+        var query = Query!;
+        var requestVersion = _requestVersion;
+        var pageSize = ChipPageSize(filterAtRequest);
+
+        _chipLoadingMore = true;
+        OnPropertyChanged(nameof(CanLoadMore));
+        try
+        {
+            var page = await DispatchChipAsync(filterAtRequest, query, _chipOffset, pageSize);
+
+            if (requestVersion != _requestVersion || filterAtRequest != SelectedFilter)
+                return;
+
+            var newItems = page.Items;
+            if (newItems.Count == 0)
+            {
+                _chipHasMore = false;
+                return;
+            }
+
+            // Append-only — touching VisibleResults directly avoids the flicker that
+            // a full DispatchResults + UpdateVisibleResults rebuild would cause.
+            foreach (var item in newItems)
+            {
+                _allItems.Add(item);
+                VisibleResults.Add(item);
+            }
+
+            _chipOffset += newItems.Count;
+            _chipTotal = page.TotalCount;
+            _chipHasMore = page.HasMore;
+            OnPropertyChanged(nameof(HasVisibleResults));
+
+            // Refresh the cache entry so a tab-sleep wake doesn't re-fetch what we just appended.
+            var cacheKey = BuildCacheKey(query, filterAtRequest);
+            StoreCachedResult(cacheKey, new List<SearchResultItem>(_allItems), TopResult, _chipTotal, _chipHasMore);
+        }
+        finally
+        {
+            _chipLoadingMore = false;
+            OnPropertyChanged(nameof(CanLoadMore));
+        }
+    }
 
     private static CachedResult? GetCachedResult(string cacheKey)
     {
@@ -478,7 +623,9 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     private static void StoreCachedResult(
         string cacheKey,
         IReadOnlyList<SearchResultItem> items,
-        SearchResultItem? topResult)
+        SearchResultItem? topResult,
+        int chipTotal,
+        bool chipHasMore)
     {
         lock (_resultCacheGate)
         {
@@ -495,7 +642,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
                 if (oldestKey.Length > 0) _resultCache.Remove(oldestKey);
             }
 
-            _resultCache[cacheKey] = new CachedResult(items, topResult, DateTimeOffset.UtcNow);
+            _resultCache[cacheKey] = new CachedResult(items, topResult, DateTimeOffset.UtcNow, chipTotal, chipHasMore);
         }
     }
 

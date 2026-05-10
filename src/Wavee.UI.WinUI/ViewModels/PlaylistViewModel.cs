@@ -183,6 +183,13 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     /// from data that's already on screen.</summary>
     public ObservableCollection<PlaylistMemberResult> Collaborators { get; } = new();
 
+    // Signature of the last-rendered Collaborators set. Skips redundant rebuilds
+    // when ApplyDetail / LoadTracksAsync / ResolveAddedByUsernamesAsync re-enter
+    // RebuildCollaboratorsFromContext with the same membership; without this
+    // guard the page rebuilds the avatar stack on every fire and a fresh nav
+    // can trigger 3+ rebuilds back-to-back on a large playlist.
+    private string? _lastCollaboratorSignature;
+
     [ObservableProperty]
     private bool _hasCollaborators;
 
@@ -903,6 +910,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         ShowOnlyVideoTracks = false;
         NotifyVideoFilterProperties();
         Collaborators.Clear();
+        _lastCollaboratorSignature = null;
         HasCollaborators = false;
         _suppressSessionSignal = true;
         SessionControlChips.Clear();
@@ -2267,12 +2275,21 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             });
         }
 
-        // Replace the collection in one shot — RebuildCollaboratorStack in the
-        // page subscribes to CollectionChanged and rebuilds visuals on any
-        // mutation, so we want a single Reset rather than incremental edits.
-        Collaborators.Clear();
-        foreach (var m in members)
-            Collaborators.Add(m);
+        // Skip the rebuild entirely if the resolved set hasn't actually
+        // changed — large playlists otherwise pay for 3+ stack-visual rebuilds
+        // on a fresh nav (ApplyDetail → LoadTracksAsync → ResolveAddedBy…).
+        // Signature includes display name + avatar URL so the resolved-names
+        // pass still fires when those fields update without an id change.
+        var signature = BuildCollaboratorSignature(members, IsCollaborative);
+        if (string.Equals(signature, _lastCollaboratorSignature, StringComparison.Ordinal))
+            return;
+        _lastCollaboratorSignature = signature;
+
+        // Single Reset event (via the ObservableCollection.ReplaceWith extension)
+        // instead of Clear + N Adds — the page's CollectionChanged handler runs
+        // a full visual rebuild on every event, so collapsing N+1 events to 1
+        // saves the same multiplier in synchronous UI work.
+        Collaborators.ReplaceWith(members);
 
         HasCollaborators = IsCollaborative || Collaborators.Count >= 2;
 
@@ -2301,6 +2318,29 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         return idOrUri.StartsWith(prefix, StringComparison.Ordinal)
             ? idOrUri[prefix.Length..]
             : idOrUri;
+    }
+
+    /// <summary>
+    /// Compact signature for the collaborator set so RebuildCollaboratorsFromContext
+    /// can short-circuit when the resolved members are identical to the last
+    /// applied set. Includes UserId, DisplayName, and AvatarUrl so the
+    /// ResolveAddedByUsernamesAsync pass (which updates names/avatars on the
+    /// same id set) still produces a different signature and fires a rebuild.
+    /// IsCollaborative is part of the signature too so the "Open to
+    /// collaboration" trailing label flips when the playlist mode changes.
+    /// </summary>
+    private static string BuildCollaboratorSignature(
+        IReadOnlyList<PlaylistMemberResult> members, bool isCollaborative)
+    {
+        var sb = new System.Text.StringBuilder(64 + members.Count * 32);
+        sb.Append(isCollaborative ? '1' : '0').Append('|').Append(members.Count).Append('|');
+        foreach (var m in members)
+        {
+            sb.Append(m.UserId ?? string.Empty).Append('\x1F')
+              .Append(m.DisplayName ?? string.Empty).Append('\x1F')
+              .Append(m.AvatarUrl ?? string.Empty).Append('\x1E');
+        }
+        return sb.ToString();
     }
 
     /// <summary>Loads the collaborator list and resolves display names + avatars.

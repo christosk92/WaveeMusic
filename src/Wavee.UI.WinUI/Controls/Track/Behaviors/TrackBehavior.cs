@@ -96,6 +96,23 @@ public static class TrackBehavior
 
     #endregion
 
+    #region PlayNextCommand Property
+
+    public static readonly DependencyProperty PlayNextCommandProperty =
+        DependencyProperty.RegisterAttached(
+            "PlayNextCommand",
+            typeof(ICommand),
+            typeof(TrackBehavior),
+            new PropertyMetadata(null));
+
+    public static ICommand? GetPlayNextCommand(DependencyObject obj) =>
+        (ICommand?)obj.GetValue(PlayNextCommandProperty);
+
+    public static void SetPlayNextCommand(DependencyObject obj, ICommand? value) =>
+        obj.SetValue(PlayNextCommandProperty, value);
+
+    #endregion
+
     #region RemoveCommand Property
 
     public static readonly DependencyProperty RemoveCommandProperty =
@@ -275,6 +292,7 @@ public static class TrackBehavior
         var ctx = new TrackMenuContext
         {
             PlayCommand = GetPlayCommand(element),
+            PlayNextCommand = GetPlayNextCommand(element),
             AddToQueueCommand = GetAddToQueueCommand(element),
             RemoveCommand = GetRemoveCommand(element)
         };

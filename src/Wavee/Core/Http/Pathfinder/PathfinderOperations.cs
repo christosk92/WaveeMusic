@@ -6,9 +6,23 @@ namespace Wavee.Core.Http.Pathfinder;
 internal static class PathfinderOperations
 {
     public const string SearchTopResultsList = "searchTopResultsList";
-    public const string SearchTopResultsListHash = "474a35115866d6a40d95b780f8de82a3c6edd2a6dfd4387b286bb838a023431c";
+    public const string SearchTopResultsListHash = "795a87647895afbb1e3f1aa923ced808ab960ae0e04b8f052f8fe182378d2cae";
     public const string SearchArtists = "searchArtists";
-    public const string SearchArtistsHash = "72c8c7c1e789a9f11e261c4f9ae35a9465bbb90137c584428989573617b6c08d";
+    public const string SearchArtistsHash = "270905851ba5c7faca81cfe053c2dbd8ceb4f156a0e0ef4b385af75ab69ffd13";
+    public const string SearchPlaylists = "searchPlaylists";
+    public const string SearchPlaylistsHash = "af1730623dc1248b75a61a18bad1f47f1fc7eff802fb0676683de88815c958d8";
+    public const string SearchTracks = "searchTracks";
+    public const string SearchTracksHash = "59ee4a659c32e9ad894a71308207594a65ba67bb6b632b183abe97303a51fa55";
+    public const string SearchAlbums = "searchAlbums";
+    public const string SearchAlbumsHash = "5e7d2724fbef31a25f714844bf1313ffc748ebd4bd199eaad50628a4f246a7ab";
+    public const string SearchPodcasts = "searchPodcasts";
+    public const string SearchPodcastsHash = "0195d9f61b43606d490bca64c3456e3593528cea6cc05c7e822c7c42beed0f4e";
+    public const string SearchUsers = "searchUsers";
+    public const string SearchUsersHash = "d3f7547835dc86a4fdf3997e0f79314e7580eaf4aaf2f4cb1e71e189c5dfcb1f";
+    public const string SearchGenres = "searchGenres";
+    public const string SearchGenresHash = "9e1c0e056c46239dd1956ea915b988913c87c04ce3dadccdb537774490266f46";
+    public const string SearchFullEpisodes = "searchFullEpisodes";
+    public const string SearchFullEpisodesHash = "a63dea054bac1fccbcf2333feaca7165c8077a361649312b41d123791326d09f";
 
     public const string UserTopContent = "userTopContent";
     public const string UserTopContentHash = "49ee15704de4a7fdeac65a02db20604aa11e46f02e809c55d9a89f6db9754356";
@@ -65,7 +79,7 @@ internal static class PathfinderOperations
     public const string RecentSearchesHash = "b77e1eb3eeb020bd38b95ae2a127065dd5e8616cc075186b8b62c90b1b77e1b2";
 
     public const string SearchSuggestions = "searchSuggestions";
-    public const string SearchSuggestionsHash = "dea90d34a7ee20d54354f1bf3171a65c36b9f242401494d56451d468d516125e";
+    public const string SearchSuggestionsHash = "9fe3ad78e43a1684b3a9fabc741c5928928d4d30d7d8fd7fd193c7ebb4a544f4";
 
     public const string FetchEntitiesForRecentlyPlayed = "fetchEntitiesForRecentlyPlayed";
     public const string FetchEntitiesForRecentlyPlayedHash = "5bb408450626d595cb24363104b612e14f9b966430f599121696e8996ea03794";

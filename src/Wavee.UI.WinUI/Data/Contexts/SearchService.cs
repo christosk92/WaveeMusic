@@ -46,6 +46,58 @@ public sealed class SearchService : ISearchService
         return results;
     }
 
+    public Task<ChipPageResult> SearchTracksAsync(string query, int offset = 0, int limit = 20, CancellationToken ct = default)
+        => RunChipAsync(_pathfinder.SearchTracksAsync(query, limit, offset, ct), offset, limit, r => r.TotalTracks);
+
+    public Task<ChipPageResult> SearchArtistsAsync(string query, int offset = 0, int limit = 30, CancellationToken ct = default)
+        => RunChipAsync(_pathfinder.SearchAsync(query, Wavee.Core.Http.Pathfinder.SearchScope.Artists, limit, offset, ct), offset, limit, r => r.TotalArtists);
+
+    public Task<ChipPageResult> SearchAlbumsAsync(string query, int offset = 0, int limit = 30, CancellationToken ct = default)
+        => RunChipAsync(_pathfinder.SearchAlbumsAsync(query, limit, offset, ct), offset, limit, r => r.TotalAlbums);
+
+    public Task<ChipPageResult> SearchPlaylistsAsync(string query, int offset = 0, int limit = 30, CancellationToken ct = default)
+        => RunChipAsync(_pathfinder.SearchPlaylistsAsync(query, limit, offset, ct), offset, limit, r => r.TotalPlaylists);
+
+    public Task<ChipPageResult> SearchUsersAsync(string query, int offset = 0, int limit = 30, CancellationToken ct = default)
+        => RunChipAsync(_pathfinder.SearchUsersAsync(query, limit, offset, ct), offset, limit, r => r.TotalUsers);
+
+    public Task<ChipPageResult> SearchGenresAsync(string query, int offset = 0, int limit = 30, CancellationToken ct = default)
+        => RunChipAsync(_pathfinder.SearchGenresAsync(query, limit, offset, ct), offset, limit, r => r.TotalGenres);
+
+    public async Task<ChipPageResult> SearchPodcastsAsync(string query, int offset = 0, int limit = 30, CancellationToken ct = default)
+    {
+        // Desktop client fires both ops in parallel and merges shows + episodes
+        // into a single chip view. Order: shows first, then episodes.
+        var podcastsTask = _pathfinder.SearchPodcastsAsync(query, limit, offset, ct);
+        var episodesTask = _pathfinder.SearchFullEpisodesAsync(query, limit, offset, ct);
+        await Task.WhenAll(podcastsTask, episodesTask);
+
+        var podcasts = podcastsTask.Result;
+        var episodes = episodesTask.Result;
+
+        var merged = new List<Wavee.Core.Http.Pathfinder.SearchResultItem>(podcasts.Items.Count + episodes.Items.Count);
+        merged.AddRange(podcasts.Items);
+        merged.AddRange(episodes.Items);
+
+        var totalCount = podcasts.TotalPodcasts + episodes.TotalEpisodes;
+        var hasMore = offset + podcasts.Items.Count < podcasts.TotalPodcasts
+                      || offset + episodes.Items.Count < episodes.TotalEpisodes;
+
+        return new ChipPageResult(merged, totalCount, hasMore);
+    }
+
+    private static async Task<ChipPageResult> RunChipAsync(
+        Task<Wavee.Core.Http.Pathfinder.SearchResult> task,
+        int offset,
+        int limit,
+        System.Func<Wavee.Core.Http.Pathfinder.SearchResult, int> totalSelector)
+    {
+        var result = await task;
+        var total = totalSelector(result);
+        var hasMore = offset + result.Items.Count < total;
+        return new ChipPageResult(result.Items, total, hasMore);
+    }
+
     private static SearchSuggestionItem? MapRecentSearchItem(string? typeName, JsonElement? data)
     {
         if (typeName == null || data == null) return null;

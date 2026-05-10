@@ -232,7 +232,8 @@ public sealed class PathfinderClient : IPathfinderClient
                 NumberOfTopResults = 20,
                 IncludeAudiobooks = true,
                 IncludeAuthors = true,
-                IncludePreReleases = false
+                IncludePreReleases = false,
+                IncludeEpisodeContentRatingsV2 = false
             };
 
             searchResponse = await QueryAsync(
@@ -276,6 +277,90 @@ public sealed class PathfinderClient : IPathfinderClient
             result.TotalPlaylists);
 
         return result;
+    }
+
+    /// <inheritdoc />
+    public Task<SearchResult> SearchPlaylistsAsync(string query, int limit = 30, int offset = 0, CancellationToken cancellationToken = default)
+        => RunFilteredSearchAsync(query, limit, offset, PathfinderOperations.SearchPlaylists, PathfinderOperations.SearchPlaylistsHash, "Search playlists", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<SearchResult> SearchTracksAsync(string query, int limit = 20, int offset = 0, CancellationToken cancellationToken = default)
+        => RunFilteredSearchAsync(query, limit, offset, PathfinderOperations.SearchTracks, PathfinderOperations.SearchTracksHash, "Search tracks", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<SearchResult> SearchAlbumsAsync(string query, int limit = 30, int offset = 0, CancellationToken cancellationToken = default)
+        => RunFilteredSearchAsync(query, limit, offset, PathfinderOperations.SearchAlbums, PathfinderOperations.SearchAlbumsHash, "Search albums", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<SearchResult> SearchPodcastsAsync(string query, int limit = 30, int offset = 0, CancellationToken cancellationToken = default)
+        => RunFilteredSearchAsync(query, limit, offset, PathfinderOperations.SearchPodcasts, PathfinderOperations.SearchPodcastsHash, "Search podcasts", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<SearchResult> SearchUsersAsync(string query, int limit = 30, int offset = 0, CancellationToken cancellationToken = default)
+        => RunFilteredSearchAsync(query, limit, offset, PathfinderOperations.SearchUsers, PathfinderOperations.SearchUsersHash, "Search users", cancellationToken);
+
+    /// <inheritdoc />
+    public Task<SearchResult> SearchGenresAsync(string query, int limit = 30, int offset = 0, CancellationToken cancellationToken = default)
+        => RunFilteredSearchAsync(query, limit, offset, PathfinderOperations.SearchGenres, PathfinderOperations.SearchGenresHash, "Search genres", cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<SearchResult> SearchFullEpisodesAsync(string query, int limit = 30, int offset = 0, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        _logger?.LogDebug("Search episodes: {Query} (limit={Limit}, offset={Offset})", query, limit, offset);
+
+        var variables = new EpisodeSearchVariables
+        {
+            SearchTerm = query,
+            Limit = limit,
+            Offset = offset,
+            IncludeEpisodeContentRatingsV2 = false
+        };
+
+        var response = await QueryAsync(
+            variables,
+            PathfinderOperations.SearchFullEpisodes,
+            PathfinderOperations.SearchFullEpisodesHash,
+            PathfinderJsonContext.Default.PathfinderSearchResponse,
+            cancellationToken);
+
+        return SearchResult.FromResponse(response);
+    }
+
+    // Shared helper — every per-chip op except searchFullEpisodes uses the same
+    // FilteredSearchVariables payload, just with a different operation name + hash.
+    private async Task<SearchResult> RunFilteredSearchAsync(
+        string query,
+        int limit,
+        int offset,
+        string operationName,
+        string operationHash,
+        string logTag,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        _logger?.LogDebug("{Tag}: {Query} (limit={Limit}, offset={Offset})", logTag, query, limit, offset);
+
+        var variables = new FilteredSearchVariables
+        {
+            SearchTerm = query,
+            Limit = limit,
+            Offset = offset,
+            NumberOfTopResults = 20,
+            IncludeAudiobooks = true,
+            IncludeAuthors = true,
+            IncludePreReleases = false,
+            IncludeEpisodeContentRatingsV2 = false
+        };
+
+        var response = await QueryAsync(
+            variables,
+            operationName,
+            operationHash,
+            PathfinderJsonContext.Default.PathfinderSearchResponse,
+            cancellationToken);
+
+        return SearchResult.FromResponse(response);
     }
 
     /// <inheritdoc />
@@ -937,6 +1022,10 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is FilteredSearchVariables fsv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(fsv, PathfinderJsonContext.Default.FilteredSearchVariables);
+        }
+        else if (variables is EpisodeSearchVariables esv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(esv, PathfinderJsonContext.Default.EpisodeSearchVariables);
         }
         else if (variables is UserTopContentVariables utc)
         {

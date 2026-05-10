@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using PortAudioSharp;
@@ -48,6 +49,21 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
     // partial-buffer clicks/pops during seek transitions
     private volatile bool _seekMute;
     private int _seekUnmuteThresholdBytes;
+    // Stopwatch tick at which _seekMute most recently flipped false. Read by
+    // AudioEngine [seek-perf] telemetry to attribute seek latency.
+    private long _lastUnmuteAtTicks;
+
+    // Number of callback periods worth of samples to buffer before unmuting
+    // after a flush/seek. 1 starts audio ~80 ms sooner per seek vs the prior
+    // value of 2; PortAudio's callback already outputs silence on underrun
+    // so the worst case is one slightly-quiet first callback.
+    private const int SeekUnmuteCallbackPeriods = 1;
+
+    /// <summary>
+    /// Stopwatch tick (Stopwatch.GetTimestamp) at which audio most recently
+    /// unmuted after a seek/flush. Zero if no seek has occurred yet.
+    /// </summary>
+    public long LastUnmuteAtTicks => Volatile.Read(ref _lastUnmuteAtTicks);
 
     // Deferred logging flags: set in callback (zero-alloc), logged from managed thread
     private volatile bool _callbackUnderflowFlag;
@@ -165,11 +181,11 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
             // Callback period trades control latency for playback robustness.
             // Using 80ms reduces sporadic steady-playback underflows on some systems.
             var framesPerBuffer = (uint)(format.SampleRate * CallbackPeriodMs / 1000);
-            // Require at least ~2 callback chunks before unmuting after a flush/seek.
-            // This reduces partial callback fills (and audible hiccups) right after seeks.
+            // Number of callback chunks to buffer before unmuting after a flush/seek
+            // is controlled by SeekUnmuteCallbackPeriods (currently 1 ≈ 80 ms).
             _seekUnmuteThresholdBytes = Math.Max(
                 format.BytesPerFrame,
-                (int)(framesPerBuffer * format.BytesPerFrame * 2));
+                (int)(framesPerBuffer * format.BytesPerFrame * SeekUnmuteCallbackPeriods));
 
             // Create stream with callback
             _stream = new PortAudioSharp.Stream(
@@ -323,6 +339,7 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
         if (_seekMute && _buffer.Available >= _seekUnmuteThresholdBytes)
         {
             _seekMute = false;
+            Volatile.Write(ref _lastUnmuteAtTicks, Stopwatch.GetTimestamp());
         }
 
         Interlocked.Add(ref _samplesWritten, audioData.Length);
@@ -534,7 +551,7 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
             var framesPerBuffer = (uint)(format.SampleRate * CallbackPeriodMs / 1000);
             _seekUnmuteThresholdBytes = Math.Max(
                 format.BytesPerFrame,
-                (int)(framesPerBuffer * format.BytesPerFrame * 2));
+                (int)(framesPerBuffer * format.BytesPerFrame * SeekUnmuteCallbackPeriods));
 
             var bufferCapacity = _buffer?.Capacity ?? (format.BytesPerSecond * 2000 * 2 / 1000);
             _buffer = new CircularAudioBuffer(bufferCapacity);
@@ -806,7 +823,7 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
         var framesPerBuffer = (uint)(format.SampleRate * CallbackPeriodMs / 1000);
         _seekUnmuteThresholdBytes = Math.Max(
             format.BytesPerFrame,
-            (int)(framesPerBuffer * format.BytesPerFrame * 2));
+            (int)(framesPerBuffer * format.BytesPerFrame * SeekUnmuteCallbackPeriods));
 
         var bufferCapacity = _buffer?.Capacity ?? (format.BytesPerSecond * 2000 * 2 / 1000);
         _buffer = new CircularAudioBuffer(bufferCapacity);

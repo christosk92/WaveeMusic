@@ -310,6 +310,19 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
         => Task.CompletedTask;
 
     /// <summary>
+    /// Queue mutations are owned by <c>PlaybackOrchestrator</c> (the orchestrator
+    /// holds the <c>PlaybackQueue</c>). The bare AudioHost proxy has no queue
+    /// concept, so these are no-ops — only invoked when an executor stack is
+    /// configured with the proxy as its sole <c>IPlaybackEngine</c> (e.g. tests,
+    /// AudioHost-only scenarios).
+    /// </summary>
+    public Task PlayNextAsync(string trackUri, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task EnqueueAsync(string trackUri, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    /// <summary>
     /// Asks AudioHost to rescan the live system audio device list (Pa_Terminate +
     /// Pa_Initialize) and push a fresh <c>state_update</c> with the updated list.
     /// Called by the UI when the user opens the device picker so newly-plugged

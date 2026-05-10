@@ -54,7 +54,7 @@ public static class TrackContextMenuBuilder
         items.Add(new ContextMenuItemModel
         {
             Text = AppLocalization.GetString("TrackMenu_Play"),
-            Glyph = FluentGlyphs.Play,
+            Glyph = FluentGlyphs.Play,
             AccentIconStyleKey = "App.AccentIcons.Media.Play",
             Command = ctx.PlayCommand,
             CommandParameter = track,
@@ -67,12 +67,15 @@ public static class TrackContextMenuBuilder
         items.Add(new ContextMenuItemModel
         {
             Text = AppLocalization.GetString("TrackMenu_PlayNext"),
-            Glyph = FluentGlyphs.PlayNext,
+            Glyph = FluentGlyphs.PlayNext,
             AccentIconStyleKey = "App.AccentIcons.Media.PlayNext",
             Command = ctx.PlayNextCommand,
             CommandParameter = track,
+            // Fallback: direct call into IPlaybackStateService.PlayNext when the
+            // page didn't bind an explicit command. Inserts at head of user queue
+            // (plays right after current track, then context resumes).
             Invoke = ctx.PlayNextCommand is null
-                ? () => Debug.WriteLine($"PlayNext: {track.Uri}")
+                ? () => PlayNextDefault(track)
                 : null,
             IsPrimary = true
         });
@@ -80,12 +83,15 @@ public static class TrackContextMenuBuilder
         items.Add(new ContextMenuItemModel
         {
             Text = AppLocalization.GetString("TrackMenu_PlayAfter"),
-            Glyph = FluentGlyphs.AddToQueue,
+            Glyph = FluentGlyphs.AddToQueue,
             AccentIconStyleKey = "App.AccentIcons.Media.PlayAfter",
             Command = ctx.AddToQueueCommand,
             CommandParameter = track,
+            // Fallback: direct call into IPlaybackStateService.AddToQueue when
+            // the page didn't bind an explicit command. Appends to post-context
+            // bucket (plays after the current context exhausts).
             Invoke = ctx.AddToQueueCommand is null
-                ? () => Debug.WriteLine($"PlayAfter: {track.Uri}")
+                ? () => AddToQueueDefault(track)
                 : null,
             KeyboardAcceleratorTextOverride = "Ctrl+Enter",
             KeyboardAccelerator = Accelerator(VirtualKey.Enter, VirtualKeyModifiers.Control),
@@ -97,7 +103,7 @@ public static class TrackContextMenuBuilder
         items.Add(new ContextMenuItemModel
         {
             Text = AppLocalization.GetString(track.IsLiked ? "TrackMenu_SavedShort" : "TrackMenu_SaveShort"),
-            Glyph = track.IsLiked ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline,
+            Glyph = track.IsLiked ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline,
             AccentIconStyleKey = track.IsLiked ? "App.AccentIcons.Media.Saved" : "App.AccentIcons.Media.Save",
             Command = ctx.ToggleLikeCommand,
             CommandParameter = track,
@@ -125,7 +131,8 @@ public static class TrackContextMenuBuilder
             Command = ctx.StartRadioCommand,
             CommandParameter = track,
             Invoke = ctx.StartRadioCommand is null
-                ? () => Debug.WriteLine($"SongRadio: {track.Uri}")
+                ? () => _ = Ioc.Default.GetService<IPlaybackStateService>()
+                            ?.StartRadioAsync(track.Uri, track.Title is { Length: > 0 } title ? $"{title} Radio" : null)
                 : null
         });
 
@@ -236,6 +243,18 @@ public static class TrackContextMenuBuilder
         }
 
         return items;
+    }
+
+    private static void PlayNextDefault(ITrackItem track)
+    {
+        if (string.IsNullOrEmpty(track.Uri)) return;
+        Ioc.Default.GetService<IPlaybackStateService>()?.PlayNext(track.Uri);
+    }
+
+    private static void AddToQueueDefault(ITrackItem track)
+    {
+        if (string.IsNullOrEmpty(track.Uri)) return;
+        Ioc.Default.GetService<IPlaybackStateService>()?.AddToQueue(track.Uri);
     }
 
     private static void ToggleLikeDefault(ITrackItem track)

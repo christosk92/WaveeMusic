@@ -16,9 +16,10 @@ namespace Wavee.Audio.Queue;
 /// <param name="AddedAt">Unix timestamp when added to playlist (for sorting).</param>
 /// <param name="IsPlayable">Whether the track is playable (false if unavailable).</param>
 /// <param name="IsExplicit">Whether the track has explicit content.</param>
-/// <param name="IsUserQueued">True if the track was added via "Add to Queue" (plays before context continues).</param>
+/// <param name="IsUserQueued">True if the track was added via "Play Next" or "Add to Queue" (provider="queue").</param>
 /// <param name="Provider">Track source: "context", "queue", or "autoplay".</param>
 /// <param name="ImageUrl">Album art image URL for display (format: "spotify:image:{id}").</param>
+/// <param name="IsPostContext">True if added via "Add to Queue" (plays AFTER the entire context exhausts; local-only distinction).</param>
 public record QueueTrack(
     string Uri,
     string? Uid = null,
@@ -33,7 +34,8 @@ public record QueueTrack(
     bool IsExplicit = false,
     bool IsUserQueued = false,
     string Provider = "context",
-    string? ImageUrl = null
+    string? ImageUrl = null,
+    bool IsPostContext = false
 ) : IQueueItem
 {
     /// <summary>Always true for playable tracks.</summary>

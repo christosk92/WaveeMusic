@@ -245,6 +245,69 @@ public sealed class ContextResolver
     }
 
     /// <summary>
+    /// Loads autoplay seeded from a single track via the radio-apollo endpoint —
+    /// the path Spotify desktop uses when continuing from a no-context play
+    /// (search-result single track, click-row, etc.). Returns the same
+    /// <see cref="ContextLoadResult"/> shape as <see cref="LoadAutoplayAsync"/>
+    /// so the orchestrator's queue-append pipeline doesn't care which one ran.
+    /// </summary>
+    public async Task<ContextLoadResult> LoadRadioApolloAutoplayAsync(
+        string seedTrackUri,
+        IReadOnlyList<string> recentTrackUris,
+        CancellationToken ct = default)
+    {
+        var seedId = StripTrackUriPrefix(seedTrackUri);
+        var prevIds = recentTrackUris
+            .Select(StripTrackUriPrefix)
+            .Where(s => !string.IsNullOrEmpty(s))
+            .ToList();
+
+        _logger?.LogDebug("Loading radio-apollo autoplay for seed: {SeedUri}", seedTrackUri);
+
+        var resp = await _spClient.GetRadioApolloAutoplayAsync(seedId, prevIds, cancellationToken: ct);
+
+        var trackInfos = resp.Tracks
+            .Where(t => !string.IsNullOrEmpty(t.Uri))
+            .Select(t => new CachedContextTrack(
+                t.Uri,
+                t.Uid,
+                t.DecisionId is null
+                    ? null
+                    : new Dictionary<string, string> { ["decision_id"] = t.DecisionId }))
+            .ToList();
+
+        IReadOnlyList<QueueTrack> tracks = trackInfos.Count > 0
+            ? await EnrichTracksAsync(trackInfos, ct)
+            : Array.Empty<QueueTrack>();
+
+        var autoplayTracks = tracks
+            .Select(t => t with { Provider = "autoplay", IsUserQueued = false })
+            .ToList();
+
+        _logger?.LogDebug("Radio-apollo autoplay loaded: {TrackCount} tracks, nextPage={HasNext}",
+            autoplayTracks.Count, !string.IsNullOrEmpty(resp.NextPageUrl));
+
+        return new ContextLoadResult(
+            Tracks: autoplayTracks,
+            TotalCount: null,
+            // hm:// pagination cursor — orchestrator's existing
+            // LoadMoreTracksAsync handles hm:// today, so this just works
+            // when the autoplay queue runs out.
+            NextPageUrl: resp.NextPageUrl,
+            IsInfinite: true,
+            SortingCriteria: null,
+            ContextOwner: null,
+            ContextMetadata: null,
+            PageCount: 1,
+            ResolvedContextUri: $"spotify:station:track:{seedId}");
+    }
+
+    private static string StripTrackUriPrefix(string uri) =>
+        uri.StartsWith("spotify:track:", StringComparison.Ordinal)
+            ? uri["spotify:track:".Length..]
+            : uri;
+
+    /// <summary>
     /// Merges page tracks from a play command into existing tracks.
     /// Updates UIDs and metadata for matching URIs without reordering.
     /// Like librespot's merge_context.

@@ -14,6 +14,7 @@ namespace Wavee.Core.Http.Pathfinder;
 [JsonSerializable(typeof(SearchSuggestionsResponse))]
 [JsonSerializable(typeof(SearchVariables))]
 [JsonSerializable(typeof(FilteredSearchVariables))]
+[JsonSerializable(typeof(EpisodeSearchVariables))]
 [JsonSerializable(typeof(QueryExtensions))]
 [JsonSerializable(typeof(PersistedQuery))]
 internal partial class PathfinderJsonContext : JsonSerializerContext

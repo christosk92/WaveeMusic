@@ -226,7 +226,15 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             _originalContextUri = !string.IsNullOrEmpty(command.ContextUri)
                                   && command.ContextUri != "spotify:internal:queue"
                 ? command.ContextUri
-                : null;
+                // Single-track ad-hoc plays (search-result click, click-row
+                // with no real context) carry "spotify:internal:queue". Treat
+                // the played track as an autoplay seed so end-of-queue can
+                // route to the radio-apollo path. Storing the bare track URI
+                // (not "spotify:station:track:<id>") deliberately avoids the
+                // station bailout in TryTriggerAutoplayAsync.
+                : (command.PageTracks?.Count == 1
+                    ? command.PageTracks[0].Uri
+                    : null);
             ResetPrefetch();
 
             // Build queue from context and/or explicit track list.
@@ -542,6 +550,28 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     {
         _repeatTrack = enabled;
         if (enabled) _repeatContext = false;
+        PublishQueueState();
+        return Task.CompletedTask;
+    }
+
+    public Task PlayNextAsync(string trackUri, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(trackUri))
+            return Task.CompletedTask;
+
+        _queue.PlayNext(new QueueTrack(trackUri));
+        _logger?.LogInformation("Orchestrator: PlayNext → {Uri}", trackUri);
+        PublishQueueState();
+        return Task.CompletedTask;
+    }
+
+    public Task EnqueueAsync(string trackUri, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(trackUri))
+            return Task.CompletedTask;
+
+        _queue.EnqueueAfterContext(new QueueTrack(trackUri));
+        _logger?.LogInformation("Orchestrator: Enqueue (post-context) → {Uri}", trackUri);
         PublishQueueState();
         return Task.CompletedTask;
     }
@@ -1286,6 +1316,16 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         if (AutoplayEnabledProvider?.Invoke() == false) return Task.CompletedTask;
         if (string.IsNullOrEmpty(_originalContextUri)) return Task.CompletedTask;
 
+        // Defer when the user has "Add to Queue" items waiting — those play
+        // after context exhausts but before autoplay. The flag stays false so
+        // a subsequent end-of-queue tier can re-attempt once post-context drains.
+        if (_queue.HasPostContextItems)
+        {
+            _logger?.LogDebug("Autoplay deferred — post-context queue has {Count} item(s)",
+                _queue.PostContextQueueCount);
+            return Task.CompletedTask;
+        }
+
         // Don't autoplay out of an already-radio/station/autoplay context.
         // Those are infinite and paginate themselves via LoadNextPageAsync.
         if (_originalContextUri.Contains(":station:") ||
@@ -1313,7 +1353,13 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         ContextLoadResult autoplay;
         try
         {
-            autoplay = await _contextResolver.LoadAutoplayAsync(_originalContextUri!, recent);
+            // Single-track seeds (search/click-row with no real context) go
+            // through radio-apollo — the desktop client's path. Real context
+            // URIs (album/playlist/artist) keep the existing context-resolve
+            // autoplay endpoint.
+            autoplay = _originalContextUri!.StartsWith("spotify:track:", StringComparison.Ordinal)
+                ? await _contextResolver.LoadRadioApolloAutoplayAsync(_originalContextUri!, recent)
+                : await _contextResolver.LoadAutoplayAsync(_originalContextUri!, recent);
         }
         catch (Exception ex)
         {

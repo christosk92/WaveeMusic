@@ -20,7 +20,8 @@ public sealed class PlaybackQueue : IDisposable
 
     // Track storage
     private readonly List<QueueTrack> _contextTracks = new();
-    private readonly List<QueueTrack> _userQueue = new();  // Play these first
+    private readonly List<QueueTrack> _userQueue = new();  // "Play Next" — drained before context advances
+    private readonly List<QueueTrack> _postContextQueue = new();  // "Add to Queue" — drained after context exhausts, before autoplay
 
     // Shuffle state
     private List<int>? _shuffledIndices;
@@ -30,6 +31,7 @@ public sealed class PlaybackQueue : IDisposable
     private int _currentIndex = -1;
     private int _userQueuePlayedCount;  // How many user queue items have been played
     private int _queueUidCounter;  // Counter for q# UIDs (q0, q1, q2...)
+    private int _postContextUidCounter;  // Counter for p# UIDs (post-context bucket)
 
     // Context metadata
     private string? _contextUri;
@@ -132,6 +134,25 @@ public sealed class PlaybackQueue : IDisposable
     public int UserQueueCount
     {
         get { lock (_lock) { return _userQueue.Count; } }
+    }
+
+    /// <summary>
+    /// Gets the number of tracks in the post-context queue
+    /// (added via "Add to Queue" — plays after context exhausts).
+    /// </summary>
+    public int PostContextQueueCount
+    {
+        get { lock (_lock) { return _postContextQueue.Count; } }
+    }
+
+    /// <summary>
+    /// True when there is at least one track waiting in the post-context bucket.
+    /// Used by the orchestrator to decide whether to drain post-context items
+    /// before triggering autoplay at end of context.
+    /// </summary>
+    public bool HasPostContextItems
+    {
+        get { lock (_lock) { return _postContextQueue.Count > 0; } }
     }
 
     #endregion
@@ -326,6 +347,7 @@ public sealed class PlaybackQueue : IDisposable
         {
             _contextTracks.Clear();
             _userQueue.Clear();
+            _postContextQueue.Clear();
             _shuffledIndices = null;
             _currentIndex = -1;
             _userQueuePlayedCount = 0;
@@ -356,7 +378,7 @@ public sealed class PlaybackQueue : IDisposable
 
         lock (_lock)
         {
-            // First check user queue
+            // 1. User queue ("Play Next") — drains before context advances.
             if (_userQueue.Count > 0)
             {
                 result = _userQueue[0];
@@ -365,23 +387,31 @@ public sealed class PlaybackQueue : IDisposable
 
                 _logger?.LogDebug("Playing from user queue: {Uri}", result.Uri);
             }
-            else
+            // 2. Context next.
+            else if (HasNextContextInternal())
             {
-                // Move to next context track
-                if (!HasNextInternal())
-                {
-                    _logger?.LogDebug("No next track available");
-                    return null;
-                }
-
                 _currentIndex++;
                 result = GetCurrentInternal();
 
                 _logger?.LogDebug("Moved to next: index={Index}, uri={Uri}",
                     _currentIndex, result?.Uri);
 
-                // Check if we need more tracks
                 needsMore = CheckNeedsMoreTracksInternal();
+            }
+            // 3. Post-context queue ("Add to Queue") — drains after context exhausts,
+            //    before the orchestrator falls through to autoplay tiers.
+            else if (_postContextQueue.Count > 0)
+            {
+                result = _postContextQueue[0];
+                _postContextQueue.RemoveAt(0);
+
+                _logger?.LogDebug("Playing from post-context queue: {Uri}, remaining={Remaining}",
+                    result.Uri, _postContextQueue.Count);
+            }
+            else
+            {
+                _logger?.LogDebug("No next track available");
+                return null;
             }
         }
 
@@ -559,6 +589,10 @@ public sealed class PlaybackQueue : IDisposable
     /// <summary>
     /// Adds a track to the user queue (plays next before continuing context).
     /// Assigns q# UID format (q0, q1, q2...) as per librespot.
+    /// Equivalent to <see cref="EnqueueAfterContext"/> in the older single-bucket
+    /// model — kept for callers that don't differentiate "Play Next" vs
+    /// "Add to Queue" semantics. New callers should use <see cref="PlayNext"/>
+    /// or <see cref="EnqueueAfterContext"/> explicitly.
     /// </summary>
     /// <param name="track">Track to add.</param>
     public void AddToQueue(QueueTrack track)
@@ -572,6 +606,50 @@ public sealed class PlaybackQueue : IDisposable
 
             _logger?.LogDebug("Added to user queue: {Uri} (uid={Uid}), queue size={Size}",
                 track.Uri, queueUid, _userQueue.Count);
+        }
+
+        NotifyStateChanged();
+    }
+
+    /// <summary>
+    /// "Play Next" — inserts the track at the HEAD of the user queue so it
+    /// plays immediately after the current track, then context resumes.
+    /// Assigns a fresh q# UID per librespot convention.
+    /// </summary>
+    /// <param name="track">Track to insert.</param>
+    public void PlayNext(QueueTrack track)
+    {
+        lock (_lock)
+        {
+            var queueUid = $"q{_queueUidCounter++}";
+            var userQueuedTrack = track with { Uid = queueUid, IsUserQueued = true, IsPostContext = false };
+            _userQueue.Insert(0, userQueuedTrack);
+
+            _logger?.LogDebug("Inserted at head of user queue (Play Next): {Uri} (uid={Uid}), queue size={Size}",
+                track.Uri, queueUid, _userQueue.Count);
+        }
+
+        NotifyStateChanged();
+    }
+
+    /// <summary>
+    /// "Add to Queue" — appends the track to the post-context bucket so it
+    /// plays AFTER the entire current context finishes (and after any other
+    /// post-context items already queued), but BEFORE autoplay starts.
+    /// Assigns a p# UID for log clarity (still surfaces as provider="queue"
+    /// in PlayerState).
+    /// </summary>
+    /// <param name="track">Track to enqueue.</param>
+    public void EnqueueAfterContext(QueueTrack track)
+    {
+        lock (_lock)
+        {
+            var uid = $"p{_postContextUidCounter++}";
+            var enqueued = track with { Uid = uid, IsUserQueued = true, IsPostContext = true };
+            _postContextQueue.Add(enqueued);
+
+            _logger?.LogDebug("Appended to post-context queue (Add to Queue): {Uri} (uid={Uid}), bucket size={Size}",
+                track.Uri, uid, _postContextQueue.Count);
         }
 
         NotifyStateChanged();
@@ -705,7 +783,16 @@ public sealed class PlaybackQueue : IDisposable
         if (_userQueue.Count > 0)
             return true;
 
-        // Check context tracks
+        if (HasNextContextInternal())
+            return true;
+
+        // Post-context items drain after context exhausts and count as "next"
+        // so the orchestrator's end-of-context tiers don't trip prematurely.
+        return _postContextQueue.Count > 0;
+    }
+
+    private bool HasNextContextInternal()
+    {
         var nextIndex = _currentIndex + 1;
 
         if (_isShuffled && _shuffledIndices != null)
@@ -802,7 +889,7 @@ public sealed class PlaybackQueue : IDisposable
     {
         var result = new List<QueueTrack>();
 
-        // First add user queue items
+        // First add user queue items (Play Next bucket)
         var userQueueToAdd = Math.Min(count, _userQueue.Count);
         for (int i = 0; i < userQueueToAdd; i++)
         {
@@ -820,6 +907,13 @@ public sealed class PlaybackQueue : IDisposable
                 break;
 
             result.Add(_contextTracks[actualIndex]);
+        }
+
+        // Then post-context items (Add to Queue bucket) — drains after context
+        var postContextToAdd = count - result.Count;
+        for (int i = 0; i < postContextToAdd && i < _postContextQueue.Count; i++)
+        {
+            result.Add(_postContextQueue[i]);
         }
 
         return result.AsReadOnly();
@@ -885,7 +979,7 @@ public sealed class PlaybackQueue : IDisposable
     {
         var result = new List<QueueTrack>();
 
-        // First add all user queue items
+        // First add all user queue items (Play Next bucket)
         foreach (var track in _userQueue)
         {
             result.Add(track);
@@ -902,6 +996,16 @@ public sealed class PlaybackQueue : IDisposable
                 break;
 
             result.Add(_contextTracks[actualIndex]);
+        }
+
+        // Then post-context items (Add to Queue bucket) — at the tail so they
+        // appear in PlayerState.next_tracks for remote controllers, capped by
+        // MaxNextTracks. They drain after the context exhausts but before
+        // autoplay; surfacing them here also lets the QueueControl render them.
+        var postContextToAdd = MaxNextTracks - result.Count;
+        for (int i = 0; i < postContextToAdd && i < _postContextQueue.Count; i++)
+        {
+            result.Add(_postContextQueue[i]);
         }
 
         return result.AsReadOnly();

@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows.Input;
+using CommunityToolkit.Mvvm.DependencyInjection;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Styles;
 
@@ -42,7 +44,7 @@ public static class ArtistContextMenuBuilder
             Text = AppLocalization.GetString(ctx.IsFollowing
                 ? "ArtistMenu_Unfollow"
                 : "ArtistMenu_Follow"),
-            Glyph = ctx.IsFollowing ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline,
+            Glyph = ctx.IsFollowing ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline,
             AccentIconStyleKey = ctx.IsFollowing ? "App.AccentIcons.Media.Saved" : "App.AccentIcons.Media.Save",
             Command = ctx.ToggleFollowCommand,
             Invoke = ctx.ToggleFollowCommand is null ? () => Debug.WriteLine($"ToggleFollowArtist: {uri}") : null,
@@ -64,7 +66,8 @@ public static class ArtistContextMenuBuilder
         {
             Text = AppLocalization.GetString("ArtistMenu_ArtistRadio"),
             Glyph = FluentGlyphs.Radio,
-            Invoke = () => Debug.WriteLine($"ArtistRadio: {uri}")
+            Invoke = () => _ = Ioc.Default.GetService<IPlaybackStateService>()
+                                ?.StartRadioAsync(uri, ctx.ArtistName is { Length: > 0 } name ? $"{name} Radio" : "Artist Radio")
         });
 
         items.Add(new ContextMenuItemModel

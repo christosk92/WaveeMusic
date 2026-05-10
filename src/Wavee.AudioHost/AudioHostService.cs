@@ -136,6 +136,11 @@ internal sealed class AudioHostService : IAsyncDisposable
 
     private void InitializeEngine(AudioHostConfig? config)
     {
+        // Route NVorbis diagnostic traces through the host ILogger. The vendored
+        // NVorbis project has no logging dependency; it emits via a static
+        // Action<string> sink so we wire it up here at engine init.
+        NVorbis.NVorbisDiagnostics.Trace = msg => _logger.LogDebug("{NVMsg}", msg);
+
         var sink = AudioSinkFactory.CreateDefault(_logger);
         _sink = sink;
         var decoderRegistry = CreateDecoderRegistry();
@@ -147,7 +152,17 @@ internal sealed class AudioHostService : IAsyncDisposable
             config,
             includeBufferedVolume: sink is not PortAudioSink,
             volumeProcessor);
-        var httpClient = new HttpClient();
+        // Pinned SocketsHttpHandler keeps CDN connections warm across seek
+        // gaps. ProgressiveDownloader no longer cancels the in-flight fetch
+        // on seek (NotifySeek), and the on-demand fetch for the new seek
+        // target reuses a pooled connection — no fresh TCP+TLS handshake.
+        var httpClient = new HttpClient(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+            MaxConnectionsPerServer = 4,
+            EnableMultipleHttp2Connections = true,
+        });
 
         _engine = new AudioEngine(sink, decoderRegistry, processingChain, httpClient, volumeProcessor, _logger,
             audioCacheDirectory: config?.AudioCacheDirectory);
@@ -780,7 +795,10 @@ internal sealed class AudioHostService : IAsyncDisposable
             CanSeek = true,
             Changes = changes,
             Timestamp = state.Timestamp,
-            Volume = state.Volume > 0f ? (uint)Math.Round(state.Volume * 100) : 0,
+            // 0-65535 cluster scale — must match LocalMediaPlayer / SpotifyVideoProvider.
+            // Sending 0-100 here causes PlaybackStateService (state.Volume / 655.35) to
+            // collapse the slider to 0 when the local engine echoes back.
+            Volume = state.Volume > 0f ? (uint)Math.Round(state.Volume * 65535d) : 0,
             ActiveAudioDeviceName = currentDeviceName,
             AvailableAudioDevices = availableDevices,
         };

@@ -227,6 +227,31 @@ public sealed class DeviceStateManager : IAsyncDisposable
 
         try
         {
+            // Resolve player_state. Priority:
+            //   1. _pendingPlayerState (one-shot — set by SetActiveWithStateAsync for ghost takeover).
+            //   2. Live snapshot from PlaybackStateManager via the same mapper PlaybackStateManager
+            //      itself uses for PlayerStateChanged updates. Without this, every DeviceStateManager-
+            //      driven PutState (VolumeChanged, NewConnection, NewDevice, BecameInactive) ships an
+            //      empty player_state — Spotify thinks this device has no track loaded.
+            //   3. Empty timestamp-only fallback (defensive — only if Connect is disabled).
+            string playerStateSource;
+            PlayerState playerState;
+            if (_pendingPlayerState != null)
+            {
+                playerState = _pendingPlayerState;
+                playerStateSource = "pending";
+            }
+            else if (BuildCurrentPlayerState() is { } snapshot)
+            {
+                playerState = snapshot;
+                playerStateSource = "snapshot";
+            }
+            else
+            {
+                playerState = ConnectStateHelpers.CreateEmptyPlayerState();
+                playerStateSource = "empty";
+            }
+
             // Build PUT state request
             var request = new PutStateRequest
             {
@@ -234,7 +259,7 @@ public sealed class DeviceStateManager : IAsyncDisposable
                 Device = new Device
                 {
                     DeviceInfo = _deviceInfo,
-                    PlayerState = _pendingPlayerState ?? ConnectStateHelpers.CreateEmptyPlayerState(),
+                    PlayerState = playerState,
                     PrivateDeviceInfo = ConnectStateHelpers.CreatePrivateDeviceInfo()
                 },
                 PutStateReason = reason,
@@ -247,8 +272,9 @@ public sealed class DeviceStateManager : IAsyncDisposable
             _pendingPlayerState = null;
 
             _logger?.LogDebug("Sending PUT state with reason {Reason}", reason);
-            _logger?.LogTrace("PUT state request: deviceId={DeviceId}, connectionId={ConnectionId}, reason={Reason}, messageId={MessageId}, volume={Volume}, isActive={IsActive}",
-                _session.Config.DeviceId, _connectionId, reason, request.MessageId, _deviceInfo.Volume, _isActive);
+            _logger?.LogTrace("PUT state request: deviceId={DeviceId}, connectionId={ConnectionId}, reason={Reason}, messageId={MessageId}, volume={Volume}, isActive={IsActive}, playerStateSource={Source}, track={Track}",
+                _session.Config.DeviceId, _connectionId, reason, request.MessageId, _deviceInfo.Volume, _isActive,
+                playerStateSource, playerState.Track?.Uri ?? "<none>");
 
             var sendStart = Environment.TickCount64;
             var responseBody = await _spClient.PutConnectStateAsync(
@@ -291,6 +317,25 @@ public sealed class DeviceStateManager : IAsyncDisposable
             _logger?.LogError(ex, "Failed to update connect state with reason {Reason}", reason);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Snapshots the live PlayerState from PlaybackStateManager so PutStateRequests originated
+    /// here (volume / connection / activation transitions) carry the same player_state shape
+    /// PlaybackStateManager publishes for PlayerStateChanged updates. Returns null when
+    /// PlaybackStateManager is unavailable (test mocks of ISession, Connect-disabled sessions).
+    /// </summary>
+    /// <remarks>
+    /// PlaybackState lives on the concrete Session, not on ISession. DeviceStateManager is only
+    /// ever constructed by Session itself (Session.cs:371 passes <c>this</c>), so the cast is
+    /// safe in production. Mocks will return null here and we fall back to the empty PlayerState
+    /// — same behavior as before this helper existed.
+    /// </remarks>
+    private PlayerState? BuildCurrentPlayerState()
+    {
+        var psm = (_session as Session)?.PlaybackState;
+        if (psm == null) return null;
+        return PlaybackStateHelpers.ToPlayerState(psm.CurrentState, _session.Config.DeviceId);
     }
 
     /// <summary>

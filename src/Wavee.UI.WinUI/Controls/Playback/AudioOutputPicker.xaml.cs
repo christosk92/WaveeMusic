@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Wavee.Connect;
@@ -68,6 +69,8 @@ public sealed partial class AudioOutputPicker : UserControl
     private bool _isLoaded;
     private bool _isCardExpanded;
     private bool _isUpdatingVolume;
+    private bool _isUserDragging;
+    private bool _volumeDragHandlersAttached;
 
     public AudioOutputPicker()
     {
@@ -143,16 +146,82 @@ public sealed partial class AudioOutputPicker : UserControl
     {
         _isLoaded = true;
         EnsureWired();
+        AttachVolumeDragHandlers();
         UpdateAll(rebuildRows: true);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         _isLoaded = false;
+        DetachVolumeDragHandlers();
+        _isUserDragging = false;
         if (_playbackStateService != null)
             _playbackStateService.PropertyChanged -= OnStateChanged;
         _playbackStateService = null;
         _wired = false;
+    }
+
+    private void AttachVolumeDragHandlers()
+    {
+        if (_volumeDragHandlersAttached)
+            return;
+
+        AttachDragHandlersTo(FlyoutVolumeSlider);
+        AttachDragHandlersTo(CardVolumeSlider);
+        _volumeDragHandlersAttached = true;
+    }
+
+    private void DetachVolumeDragHandlers()
+    {
+        if (!_volumeDragHandlersAttached)
+            return;
+
+        DetachDragHandlersFrom(FlyoutVolumeSlider);
+        DetachDragHandlersFrom(CardVolumeSlider);
+        _volumeDragHandlersAttached = false;
+    }
+
+    private void AttachDragHandlersTo(Slider slider)
+    {
+        // Slider's template marks pointer events Handled, so handledEventsToo: true is required.
+        slider.AddHandler(UIElement.PointerPressedEvent, (PointerEventHandler)OnVolumeSliderDragStart, handledEventsToo: true);
+        slider.AddHandler(UIElement.PointerReleasedEvent, (PointerEventHandler)OnVolumeSliderDragEnd, handledEventsToo: true);
+        slider.AddHandler(UIElement.PointerCaptureLostEvent, (PointerEventHandler)OnVolumeSliderDragEnd, handledEventsToo: true);
+        slider.LostFocus += OnVolumeSliderLostFocus;
+    }
+
+    private void DetachDragHandlersFrom(Slider slider)
+    {
+        slider.RemoveHandler(UIElement.PointerPressedEvent, (PointerEventHandler)OnVolumeSliderDragStart);
+        slider.RemoveHandler(UIElement.PointerReleasedEvent, (PointerEventHandler)OnVolumeSliderDragEnd);
+        slider.RemoveHandler(UIElement.PointerCaptureLostEvent, (PointerEventHandler)OnVolumeSliderDragEnd);
+        slider.LostFocus -= OnVolumeSliderLostFocus;
+    }
+
+    private void OnVolumeSliderDragStart(object sender, PointerRoutedEventArgs e)
+    {
+        _isUserDragging = true;
+    }
+
+    private void OnVolumeSliderDragEnd(object sender, PointerRoutedEventArgs e)
+    {
+        EndVolumeDrag();
+    }
+
+    private void OnVolumeSliderLostFocus(object sender, RoutedEventArgs e)
+    {
+        // Belt to PointerReleased's suspenders — covers Esc-key flyout dismiss
+        // where pointer events don't fire while the thumb is logically pressed.
+        EndVolumeDrag();
+    }
+
+    private void EndVolumeDrag()
+    {
+        if (!_isUserDragging)
+            return;
+        _isUserDragging = false;
+        // Reconcile to the latest authoritative value in case echoes were suppressed during the drag.
+        UpdateVolume();
     }
 
     private void EnsureWired()
@@ -184,6 +253,10 @@ public sealed partial class AudioOutputPicker : UserControl
                 DispatchToUi(() => UpdateAll(rebuildRows: true));
                 break;
             case nameof(IPlaybackStateService.Volume):
+                if (_isUserDragging)
+                    break;
+                DispatchToUi(UpdateVolume);
+                break;
             case nameof(IPlaybackStateService.IsVolumeRestricted):
                 DispatchToUi(UpdateVolume);
                 break;
@@ -388,6 +461,9 @@ public sealed partial class AudioOutputPicker : UserControl
             return;
 
         state.Volume = volume;
+        // Drive the visual reconciliation explicitly: while _isUserDragging is true the
+        // PropertyChanged echo path is suppressed, so the text/icon/sibling-slider would
+        // otherwise lag behind the value the user is dragging.
         UpdateVolume();
     }
 

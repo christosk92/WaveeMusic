@@ -450,13 +450,23 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         if (_heroRevealed || string.IsNullOrEmpty(ViewModel.ArtistName)) return;
         _heroRevealed = true;
         ForceHeroHeaderSourceState();
-        ElementCompositionPreview.GetElementVisual(HeroOverlayPanel).Opacity = 1;
-        HeroOverlayPanel.Opacity = 0;
-        AnimationBuilder.Create()
-            .Opacity(from: 0, to: 1,
-                     duration: TimeSpan.FromMilliseconds(280),
-                     layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
-            .Start(HeroOverlayPanel);
+
+        // Composition-side fade-in. The earlier XAML AnimationBuilder path
+        // intermittently left HeroOverlayPanel.Opacity stuck at 0 — needing a
+        // 1-px scroll to force a re-paint — when the storyboard scheduled
+        // inside a binding-refresh dispatch tick failed to commit. Composition
+        // animations run on the composition thread and don't share that
+        // failure mode.
+        HeroOverlayPanel.Opacity = 1; // settle XAML so it doesn't push 0 back into composition
+        var visual = ElementCompositionPreview.GetElementVisual(HeroOverlayPanel);
+        visual.StopAnimation("Opacity");
+        var compositor = visual.Compositor;
+        var anim = compositor.CreateScalarKeyFrameAnimation();
+        anim.InsertKeyFrame(0f, 0f);
+        anim.InsertKeyFrame(1f, 1f, compositor.CreateCubicBezierEasingFunction(
+            new System.Numerics.Vector2(0.1f, 0.9f), new System.Numerics.Vector2(0.2f, 1f)));
+        anim.Duration = TimeSpan.FromMilliseconds(280);
+        visual.StartAnimation("Opacity", anim);
     }
 
     private void ForceHeroHeaderSourceState()
@@ -474,8 +484,13 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             return;
 
         HeroOverlayPanel.Visibility = Visibility.Visible;
+        // Stop any in-flight RevealHeroIfReady composition animation so this
+        // reset is the authoritative final value — otherwise the running
+        // animation keeps driving Opacity toward 1 and overrides our 0.
+        var visual = ElementCompositionPreview.GetElementVisual(HeroOverlayPanel);
+        visual.StopAnimation("Opacity");
         HeroOverlayPanel.Opacity = opacity;
-        ElementCompositionPreview.GetElementVisual(HeroOverlayPanel).Opacity = opacity;
+        visual.Opacity = opacity;
     }
 
     // Pixels of tint spill past the hero's bottom edge before the wash fully fades.
@@ -1312,16 +1327,16 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         DispatcherQueue.TryEnqueue(
             Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
             () => HeroGrid?.RestoreSurface());
-        // Skip the page-wide x:Bind re-evaluation when returning to the same
-        // artist we just left — every binding still points at the same data.
-        var sameArtist = !string.IsNullOrEmpty(_lastRestoredArtistId)
-            && string.Equals(_lastRestoredArtistId, ViewModel.ArtistId, StringComparison.Ordinal);
-        if (!sameArtist)
+        // Always re-attach via Bindings.Update on restore. The earlier
+        // sameArtist skip assumed the binding graph hadn't changed across the
+        // trim, but Hibernate explicitly null-outs ArtistImageUrl /
+        // HeaderImageUrl / LatestReleaseImageUrl / PinnedItem (texture
+        // release). After StopTracking, the EnsureHeroUrls writes that follow
+        // Initialize fire PropertyChanged into a detached binding graph and
+        // never reach the UI — leaving the avatar + header blank on revisit.
+        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.artist.bindingsUpdate"))
         {
-            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.artist.bindingsUpdate"))
-            {
-                Bindings?.Update();
-            }
+            Bindings?.Update();
         }
 
         if (!string.IsNullOrEmpty(ViewModel.ArtistId))
@@ -1525,16 +1540,19 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         var incomingUri = e.Parameter is ContentNavigationParameter nav ? nav.Uri
                         : e.Parameter as string;
 
-        // Back navigation or re-entering the same artist: re-subscribe to the
+        // Re-entering the same artist (Back or Forward): re-subscribe to the
         // ArtistStore so the warm BehaviorSubject re-emits the cached overview
         // and re-populates the collections that Hibernate cleared on the prior
         // OnNavigatedFrom. No network re-fetch — Initialize is idempotent for
         // the same artistId and the store value is in memory.
-        if (e.NavigationMode == Microsoft.UI.Xaml.Navigation.NavigationMode.Back
-            || (incomingUri != null && incomingUri == ViewModel.ArtistId))
+        //
+        // Key off incomingUri only — `e.NavigationMode == Back` previously
+        // forced this branch even when Back returned to a *different* artist
+        // (A → B → back-to-A leaves VM.ArtistId == B), which then re-init'd
+        // the wrong artist and stranded the page on stale data.
+        if (incomingUri != null && incomingUri == ViewModel.ArtistId)
         {
-            if (!string.IsNullOrEmpty(ViewModel.ArtistId))
-                ViewModel.Initialize(ViewModel.ArtistId);
+            ViewModel.Initialize(ViewModel.ArtistId);
             RestoreDiscographyRepeaters();
             SetupWatchFeedVideo();
             TryShowContentNow();

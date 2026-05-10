@@ -237,6 +237,25 @@
                     </ItemsRepeater>
                 </StackPanel>
 
+                <!-- Queued later (post-context bucket — "Add to Queue" items
+                     that play after the context exhausts, before autoplay) -->
+                <StackPanel x:Name="PostContextSection" Visibility="Collapsed" Spacing="0">
+                    <StackPanel Margin="2,14,2,4" Spacing="1">
+                        <TextBlock x:Name="PostContextHeader"
+                                   Text="Queued later"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock Text="Plays after this context finishes"
+                                   FontSize="11"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                    </StackPanel>
+                    <ItemsRepeater x:Name="PostContextRepeater"
+                                   ItemTemplate="{StaticResource TrackTemplate}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Spacing="0"/>
+                        </ItemsRepeater.Layout>
+                    </ItemsRepeater>
+                </StackPanel>
+
                 <!-- Autoplay section (progressively dimmed) -->
                 <StackPanel x:Name="AutoPlaySection" Visibility="Collapsed" Spacing="0">
                     <StackPanel x:Name="AutoPlayHeader" Margin="2,14,2,4" Spacing="1">

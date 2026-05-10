@@ -113,7 +113,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
         return action switch
         {
             Controls.PlayAction.Cancelled => PlaybackResult.Success(),
-            Controls.PlayAction.PlayNext => await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(contextUri, c), nameof(PlayContextAsync), ct, maxRetries: 0),
+            Controls.PlayAction.PlayNext => await ExecuteWithRetryAsync(c => _executor.PlayNextAsync(contextUri, c), nameof(PlayContextAsync), ct, maxRetries: 0),
             Controls.PlayAction.PlayLater => await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(contextUri, c), nameof(PlayContextAsync), ct, maxRetries: 0),
             _ => await ExecuteWithRetryAsync(c => _executor.PlayContextAsync(contextUri, options, c), nameof(PlayContextAsync), ct, maxRetries: 0, isPlayCommand: true)
         };
@@ -126,7 +126,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
         return action switch
         {
             Controls.PlayAction.Cancelled => PlaybackResult.Success(),
-            Controls.PlayAction.PlayNext => await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(trackUri, c), nameof(PlayTrackInContextAsync), ct, maxRetries: 0),
+            Controls.PlayAction.PlayNext => await ExecuteWithRetryAsync(c => _executor.PlayNextAsync(trackUri, c), nameof(PlayTrackInContextAsync), ct, maxRetries: 0),
             Controls.PlayAction.PlayLater => await ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(trackUri, c), nameof(PlayTrackInContextAsync), ct, maxRetries: 0),
             _ => await ExecuteWithRetryAsync(c =>
             {
@@ -215,6 +215,9 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
 
     public Task<PlaybackResult> AddToQueueAsync(string trackUri, CancellationToken ct)
         => ExecuteWithRetryAsync(c => _executor.AddToQueueAsync(trackUri, c), nameof(AddToQueueAsync), ct, maxRetries: 0);
+
+    public Task<PlaybackResult> PlayNextAsync(string trackUri, CancellationToken ct)
+        => ExecuteWithRetryAsync(c => _executor.PlayNextAsync(trackUri, c), nameof(PlayNextAsync), ct, maxRetries: 0);
 
     public Task<PlaybackResult> TransferPlaybackAsync(string deviceId, bool startPlaying, CancellationToken ct)
         => ExecuteWithRetryAsync(c => _executor.TransferPlaybackAsync(deviceId, startPlaying, c), nameof(TransferPlaybackAsync), ct, maxRetries: 1);
