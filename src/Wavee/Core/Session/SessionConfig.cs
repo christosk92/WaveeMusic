@@ -1,4 +1,5 @@
 using System.Net;
+using Wavee.Core.Audio;
 
 namespace Wavee.Core.Session;
 
@@ -61,6 +62,14 @@ public sealed record SessionConfig
     /// and announce the device for remote control. Disable if you only need API access.
     /// </remarks>
     public bool EnableConnect { get; init; } = true;
+
+    /// <summary>
+    /// Enables this device to act as a local Spotify-encrypted audio player.
+    /// Public/stub builds disable this while keeping controller and metadata
+    /// features available.
+    /// </summary>
+    public bool LocalSpotifyPlaybackEnabled { get; init; } =
+        SpotifyPlaybackCapabilities.DefaultLocalSpotifyPlaybackEnabled;
 
     /// <summary>
     /// Initial volume level for Spotify Connect (0-65535 range).

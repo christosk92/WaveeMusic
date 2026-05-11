@@ -28,6 +28,7 @@ using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
+using Wavee.UI.WinUI.ViewModels.Home;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -58,7 +59,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     private CancellationTokenSource? _tracksCts;
     private CancellationTokenSource? _followerCountCts;
     private CancellationTokenSource? _paletteCts;
+    private CancellationTokenSource? _emptyPlaylistGenresCts;
     private string? _tracksLoadedFor;
+    private bool _emptyPlaylistGenresLoadStarted;
     private bool _disposed;
 
     [ObservableProperty]
@@ -361,6 +364,15 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     public ObservableCollection<ITrackItem> FilteredTracks { get; } = [];
 
     /// <summary>
+    /// Browse All genre chips shown in the empty playlist state. Populated lazily
+    /// from the same Pathfinder browse-all response used by Home.
+    /// </summary>
+    public ObservableCollection<BrowseAllItem> EmptyPlaylistGenreItems { get; } = [];
+
+    public bool HasEmptyPlaylistGenreItems => EmptyPlaylistGenreItems.Count > 0;
+    public bool ShowEmptyPlaylistGenreGrid => ShowEmptyPlaylistState && HasEmptyPlaylistGenreItems;
+
+    /// <summary>
     /// Session-control chip row — e.g. "Pop Rock", "K-Ballad". Populated from
     /// the playlist's <c>session_control_display.displayName.*</c> format
     /// attributes. Empty for playlists without the session-control chrome.
@@ -409,6 +421,13 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             return string.Join(" · ", parts);
         }
     }
+
+    public bool ShowEmptyPlaylistState =>
+        !string.IsNullOrWhiteSpace(PlaylistId)
+        && !IsLoading
+        && !IsLoadingTracks
+        && TotalTracks == 0
+        && !HasError;
 
     /// <summary>
     /// Recomputes <see cref="IsChart"/> and <see cref="ChartHeaderLine"/>
@@ -546,7 +565,11 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         OnPropertyChanged(nameof(MetaInlineLine));
     }
 
-    partial void OnTotalTracksChanged(int value) => OnPropertyChanged(nameof(MetaInlineLine));
+    partial void OnTotalTracksChanged(int value)
+    {
+        OnPropertyChanged(nameof(MetaInlineLine));
+        NotifyEmptyPlaylistStateChanged();
+    }
     partial void OnTotalDurationChanged(string value) => OnPropertyChanged(nameof(MetaInlineLine));
 
     partial void OnIsFollowerCountLoadingChanged(bool value)
@@ -568,6 +591,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     partial void OnIsLoadingChanged(bool value)
     {
         _logger?.LogDebug("IsLoading -> {Value} (PlaylistId='{PlaylistId}')", value, PlaylistId);
+        NotifyEmptyPlaylistStateChanged();
     }
 
     partial void OnIsLoadingTracksChanged(bool value)
@@ -575,6 +599,31 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         _logger?.LogDebug(
             "IsLoadingTracks -> {Value} (PlaylistId='{PlaylistId}', FilteredTracks.Count={Count})",
             value, PlaylistId, FilteredTracks.Count);
+        NotifyEmptyPlaylistStateChanged();
+    }
+
+    partial void OnHasErrorChanged(bool value)
+        => NotifyEmptyPlaylistStateChanged();
+
+    private void NotifyEmptyPlaylistStateChanged()
+    {
+        OnPropertyChanged(nameof(ShowEmptyPlaylistState));
+        OnPropertyChanged(nameof(ShowEmptyPlaylistGenreGrid));
+        MaybeLoadEmptyPlaylistGenres();
+    }
+
+    private void MaybeLoadEmptyPlaylistGenres()
+    {
+        if (!ShowEmptyPlaylistState || HasEmptyPlaylistGenreItems || _emptyPlaylistGenresLoadStarted)
+            return;
+        if (_session is null || !_session.IsConnected())
+            return;
+
+        _emptyPlaylistGenresLoadStarted = true;
+        _emptyPlaylistGenresCts?.Cancel();
+        _emptyPlaylistGenresCts?.Dispose();
+        _emptyPlaylistGenresCts = new CancellationTokenSource();
+        _ = LoadEmptyPlaylistGenresAsync(_emptyPlaylistGenresCts.Token);
     }
 
     // Detail refresh now arrives via the store's push/invalidate stream
@@ -850,6 +899,15 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 Enumerable.Range(0, 10).Select(i =>
                     (ITrackItem)LazyTrackItem.Placeholder($"ph-{i}", i + 1)));
             IsLoadingTracks = true;
+
+            // Force a false → true transition on IsLoading so the next Ready
+            // emission (which sets false again) actually fires PropertyChanged →
+            // ContentPageController.OnIsLoadingChanged → ScheduleCrossfade. Without
+            // this, warm-cache navigations replay Ready directly: IsLoading stays
+            // at false throughout, no transition fires, no crossfade runs, and the
+            // previous playlist's hero stays painted at full opacity over the new
+            // one's already-correct VM state.
+            IsLoading = true;
         }
 
         var streamSubscription = _playlistStore.Observe(playlistId)
@@ -878,6 +936,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         _paletteCts?.Cancel();
         _paletteCts?.Dispose();
         _paletteCts = null;
+        _emptyPlaylistGenresCts?.Cancel();
+        _emptyPlaylistGenresCts?.Dispose();
+        _emptyPlaylistGenresCts = null;
         _sessionSignalCts?.Cancel();
         _sessionSignalCts?.Dispose();
         _sessionSignalCts = null;
@@ -1474,6 +1535,41 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "ApplyMosaicHeroAsync failed for {PlaylistId}", playlistId);
+        }
+    }
+
+    private async Task LoadEmptyPlaylistGenresAsync(CancellationToken ct)
+    {
+        try
+        {
+            var response = await _session!.Pathfinder.GetBrowseAllAsync(ct).ConfigureAwait(false);
+            var genres = BrowseAllGrouper
+                .Genres(BrowseAllParser.Extract(response))
+                .Take(18)
+                .ToList();
+            ct.ThrowIfCancellationRequested();
+
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (_disposed || ct.IsCancellationRequested)
+                    return;
+
+                EmptyPlaylistGenreItems.Clear();
+                foreach (var item in genres)
+                    EmptyPlaylistGenreItems.Add(item);
+
+                OnPropertyChanged(nameof(HasEmptyPlaylistGenreItems));
+                OnPropertyChanged(nameof(ShowEmptyPlaylistGenreGrid));
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            _emptyPlaylistGenresLoadStarted = false;
+        }
+        catch (Exception ex)
+        {
+            _emptyPlaylistGenresLoadStarted = false;
+            _logger?.LogDebug(ex, "LoadEmptyPlaylistGenresAsync failed");
         }
     }
 
@@ -2691,6 +2787,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         _allTracks = new List<PlaylistTrackDto>();
         Collaborators.Clear();
         SessionControlChips.Clear();
+        EmptyPlaylistGenreItems.Clear();
         SelectedItems = Array.Empty<object>();
         SelectedSessionControlChip = null;
     }

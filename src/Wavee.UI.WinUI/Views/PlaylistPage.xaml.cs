@@ -183,6 +183,19 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             RebuildDescriptionInlines();
         else if (ev.PropertyName == nameof(PlaylistViewModel.IsLoading))
             PageController.OnIsLoadingChanged();
+        else if (ev.PropertyName == nameof(PlaylistViewModel.PlaylistName))
+        {
+            // Warm-cache / fresh-create path: PlaylistStore emits Ready directly,
+            // IsLoading never transitions false→true→false, OnIsLoadingChanged
+            // never schedules the crossfade. The initial TryShowContentNow in
+            // LoadParameter bailed because PlaylistName was still empty at that
+            // moment (Activate clears it, the queued ApplyDetailState fires later).
+            // Re-attempt the schedule the moment the name lands — at this point
+            // HasContent is true, IsLoading is false, and ScheduleCrossfade fades
+            // out the stuck outer shimmer.
+            if (!string.IsNullOrEmpty(ViewModel.PlaylistName))
+                PageController.TryShowContentNow();
+        }
     }
 
     private void Collaborators_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -315,7 +328,24 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
     private async void LoadParameter(object? parameter)
     {
+        // If we were trimmed since the last LoadParameter, the x:Bind graph is
+        // currently detached (TrimForNavigationCache called Bindings.StopTracking).
+        // Re-attach BEFORE the Activate / PrefillFrom / ApplyDetail chain below
+        // fires its PropertyChanged events, otherwise the hero panel's text and
+        // image bindings sit deaf and the view freezes on whatever was bound
+        // before the trim. Note: same-tab cross-playlist nav can trim twice
+        // (ContentFrame_Navigating, then OnNavigatedFrom) — calling Update()
+        // here covers both, including the second one which fires AFTER any
+        // earlier Restore-time Update() and silently detaches again.
+        var wasTrimmed = _trimmedForNavigationCache;
         _trimmedForNavigationCache = false;
+        if (wasTrimmed)
+        {
+            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.playlist.bindingsUpdate"))
+            {
+                Bindings?.Update();
+            }
+        }
         _logger?.LogInformation(
             "PlaylistPage.LoadParameter: parameter type={Type}, value={Value}",
             parameter?.GetType().FullName ?? "<null>", parameter);
@@ -462,18 +492,11 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         if (!_trimmedForNavigationCache)
             return;
 
-        _trimmedForNavigationCache = false;
-        // Skip the page-wide x:Bind re-evaluation when returning to the same
-        // playlist we just left — bindings still point at the same data.
-        var samePlaylist = !string.IsNullOrEmpty(_lastRestoredPlaylistId)
-            && string.Equals(_lastRestoredPlaylistId, ViewModel.PlaylistId, StringComparison.Ordinal);
-        if (!samePlaylist)
-        {
-            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.playlist.bindingsUpdate"))
-            {
-                Bindings?.Update();
-            }
-        }
+        // Don't reset _trimmedForNavigationCache here. The next LoadParameter
+        // (called either by Restore's tail below, by the subsequent OnNavigatedTo,
+        // or both) sees the flag still true and runs Bindings.Update() to re-attach
+        // x:Bind to the now-cleared VM. Setting the flag false here would skip
+        // that re-attach and leave the hero stuck on its pre-trim values.
         if (!string.IsNullOrEmpty(ViewModel.PlaylistId))
             LoadParameter(ViewModel.PlaylistId);
     }

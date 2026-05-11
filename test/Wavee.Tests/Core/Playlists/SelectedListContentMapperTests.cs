@@ -187,6 +187,26 @@ public class SelectedListContentMapperTests
     }
 
     [Fact]
+    public void MapPlaylist_OwnerMatch_NormalizesSpotifyUserUri()
+    {
+        var content = new SelectedListContent
+        {
+            OwnerUsername = "spotify:user:alice",
+            Attributes = new ListAttributes { Name = "Mine" },
+            Contents = new ListItems { Pos = 0, Truncated = false },
+            Capabilities = new Capabilities()
+        };
+
+        var cached = SelectedListContentMapper.MapPlaylist(
+            "spotify:playlist:mine",
+            content,
+            currentUsername: "alice",
+            FetchedAt);
+
+        cached.BasePermission.Should().Be(CachedPlaylistBasePermission.Owner);
+    }
+
+    [Fact]
     public void MapPlaylist_ItemAttributes_PreservedOnCachedItem()
     {
         var itemIdBytes = new byte[] { 0xDE, 0xAD, 0xBE, 0xEF };

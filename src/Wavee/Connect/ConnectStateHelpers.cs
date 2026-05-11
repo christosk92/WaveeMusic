@@ -4,6 +4,7 @@ using Wavee.Core;
 using Wavee.Core.Session;
 using Wavee.Protocol.Media;
 using Wavee.Protocol.Player;
+using SpotifyPlaybackCapabilities = Wavee.Core.Audio.SpotifyPlaybackCapabilities;
 
 namespace Wavee.Connect;
 
@@ -58,9 +59,10 @@ public static class ConnectStateHelpers
         string? audioOutputDeviceName = null,
         AudioOutputDeviceType audioOutputDeviceType = AudioOutputDeviceType.UnknownAudioOutputDeviceType)
     {
+        var localSpotifyPlaybackEnabled = config.LocalSpotifyPlaybackEnabled;
         var info = new DeviceInfo
         {
-            CanPlay = true,
+            CanPlay = localSpotifyPlaybackEnabled,
             Volume = (uint)Math.Clamp(volume, 0, MaxVolume),
             Name = config.DeviceName,
             DeviceId = config.DeviceId,
@@ -68,7 +70,7 @@ public static class ConnectStateHelpers
             DeviceSoftwareVersion = SpotifyClientIdentity.DeviceSoftwareVersion,
             ClientId = config.ClientId ?? KeymasterClientId,
             SpircVersion = SpotifyClientIdentity.SpircVersion,
-            Capabilities = CreateDefaultCapabilities(volumeSteps),
+            Capabilities = CreateDefaultCapabilities(volumeSteps, localSpotifyPlaybackEnabled),
             // Brand/model: parity with desktop's own DeviceInfo. These show up in
             // remote "Now Playing" device lists and feed device-fingerprint logic
             // server-side. Pre-2026-04 captures show desktop sends "spotify"/"PC laptop".
@@ -79,6 +81,12 @@ public static class ConnectStateHelpers
             // device may be excluded from Recently Played.
             License = "premium",
         };
+
+        if (!localSpotifyPlaybackEnabled)
+        {
+            info.DisallowPlaybackReasons.Add(SpotifyPlaybackCapabilities.DisabledReason);
+            info.DisallowTransferReasons.Add(SpotifyPlaybackCapabilities.DisabledReason);
+        }
 
         // metadata_map — desktop sends a small set of debug/network keys here.
         // Include the ones we can derive locally; desktop additionally sets
@@ -112,21 +120,23 @@ public static class ConnectStateHelpers
     /// </summary>
     /// <param name="volumeSteps">Number of volume steps (default 64).</param>
     /// <returns>Configured Capabilities instance.</returns>
-    public static Capabilities CreateDefaultCapabilities(int volumeSteps = DefaultVolumeSteps)
+    public static Capabilities CreateDefaultCapabilities(
+        int volumeSteps = DefaultVolumeSteps,
+        bool localSpotifyPlaybackEnabled = true)
     {
         var capabilities = new Capabilities
         {
-            CanBePlayer = true,
+            CanBePlayer = localSpotifyPlaybackEnabled,
             GaiaEqConnectId = true,
             SupportsLogout = true,
             IsObservable = true,
             CommandAcks = true,
             SupportsRename = false,
             SupportsPlaylistV2 = true,
-            IsControllable = true,
+            IsControllable = localSpotifyPlaybackEnabled,
             SupportsExternalEpisodes = true,
             SupportsSetBackendMetadata = true,
-            SupportsTransferCommand = true,
+            SupportsTransferCommand = localSpotifyPlaybackEnabled,
             SupportsCommandRequest = true,
             VolumeSteps = volumeSteps,
             SupportsGzipPushes = true,

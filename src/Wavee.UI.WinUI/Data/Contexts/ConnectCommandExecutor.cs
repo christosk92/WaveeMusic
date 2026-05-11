@@ -67,13 +67,13 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
 
     public async Task SwitchQualityAsync(AudioQuality quality, CancellationToken ct = default)
     {
-        if (GetPipelineProxy() is { } proxy)
+        if (_localEngine is Wavee.Audio.PlaybackOrchestrator orchestrator)
         {
-            await proxy.SwitchQualityAsync(quality.ToString(), ct).ConfigureAwait(false);
+            await orchestrator.SwitchQualityAsync(quality, ct).ConfigureAwait(false);
             return;
         }
 
-        _logger?.LogWarning("SwitchQualityAsync ignored: AudioHost proxy is not connected");
+        _logger?.LogWarning("SwitchQualityAsync ignored: playback orchestrator is not connected");
     }
 
     public void SetNormalizationEnabled(bool enabled)
@@ -123,6 +123,134 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
     private Task<PlaybackResult> SendAsync(string endpoint, Dictionary<string, object>? data, CancellationToken ct)
         => SendAsync(endpoint, data, typedPlayCommand: null, ct);
 
+    private PlaybackResult LocalSpotifyPlaybackDisabledResult(string endpoint, string? uri = null)
+    {
+        _logger?.LogWarning(
+            "[Executor] {Endpoint}: local Spotify playback blocked (uri={Uri})",
+            endpoint,
+            uri ?? "<none>");
+        return PlaybackResult.Failure(
+            PlaybackErrorKind.Unavailable,
+            SpotifyPlaybackCapabilities.DisabledMessage);
+    }
+
+    private bool ShouldBlockLocalSpotifyPlayback(
+        string endpoint,
+        Wavee.Connect.Commands.PlayCommand? typedPlayCommand,
+        Dictionary<string, object>? data,
+        out string? uri)
+    {
+        uri = null;
+        if (_session.Config.LocalSpotifyPlaybackEnabled)
+            return false;
+
+        if (endpoint == "play")
+        {
+            if (TryFindSpotifyAudioUri(typedPlayCommand, out uri))
+                return true;
+
+            if (TryFindSpotifyAudioUri(data, out uri))
+                return true;
+
+            return false;
+        }
+
+        if (endpoint is "resume" or "skip_next" or "skip_prev" or "seek_to")
+            return TryFindCurrentSpotifyAudioUri(out uri);
+
+        return false;
+    }
+
+    private bool TryFindCurrentSpotifyAudioUri(out string? uri)
+    {
+        uri = null;
+        var engineUri = _localEngine?.CurrentState.TrackUri;
+        if (SpotifyPlaybackCapabilities.IsSpotifyAudioPlaybackUri(engineUri))
+        {
+            uri = engineUri;
+            return true;
+        }
+
+        var state = _session.PlaybackState?.CurrentState;
+        if (SpotifyPlaybackCapabilities.IsSpotifyAudioPlaybackUri(state?.Track?.Uri))
+        {
+            uri = state!.Track!.Uri;
+            return true;
+        }
+
+        if (SpotifyPlaybackCapabilities.IsSpotifyAudioPlaybackUri(state?.ContextUri))
+        {
+            uri = state!.ContextUri;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryFindSpotifyAudioUri(
+        Wavee.Connect.Commands.PlayCommand? command,
+        out string? uri)
+    {
+        uri = null;
+        if (command is null)
+            return false;
+
+        if (SpotifyPlaybackCapabilities.IsSpotifyAudioPlaybackUri(command.TrackUri))
+        {
+            uri = command.TrackUri;
+            return true;
+        }
+
+        if (SpotifyPlaybackCapabilities.IsSpotifyAudioPlaybackUri(command.ContextUri))
+        {
+            uri = command.ContextUri;
+            return true;
+        }
+
+        if (command.PageTracks is not null)
+        {
+            foreach (var track in command.PageTracks)
+            {
+                if (!SpotifyPlaybackCapabilities.IsSpotifyAudioPlaybackUri(track.Uri))
+                    continue;
+
+                uri = track.Uri;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryFindSpotifyAudioUri(object? value, out string? uri)
+    {
+        uri = null;
+        switch (value)
+        {
+            case null:
+                return false;
+            case string s when SpotifyPlaybackCapabilities.IsSpotifyAudioPlaybackUri(s):
+                uri = s;
+                return true;
+            case IDictionary<string, object> dict:
+                foreach (var child in dict.Values)
+                {
+                    if (TryFindSpotifyAudioUri(child, out uri))
+                        return true;
+                }
+                return false;
+            case System.Collections.IEnumerable items when value is not string:
+                foreach (var child in items)
+                {
+                    if (TryFindSpotifyAudioUri(child, out uri))
+                        return true;
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
+
     private async Task<PlaybackResult> SendAsync(
         string endpoint, Dictionary<string, object>? data,
         Wavee.Connect.Commands.PlayCommand? typedPlayCommand, CancellationToken ct)
@@ -133,6 +261,9 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         // No active device OR self-targeted: route to local AudioPipeline.
         if (string.IsNullOrEmpty(target) || target == selfId)
         {
+            if (ShouldBlockLocalSpotifyPlayback(endpoint, typedPlayCommand, data, out var blockedUri))
+                return LocalSpotifyPlaybackDisabledResult(endpoint, blockedUri);
+
             if (_localEngine != null)
             {
                 _logger?.LogInformation("[Executor] {Endpoint}: routing LOCAL (target={Target}, self={Self})",
@@ -481,10 +612,17 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         var target = GetTargetDeviceId();
         var selfId = _session.Config.DeviceId;
         var op = atHead ? "play_next" : "add_to_queue";
+        var isLocalRoute = string.IsNullOrEmpty(target) || target == selfId;
 
         // LOCAL — drive the orchestrator's PlaybackQueue directly.
-        if (string.IsNullOrEmpty(target) || target == selfId)
+        if (isLocalRoute)
         {
+            if (!_session.Config.LocalSpotifyPlaybackEnabled
+                && SpotifyPlaybackCapabilities.IsSpotifyAudioPlaybackUri(trackUri))
+            {
+                return LocalSpotifyPlaybackDisabledResult(op, trackUri);
+            }
+
             if (_localEngine == null)
             {
                 _logger?.LogWarning(
@@ -815,6 +953,9 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         // starts local playback, implicitly making us the active Connect device.
         if (isSelfTransfer)
         {
+            if (!_session.Config.LocalSpotifyPlaybackEnabled)
+                return LocalSpotifyPlaybackDisabledResult("transfer", deviceId);
+
             var stateManager = _session.PlaybackState;
             if (stateManager == null)
                 return PlaybackResult.Failure(PlaybackErrorKind.Unavailable, "Playback state manager not available");
@@ -908,6 +1049,9 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
 
     public async Task<PlaybackResult> SwitchToAudioAsync(CancellationToken ct)
     {
+        if (!_session.Config.LocalSpotifyPlaybackEnabled)
+            return LocalSpotifyPlaybackDisabledResult("switch_to_audio");
+
         if (_localEngine == null)
         {
             _logger?.LogWarning("[SwitchToAudio] Local playback engine not available");

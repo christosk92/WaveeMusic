@@ -7,7 +7,7 @@ using Windows.System;
 
 namespace Wavee.UI.WinUI.Controls.Settings;
 
-public sealed partial class AboutSettingsSection : UserControl
+public sealed partial class AboutSettingsSection : UserControl, ISettingsSearchFilter
 {
     public SettingsViewModel ViewModel { get; }
 
@@ -16,6 +16,9 @@ public sealed partial class AboutSettingsSection : UserControl
         ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         InitializeComponent();
     }
+
+    public void ApplySearchFilter(string? groupKey)
+        => SettingsGroupFilter.Apply(SettingsGroupsRoot, groupKey);
 
     private async void WhatsNew_Click(object sender, RoutedEventArgs e)
     {

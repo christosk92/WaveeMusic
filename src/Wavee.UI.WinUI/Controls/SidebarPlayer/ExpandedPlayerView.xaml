@@ -37,6 +37,7 @@
         <lyrics:NowPlayingCanvas
             x:Name="FullscreenLyricsCanvas"
             x:Load="False"
+            HoverActionInvoked="FullscreenLyricsCanvas_HoverActionInvoked"
             Visibility="Collapsed"
             IsHitTestVisible="False" />
 
@@ -100,31 +101,6 @@
                         Margin="0,8,0,0"
                         Visibility="Collapsed"
                         Canvas.ZIndex="5" />
-
-                    <Button
-                        x:Name="LyricsHoverExplainButton"
-                        Click="LyricsHoverExplainButton_Click"
-                        PointerEntered="LyricsHoverExplainButton_PointerEntered"
-                        PointerExited="LyricsHoverExplainButton_PointerExited"
-                        HorizontalAlignment="Left"
-                        VerticalAlignment="Top"
-                        Width="34"
-                        Height="34"
-                        Padding="0"
-                        MinWidth="0"
-                        MinHeight="0"
-                        CornerRadius="17"
-                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource ControlElevationBorderBrush}"
-                        BorderThickness="1"
-                        Visibility="Collapsed"
-                        Canvas.ZIndex="7"
-                        ToolTipService.ToolTip="Explain this line">
-                        <ic:SymbolIcon Symbol="LightbulbFilament"
-                                       IconVariant="Filled"
-                                       FontSize="14"
-                                       Foreground="{ThemeResource AiAccentSolidBrush}" />
-                    </Button>
 
                     <!-- "No lyrics" placeholder. Shown when lyrics mode is active
                          but the current track has no lyrics. IsHitTestVisible=False

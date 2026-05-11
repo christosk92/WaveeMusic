@@ -15,11 +15,11 @@
     </UserControl.Resources>
 
     <ScrollView>
-        <StackPanel Spacing="4" Padding="0,16,0,24">
+        <StackPanel x:Name="SettingsGroupsRoot" Spacing="4" Padding="0,16,0,24">
 
             <!-- Section header — gradient-stroked sparkle to match Windows 11
                  Settings → AI components page. -->
-            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4" Tag="availability">
                 <Border CornerRadius="14"
                         Padding="6"
                         BorderThickness="1.5"
@@ -39,20 +39,23 @@
             </StackPanel>
 
             <Border Style="{StaticResource AiCaptionUnderlineStyle}"
-                    Margin="0,0,0,12" />
+                    Margin="0,0,0,12"
+                    Tag="availability" />
 
             <!-- Background note -->
             <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        TextWrapping="Wrap"
-                       Margin="0,0,0,8">
+                       Margin="0,0,0,8"
+                       Tag="availability">
                 <Run Text="Powered by Phi Silica running on your PC's neural processor (NPU). Nothing is sent off-device. Available only on Copilot+ PCs (Snapdragon X, Intel Core Ultra Series 2, AMD Ryzen AI 300+) running Windows 11 24H2."/>
             </TextBlock>
 
             <!-- ── Master toggle ── -->
             <controls:SettingsCard Header="Enable on-device AI features"
                                    Description="Off by default. When on, the model is downloaded the first time you use a feature."
-                                   IsEnabled="{x:Bind ViewModel.CanUseAi, Mode=OneWay}">
+                                   IsEnabled="{x:Bind ViewModel.CanUseAi, Mode=OneWay}"
+                                   Tag="availability">
                 <controls:SettingsCard.HeaderIcon>
                     <ic:SymbolIcon Symbol="Sparkle" IconVariant="Filled" />
                 </controls:SettingsCard.HeaderIcon>
@@ -61,7 +64,7 @@
             </controls:SettingsCard>
 
             <!-- ── Model preparation panel ── -->
-            <Grid Margin="0,8,0,0">
+            <Grid Margin="0,8,0,0" Tag="availability">
                 <!-- Active download / preparation -->
                 <Border Visibility="{x:Bind ViewModel.IsModelPreparing, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
                         Background="{ThemeResource AiPanelBackgroundBrush}"
@@ -114,11 +117,13 @@
             <!-- ── Per-feature toggles ── -->
             <TextBlock Text="Lyrics"
                        Style="{StaticResource SubtitleTextBlockStyle}"
-                       Margin="0,24,0,8" />
+                       Margin="0,24,0,8"
+                       Tag="lyrics" />
 
             <controls:SettingsCard Header="Explain a lyric line"
                                    Description="Tap a line in the expanded now-playing view to get a one- or two-sentence interpretation."
-                                   IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}">
+                                   IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}"
+                                   Tag="lyrics">
                 <controls:SettingsCard.HeaderIcon>
                     <ic:SymbolIcon Symbol="LightbulbFilament" IconVariant="Filled" />
                 </controls:SettingsCard.HeaderIcon>
@@ -128,7 +133,8 @@
 
             <controls:SettingsCard Header="Lyrics meaning"
                                    Description="Explain the song's lyrics, imagery, and emotional arc on demand."
-                                   IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}">
+                                   IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}"
+                                   Tag="lyrics">
                 <controls:SettingsCard.HeaderIcon>
                     <ic:SymbolIcon Symbol="DocumentSparkle" IconVariant="Filled" />
                 </controls:SettingsCard.HeaderIcon>

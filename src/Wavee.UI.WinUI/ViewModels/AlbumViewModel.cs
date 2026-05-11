@@ -670,6 +670,12 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
                 Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
                 () =>
                 {
+                    // A HotCache hit causes ApplyDetailAsync to run at normal priority
+                    // before this low-priority dispatch fires. If that already happened,
+                    // skip the clear — the shelf is correctly populated and won't be
+                    // re-emitted by the store.
+                    if (_appliedDetailFor == albumId) return;
+
                     HasAlternateReleases = false;
                     _alternateReleases.Clear();
                     HasMoreByArtist = false;

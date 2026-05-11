@@ -8,7 +8,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.Settings;
 
-public sealed partial class DiagnosticsSettingsSection : UserControl, IDisposable
+public sealed partial class DiagnosticsSettingsSection : UserControl, ISettingsSearchFilter, IDisposable
 {
     private bool _disposed;
     private bool _userScrolledLogs;
@@ -32,6 +32,9 @@ public sealed partial class DiagnosticsSettingsSection : UserControl, IDisposabl
         ViewModel.FilteredLogEntries.CollectionChanged -= OnLogEntriesChanged;
         ViewModel.UpdateRttChart = null;
     }
+
+    public void ApplySearchFilter(string? groupKey)
+        => SettingsGroupFilter.Apply(SettingsGroupsRoot, groupKey);
 
     private void LogScrollView_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
         => _userScrolledLogs = true;

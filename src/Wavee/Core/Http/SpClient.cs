@@ -1692,13 +1692,15 @@ public sealed class SpClient : ISpClient
 
         var url = $"{_baseUrl}/playlist/v2/{path}/changes";
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, url);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
-        request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
+        using var request = BuildPlaylistV2Request(url, accessToken.Token);
+        request.Content = new ByteArrayContent(changes.ToByteArray());
+        // Spotify's gateway expects form-urlencoded Content-Type on the playlist v2
+        // mutation endpoints despite the body being binary protobuf — anything else
+        // routes to a different (passive) handler.
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
 
-        var protobufBytes = changes.ToByteArray();
-        request.Content = new ByteArrayContent(protobufBytes);
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+        if (_clientTokenManager != null)
+            await TryAttachClientTokenAsync(request, cancellationToken);
 
         _logger?.LogDebug("Sending playlist changes: {Uri}", playlistUri);
 
@@ -1724,7 +1726,253 @@ public sealed class SpClient : ISpClient
         response.EnsureSuccessStatusCode();
 
         var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        responseBytes = MaybeDecompressZstd(responseBytes, response.Content.Headers.ContentEncoding);
         return Protocol.Playlist.SelectedListContent.Parser.ParseFrom(responseBytes);
+    }
+
+    /// <summary>
+    /// Spotify returns playlist /changes responses as zstd-compressed protobuf
+    /// (Content-Encoding: zstd). HttpClient doesn't auto-decompress zstd unless
+    /// the handler explicitly enables it; do it here so we don't need to fiddle
+    /// with the shared handler config. If the response isn't zstd-encoded we
+    /// pass the bytes through unchanged.
+    /// </summary>
+    private static byte[] MaybeDecompressZstd(byte[] bytes, ICollection<string> contentEncoding)
+    {
+        var isZstd = contentEncoding.Contains("zstd", StringComparer.OrdinalIgnoreCase);
+        // Belt-and-braces: also sniff the zstd magic in case the header was stripped
+        // by something in the pipeline.
+        if (!isZstd && bytes.Length >= 4 &&
+            bytes[0] == 0x28 && bytes[1] == 0xB5 && bytes[2] == 0x2F && bytes[3] == 0xFD)
+        {
+            isZstd = true;
+        }
+
+        if (!isZstd) return bytes;
+
+        using var input = new MemoryStream(bytes);
+        using var decompressor = new ZstdSharp.DecompressionStream(input);
+        using var output = new MemoryStream();
+        decompressor.CopyTo(output);
+        return output.ToArray();
+    }
+
+    /// <inheritdoc />
+    public async Task<string> UploadPlaylistImageAsync(
+        ReadOnlyMemory<byte> jpegBytes,
+        CancellationToken cancellationToken = default)
+    {
+        if (jpegBytes.IsEmpty)
+            throw new ArgumentException("jpegBytes must not be empty", nameof(jpegBytes));
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://image-upload.spotify.com/v4/playlist");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.UserAgent.ParseAdd(SpotifyClientUserAgent);
+        request.Headers.AcceptLanguage.ParseAdd("en");
+        request.Headers.Accept.ParseAdd("application/json");
+        if (_clientTokenManager != null)
+            await TryAttachClientTokenAsync(request, cancellationToken);
+
+        request.Content = new ByteArrayContent(jpegBytes.ToArray());
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
+
+        _logger?.LogDebug("Uploading playlist image: {Bytes} bytes", jpegBytes.Length);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.Forbidden:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Cannot upload playlist image");
+        }
+        if ((int)response.StatusCode >= 500)
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("uploadToken", out var tokenEl) || tokenEl.GetString() is not { Length: > 0 } token)
+            throw new SpClientException(SpClientFailureReason.RequestFailed, "uploadToken missing from image-upload response");
+        return token;
+    }
+
+    /// <inheritdoc />
+    public async Task<byte[]> RegisterPlaylistImageAsync(
+        string playlistId,
+        string uploadToken,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(uploadToken);
+
+        // Accept either a raw 22-char playlist id or a full URI; the endpoint wants the bare id.
+        var bareId = playlistId.StartsWith("spotify:playlist:", StringComparison.Ordinal)
+            ? playlistId["spotify:playlist:".Length..]
+            : playlistId;
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        var url = $"{_baseUrl}/playlist/v2/playlist/{bareId}/register-image";
+
+        using var request = BuildPlaylistV2Request(url, accessToken.Token);
+        request.Headers.Accept.ParseAdd("application/json");
+        var payload = JsonSerializer.Serialize(new { uploadToken });
+        request.Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+        if (_clientTokenManager != null)
+            await TryAttachClientTokenAsync(request, cancellationToken);
+
+        _logger?.LogDebug("Registering playlist image: {Id}", bareId);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(SpClientFailureReason.NotFound, $"Playlist not found: {bareId}");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.Forbidden:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Cannot register playlist image");
+        }
+        if ((int)response.StatusCode >= 500)
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("picture", out var picEl) || picEl.GetString() is not { Length: > 0 } b64)
+            throw new SpClientException(SpClientFailureReason.RequestFailed, "picture missing from register-image response");
+        return Convert.FromBase64String(b64);
+    }
+
+    /// <inheritdoc />
+    public async Task<Protocol.Playlist.CreateListReply> CreateEmptyPlaylistAsync(
+        string name,
+        string canonicalUsername,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(canonicalUsername);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        var url = $"{_baseUrl}/playlist/v2/playlist";
+
+        var body = new Protocol.Playlist.ListUpdateRequest
+        {
+            Attributes = new Protocol.Playlist.ListAttributes { Name = name },
+            Info = new Protocol.Playlist.ChangeInfo
+            {
+                User = canonicalUsername,
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            },
+        };
+
+        using var request = BuildPlaylistV2Request(url, accessToken.Token);
+        request.Content = new ByteArrayContent(body.ToByteArray());
+        // Spotify's gateway expects form-urlencoded Content-Type on these endpoints
+        // even though the body is binary protobuf — anything else routes wrong.
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
+
+        if (_clientTokenManager != null)
+            await TryAttachClientTokenAsync(request, cancellationToken);
+
+        _logger?.LogDebug("Creating empty playlist: {Name}", name);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.Forbidden:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Cannot create playlist");
+        }
+        if ((int)response.StatusCode >= 500)
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+
+        response.EnsureSuccessStatusCode();
+
+        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        return Protocol.Playlist.CreateListReply.Parser.ParseFrom(responseBytes);
+    }
+
+    /// <inheritdoc />
+    public async Task<Protocol.Playlist.SelectedListContent> PostRootlistChangesAsync(
+        string canonicalUsername,
+        Protocol.Playlist.ListChanges changes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(canonicalUsername);
+        ArgumentNullException.ThrowIfNull(changes);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        var url = $"{_baseUrl}/playlist/v2/user/{canonicalUsername}/rootlist/changes";
+
+        using var request = BuildPlaylistV2Request(url, accessToken.Token);
+        request.Content = new ByteArrayContent(changes.ToByteArray());
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
+
+        if (_clientTokenManager != null)
+            await TryAttachClientTokenAsync(request, cancellationToken);
+
+        _logger?.LogDebug("Posting rootlist changes for user: {User}", canonicalUsername);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NotFound:
+                throw new SpClientException(SpClientFailureReason.NotFound, "Rootlist not found");
+            case HttpStatusCode.Unauthorized:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Access token invalid or expired");
+            case HttpStatusCode.Forbidden:
+                throw new SpClientException(SpClientFailureReason.Unauthorized, "Cannot modify rootlist");
+            case HttpStatusCode.Conflict:
+                throw new SpClientException(SpClientFailureReason.RequestFailed, "Rootlist revision conflict - refetch and retry");
+        }
+        if ((int)response.StatusCode >= 500)
+            throw new SpClientException(SpClientFailureReason.ServerError, $"Server error: {response.StatusCode}");
+
+        response.EnsureSuccessStatusCode();
+
+        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        return Protocol.Playlist.SelectedListContent.Parser.ParseFrom(responseBytes);
+    }
+
+    /// <summary>
+    /// Builds an authenticated POST request to a /playlist/v2/* endpoint with the
+    /// full first-party identity header set. Spotify's gateway gates these routes
+    /// on a matching tuple of (Spotify-App-Version, App-Platform, User-Agent,
+    /// spotify-playlist-sync-reason) — generic requests 200-OK against a read-only
+    /// handler that doesn't actually mutate state. Same identity is used by
+    /// <see cref="SendPlaylistSignalAsync"/>; reuse keeps it consistent.
+    /// </summary>
+    private HttpRequestMessage BuildPlaylistV2Request(string url, string bearerToken)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        request.Headers.UserAgent.ParseAdd(SpotifyClientUserAgent);
+        request.Headers.AcceptLanguage.ParseAdd("en");
+        request.Headers.CacheControl = new CacheControlHeaderValue { NoStore = true };
+        request.Headers.TryAddWithoutValidation("App-Platform", "Win32_ARM64");
+        request.Headers.TryAddWithoutValidation("Spotify-App-Version", SpotifyAppVersion);
+        request.Headers.TryAddWithoutValidation("spotify-accept-geoblock", "dummy");
+        request.Headers.TryAddWithoutValidation("spotify-dsa-mode-enabled", "false");
+        request.Headers.TryAddWithoutValidation("spotify-playlist-sync-reason", "CAk=");
+        request.Headers.TryAddWithoutValidation("Origin", _baseUrl);
+        return request;
+    }
+
+    private async Task TryAttachClientTokenAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var clientToken = await _clientTokenManager!.GetClientTokenAsync(cancellationToken);
+            if (!string.IsNullOrEmpty(clientToken))
+                request.Headers.Add("client-token", clientToken);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to get client token for playlist v2 request, continuing without");
+        }
     }
 
     /// <summary>

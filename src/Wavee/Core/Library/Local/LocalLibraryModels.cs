@@ -57,7 +57,27 @@ public sealed record LocalAlbumSummary(
     int TrackCount,
     string? ArtworkUri);
 
-public enum LocalSearchEntityType { Track, Album, Artist }
+public enum LocalSearchEntityType { Track, Album, Artist, Playlist }
+
+/// <summary>
+/// Controls which cached entities <see cref="ILocalLibraryService.SearchAsync"/> returns.
+/// </summary>
+public enum LocalSearchScope
+{
+    /// <summary>
+    /// Default — local filesystem entities only (entities.source_type = Local).
+    /// Used by the dedicated Search page's "On this PC" merge so cached-but-not-saved
+    /// Spotify items don't duplicate the network search results.
+    /// </summary>
+    LocalFilesOnly,
+
+    /// <summary>
+    /// Everything in the metadata cache regardless of source — local files PLUS any
+    /// cached Spotify entities (tracks/albums/artists/playlists). Used by the omnibar
+    /// quicksearch so "anything I've seen" is findable without hitting the network.
+    /// </summary>
+    AllCached,
+}
 
 public sealed record LocalSearchResult(
     LocalSearchEntityType Type,

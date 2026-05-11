@@ -11,3 +11,12 @@ public sealed record ContentNavigationParameter
     public string? Subtitle { get; init; }
     public string? ImageUrl { get; init; }
 }
+
+/// <summary>
+/// Navigation parameter for deep-linking into <c>SettingsPage</c> from the omnibar
+/// settings results. The page selects <see cref="SectionTag"/> and applies
+/// <see cref="GroupKey"/> through its existing in-page group filter
+/// (<c>ISettingsSearchFilter.ApplySearchFilter</c>). <see cref="EntryTitle"/>
+/// drives the "Showing settings for X" chrome.
+/// </summary>
+public sealed record SettingsNavigationParameter(string SectionTag, string GroupKey, string EntryTitle);

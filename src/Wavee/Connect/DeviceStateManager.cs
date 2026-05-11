@@ -335,7 +335,10 @@ public sealed class DeviceStateManager : IAsyncDisposable
     {
         var psm = (_session as Session)?.PlaybackState;
         if (psm == null) return null;
-        return PlaybackStateHelpers.ToPlayerState(psm.CurrentState, _session.Config.DeviceId);
+        return PlaybackStateHelpers.ToPlayerState(
+            psm.CurrentState,
+            _session.Config.DeviceId,
+            _session.Config.LocalSpotifyPlaybackEnabled);
     }
 
     /// <summary>
@@ -345,6 +348,12 @@ public sealed class DeviceStateManager : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task SetActiveAsync(bool active, CancellationToken cancellationToken = default)
     {
+        if (active && !_session.Config.LocalSpotifyPlaybackEnabled)
+        {
+            _logger?.LogInformation("Ignoring active-device request: local Spotify playback is disabled");
+            return;
+        }
+
         if (_isActive == active)
             return;
 
@@ -361,6 +370,12 @@ public sealed class DeviceStateManager : IAsyncDisposable
     /// </summary>
     public async Task SetActiveWithStateAsync(PlayerState playerState, CancellationToken cancellationToken = default)
     {
+        if (!_session.Config.LocalSpotifyPlaybackEnabled)
+        {
+            _logger?.LogInformation("Ignoring active-device request with player state: local Spotify playback is disabled");
+            return;
+        }
+
         _pendingPlayerState = playerState;
         _isActive = true;
         _logger?.LogInformation("Device activating with player state (track present: {HasTrack})",

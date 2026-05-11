@@ -378,9 +378,10 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         {
             var type = l.Type switch
             {
-                Wavee.Core.Library.Local.LocalSearchEntityType.Track  => SearchResultType.Track,
-                Wavee.Core.Library.Local.LocalSearchEntityType.Album  => SearchResultType.Album,
-                Wavee.Core.Library.Local.LocalSearchEntityType.Artist => SearchResultType.Artist,
+                Wavee.Core.Library.Local.LocalSearchEntityType.Track    => SearchResultType.Track,
+                Wavee.Core.Library.Local.LocalSearchEntityType.Album    => SearchResultType.Album,
+                Wavee.Core.Library.Local.LocalSearchEntityType.Artist   => SearchResultType.Artist,
+                Wavee.Core.Library.Local.LocalSearchEntityType.Playlist => SearchResultType.Playlist,
                 _ => SearchResultType.Track,
             };
             merged.Add(new SearchResultItem

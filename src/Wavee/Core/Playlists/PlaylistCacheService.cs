@@ -752,6 +752,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
 
     private async Task PersistPlaylistAsync(CachedPlaylist playlist, CancellationToken ct)
     {
+        var ownerUsername = NormalizeUserId(playlist.OwnerUsername);
         var itemsJson = JsonSerializer.Serialize(
             new PersistedPlaylistItems { Items = playlist.Items.ToList() },
             PlaylistCacheJsonContext.Default.PersistedPlaylistItems);
@@ -783,11 +784,11 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 Uri = playlist.Uri,
                 Name = playlist.Name,
                 Description = playlist.Description,
-                OwnerUri = string.IsNullOrWhiteSpace(playlist.OwnerUsername)
+                OwnerUri = string.IsNullOrWhiteSpace(ownerUsername)
                     ? null
-                    : $"spotify:user:{playlist.OwnerUsername}",
-                OwnerUsername = playlist.OwnerUsername,
-                OwnerName = playlist.OwnerUsername,
+                    : $"spotify:user:{ownerUsername}",
+                OwnerUsername = ownerUsername,
+                OwnerName = ownerUsername,
                 TrackCount = playlist.Length,
                 ImageUrl = playlist.ImageUrl,
                 HeaderImageUrl = playlist.HeaderImageUrl,
@@ -842,8 +843,11 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
     ///       PictureSize). v2 only fixed the full-fetch path, so playlists
     ///       cached via diff still had <c>ImageUrl=null</c>. Re-bump invalidates
     ///       those rows and forces a fresh full mapping that picks up the URL.
+    ///   4 — owner ids are normalized consistently and summary/rootlist merges
+    ///       can upgrade an existing row from viewer to owner. This invalidates
+    ///       rows where owner playlists were cached without edit metadata gates.
     /// </summary>
-    public const int CurrentCacheSchemaVersion = 3;
+    public const int CurrentCacheSchemaVersion = 4;
 
     private PlaylistCacheEntry MergeSummaryEntry(
         string playlistUri,
@@ -851,7 +855,13 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         PlaylistCacheEntry? existing,
         DateTimeOffset fetchedAt)
     {
-        var ownerUsername = decoration?.OwnerUsername ?? existing?.OwnerUsername;
+        var ownerUsername = NormalizeUserId(decoration?.OwnerUsername)
+            ?? NormalizeUserId(existing?.OwnerUsername);
+        var summaryPermission = GetSummaryBasePermission(ownerUsername);
+        var basePermission = summaryPermission == CachedPlaylistBasePermission.Owner
+            ? CachedPlaylistBasePermission.Owner
+            : existing?.BasePermission ?? summaryPermission;
+
         return new PlaylistCacheEntry
         {
             Uri = playlistUri,
@@ -867,7 +877,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             Revision = decoration?.Revision.Length > 0 ? decoration.Revision : existing?.Revision,
             OrderedItemsJson = existing?.OrderedItemsJson,
             HasContentsSnapshot = existing?.HasContentsSnapshot ?? false,
-            BasePermission = existing?.BasePermission ?? GetSummaryBasePermission(ownerUsername),
+            BasePermission = basePermission,
             CapabilitiesJson = existing?.CapabilitiesJson,
             DeletedByOwner = existing?.DeletedByOwner ?? false,
             AbuseReportingEnabled = existing?.AbuseReportingEnabled ?? false,
@@ -1020,7 +1030,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             Description = entry.Description,
             ImageUrl = entry.ImageUrl,
             HeaderImageUrl = entry.HeaderImageUrl,
-            OwnerUsername = entry.OwnerUsername ?? entry.OwnerName ?? "",
+            OwnerUsername = NormalizeUserId(entry.OwnerUsername) ?? NormalizeUserId(entry.OwnerName) ?? "",
             Length = entry.TrackCount ?? 0,
             IsPublic = entry.IsPublic,
             IsCollaborative = entry.IsCollaborative,
@@ -1099,9 +1109,10 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                     Uri = playlistUri,
                     Name = "Playlist", // overwritten by UPDATE_LIST_ATTRIBUTES op below
                     Revision = fromRevision,
-                    OwnerUsername = GetCurrentUsername() ?? string.Empty,
+                    OwnerUsername = NormalizeUserId(GetCurrentUsername()) ?? string.Empty,
                     Items = Array.Empty<CachedPlaylistItem>(),
                     HasContentsSnapshot = true,
+                    BasePermission = CachedPlaylistBasePermission.Owner,
                     FetchedAt = DateTimeOffset.UtcNow,
                 };
             }
@@ -1268,12 +1279,26 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
 
     private CachedPlaylistBasePermission GetSummaryBasePermission(string? ownerUsername)
     {
-        var currentUsername = GetCurrentUsername();
-        return !string.IsNullOrWhiteSpace(ownerUsername) &&
-               !string.IsNullOrWhiteSpace(currentUsername) &&
-               string.Equals(ownerUsername, currentUsername, StringComparison.OrdinalIgnoreCase)
+        var ownerId = NormalizeUserId(ownerUsername);
+        var currentId = NormalizeUserId(GetCurrentUsername());
+        return !string.IsNullOrWhiteSpace(ownerId) &&
+               !string.IsNullOrWhiteSpace(currentId) &&
+               string.Equals(ownerId, currentId, StringComparison.OrdinalIgnoreCase)
             ? CachedPlaylistBasePermission.Owner
             : CachedPlaylistBasePermission.Viewer;
+    }
+
+    private static string? NormalizeUserId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var id = value.Trim();
+        const string prefix = "spotify:user:";
+        while (id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            id = id[prefix.Length..];
+
+        return string.IsNullOrWhiteSpace(id) ? null : id;
     }
 
     private static bool IsRootlistKey(string uri) =>

@@ -15,8 +15,8 @@
         </Grid.RowDefinitions>
 
         <ScrollViewer Grid.Row="0">
-            <StackPanel Spacing="4" Padding="0,16,0,24">
-                <StackPanel Spacing="4" Margin="0,0,0,20">
+            <StackPanel x:Name="SettingsGroupsRoot" Spacing="4" Padding="0,16,0,24">
+                <StackPanel Spacing="4" Margin="0,0,0,20" Tag="updates">
                     <TextBlock x:Uid="Controls_Settings_AboutSettingsSection__TextBlock_1" Text="Wavee" FontSize="32" FontWeight="SemiBold"/>
                     <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="13">
                         <Run Text="v"/>
@@ -26,9 +26,10 @@
                     </TextBlock>
                 </StackPanel>
 
-                <TextBlock x:Uid="Controls_Settings_AboutSettingsSection__TextBlock_2" Text="Updates" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
+                <TextBlock x:Uid="Controls_Settings_AboutSettingsSection__TextBlock_2" Text="Updates" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8" Tag="updates"/>
                 <controls:SettingsExpander x:Uid="Controls_Settings_AboutSettingsSection__SettingsExpander_3" Header="Check for updates"
-                                           Description="{x:Bind ViewModel.UpdateService.Status, Mode=OneWay}">
+                                           Description="{x:Bind ViewModel.UpdateService.Status, Mode=OneWay}"
+                                           Tag="updates">
                     <controls:SettingsExpander.HeaderIcon>
                         <FontIcon Glyph="&#xE895;"/>
                     </controls:SettingsExpander.HeaderIcon>
@@ -74,29 +75,32 @@
                                        Description="See the latest features and improvements"
                                        IsClickEnabled="True"
                                        Click="WhatsNew_Click"
-                                       Margin="0,12,0,0">
+                                       Margin="0,12,0,0"
+                                       Tag="updates">
                     <controls:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE789;"/>
                     </controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
                 </controls:SettingsCard>
 
-                <TextBlock x:Uid="Controls_Settings_AboutSettingsSection__TextBlock_11" Text="Help" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+                <TextBlock x:Uid="Controls_Settings_AboutSettingsSection__TextBlock_11" Text="Help" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8" Tag="help"/>
                 <controls:SettingsCard x:Uid="Controls_Settings_AboutSettingsSection__SettingsCard_12" Header="Send feedback"
                                        Description="Report bugs, request features, or share your thoughts"
                                        IsClickEnabled="True"
-                                       Click="Feedback_Click">
+                                       Click="Feedback_Click"
+                                       Tag="help">
                     <controls:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xED15;"/>
                     </controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
                 </controls:SettingsCard>
 
-                <TextBlock x:Uid="Controls_Settings_AboutSettingsSection__TextBlock_13" Text="Links" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+                <TextBlock x:Uid="Controls_Settings_AboutSettingsSection__TextBlock_13" Text="Links" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8" Tag="links"/>
                 <controls:SettingsCard x:Uid="Controls_Settings_AboutSettingsSection__SettingsCard_14" Header="Source code"
                                        Description="View the project on GitHub"
                                        IsClickEnabled="True"
-                                       Click="GitHub_Click">
+                                       Click="GitHub_Click"
+                                       Tag="links">
                     <controls:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xE943;"/>
                     </controls:SettingsCard.HeaderIcon>

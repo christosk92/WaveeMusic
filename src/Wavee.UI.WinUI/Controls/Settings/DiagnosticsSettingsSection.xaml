@@ -14,9 +14,10 @@
 
     <ScrollView VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Hidden">
-        <StackPanel Spacing="0" Padding="0,16,0,24">
+        <StackPanel x:Name="SettingsGroupsRoot" Spacing="0" Padding="0,16,0,24">
             <controls:SettingsCard Margin="0,0,0,12"
                                    Header="Verbose logging"
+                                   Tag="health"
                                    Description="Captures detailed diagnostic output to the rolling log file. Useful for bug reports. Restart the app for the audio engine to pick up the change.">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE9D9;"/>
@@ -26,6 +27,7 @@
 
             <controls:SettingsCard Margin="0,0,0,12"
                                    Header="Memory diagnostics panel"
+                                   Tag="health"
                                    Description="Reveal the live memory + cache breakdown panel below. Off by default — sampling is only active while this is on.">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE950;"/>
@@ -34,10 +36,12 @@
             </controls:SettingsCard>
 
             <settings:MemoryDiagnosticsCard
-                Visibility="{x:Bind ViewModel.MemoryDiagnosticsEnabled, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                Visibility="{x:Bind ViewModel.MemoryDiagnosticsEnabled, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                Tag="health"/>
 
             <controls:SettingsExpander x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsExpander_1" Margin="0,0,0,12"
                                        Header="Audio Pipeline"
+                                       Tag="health"
                                        Description="{x:Bind ViewModel.AudioPipelineMode, Mode=OneWay}">
                 <controls:SettingsExpander.HeaderIcon>
                     <FontIcon Glyph="&#xE767;"/>
@@ -115,12 +119,14 @@
             <Border Margin="0,0,0,12"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16,12">
+                    BorderThickness="1" CornerRadius="8" Padding="16,12"
+                    Tag="health">
                 <diag:IpcLineChart x:Name="RttChart" Height="180"/>
             </Border>
 
             <controls:SettingsCard Margin="0,0,0,12"
                                    Header="Navigation Health Report"
+                                   Tag="health"
                                    Description="Copies a snapshot of recent navigation timings, GC counts, working-set deltas, page faults, and the last MemoryReleaseHelper event. Paste into a bug report after reproducing the stall-then-BOOM hang.">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE7C3;"/>
@@ -137,6 +143,7 @@
 
             <controls:SettingsExpander x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsExpander_9" Margin="0,0,0,12"
                                        Header="Clock Synchronization"
+                                       Tag="clock"
                                        Description="NTP-style sync with Spotify's server clock">
                 <controls:SettingsExpander.HeaderIcon>
                     <FontIcon Glyph="&#xE121;"/>
@@ -195,7 +202,7 @@
                 </controls:SettingsExpander.Items>
             </controls:SettingsExpander>
 
-            <Grid MinHeight="360" Height="520">
+            <Grid MinHeight="360" Height="520" Tag="logs">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>

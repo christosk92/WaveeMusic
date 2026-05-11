@@ -4,7 +4,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.Settings;
 
-public sealed partial class ConnectStateSection : UserControl, IDisposable
+public sealed partial class ConnectStateSection : UserControl, ISettingsSearchFilter, IDisposable
 {
     private bool _disposed;
 
@@ -22,4 +22,7 @@ public sealed partial class ConnectStateSection : UserControl, IDisposable
         _disposed = true;
         ViewModel.Dispose();
     }
+
+    public void ApplySearchFilter(string? groupKey)
+        => SettingsGroupFilter.Apply(SettingsGroupsRoot, groupKey);
 }

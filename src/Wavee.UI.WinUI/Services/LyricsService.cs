@@ -652,14 +652,14 @@ public sealed class LyricsService : ILyricsService
         var controlsLines = new List<Wavee.Controls.Lyrics.Models.Lyrics.LyricsLine>(lines.Count);
         foreach (var lineRead in lines)
         {
+            var syllables = (lineRead as Lyricify.Lyrics.Models.SyllableLineInfo)?.Syllables;
             var lineWrite = new Wavee.Controls.Lyrics.Models.Lyrics.LyricsLine
             {
                 StartMs = lineRead.StartTime ?? 0,
                 PrimaryText = lineRead.Text,
-                IsPrimaryHasRealSyllableInfo = true,
+                IsPrimaryHasRealSyllableInfo = syllables is { Count: > 0 },
             };
 
-            var syllables = (lineRead as Lyricify.Lyrics.Models.SyllableLineInfo)?.Syllables;
             if (syllables != null)
             {
                 int startIndex = 0;

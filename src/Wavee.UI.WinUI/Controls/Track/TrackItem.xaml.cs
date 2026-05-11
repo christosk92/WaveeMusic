@@ -1944,6 +1944,8 @@ public sealed partial class TrackItem : UserControl
         // Don't handle taps on interactive elements (buttons, links)
         if (IsInteractiveElement(e.OriginalSource as DependencyObject))
             return;
+        if (IsCtrlOrShiftDown())
+            return;
 
         var settings = TryGetSettings();
         if (settings?.Settings.TrackClickBehavior != "SingleTap") return;
@@ -1956,6 +1958,8 @@ public sealed partial class TrackItem : UserControl
     {
         // Don't handle double-taps on interactive elements
         if (IsInteractiveElement(e.OriginalSource as DependencyObject))
+            return;
+        if (IsCtrlOrShiftDown())
             return;
 
         var settings = TryGetSettings();
@@ -1987,6 +1991,21 @@ public sealed partial class TrackItem : UserControl
         }
 
         PlayCommand.Execute(track);
+    }
+
+    private static bool IsCtrlOrShiftDown()
+    {
+        try
+        {
+            var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control);
+            var shiftState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift);
+            const Windows.UI.Core.CoreVirtualKeyStates down = Windows.UI.Core.CoreVirtualKeyStates.Down;
+            return (ctrlState & down) == down || (shiftState & down) == down;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     #endregion

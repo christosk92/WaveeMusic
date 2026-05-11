@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Documents;
 using Wavee.UI.WinUI.Data.Contracts;
 
@@ -12,6 +13,12 @@ public sealed partial class SearchFlyoutPanel : UserControl
 {
     private string _queryText = "";
     private int _keyboardIndex = -1; // -1 = nothing selected via keyboard
+
+    // CollectionViewSource drives the grouped grid mode. Items panel inside each
+    // group is an ItemsWrapGrid (defined in XAML) — adaptive 1/2-column based on
+    // the popup width set by Omnibar.ShowPopup.
+    private readonly CollectionViewSource _groupedSource = new() { IsSourceGrouped = true };
+    private bool _isGroupedMode;
 
     public event EventHandler<SearchSuggestionItem>? ItemClicked;
     public event EventHandler<SearchSuggestionItem>? ActionClicked;
@@ -32,15 +39,27 @@ public sealed partial class SearchFlyoutPanel : UserControl
             return null;
 
         var count = ResultsList.Items.Count;
-        _keyboardIndex += delta;
+        var step = delta >= 0 ? 1 : -1;
 
-        // Wrap: going above first → deselect; going below last → deselect
-        if (_keyboardIndex < -1) _keyboardIndex = count - 1;
-        if (_keyboardIndex >= count) _keyboardIndex = -1;
+        // Step in the requested direction, skipping non-selectable rows (shimmer
+        // placeholders, defensive SectionHeader rows). Bail out if we wrap past
+        // the boundary in either direction — matches the previous "deselect on
+        // overflow" behavior.
+        var candidate = _keyboardIndex + (delta == 0 ? 0 : step);
+        while (true)
+        {
+            if (candidate < -1) { candidate = -1; break; }
+            if (candidate >= count) { candidate = -1; break; }
+            if (candidate == -1) break;
+            if (ResultsList.Items[candidate] is SearchSuggestionItem item
+                && !IsNonSelectable(item.Type))
+                break;
+            candidate += step;
+        }
 
+        _keyboardIndex = candidate;
         ResultsList.SelectedIndex = _keyboardIndex;
 
-        // Scroll into view
         if (_keyboardIndex >= 0)
         {
             ResultsList.ScrollIntoView(ResultsList.Items[_keyboardIndex]);
@@ -49,6 +68,10 @@ public sealed partial class SearchFlyoutPanel : UserControl
 
         return null;
     }
+
+    private static bool IsNonSelectable(SearchSuggestionType type)
+        => type == SearchSuggestionType.Shimmer
+        || type == SearchSuggestionType.SectionHeader;
 
     /// <summary>
     /// Gets the currently keyboard-selected item, or null if none.
@@ -102,10 +125,13 @@ public sealed partial class SearchFlyoutPanel : UserControl
     /// Swaps from shimmer to real data. Restores opacity so previously-realized
     /// ListView containers become visible again, and replaces the items source —
     /// the ListView recycles existing containers in place rather than rebuilding.
+    /// Flat-list path: used for the legacy "Recent searches" mode and the no-match
+    /// fallback when there's nothing across the three sectioned groups.
     /// </summary>
     public void SetItems(List<SearchSuggestionItem>? items, string queryText, bool isRecentSearches)
     {
         _queryText = queryText;
+        _isGroupedMode = false;
         HeaderText.Visibility = isRecentSearches ? Visibility.Visible : Visibility.Collapsed;
         ShimmerPanel.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Collapsed;
@@ -113,6 +139,39 @@ public sealed partial class SearchFlyoutPanel : UserControl
         ResultsList.IsHitTestVisible = true;
         ResultsList.Visibility = Visibility.Visible;
         ResultsList.ItemsSource = items;
+        ResetSelection();
+    }
+
+    /// <summary>
+    /// Grouped path used by the three-section omnibar mode (Settings / Your library /
+    /// Spotify). Each <see cref="SearchSuggestionGroup"/> renders as a section header
+    /// above a wrapping grid of items. Groups with zero items are skipped automatically
+    /// by <c>GroupStyle.HidesIfEmpty</c>.
+    /// </summary>
+    public void SetGroups(IReadOnlyList<SearchSuggestionGroup>? groups, string queryText)
+    {
+        _queryText = queryText;
+        _isGroupedMode = true;
+        HeaderText.Visibility = Visibility.Collapsed;
+        ShimmerPanel.Visibility = Visibility.Collapsed;
+        ErrorPanel.Visibility = Visibility.Collapsed;
+        ResultsList.Opacity = 1;
+        ResultsList.IsHitTestVisible = true;
+        ResultsList.Visibility = Visibility.Visible;
+
+        if (groups is null || groups.Count == 0)
+        {
+            // Nothing to show — clear out.
+            _groupedSource.Source = null;
+            ResultsList.ItemsSource = null;
+        }
+        else
+        {
+            _groupedSource.Source = groups;
+            if (!ReferenceEquals(ResultsList.ItemsSource, _groupedSource.View))
+                ResultsList.ItemsSource = _groupedSource.View;
+        }
+
         ResetSelection();
     }
 
@@ -128,7 +187,7 @@ public sealed partial class SearchFlyoutPanel : UserControl
 
     private void ResultsList_ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is SearchSuggestionItem item)
+        if (e.ClickedItem is SearchSuggestionItem item && !IsNonSelectable(item.Type))
             ItemClicked?.Invoke(this, item);
     }
 
@@ -206,6 +265,8 @@ public sealed partial class SearchFlyoutPanel : UserControl
 
     public static Visibility GetActionVisibility(SearchSuggestionType type)
     {
+        // Spotify entity types only — local entities (LocalTrack/Album/Artist/Playlist)
+        // and Setting/TextQuery/SectionHeader fall through to Collapsed.
         return type switch
         {
             SearchSuggestionType.Artist => Visibility.Visible,
@@ -215,6 +276,12 @@ public sealed partial class SearchFlyoutPanel : UserControl
             _ => Visibility.Collapsed
         };
     }
+
+    /// <summary>x:Bind helper for the group-header DataTemplate. Returns Collapsed for
+    /// empty/whitespace headers so groups can render seamlessly (e.g. the legacy
+    /// recent-searches one-group payload).</summary>
+    public static Visibility GetGroupHeaderVisibility(string? header)
+        => string.IsNullOrWhiteSpace(header) ? Visibility.Collapsed : Visibility.Visible;
 
     public static string GetActionGlyph(SearchSuggestionType type)
     {

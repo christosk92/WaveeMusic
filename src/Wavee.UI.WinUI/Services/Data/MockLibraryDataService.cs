@@ -502,6 +502,24 @@ public sealed class MockLibraryDataService : ILibraryDataService
         return Task.FromResult(playlist);
     }
 
+    public Task<PlaylistSummaryDto> CreateFolderAsync(string name, CancellationToken ct = default)
+    {
+        var folderId = $"spotify:folder:{Guid.NewGuid():N}";
+
+        var folder = new PlaylistSummaryDto
+        {
+            Id = folderId,
+            Name = name,
+            TrackCount = 0,
+            IsOwner = true
+        };
+
+        _mockPlaylists.Insert(0, folder);
+        PlaylistsChanged?.Invoke(this, EventArgs.Empty);
+
+        return Task.FromResult(folder);
+    }
+
     public Task<PlaylistDetailDto> GetPlaylistAsync(string playlistId, CancellationToken ct = default)
     {
         var summary = _mockPlaylists.FirstOrDefault(p => p.Id == playlistId);

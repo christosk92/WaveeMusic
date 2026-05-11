@@ -361,6 +361,16 @@ public static class NavigationHelpers
         Navigate(typeof(SettingsPage), null, "Settings", CreateIconSource(typeof(SettingsPage), null), openInNewTab);
     }
 
+    /// <summary>
+    /// Open SettingsPage and deep-link to a specific section + group filter — used by
+    /// the omnibar's Settings search results so the destination page reuses the existing
+    /// in-page <c>NavigateToSearchEntry</c> path.
+    /// </summary>
+    public static void OpenSettings(SettingsNavigationParameter parameter, bool openInNewTab = false)
+    {
+        Navigate(typeof(SettingsPage), parameter, "Settings", CreateIconSource(typeof(SettingsPage), null), openInNewTab);
+    }
+
     public static void OpenFeedback(bool openInNewTab = false)
     {
         Navigate(typeof(FeedbackPage), null, "Feedback", CreateIconSource(typeof(FeedbackPage), null), openInNewTab);

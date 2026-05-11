@@ -8,6 +8,7 @@
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:home="using:Wavee.UI.WinUI.ViewModels.Home"
     xmlns:homeViews="using:Wavee.UI.WinUI.Views.Home"
+    xmlns:browseControls="using:Wavee.UI.WinUI.Controls.Browse"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     xmlns:shared="using:Wavee.UI.WinUI.Views.Shared"
@@ -65,6 +66,10 @@
             <local:HomeSectionTemplateSelector x:Key="HomeSectionTemplateSelector"
                 GenericTemplate="{StaticResource BrowseEditorialSectionTemplate}"/>
 
+            <DataTemplate x:Key="BrowseChipTemplate" x:DataType="home:BrowseAllItem">
+                <homeViews:BrowseChip Item="{x:Bind}"/>
+            </DataTemplate>
+
             <!-- One chip group: caps eyebrow + UniformGridLayout of BrowseChip.
                  Mirrors BrowseAllSection.xaml lines 17-43 so the Browse root
                  page renders the BrowseGridSectionData identically to the
@@ -79,21 +84,9 @@
                         Opacity="0.6"
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                         Margin="0,0,0,6"/>
-                    <ItemsRepeater ItemsSource="{x:Bind Items}">
-                        <ItemsRepeater.Layout>
-                            <UniformGridLayout
-                                MinItemWidth="140"
-                                MinItemHeight="28"
-                                MinRowSpacing="3"
-                                MinColumnSpacing="6"
-                                ItemsStretch="Fill"/>
-                        </ItemsRepeater.Layout>
-                        <ItemsRepeater.ItemTemplate>
-                            <DataTemplate x:DataType="home:BrowseAllItem">
-                                <homeViews:BrowseChip Item="{x:Bind}"/>
-                            </DataTemplate>
-                        </ItemsRepeater.ItemTemplate>
-                    </ItemsRepeater>
+                    <browseControls:BrowseGrid
+                        ItemsSource="{x:Bind Items}"
+                        ItemTemplate="{StaticResource BrowseChipTemplate}"/>
                 </StackPanel>
             </DataTemplate>
         </ResourceDictionary>

@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Wavee.Connect;
+using Wavee.Core.Audio;
 using Wavee.Core.Session;
 using Wavee.Tests.Helpers;
 using Xunit;
@@ -37,6 +38,30 @@ public sealed class ConnectStateHelpersTests
         deviceInfo.Capabilities.Should().NotBeNull("capabilities must be set");
         deviceInfo.SpircVersion.Should().NotBeNullOrEmpty("SpIRC version must be set");
         deviceInfo.DeviceSoftwareVersion.Should().Contain("Wavee", "software version includes Wavee");
+    }
+
+    [Fact]
+    public void CreateDeviceInfo_WhenLocalSpotifyPlaybackDisabled_ShouldAdvertiseControllerOnlyDevice()
+    {
+        var config = new SessionConfig
+        {
+            DeviceId = "test_device",
+            DeviceName = "Test Device",
+            LocalSpotifyPlaybackEnabled = false
+        };
+
+        var deviceInfo = ConnectStateHelpers.CreateDeviceInfo(config);
+
+        deviceInfo.CanPlay.Should().BeFalse();
+        deviceInfo.DisallowPlaybackReasons.Should().Contain(SpotifyPlaybackCapabilities.DisabledReason);
+        deviceInfo.DisallowTransferReasons.Should().Contain(SpotifyPlaybackCapabilities.DisabledReason);
+        deviceInfo.Capabilities.CanBePlayer.Should().BeFalse();
+        deviceInfo.Capabilities.IsControllable.Should().BeFalse();
+        deviceInfo.Capabilities.SupportsTransferCommand.Should().BeFalse();
+        deviceInfo.Capabilities.IsObservable.Should().BeTrue();
+        deviceInfo.Capabilities.SupportsCommandRequest.Should().BeTrue();
+        deviceInfo.Capabilities.CommandAcks.Should().BeTrue();
+        deviceInfo.Capabilities.ConnectDisabled.Should().BeFalse();
     }
 
     [Fact]
@@ -285,6 +310,21 @@ public sealed class ConnectStateHelpersTests
         // Assert - Content types
         capabilities.SupportedTypes.Should().NotBeEmpty("must support at least one content type");
         capabilities.SupportedTypes.Should().HaveCountGreaterOrEqualTo(2, "should support tracks and episodes");
+    }
+
+    [Fact]
+    public void CreateDefaultCapabilities_WhenLocalSpotifyPlaybackDisabled_ShouldKeepControllerCapabilities()
+    {
+        var capabilities = ConnectStateHelpers.CreateDefaultCapabilities(
+            localSpotifyPlaybackEnabled: false);
+
+        capabilities.CanBePlayer.Should().BeFalse();
+        capabilities.IsControllable.Should().BeFalse();
+        capabilities.SupportsTransferCommand.Should().BeFalse();
+        capabilities.IsObservable.Should().BeTrue();
+        capabilities.SupportsCommandRequest.Should().BeTrue();
+        capabilities.CommandAcks.Should().BeTrue();
+        capabilities.ConnectDisabled.Should().BeFalse();
     }
 
     #endregion

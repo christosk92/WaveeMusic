@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Settings.SettingsGroupHeader"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Margin="0,12,0,8"
+          ColumnSpacing="10"
+          VerticalAlignment="Center">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Width="30"
+                Height="30"
+                CornerRadius="7"
+                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                VerticalAlignment="Top">
+            <FontIcon Glyph="{Binding IconGlyph, ElementName=Root}"
+                      FontSize="14"
+                      Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+        </Border>
+
+        <StackPanel Grid.Column="1"
+                    Spacing="1"
+                    VerticalAlignment="Center">
+            <TextBlock Text="{Binding Title, ElementName=Root}"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       FontSize="17"/>
+            <TextBlock Text="{Binding Description, ElementName=Root}"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="WrapWholeWords"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

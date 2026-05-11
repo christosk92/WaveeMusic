@@ -643,6 +643,13 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 LoadChaptersForCurrentTrack(newTrackId);
                 BeginPodcastResumePromptProbe();
                 ResetPodcastProgressSaveThrottle();
+
+                // Hard reset of the 1Hz interpolator: the previous track's
+                // _lastServicePosition is meaningless once the URI flips.
+                // Also drop any stuck IsSeeking from a user gesture that
+                // happened to overlap the auto-advance.
+                IsSeeking = false;
+                ApplyPlaybackPosition(_playbackStateService.Position, updateProgressBar: true, resetInterpolationClock: true);
                 break;
             case nameof(IPlaybackStateService.CurrentContext):
                 OnPropertyChanged(nameof(IsCurrentItemEpisode));

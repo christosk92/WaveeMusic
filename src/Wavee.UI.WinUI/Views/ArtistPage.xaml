@@ -614,7 +614,10 @@
 
                     <!-- ── Top Tracks (right column when paired with pinned,
                          full-width otherwise) ── -->
-                    <StackPanel Grid.Column="1" x:Name="TopTracksSection" Spacing="12" Tapped="TopTracksSection_Tapped">
+                    <StackPanel Grid.Column="1" x:Name="TopTracksSection" Spacing="12" Tapped="TopTracksSection_Tapped" KeyDown="TopTracksSection_KeyDown">
+                        <StackPanel.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="A" Modifiers="Control" Invoked="TopTracksSelectAllAccelerator_Invoked"/>
+                        </StackPanel.KeyboardAccelerators>
                         <Grid>
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <Border Width="3" MinHeight="22" CornerRadius="1.5"

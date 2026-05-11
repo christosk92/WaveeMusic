@@ -599,7 +599,8 @@ public static class AppLifecycleHelper
                 .AddSingleton(new SessionConfig
                 {
                     DeviceId = DeviceIdHelper.GetOrCreateDeviceId(),
-                    PreferredLocale = spotifyMetadataLocale
+                    PreferredLocale = spotifyMetadataLocale,
+                    LocalSpotifyPlaybackEnabled = Wavee.Core.Audio.SpotifyPlaybackCapabilities.DefaultLocalSpotifyPlaybackEnabled
                 })
                 .AddSingleton(sp => Session.Create(
                     sp.GetRequiredService<SessionConfig>(),
@@ -1096,9 +1097,10 @@ public static class AppLifecycleHelper
                 httpClient,
                 logger,
                 urlTemplateResolver: () => session.UserData?.HeadFilesUrl);
+            var preferredAudioQuality = MapAudioQualitySetting(settingsForAudioPipeline?.Settings.AudioQuality);
             var trackResolver = new Wavee.Audio.TrackResolver(
                 session, spClient, headFileClient, httpClient,
-                Wavee.Core.Audio.AudioQuality.VeryHigh,
+                preferredAudioQuality,
                 extMetadataClient, cacheService, logger,
                 audioCacheDirectory: audioCacheDirectory);
 
@@ -1116,7 +1118,8 @@ public static class AppLifecycleHelper
                 localDeviceId: session.Config.DeviceId,
                 localLibrary: Ioc.Default.GetService<Wavee.Core.Library.Local.ILocalLibraryService>(),
                 localMediaPlayer: Ioc.Default.GetService<Wavee.Audio.ILocalMediaPlayer>(),
-                spotifyVideoPlayback: Ioc.Default.GetService<Wavee.Audio.ISpotifyVideoPlayback>());
+                spotifyVideoPlayback: Ioc.Default.GetService<Wavee.Audio.ISpotifyVideoPlayback>(),
+                localSpotifyPlaybackEnabled: session.Config.LocalSpotifyPlaybackEnabled);
 
             // Honor the user's autoplay preference. Read fresh on each check so
             // a toggle in the Settings page takes effect immediately — no event
@@ -1282,7 +1285,8 @@ public static class AppLifecycleHelper
                         localDeviceId: session.Config.DeviceId,
                         localLibrary: Ioc.Default.GetService<Wavee.Core.Library.Local.ILocalLibraryService>(),
                         localMediaPlayer: Ioc.Default.GetService<Wavee.Audio.ILocalMediaPlayer>(),
-                        spotifyVideoPlayback: Ioc.Default.GetService<Wavee.Audio.ISpotifyVideoPlayback>());
+                        spotifyVideoPlayback: Ioc.Default.GetService<Wavee.Audio.ISpotifyVideoPlayback>(),
+                        localSpotifyPlaybackEnabled: session.Config.LocalSpotifyPlaybackEnabled);
                     if (settingsForAutoplay is not null)
                         newOrch.AutoplayEnabledProvider = () => settingsForAutoplay.Settings.AutoplayEnabled;
                     var exec = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
@@ -1344,6 +1348,15 @@ public static class AppLifecycleHelper
         {
             logger?.LogWarning(ex, "Failed to apply saved AudioHost pipeline settings");
         }
+    }
+
+    private static Wavee.Core.Audio.AudioQuality MapAudioQualitySetting(string? quality)
+    {
+        if (string.Equals(quality, "Normal", StringComparison.OrdinalIgnoreCase))
+            return Wavee.Core.Audio.AudioQuality.Normal;
+        if (string.Equals(quality, "High", StringComparison.OrdinalIgnoreCase))
+            return Wavee.Core.Audio.AudioQuality.High;
+        return Wavee.Core.Audio.AudioQuality.VeryHigh;
     }
 
     /// <summary>

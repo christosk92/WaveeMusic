@@ -6,13 +6,18 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:settings="using:Wavee.UI.WinUI.Controls.Settings"
     mc:Ignorable="d">
 
     <ScrollView>
-        <StackPanel Spacing="4" Padding="0,16,0,24">
-            <TextBlock x:Uid="Controls_Settings_GeneralSettingsSection__TextBlock_1" Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
+        <StackPanel x:Name="SettingsGroupsRoot" Spacing="6" Padding="0,12,0,24">
+            <settings:SettingsGroupHeader Title="Appearance"
+                                          Description="Choose how Wavee follows your Windows theme."
+                                          IconGlyph="&#xE790;"
+                                          Tag="appearance"/>
             <controls:SettingsCard x:Uid="Controls_Settings_GeneralSettingsSection__SettingsCard_2" Header="Theme"
-                                   Description="Choose light, dark, or match your system">
+                                   Description="Choose light, dark, or match your system"
+                                   Tag="appearance">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE790;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -24,7 +29,13 @@
                 </ComboBox>
             </controls:SettingsCard>
 
-            <controls:SettingsCard x:Uid="Settings_General_LanguageCard">
+            <settings:SettingsGroupHeader Title="Language &amp; metadata"
+                                          Description="Control the app language and the language used for Spotify catalog text."
+                                          IconGlyph="&#xE774;"
+                                          Tag="language"/>
+
+            <controls:SettingsCard x:Uid="Settings_General_LanguageCard"
+                                   Tag="language">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE774;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -38,7 +49,8 @@
                 </StackPanel>
             </controls:SettingsCard>
 
-            <controls:SettingsCard x:Uid="Settings_General_SpotifyLanguageCard">
+            <controls:SettingsCard x:Uid="Settings_General_SpotifyLanguageCard"
+                                   Tag="language">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE189;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -57,9 +69,12 @@
                 </StackPanel>
             </controls:SettingsCard>
 
-            <TextBlock x:Uid="Controls_Settings_GeneralSettingsSection__TextBlock_6" Text="Display" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <settings:SettingsGroupHeader Title="Display scale"
+                                          Description="Tune density and zoom for track lists, library shelves, and settings controls."
+                                          IconGlyph="&#xE8A3;"
+                                          Tag="display"/>
 
-            <Grid ColumnSpacing="12" Margin="0,0,0,12">
+            <Grid ColumnSpacing="12" Margin="0,0,0,12" Tag="display">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
@@ -113,7 +128,8 @@
             </Grid>
 
             <controls:SettingsCard x:Uid="Controls_Settings_GeneralSettingsSection__SettingsCard_10" Header="Zoom level"
-                                   Description="{x:Bind ViewModel.ZoomPreviewLabel, Mode=OneWay}">
+                                   Description="{x:Bind ViewModel.ZoomPreviewLabel, Mode=OneWay}"
+                                   Tag="display">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8A3;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -126,7 +142,8 @@
 
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16,4,16,8">
+                    BorderThickness="1" CornerRadius="8" Padding="16,4,16,8"
+                    Tag="display">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>

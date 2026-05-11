@@ -9,6 +9,11 @@
     <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
     <converters:BoolToVisibilityConverter x:Key="SidebarBoolToVisibilityConverter" />
 
+    <SolidColorBrush x:Key="SidebarSelectedAccentBackgroundBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.18" />
+    <SolidColorBrush x:Key="SidebarSelectedAccentPointerOverBackgroundBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.26" />
+    <SolidColorBrush x:Key="SidebarSelectedAccentPressedBackgroundBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.32" />
+    <SolidColorBrush x:Key="SidebarSelectedAccentBorderBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.58" />
+
     <x:Double x:Key="SidebarOpenPaneLength">300</x:Double>
     <x:Double x:Key="SidebarNegativeOpenPaneLength">-300</x:Double>
     <x:Double x:Key="SidebarCompactOpenPaneLength">56</x:Double>
@@ -515,8 +520,8 @@
                                 <VisualState x:Name="Selected">
                                     <VisualState.Setters>
                                         <Setter Target="SelectionIndicator.Opacity" Value="1" />
-                                        <Setter Target="ElementGrid.BorderBrush" Value="{ThemeResource ButtonBorderBrush}" />
-                                        <Setter Target="ElementGrid.Background" Value="{ThemeResource ControlFillColorDefaultBrush}" />
+                                        <Setter Target="ElementGrid.BorderBrush" Value="{StaticResource SidebarSelectedAccentBorderBrush}" />
+                                        <Setter Target="ElementGrid.Background" Value="{StaticResource SidebarSelectedAccentBackgroundBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                             </VisualStateGroup>
@@ -525,8 +530,8 @@
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="NormalSelected">
                                     <VisualState.Setters>
-                                        <Setter Target="ElementGrid.Background" Value="{ThemeResource ControlFillColorDefaultBrush}" />
-                                        <Setter Target="ElementGrid.BorderBrush" Value="{ThemeResource ButtonBorderBrush}" />
+                                        <Setter Target="ElementGrid.Background" Value="{StaticResource SidebarSelectedAccentBackgroundBrush}" />
+                                        <Setter Target="ElementGrid.BorderBrush" Value="{StaticResource SidebarSelectedAccentBorderBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="PointerOver">
@@ -537,8 +542,8 @@
                                 </VisualState>
                                 <VisualState x:Name="PointerOverSelected">
                                     <VisualState.Setters>
-                                        <Setter Target="ElementGrid.Background" Value="{ThemeResource ControlFillColorSecondaryBrush}" />
-                                        <Setter Target="ElementGrid.BorderBrush" Value="{ThemeResource ButtonBorderBrush}" />
+                                        <Setter Target="ElementGrid.Background" Value="{StaticResource SidebarSelectedAccentPointerOverBackgroundBrush}" />
+                                        <Setter Target="ElementGrid.BorderBrush" Value="{ThemeResource AccentFillColorSecondaryBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">
@@ -549,8 +554,8 @@
                                 </VisualState>
                                 <VisualState x:Name="PressedSelected">
                                     <VisualState.Setters>
-                                        <Setter Target="ElementGrid.Background" Value="{ThemeResource ControlFillColorTertiaryBrush}" />
-                                        <Setter Target="ElementGrid.BorderBrush" Value="{ThemeResource ButtonBorderBrush}" />
+                                        <Setter Target="ElementGrid.Background" Value="{StaticResource SidebarSelectedAccentPressedBackgroundBrush}" />
+                                        <Setter Target="ElementGrid.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
 
@@ -636,6 +641,36 @@
                                         <Setter Target="RootPanel.MinHeight" Value="0" />
                                         <Setter Target="RootPanel.Padding" Value="0" />
                                         <Setter Target="ElementBorder.Visibility" Value="Collapsed" />
+                                        <Setter Target="ChildrenPresenter.Visibility" Value="Visible" />
+                                        <Setter Target="ChildrenPresenter.Margin" Value="0" />
+                                        <Setter Target="EmptyPlaceholder.Visibility" Value="Collapsed" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <!--
+                                    Compact mode for group headers that have an ItemDecorator
+                                    (e.g. Playlists "+"). Keeps the header row visible but
+                                    strips everything except the decorator, centered.
+                                    Selected by SidebarItem.cs when IsSectionHeader && ItemDecorator != null && Compact.
+                                -->
+                                <VisualState x:Name="CompactGroupHeaderWithDecorator">
+                                    <VisualState.Setters>
+                                        <Setter Target="RootPanel.MaxWidth" Value="48" />
+                                        <Setter Target="RootPanel.MinHeight" Value="0" />
+                                        <Setter Target="RootPanel.Padding" Value="0" />
+                                        <Setter Target="ElementBorder.Visibility" Value="Visible" />
+                                        <Setter Target="ItemNameTextBlock.Visibility" Value="Collapsed" />
+                                        <Setter Target="ItemBadgeHost.Visibility" Value="Collapsed" />
+                                        <Setter Target="ExpandCollapseChevron.Visibility" Value="Collapsed" />
+                                        <Setter Target="SelectionIndicator.Visibility" Value="Collapsed" />
+                                        <Setter Target="IconPresenter.(Grid.Column)" Value="0" />
+                                        <Setter Target="IconPresenter.(Grid.ColumnSpan)" Value="1" />
+                                        <!-- Center the decorator (the "+" button) across the full rail. -->
+                                        <Setter Target="ItemDecoratorPresenter.Width" Value="Auto" />
+                                        <Setter Target="ItemDecoratorPresenter.(Grid.Column)" Value="0" />
+                                        <Setter Target="ItemDecoratorPresenter.(Grid.ColumnSpan)" Value="6" />
+                                        <Setter Target="ItemDecoratorPresenter.HorizontalAlignment" Value="Center" />
+                                        <Setter Target="ItemDecoratorPresenter.Margin" Value="0" />
+                                        <Setter Target="ItemDecoratorPresenter.Visibility" Value="Visible" />
                                         <Setter Target="ChildrenPresenter.Visibility" Value="Visible" />
                                         <Setter Target="ChildrenPresenter.Margin" Value="0" />
                                         <Setter Target="EmptyPlaceholder.Visibility" Value="Collapsed" />

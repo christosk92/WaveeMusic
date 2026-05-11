@@ -5,7 +5,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.Settings;
 
-public sealed partial class StorageNetworkSettingsSection : UserControl
+public sealed partial class StorageNetworkSettingsSection : UserControl, ISettingsSearchFilter
 {
     public SettingsViewModel ViewModel { get; }
 
@@ -14,6 +14,9 @@ public sealed partial class StorageNetworkSettingsSection : UserControl
         ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         InitializeComponent();
     }
+
+    public void ApplySearchFilter(string? groupKey)
+        => SettingsGroupFilter.Apply(SettingsGroupsRoot, groupKey);
 
     private void ClearCollectionRevisions_Click(object sender, RoutedEventArgs e)
     {

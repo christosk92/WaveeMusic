@@ -94,6 +94,7 @@
         <!-- Win2D canvas as full-panel background (swap chain can't blend with XAML, so it owns the background) -->
         <lyrics:NowPlayingCanvas x:Name="NowPlayingCanvas"
                                  Grid.ColumnSpan="2"
+                                 HoverActionInvoked="NowPlayingCanvas_HoverActionInvoked"
                                  Visibility="Collapsed"/>
 
         <!-- Canvas video background (frame server mode + Win2D → standard Image) -->
@@ -317,31 +318,6 @@
                         Padding="12,6"
                         CornerRadius="16"
                         Visibility="Collapsed"/>
-
-                    <Button
-                        x:Name="LyricsHoverExplainButton"
-                        Click="LyricsHoverExplainButton_Click"
-                        PointerEntered="LyricsHoverExplainButton_PointerEntered"
-                        PointerExited="LyricsHoverExplainButton_PointerExited"
-                        HorizontalAlignment="Left"
-                        VerticalAlignment="Top"
-                        Width="34"
-                        Height="34"
-                        Padding="0"
-                        MinWidth="0"
-                        MinHeight="0"
-                        CornerRadius="17"
-                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource ControlElevationBorderBrush}"
-                        BorderThickness="1"
-                        Visibility="Collapsed"
-                        Canvas.ZIndex="6"
-                        ToolTipService.ToolTip="Explain this line">
-                        <ic:SymbolIcon Symbol="LightbulbFilament"
-                                       IconVariant="Filled"
-                                       FontSize="14"
-                                       Foreground="{ThemeResource AiAccentSolidBrush}"/>
-                    </Button>
 
                     <!-- Loading indicator -->
                     <ProgressRing

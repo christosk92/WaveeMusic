@@ -6,7 +6,7 @@
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels">
 
-    <Grid Padding="0,16,0,24" RowSpacing="8">
+    <Grid x:Name="SettingsGroupsRoot" Padding="0,16,0,24" RowSpacing="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -18,7 +18,8 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="8"
-                Padding="12,8">
+                Padding="12,8"
+                Tag="events">
             <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -62,7 +63,8 @@
 
         <ScrollView Grid.Row="1"
                     HorizontalScrollBarVisibility="Auto"
-                    VerticalScrollBarVisibility="Hidden">
+                    VerticalScrollBarVisibility="Hidden"
+                    Tag="events">
             <StackPanel Orientation="Horizontal" Spacing="4">
                 <ToggleButton Content="PUT req" IsChecked="{x:Bind ViewModel.ShowPutStateRequest, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
                 <ToggleButton Content="PUT resp" IsChecked="{x:Bind ViewModel.ShowPutStateResponse, Mode=TwoWay}" FontSize="10" Padding="8,3" MinHeight="0"/>
@@ -81,7 +83,8 @@
                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
-                CornerRadius="8">
+                CornerRadius="8"
+                Tag="events">
             <ScrollView VerticalScrollBarVisibility="Auto"
                         HorizontalScrollBarVisibility="Hidden">
                 <ItemsRepeater ItemsSource="{x:Bind ViewModel.FilteredEvents, Mode=OneWay}">

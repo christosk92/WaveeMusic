@@ -397,6 +397,15 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
                     var calculatedPos = PlaybackStateHelpers.CalculateCurrentPosition(state, correctedNow);
 
+                    if (state.Changes.HasFlag(StateChanges.Track))
+                    {
+                        var elapsed = correctedNow - state.Timestamp;
+                        var staleClamp = state.PositionMs <= 500 && elapsed > 2000;
+                        _logger?.LogInformation(
+                            "Track-change position: raw={RawMs}ms timestamp={Ts} elapsed={Elapsed}ms calc={CalcMs}ms prevPos={PrevPos}ms status={Status} source={Source} staleClamp={StaleClamp}",
+                            state.PositionMs, state.Timestamp, elapsed, calculatedPos, Position, state.Status, state.Source, staleClamp);
+                    }
+
                     if (_logger?.IsEnabled(LogLevel.Debug) == true)
                     {
                         var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -446,7 +455,17 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                         var posDelta = Math.Abs(calculatedPos - Position);
                         if (state.Changes.HasFlag(StateChanges.Track) || posDelta >= 250 || !IsPlaying)
                         {
+                            var willBeNoOp = state.Changes.HasFlag(StateChanges.Track) && posDelta < 0.5;
                             Position = calculatedPos;
+                            if (willBeNoOp)
+                            {
+                                // [ObservableProperty]'s equality check just swallowed
+                                // PropertyChanged. On track change we MUST notify so
+                                // PlayerBarViewModel's 1Hz interpolator re-anchors
+                                // (otherwise its stale _lastServicePosition keeps
+                                // advancing into the new track).
+                                OnPropertyChanged(nameof(Position));
+                            }
                         }
                     }
 

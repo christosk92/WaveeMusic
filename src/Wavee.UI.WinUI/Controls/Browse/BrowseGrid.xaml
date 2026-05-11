@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Browse.BrowseGrid"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ItemsRepeater
+        ItemsSource="{Binding ItemsSource, ElementName=Root}"
+        ItemTemplate="{Binding ItemTemplate, ElementName=Root}">
+        <ItemsRepeater.Layout>
+            <UniformGridLayout
+                MinItemWidth="{Binding MinItemWidth, ElementName=Root}"
+                MinItemHeight="{Binding MinItemHeight, ElementName=Root}"
+                MinRowSpacing="{Binding MinRowSpacing, ElementName=Root}"
+                MinColumnSpacing="{Binding MinColumnSpacing, ElementName=Root}"
+                ItemsStretch="{Binding ItemsStretch, ElementName=Root}"/>
+        </ItemsRepeater.Layout>
+    </ItemsRepeater>
+</UserControl>

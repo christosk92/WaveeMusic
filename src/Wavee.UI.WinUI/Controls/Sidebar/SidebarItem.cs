@@ -641,8 +641,15 @@ public sealed partial class SidebarItem : Control
 				// they should actually collapse in compact mode — otherwise the whole
 				// folder subtree bleeds into the narrow rail. Gate on IsSectionHeader
 				// so only true section labels get the force-visible state.
-				var isSectionHeader = Item is SidebarItemModel { IsSectionHeader: true };
-				VisualStateManager.GoToState(this, isSectionHeader ? "CompactGroupHeader" : "Compact", true);
+				// Section headers with an ItemDecorator (e.g. Playlists "+") get the
+				// WithDecorator variant so the decorator stays clickable in the rail.
+				var sectionHeader = Item as SidebarItemModel;
+				var isSectionHeader = sectionHeader is { IsSectionHeader: true };
+				var hasDecorator = isSectionHeader && sectionHeader!.ItemDecorator is not null;
+				var compactState = isSectionHeader
+					? (hasDecorator ? "CompactGroupHeaderWithDecorator" : "CompactGroupHeader")
+					: "Compact";
+				VisualStateManager.GoToState(this, compactState, true);
 			}
 			else
 			{

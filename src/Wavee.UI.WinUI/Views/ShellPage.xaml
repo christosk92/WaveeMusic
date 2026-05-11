@@ -70,6 +70,7 @@
             SearchRetryRequested="NavToolbar_SearchRetryRequested"
             SearchActionButtonClicked="NavToolbar_SearchActionButtonClicked"
             SearchSuggestions="{x:Bind ViewModel.SearchSuggestions, Mode=OneWay}"
+            SuggestionGroups="{x:Bind ViewModel.SuggestionGroups, Mode=OneWay}"
             SignInRequested="NavToolbar_SignInRequested"/>
 
         <!-- Shell-level notification bars -->

@@ -46,9 +46,12 @@
             <Grid x:Name="ImageArea" Grid.Row="0" SizeChanged="ImageArea_SizeChanged">
                 <Border x:Name="ThumbnailHost" Background="Transparent"/>
 
-                <!-- Heart tile — badge-size so the fanned thumbnails read as
-                     the primary visual. ~30-35% of the card width keeps the
-                     heart legible without crowding the covers. -->
+                <!-- Heart tile — size + margin are set in code-behind once the
+                     host width is known (see LikedSongsRecentCard.RebuildThumbnails)
+                     so the heart scales with the card instead of staying at a
+                     fixed pixel size when the row layout gives the card more
+                     space. The Width/Height fallbacks here are only used until
+                     the first SizeChanged tick lands. -->
                 <Border x:Name="HeartTile"
                         HorizontalAlignment="Left" VerticalAlignment="Bottom"
                         Margin="4,0,0,4"

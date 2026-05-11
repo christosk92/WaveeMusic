@@ -9,13 +9,23 @@
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
+    xmlns:browseControls="using:Wavee.UI.WinUI.Controls.Browse"
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
     xmlns:winUi="using:CommunityToolkit.WinUI"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:home="using:Wavee.UI.WinUI.ViewModels.Home"
+    xmlns:homeViews="using:Wavee.UI.WinUI.Views.Home"
     xmlns:sessionTokens="using:Wavee.UI.WinUI.Controls.SessionTokens"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">
+
+    <Page.Resources>
+        <DataTemplate x:Key="EmptyPlaylistGenreChipTemplate" x:DataType="home:BrowseAllItem">
+            <homeViews:BrowseChip Item="{x:Bind}"/>
+        </DataTemplate>
+    </Page.Resources>
+
     <Grid x:Name="RootGrid" SizeChanged="RootGrid_SizeChanged">
         <!-- Responsive: driven by SizeChanged in code-behind. Loading is bound to
              IsLoading (metadata) for the left panel; the TrackListView has its own
@@ -137,9 +147,15 @@
                             SizeChanged="PlaylistArtContainer_SizeChanged"
                             Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                         <Grid>
-                            <controls:Shimmer HorizontalAlignment="Stretch"
-                                              VerticalAlignment="Stretch"
-                                              Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                            <Grid Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                <FontIcon Glyph="&#xE93F;"
+                                          FontFamily="{StaticResource MediaPlayerIconsFontFamily}"
+                                          FontSize="64"
+                                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                          Opacity="0.72"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                            </Grid>
                             <Image x:Name="CoverImage"
                                    Source="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
                                    Stretch="UniformToFill"
@@ -317,7 +333,7 @@
                     </HyperlinkButton>
                 </StackPanel>
 
-                <!-- 6b. Description (owner branch). Editable in-place; "Add a description"
+                <!-- 6b. Description (owner branch). Editable in-place; "Edit description..."
                      placeholder when empty. No surrounding card. -->
                 <controls1:InlineEditableText
                     x:Name="PlaylistDescriptionEditor"
@@ -332,7 +348,7 @@
                     TextAlignment="Left"
                     HorizontalContentAlignment="Stretch"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Placeholder="Add a description"
+                    Placeholder="Edit description..."
                     Committed="PlaylistDescriptionEditor_Committed"
                     x:Load="{x:Bind ViewModel.CanEditDescription, Mode=OneWay}"/>
 
@@ -421,6 +437,56 @@
                     </ToggleButton>
                 </tdg:TrackDataGrid.FilterBarContent>
             </tdg:TrackDataGrid>
+
+            <Grid
+                x:Name="EmptyPlaylistState"
+                Grid.Column="2"
+                Margin="24,104,24,24"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Visibility="{x:Bind ViewModel.ShowEmptyPlaylistState, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel
+                    MaxWidth="640"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="12">
+                    <Border
+                        Width="72"
+                        Height="72"
+                        HorizontalAlignment="Center"
+                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="36">
+                        <FontIcon
+                            Glyph="&#xE8FD;"
+                            FontFamily="{StaticResource SymbolThemeFontFamily}"
+                            FontSize="30"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Opacity="0.85"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock
+                        Text="This playlist is empty"
+                        Style="{StaticResource SubtitleTextBlockStyle}"
+                        TextAlignment="Center"
+                        HorizontalAlignment="Center"/>
+                    <TextBlock
+                        Text="Explore a genre below, then add songs from search to start building it."
+                        Style="{StaticResource BodyTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextAlignment="Center"
+                        TextWrapping="WrapWholeWords"/>
+                    <browseControls:BrowseGrid
+                        ItemsSource="{x:Bind ViewModel.EmptyPlaylistGenreItems, Mode=OneWay}"
+                        ItemTemplate="{StaticResource EmptyPlaylistGenreChipTemplate}"
+                        MinItemWidth="120"
+                        Margin="0,8,0,0"
+                        HorizontalAlignment="Stretch"
+                        Visibility="{x:Bind ViewModel.ShowEmptyPlaylistGenreGrid, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                </StackPanel>
+            </Grid>
 
         </Grid>
 

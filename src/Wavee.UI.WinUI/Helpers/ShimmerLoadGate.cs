@@ -77,7 +77,15 @@ public sealed class ShimmerLoadGate : DependencyObject
 
         if (continuePredicate is not null && !continuePredicate()) return;
         if (shimmer is not null) shimmer.Visibility = Visibility.Collapsed;
-        IsLoaded = false;
+        // Note: we deliberately do NOT set IsLoaded = false here. Unrealizing
+        // the shimmer subtree was nice for heap pressure but caused a
+        // realization race on the next nav — Reset's accessor returned null
+        // because x:Load=true → element-assigned is async, ApplyResetState
+        // got skipped, and content.Opacity stayed at 1 from this crossfade's
+        // end. The next nav's crossfade then animated 0→1 against an already-
+        // visible content layer, producing no visible swap and a stuck hero.
+        // Keeping the ~5-rectangle shimmer subtree realized is a trivial
+        // memory cost compared to that bug.
     }
 
     /// <summary>
@@ -95,11 +103,30 @@ public sealed class ShimmerLoadGate : DependencyObject
     public void Reset(Func<FrameworkElement?> shimmerAccessor, Func<FrameworkElement?> contentAccessor)
     {
         IsLoaded = true;
-        var shimmer = shimmerAccessor();
+
+        // Always reset content first — the content container has no x:Load gate
+        // on it, so the accessor is reliably non-null on cached pages. If we
+        // don't reset content.Opacity = 0 here, the previous crossfade's
+        // end-state (opacity = 1) bleeds into the next nav: the new crossfade
+        // animates 0 → 1 against a visual already at 1, producing no visible
+        // hero swap. THIS was the "stuck on old playlist" bug.
         var content = contentAccessor();
-        if (shimmer is not null && content is not null)
+        if (content is not null)
         {
-            ApplyResetState(shimmer, content);
+            content.Opacity = 0;
+            ElementCompositionPreview.GetElementVisual(content).Opacity = 0;
+        }
+
+        // Shimmer is x:Load-gated — its accessor can return null when
+        // realization hasn't landed yet (the IsLoaded=true write above goes
+        // through one dispatcher tick before the named field is assigned).
+        // Apply the reset whenever it lands; the crossfade's null-shimmer
+        // branch already tolerates the race (it skips the shimmer fade-out
+        // animation and just fades content in).
+        var shimmer = shimmerAccessor();
+        if (shimmer is not null)
+        {
+            ApplyShimmerResetState(shimmer);
             return;
         }
 
@@ -108,18 +135,14 @@ public sealed class ShimmerLoadGate : DependencyObject
         dq.TryEnqueue(() =>
         {
             var s = shimmerAccessor();
-            var c = contentAccessor();
-            if (s is not null && c is not null)
-                ApplyResetState(s, c);
+            if (s is not null) ApplyShimmerResetState(s);
         });
     }
 
-    private static void ApplyResetState(FrameworkElement shimmer, FrameworkElement content)
+    private static void ApplyShimmerResetState(FrameworkElement shimmer)
     {
         shimmer.Visibility = Visibility.Visible;
         shimmer.Opacity = 1;
-        content.Opacity = 0;
         ElementCompositionPreview.GetElementVisual(shimmer).Opacity = 1;
-        ElementCompositionPreview.GetElementVisual(content).Opacity = 0;
     }
 }

@@ -3362,7 +3362,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
         if (ownerUsername is not null)
         {
             const string prefix = "spotify:user:";
-            while (ownerUsername.StartsWith(prefix, StringComparison.Ordinal))
+            while (ownerUsername.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 ownerUsername = ownerUsername[prefix.Length..];
         }
 

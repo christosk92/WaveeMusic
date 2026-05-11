@@ -238,13 +238,27 @@ public sealed partial class Omnibar : Control
         // Inherit theme from the app — Popup children don't get it automatically
         _flyoutPanel.RequestedTheme = this.ActualTheme;
 
-        // Size the flyout to match the search box width
-        _flyoutPanel.Width = _searchBox.ActualWidth;
-        _flyoutPanel.MaxWidth = _searchBox.ActualWidth;
+        // Compute popup width:
+        //   - at least 480 px (or the input width if it's wider)
+        //   - up to 760 px so a 2-column grid (item width 340) fits comfortably
+        //   - clamped to available window width minus right padding
+        // On narrow windows the popup matches input width and the grid renders 1-column;
+        // on wide windows it widens to fit 2 columns of section results.
+        const double MinPopupWidth = 480;
+        const double MaxPopupWidth = 760;
+        const double RightPadding = 16;
 
-        // Calculate absolute position of the search box relative to the window root
+        var inputWidth = _searchBox.ActualWidth;
         var transform = _searchBox.TransformToVisual(null);
         var point = transform.TransformPoint(new Windows.Foundation.Point(0, 0));
+
+        var desiredWidth = Math.Min(MaxPopupWidth, Math.Max(inputWidth, MinPopupWidth));
+        var windowWidth = _popup.XamlRoot?.Size.Width ?? inputWidth;
+        var availableWidth = Math.Max(inputWidth, windowWidth - point.X - RightPadding);
+        var popupWidth = Math.Min(desiredWidth, availableWidth);
+
+        _flyoutPanel.Width = popupWidth;
+        _flyoutPanel.MaxWidth = popupWidth;
 
         _popup.HorizontalOffset = point.X;
         _popup.VerticalOffset = point.Y + _searchBox.ActualHeight + 4;
@@ -272,14 +286,30 @@ public sealed partial class Omnibar : Control
             return;
         }
 
+        var currentQuery = _searchBox.Text ?? "";
+
+        // Grouped sections take priority: when the VM populated SuggestionGroups
+        // for the current query, render the three-section grid. Groups carrying a
+        // different QueryText (stale from a prior keystroke) are skipped so we fall
+        // through to the shimmer/loading path.
+        if (SuggestionGroups is IReadOnlyList<SearchSuggestionGroup> groups
+            && HasAnyItems(groups)
+            && DoGroupsMatchQuery(groups, currentQuery))
+        {
+            _flyoutPanel.SetGroups(groups, currentQuery);
+
+            if (_hasFocus)
+                ShowPopup();
+            return;
+        }
+
         if (SearchResults is List<SearchSuggestionItem> items && items.Count > 0)
         {
-            var queryText = _searchBox.Text ?? "";
-            if (!DoResultsMatchQuery(items, queryText))
+            if (!DoResultsMatchQuery(items, currentQuery))
                 return;
 
-            var isRecent = string.IsNullOrWhiteSpace(queryText);
-            _flyoutPanel.SetItems(items, queryText, isRecent);
+            var isRecent = string.IsNullOrWhiteSpace(currentQuery);
+            _flyoutPanel.SetItems(items, currentQuery, isRecent);
 
             if (_hasFocus)
                 ShowPopup();
@@ -288,7 +318,7 @@ public sealed partial class Omnibar : Control
 
         if (IsLoading)
         {
-            _flyoutPanel.ShowShimmer(string.IsNullOrWhiteSpace(_searchBox.Text));
+            _flyoutPanel.ShowShimmer(string.IsNullOrWhiteSpace(currentQuery));
 
             if (_hasFocus)
                 ShowPopup();
@@ -298,6 +328,36 @@ public sealed partial class Omnibar : Control
         HidePopup();
     }
 
+    private static bool HasAnyItems(IReadOnlyList<SearchSuggestionGroup> groups)
+    {
+        for (var i = 0; i < groups.Count; i++)
+        {
+            if (groups[i].Count > 0) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Check whether the groups' items were built for the current query text. Returns false
+    /// (treat as stale) when the first non-header item's <c>QueryText</c> doesn't match,
+    /// so the flyout falls back to shimmer rather than rendering an outdated grid.
+    /// </summary>
+    private static bool DoGroupsMatchQuery(IReadOnlyList<SearchSuggestionGroup> groups, string queryText)
+    {
+        for (var g = 0; g < groups.Count; g++)
+        {
+            var grp = groups[g];
+            for (var i = 0; i < grp.Count; i++)
+            {
+                var item = grp[i];
+                if (string.IsNullOrWhiteSpace(queryText))
+                    return string.IsNullOrWhiteSpace(item.QueryText);
+                return string.Equals(item.QueryText, queryText, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        return false;
+    }
+
     private bool TryShowCurrentState()
     {
         if (_flyoutPanel == null || _searchBox == null) return false;
@@ -305,6 +365,17 @@ public sealed partial class Omnibar : Control
         if (!string.IsNullOrWhiteSpace(ErrorMessage))
         {
             _flyoutPanel.ShowError(ErrorMessage);
+            ShowPopup();
+            return true;
+        }
+
+        // Prefer grouped mode if any sections are populated for the current query.
+        var currentQt = _searchBox.Text ?? string.Empty;
+        if (SuggestionGroups is IReadOnlyList<SearchSuggestionGroup> groups
+            && HasAnyItems(groups)
+            && DoGroupsMatchQuery(groups, currentQt))
+        {
+            _flyoutPanel.SetGroups(groups, currentQt);
             ShowPopup();
             return true;
         }
@@ -384,6 +455,28 @@ public sealed partial class Omnibar : Control
     }
 
     private static void OnSearchResultsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is Omnibar omnibar)
+        {
+            omnibar.UpdateFlyoutState();
+        }
+    }
+
+    // Sectioned suggestions for the three-section omnibar mode (Settings + Your library
+    // + Spotify). When this is set with non-empty groups, the flyout renders the grouped
+    // grid layout. When null or empty, the flyout falls back to the flat SearchResults
+    // path (used for recent searches and the no-match TextQuery row).
+    public static readonly DependencyProperty SuggestionGroupsProperty =
+        DependencyProperty.Register(nameof(SuggestionGroups), typeof(object), typeof(Omnibar),
+            new PropertyMetadata(null, OnSuggestionGroupsChanged));
+
+    public object? SuggestionGroups
+    {
+        get => GetValue(SuggestionGroupsProperty);
+        set => SetValue(SuggestionGroupsProperty, value);
+    }
+
+    private static void OnSuggestionGroupsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is Omnibar omnibar)
         {

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Wavee.Audio.Queue;
 using Wavee.Connect.Protocol;
 using Wavee.Core;
+using Wavee.Core.Audio;
 using Wavee.Protocol.Player;
 
 namespace Wavee.Connect;
@@ -648,8 +649,12 @@ public static class PlaybackStateHelpers
     /// </summary>
     /// <param name="state">Domain playback state.</param>
     /// <param name="deviceId">This device's ID for play_origin.</param>
+    /// <param name="localSpotifyPlaybackEnabled">Whether this device can play Spotify audio locally.</param>
     /// <returns>PlayerState protobuf message.</returns>
-    public static PlayerState ToPlayerState(PlaybackState state, string deviceId)
+    public static PlayerState ToPlayerState(
+        PlaybackState state,
+        string deviceId,
+        bool localSpotifyPlaybackEnabled = true)
     {
         var contextUri = state.ContextUri ?? state.Track?.Uri ?? string.Empty;
 
@@ -717,7 +722,7 @@ public static class PlaybackStateHelpers
             Suppressions = new Suppressions(),
 
             // Track/player-level restrictions (pause/skip/seek gating).
-            Restrictions = BuildRestrictions(state),
+            Restrictions = BuildRestrictions(state, localSpotifyPlaybackEnabled),
             // Context-level disables (DJ lock, ads, radio). Empty by default —
             // populated only when the engine reports a real context-level constraint.
             ContextRestrictions = BuildContextRestrictions(state),
@@ -1277,6 +1282,17 @@ public static class PlaybackStateHelpers
 
         var now = nowMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var elapsed = Math.Max(0, now - state.Timestamp);
+
+        // Stale-timestamp guard: a state that was just sampled at near-zero
+        // position can't legitimately also be multiple seconds elapsed.
+        // This pattern (PositionMs≈0, big elapsed) is what produces the
+        // "new track starts displaying ~0:58 instead of 0:00" bug: the
+        // Track+Position+Status publish lands before the matching Status→Playing
+        // refresh, so Timestamp lags by the prior track's playback duration.
+        // Trust the just-sampled PositionMs over the suspect elapsed.
+        if (state.PositionMs <= 500 && elapsed > 2000)
+            elapsed = 0;
+
         var speed = state.PlaybackSpeed > 0 ? state.PlaybackSpeed : 1.0;
         var estimatedPosition = state.PositionMs + (long)Math.Round(elapsed * speed);
 
@@ -1310,7 +1326,7 @@ public static class PlaybackStateHelpers
     /// </summary>
     /// <param name="state">Current playback state.</param>
     /// <returns>Restrictions protobuf message.</returns>
-    private static Restrictions BuildRestrictions(PlaybackState state)
+    private static Restrictions BuildRestrictions(PlaybackState state, bool localSpotifyPlaybackEnabled)
     {
         var restrictions = new Restrictions();
 
@@ -1338,7 +1354,22 @@ public static class PlaybackStateHelpers
             restrictions.DisallowSkippingNextReasons.Add("no_next_track");
         }
 
+        if (!localSpotifyPlaybackEnabled)
+        {
+            AddReason(restrictions.DisallowPlayingReasons, SpotifyPlaybackCapabilities.DisabledReason);
+            AddReason(restrictions.DisallowResumingReasons, SpotifyPlaybackCapabilities.DisabledReason);
+            AddReason(restrictions.DisallowInterruptingPlaybackReasons, SpotifyPlaybackCapabilities.DisabledReason);
+            AddReason(restrictions.DisallowTransferringPlaybackReasons, SpotifyPlaybackCapabilities.DisabledReason);
+            AddReason(restrictions.DisallowRemoteControlReasons, SpotifyPlaybackCapabilities.DisabledReason);
+        }
+
         return restrictions;
+    }
+
+    private static void AddReason(RepeatedField<string> reasons, string reason)
+    {
+        if (!reasons.Contains(reason))
+            reasons.Add(reason);
     }
 
     /// <summary>

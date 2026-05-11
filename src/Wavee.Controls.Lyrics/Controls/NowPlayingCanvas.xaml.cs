@@ -31,6 +31,13 @@ namespace Wavee.Controls.Lyrics.Controls
             remove => _engine.SeekRequested -= value;
         }
 
+        // Bubble engine's HoverActionInvoked event (e.g. "Explain line" lightbulb clicks)
+        public event EventHandler<int>? HoverActionInvoked
+        {
+            add => _engine.HoverActionInvoked += value;
+            remove => _engine.HoverActionInvoked -= value;
+        }
+
         #region DependencyProperties
 
         public LyricsWindowStatus? LyricsWindowStatus
@@ -141,6 +148,24 @@ namespace Wavee.Controls.Lyrics.Controls
         public static readonly DependencyProperty IsMouseScrollingProperty =
             DependencyProperty.Register(nameof(IsMouseScrolling), typeof(bool), typeof(NowPlayingCanvas), new PropertyMetadata(false, OnDependencyPropertyChanged));
 
+        public bool ShowHoverActionIcon
+        {
+            get { return (bool)GetValue(ShowHoverActionIconProperty); }
+            set { SetValue(ShowHoverActionIconProperty, value); }
+        }
+
+        public static readonly DependencyProperty ShowHoverActionIconProperty =
+            DependencyProperty.Register(nameof(ShowHoverActionIcon), typeof(bool), typeof(NowPlayingCanvas), new PropertyMetadata(false, OnDependencyPropertyChanged));
+
+        public Color HoverActionIconAccentColor
+        {
+            get { return (Color)GetValue(HoverActionIconAccentColorProperty); }
+            set { SetValue(HoverActionIconAccentColorProperty, value); }
+        }
+
+        public static readonly DependencyProperty HoverActionIconAccentColorProperty =
+            DependencyProperty.Register(nameof(HoverActionIconAccentColor), typeof(Color), typeof(NowPlayingCanvas), new PropertyMetadata(Color.FromArgb(0xFF, 0xC8, 0x8B, 0xFF), OnDependencyPropertyChanged));
+
         #endregion
 
         public NowPlayingCanvas()
@@ -152,6 +177,12 @@ namespace Wavee.Controls.Lyrics.Controls
         public int RefreshHoveringLineIndex() => _engine.RefreshHoveringLineIndex();
         public bool TryRefreshHoveringLine(out int lineIndex, out Rect bounds)
             => _engine.TryRefreshHoveringLine(out lineIndex, out bounds);
+
+        // Hit-test the in-canvas hover-action icon (e.g. "Explain line" lightbulb).
+        // Callers should invoke this before FireSeekIfHovering on pointer-press so an
+        // icon click doesn't also trigger seek-to-line.
+        public bool IsPointOnHoverActionIcon(Point canvasPoint) => _engine.IsPointOnHoverActionIcon(canvasPoint);
+        public bool TryInvokeHoverActionAt(Point canvasPoint) => _engine.TryInvokeHoverActionAt(canvasPoint);
 
         public void SetClearColor(Color color)
         {
@@ -189,6 +220,10 @@ namespace Wavee.Controls.Lyrics.Controls
                 engine.SetIsMousePressing((bool)e.NewValue);
             else if (e.Property == IsMouseScrollingProperty)
                 engine.SetIsMouseScrolling((bool)e.NewValue, (bool)e.OldValue);
+            else if (e.Property == ShowHoverActionIconProperty)
+                engine.ShowHoverActionIcon = (bool)e.NewValue;
+            else if (e.Property == HoverActionIconAccentColorProperty)
+                engine.HoverActionIconAccentColor = (Color)e.NewValue;
         }
 
         // Canvas event handlers — delegate to engine

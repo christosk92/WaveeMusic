@@ -120,48 +120,50 @@ public sealed partial class LikedSongsRecentCard : UserControl
     // covers become fully visible). Composition animations interpolate the
     // rotation + offset between the two.
     //
-    // Anchor: top-right of ThumbnailHost. Each Offset is relative to that
-    // anchor (subtracted from hostWidth) so the layout is width-responsive.
+    // All dimensions are now expressed as RATIOS of host width and resolved
+    // at runtime — the card is consumed by SingleRowLayout which sizes its
+    // children by available row width, so a fixed-pixel composition stayed
+    // tiny in the bottom-left on any card wider than the original ~140 px
+    // target (the visual bug the user flagged).
     private readonly record struct SlotPose(float Size, float Rotation, Vector2 Offset);
+    private readonly record struct SlotPoseRatio(float Rotation, float OffsetXRatio, float OffsetYRatio);
 
-    // Deliberate fan: identical size + consistent rotation step + consistent
-    // translation step. Reads as a deck of cards gently splayed rather than a
-    // random pile.
-    //
-    // Anchor: BOTTOM-LEFT of the host. Pose.Offset.X = pixels from the LEFT
-    // edge; Pose.Offset.Y = pixels UP from the BOTTOM edge (positive = higher).
-    // This puts the fan in the same lower band as the heart so they read as
-    // one composition (not opposite corners with empty space between).
-    //
-    // Slot 1 = back-most of the deck; Slot 3 = front-most (rightmost, highest).
-    private const float ThumbSize = 84f;
+    // Each thumbnail's edge length is this fraction of the host width.
+    // 0.60 matches the Spotify reference where the deck dominates the
+    // image well with the heart anchoring the bottom-left corner.
+    private const float ThumbSizeRatio = 0.60f;
 
-    // Anchored to the LEFT edge — fan hugs the left side of the card so it
-    // shares the same vertical band as the heart and never extends past the
-    // card's right edge into a neighbour's slot.
-    private static readonly SlotPose[] RestLayout =
+    // Heart tile edge length as a fraction of host width. Originally a fixed
+    // 56 px — on a ~140 px host that's 40%; on a 250 px host it shrank to 22%
+    // and looked tiny. Keep it at ~40% always.
+    private const float HeartSizeRatio = 0.40f;
+
+    // Offsets expressed as fractions of host width. Anchored BOTTOM-LEFT, so
+    // OffsetX = pixels from left, OffsetY = pixels UP from bottom.
+    private static readonly SlotPoseRatio[] RestLayoutRatios =
     [
         // Back of stack — at the left edge, partly behind heart
-        new(ThumbSize,  -3f, new Vector2( 0f, 22f)),
+        new(-3f, 0.00f, 0.16f),
         // Middle — small step right + up
-        new(ThumbSize,   0f, new Vector2(14f, 30f)),
+        new( 0f, 0.10f, 0.21f),
         // Front — rightmost of the cluster, highest
-        new(ThumbSize,   3f, new Vector2(28f, 38f)),
+        new( 3f, 0.20f, 0.27f),
     ];
 
-    private static readonly SlotPose[] HoverLayout =
+    private static readonly SlotPoseRatio[] HoverLayoutRatios =
     [
         // Subtle spread — fan opens slightly to the right but the leftmost
         // slot stays anchored to the edge. Stays inside the card width.
-        new(ThumbSize,  -7f, new Vector2( 0f, 24f)),
-        new(ThumbSize,   1f, new Vector2(22f, 34f)),
-        new(ThumbSize,   9f, new Vector2(46f, 46f)),
+        new(-7f, 0.00f, 0.17f),
+        new( 1f, 0.16f, 0.24f),
+        new( 9f, 0.33f, 0.33f),
     ];
 
     // Heart tile hover pose: translate down + scale down so it gracefully
-    // steps aside and lets the fanned covers take the spotlight.
-    private const float HeartHoverTranslateX = -4f;
-    private const float HeartHoverTranslateY = 8f;
+    // steps aside and lets the fanned covers take the spotlight. Translation
+    // also a fraction of host so the step-aside doesn't look weak on big cards.
+    private const float HeartHoverTranslateXRatio = -0.03f;
+    private const float HeartHoverTranslateYRatio =  0.06f;
     private const float HeartHoverScale = 0.75f;
     private static readonly TimeSpan HoverDuration = TimeSpan.FromMilliseconds(280);
 
@@ -229,8 +231,15 @@ public sealed partial class LikedSongsRecentCard : UserControl
         // Keep the image area square — Recents card slot is sized by the
         // outer SingleRowLayout / ShelfScroller (width-driven). Without this
         // the row collapses to whatever the heart tile + text minimum is.
-        if (e.NewSize.Width > 0 && Math.Abs(ImageArea.Height - e.NewSize.Width) > 0.5)
+        if (e.NewSize.Width <= 0) return;
+        if (Math.Abs(ImageArea.Height - e.NewSize.Width) > 0.5)
             ImageArea.Height = e.NewSize.Width;
+
+        // Rebuild the composition when the host width changes so the fan +
+        // heart sizing scales with the card — without this they stay at
+        // their first-realised pixel size and look tiny on wider cards.
+        if (Math.Abs((float)e.NewSize.Width - _hostWidth) > 0.5f)
+            RebuildThumbnails();
     }
 
     private static void OnTitleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -325,6 +334,20 @@ public sealed partial class LikedSongsRecentCard : UserControl
 
         _hostWidth = hostWidth;
 
+        // Resize the heart tile to match the new host width. Margin tracks
+        // host width too (~3%) so it doesn't look glued to the edge on a
+        // small card or floating on a wide one.
+        var heartSize = hostWidth * HeartSizeRatio;
+        var heartMargin = hostWidth * 0.03f;
+        HeartTile.Width = heartSize;
+        HeartTile.Height = heartSize;
+        HeartTile.Margin = new Thickness(heartMargin, 0, 0, heartMargin);
+        if (_heartVisual != null)
+            _heartVisual.CenterPoint = new Vector3(heartSize / 2f, heartSize / 2f, 0f);
+        // Glyph scales with the tile so the heart icon stays visually
+        // proportional instead of shrinking to a dot on a big card.
+        TileGlyph.FontSize = heartSize * 0.4;
+
         // Render only the number of slots Spotify says were recently added,
         // capped at the three thumbnails the home response can carry AND at
         // the number of URLs we actually have. This avoids:
@@ -340,11 +363,11 @@ public sealed partial class LikedSongsRecentCard : UserControl
         var nonEmptyUrlCount = urls.Count(static url => !string.IsNullOrWhiteSpace(url));
         var slotCount = Math.Clamp(
             Math.Min(AddedCount ?? nonEmptyUrlCount, nonEmptyUrlCount),
-            0, RestLayout.Length);
+            0, RestLayoutRatios.Length);
         for (var i = 0; i < slotCount; i++)
         {
             var url = urls[i];
-            var pose = _isHovered ? HoverLayout[i] : RestLayout[i];
+            var pose = ResolvePose(_isHovered ? HoverLayoutRatios[i] : RestLayoutRatios[i]);
             var sprite = _compositor.CreateSpriteVisual();
             sprite.Size = new Vector2(pose.Size);
             sprite.CenterPoint = new Vector3(pose.Size / 2f, pose.Size / 2f, 0f);
@@ -352,8 +375,9 @@ public sealed partial class LikedSongsRecentCard : UserControl
             sprite.Offset = ComputeOffset(pose);
 
             // Soft drop shadow per visual — depth that XAML couldn't easily do.
+            // Blur scales with host so the depth reads consistent across sizes.
             var shadow = _compositor.CreateDropShadow();
-            shadow.BlurRadius = 8f;
+            shadow.BlurRadius = Math.Max(6f, hostWidth * 0.05f);
             shadow.Offset = new Vector3(0f, 2f, 0f);
             shadow.Color = Color.FromArgb(180, 0, 0, 0);
             sprite.Shadow = shadow;
@@ -367,7 +391,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
                 try
                 {
                     var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url) ?? url;
-                    var surface = LoadedImageSurface.StartLoadFromUri(new Uri(httpsUrl), new Size(ThumbSize, ThumbSize));
+                    var surface = LoadedImageSurface.StartLoadFromUri(new Uri(httpsUrl), new Size(pose.Size, pose.Size));
                     _surfaces.Add(surface);
                     var spriteRef = sprite;
                     surface.LoadCompleted += (sender, args) =>
@@ -398,6 +422,14 @@ public sealed partial class LikedSongsRecentCard : UserControl
             _thumbnailContainer.Children.InsertAtBottom(sprite);
         }
     }
+
+    /// <summary>Resolve a ratio-based pose into absolute pixel values
+    /// against the current host width.</summary>
+    private SlotPose ResolvePose(SlotPoseRatio ratio)
+        => new(
+            Size: _hostWidth * ThumbSizeRatio,
+            Rotation: ratio.Rotation,
+            Offset: new Vector2(_hostWidth * ratio.OffsetXRatio, _hostWidth * ratio.OffsetYRatio));
 
     /// <summary>
     /// Translates a pose's BOTTOM-LEFT-anchored coordinates into the
@@ -473,10 +505,11 @@ public sealed partial class LikedSongsRecentCard : UserControl
             new Vector2(0.2f, 0f), new Vector2(0f, 1f));
 
         // Thumbnails — animate offset + rotation per slot.
-        for (var i = 0; i < _sprites.Count && i < RestLayout.Length; i++)
+        var poseSet = toHover ? HoverLayoutRatios : RestLayoutRatios;
+        for (var i = 0; i < _sprites.Count && i < poseSet.Length; i++)
         {
             var sprite = _sprites[i];
-            var pose = toHover ? HoverLayout[i] : RestLayout[i];
+            var pose = ResolvePose(poseSet[i]);
             var targetOffset = ComputeOffset(pose);
 
             var offsetAnim = _compositor.CreateVector3KeyFrameAnimation();
@@ -495,12 +528,16 @@ public sealed partial class LikedSongsRecentCard : UserControl
         // EnsureCompositionGraph). Naming gotcha: animations target the
         // string "Translation", but the property is exposed via expression-
         // accessible name only — there's no clr-side getter on Visual.
+        // Translation deltas scale with host so the step-aside reads the
+        // same on a 140 px card and a 280 px card.
         if (_heartVisual != null)
         {
             var heartTranslate = _compositor.CreateVector3KeyFrameAnimation();
             heartTranslate.InsertKeyFrame(
                 1f,
-                toHover ? new Vector3(HeartHoverTranslateX, HeartHoverTranslateY, 0f) : Vector3.Zero,
+                toHover
+                    ? new Vector3(_hostWidth * HeartHoverTranslateXRatio, _hostWidth * HeartHoverTranslateYRatio, 0f)
+                    : Vector3.Zero,
                 ease);
             heartTranslate.Duration = HoverDuration;
             _heartVisual.StartAnimation("Translation", heartTranslate);

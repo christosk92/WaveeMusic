@@ -313,6 +313,44 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
+        <!-- Hero-band responsive states.
+             Originally split across two inline VSMs (HeroBand + StackedShortcuts) and
+             triggered by `AdaptiveTrigger MinWindowWidth=…` which reads *window* width.
+             With the Queue panel open the HomePage area shrinks well below the
+             window's reported width, so the wide-state trigger stayed active and the
+             side rail never collapsed beneath the hero. Switched to code-behind in
+             HomePage.HeroBand_SizeChanged: states are driven off HeroBand.ActualWidth
+             so the layout responds to the actual content rectangle. -->
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="HeroBandStates">
+                <VisualState x:Name="HeroBandWideState"/>
+                <VisualState x:Name="HeroBandStackedMediumState">
+                    <VisualState.Setters>
+                        <Setter Target="HomeHero.(Grid.ColumnSpan)" Value="2"/>
+                        <Setter Target="HaloBackdrop.(Grid.ColumnSpan)" Value="2"/>
+                        <Setter Target="WideSideRail.Visibility" Value="Collapsed"/>
+                        <Setter Target="StackedShortcuts.Visibility" Value="Visible"/>
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="HeroBandStackedNarrowState">
+                    <VisualState.Setters>
+                        <Setter Target="HomeHero.(Grid.ColumnSpan)" Value="2"/>
+                        <Setter Target="HaloBackdrop.(Grid.ColumnSpan)" Value="2"/>
+                        <Setter Target="WideSideRail.Visibility" Value="Collapsed"/>
+                        <Setter Target="StackedShortcuts.Visibility" Value="Visible"/>
+                        <Setter Target="StackedCard0.(Grid.ColumnSpan)" Value="6"/>
+                        <Setter Target="StackedCard0.(Grid.RowSpan)" Value="1"/>
+                        <Setter Target="StackedCard1.(Grid.Row)" Value="1"/>
+                        <Setter Target="StackedCard1.(Grid.Column)" Value="0"/>
+                        <Setter Target="StackedCard1.(Grid.ColumnSpan)" Value="3"/>
+                        <Setter Target="StackedCard2.(Grid.Row)" Value="1"/>
+                        <Setter Target="StackedCard2.(Grid.Column)" Value="3"/>
+                        <Setter Target="StackedCard2.(Grid.ColumnSpan)" Value="3"/>
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
         <!-- Loading: shimmer skeleton (crossfades to content) -->
         <ScrollView
             x:Name="ShimmerContainer"
@@ -446,7 +484,8 @@
                      duplicated SideCard markup is intentional — both sets
                      bind to the same SideCard0/1/2 view-model properties so
                      data stays single-source. -->
-                <Grid x:Name="HeroBand" Margin="0,4,0,12">
+                <Grid x:Name="HeroBand" Margin="0,4,0,12"
+                      SizeChanged="HeroBand_SizeChanged">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
@@ -553,56 +592,7 @@
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard2.Accent, Mode=OneWay}"
                                        ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard2.ImageUri, Mode=OneWay}"/>
 
-                        <VisualStateManager.VisualStateGroups>
-                            <VisualStateGroup>
-                                <VisualState x:Name="StackedMediumState">
-                                    <VisualState.StateTriggers>
-                                        <AdaptiveTrigger MinWindowWidth="900"/>
-                                    </VisualState.StateTriggers>
-                                </VisualState>
-                                <VisualState x:Name="StackedNarrowState">
-                                    <VisualState.StateTriggers>
-                                        <AdaptiveTrigger MinWindowWidth="0"/>
-                                    </VisualState.StateTriggers>
-                                    <VisualState.Setters>
-                                        <Setter Target="StackedCard0.(Grid.ColumnSpan)" Value="6"/>
-                                        <Setter Target="StackedCard0.(Grid.RowSpan)" Value="1"/>
-                                        <Setter Target="StackedCard1.(Grid.Row)" Value="1"/>
-                                        <Setter Target="StackedCard1.(Grid.Column)" Value="0"/>
-                                        <Setter Target="StackedCard1.(Grid.ColumnSpan)" Value="3"/>
-                                        <Setter Target="StackedCard2.(Grid.Row)" Value="1"/>
-                                        <Setter Target="StackedCard2.(Grid.Column)" Value="3"/>
-                                        <Setter Target="StackedCard2.(Grid.ColumnSpan)" Value="3"/>
-                                    </VisualState.Setters>
-                                </VisualState>
-                            </VisualStateGroup>
-                        </VisualStateManager.VisualStateGroups>
                     </Grid>
-
-                    <!-- Outer VSM: at ≥1500 px keep the wide 2-column
-                         layout; below that, hide WideSideRail, show
-                         StackedShortcuts beneath, and let the hero span
-                         both columns so the carousel gets the full row. -->
-                    <VisualStateManager.VisualStateGroups>
-                        <VisualStateGroup>
-                            <VisualState x:Name="HeroBandWideState">
-                                <VisualState.StateTriggers>
-                                    <AdaptiveTrigger MinWindowWidth="1500"/>
-                                </VisualState.StateTriggers>
-                            </VisualState>
-                            <VisualState x:Name="HeroBandStackedState">
-                                <VisualState.StateTriggers>
-                                    <AdaptiveTrigger MinWindowWidth="0"/>
-                                </VisualState.StateTriggers>
-                                <VisualState.Setters>
-                                    <Setter Target="HomeHero.(Grid.ColumnSpan)" Value="2"/>
-                                    <Setter Target="HaloBackdrop.(Grid.ColumnSpan)" Value="2"/>
-                                    <Setter Target="WideSideRail.Visibility" Value="Collapsed"/>
-                                    <Setter Target="StackedShortcuts.Visibility" Value="Visible"/>
-                                </VisualState.Setters>
-                            </VisualState>
-                        </VisualStateGroup>
-                    </VisualStateManager.VisualStateGroups>
                 </Grid>
 
                 <!-- Outer virtualizing repeater of regions (4 chapters). Each

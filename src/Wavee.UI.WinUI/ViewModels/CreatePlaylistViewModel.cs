@@ -86,18 +86,20 @@ public sealed partial class CreatePlaylistViewModel : ObservableObject, ITabBarI
         if (string.IsNullOrWhiteSpace(Name))
             return;
 
-        // Create playlist via service (will trigger PlaylistsChanged event for sidebar update)
-        var created = await _libraryDataService.CreatePlaylistAsync(Name, _trackIds);
+        // Create playlist or folder. The dealer subscription in LibraryChangeManager
+        // picks up the resulting RootlistModificationInfo push and fires the sidebar
+        // refresh — no manual cache invalidation needed here.
+        var created = IsFolder
+            ? await _libraryDataService.CreateFolderAsync(Name)
+            : await _libraryDataService.CreatePlaylistAsync(Name, _trackIds);
 
-        // Navigate to the created playlist/folder in the current tab
         if (IsFolder)
         {
-            // For folders, navigate to library
+            // No dedicated folder page yet — return to the library view.
             NavigationHelpers.OpenLibrary(openInNewTab: false);
         }
         else
         {
-            // Navigate to the playlist page
             NavigationHelpers.OpenPlaylist(created.Id, created.Name, openInNewTab: false);
         }
     }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels.Home;
@@ -39,24 +40,13 @@ internal static class BrowseAllGrouper
             list.Add(item);
         }
 
-        var labelComparer = StringComparer.Create(
-            CultureInfo.CurrentUICulture, ignoreCase: true);
-
         var result = new List<BrowseAllGroup>();
         foreach (var kind in GroupOrder)
         {
             if (!bucket.TryGetValue(kind, out var list) || list.Count == 0)
                 continue;
 
-            if (kind == BrowseAllGroupKind.Top)
-            {
-                list.Sort((a, b) => Array.IndexOf(BrowseAllTaxonomy.TopOrder, a.Uri)
-                    .CompareTo(Array.IndexOf(BrowseAllTaxonomy.TopOrder, b.Uri)));
-            }
-            else
-            {
-                list.Sort((a, b) => labelComparer.Compare(a.Label, b.Label));
-            }
+            SortItems(list, kind);
 
             var group = new BrowseAllGroup
             {
@@ -66,5 +56,28 @@ internal static class BrowseAllGrouper
             result.Add(group);
         }
         return result;
+    }
+
+    public static IList<BrowseAllItem> Genres(IEnumerable<BrowseAllItem> items)
+    {
+        var list = items
+            .Where(static item => BrowseAllTaxonomy.Classify(item.Uri) == BrowseAllGroupKind.Genres)
+            .ToList();
+        SortItems(list, BrowseAllGroupKind.Genres);
+        return list;
+    }
+
+    private static void SortItems(List<BrowseAllItem> list, BrowseAllGroupKind kind)
+    {
+        if (kind == BrowseAllGroupKind.Top)
+        {
+            list.Sort((a, b) => Array.IndexOf(BrowseAllTaxonomy.TopOrder, a.Uri)
+                .CompareTo(Array.IndexOf(BrowseAllTaxonomy.TopOrder, b.Uri)));
+            return;
+        }
+
+        var labelComparer = StringComparer.Create(
+            CultureInfo.CurrentUICulture, ignoreCase: true);
+        list.Sort((a, b) => labelComparer.Compare(a.Label, b.Label));
     }
 }

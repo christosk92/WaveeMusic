@@ -19,7 +19,19 @@ public interface ILocalLibraryService
     Task<LocalArtistDetail?> GetArtistAsync(string artistUri, CancellationToken ct = default);
     Task<LocalTrackRow?> GetTrackAsync(string trackUri, CancellationToken ct = default);
     Task<string?> GetFilePathForTrackAsync(string trackUri, CancellationToken ct = default);
-    Task<IReadOnlyList<LocalSearchResult>> SearchAsync(string query, int limit = 20, CancellationToken ct = default);
+    /// <summary>
+    /// Searches the cached metadata DB. The <paramref name="scope"/> selects between:
+    ///  - <see cref="LocalSearchScope.LocalFilesOnly"/> (default): only local filesystem
+    ///    entities (tracks/albums/artists). Preserves pre-existing call sites.
+    ///  - <see cref="LocalSearchScope.AllCached"/>: everything cached — local files PLUS
+    ///    any cached Spotify entities (tracks, albums, artists, playlists), regardless
+    ///    of whether the user has saved them. Used by the omnibar quicksearch.
+    /// </summary>
+    Task<IReadOnlyList<LocalSearchResult>> SearchAsync(
+        string query,
+        int limit = 20,
+        LocalSearchScope scope = LocalSearchScope.LocalFilesOnly,
+        CancellationToken ct = default);
 
     // Watcher event hookup — the hosted service wires FileSystemWatcher events into here.
     Task NotifyFileChangedAsync(string path, CancellationToken ct = default);

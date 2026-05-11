@@ -934,7 +934,10 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             }
 
             // Convert domain model to protobuf (pass deviceId for play_origin)
-            var playerState = PlaybackStateHelpers.ToPlayerState(state, _session!.Config.DeviceId);
+            var playerState = PlaybackStateHelpers.ToPlayerState(
+                state,
+                _session!.Config.DeviceId,
+                _session.Config.LocalSpotifyPlaybackEnabled);
 
             // Build device info — pass through the volume we have in the domain model.
             // state.Volume is carried forward from the last cluster update (LocalToPlaybackState

@@ -104,6 +104,24 @@ public sealed partial class NavigationToolbar : UserControl
         }
     }
 
+    public static readonly DependencyProperty SuggestionGroupsProperty =
+        DependencyProperty.Register(nameof(SuggestionGroups), typeof(object), typeof(NavigationToolbar),
+            new PropertyMetadata(null, OnSuggestionGroupsChanged));
+
+    public object? SuggestionGroups
+    {
+        get => GetValue(SuggestionGroupsProperty);
+        set => SetValue(SuggestionGroupsProperty, value);
+    }
+
+    private static void OnSuggestionGroupsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is NavigationToolbar toolbar)
+        {
+            toolbar.SearchOmnibar.SuggestionGroups = e.NewValue;
+        }
+    }
+
     public static readonly DependencyProperty SearchSuggestionsLoadingProperty =
         DependencyProperty.Register(nameof(SearchSuggestionsLoading), typeof(bool), typeof(NavigationToolbar),
             new PropertyMetadata(false, OnSearchSuggestionsLoadingChanged));

@@ -6,14 +6,19 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:settings="using:Wavee.UI.WinUI.Controls.Settings"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     mc:Ignorable="d">
 
     <ScrollView>
-        <StackPanel Spacing="4" Padding="0,16,0,24">
-            <TextBlock x:Uid="Controls_Settings_PlaybackSettingsSection__TextBlock_1" Text="Interaction" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
+        <StackPanel x:Name="SettingsGroupsRoot" Spacing="6" Padding="0,12,0,24">
+            <settings:SettingsGroupHeader Title="Track interaction"
+                                          Description="Choose how track rows respond when clicked."
+                                          IconGlyph="&#xE8B0;"
+                                          Tag="interaction"/>
             <controls:SettingsCard x:Uid="Controls_Settings_PlaybackSettingsSection__SettingsCard_2" Header="Track click behavior"
-                                   Description="How clicking a track starts playback">
+                                   Description="How clicking a track starts playback"
+                                   Tag="interaction">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8B0;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -24,9 +29,13 @@
                 </ComboBox>
             </controls:SettingsCard>
 
-            <TextBlock x:Uid="Controls_Settings_PlaybackSettingsSection__TextBlock_5" Text="Queue" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <settings:SettingsGroupHeader Title="Queue behavior"
+                                          Description="Set what Wavee does with the current queue when playback starts."
+                                          IconGlyph="&#xE8FD;"
+                                          Tag="queue"/>
             <controls:SettingsCard x:Uid="Controls_Settings_PlaybackSettingsSection__SettingsCard_6" Header="Default play action"
-                                   Description="What happens when you start a track">
+                                   Description="What happens when you start a track"
+                                   Tag="queue">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8FD;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -38,7 +47,8 @@
                 </ComboBox>
             </controls:SettingsCard>
             <controls:SettingsCard x:Uid="Controls_Settings_PlaybackSettingsSection__SettingsCard_10" Header="Ask before playing"
-                                   Description="Show a prompt before replacing the current queue">
+                                   Description="Show a prompt before replacing the current queue"
+                                   Tag="queue">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE9CE;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -46,7 +56,8 @@
                               OnContent="" OffContent=""/>
             </controls:SettingsCard>
             <controls:SettingsCard Header="Autoplay"
-                                   Description="Keep playing similar songs when a playlist, album, or artist ends">
+                                   Description="Keep playing similar songs when a playlist, album, or artist ends"
+                                   Tag="queue">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xEC4A;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -54,9 +65,13 @@
                               OnContent="" OffContent=""/>
             </controls:SettingsCard>
 
-            <TextBlock Text="Player" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <settings:SettingsGroupHeader Title="Player"
+                                          Description="Control how the persistent player behaves while another player view is open."
+                                          IconGlyph="&#xE8A7;"
+                                          Tag="player"/>
             <controls:SettingsCard Header="Keep docked player visible"
-                                   Description="Show the bottom or sidebar player while the player is popped out">
+                                   Description="Show the bottom or sidebar player while the player is popped out"
+                                   Tag="player">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8A7;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -64,9 +79,13 @@
                               OnContent="" OffContent=""/>
             </controls:SettingsCard>
 
-            <TextBlock x:Uid="Controls_Settings_PlaybackSettingsSection__TextBlock_11" Text="Audio" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <settings:SettingsGroupHeader Title="Streaming audio"
+                                          Description="Choose network quality and loudness handling for streamed tracks."
+                                          IconGlyph="&#xE8D6;"
+                                          Tag="audio"/>
             <controls:SettingsCard x:Uid="Controls_Settings_PlaybackSettingsSection__SettingsCard_12" Header="Streaming quality"
-                                   Description="Higher quality uses more bandwidth and storage">
+                                   Description="Higher quality uses more bandwidth and storage"
+                                   Tag="audio">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8D6;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -78,7 +97,8 @@
                 </ComboBox>
             </controls:SettingsCard>
             <controls:SettingsCard x:Uid="Controls_Settings_PlaybackSettingsSection__SettingsCard_16" Header="Normalize volume"
-                                   Description="Adjust volume levels so all tracks play at a similar loudness">
+                                   Description="Adjust volume levels so all tracks play at a similar loudness"
+                                   Tag="audio">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE767;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -86,13 +106,13 @@
                               OnContent="" OffContent=""/>
             </controls:SettingsCard>
 
-            <TextBlock x:Uid="Controls_Settings_PlaybackSettingsSection__TextBlock_17" Text="Lyrics sources" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,4"/>
-            <TextBlock x:Uid="Controls_Settings_PlaybackSettingsSection__TextBlock_18" Text="Drag to reorder by preference. Higher position = stronger weight when multiple sources match."
-                       Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       Margin="0,0,0,8"/>
+            <settings:SettingsGroupHeader Title="Lyrics sources"
+                                          Description="Enable providers and order them by preference when multiple sources match."
+                                          IconGlyph="&#xE8D2;"
+                                          Tag="lyrics"/>
             <ItemsRepeater ItemsSource="{x:Bind ViewModel.LyricsSources}"
-                      AllowDrop="True">
+                      AllowDrop="True"
+                      Tag="lyrics">
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="vm:LyricsSourceItem">
                         <Grid Padding="0,4" ColumnSpacing="12">

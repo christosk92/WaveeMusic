@@ -325,6 +325,49 @@ public interface ISpClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Creates a new empty playlist. Spotify mints the URI and returns it
+    /// alongside the initial revision. Maps to <c>POST /playlist/v2/playlist</c>.
+    /// The caller is responsible for adding the returned URI to the user's
+    /// rootlist via <see cref="PostRootlistChangesAsync"/>.
+    /// </summary>
+    Task<Protocol.Playlist.CreateListReply> CreateEmptyPlaylistAsync(
+        string name,
+        string canonicalUsername,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Posts a set of changes (add / remove / move / attribute update) against
+    /// the current user's rootlist. Used for creating playlists (adding the
+    /// freshly minted <c>spotify:playlist:...</c> URI), creating folders (adding
+    /// start-group + end-group items), reordering, and deleting.
+    /// Maps to <c>POST /playlist/v2/user/{canonicalUsername}/rootlist/changes</c>.
+    /// </summary>
+    Task<Protocol.Playlist.SelectedListContent> PostRootlistChangesAsync(
+        string canonicalUsername,
+        Protocol.Playlist.ListChanges changes,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Uploads a JPEG image to Spotify's playlist image-upload host. Returns the
+    /// opaque upload token used by <see cref="RegisterPlaylistImageAsync"/>.
+    /// Maps to <c>POST https://image-upload.spotify.com/v4/playlist</c>.
+    /// </summary>
+    Task<string> UploadPlaylistImageAsync(
+        ReadOnlyMemory<byte> jpegBytes,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Registers a previously-uploaded image against a playlist. Returns the
+    /// 20-byte picture id that goes into <c>ListAttributes.picture</c> via an
+    /// <c>UPDATE_LIST_ATTRIBUTES</c> Op on the playlist's <c>/changes</c> endpoint.
+    /// Maps to <c>POST /playlist/v2/playlist/{playlistId}/register-image</c>.
+    /// </summary>
+    Task<byte[]> RegisterPlaylistImageAsync(
+        string playlistId,
+        string uploadToken,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Sends a session-control-display chip selection to the playlist signals endpoint.
     /// Server re-personalises the playlist to the chosen option and returns a fresh
     /// <see cref="Protocol.Playlist.SelectedListContent"/>.

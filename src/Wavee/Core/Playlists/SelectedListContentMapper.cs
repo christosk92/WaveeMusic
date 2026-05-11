@@ -381,9 +381,12 @@ public static class SelectedListContentMapper
         string? currentUsername,
         Capabilities? capabilities)
     {
-        if (!string.IsNullOrWhiteSpace(ownerUsername) &&
-            !string.IsNullOrWhiteSpace(currentUsername) &&
-            string.Equals(ownerUsername, currentUsername, StringComparison.OrdinalIgnoreCase))
+        var ownerId = NormalizeUserId(ownerUsername);
+        var currentId = NormalizeUserId(currentUsername);
+
+        if (!string.IsNullOrWhiteSpace(ownerId) &&
+            !string.IsNullOrWhiteSpace(currentId) &&
+            string.Equals(ownerId, currentId, StringComparison.OrdinalIgnoreCase))
         {
             return CachedPlaylistBasePermission.Owner;
         }
@@ -391,6 +394,19 @@ public static class SelectedListContentMapper
         return capabilities?.CanEditItems == true
             ? CachedPlaylistBasePermission.Contributor
             : CachedPlaylistBasePermission.Viewer;
+    }
+
+    private static string? NormalizeUserId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var id = value.Trim();
+        const string prefix = "spotify:user:";
+        while (id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            id = id[prefix.Length..];
+
+        return string.IsNullOrWhiteSpace(id) ? null : id;
     }
 
     public static CachedPlaylistCapabilities MapCapabilities(

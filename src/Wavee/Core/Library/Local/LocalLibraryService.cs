@@ -266,50 +266,136 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
             artistUri, artistName, artistArt, albums, tracks));
     }
 
-    public Task<IReadOnlyList<LocalSearchResult>> SearchAsync(string query, int limit = 20, CancellationToken ct = default)
+    public Task<IReadOnlyList<LocalSearchResult>> SearchAsync(
+        string query,
+        int limit = 20,
+        LocalSearchScope scope = LocalSearchScope.LocalFilesOnly,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query))
             return Task.FromResult<IReadOnlyList<LocalSearchResult>>(Array.Empty<LocalSearchResult>());
 
+        var like = "%" + query + "%";
+        var results = new List<LocalSearchResult>(limit * 2);
+
         using var conn = OpenConnection();
+
+        // Leg 1 — `entities` table. Holds local filesystem metadata + Spotify
+        // entities when the user has NO metadata locale configured.
+        var entityTypeFilter = scope == LocalSearchScope.AllCached
+            ? "AND e.entity_type IN (1, 2, 3, 6)"
+            : "AND e.entity_type IN (1, 2, 3)";
+
+        var sourceFilter = scope == LocalSearchScope.AllCached
+            ? string.Empty
+            : "AND e.source_type = 1";
+
+        QueryEntitiesTable(conn, "entities", like, entityTypeFilter, sourceFilter, limit, results, ct);
+
+        // Leg 2 — `localized_entities` table. Spotify metadata gets written here
+        // (keyed by locale) when MetadataDatabase.HasLocalizedSpotifyMetadata is
+        // true — which is the default when a Spotify metadata language is set.
+        // Skipped for LocalFilesOnly since local files don't live in this table.
+        if (scope == LocalSearchScope.AllCached)
+        {
+            QueryEntitiesTable(conn, "localized_entities", like,
+                "AND e.entity_type IN (1, 2, 3, 6)",
+                sourceFilter: string.Empty,
+                limit, results, ct);
+        }
+
+        // De-dup by URI (the same entity may appear in both `entities` and
+        // `localized_entities` rows for different locales).
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var unique = new List<LocalSearchResult>(limit);
+        foreach (var item in results)
+        {
+            if (!seen.Add(item.Uri)) continue;
+            unique.Add(item);
+            if (unique.Count >= limit) break;
+        }
+        return Task.FromResult<IReadOnlyList<LocalSearchResult>>(unique);
+    }
+
+    private static void QueryEntitiesTable(
+        SqliteConnection conn,
+        string tableName,
+        string like,
+        string entityTypeFilter,
+        string sourceFilter,
+        int limit,
+        List<LocalSearchResult> results,
+        CancellationToken ct)
+    {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT e.uri, e.entity_type, e.title, e.artist_name, e.album_name,
-                   COALESCE(la.image_hash, '') AS art_hash
-            FROM entities e
+        cmd.CommandText = $"""
+            SELECT e.uri, e.entity_type, e.title, e.artist_name,
+                   e.album_name, e.publisher, e.description,
+                   COALESCE(la.image_hash, '') AS art_hash,
+                   e.image_url
+            FROM {tableName} e
             LEFT JOIN local_artwork_links la
               ON la.entity_uri = e.uri AND la.role = 'cover'
-            WHERE e.source_type = 1
-              AND (e.title LIKE $q OR e.artist_name LIKE $q OR e.album_name LIKE $q)
+            WHERE 1=1
+              {sourceFilter}
+              {entityTypeFilter}
+              AND (e.title LIKE $q OR e.artist_name LIKE $q OR e.album_name LIKE $q OR e.publisher LIKE $q)
             ORDER BY
-              CASE e.entity_type WHEN 1 THEN 1 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 9 END,
+              CASE e.entity_type WHEN 1 THEN 1 WHEN 6 THEN 2 WHEN 2 THEN 3 WHEN 3 THEN 4 ELSE 9 END,
               e.title
             LIMIT $lim;
             """;
-        cmd.Parameters.AddWithValue("$q", "%" + query + "%");
-        cmd.Parameters.AddWithValue("$lim", limit);
-        var list = new List<LocalSearchResult>();
+        cmd.Parameters.AddWithValue("$q", like);
+        cmd.Parameters.AddWithValue("$lim", limit * 2);
+
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
+            ct.ThrowIfCancellationRequested();
             var uri = r.GetString(0);
             var entityType = r.GetInt32(1);
             var title = r.IsDBNull(2) ? null : r.GetString(2);
             var artist = r.IsDBNull(3) ? null : r.GetString(3);
             var album = r.IsDBNull(4) ? null : r.GetString(4);
-            var hash = r.GetString(5);
-            var art = string.IsNullOrEmpty(hash) ? null : LocalArtworkCache.UriScheme + hash;
+            var publisher = r.IsDBNull(5) ? null : r.GetString(5);
+            var description = r.IsDBNull(6) ? null : r.GetString(6);
+            var hash = r.GetString(7);
+            var spotifyImageUrl = r.IsDBNull(8) ? null : r.GetString(8);
 
-            var (typ, name, sub) = entityType switch
-            {
-                1 => (LocalSearchEntityType.Track,  title  ?? uri, artist),
-                2 => (LocalSearchEntityType.Album,  album  ?? title ?? uri, artist),
-                3 => (LocalSearchEntityType.Artist, artist ?? title ?? uri, (string?)null),
-                _ => (LocalSearchEntityType.Track,  title  ?? uri, artist),
-            };
-            list.Add(new LocalSearchResult(typ, uri, name, sub, art));
+            var art = !string.IsNullOrEmpty(hash)
+                ? LocalArtworkCache.UriScheme + hash
+                : spotifyImageUrl;
+
+            results.Add(MapEntityRow(entityType, uri, title, artist, album, publisher, description, art));
         }
-        return Task.FromResult<IReadOnlyList<LocalSearchResult>>(list);
+    }
+
+    private static LocalSearchResult MapEntityRow(
+        int entityType,
+        string uri,
+        string? title,
+        string? artist,
+        string? album,
+        string? publisher,
+        string? description,
+        string? art)
+    {
+        return entityType switch
+        {
+            1 => new LocalSearchResult(LocalSearchEntityType.Track, uri, title ?? uri, artist, art),
+            2 => new LocalSearchResult(LocalSearchEntityType.Album, uri, album ?? title ?? uri, artist, art),
+            3 => new LocalSearchResult(LocalSearchEntityType.Artist, uri, artist ?? title ?? uri, null, art),
+            6 => new LocalSearchResult(
+                    LocalSearchEntityType.Playlist,
+                    uri,
+                    title ?? uri,
+                    !string.IsNullOrEmpty(publisher) ? publisher
+                        : !string.IsNullOrEmpty(artist) ? artist
+                        : !string.IsNullOrEmpty(description) ? description
+                        : "Playlist",
+                    art),
+            _ => new LocalSearchResult(LocalSearchEntityType.Track, uri, title ?? uri, artist, art),
+        };
     }
 
     private List<LocalTrackRow> ReadTracks(SqliteConnection conn, string? where, Action<SqliteCommand>? parameters)

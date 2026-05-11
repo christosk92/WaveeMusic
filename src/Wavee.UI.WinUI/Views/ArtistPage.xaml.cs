@@ -1186,6 +1186,34 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         RefreshTopTrackSelectionVisuals();
     }
 
+    private void TopTracksSection_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.A || !GetCtrlShiftState().ctrl)
+            return;
+
+        SelectAllVisibleTopTracks();
+        e.Handled = true;
+    }
+
+    private void TopTracksSelectAllAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        SelectAllVisibleTopTracks();
+        args.Handled = true;
+    }
+
+    private void SelectAllVisibleTopTracks()
+    {
+        if (ViewModel == null) return;
+
+        var paged = ViewModel.PagedTopTracks.ToList();
+        ViewModel.SelectedTopTracks.Clear();
+        foreach (var item in paged)
+            ViewModel.SelectedTopTracks.Add(item);
+
+        _topTrackSelectionAnchor = paged.Count > 0 ? 0 : null;
+        RefreshTopTrackSelectionVisuals();
+    }
+
     private static (bool ctrl, bool shift) GetCtrlShiftState()
     {
         try

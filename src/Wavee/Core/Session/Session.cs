@@ -327,6 +327,12 @@ public sealed class Session : ISession, IAsyncDisposable
         _commandHandler.TransferCommands.Subscribe(async cmd =>
         {
             _logger?.LogInformation("Transfer command received from {Device} - activating device", cmd.SenderDeviceId);
+            if (!Config.LocalSpotifyPlaybackEnabled)
+            {
+                _logger?.LogInformation("Transfer ignored: local Spotify playback is disabled");
+                return;
+            }
+
             if (_deviceStateManager != null)
             {
                 await _deviceStateManager.SetActiveAsync(true);
@@ -658,10 +664,15 @@ public sealed class Session : ISession, IAsyncDisposable
     {
         if (_deviceStateManager == null || _playbackStateManager == null)
             return false;
+        if (!Config.LocalSpotifyPlaybackEnabled)
+            return false;
 
         // Override status to Playing — user wants to resume, not stay paused
         var currentState = _playbackStateManager.CurrentState with { Status = PlaybackStatus.Playing };
-        var playerState = PlaybackStateHelpers.ToPlayerState(currentState, Config.DeviceId);
+        var playerState = PlaybackStateHelpers.ToPlayerState(
+            currentState,
+            Config.DeviceId,
+            Config.LocalSpotifyPlaybackEnabled);
         await _deviceStateManager.SetActiveWithStateAsync(playerState, cancellationToken);
         return true;
     }

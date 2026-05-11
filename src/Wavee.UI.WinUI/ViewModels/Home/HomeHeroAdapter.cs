@@ -52,20 +52,12 @@ public sealed class SideCardItem
 public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
 {
     private static readonly Color FallbackAccent = Color.FromArgb(255, 0x60, 0xCD, 0xFF);
-    private const int MaxHeroSlides = 6;
-    private const int MaxPodcastEditorialSlots = 2;
 
-    /// <summary>
-    /// Per-app-launch shuffle seed. Stable within a session (so tab-switch
-    /// back doesn't re-randomise the hero) but fresh on every cold-start
-    /// (so consecutive launches see a different first editorial slide).
-    /// Spotify's home is server-deterministic, so without this rotation
-    /// every restart shows identical content.
-    /// </summary>
-    private static readonly int _sessionSeed = Guid.NewGuid().GetHashCode();
-
-    private static bool IsPodcastFacet(string? facet) =>
-        facet is "podcasts-chip" or "podcasts-following-chip" or "audiobooks-chip";
+    // High cap rather than a tight one — the home feed never serves more than
+    // ~15 sections, but the user wants "1 to N of each section" with no
+    // implicit drops. Sections whose first item has no resolvable image are
+    // skipped (see RebuildHeroSlides), so this is the *upper* bound.
+    private const int MaxHeroSlides = 20;
 
     private readonly HomeViewModel _host;
     private readonly DispatcherQueue _dispatcherQueue;
@@ -272,7 +264,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         var seenUris = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Slide 0 — FeaturedItem ("Pick up where you left off")
-        if (_host.FeaturedItem is { } featured && !string.IsNullOrEmpty(featured.ImageUrl))
+        if (_host.FeaturedItem is { } featured && HasResolvableImage(featured.ImageUrl))
         {
             slides.Add(BuildSlide(
                 featured,
@@ -283,38 +275,24 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
                 seenUris.Add(featured.Uri!);
         }
 
-        // Slides 1..MaxHeroSlides−1 — first item of each editorial section,
-        // after:
-        //   1. dropping Shorts (those drive the side-rail shortcut cards
-        //      exclusively, so they never duplicate into the hero) +
-        //      RecentlyPlayed (no editorial value),
-        //   2. filtering podcast sections when the active facet isn't a
-        //      podcast-style chip,
-        //   3. shuffling stable-per-session so consecutive cold-starts see a
-        //      different first editorial slide,
-        //   4. capping at 2 podcast slots so the hero never goes all-podcast
-        //      even on the unfaceted default view.
-        var allowPodcasts = IsPodcastFacet(_host.CurrentFacet);
-        var editorialCandidates = _host.Sections
-            .Where(s => s.SectionType is not (HomeSectionType.Shorts or HomeSectionType.RecentlyPlayed))
-            .Where(s => allowPodcasts || !s.IsPodcastSection)
-            .OrderBy(s => HashCode.Combine(_sessionSeed, s.Title ?? string.Empty))
-            .ToList();
-
-        var podcastSlotsUsed = 0;
-        foreach (var section in editorialCandidates)
+        // Slides 1..MaxHeroSlides−1 — first item of each section in feed order.
+        // Sections are taken straight from the host's collection; no podcast
+        // filtering, no facet-based gating, no shuffling. Skips:
+        //   - Shorts (drive the side-rail shortcut cards exclusively),
+        //   - RecentlyPlayed (no editorial value for a hero slide),
+        //   - URI duplicates (the Featured slide above already covers some),
+        //   - items whose image URL doesn't resolve to a usable https:// URI —
+        //     LoadedImageSurface only fetches http(s); a slide built with
+        //     ImageUri = null would render as a black rectangle and (worse)
+        //     still occupy a carousel slot the user can pan into.
+        foreach (var section in _host.Sections)
         {
             if (slides.Count >= MaxHeroSlides) break;
+            if (section.SectionType is HomeSectionType.Shorts or HomeSectionType.RecentlyPlayed) continue;
             if (section.Items.Count == 0) continue;
 
-            if (section.IsPodcastSection)
-            {
-                if (podcastSlotsUsed >= MaxPodcastEditorialSlots) continue;
-                podcastSlotsUsed++;
-            }
-
             var first = section.Items[0];
-            if (string.IsNullOrEmpty(first.ImageUrl)) continue;
+            if (!HasResolvableImage(first.ImageUrl)) continue;
             if (!string.IsNullOrEmpty(first.Uri) && !seenUris.Add(first.Uri!)) continue;
 
             var sectionTitle = section.Title ?? "";
@@ -328,6 +306,23 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         // Reassign so HeroCarousel.ItemsSource DP-change fires RebuildSlides().
         // In-place mutation would not trigger the carousel rebuild.
         HeroSlides = slides;
+    }
+
+    /// <summary>
+    /// True only when the supplied raw URL resolves through
+    /// <c>SpotifyImageHelper.ToHttpsUrl</c> to an absolute http(s) URI — i.e.
+    /// the exact same gate Klankhuis's <c>LoadedImageSurface</c> fetch needs
+    /// to succeed. Filtering on the raw string alone (null/empty) lets
+    /// <c>spotify:image:&lt;invalid&gt;</c> and other unresolved forms through;
+    /// the slide is then built with <c>ImageUri = null</c> and renders as a
+    /// black rectangle the user can pan into.
+    /// </summary>
+    private static bool HasResolvableImage(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        var resolved = SpotifyImageHelper.ToHttpsUrl(raw);
+        if (string.IsNullOrEmpty(resolved)) return false;
+        return Uri.TryCreate(resolved, UriKind.Absolute, out _);
     }
 
     private HeroCarouselItem BuildSlide(HomeSectionItem item, string eyebrow, string primaryCta, string secondaryCta)

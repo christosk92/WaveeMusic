@@ -1,4 +1,4 @@
-using Wavee.Controls.Lyrics.Enums;
+﻿using Wavee.Controls.Lyrics.Enums;
 using Wavee.Controls.Lyrics.Extensions;
 using Wavee.Controls.Lyrics.Helper;
 using Wavee.Controls.Lyrics.Helper.Lyrics;
@@ -104,6 +104,15 @@ namespace Wavee.Controls.Lyrics.Core
             defaultTotalDuration: 0.3f
         );
 
+        // Hover-action icon (e.g. "Explain line" lightbulb) — drawn in-canvas next to the
+        // currently hovered lyric line. Lives inside the lyrics draw pass so it stays
+        // pixel-perfectly anchored to the line during scroll / auto-follow animations.
+        private readonly ValueTransition<double> _hoverIconHoverTransition = new(
+            initialValue: 0.0,
+            EasingHelper.GetInterpolatorByEasingType<double>(EasingType.Sine),
+            defaultTotalDuration: 0.12f
+        );
+
         private CompositionRenderer _compositionRenderer = new();
         private SpoutTextureHook _spoutHook = new();
 
@@ -131,6 +140,16 @@ namespace Wavee.Controls.Lyrics.Core
         private bool _isMouseInLyricsArea;
         private bool _isMousePressing;
         private bool _isMouseScrolling;
+
+        // Hover-action icon state
+        private bool _showHoverActionIcon;
+        private Color _hoverActionIconAccentColor = Color.FromArgb(0xFF, 0xC8, 0x8B, 0xFF); // Soft purple AI-accent default
+        private Rect _hoverIconRect;          // Set by Draw each frame; Rect.Empty when not drawn
+        private int _hoverIconLineIndex = -1; // Line the rect belongs to
+        private bool _isPointerOverHoverIcon;
+        private Microsoft.Graphics.Canvas.Text.CanvasTextLayout? _hoverIconGlyphLayout;
+        private float _hoverIconGlyphLayoutSize; // Font size the cached layout was built at
+        private const string HoverIconGlyph = "\uE82B"; // Segoe Fluent Icons: Lightbulb
 
         private List<RenderLyricsLine>? _renderLyricsLines;
         private Color _clearColor = Colors.Transparent;
@@ -171,6 +190,44 @@ namespace Wavee.Controls.Lyrics.Core
 
         // --- Events ---
         public event EventHandler<TimeSpan>? SeekRequested;
+        public event EventHandler<int>? HoverActionInvoked;
+
+        // --- Hover-action icon public surface ---
+        public bool ShowHoverActionIcon
+        {
+            get => _showHoverActionIcon;
+            set => _showHoverActionIcon = value;
+        }
+
+        public Color HoverActionIconAccentColor
+        {
+            get => _hoverActionIconAccentColor;
+            set
+            {
+                if (_hoverActionIconAccentColor.A == value.A
+                    && _hoverActionIconAccentColor.R == value.R
+                    && _hoverActionIconAccentColor.G == value.G
+                    && _hoverActionIconAccentColor.B == value.B)
+                {
+                    return;
+                }
+                _hoverActionIconAccentColor = value;
+            }
+        }
+
+        public bool IsPointOnHoverActionIcon(Point canvasPoint)
+            => _showHoverActionIcon
+               && !_hoverIconRect.IsEmpty
+               && _hoverIconRect.Width > 0
+               && _hoverIconRect.Height > 0
+               && _hoverIconRect.Contains(canvasPoint);
+
+        public bool TryInvokeHoverActionAt(Point canvasPoint)
+        {
+            if (!IsPointOnHoverActionIcon(canvasPoint)) return false;
+            HoverActionInvoked?.Invoke(this, _hoverIconLineIndex);
+            return true;
+        }
 
         public LyricsEngine()
         {
@@ -416,6 +473,7 @@ namespace Wavee.Controls.Lyrics.Core
             #endregion
 
             _mouseYScrollTransition.Update(elapsedTime);
+            _hoverIconHoverTransition.Update(elapsedTime);
 
             _mouseHoverLineIndex = LyricsLayoutManager.FindMouseHoverLineIndex(
                 _renderLyricsLines,
@@ -656,7 +714,139 @@ namespace Wavee.Controls.Lyrics.Core
                     playingLineTopOffsetFactor: ctx.PlayingLineTopOffsetFactor,
                     windowStatus: ctx.Settings,
                     currentProgressMs: ctx.SongPositionMs);
+
+                DrawHoverActionIcon(sender, ds, in ctx);
             }
+            else
+            {
+                // Lyrics card mode: no in-canvas lyrics → no anchored icon either.
+                _hoverIconRect = Rect.Empty;
+                _hoverIconLineIndex = -1;
+            }
+        }
+
+        // Draws the per-line hover action icon (e.g. "Explain line" lightbulb) using the
+        // SAME frame's scroll-adjusted line bounds the lyrics use. Because rect + lyrics are
+        // computed in the same Update/Draw tick they cannot desync — the icon tracks the
+        // line through auto-follow scroll, wheel scroll, easing, and line changes.
+        private void DrawHoverActionIcon(ICanvasAnimatedControl sender, CanvasDrawingSession ds, in RenderContext ctx)
+        {
+            if (!_showHoverActionIcon
+                || ctx.MouseHoverLineIndex < 0
+                || ctx.Lines == null
+                || ctx.MouseHoverLineIndex >= ctx.Lines.Count
+                || !_isMouseInLyricsArea
+                || ctx.LyricsOpacity <= 0.01)
+            {
+                _hoverIconRect = Rect.Empty;
+                _hoverIconLineIndex = -1;
+                _isPointerOverHoverIcon = false;
+                _hoverIconHoverTransition.Start(0.0);
+                return;
+            }
+
+            var line = ctx.Lines[ctx.MouseHoverLineIndex];
+
+            // Match TryRefreshHoveringLine's bounds math exactly so the icon shares the
+            // line's scroll-adjusted coordinates.
+            var yOffset = ctx.CanvasScrollOffset
+                          + ctx.UserScrollOffset
+                          + ctx.LyricsHeight * ctx.PlayingLineTopOffsetFactor;
+
+            var lineLeft = line.TopLeftPosition.X;
+            var lineTop = yOffset + line.TopLeftPosition.Y;
+            var lineRight = line.BottomRightPosition.X;
+            var lineBottom = yOffset + line.BottomRightPosition.Y;
+            var lineWidth = Math.Max(0, lineRight - lineLeft);
+            var lineHeight = Math.Max(0, lineBottom - lineTop);
+            if (lineWidth <= 0 || lineHeight <= 0)
+            {
+                _hoverIconRect = Rect.Empty;
+                _hoverIconLineIndex = -1;
+                return;
+            }
+
+            const double IconSize = 28.0;
+            const double Gap = 10.0;
+            var canvasW = sender.Size.Width;
+            var canvasH = sender.Size.Height;
+
+            // Anchor right of the line; flip to the left if no room.
+            double x = lineRight + Gap;
+            if (x + IconSize > canvasW)
+                x = lineLeft - Gap - IconSize;
+            // Vertically center on the line.
+            double y = lineTop + (lineHeight - IconSize) / 2.0;
+
+            // Clamp inside the canvas.
+            x = Math.Max(0, Math.Min(canvasW - IconSize, x));
+            y = Math.Max(0, Math.Min(canvasH - IconSize, y));
+
+            var rect = new Rect(x, y, IconSize, IconSize);
+            _hoverIconRect = rect;
+            _hoverIconLineIndex = ctx.MouseHoverLineIndex;
+
+            // Hover-state animation (drives opacity + scale on the icon itself).
+            bool pointerOver = rect.Contains(_mousePosition);
+            if (pointerOver != _isPointerOverHoverIcon)
+            {
+                _isPointerOverHoverIcon = pointerOver;
+                _hoverIconHoverTransition.Start(pointerOver ? 1.0 : 0.0);
+            }
+            double hover = Math.Max(0.0, Math.Min(1.0, _hoverIconHoverTransition.Value));
+
+            // Opacity & scale interpolate idle ↔ hover (also faded by the lyrics opacity so the
+            // icon fades in/out with the panel).
+            double baseAlpha = 0.62 + (0.28 * hover);         // 0.62 → 0.90
+            double bgAlpha = 0.18 + (0.18 * hover);           // 0.18 → 0.36
+            double strokeAlpha = 0.40 + (0.20 * hover);       // 0.40 → 0.60
+            double scale = 1.0 + (0.06 * hover);              // 1.00 → 1.06
+            double opacityMul = Math.Max(0.0, Math.Min(1.0, ctx.LyricsOpacity));
+
+            float radius = (float)(IconSize / 2.0 * scale);
+            var center = new Vector2((float)(rect.X + IconSize / 2.0), (float)(rect.Y + IconSize / 2.0));
+
+            // Background fill (dark, semi-transparent — works against light AND dark lyric text).
+            var bgColor = Color.FromArgb(
+                (byte)Math.Round(255 * bgAlpha * opacityMul),
+                0x12, 0x12, 0x18);
+            ds.FillCircle(center, radius, bgColor);
+
+            // Border in the accent color so it reads as an AI affordance even at rest.
+            var strokeColor = Color.FromArgb(
+                (byte)Math.Round(255 * strokeAlpha * opacityMul),
+                _hoverActionIconAccentColor.R,
+                _hoverActionIconAccentColor.G,
+                _hoverActionIconAccentColor.B);
+            ds.DrawCircle(center, radius - 0.5f, strokeColor, 1.0f);
+
+            // Lightbulb glyph centered. Rebuild cached layout when font size changes.
+            float glyphSize = (float)(IconSize * 0.58);
+            if (_hoverIconGlyphLayout == null || Math.Abs(_hoverIconGlyphLayoutSize - glyphSize) > 0.01f)
+            {
+                _hoverIconGlyphLayout?.Dispose();
+                _hoverIconGlyphLayout = new Microsoft.Graphics.Canvas.Text.CanvasTextLayout(
+                    sender,
+                    HoverIconGlyph,
+                    new Microsoft.Graphics.Canvas.Text.CanvasTextFormat
+                    {
+                        FontFamily = "Segoe Fluent Icons",
+                        FontSize = glyphSize,
+                        VerticalAlignment = Microsoft.Graphics.Canvas.Text.CanvasVerticalAlignment.Center,
+                        HorizontalAlignment = Microsoft.Graphics.Canvas.Text.CanvasHorizontalAlignment.Center,
+                        Options = Microsoft.Graphics.Canvas.Text.CanvasDrawTextOptions.NoPixelSnap
+                    },
+                    (float)IconSize,
+                    (float)IconSize);
+                _hoverIconGlyphLayoutSize = glyphSize;
+            }
+
+            var glyphColor = Color.FromArgb(
+                (byte)Math.Round(255 * baseAlpha * opacityMul),
+                _hoverActionIconAccentColor.R,
+                _hoverActionIconAccentColor.G,
+                _hoverActionIconAccentColor.B);
+            ds.DrawTextLayout(_hoverIconGlyphLayout, new Vector2((float)rect.X, (float)rect.Y), glyphColor);
         }
 
         private void DrawCoreWithEdgeFeatheringHandled(ICanvasAnimatedControl sender, CanvasDrawingSession ds,
@@ -938,6 +1128,9 @@ namespace Wavee.Controls.Lyrics.Core
             DisposeSpectrumAnalyzer();
 
             _edgeFadeMaskRenderer.Dispose();
+
+            _hoverIconGlyphLayout?.Dispose();
+            _hoverIconGlyphLayout = null;
 
             _compositionRenderer?.Dispose();
             _spoutHook?.Dispose();

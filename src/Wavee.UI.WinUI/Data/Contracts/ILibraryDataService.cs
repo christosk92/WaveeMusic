@@ -176,6 +176,13 @@ public interface ILibraryDataService
     Task<PlaylistSummaryDto> CreatePlaylistAsync(string name, IReadOnlyList<string>? trackIds = null, CancellationToken ct = default);
 
     /// <summary>
+    /// Creates a new rootlist folder (start-group / end-group pair) and returns its summary.
+    /// Folders are virtual — they only exist as paired URIs in the rootlist; no separate
+    /// "create folder" endpoint is involved.
+    /// </summary>
+    Task<PlaylistSummaryDto> CreateFolderAsync(string name, CancellationToken ct = default);
+
+    /// <summary>
     /// Gets detailed information about a specific playlist.
     /// </summary>
     Task<PlaylistDetailDto> GetPlaylistAsync(string playlistId, CancellationToken ct = default);

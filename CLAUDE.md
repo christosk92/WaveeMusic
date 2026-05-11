@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Agent component docs
+
+Component-specific, LLM-friendly guides live in `.agents/guides/`. Read the relevant guide before touching that area:
+
+- `.agents/guides/track-and-episode-ui.md` — every track/episode row/list/card/search/queue/now-playing surface.
+
+When adding a new component guide, follow the frontmatter, Quick-find table, and authoring conventions in `AGENTS.md` (single source of truth), and update the index in both `AGENTS.md` and this file.
+
 ## Repository at a glance
 
 WaveeMusic is a clean-room Spotify desktop client for Windows: a .NET 10 reimplementation of Spotify's Access Point, Mercury, Connect (Dealer WebSocket), SpClient (protobuf/HTTPS), and Pathfinder (GraphQL) protocols, wrapped in a WinUI 3 app. Requires a Spotify Premium account.

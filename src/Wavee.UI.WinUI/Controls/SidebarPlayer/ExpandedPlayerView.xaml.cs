@@ -47,9 +47,6 @@ public sealed partial class ExpandedPlayerView : UserControl
     private bool _lyricsCanvasInitialized;
     private bool _lyricsConsumerActive;
     private bool _pendingLyricsLayoutRetry;
-    private int _lyricsHoverExplainLineIndex = -1;
-    private Rect _lyricsHoverExplainHitRect = Rect.Empty;
-    private DispatcherQueueTimer? _lyricsHoverExplainHideTimer;
     private LyricsData? _appliedLyricsData;
     private SongInfo? _appliedSongInfo;
     private bool _lyricsCanvasDataCleared = true;
@@ -171,13 +168,6 @@ public sealed partial class ExpandedPlayerView : UserControl
             _lyricsTimelineSyncTimer.Stop();
             _lyricsTimelineSyncTimer.Tick -= OnLyricsTimelineSyncTimerTick;
             _lyricsTimelineSyncTimer = null;
-        }
-
-        if (_lyricsHoverExplainHideTimer != null)
-        {
-            _lyricsHoverExplainHideTimer.Stop();
-            _lyricsHoverExplainHideTimer.Tick -= OnLyricsHoverExplainHideTimerTick;
-            _lyricsHoverExplainHideTimer = null;
         }
 
         _playerLayoutTransformStoryboard?.Stop();
@@ -418,8 +408,8 @@ public sealed partial class ExpandedPlayerView : UserControl
         RightColumnContainer.Visibility = rightVisible ? Visibility.Visible : Visibility.Collapsed;
         LyricsInteractionRegion.Visibility = lyricsVisible ? Visibility.Visible : Visibility.Collapsed;
         ExpandedLyricsAi.Visibility = lyricsVisible ? Visibility.Visible : Visibility.Collapsed;
-        if (!lyricsVisible)
-            HideLyricsHoverExplainButton();
+        if (!lyricsVisible && FullscreenLyricsCanvas != null)
+            FullscreenLyricsCanvas.ShowHoverActionIcon = false;
         UpdateLyricsConsumerActivity(lyricsVisible);
 
         if (lyricsVisible)
@@ -774,9 +764,38 @@ public sealed partial class ExpandedPlayerView : UserControl
         _lyricsVm.PropertyChanged += OnLyricsVmPropertyChanged;
         _lyricsVm.PlaybackState.PropertyChanged += OnLyricsPlaybackStateChanged;
 
+        WireFullscreenLyricsAiAffordance();
+
         ApplyLyricsPaletteForTheme();
         ApplyCurrentLyricsState();
         UpdateLyricsRenderState();
+    }
+
+    private void WireFullscreenLyricsAiAffordance()
+    {
+        if (FullscreenLyricsCanvas == null || ExpandedLyricsAi?.ViewModel is null) return;
+
+        ExpandedLyricsAi.ViewModel.PropertyChanged -= OnExpandedLyricsAiVmPropertyChanged;
+        ExpandedLyricsAi.ViewModel.PropertyChanged += OnExpandedLyricsAiVmPropertyChanged;
+
+        if (Resources.TryGetValue("AiAccentSolidBrush", out var resourceObj)
+            || Application.Current.Resources.TryGetValue("AiAccentSolidBrush", out resourceObj))
+        {
+            if (resourceObj is Microsoft.UI.Xaml.Media.SolidColorBrush brush)
+                FullscreenLyricsCanvas.HoverActionIconAccentColor = brush.Color;
+        }
+
+        FullscreenLyricsCanvas.ShowHoverActionIcon = ExpandedLyricsAi.ViewModel.IsExplainAvailable;
+    }
+
+    private void OnExpandedLyricsAiVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(LyricsAiPanelViewModel.IsExplainAvailable)
+            && FullscreenLyricsCanvas != null
+            && ExpandedLyricsAi?.ViewModel is { } vm)
+        {
+            FullscreenLyricsCanvas.ShowHoverActionIcon = vm.IsExplainAvailable;
+        }
     }
 
     private void TeardownLyricsCanvas()
@@ -795,9 +814,13 @@ public sealed partial class ExpandedPlayerView : UserControl
             _lyricsVm.PlaybackState.PropertyChanged -= OnLyricsPlaybackStateChanged;
         }
 
+        if (ExpandedLyricsAi?.ViewModel is { } aiVm)
+            aiVm.PropertyChanged -= OnExpandedLyricsAiVmPropertyChanged;
+
         if (FullscreenLyricsCanvas != null)
         {
             FullscreenLyricsCanvas.SeekRequested -= OnLyricsSeekRequested;
+            FullscreenLyricsCanvas.ShowHoverActionIcon = false;
             FullscreenLyricsCanvas.SetIsPlaying(false);
             FullscreenLyricsCanvas.SetRenderingActive(false);
             if (!_lyricsCanvasDataCleared)
@@ -1036,7 +1059,6 @@ public sealed partial class ExpandedPlayerView : UserControl
     {
         if (FullscreenLyricsCanvas == null) return;
         FullscreenLyricsCanvas.IsMouseInLyricsArea = false;
-        QueueHideLyricsHoverExplainButton();
         UpdateLyricsRenderState();
     }
 
@@ -1045,7 +1067,6 @@ public sealed partial class ExpandedPlayerView : UserControl
         if (FullscreenLyricsCanvas == null) return;
         var point = e.GetCurrentPoint(LyricsInteractionRegion).Position;
         FullscreenLyricsCanvas.MousePosition = point;
-        UpdateLyricsHoverExplainButton(point);
     }
 
     private void LyricsInteractionRegion_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -1059,6 +1080,17 @@ public sealed partial class ExpandedPlayerView : UserControl
     {
         if (FullscreenLyricsCanvas == null) return;
         FullscreenLyricsCanvas.IsMousePressing = false;
+
+        // Suppress seek-to-line when the click landed on the in-canvas hover icon — the
+        // canvas raises HoverActionInvoked instead, which the AI panel handles.
+        var point = e.GetCurrentPoint(LyricsInteractionRegion).Position;
+        if (FullscreenLyricsCanvas.TryInvokeHoverActionAt(point))
+        {
+            UpdateLyricsRenderState();
+            e.Handled = true;
+            return;
+        }
+
         FullscreenLyricsCanvas.FireSeekIfHovering();
         UpdateLyricsRenderState();
     }
@@ -1081,7 +1113,6 @@ public sealed partial class ExpandedPlayerView : UserControl
                 value);
 
         FullscreenLyricsCanvas.MouseScrollOffset = value;
-        UpdateLyricsHoverExplainButton(point.Position);
 
         _lyricsScrollResetTimer ??= CreateLyricsScrollResetTimer();
         _lyricsScrollResetTimer.Stop();
@@ -1091,117 +1122,13 @@ public sealed partial class ExpandedPlayerView : UserControl
         e.Handled = true;
     }
 
-    private async void LyricsHoverExplainButton_Click(object sender, RoutedEventArgs e)
+    private async void FullscreenLyricsCanvas_HoverActionInvoked(object? sender, int lineIndex)
     {
-        var lineIndex = _lyricsHoverExplainLineIndex;
-        HideLyricsHoverExplainButton();
-
         if (lineIndex < 0 || ExpandedLyricsAi?.ViewModel is null)
             return;
 
         await ExpandedLyricsAi.ViewModel.ExplainLineAtIndexAsync(lineIndex);
     }
-
-    private void UpdateLyricsHoverExplainButton(Point pointer)
-    {
-        StopLyricsHoverExplainHideTimer();
-
-        if (!IsLyricsModeActive || FullscreenLyricsCanvas == null)
-        {
-            HideLyricsHoverExplainButton();
-            return;
-        }
-
-        if (!FullscreenLyricsCanvas.TryRefreshHoveringLine(out var lineIndex, out var lineBounds))
-        {
-            if (IsInsideLyricsHoverExplainHitRect(pointer) || LyricsHoverExplainButton?.IsPointerOver == true)
-                return;
-
-            QueueHideLyricsHoverExplainButton();
-            return;
-        }
-
-        _lyricsHoverExplainLineIndex = lineIndex;
-
-        const double buttonSize = 34;
-        var maxX = Math.Max(0, LyricsInteractionRegion.ActualWidth - buttonSize);
-        var maxY = Math.Max(0, LyricsInteractionRegion.ActualHeight - buttonSize);
-        var x = lineBounds.Right + 10;
-        if (x > maxX)
-            x = lineBounds.Left - buttonSize - 10;
-
-        var y = lineBounds.Top + ((lineBounds.Height - buttonSize) / 2);
-        if (double.IsNaN(x) || double.IsInfinity(x))
-            x = pointer.X + 12;
-        if (double.IsNaN(y) || double.IsInfinity(y))
-            y = pointer.Y - (buttonSize / 2);
-
-        x = Math.Clamp(x, 0, maxX);
-        y = Math.Clamp(y, 0, maxY);
-
-        LyricsHoverExplainButton.Margin = new Thickness(x, y, 0, 0);
-        LyricsHoverExplainButton.Visibility = Visibility.Visible;
-
-        const double stickyHorizontalPadding = 24;
-        var left = Math.Min(lineBounds.Left, x);
-        var right = Math.Max(lineBounds.Right, x + buttonSize);
-        _lyricsHoverExplainHitRect = new Rect(
-            left - stickyHorizontalPadding,
-            lineBounds.Top,
-            Math.Max(1, right - left + (stickyHorizontalPadding * 2)),
-            Math.Max(1, lineBounds.Height));
-    }
-
-    private void HideLyricsHoverExplainButton()
-    {
-        StopLyricsHoverExplainHideTimer();
-        _lyricsHoverExplainLineIndex = -1;
-        _lyricsHoverExplainHitRect = Rect.Empty;
-        if (LyricsHoverExplainButton != null)
-            LyricsHoverExplainButton.Visibility = Visibility.Collapsed;
-    }
-
-    private void QueueHideLyricsHoverExplainButton()
-    {
-        _lyricsHoverExplainHideTimer ??= CreateLyricsHoverExplainHideTimer();
-        _lyricsHoverExplainHideTimer.Stop();
-        _lyricsHoverExplainHideTimer.Start();
-    }
-
-    private DispatcherQueueTimer CreateLyricsHoverExplainHideTimer()
-    {
-        var timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        timer.IsRepeating = false;
-        timer.Interval = TimeSpan.FromMilliseconds(350);
-        timer.Tick += OnLyricsHoverExplainHideTimerTick;
-        return timer;
-    }
-
-    private void OnLyricsHoverExplainHideTimerTick(DispatcherQueueTimer sender, object args)
-    {
-        sender.Stop();
-        if (LyricsHoverExplainButton?.IsPointerOver == true)
-            return;
-
-        HideLyricsHoverExplainButton();
-    }
-
-    private void StopLyricsHoverExplainHideTimer()
-        => _lyricsHoverExplainHideTimer?.Stop();
-
-    private bool IsInsideLyricsHoverExplainHitRect(Point point)
-        => _lyricsHoverExplainHitRect.Width > 0
-           && _lyricsHoverExplainHitRect.Height > 0
-           && point.X >= _lyricsHoverExplainHitRect.X
-           && point.X <= _lyricsHoverExplainHitRect.X + _lyricsHoverExplainHitRect.Width
-           && point.Y >= _lyricsHoverExplainHitRect.Y
-           && point.Y <= _lyricsHoverExplainHitRect.Y + _lyricsHoverExplainHitRect.Height;
-
-    private void LyricsHoverExplainButton_PointerEntered(object sender, PointerRoutedEventArgs e)
-        => StopLyricsHoverExplainHideTimer();
-
-    private void LyricsHoverExplainButton_PointerExited(object sender, PointerRoutedEventArgs e)
-        => QueueHideLyricsHoverExplainButton();
 
     private DispatcherQueueTimer CreateLyricsScrollResetTimer()
     {
@@ -1221,7 +1148,6 @@ public sealed partial class ExpandedPlayerView : UserControl
         if (FullscreenLyricsCanvas == null) return;
         FullscreenLyricsCanvas.MouseScrollOffset = 0;
         FullscreenLyricsCanvas.IsMouseScrolling = false;
-        HideLyricsHoverExplainButton();
         UpdateLyricsRenderState();
     }
 
@@ -1237,7 +1163,7 @@ public sealed partial class ExpandedPlayerView : UserControl
         FullscreenLyricsCanvas.IsMouseScrolling = false;
         FullscreenLyricsCanvas.IsMousePressing = false;
         FullscreenLyricsCanvas.IsMouseInLyricsArea = false;
-        HideLyricsHoverExplainButton();
+        FullscreenLyricsCanvas.ShowHoverActionIcon = false;
 
         // Force one render frame with no lyric data so a held-syllable glow /
         // scaled line cannot survive past the mode change. The clear color

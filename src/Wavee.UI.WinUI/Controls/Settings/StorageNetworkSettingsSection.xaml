@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:settings="using:Wavee.UI.WinUI.Controls.Settings"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     mc:Ignorable="d">
 
@@ -17,11 +18,15 @@
     </UserControl.Resources>
 
     <ScrollView>
-        <StackPanel Spacing="4" Padding="0,16,0,24">
-            <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_1" Text="Memory Caches" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,0,0,8"/>
+        <StackPanel x:Name="SettingsGroupsRoot" Spacing="6" Padding="0,12,0,24">
+            <settings:SettingsGroupHeader Title="Memory cache"
+                                          Description="Balance memory usage against network refetches and browsing speed."
+                                          IconGlyph="&#xE8F1;"
+                                          Tag="memory"/>
 
             <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_2" Header="Caching profile"
-                                   Description="Balances memory usage against network refetches and browsing speed. Medium matches the default.">
+                                   Description="Balances memory usage against network refetches and browsing speed. Medium matches the default."
+                                   Tag="memory">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8F1;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -69,10 +74,14 @@
                 </StackPanel>
             </controls:SettingsCard>
 
-            <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_6" Text="Audio Cache" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <settings:SettingsGroupHeader Title="Audio cache"
+                                          Description="Manage cached audio, cache size, and library revision refreshes."
+                                          IconGlyph="&#xE74E;"
+                                          Tag="audio-cache"/>
 
             <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_7" Header="Enable cache"
-                                   Description="Cache audio files locally for faster playback">
+                                   Description="Cache audio files locally for faster playback"
+                                   Tag="audio-cache">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE74E;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -80,7 +89,8 @@
                               OnContent="" OffContent=""/>
             </controls:SettingsCard>
             <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_8" Header="Cache size limit"
-                                   Description="Oldest tracks are automatically removed when the limit is reached">
+                                   Description="Oldest tracks are automatically removed when the limit is reached"
+                                   Tag="audio-cache">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xEDA2;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -93,7 +103,8 @@
                 </ComboBox>
             </controls:SettingsCard>
             <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_13" Header="Cache location"
-                                   Description="{x:Bind ViewModel.CacheLocationDisplay}">
+                                   Description="{x:Bind ViewModel.CacheLocationDisplay}"
+                                   Tag="audio-cache">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8B7;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -101,14 +112,16 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </controls:SettingsCard>
             <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_14" Header="Clear cache"
-                                   Description="Delete all cached audio files">
+                                   Description="Delete all cached audio files"
+                                   Tag="audio-cache">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE74D;"/>
                 </controls:SettingsCard.HeaderIcon>
                 <Button x:Uid="Controls_Settings_StorageNetworkSettingsSection__Button_15" Content="Clear Cache" Command="{x:Bind ViewModel.ClearCacheCommand}"/>
             </controls:SettingsCard>
             <controls:SettingsCard Header="Clear collection revisions"
-                                   Description="Forces a full refresh of your library (Liked Songs, albums, artists, shows). Use if something looks out of date.">
+                                   Description="Forces a full refresh of your library (Liked Songs, albums, artists, shows). Use if something looks out of date."
+                                   Tag="audio-cache">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE895;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -116,10 +129,14 @@
             </controls:SettingsCard>
 
             <!-- ── Local Files ─────────────────────────────────────────────── -->
-            <TextBlock Text="Local Files" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <settings:SettingsGroupHeader Title="Local files"
+                                          Description="Choose watched folders and how local music appears in the app."
+                                          IconGlyph="&#xE8B7;"
+                                          Tag="local-files"/>
 
             <controls:SettingsCard Header="Show on Home"
-                                   Description="Display a Local files shelf near the top of Home when indexed files are available.">
+                                   Description="Display a Local files shelf near the top of Home when indexed files are available."
+                                   Tag="local-files">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE80F;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -129,7 +146,8 @@
             </controls:SettingsCard>
 
             <controls:SettingsCard Header="Watched folders"
-                                   Description="Wavee scans these folders for music and adds it to Search and your library. Indexes update in the background.">
+                                   Description="Wavee scans these folders for music and adds it to Search and your library. Indexes update in the background."
+                                   Tag="local-files">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8B7;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -143,7 +161,8 @@
             </controls:SettingsCard>
 
             <ItemsRepeater ItemsSource="{x:Bind ViewModel.LocalFiles.Folders, Mode=OneWay}"
-                           Margin="0,4,0,0">
+                           Margin="0,4,0,0"
+                           Tag="local-files">
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="vm:LocalFolderRow">
                         <controls:SettingsCard Header="{x:Bind Path}"
@@ -166,7 +185,8 @@
 
             <controls:SettingsCard Header="Sync progress"
                                    Description="{x:Bind ViewModel.LocalFiles.ProgressCurrentFile, Mode=OneWay}"
-                                   Visibility="{x:Bind ViewModel.LocalFiles.IsScanning, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                   Visibility="{x:Bind ViewModel.LocalFiles.IsScanning, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                   Tag="local-files">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE895;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -180,11 +200,16 @@
             <TextBlock Text="{x:Bind ViewModel.LocalFiles.StatusMessage, Mode=OneWay}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Style="{ThemeResource CaptionTextBlockStyle}"
-                       Margin="4,4,0,0"/>
+                       Margin="4,4,0,0"
+                       Tag="local-files"/>
 
-            <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_16" Text="Connection" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8"/>
+            <settings:SettingsGroupHeader Title="Connection"
+                                          Description="Configure reconnect behavior and network timeouts."
+                                          IconGlyph="&#xE703;"
+                                          Tag="connection"/>
             <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_17" Header="Auto-reconnect"
-                                   Description="Automatically reconnect when the connection is lost">
+                                   Description="Automatically reconnect when the connection is lost"
+                                   Tag="connection">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE703;"/>
                 </controls:SettingsCard.HeaderIcon>
@@ -192,7 +217,8 @@
                               OnContent="" OffContent=""/>
             </controls:SettingsCard>
             <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_18" Header="Connection timeout"
-                                   Description="Maximum time to wait when connecting">
+                                   Description="Maximum time to wait when connecting"
+                                   Tag="connection">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE916;"/>
                 </controls:SettingsCard.HeaderIcon>

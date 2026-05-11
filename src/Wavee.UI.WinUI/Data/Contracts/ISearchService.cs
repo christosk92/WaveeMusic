@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -52,7 +53,30 @@ public enum SearchSuggestionType
     Album,
     Playlist,
     Podcast,
-    Genre
+    Genre,
+
+    // Non-selectable group header row inside the flat suggestions list.
+    // The flyout's keyboard navigation skips these; they span full width
+    // via VariableSizedWrapGrid.ColumnSpan = 2 (set by ItemContainerStyleSelector).
+    SectionHeader,
+
+    // Settings deep-link result (omnibar Settings section). Routes via
+    // SettingsNavigationParameter using ContextTag (section tag) + GroupKey.
+    Setting,
+
+    // Non-interactive placeholder rendered while a section's async fetch is in
+    // flight (typically the Spotify section, which is debounced + network-bound).
+    // Keyboard nav skips these and OnSuggestionChosen early-outs.
+    Shimmer,
+
+    // Your-library quicksearch results. Drawn from the metadata DB — covers
+    // both local files (URI scheme wavee:local:...) and cached Spotify saved
+    // items / playlists (URI scheme spotify:...). The dispatcher branches on
+    // the URI prefix when routing.
+    LocalTrack,
+    LocalAlbum,
+    LocalArtist,
+    LocalPlaylist,
 }
 
 public sealed record SearchSuggestionItem
@@ -68,4 +92,40 @@ public sealed record SearchSuggestionItem
     /// Set by the service layer when returning suggestions.
     /// </summary>
     public string? QueryText { get; init; }
+
+    /// <summary>
+    /// Settings-result routing — the SettingsPage section tag (e.g. "general",
+    /// "playback", "audio"). Null for non-Setting items.
+    /// </summary>
+    public string? ContextTag { get; init; }
+
+    /// <summary>
+    /// Settings-result routing — the group key passed to
+    /// <c>ISettingsSearchFilter.ApplySearchFilter</c> on the destination page.
+    /// Null for non-Setting items.
+    /// </summary>
+    public string? GroupKey { get; init; }
+}
+
+/// <summary>
+/// A named group of suggestion items used by the omnibar dropdown. The flyout
+/// renders these as <c>ListView.GroupStyle.HeaderTemplate</c> sections with an
+/// inner <c>ItemsWrapGrid</c> panel that adapts column count to popup width.
+/// Implements <c>IList&lt;SearchSuggestionItem&gt;</c> via <c>ObservableCollection&lt;T&gt;</c>
+/// so a <c>CollectionViewSource</c> with <c>IsSourceGrouped = true</c> can bind directly.
+/// </summary>
+public sealed class SearchSuggestionGroup : ObservableCollection<SearchSuggestionItem>
+{
+    public SearchSuggestionGroup(string header)
+    {
+        Header = header;
+    }
+
+    public SearchSuggestionGroup(string header, IEnumerable<SearchSuggestionItem> items) : base(items)
+    {
+        Header = header;
+    }
+
+    /// <summary>Display label shown in the section header. Empty/whitespace = render no header.</summary>
+    public string Header { get; }
 }

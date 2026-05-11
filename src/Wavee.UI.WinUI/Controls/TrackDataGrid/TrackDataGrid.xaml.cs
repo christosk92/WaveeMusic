@@ -255,6 +255,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 item.PlayCommand = PlayCommand;
                 item.ShowPopularityBadge = ShouldShowPopularityBadge(args.Item);
                 item.SetAlternatingBorder(IsAlternateRow(args.Item, args.ItemIndex), UseCardRows);
+                item.IsSelected = container.IsSelected;
                 item.IsLoading = args.Item is ITrackItem { IsLoaded: false };
                 RegisterRowForLazyItem(item, args.Item as LazyTrackItem);
                 WireContainerToggleHandlers(container);
@@ -1708,11 +1709,20 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     // Selection menu — Select all / Invert / Clear.
     private void SelectAllItem_Click(object sender, RoutedEventArgs e)
+        => SelectAllRows();
+
+    private void SelectAllRows()
     {
         if (UseItemsViewRows)
+        {
             RowsItemsView.SelectAll();
+            SyncItemsViewRowSelectionState();
+        }
         else
+        {
             RowsList.SelectAll();
+            SyncListViewRowSelectionState();
+        }
     }
 
     private void InvertSelectionItem_Click(object sender, RoutedEventArgs e)
@@ -1730,12 +1740,14 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             if (!currentlySelected.Contains(item))
                 RowsList.SelectedItems.Add(item);
         }
+        SyncListViewRowSelectionState();
     }
 
     private void ClearSelectionItem_Click(object sender, RoutedEventArgs e) => ClearSelection();
 
     private void RowsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        SyncListViewRowSelectionState();
         var selected = SelectedRowItem();
         if (selected is ITrackItem track)
             RowSelected?.Invoke(this, track);
@@ -1768,12 +1780,31 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             row.IsSelected = row.Track is not null && selected.Contains(row.Track);
     }
 
+    private void SyncListViewRowSelectionState()
+    {
+        if (UseItemsViewRows || RowsList.ItemsPanelRoot is null)
+            return;
+
+        foreach (var child in RowsList.ItemsPanelRoot.Children)
+        {
+            if (child is ListViewItem container && container.ContentTemplateRoot is Track.TrackItem row)
+                row.IsSelected = container.IsSelected;
+        }
+    }
+
     // Tap / DoubleTap are handled inside TrackItem (respecting AppSettings.TrackClickBehavior)
     // and native Extended-mode selection — nothing to wire at this level. Enter/Space on a
     // keyboard-selected row still plays via the handler below, matching TrackListView.
 
     private void RowsList_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (e.Key == VirtualKey.A && GetCtrlShiftState().ctrl)
+        {
+            SelectAllRows();
+            e.Handled = true;
+            return;
+        }
+
         if ((e.Key == VirtualKey.Enter || e.Key == VirtualKey.Space) &&
             SelectedRowItem() is ITrackItem track)
         {

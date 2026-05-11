@@ -940,6 +940,16 @@ public sealed partial class TrackListView : UserControl
         UpdateSelectionCommandBar();
     }
 
+    private void InternalListView_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.A || !GetCtrlShiftState().ctrl)
+            return;
+
+        InternalListView.SelectAll();
+        SyncRealizedSelectionVisuals();
+        e.Handled = true;
+    }
+
     // Plain click on an already-selected row toggles it off.
     // PointerPressed remembers if the row was already selected at press time;
     // Tapped then fires the deselect (after ListView has already run its own

@@ -56,6 +56,22 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly Dictionary<string, CachedSearchSuggestions> _querySuggestionCache = new(StringComparer.OrdinalIgnoreCase);
     private CachedSearchSuggestions? _recentSearchesCache;
     private string _activeSearchText = string.Empty;
+
+    // Omnibar grouped-search backend. Quicksearch is broadened to AllCached so anything
+    // the user has seen/played (not just saved-library items) is findable.
+    private readonly Wavee.Core.Library.Local.ILocalLibraryService? _localLibrary;
+
+    // Placeholder items used as the Spotify section's contents while the network call
+    // is in flight. The Spotify section becomes visible from frame 1 (shimmer rows),
+    // then the real items replace these when RefreshQuerySuggestionsAsync resolves.
+    // 4 entries — matches a 2×2 grid at wide widths, 4 stacked rows at narrow widths.
+    private static readonly IReadOnlyList<SearchSuggestionItem> SpotifyShimmerPlaceholders =
+    [
+        new() { Title = string.Empty, Uri = "wavee:shimmer:0", Type = SearchSuggestionType.Shimmer },
+        new() { Title = string.Empty, Uri = "wavee:shimmer:1", Type = SearchSuggestionType.Shimmer },
+        new() { Title = string.Empty, Uri = "wavee:shimmer:2", Type = SearchSuggestionType.Shimmer },
+        new() { Title = string.Empty, Uri = "wavee:shimmer:3", Type = SearchSuggestionType.Shimmer },
+    ];
     private bool _restoringTabSession;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _tabSleepTimer;
     private DateTimeOffset _lastTabSleepMemoryReleaseUtc = DateTimeOffset.MinValue;
@@ -68,7 +84,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private static readonly TimeSpan TabSleepMemoryReleaseThrottle = TimeSpan.FromSeconds(45);
 
     // UI element references for cleanup
-    private Microsoft.UI.Xaml.Controls.SplitButton? _playlistsSplitButton;
+    private Microsoft.UI.Xaml.Controls.Button? _playlistsAddButton;
     private Microsoft.UI.Xaml.Controls.MenuFlyoutItem? _newPlaylistMenuItem;
     private Microsoft.UI.Xaml.Controls.MenuFlyoutItem? _newFolderMenuItem;
 
@@ -249,7 +265,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         ISettingsService? settingsService = null,
         IDispatcherService? dispatcher = null,
         ILogger<ShellViewModel>? logger = null,
-        PlaylistMosaicService? mosaicService = null)
+        PlaylistMosaicService? mosaicService = null,
+        Wavee.Core.Library.Local.ILocalLibraryService? localLibrary = null)
     {
         _libraryDataService = libraryDataService;
         _playlistCache = playlistCache;
@@ -263,6 +280,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _dispatcher = dispatcher;
         _logger = logger;
         _mosaicService = mosaicService;
+        _localLibrary = localLibrary;
 
         // Initialize from AppModel (one-time read)
         _sidebarWidth = appModel.SidebarWidth;
@@ -580,14 +598,22 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Sync the sidebar selection to the playlist identified by <paramref name="uriOrId"/>.
-    /// Accepts a bare playlist id or a Spotify URI (<c>spotify:playlist:xxx</c>); the id
-    /// segment after the last <c>:</c> is extracted before looking up the sidebar row.
+    /// Accepts a bare playlist id, a Spotify URI (<c>spotify:playlist:xxx</c>), or a
+    /// <see cref="ContentNavigationParameter"/> carrying either. The id segment after the
+    /// last <c>:</c> is extracted before looking up the sidebar row.
     /// Clears the selection when no sidebar row matches — e.g. a search-opened playlist
     /// that isn't in the user's library.
     /// </summary>
     public void SyncSidebarSelectionToPlaylist(object? uriOrId)
     {
-        if (uriOrId is not string s || string.IsNullOrWhiteSpace(s))
+        var s = uriOrId switch
+        {
+            ContentNavigationParameter nav => nav.Uri,
+            string value => value,
+            _ => null
+        };
+
+        if (string.IsNullOrWhiteSpace(s))
         {
             // Only assign if not already null — otherwise the setter still fires
             // PropertyChanged and cascades to every realized SidebarItem.
@@ -661,25 +687,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private Microsoft.UI.Xaml.FrameworkElement CreatePlaylistsAddButton()
     {
-        _playlistsSplitButton = new Microsoft.UI.Xaml.Controls.SplitButton
-        {
-            Content = new Microsoft.UI.Xaml.Controls.FontIcon
-            {
-                Glyph = "\uE710",
-                FontSize = 11
-            },
-            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
-            BorderThickness = new Microsoft.UI.Xaml.Thickness(0),
-            Padding = new Microsoft.UI.Xaml.Thickness(4, 0, 0, 0),
-            MinHeight = 20,
-            Height = 20,
-            VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Center
-        };
-
-        // Main click creates a new playlist
-        _playlistsSplitButton.Click += PlaylistsSplitButton_Click;
-
-        // MenuFlyout with proper context menu styling
         var menuFlyout = new Microsoft.UI.Xaml.Controls.MenuFlyout
         {
             Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom
@@ -692,28 +699,43 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _newPlaylistMenuItem = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
         {
             Text = AppLocalization.GetString("Shell_NewPlaylist"),
-            Icon = new Microsoft.UI.Xaml.Controls.FontIcon { FontFamily = mediaPlayerIconsFont, Glyph = "\uE93F" }
+            Icon = new Microsoft.UI.Xaml.Controls.FontIcon { FontFamily = mediaPlayerIconsFont, Glyph = FluentGlyphs.CreatePlaylist }
         };
         _newPlaylistMenuItem.Click += NewPlaylistMenuItem_Click;
 
         _newFolderMenuItem = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem
         {
             Text = AppLocalization.GetString("Shell_NewFolder"),
-            Icon = new Microsoft.UI.Xaml.Controls.FontIcon { FontFamily = mediaPlayerIconsFont, Glyph = "\uE8F4" }
+            Icon = new Microsoft.UI.Xaml.Controls.FontIcon { FontFamily = mediaPlayerIconsFont, Glyph = FluentGlyphs.CreateFolder }
         };
         _newFolderMenuItem.Click += NewFolderMenuItem_Click;
 
         menuFlyout.Items.Add(_newPlaylistMenuItem);
         menuFlyout.Items.Add(_newFolderMenuItem);
 
-        _playlistsSplitButton.Flyout = menuFlyout;
+        // Plain Button + Flyout (not SplitButton) so a click anywhere on the icon opens
+        // the menu \u2014 same affordance whether the sidebar is expanded or compact (where
+        // the only the decorator survives the CompactGroupHeaderWithDecorator state).
+        _playlistsAddButton = new Microsoft.UI.Xaml.Controls.Button
+        {
+            Content = new Microsoft.UI.Xaml.Controls.FontIcon
+            {
+                Glyph = FluentGlyphs.CreatePlaylist,
+                FontSize = 12
+            },
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderThickness = new Microsoft.UI.Xaml.Thickness(0),
+            Padding = new Microsoft.UI.Xaml.Thickness(0),
+            MinWidth = 24,
+            MinHeight = 24,
+            Width = 24,
+            Height = 24,
+            VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Center,
+            HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Center,
+            Flyout = menuFlyout
+        };
 
-        return _playlistsSplitButton;
-    }
-
-    private void PlaylistsSplitButton_Click(Microsoft.UI.Xaml.Controls.SplitButton sender, Microsoft.UI.Xaml.Controls.SplitButtonClickEventArgs args)
-    {
-        CreateNewPlaylist();
+        return _playlistsAddButton;
     }
 
     private void NewPlaylistMenuItem_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
@@ -724,16 +746,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private void NewFolderMenuItem_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         Helpers.Navigation.NavigationHelpers.OpenCreatePlaylist(isFolder: true);
-    }
-
-    private void CreateNewPlaylist()
-    {
-        // TODO: Implement playlist creation
-    }
-
-    private void CreateNewFolder()
-    {
-        // TODO: Implement folder creation
     }
 
     private async Task LoadLibraryDataAsync()
@@ -1448,6 +1460,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private List<SearchSuggestionItem>? _searchSuggestions;
 
+    /// <summary>
+    /// Grouped suggestions for the three-section omnibar mode (Settings / Your library
+    /// / Spotify). When this contains any items the Omnibar prefers grouped rendering
+    /// over the flat <see cref="SearchSuggestions"/> list. Null/empty falls back to
+    /// the legacy flat path used by recent searches and no-match fallback.
+    /// </summary>
+    [ObservableProperty]
+    private List<SearchSuggestionGroup>? _suggestionGroups;
+
     [ObservableProperty]
     private bool _isSearchSuggestionsLoading;
 
@@ -1487,9 +1508,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
             if (string.IsNullOrWhiteSpace(normalizedText))
             {
-                // Empty → show recent searches immediately (no debounce)
+                // Empty → hide sectioned groups, show recent searches via flat list.
                 _searchDebouncer.Cancel();
                 SearchSuggestionErrorMessage = null;
+                SuggestionGroups = null;
 
                 if (TryGetCachedRecentSearches(out var cachedRecents, out var recentCacheIsFresh))
                 {
@@ -1509,21 +1531,34 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             else
             {
                 SearchSuggestionErrorMessage = null;
+                SearchSuggestions = null; // flat list is off when sectioned mode is active
+                IsSearchSuggestionsLoading = true;
 
-                if (TryGetCachedQuerySuggestions(normalizedText, out var cachedSuggestions, out var queryCacheIsFresh))
+                // 1) Synchronous Settings filter — always ≤ 3 items, in-memory.
+                var settingsItems = BuildSettingsSuggestions(normalizedText);
+
+                // 2) Zero-network library quicksearch — broadened to AllCached so anything
+                //    the user has seen/played is findable, not just explicitly-saved items.
+                var libraryItems = await BuildLibrarySuggestionsAsync(normalizedText, CancellationToken.None);
+
+                if (!string.Equals(_activeSearchText, normalizedText, StringComparison.Ordinal))
+                    return;
+
+                // 3) Try cached Spotify suggestions; show partial groups immediately when missing.
+                List<SearchSuggestionItem>? spotifyItems = null;
+                var queryCacheIsFresh = false;
+                if (TryGetCachedQuerySuggestions(normalizedText, out var cachedSpotify, out queryCacheIsFresh))
                 {
-                    SearchSuggestions = cachedSuggestions;
-                    IsSearchSuggestionsLoading = false;
-                    if (queryCacheIsFresh)
-                        return;
-                }
-                else
-                {
-                    SearchSuggestions = null;
-                    IsSearchSuggestionsLoading = true;
+                    spotifyItems = cachedSpotify;
                 }
 
-                // Debounce 300ms before calling API
+                SuggestionGroups = BuildGroups(settingsItems, libraryItems, spotifyItems);
+                IsSearchSuggestionsLoading = spotifyItems is null;
+
+                if (spotifyItems is not null && queryCacheIsFresh)
+                    return;
+
+                // 4) Debounce 300ms then refresh the Spotify group.
                 await _searchDebouncer.DebounceAsync(async ct =>
                 {
                     await RefreshQuerySuggestionsAsync(normalizedText, ct);
@@ -1540,6 +1575,109 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Maps the static SettingsPage entries through the omnibar query, capped at 3.</summary>
+    private static List<SearchSuggestionItem> BuildSettingsSuggestions(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return new List<SearchSuggestionItem>();
+
+        return Wavee.UI.WinUI.Views.SettingsPage.SettingsSearchEntries
+            .Where(entry => entry.Matches(query))
+            .Take(3)
+            .Select(entry => new SearchSuggestionItem
+            {
+                Title = entry.Title,
+                Subtitle = entry.Section,
+                Uri = $"wavee:setting:{entry.Tag}:{entry.GroupKey}",
+                Type = SearchSuggestionType.Setting,
+                ContextTag = entry.Tag,
+                GroupKey = entry.GroupKey,
+                QueryText = query,
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Calls <see cref="Wavee.Core.Library.Local.ILocalLibraryService.SearchAsync"/> across all
+    /// cached entities (local files + cached Spotify tracks/albums/artists/playlists). Maps
+    /// each result to a Local* suggestion type so the dispatcher knows whether to play (Track),
+    /// open Album/Artist/Playlist pages, etc.
+    /// </summary>
+    private async Task<List<SearchSuggestionItem>> BuildLibrarySuggestionsAsync(string query, CancellationToken ct)
+    {
+        if (_localLibrary is null || string.IsNullOrWhiteSpace(query))
+            return new List<SearchSuggestionItem>();
+
+        IReadOnlyList<Wavee.Core.Library.Local.LocalSearchResult> results;
+        try
+        {
+            results = await _localLibrary.SearchAsync(
+                query,
+                limit: 8,
+                Wavee.Core.Library.Local.LocalSearchScope.AllCached,
+                ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogDebug(ex, "Local library quicksearch failed for \"{Query}\"", query);
+            return new List<SearchSuggestionItem>();
+        }
+
+        var items = new List<SearchSuggestionItem>(results.Count);
+        foreach (var r in results)
+        {
+            var subtitle = string.IsNullOrWhiteSpace(r.Subtitle)
+                ? "Your library"
+                : "Your library · " + r.Subtitle;
+
+            items.Add(new SearchSuggestionItem
+            {
+                Title = r.Name,
+                Subtitle = subtitle,
+                ImageUrl = r.ArtworkUri,
+                Uri = r.Uri,
+                Type = r.Type switch
+                {
+                    Wavee.Core.Library.Local.LocalSearchEntityType.Track    => SearchSuggestionType.LocalTrack,
+                    Wavee.Core.Library.Local.LocalSearchEntityType.Album    => SearchSuggestionType.LocalAlbum,
+                    Wavee.Core.Library.Local.LocalSearchEntityType.Artist   => SearchSuggestionType.LocalArtist,
+                    Wavee.Core.Library.Local.LocalSearchEntityType.Playlist => SearchSuggestionType.LocalPlaylist,
+                    _ => SearchSuggestionType.LocalTrack,
+                },
+                QueryText = query,
+            });
+        }
+        return items;
+    }
+
+    /// <summary>
+    /// Composes the three sections into a flat list of groups. Empty Settings/Library
+    /// sections are dropped. The Spotify section behavior depends on its argument:
+    ///   - <c>spotify == null</c> → pending state, show shimmer placeholders so the
+    ///     section is visible from frame 1 instead of popping in 300 ms later.
+    ///   - <c>spotify.Count == 0</c> → network responded with no matches, drop section.
+    ///   - <c>spotify.Count &gt; 0</c> → real items.
+    /// </summary>
+    private static List<SearchSuggestionGroup> BuildGroups(
+        List<SearchSuggestionItem> settings,
+        List<SearchSuggestionItem> library,
+        List<SearchSuggestionItem>? spotify)
+    {
+        var groups = new List<SearchSuggestionGroup>(3);
+        if (settings.Count > 0)
+            groups.Add(new SearchSuggestionGroup("SETTINGS", settings));
+        if (library.Count > 0)
+            groups.Add(new SearchSuggestionGroup("YOUR LIBRARY", library));
+
+        if (spotify is null)
+            groups.Add(new SearchSuggestionGroup("SPOTIFY", SpotifyShimmerPlaceholders));
+        else if (spotify.Count > 0)
+            groups.Add(new SearchSuggestionGroup("SPOTIFY", spotify));
+
+        return groups;
+    }
+
+
     public void RetrySearchSuggestions()
     {
         OnSearchTextChanged(_activeSearchText);
@@ -1548,6 +1686,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public void OnSuggestionChosen(object? item)
     {
         if (item is not SearchSuggestionItem suggestion) return;
+        if (suggestion.Type == SearchSuggestionType.SectionHeader) return; // defense-in-depth
+        if (suggestion.Type == SearchSuggestionType.Shimmer) return;       // placeholder is non-interactive
 
         InvalidateRecentSearchesCache();
 
@@ -1570,6 +1710,38 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 var query = suggestion.Uri.Replace("spotify:search:", "").Replace("+", " ");
                 NavigationHelpers.OpenSearch(query);
                 break;
+
+            // Omnibar Settings deep-link — reuse the in-page filter via existing
+            // NavigateToSearchEntry path on SettingsPage.OnNavigatedTo.
+            case SearchSuggestionType.Setting:
+                if (!string.IsNullOrEmpty(suggestion.ContextTag) && !string.IsNullOrEmpty(suggestion.GroupKey))
+                {
+                    NavigationHelpers.OpenSettings(new Wavee.UI.WinUI.Data.Parameters.SettingsNavigationParameter(
+                        suggestion.ContextTag, suggestion.GroupKey, suggestion.Title));
+                }
+                else
+                {
+                    NavigationHelpers.OpenSettings();
+                }
+                break;
+
+            // Your-library quicksearch results. URIs are either wavee:local:... (filesystem)
+            // or spotify:... (cached Spotify saved items). The existing NavigationHelpers
+            // already handle local URIs via the SearchPage merge path, so the same helpers
+            // work for both.
+            case SearchSuggestionType.LocalTrack:
+                _playbackStateService.PlayTrack(suggestion.Uri);
+                break;
+            case SearchSuggestionType.LocalAlbum:
+                NavigationHelpers.OpenAlbum(suggestion.Uri, suggestion.Title);
+                break;
+            case SearchSuggestionType.LocalArtist:
+                NavigationHelpers.OpenArtist(suggestion.Uri, suggestion.Title);
+                break;
+            case SearchSuggestionType.LocalPlaylist:
+                NavigationHelpers.OpenPlaylist(suggestion.Uri, suggestion.Title);
+                break;
+
             default:
                 NavigationHelpers.OpenSearch(suggestion.Title);
                 break;
@@ -1672,10 +1844,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             group.PropertyChanged -= OnSidebarGroupPropertyChanged;
 
         // Cleanup sidebar button handlers
-        if (_playlistsSplitButton != null)
+        if (_playlistsAddButton != null)
         {
-            _playlistsSplitButton.Click -= PlaylistsSplitButton_Click;
-            _playlistsSplitButton = null;
+            _playlistsAddButton = null;
         }
 
         if (_newPlaylistMenuItem != null)
@@ -1785,15 +1956,23 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private async Task RefreshQuerySuggestionsAsync(string querySnapshot, CancellationToken ct)
     {
-        var suggestions = await _searchService.GetSuggestionsAsync(querySnapshot, ct);
-        StoreQuerySuggestionCache(querySnapshot, suggestions);
+        // Network leg: cache Spotify suggestions keyed by query (existing pattern).
+        var spotifyItems = await _searchService.GetSuggestionsAsync(querySnapshot, ct);
+        StoreQuerySuggestionCache(querySnapshot, spotifyItems);
 
-        if (string.Equals(_activeSearchText, querySnapshot, StringComparison.Ordinal))
-        {
-            SearchSuggestionErrorMessage = null;
-            IsSearchSuggestionsLoading = false;
-            SearchSuggestions = CloneSuggestions(suggestions);
-        }
+        if (!string.Equals(_activeSearchText, querySnapshot, StringComparison.Ordinal))
+            return;
+
+        // Recompute the other two sections so they stay in sync with the current query.
+        var settingsItems = BuildSettingsSuggestions(querySnapshot);
+        var libraryItems = await BuildLibrarySuggestionsAsync(querySnapshot, ct);
+
+        if (!string.Equals(_activeSearchText, querySnapshot, StringComparison.Ordinal))
+            return;
+
+        SearchSuggestionErrorMessage = null;
+        IsSearchSuggestionsLoading = false;
+        SuggestionGroups = BuildGroups(settingsItems, libraryItems, CloneSuggestions(spotifyItems));
     }
 
     private async Task RefreshRecentSearchesSafeAsync(string querySnapshot)
@@ -1837,6 +2016,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         SearchSuggestionErrorMessage = null;
         IsSearchSuggestionsLoading = false;
         SearchSuggestions = null;
+        SuggestionGroups = null;
     }
 
     private void ApplySearchSuggestionFailure(string querySnapshot, Exception ex)
@@ -1847,13 +2027,27 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _logger?.LogWarning(ex, "Failed to fetch search suggestions");
         IsSearchSuggestionsLoading = false;
 
-        if (SearchSuggestions is { Count: > 0 } current
-            && DoSuggestionsMatchQuery(current, querySnapshot))
+        // Spotify leg failed. Strip its shimmer placeholders so the section doesn't keep
+        // pulsing forever. Keep partial Settings + Library groups visible — the user still
+        // gets local results.
+        if (SuggestionGroups is { Count: > 0 } current)
+        {
+            var trimmed = current.Where(g => g.Count == 0 || g[0].Type != SearchSuggestionType.Shimmer).ToList();
+            if (trimmed.Count > 0)
+            {
+                SuggestionGroups = trimmed;
+                return;
+            }
+        }
+
+        if (SearchSuggestions is { Count: > 0 } currentFlat
+            && DoSuggestionsMatchQuery(currentFlat, querySnapshot))
         {
             return;
         }
 
         SearchSuggestions = null;
+        SuggestionGroups = null;
         SearchSuggestionErrorMessage = ErrorMapper.ToUserMessage(ex);
     }
 

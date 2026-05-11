@@ -7,11 +7,16 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:home="using:Wavee.UI.WinUI.ViewModels.Home"
     xmlns:homeViews="using:Wavee.UI.WinUI.Views.Home"
+    xmlns:browseControls="using:Wavee.UI.WinUI.Controls.Browse"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d"
     Background="Transparent">
 
     <UserControl.Resources>
+        <DataTemplate x:Key="BrowseChipTemplate" x:DataType="home:BrowseAllItem">
+            <homeViews:BrowseChip Item="{x:Bind}"/>
+        </DataTemplate>
+
         <!-- Per-group template for the loaded state. Caps eyebrow + UniformGridLayout
              of BrowseChip instances. -->
         <DataTemplate x:Key="BrowseGroupTemplate" x:DataType="home:BrowseAllGroup">
@@ -24,21 +29,9 @@
                     Opacity="0.6"
                     Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                     Margin="0,0,0,6"/>
-                <ItemsRepeater ItemsSource="{x:Bind Items}">
-                    <ItemsRepeater.Layout>
-                        <UniformGridLayout
-                            MinItemWidth="140"
-                            MinItemHeight="28"
-                            MinRowSpacing="3"
-                            MinColumnSpacing="6"
-                            ItemsStretch="Fill"/>
-                    </ItemsRepeater.Layout>
-                    <ItemsRepeater.ItemTemplate>
-                        <DataTemplate x:DataType="home:BrowseAllItem">
-                            <homeViews:BrowseChip Item="{x:Bind}"/>
-                        </DataTemplate>
-                    </ItemsRepeater.ItemTemplate>
-                </ItemsRepeater>
+                <browseControls:BrowseGrid
+                    ItemsSource="{x:Bind Items}"
+                    ItemTemplate="{StaticResource BrowseChipTemplate}"/>
             </StackPanel>
         </DataTemplate>
     </UserControl.Resources>

@@ -251,6 +251,36 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         ViewModel.UpdatePageBleedFromCarousel(HomeHero.CurrentAccent);
     }
 
+    /// <summary>
+    /// Drives the hero-band's responsive states off <see cref="HeroBand"/>'s actual
+    /// rendered width rather than the window width. <c>AdaptiveTrigger.MinWindowWidth</c>
+    /// reads the *window*, which is wrong when the shell sidebar + Queue panel eat
+    /// space from the HomePage area — at a 1600-px window with the Queue open, the
+    /// HomePage is only ~900 px wide, but the old wide-state trigger fired anyway and
+    /// jammed the side rail next to a too-narrow hero. We now branch on the band's
+    /// own width so the layout matches what the user actually sees.
+    /// </summary>
+    private string? _currentHeroBandState;
+    private void HeroBand_SizeChanged(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e)
+    {
+        var width = e.NewSize.Width;
+        // Thresholds:
+        //   ≥1100  WideState         — hero + WideSideRail (320 px) side-by-side
+        //   ≥720   StackedMedium     — hero full-row + StackedShortcuts (1 big + 2 stacked)
+        //   < 720  StackedNarrow     — hero full-row + StackedShortcuts (Card0 banner + 2 below)
+        string nextState;
+        if (width >= 1100)
+            nextState = "HeroBandWideState";
+        else if (width >= 720)
+            nextState = "HeroBandStackedMediumState";
+        else
+            nextState = "HeroBandStackedNarrowState";
+
+        if (nextState == _currentHeroBandState) return;
+        _currentHeroBandState = nextState;
+        VisualStateManager.GoToState(this, nextState, useTransitions: false);
+    }
+
     public void RefreshWithParameter(object? parameter)
     {
         // HomePage has no parameter — a refresh just reloads the feed if stale

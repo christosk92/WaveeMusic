@@ -29,6 +29,7 @@
             DragItemsCompleted="InternalListView_DragItemsCompleted"
             SelectionChanged="TrackListView_SelectionChanged"
             ContainerContentChanging="TrackListView_ContainerContentChanging"
+            KeyDown="InternalListView_KeyDown"
             HorizontalContentAlignment="Stretch"
             Padding="16,0,18,0">
 

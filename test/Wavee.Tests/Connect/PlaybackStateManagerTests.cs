@@ -2,6 +2,7 @@ using FluentAssertions;
 using System.Reactive.Linq;
 using Wavee.Connect;
 using Wavee.Connect.Protocol;
+using Wavee.Core.Audio;
 using Wavee.Protocol.Player;
 using Wavee.Tests.Connect;
 using Wavee.Tests.Helpers;
@@ -509,6 +510,33 @@ public sealed class PlaybackStateManagerTests : IAsyncDisposable
         // Assert
         state.Track!.Uri.Should().Be("spotify:track:new");
         state.PositionMs.Should().Be(0);
+    }
+
+    [Fact]
+    public void ToPlayerState_WhenLocalSpotifyPlaybackDisabled_ShouldDisallowPlayback()
+    {
+        var state = PlaybackState.Empty with
+        {
+            Track = new TrackInfo { Uri = "spotify:track:abc" },
+            Status = PlaybackStatus.Paused,
+            CanSeek = true
+        };
+
+        var playerState = PlaybackStateHelpers.ToPlayerState(
+            state,
+            deviceId: "local_device",
+            localSpotifyPlaybackEnabled: false);
+
+        playerState.Restrictions.DisallowPlayingReasons.Should()
+            .Contain(SpotifyPlaybackCapabilities.DisabledReason);
+        playerState.Restrictions.DisallowResumingReasons.Should()
+            .Contain(SpotifyPlaybackCapabilities.DisabledReason);
+        playerState.Restrictions.DisallowInterruptingPlaybackReasons.Should()
+            .Contain(SpotifyPlaybackCapabilities.DisabledReason);
+        playerState.Restrictions.DisallowTransferringPlaybackReasons.Should()
+            .Contain(SpotifyPlaybackCapabilities.DisabledReason);
+        playerState.Restrictions.DisallowRemoteControlReasons.Should()
+            .Contain(SpotifyPlaybackCapabilities.DisabledReason);
     }
 
     #endregion

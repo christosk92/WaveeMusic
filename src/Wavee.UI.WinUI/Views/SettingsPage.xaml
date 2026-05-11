@@ -5,19 +5,17 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d"
     Background="Transparent">
 
     <Page.Resources>
-        <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="ms-appx:///CommunityToolkit.WinUI.Controls.Segmented/Segmented/Segmented.xaml"/>
-            </ResourceDictionary.MergedDictionaries>
-        </ResourceDictionary>
+        <Thickness x:Key="NavigationViewItemButtonMargin">4,2,8,2</Thickness>
+        <Thickness x:Key="NavigationViewItemContentPresenterMargin">8,-1,8,-1</Thickness>
+        <Thickness x:Key="NavigationViewItemInnerHeaderMargin">12,0</Thickness>
+        <x:Double x:Key="NavigationViewItemOnLeftMinHeight">40</x:Double>
     </Page.Resources>
 
-    <Grid Padding="32,24,32,0" RowSpacing="8">
+    <Grid Padding="32,24,32,0" RowSpacing="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -25,18 +23,50 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <TextBlock x:Uid="Views_SettingsPage__TextBlock_1" Grid.Row="0"
+        <TextBlock x:Uid="Views_SettingsPage__TextBlock_1"
+                   Grid.Row="0"
                    Text="Settings"
                    Style="{StaticResource TitleTextBlockStyle}"
-                   Margin="0,0,0,4"/>
+                   Margin="0,0,0,2"/>
 
-        <InfoBar Grid.Row="1"
+        <AutoSuggestBox x:Name="SettingsSearchBox"
+                        Grid.Row="1"
+                        Width="420"
+                        HorizontalAlignment="Left"
+                        PlaceholderText="Search settings"
+                        UpdateTextOnSelect="False"
+                        TextChanged="SettingsSearchBox_TextChanged"
+                        QuerySubmitted="SettingsSearchBox_QuerySubmitted"
+                        SuggestionChosen="SettingsSearchBox_SuggestionChosen">
+            <AutoSuggestBox.QueryIcon>
+                <SymbolIcon Symbol="Find" />
+            </AutoSuggestBox.QueryIcon>
+
+            <AutoSuggestBox.ItemTemplate>
+                <DataTemplate>
+                    <Grid Padding="0,4" RowSpacing="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0"
+                                   Text="{Binding Title}"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <TextBlock Grid.Row="1"
+                                   Text="{Binding Section}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </Grid>
+                </DataTemplate>
+            </AutoSuggestBox.ItemTemplate>
+        </AutoSuggestBox>
+
+        <InfoBar Grid.Row="2"
                  IsOpen="{x:Bind ViewModel.HasPendingRestart, Mode=OneWay}"
                  Title="{x:Bind ViewModel.PendingRestartTitle, Mode=OneWay}"
                  Message="{x:Bind ViewModel.PendingRestartMessage, Mode=OneWay}"
                  Severity="{x:Bind ViewModel.PendingRestartSeverity, Mode=OneWay}"
-                 IsClosable="False"
-                 Margin="0,0,0,4">
+                 IsClosable="False">
             <InfoBar.ActionButton>
                 <Button Content="{x:Bind ViewModel.RestartNowActionText, Mode=OneWay}"
                         Command="{x:Bind ViewModel.RestartNowCommand}"
@@ -44,30 +74,117 @@
             </InfoBar.ActionButton>
         </InfoBar>
 
-        <controls:Segmented x:Name="SettingsSelectorBar"
-                            Grid.Row="2"
-                            SelectedIndex="0"
-                            Style="{StaticResource PivotSegmentedStyle}"
-                            SelectionChanged="SelectorBar_SelectionChanged">
-            <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_2" x:Name="GeneralItem" Content="General" Tag="general"/>
-            <controls:SegmentedItem x:Name="AiItem" Content="On-device AI" Tag="ai"/>
-            <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_3" x:Name="PlaybackItem" Content="Playback" Tag="playback"/>
-            <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_4" x:Name="AudioItem" Content="Audio" Tag="audio"/>
-            <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_5" x:Name="StorageItem" Content="Storage &amp; Network" Tag="storage"/>
-            <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_6" x:Name="DiagnosticsItem" Content="Diagnostics" Tag="diagnostics"/>
-            <controls:SegmentedItem x:Name="ConnectItem" Content="Connect" Tag="connect"/>
-            <controls:SegmentedItem x:Uid="Views_SettingsPage__SegmentedItem_7" x:Name="AboutItem" Content="About" Tag="about"/>
-        </controls:Segmented>
-
-        <ContentControl x:Name="ContentHost"
+        <NavigationView x:Name="SettingsNavigation"
                         Grid.Row="3"
-                        HorizontalContentAlignment="Stretch"
-                        VerticalContentAlignment="Stretch">
-            <ContentControl.ContentTransitions>
-                <TransitionCollection>
-                    <ContentThemeTransition/>
-                </TransitionCollection>
-            </ContentControl.ContentTransitions>
-        </ContentControl>
+                        PaneDisplayMode="Left"
+                        IsPaneOpen="True"
+                        IsPaneToggleButtonVisible="False"
+                        IsSettingsVisible="False"
+                        IsBackButtonVisible="Collapsed"
+                        OpenPaneLength="272"
+                        CompactPaneLength="0"
+                        PaneTitle="Sections"
+                        Background="Transparent"
+                        SelectionChanged="SettingsNavigation_SelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItemHeader Content="App"/>
+                <NavigationViewItem x:Name="GeneralItem" Tag="general">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <FontIcon Width="18" Glyph="&#xE713;" FontSize="15"/>
+                        <TextBlock Text="General"/>
+                    </StackPanel>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="AiItem" Tag="ai">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <FontIcon Width="18" Glyph="&#xE950;" FontSize="15"/>
+                        <TextBlock Text="On-device AI"/>
+                    </StackPanel>
+                </NavigationViewItem>
+
+                <NavigationViewItemHeader Content="Listening"/>
+                <NavigationViewItem x:Name="PlaybackItem" Tag="playback">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <FontIcon Width="18" Glyph="&#xE768;" FontSize="15"/>
+                        <TextBlock Text="Playback &amp; streaming"/>
+                    </StackPanel>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="AudioItem" Tag="audio">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <FontIcon Width="18" Glyph="&#xE8D6;" FontSize="15"/>
+                        <TextBlock Text="Audio &amp; equalizer"/>
+                    </StackPanel>
+                </NavigationViewItem>
+
+                <NavigationViewItemHeader Content="Library &amp; devices"/>
+                <NavigationViewItem x:Name="StorageItem" Tag="storage">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <FontIcon Width="18" Glyph="&#xE8B7;" FontSize="15"/>
+                        <TextBlock Text="Storage &amp; local files"/>
+                    </StackPanel>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="ConnectItem" Tag="connect">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <FontIcon Width="18" Glyph="&#xE703;" FontSize="15"/>
+                        <TextBlock Text="Connect devices"/>
+                    </StackPanel>
+                </NavigationViewItem>
+
+                <NavigationViewItemHeader Content="System"/>
+                <NavigationViewItem x:Name="DiagnosticsItem" Tag="diagnostics">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <FontIcon Width="18" Glyph="&#xE9D9;" FontSize="15"/>
+                        <TextBlock Text="Diagnostics"/>
+                    </StackPanel>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="AboutItem" Tag="about">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <FontIcon Width="18" Glyph="&#xE946;" FontSize="15"/>
+                        <TextBlock Text="About"/>
+                    </StackPanel>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+
+            <Grid Padding="40,24,16,0" RowSpacing="16">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" ColumnSpacing="12" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock x:Name="SectionTitleText"
+                                   Style="{StaticResource SubtitleTextBlockStyle}"
+                                   FontSize="22"/>
+                        <TextBlock x:Name="SectionDescriptionText"
+                                   Style="{StaticResource BodyTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="WrapWholeWords"/>
+                    </StackPanel>
+
+                    <Button x:Name="ViewAllSettingsGroupsButton"
+                            Grid.Column="1"
+                            Content="View all sections"
+                            Visibility="Collapsed"
+                            VerticalAlignment="Center"
+                            Click="ViewAllSettingsGroups_Click"/>
+                </Grid>
+
+                <ContentControl x:Name="ContentHost"
+                                Grid.Row="1"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalContentAlignment="Stretch">
+                    <ContentControl.ContentTransitions>
+                        <TransitionCollection>
+                            <ContentThemeTransition/>
+                        </TransitionCollection>
+                    </ContentControl.ContentTransitions>
+                </ContentControl>
+            </Grid>
+        </NavigationView>
     </Grid>
 </Page>

@@ -3,7 +3,9 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Wavee.Connect;
 using Wavee.Connect.Protocol;
+using Wavee.Core.Audio;
 using Wavee.Core.Http;
+using Wavee.Core.Session;
 using Wavee.Protocol.Player;
 using Wavee.Tests.Helpers;
 using Xunit;
@@ -231,6 +233,37 @@ public sealed class DeviceStateManagerTests
         activeCall.Should().NotBeNull("PUT state called with IsActive=true");
         activeCall!.Request.PutStateReason.Should().Be(PutStateReason.NewDevice,
             "NEW_DEVICE reason used when activating (modern Connect State API)");
+    }
+
+    [Fact]
+    public async Task PutState_WhenLocalSpotifyPlaybackDisabled_ShouldPublishNonPlayableDevice()
+    {
+        var tracker = new MockSpClientHelpers.PutStateCallTracker();
+        var spClient = MockSpClientHelpers.CreateMockSpClient(tracker);
+        var (dealerClient, mockConnection) = DeviceStateTestHelpers.CreateMockDealerClientWithConnection();
+        var session = new MockSession(config: new SessionConfig
+        {
+            DeviceId = "test_device_id",
+            DeviceName = "Test Device",
+            LocalSpotifyPlaybackEnabled = false
+        });
+
+        await using var stateManager = new DeviceStateManager(
+            session,
+            spClient,
+            dealerClient);
+
+        await mockConnection.SimulateMessageAsync(DealerTestHelpers.CreateConnectionIdMessage());
+        await Task.Delay(100);
+
+        tracker.Calls.Should().NotBeEmpty();
+        var deviceInfo = tracker.Calls.Last().Request.Device.DeviceInfo;
+        deviceInfo.CanPlay.Should().BeFalse();
+        deviceInfo.DisallowPlaybackReasons.Should().Contain(SpotifyPlaybackCapabilities.DisabledReason);
+        deviceInfo.DisallowTransferReasons.Should().Contain(SpotifyPlaybackCapabilities.DisabledReason);
+        deviceInfo.Capabilities.CanBePlayer.Should().BeFalse();
+        deviceInfo.Capabilities.IsControllable.Should().BeFalse();
+        deviceInfo.Capabilities.SupportsTransferCommand.Should().BeFalse();
     }
 
     [Fact]

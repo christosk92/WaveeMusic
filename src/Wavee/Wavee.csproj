@@ -70,6 +70,10 @@
       <Compile Remove="Core\Audio\AudioRuntimeProvisioner.Stub.cs" />
     </ItemGroup>
 
+    <PropertyGroup Condition="!Exists('Core\Audio\PlayPlayConstants.cs') Or !Exists('Core\Audio\AudioRuntimeProvisioner.cs') Or !Exists('..\Wavee.AudioHost\PlayPlay\PlayPlayKeyEmulator.cs')">
+      <DefineConstants>$(DefineConstants);WAVEE_SPOTIFY_PLAYBACK_STUBS</DefineConstants>
+    </PropertyGroup>
+
     <ItemGroup>
       <InternalsVisibleTo Include="Wavee.Tests" />
       <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />

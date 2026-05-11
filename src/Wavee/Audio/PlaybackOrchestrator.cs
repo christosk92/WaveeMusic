@@ -8,6 +8,7 @@ using Wavee.AudioIpc;
 using Wavee.Connect;
 using Wavee.Connect.Commands;
 using Wavee.Connect.Events;
+using Wavee.Core.Audio;
 
 namespace Wavee.Audio;
 
@@ -100,6 +101,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     private readonly Wavee.Core.Library.Local.ILocalLibraryService? _localLibrary;
     private readonly Wavee.Audio.ILocalMediaPlayer? _localMediaPlayer;
     private readonly Wavee.Audio.ISpotifyVideoPlayback? _spotifyVideoPlayback;
+    private readonly bool _localSpotifyPlaybackEnabled;
 
     /// <summary>True when the most recent play targeted a UI-process video engine
     /// (local file OR Spotify music video). Drives transport-control dispatch.</summary>
@@ -126,7 +128,8 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         string? localDeviceId = null,
         Wavee.Core.Library.Local.ILocalLibraryService? localLibrary = null,
         Wavee.Audio.ILocalMediaPlayer? localMediaPlayer = null,
-        Wavee.Audio.ISpotifyVideoPlayback? spotifyVideoPlayback = null)
+        Wavee.Audio.ISpotifyVideoPlayback? spotifyVideoPlayback = null,
+        bool localSpotifyPlaybackEnabled = true)
     {
         _proxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
         _trackResolver = trackResolver ?? throw new ArgumentNullException(nameof(trackResolver));
@@ -137,6 +140,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         _localLibrary = localLibrary;
         _localMediaPlayer = localMediaPlayer;
         _spotifyVideoPlayback = spotifyVideoPlayback;
+        _localSpotifyPlaybackEnabled = localSpotifyPlaybackEnabled;
         _queue = new PlaybackQueue(logger);
 
         // Forward proxy state enriched with queue info
@@ -185,6 +189,21 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     /// </summary>
     public IObservable<EndOfContextEvent> EndOfContext => _endOfContextSubject.AsObservable();
     public LocalPlaybackState CurrentState => _stateSubject.Value;
+
+    private bool RejectIfSpotifyAudioPlaybackDisabled(string? uri, string operation)
+    {
+        if (_localSpotifyPlaybackEnabled || !SpotifyPlaybackCapabilities.IsSpotifyAudioPlaybackUri(uri))
+            return false;
+
+        _logger?.LogWarning(
+            "Local Spotify playback blocked: operation={Operation}, uri={Uri}",
+            operation,
+            uri ?? "<none>");
+        _errorSubject.OnNext(new PlaybackError(
+            PlaybackErrorType.Unknown,
+            SpotifyPlaybackCapabilities.DisabledMessage));
+        return true;
+    }
 
     public async Task PlayAsync(PlayCommand command, CancellationToken ct = default)
     {
@@ -486,6 +505,57 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         return _proxy.SwitchAudioOutputAsync(deviceIndex, ct);
     }
 
+    public async Task SwitchQualityAsync(AudioQuality quality, CancellationToken ct = default)
+    {
+        _trackResolver.SetPreferredQuality(quality);
+        ResetPrefetch();
+
+        var current = _queue.Current;
+        if (current is null || string.IsNullOrEmpty(current.Uri))
+        {
+            _logger?.LogInformation("Orchestrator: streaming quality set to {Quality}; no current track to restart", quality);
+            return;
+        }
+
+        if (!IsSpotifyAudioUri(current.Uri))
+        {
+            _logger?.LogInformation("Orchestrator: streaming quality set to {Quality}; current media is not Spotify audio", quality);
+            return;
+        }
+
+        if (_videoEngineActive || _isSpotifyVideoActive || _localMediaPlayer?.IsActive == true)
+        {
+            _logger?.LogInformation("Orchestrator: streaming quality set to {Quality}; active media engine is video/local", quality);
+            return;
+        }
+
+        var state = _stateSubject.Value;
+        if (!state.IsPlaying && !state.IsPaused && !state.IsBuffering)
+        {
+            _logger?.LogInformation("Orchestrator: streaming quality set to {Quality}; playback is inactive", quality);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(state.TrackUri)
+            && !string.Equals(state.TrackUri, current.Uri, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger?.LogInformation(
+                "Orchestrator: streaming quality set to {Quality}; active state {StateUri} does not match queue current {QueueUri}",
+                quality, state.TrackUri, current.Uri);
+            return;
+        }
+
+        var positionMs = Math.Max(0, state.PositionMs);
+        var pauseAfterStart = state.IsPaused;
+
+        _logger?.LogInformation(
+            "Orchestrator: switching Spotify audio quality to {Quality} for {Uri} at {PositionMs}ms",
+            quality, current.Uri, positionMs);
+
+        DispatchTrackTransition(Wavee.Connect.Events.PlaybackReason.EndPlay, positionMs);
+        await PlayCurrentTrackAsync(positionMs, ct, pauseAfterStart).ConfigureAwait(false);
+    }
+
     public async Task SkipNextAsync(CancellationToken ct = default)
     {
         // Event reporting: forward-skip is fwdbtn, regardless of whether the
@@ -558,6 +628,8 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     {
         if (string.IsNullOrEmpty(trackUri))
             return Task.CompletedTask;
+        if (RejectIfSpotifyAudioPlaybackDisabled(trackUri, nameof(PlayNextAsync)))
+            return Task.CompletedTask;
 
         _queue.PlayNext(new QueueTrack(trackUri));
         _logger?.LogInformation("Orchestrator: PlayNext → {Uri}", trackUri);
@@ -569,6 +641,8 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     {
         if (string.IsNullOrEmpty(trackUri))
             return Task.CompletedTask;
+        if (RejectIfSpotifyAudioPlaybackDisabled(trackUri, nameof(EnqueueAsync)))
+            return Task.CompletedTask;
 
         _queue.EnqueueAfterContext(new QueueTrack(trackUri));
         _logger?.LogInformation("Orchestrator: Enqueue (post-context) → {Uri}", trackUri);
@@ -578,7 +652,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
 
     // ── Core ──
 
-    private async Task PlayCurrentTrackAsync(long positionMs, CancellationToken ct = default)
+    private async Task PlayCurrentTrackAsync(long positionMs, CancellationToken ct = default, bool pauseAfterStart = false)
     {
         var current = _queue.Current;
         if (current == null)
@@ -635,6 +709,9 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             }
         }
 
+        if (RejectIfSpotifyAudioPlaybackDisabled(current.Uri, nameof(PlayCurrentTrackAsync)))
+            return;
+
         // Spotify audio path. If we just handed a video to a UI engine, stop
         // it before the AudioHost-driven Spotify track starts so we don't end
         // up with two engines emitting state simultaneously.
@@ -688,6 +765,9 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             Metadata = resolution.Metadata,
         }, ct);
 
+        if (pauseAfterStart)
+            await _proxy.PauseAsync(ct).ConfigureAwait(false);
+
         _logger?.LogInformation("Head data sent — audio starting instantly for {Title}", resolution.Metadata?.Title);
 
         // 4. Wait for audio key (always needed); CDN URL only if not using local cache
@@ -722,6 +802,10 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
 
     private bool ShouldPreferSpotifyVideoPlayback()
         => _spotifyVideoPlayback is not null && _isSpotifyVideoActive;
+
+    private static bool IsSpotifyAudioUri(string uri)
+        => uri.StartsWith("spotify:track:", StringComparison.OrdinalIgnoreCase)
+           || uri.StartsWith("spotify:episode:", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Stops the audio path and starts the Spotify music-video engine for the
@@ -833,6 +917,9 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         if (current is null) return;
 
         var audioTrack = BuildAudioQueueTrackForCurrentVideo(current);
+        if (RejectIfSpotifyAudioPlaybackDisabled(audioTrack.Uri, nameof(SwitchToAudioAsync)))
+            return;
+
         if (!string.Equals(audioTrack.Uri, current.Uri, StringComparison.Ordinal))
             _queue.ReplaceCurrent(audioTrack);
 
