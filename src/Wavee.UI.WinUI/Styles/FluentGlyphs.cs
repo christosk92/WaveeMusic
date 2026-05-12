@@ -20,6 +20,16 @@ public static class FluentGlyphs
     public const string Play = "";
     /// <summary>Pause — E769.</summary>
     public const string Pause = "";
+    /// <summary>Mute — E74F.</summary>
+    public const string Mute = "";
+    /// <summary>Volume0 (silent speaker) — E992.</summary>
+    public const string Volume0 = "";
+    /// <summary>Volume1 (low) — E993.</summary>
+    public const string Volume1 = "";
+    /// <summary>Volume2 (medium) — E994.</summary>
+    public const string Volume2 = "";
+    /// <summary>Volume3 (high) — E995.</summary>
+    public const string Volume3 = "";
     /// <summary>Next — E893 (play-next glyph historically E71A Forward; we keep E71A).</summary>
     public const string PlayNext = "";
     /// <summary>Add (plus) — E710. Used for "Add to queue".</summary>

@@ -446,11 +446,15 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
             : new Thickness(0);
         TitleRow.Margin = contentInset;
         ProgressRow.Margin = contentInset;
-        VideoControlBar.Margin = contentInset;
+        VideoTransportBarHost.Margin = contentInset;
 
         TitleRow.Visibility = useTheaterLayout ? Visibility.Collapsed : Visibility.Visible;
-        ProgressRow.Visibility = useTheaterLayout ? Visibility.Collapsed : Visibility.Visible;
-        VideoControlBar.Visibility = useVideoLayout && !useTheaterLayout && !showTakeover ? Visibility.Visible : Visibility.Collapsed;
+        // For video content the new VideoTransportBar replaces the music-style
+        // ProgressRow + MusicTransportFrame entirely. Music content keeps the
+        // legacy rows.
+        ProgressRow.Visibility = (useTheaterLayout || useVideoLayout) ? Visibility.Collapsed : Visibility.Visible;
+        MusicTransportFrame.Visibility = (useTheaterLayout || useVideoLayout) ? Visibility.Collapsed : Visibility.Visible;
+        VideoTransportBarHost.Visibility = useVideoLayout && !useTheaterLayout && !showTakeover ? Visibility.Visible : Visibility.Collapsed;
         VideoOverlay.Visibility = useTheaterLayout && !showTakeover ? Visibility.Visible : Visibility.Collapsed;
 
         TitleRow.ColumnSpacing = useVideoLayout ? 10 : 16;
@@ -466,7 +470,6 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
 
         MusicTransportRow.Visibility = useVideoLayout ? Visibility.Collapsed : Visibility.Visible;
         DevicePicker.Visibility = useVideoLayout ? Visibility.Collapsed : Visibility.Visible;
-        VideoTheaterModeButton.IsChecked = useTheaterLayout;
         VideoOverlayTheaterModeButton.IsChecked = useTheaterLayout;
 
         if (!useVideoLayout)

@@ -89,32 +89,46 @@ public sealed partial class MainWindow : WindowEx
             return;
         if (_presentation is null) return;
 
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            var logger = Ioc.Default.GetService<ILogger<MainWindow>>();
-            // OS-level fullscreen only when Presentation == Fullscreen. Theatre
-            // stays in the normal (overlapped) presenter so the title bar and
-            // caption buttons remain visible — same window chrome, just the
-            // app's own shell collapses.
-            var wantsFullScreen = _presentation.Presentation == Services.NowPlayingPresentation.Fullscreen;
-            var isFullScreen = AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen;
-            logger?.LogInformation(
-                "[MainWindow.OnPresentation] presentation={Presentation} wantsFs={Wants} isFs={Is}",
-                _presentation.Presentation, wantsFullScreen, isFullScreen);
+        // Run the presenter swap synchronously when we're already on the UI
+        // thread (the common case — ObservableObject fires PropertyChanged
+        // synchronously, and ExitToNormal / Toggle*  are usually called from
+        // a XAML event handler). Deferring via DispatcherQueue.TryEnqueue lost
+        // races: e.g. the Pop-out flow exits Theatre/Fullscreen and then opens
+        // a floating window synchronously — if SetPresenter is queued for the
+        // next tick the popout grabs focus first and the main window's flip
+        // out of Fullscreen never lands.
+        if (DispatcherQueue.HasThreadAccess)
+            ApplyPresenterSwap();
+        else
+            DispatcherQueue.TryEnqueue(ApplyPresenterSwap);
+    }
 
-            if (wantsFullScreen && !isFullScreen)
-            {
-                _wasFullScreen = true;
-                logger?.LogInformation("[MainWindow] AppWindow.SetPresenter → FullScreen");
-                AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
-            }
-            else if (!wantsFullScreen && isFullScreen)
-            {
-                _wasFullScreen = false;
-                logger?.LogInformation("[MainWindow] AppWindow.SetPresenter → Overlapped");
-                AppWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
-            }
-        });
+    private void ApplyPresenterSwap()
+    {
+        if (_presentation is null) return;
+        var logger = Ioc.Default.GetService<ILogger<MainWindow>>();
+        // OS-level fullscreen only when Presentation == Fullscreen. Theatre
+        // stays in the normal (overlapped) presenter so the title bar and
+        // caption buttons remain visible — same window chrome, just the
+        // app's own shell collapses.
+        var wantsFullScreen = _presentation.Presentation == Services.NowPlayingPresentation.Fullscreen;
+        var isFullScreen = AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen;
+        logger?.LogInformation(
+            "[MainWindow.OnPresentation] presentation={Presentation} wantsFs={Wants} isFs={Is}",
+            _presentation.Presentation, wantsFullScreen, isFullScreen);
+
+        if (wantsFullScreen && !isFullScreen)
+        {
+            _wasFullScreen = true;
+            logger?.LogInformation("[MainWindow] AppWindow.SetPresenter → FullScreen");
+            AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+        }
+        else if (!wantsFullScreen && isFullScreen)
+        {
+            _wasFullScreen = false;
+            logger?.LogInformation("[MainWindow] AppWindow.SetPresenter → Overlapped");
+            AppWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
+        }
     }
 
     private void OnRootThemeChanged(FrameworkElement sender, object args)

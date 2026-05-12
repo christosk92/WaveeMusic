@@ -971,13 +971,14 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         MaybeSavePodcastEpisodeProgress(force: true);
     }
 
-    // Video-content skip — 30 s steps, matching the VideoPlayerPage scrim
-    // buttons and Shift+Arrow accelerators. The 15 s variants above are for
-    // podcasts where smaller jumps feel right.
+    // Video-content skip — asymmetric: 10 s back, 30 s forward. Matches the
+    // Fluent SkipBack10 (ED3C) / SkipForward30 (ED3D) glyphs and the common
+    // VLC-style convention where rewind is finer than fast-forward. The 15 s
+    // variants above are for podcasts where the symmetric jump still fits.
 
     [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
-    private void SkipBack30()
-        => SeekByMilliseconds(-30_000);
+    private void SkipBack10()
+        => SeekByMilliseconds(-10_000);
 
     [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
     private void SkipForward30()

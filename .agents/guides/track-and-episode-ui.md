@@ -1,8 +1,8 @@
 ---
 guide: track-and-episode-ui
 scope: Every WaveeMusic UI surface that renders a track or podcast episode as a row, cell, or card.
-last_verified: 2026-05-12
-verified_by: read+grep over src/Wavee.UI.WinUI track/playlist paths (build interrupted before completion)
+last_verified: 2026-05-13
+verified_by: read+grep over src/Wavee.UI.WinUI now-playing video paths (build blocked by sandboxed NuGet signature lookup)
 root_index: AGENTS.md (Codex) and CLAUDE.md (Claude Code)
 ---
 

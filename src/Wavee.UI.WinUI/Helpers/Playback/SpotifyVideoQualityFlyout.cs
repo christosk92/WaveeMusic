@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Helpers.Playback;
@@ -10,9 +11,24 @@ internal static class SpotifyVideoQualityFlyout
     public static void ShowAt(FrameworkElement target)
     {
         var details = Ioc.Default.GetService<ISpotifyVideoPlaybackDetails>();
-        var flyout = new MenuFlyout();
+        var flyout = new MenuFlyout
+        {
+            Placement = FlyoutPlacementMode.TopEdgeAlignedRight
+        };
         if (details is null || details.AvailableQualities.Count == 0)
         {
+            // Spotify quality picker has nothing to show — either no Spotify
+            // video is active (user is playing a local TV episode / movie) or
+            // the manifest hasn't resolved. Fall back to the local-content
+            // tracks menu (Audio / Video / Subtitle) — same population logic
+            // VideoPlayerPage's gear button uses, so both surfaces stay in
+            // sync.
+            if (MediaTracksMenuBuilder.TryPopulateFromActivePlayback(flyout))
+            {
+                flyout.ShowAt(target);
+                return;
+            }
+
             flyout.Items.Add(new MenuFlyoutItem
             {
                 Text = "Stream details unavailable",

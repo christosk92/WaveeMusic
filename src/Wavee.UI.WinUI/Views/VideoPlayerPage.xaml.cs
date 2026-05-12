@@ -10,12 +10,12 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
-using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.Contracts;
 using Wavee.UI.Enums;
-using Wavee.UI.WinUI.Controls.SidebarPlayer;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.Playback;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Styles;
@@ -40,8 +40,8 @@ namespace Wavee.UI.WinUI.Views;
 /// <para>This page acquires the active video surface directly via
 /// <see cref="IActiveVideoSurfaceService"/>, mirroring the pattern used by
 /// the working <c>MiniVideoPlayer</c>, and lays out a single fading scrim
-/// over the video plus a sliding right dock that hosts Lyrics or Queue
-/// via <see cref="Controls.RightPanel.RightPanelView"/>.</para>
+/// over the video. Queue, lyrics, and details remain owned by the shell
+/// right panel rather than an inline dock.</para>
 /// </summary>
 public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
 {
@@ -53,13 +53,8 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
     // without this cap the chrome stays visible forever.
     private const int MaxScrimPinMs = 4000;
     private const int FadeDurationMs = 200;
-    private const double DockTargetFraction = 0.38;
-    private const double DockMaxWidth = 520;
-    private const double DockMinWidth = 320;
-    private const int DockAnimDurationMs = 320;
 
     private readonly IActiveVideoSurfaceService _surface;
-    private readonly IShellSessionService _shellSession;
     private readonly ITrackLikeService? _likeService;
     private readonly IPlaybackStateService? _playbackStateService;
     private readonly IMusicVideoMetadataService? _musicVideoMetadata;
@@ -75,9 +70,6 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
     private bool _scrimVisible = true;
     private bool _scrimPinned;
 
-    private ExpandedPlayerContentMode _dockMode = ExpandedPlayerContentMode.None;
-    private Storyboard? _dockWidthStoryboard;
-
     private int _heartStateVersion;
     private bool _eventsSubscribed;
     private bool _appWindowSubscribed;
@@ -87,7 +79,6 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
     {
         ViewModel = Ioc.Default.GetRequiredService<PlayerBarViewModel>();
         _surface = Ioc.Default.GetRequiredService<IActiveVideoSurfaceService>();
-        _shellSession = Ioc.Default.GetRequiredService<IShellSessionService>();
         _likeService = Ioc.Default.GetService<ITrackLikeService>();
         _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
         _musicVideoMetadata = Ioc.Default.GetService<IMusicVideoMetadataService>();
@@ -100,7 +91,6 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
-        SizeChanged += OnPageSizeChanged;
 
         // Pointer hooks: any movement inside the page wakes the scrim. The
         // scrim itself pins visibility while hovered so a stationary cursor
@@ -117,30 +107,6 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
 
     // ── Navigation lifecycle ────────────────────────────────────────────────
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
-    {
-        base.OnNavigatedTo(e);
-
-        // Restore the user's last-selected dock from the shared shell-layout
-        // key. Same key the popout window uses (PlayerWindowExpandedMode).
-        // Respect None: if the user explicitly closed the dock last time, we
-        // do NOT silently re-open it to Lyrics. (The original
-        // VideoPlayerPage/PlayerFloatingWindow code coerced None back to
-        // Lyrics — that's why the page kept auto-popping the lyrics panel
-        // open even after the user closed it.)
-        var layout = _shellSession.GetLayoutSnapshot();
-        var mode = Enum.TryParse<ExpandedPlayerContentMode>(layout.PlayerWindowExpandedMode, out var parsed)
-            ? parsed
-            : ExpandedPlayerContentMode.None;
-        ApplyDockMode(mode, animate: false);
-    }
-
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
-    {
-        base.OnNavigatedFrom(e);
-        _shellSession.UpdateLayout(s => s.PlayerWindowExpandedMode = _dockMode.ToString());
-    }
-
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _logger?.LogInformation(
@@ -154,7 +120,6 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
 
         ApplyVideoStatusOverlay();
         ApplyListenAsAudioVisibility();
-        ApplyShuffleRepeatVisuals();
         UpdateHeartState();
 
         // First paint: bring chrome up, then start the idle timer. Without
@@ -186,16 +151,6 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         }
         _scrimFadeStoryboard?.Stop();
         _scrimFadeStoryboard = null;
-        _dockWidthStoryboard?.Stop();
-        _dockWidthStoryboard = null;
-    }
-
-    private void OnPageSizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        // Reflow the dock width on resize so the panel stays roughly
-        // viewport-proportional (38%) within the min/max clamp.
-        if (_dockMode != ExpandedPlayerContentMode.None)
-            DockHost.Width = ComputeDockTargetWidth();
     }
 
     // ── Event wiring ───────────────────────────────────────────────────────
@@ -242,7 +197,6 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         _presentationService = Ioc.Default.GetService<INowPlayingPresentationService>();
         if (_presentationService is not null)
             _presentationService.PropertyChanged += OnPresentationServicePropertyChanged;
-        SyncExpandPresentation();
     }
 
     private void UnsubscribeEvents()
@@ -300,7 +254,6 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
                     IsLoaded,
                     _surface.IsOwnedBy(this),
                     hostFrameName);
-                SyncExpandPresentation();
 
                 // Always restore the cursor when leaving an expanded
                 // mode, regardless of where this instance lives. The
@@ -340,12 +293,6 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
                 }
             });
         }
-    }
-
-    private void TheatreToggleButton_Click(object sender, RoutedEventArgs e)
-    {
-        _presentationService ??= Ioc.Default.GetService<INowPlayingPresentationService>();
-        _presentationService?.ToggleTheatre();
     }
 
     // ── Keyboard accelerators (F11 / Esc) ────────────────────────────────
@@ -408,11 +355,13 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         }
         else if (args.Modifiers == Windows.System.VirtualKeyModifiers.Shift)
         {
-            // Shift+Left/Right — bigger jumps (30 s), same as the on-screen
-            // ±30 buttons.
+            // Shift+Left → −10s (matches the SkipBack10 scrim button).
+            // Shift+Right → +30s (matches the SkipForward30 button).
+            // Asymmetric on purpose: rewind small, fast-forward big — same
+            // as VLC's default and the Fluent ED3C/ED3D glyphs imply.
             if (args.Key == Windows.System.VirtualKey.Left)
             {
-                ViewModel.SkipBack30Command.Execute(null);
+                ViewModel.SkipBack10Command.Execute(null);
                 FadeScrim(visible: true);
                 RestartHideTimer();
                 args.Handled = true;
@@ -431,58 +380,15 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         base.OnProcessKeyboardAccelerators(args);
     }
 
-    private void MiniPlayerMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        // Exit the cinematic page and let the floating MiniVideoPlayer take
-        // over. Steps in order:
-        //   1. Drop out of Theatre/Fullscreen back to Normal so the chrome
-        //      around the tab restores.
-        //   2. Navigate back from this page so the tab's CurrentSourcePageType
-        //      stops being VideoPlayerPage — that flips ShellViewModel.IsOnVideoPage
-        //      false, which un-suppresses the mini player.
-        //   3. If no back history (we landed here from a deep link), navigate
-        //      to Home as a graceful fallback.
-        _presentationService ??= Ioc.Default.GetService<INowPlayingPresentationService>();
-        _presentationService?.ExitToNormal();
-
-        if (Frame is { CanGoBack: true } frame)
-        {
-            frame.GoBack();
-        }
-        else
-        {
-            Wavee.UI.WinUI.Helpers.Navigation.NavigationHelpers.OpenHome();
-        }
-    }
-
-    private void PopOutToWindow_MenuItemClick(object sender, RoutedEventArgs e)
-    {
-        // Same affordance the PlayerBar's flyout exposes — exit expanded
-        // mode, detach the player into its own floating window.
-        _presentationService ??= Ioc.Default.GetService<INowPlayingPresentationService>();
-        _presentationService?.ExitToNormal();
-
-        try
-        {
-            Ioc.Default.GetService<Wavee.UI.WinUI.Data.Contracts.IShellSessionService>()?
-                .UpdateLayout(s => s.PlayerWindowExpanded = true);
-            Ioc.Default.GetService<Wavee.UI.WinUI.Services.Docking.IPanelDockingService>()?
-                .Detach(Wavee.UI.WinUI.Services.Docking.DetachablePanel.Player);
-        }
-        catch
-        {
-            // Best-effort; docking failures shouldn't trap the user on this page.
-        }
-    }
+    // Theatre / Fullscreen / Mini-player / Pop-out menu items moved into the
+    // shared VideoTransportBar UserControl. The bar resolves the presentation
+    // service + docking service itself, so the page no longer holds these
+    // event handlers.
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)
         {
-            case nameof(PlayerBarViewModel.IsShuffle):
-            case nameof(PlayerBarViewModel.RepeatMode):
-                ApplyShuffleRepeatVisuals();
-                break;
             case nameof(PlayerBarViewModel.IsCurrentTrackAudioCapable):
                 ApplyListenAsAudioVisibility();
                 break;
@@ -625,14 +531,6 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
-
-    // ── Seek bar bridge ────────────────────────────────────────────────────
-
-    private void ProgressBar_SeekStarted(object sender, EventArgs e)
-        => ViewModel.StartSeeking();
-
-    private void ProgressBar_SeekCommitted(object sender, double positionMs)
-        => ViewModel.CommitSeekFromBar(positionMs);
 
     // ── Auto-fade scrim ────────────────────────────────────────────────────
 
@@ -830,79 +728,8 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         sb.Begin();
 
         // Disable hit-testing on the chrome while invisible so a stray click
-        // doesn't trip an unintended Lyrics/Queue toggle.
+        // does not hit an invisible transport control.
         Scrim.IsHitTestVisible = visible;
-    }
-
-    // ── Dock toggles ───────────────────────────────────────────────────────
-
-    private void LyricsToggleButton_Click(object sender, RoutedEventArgs e)
-    {
-        var next = _dockMode == ExpandedPlayerContentMode.Lyrics
-            ? ExpandedPlayerContentMode.None
-            : ExpandedPlayerContentMode.Lyrics;
-        ApplyDockMode(next, animate: true);
-    }
-
-    private void QueueToggleButton_Click(object sender, RoutedEventArgs e)
-    {
-        var next = _dockMode == ExpandedPlayerContentMode.Queue
-            ? ExpandedPlayerContentMode.None
-            : ExpandedPlayerContentMode.Queue;
-        ApplyDockMode(next, animate: true);
-    }
-
-    private void ApplyDockMode(ExpandedPlayerContentMode mode, bool animate)
-    {
-        _dockMode = mode;
-
-        var isOpen = mode != ExpandedPlayerContentMode.None;
-        LyricsToggleButton.IsChecked = mode == ExpandedPlayerContentMode.Lyrics;
-        QueueToggleButton.IsChecked = mode == ExpandedPlayerContentMode.Queue;
-
-        DockPanel.IsOpen = isOpen;
-        if (isOpen)
-        {
-            DockPanel.SelectedMode = mode == ExpandedPlayerContentMode.Lyrics
-                ? RightPanelMode.Lyrics
-                : RightPanelMode.Queue;
-        }
-
-        var targetWidth = isOpen ? ComputeDockTargetWidth() : 0;
-        AnimateDockWidth(targetWidth, animate);
-    }
-
-    private double ComputeDockTargetWidth()
-    {
-        var available = ActualWidth > 0 ? ActualWidth : 1200;
-        var target = available * DockTargetFraction;
-        return Math.Clamp(target, DockMinWidth, DockMaxWidth);
-    }
-
-    private void AnimateDockWidth(double target, bool animate)
-    {
-        _dockWidthStoryboard?.Stop();
-
-        if (!animate)
-        {
-            DockHost.Width = target;
-            return;
-        }
-
-        var sb = new Storyboard();
-        var anim = new DoubleAnimation
-        {
-            From = DockHost.Width,
-            To = target,
-            Duration = TimeSpan.FromMilliseconds(DockAnimDurationMs),
-            EnableDependentAnimation = true,
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
-        Storyboard.SetTarget(anim, DockHost);
-        Storyboard.SetTargetProperty(anim, "Width");
-        sb.Children.Add(anim);
-        _dockWidthStoryboard = sb;
-        sb.Begin();
     }
 
     // ── Fullscreen toggle ──────────────────────────────────────────────────
@@ -913,74 +740,16 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
     // subscribe to AppWindow.Changed so user-initiated transitions
     // (F11 / Esc / system) keep the toggle's IsChecked in sync.
 
-    private void FullscreenToggleButton_Click(object sender, RoutedEventArgs e)
-    {
-        // Route through the presentation service so ShellPage's chrome
-        // visibility bindings and MainWindow's presenter swap stay in sync.
-        // (Direct AppWindow.SetPresenter from here would flip the OS-level
-        // fullscreen but leave the service stuck in Theatre, so the chrome
-        // wouldn't restore on exit.)
-        var presentation = Ioc.Default.GetService<INowPlayingPresentationService>();
-        if (presentation is not null)
-        {
-            presentation.ToggleFullscreen();
-            return;
-        }
-
-        // Fallback for the rare case the service wasn't registered (tests).
-        var appWindow = MainWindow.Instance?.AppWindow;
-        if (appWindow is null) return;
-
-        var isFullscreen = appWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen;
-        appWindow.SetPresenter(isFullscreen
-            ? AppWindowPresenterKind.Overlapped
-            : AppWindowPresenterKind.FullScreen);
-    }
+    // Fullscreen / Theatre / shuffle / repeat visuals moved into the shared
+    // VideoTransportBar UserControl. The page subscribes to AppWindow
+    // changes only for cursor-restoration timing now; the bar handles its
+    // own glyph swaps via INowPlayingPresentationService.
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
-        if (args.DidPresenterChange)
-            DispatcherQueue?.TryEnqueue(SyncExpandPresentation);
-    }
-
-    /// <summary>
-    /// Sync the expand-player DropDownButton's glyph and the Theatre /
-    /// Fullscreen menu-item check states with the current presentation. Glyph
-    /// swaps between FullScreen (enter affordance) and BackToWindow (exit
-    /// affordance) so the bottom-right of the scrim communicates the active
-    /// state without the user having to open the flyout.
-    /// </summary>
-    private void SyncExpandPresentation()
-    {
-        var presentation = _presentationService?.Presentation ?? NowPlayingPresentation.Normal;
-        var inTheatre = presentation == NowPlayingPresentation.Theatre;
-        var inFullscreen = presentation == NowPlayingPresentation.Fullscreen;
-
-        TheatreMenuItem.IsChecked = inTheatre;
-        FullscreenMenuItem.IsChecked = inFullscreen;
-
-        // The outer glyph signals "you can exit the current expanded view" in
-        // Theatre / Fullscreen, "you can enter an expanded view" in Normal.
-        ExpandPlayerGlyph.Glyph = (inTheatre || inFullscreen)
-            ? FluentGlyphs.BackToWindow
-            : FluentGlyphs.FullScreen;
-    }
-
-    // ── Shuffle / repeat visual state ─────────────────────────────────────
-
-    private void ApplyShuffleRepeatVisuals()
-    {
-        // Active = bright white. Idle = ~70% white. We don't swap the
-        // repeat glyph for repeat-one yet — the active state is a useful
-        // first-pass signal; a dedicated repeat-one glyph (E8ED) is a
-        // small follow-up if the user wants it.
-        var activeBrush = new SolidColorBrush(Microsoft.UI.Colors.White);
-        var idleBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0xB8, 0xFF, 0xFF, 0xFF));
-
-        ShuffleGlyph.Foreground = ViewModel.IsShuffle ? activeBrush : idleBrush;
-        RepeatGlyph.Foreground = ViewModel.RepeatMode == RepeatMode.Off
-            ? idleBrush
-            : activeBrush;
+        // No-op for chrome sync (VideoTransportBar owns that) — kept as the
+        // subscription hook in case future AppWindow state changes need to
+        // drive the cursor / scrim behavior.
     }
 
     private void ApplyListenAsAudioVisibility()
@@ -988,6 +757,100 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         ListenAsAudioButton.Visibility = ViewModel.IsCurrentTrackAudioCapable
             ? Visibility.Visible
             : Visibility.Collapsed;
+    }
+
+    private void TrackTitle_Click(object sender, RoutedEventArgs e)
+        => NavigateToCurrentTitleTarget();
+
+    private void ArtistLine_Click(object sender, RoutedEventArgs e)
+        => NavigateToCurrentSubtitleTarget();
+
+    private void NavigateToCurrentTitleTarget()
+    {
+        if (PodcastPlaybackNavigation.TryOpenCurrentEpisode(
+                _playbackStateService,
+                ViewModel.TrackTitle,
+                ViewModel.AlbumArtLarge ?? ViewModel.AlbumArt,
+                ViewModel.ArtistName,
+                ViewModel.AlbumArtLarge ?? ViewModel.AlbumArt))
+        {
+            return;
+        }
+
+        if (TryOpenLocalContentTarget())
+            return;
+
+        var albumId = ViewModel.CurrentAlbumId;
+        if (string.IsNullOrWhiteSpace(albumId)) return;
+
+        var param = new ContentNavigationParameter
+        {
+            Uri = albumId,
+            Title = ViewModel.TrackTitle ?? "Album",
+            ImageUrl = ViewModel.AlbumArt
+        };
+
+        if (albumId.StartsWith("spotify:show:", StringComparison.Ordinal))
+        {
+            NavigationHelpers.OpenShowPage(albumId, param.Title);
+            return;
+        }
+
+        NavigationHelpers.OpenAlbum(param, param.Title);
+    }
+
+    private void NavigateToCurrentSubtitleTarget()
+    {
+        if (TryOpenLocalContentTarget())
+            return;
+
+        var artistUri = ViewModel.CurrentArtistId;
+        var artistName = ViewModel.ArtistName;
+
+        if (ViewModel.CurrentArtists is { Count: > 0 } artists)
+        {
+            foreach (var artist in artists)
+            {
+                if (string.IsNullOrWhiteSpace(artist.Uri)) continue;
+                artistUri = artist.Uri;
+                artistName = string.IsNullOrWhiteSpace(artist.Name) ? artistName : artist.Name;
+                break;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(artistUri)) return;
+
+        var param = new ContentNavigationParameter
+        {
+            Uri = artistUri,
+            Title = string.IsNullOrWhiteSpace(artistName) ? "Artist" : artistName
+        };
+        NavigationHelpers.OpenArtist(param, param.Title);
+    }
+
+    private bool TryOpenLocalContentTarget()
+    {
+        if (_playbackStateService is null) return false;
+
+        switch (_playbackStateService.CurrentLocalContentKind)
+        {
+            case Wavee.Local.Classification.LocalContentKind.TvEpisode
+                when !string.IsNullOrWhiteSpace(_playbackStateService.CurrentLocalSeriesId):
+                NavigationHelpers.OpenLocalShowDetail(
+                    _playbackStateService.CurrentLocalSeriesId!,
+                    _playbackStateService.CurrentLocalSeriesName ?? ViewModel.ArtistName);
+                return true;
+
+            case Wavee.Local.Classification.LocalContentKind.Movie
+                when !string.IsNullOrWhiteSpace(_playbackStateService.CurrentTrackId):
+                NavigationHelpers.OpenLocalMovieDetail(
+                    _playbackStateService.CurrentTrackId!,
+                    ViewModel.TrackTitle);
+                return true;
+
+            default:
+                return false;
+        }
     }
 
     // ── Heart wiring (mirrors PlayerBar.xaml.cs) ──────────────────────────
@@ -1032,144 +895,8 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         HeartButtonCtrl.IsLiked = !isLiked;
     }
 
-    // ── Track menu (audio / video / subtitle) ─────────────────────────────
-    //
-    // The MediaPlaybackItem driving the video exposes AudioTracks /
-    // VideoTracks / TimedMetadataTracks collections. We rebuild the flyout on
-    // each open so a re-buffer or a dropped subtitle file shows up
-    // immediately. Empty sections are hidden — a single-audio file just has
-    // a "Subtitles" submenu, etc.
-
-    private void TracksFlyout_Opening(object sender, object e)
-    {
-        if (sender is not MenuFlyout flyout) return;
-        flyout.Items.Clear();
-
-        var local = Ioc.Default.GetService<LocalMediaPlayer>();
-        var item = local?.CurrentPlaybackItem;
-        if (item is null)
-        {
-            flyout.Items.Add(new MenuFlyoutItem
-            {
-                Text = "No tracks available",
-                IsEnabled = false,
-            });
-            return;
-        }
-
-        var audioCount = SafeCount(() => item.AudioTracks.Count);
-        if (audioCount > 1)
-        {
-            var audio = new MenuFlyoutSubItem { Text = "Audio" };
-            for (int i = 0; i < audioCount; i++)
-            {
-                var idx = i;
-                var t = item.AudioTracks[i];
-                var label = !string.IsNullOrWhiteSpace(t.Label) ? t.Label
-                          : !string.IsNullOrWhiteSpace(t.Language) ? t.Language
-                          : $"Track {i + 1}";
-                var entry = new ToggleMenuFlyoutItem
-                {
-                    Text = label,
-                    IsChecked = item.AudioTracks.SelectedIndex == i,
-                };
-                entry.Click += (_, _) => item.AudioTracks.SelectedIndex = idx;
-                audio.Items.Add(entry);
-            }
-            flyout.Items.Add(audio);
-        }
-
-        var videoCount = SafeCount(() => item.VideoTracks.Count);
-        if (videoCount > 1)
-        {
-            var video = new MenuFlyoutSubItem { Text = "Video / Quality" };
-            for (int i = 0; i < videoCount; i++)
-            {
-                var idx = i;
-                var t = item.VideoTracks[i];
-                var label = !string.IsNullOrWhiteSpace(t.Label) ? t.Label
-                          : !string.IsNullOrWhiteSpace(t.Language) ? t.Language
-                          : $"Track {i + 1}";
-                var entry = new ToggleMenuFlyoutItem
-                {
-                    Text = label,
-                    IsChecked = item.VideoTracks.SelectedIndex == i,
-                };
-                entry.Click += (_, _) => item.VideoTracks.SelectedIndex = idx;
-                video.Items.Add(entry);
-            }
-            flyout.Items.Add(video);
-        }
-
-        // Subtitles — always show, even with zero tracks ("Off" is the only
-        // entry then). Drag-drop hint also sits at the bottom of the menu.
-        var subs = new MenuFlyoutSubItem { Text = "Subtitles" };
-        var off = new ToggleMenuFlyoutItem
-        {
-            Text = "Off",
-            IsChecked = !AnySubtitleSelected(item),
-        };
-        off.Click += (_, _) =>
-        {
-            for (uint k = 0; k < item.TimedMetadataTracks.Count; k++)
-                item.TimedMetadataTracks.SetPresentationMode(k, TimedMetadataTrackPresentationMode.Disabled);
-        };
-        subs.Items.Add(off);
-
-        var subCount = SafeCount(() => item.TimedMetadataTracks.Count);
-        for (int i = 0; i < subCount; i++)
-        {
-            var idx = (uint)i;
-            var t = item.TimedMetadataTracks[i];
-            var label = !string.IsNullOrWhiteSpace(t.Label) ? t.Label
-                      : !string.IsNullOrWhiteSpace(t.Language) ? t.Language
-                      : $"Subtitle {i + 1}";
-            var entry = new ToggleMenuFlyoutItem
-            {
-                Text = label,
-                IsChecked = item.TimedMetadataTracks.GetPresentationMode(idx)
-                    is TimedMetadataTrackPresentationMode.PlatformPresented
-                    or TimedMetadataTrackPresentationMode.ApplicationPresented,
-            };
-            entry.Click += (_, _) =>
-            {
-                for (uint k = 0; k < item.TimedMetadataTracks.Count; k++)
-                {
-                    item.TimedMetadataTracks.SetPresentationMode(k,
-                        k == idx
-                            ? TimedMetadataTrackPresentationMode.PlatformPresented
-                            : TimedMetadataTrackPresentationMode.Disabled);
-                }
-            };
-            subs.Items.Add(entry);
-        }
-
-        subs.Items.Add(new MenuFlyoutSeparator());
-        var hint = new MenuFlyoutItem
-        {
-            Text = "Drop a .srt / .vtt / .ass file on the player to add a subtitle",
-            IsEnabled = false,
-        };
-        subs.Items.Add(hint);
-        flyout.Items.Add(subs);
-    }
-
-    private static bool AnySubtitleSelected(MediaPlaybackItem item)
-    {
-        for (uint i = 0; i < item.TimedMetadataTracks.Count; i++)
-        {
-            var mode = item.TimedMetadataTracks.GetPresentationMode(i);
-            if (mode is TimedMetadataTrackPresentationMode.PlatformPresented
-                or TimedMetadataTrackPresentationMode.ApplicationPresented)
-                return true;
-        }
-        return false;
-    }
-
-    private static int SafeCount(Func<int> read)
-    {
-        try { return read(); } catch { return 0; }
-    }
+    // Track menu (audio / video / subtitle) moved into VideoTransportBar
+    // alongside the rest of the YouTube-style transport.
 
     // ── Subtitle drag-drop ────────────────────────────────────────────────
 

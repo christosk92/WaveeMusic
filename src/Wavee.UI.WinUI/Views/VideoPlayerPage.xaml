@@ -6,7 +6,6 @@
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
-    xmlns:rightpanel="using:Wavee.UI.WinUI.Controls.RightPanel"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     NavigationCacheMode="Disabled"
@@ -30,19 +29,13 @@
         custom button templates: the default Fluent SubtleFillColor* tokens
         already render correctly under a forced-dark theme.
 
-        Layout (mirrors docs/design/now-playing-video/index.html):
-          ┌─────────────────────────────────────────────┬─────────────┐
-          │ video frame (full-bleed, Stretch=Uniform)    │ dock        │
-          │ ░ top gradient + quick actions (heart, audio)│  Lyrics or  │
-          │                                              │  Queue,     │
-          │ ░ bottom gradient + meta + seek + transport  │  toggleable │
-          └─────────────────────────────────────────────┴─────────────┘
+        Layout:
+          full-bleed video frame (Stretch=Uniform)
+          top gradient + quick actions (heart, audio)
+          bottom gradient + meta + seek + transport
 
-        The right dock is a single RightPanelView whose SelectedMode flips
-        between Lyrics and Queue from the dock-toggle buttons in the
-        bottom-right transport cluster. DockHost.Width animates between 0
-        and a viewport-relative target so the video column reflows
-        responsibly when the dock opens.
+        Queue, lyrics, and details remain owned by the shell right panel.
+        The video page intentionally does not host an inline right dock.
     -->
     <Grid x:Name="StageGrid"
           Background="Black"
@@ -51,14 +44,8 @@
           DragOver="StageGrid_DragOver"
           DragLeave="StageGrid_DragLeave"
           Drop="StageGrid_Drop">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-        </Grid.ColumnDefinitions>
-
         <!-- ============== VIDEO COLUMN ============== -->
         <Grid x:Name="VideoColumn"
-              Grid.Column="0"
               Background="Black">
 
             <!--
@@ -182,265 +169,48 @@
                             Margin="56,0,56,32">
 
                     <StackPanel Spacing="4">
-                        <TextBlock x:Name="TrackTitleText"
-                                   Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
-                                   FontSize="32"
-                                   FontWeight="SemiBold"
-                                   Foreground="White"
-                                   MaxLines="2"
-                                   TextTrimming="CharacterEllipsis"
-                                   TextWrapping="Wrap" />
-                        <TextBlock x:Name="ArtistText"
-                                   Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
-                                   FontSize="15"
-                                   Foreground="#B8FFFFFF"
-                                   MaxLines="1"
-                                   TextTrimming="CharacterEllipsis" />
+                        <HyperlinkButton Padding="0"
+                                         MinWidth="0"
+                                         MinHeight="0"
+                                         HorizontalAlignment="Left"
+                                         HorizontalContentAlignment="Left"
+                                         Foreground="White"
+                                         Click="TrackTitle_Click"
+                                         ToolTipService.ToolTip="Open details">
+                            <TextBlock x:Name="TrackTitleText"
+                                       Text="{x:Bind ViewModel.TrackTitle, Mode=OneWay}"
+                                       FontSize="32"
+                                       FontWeight="SemiBold"
+                                       Foreground="White"
+                                       MaxLines="2"
+                                       TextTrimming="CharacterEllipsis"
+                                       TextWrapping="Wrap" />
+                        </HyperlinkButton>
+                        <HyperlinkButton Padding="0"
+                                         MinWidth="0"
+                                         MinHeight="0"
+                                         HorizontalAlignment="Left"
+                                         HorizontalContentAlignment="Left"
+                                         Foreground="#B8FFFFFF"
+                                         Click="ArtistLine_Click"
+                                         ToolTipService.ToolTip="Open details">
+                            <TextBlock x:Name="ArtistText"
+                                       Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
+                                       FontSize="15"
+                                       Foreground="#B8FFFFFF"
+                                       MaxLines="1"
+                                       TextTrimming="CharacterEllipsis" />
+                        </HyperlinkButton>
                     </StackPanel>
 
-                    <!-- Seek bar. CompositionProgressBar already drives the
-                         player bar / sidebar — same DPs and SeekStarted /
-                         SeekCommitted events so we plug into the same flow. -->
-                    <playback:CompositionProgressBar x:Name="ProgressBar"
-                                                     Height="22"
-                                                     PositionMs="{x:Bind ViewModel.Position, Mode=OneWay}"
-                                                     DurationMs="{x:Bind ViewModel.Duration, Mode=OneWay}"
-                                                     IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
-                                                     IsBuffering="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
-                                                     SeekStarted="ProgressBar_SeekStarted"
-                                                     SeekCommitted="ProgressBar_SeekCommitted" />
-
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Left cluster: shuffle / prev / big-play / next / repeat -->
-                        <StackPanel Grid.Column="0"
-                                    Orientation="Horizontal"
-                                    Spacing="14"
-                                    VerticalAlignment="Center">
-                            <Button x:Name="ShuffleButton"
-                                    Width="40" Height="40" Padding="0"
-                                    CornerRadius="20"
-                                    BorderThickness="0"
-                                    Background="Transparent"
-                                    Command="{x:Bind ViewModel.ToggleShuffleCommand}"
-                                    ToolTipService.ToolTip="Shuffle">
-                                <FontIcon x:Name="ShuffleGlyph"
-                                          Glyph="&#xE8B1;" FontSize="16" />
-                            </Button>
-                            <Button x:Name="PrevButton"
-                                    Width="40" Height="40" Padding="0"
-                                    CornerRadius="20"
-                                    BorderThickness="0"
-                                    Background="Transparent"
-                                    Command="{x:Bind ViewModel.PreviousCommand}"
-                                    ToolTipService.ToolTip="Previous">
-                                <FontIcon Glyph="&#xE892;" FontSize="18" />
-                            </Button>
-                            <!-- −30s skip — sits between the prev-track button
-                                 and the big play/pause so the user can rewind
-                                 a scene without leaving the current episode.
-                                 Glyph is "RewindEighteen" but at 30s here. -->
-                            <Button x:Name="SkipBack30Button"
-                                    Width="40" Height="40" Padding="0"
-                                    CornerRadius="20"
-                                    BorderThickness="0"
-                                    Background="Transparent"
-                                    Command="{x:Bind ViewModel.SkipBack30Command}"
-                                    ToolTipService.ToolTip="Back 30 seconds (Shift+←)">
-                                <Grid>
-                                    <FontIcon Glyph="&#xEB9E;" FontSize="20" />
-                                    <TextBlock Text="30"
-                                               FontSize="9"
-                                               FontWeight="SemiBold"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"
-                                               Margin="0,2,0,0"
-                                               IsHitTestVisible="False" />
-                                </Grid>
-                            </Button>
-                            <Button x:Name="PlayPauseButton"
-                                    Width="56" Height="56"
-                                    Padding="0"
-                                    Background="White"
-                                    Foreground="Black"
-                                    CornerRadius="28"
-                                    BorderThickness="0"
-                                    Command="{x:Bind ViewModel.PlayPauseCommand}"
-                                    ToolTipService.ToolTip="Play / pause">
-                                <playback:PlaybackActionContent x:Name="PlayPauseGlyph"
-                                                                IconSize="22"
-                                                                SpinnerSize="24"
-                                                                IdleGlyph="&#xE768;"
-                                                                ActiveGlyph="&#xE769;"
-                                                                ActionForeground="Black"
-                                                                IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
-                                                                IsPending="{x:Bind ViewModel.IsBuffering, Mode=OneWay}" />
-                            </Button>
-                            <!-- +30s skip — paired with the back-30s, sits
-                                 between play/pause and the next-track button. -->
-                            <Button x:Name="SkipForward30Button"
-                                    Width="40" Height="40" Padding="0"
-                                    CornerRadius="20"
-                                    BorderThickness="0"
-                                    Background="Transparent"
-                                    Command="{x:Bind ViewModel.SkipForward30Command}"
-                                    ToolTipService.ToolTip="Forward 30 seconds (Shift+→)">
-                                <Grid>
-                                    <FontIcon Glyph="&#xEC57;" FontSize="20" />
-                                    <TextBlock Text="30"
-                                               FontSize="9"
-                                               FontWeight="SemiBold"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"
-                                               Margin="0,2,0,0"
-                                               IsHitTestVisible="False" />
-                                </Grid>
-                            </Button>
-                            <Button x:Name="NextButton"
-                                    Width="40" Height="40" Padding="0"
-                                    CornerRadius="20"
-                                    BorderThickness="0"
-                                    Background="Transparent"
-                                    Command="{x:Bind ViewModel.NextCommand}"
-                                    ToolTipService.ToolTip="Next">
-                                <FontIcon Glyph="&#xE893;" FontSize="18" />
-                            </Button>
-                            <Button x:Name="RepeatButton"
-                                    Width="40" Height="40" Padding="0"
-                                    CornerRadius="20"
-                                    BorderThickness="0"
-                                    Background="Transparent"
-                                    Command="{x:Bind ViewModel.ToggleRepeatCommand}"
-                                    ToolTipService.ToolTip="Repeat">
-                                <FontIcon x:Name="RepeatGlyph"
-                                          Glyph="&#xE8EE;" FontSize="16" />
-                            </Button>
-                        </StackPanel>
-
-                        <!-- Right cluster: dock toggles (lyrics / queue) -->
-                        <StackPanel Grid.Column="2"
-                                    Orientation="Horizontal"
-                                    Spacing="8"
-                                    VerticalAlignment="Center">
-                            <ToggleButton x:Name="LyricsToggleButton"
-                                          Height="36"
-                                          MinWidth="36"
-                                          Padding="10,0"
-                                          CornerRadius="10"
-                                          BorderThickness="0"
-                                          Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                          ToolTipService.ToolTip="Lyrics"
-                                          Click="LyricsToggleButton_Click">
-                                <StackPanel Orientation="Horizontal"
-                                            Spacing="6"
-                                            VerticalAlignment="Center">
-                                    <FontIcon Glyph="&#xED1E;" FontSize="14" />
-                                    <TextBlock x:Name="LyricsToggleLabel"
-                                               Text="Lyrics"
-                                               FontSize="12" />
-                                </StackPanel>
-                            </ToggleButton>
-                            <ToggleButton x:Name="QueueToggleButton"
-                                          Height="36"
-                                          MinWidth="36"
-                                          Padding="10,0"
-                                          CornerRadius="10"
-                                          BorderThickness="0"
-                                          ToolTipService.ToolTip="Queue"
-                                          Click="QueueToggleButton_Click">
-                                <StackPanel Orientation="Horizontal"
-                                            Spacing="6"
-                                            VerticalAlignment="Center">
-                                    <FontIcon Glyph="&#xE142;" FontSize="14" />
-                                    <TextBlock x:Name="QueueToggleLabel"
-                                               Text="Queue"
-                                               FontSize="12" />
-                                </StackPanel>
-                            </ToggleButton>
-                            <!-- Track menu — audio / video quality / subtitle.
-                                 A single button is leaner than three; users
-                                 know to look for a gear / "more" affordance.
-                                 The flyout's items are rebuilt in code-behind
-                                 from MediaPlaybackItem track collections on
-                                 each open so a re-buffer or external subtitle
-                                 drop reflects immediately. -->
-                            <Button x:Name="TracksButton"
-                                    Height="36"
-                                    MinWidth="36"
-                                    Width="36"
-                                    Padding="0"
-                                    CornerRadius="10"
-                                    BorderThickness="0"
-                                    ToolTipService.ToolTip="Audio · Video · Subtitles">
-                                <FontIcon Glyph="&#xE713;" FontSize="14" />
-                                <Button.Flyout>
-                                    <MenuFlyout x:Name="TracksFlyout" Placement="TopEdgeAlignedRight"
-                                                Opening="TracksFlyout_Opening" />
-                                </Button.Flyout>
-                            </Button>
-                            <!-- Expand-player DropDownButton. Matches the bottom
-                                 PlayerBar's pattern — one button with a flyout —
-                                 plus a "Mini player" option that exits the
-                                 cinematic page so the floating PiP takes over.
-                                 Glyph swaps via SyncExpandGlyph based on the
-                                 current presentation (square / corner-arrows /
-                                 BackToWindow). -->
-                            <DropDownButton x:Name="ExpandPlayerDropDown"
-                                            Height="36"
-                                            MinWidth="36"
-                                            Width="46"
-                                            Padding="0"
-                                            CornerRadius="10"
-                                            BorderThickness="0"
-                                            Background="Transparent"
-                                            ToolTipService.ToolTip="Expand player">
-                                <FontIcon x:Name="ExpandPlayerGlyph"
-                                          Glyph="&#xE740;" FontSize="14" />
-                                <DropDownButton.Flyout>
-                                    <MenuFlyout Placement="TopEdgeAlignedRight">
-                                        <ToggleMenuFlyoutItem
-                                            x:Name="TheatreMenuItem"
-                                            Text="Theatre mode"
-                                            Click="TheatreToggleButton_Click">
-                                            <ToggleMenuFlyoutItem.Icon>
-                                                <FontIcon Glyph="&#xE73F;" FontSize="14" />
-                                            </ToggleMenuFlyoutItem.Icon>
-                                        </ToggleMenuFlyoutItem>
-                                        <ToggleMenuFlyoutItem
-                                            x:Name="FullscreenMenuItem"
-                                            Text="Fullscreen"
-                                            Click="FullscreenToggleButton_Click"
-                                            KeyboardAcceleratorTextOverride="F11">
-                                            <ToggleMenuFlyoutItem.Icon>
-                                                <FontIcon Glyph="&#xE740;" FontSize="14" />
-                                            </ToggleMenuFlyoutItem.Icon>
-                                        </ToggleMenuFlyoutItem>
-                                        <MenuFlyoutSeparator />
-                                        <MenuFlyoutItem
-                                            Text="Mini player"
-                                            ToolTipService.ToolTip="Hide the cinematic page; video keeps playing in the floating mini-player."
-                                            Click="MiniPlayerMenuItem_Click">
-                                            <MenuFlyoutItem.Icon>
-                                                <FontIcon Glyph="&#xEE49;" FontSize="14" />
-                                            </MenuFlyoutItem.Icon>
-                                        </MenuFlyoutItem>
-                                        <MenuFlyoutItem
-                                            Text="Pop out to window"
-                                            Click="PopOutToWindow_MenuItemClick">
-                                            <MenuFlyoutItem.Icon>
-                                                <FontIcon Glyph="&#xE8A7;" FontSize="14" />
-                                            </MenuFlyoutItem.Icon>
-                                        </MenuFlyoutItem>
-                                    </MenuFlyout>
-                                </DropDownButton.Flyout>
-                            </DropDownButton>
-                        </StackPanel>
-                    </Grid>
+                    <!-- YouTube-style transport: compact icon row + progress
+                         bar above. All transport state, track menu, expand
+                         flyout, and presentation-mode wiring live inside the
+                         reusable VideoTransportBar UserControl so this page
+                         and the popout's ExpandedNowPlayingLayout share one
+                         set of controls. -->
+                    <playback:VideoTransportBar x:Name="TransportBar"
+                                                Surface="Main" />
                 </StackPanel>
             </Grid>
         </Grid>
@@ -449,8 +219,6 @@
              the page (.srt / .vtt / .ass / .ssa / .sub). Spans both columns
              so the user can drop anywhere over the player surface. -->
         <Border x:Name="SubtitleDropOverlay"
-                Grid.Column="0"
-                Grid.ColumnSpan="2"
                 Visibility="Collapsed"
                 Background="#A0000000"
                 IsHitTestVisible="False">
@@ -468,26 +236,6 @@
                            Foreground="#B8FFFFFF"
                            HorizontalAlignment="Center" />
             </StackPanel>
-        </Border>
-
-        <!-- ============== RIGHT DOCK ============== -->
-        <!--
-            Sliding panel for Lyrics / Queue. Width is 0 by default; code-
-            behind animates to a viewport-relative target when the user
-            toggles a dock open. Embedded chrome is transparent so the
-            panel reads as a glass slab over the video.
-        -->
-        <Border x:Name="DockHost"
-                Grid.Column="1"
-                Width="0"
-                Background="#C70C0C0E"
-                BorderBrush="#14FFFFFF"
-                BorderThickness="1,0,0,0">
-            <rightpanel:RightPanelView x:Name="DockPanel"
-                                       IsOpen="False"
-                                       IsTabHeaderVisible="False"
-                                       IsEmbeddedChromeTransparent="True"
-                                       SelectedMode="Lyrics" />
         </Border>
 
     </Grid>

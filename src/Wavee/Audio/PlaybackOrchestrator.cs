@@ -276,6 +276,13 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
                 _queue.SetContext(command.ContextUri!, isInfinite: false, totalTracks: tracks.Count);
                 _queue.SetTracks(tracks, command.SkipToIndex ?? 0);
 
+                // UI-supplied PageTracks for a local context arrive with only Uri/Uid +
+                // forwarded Metadata. Back-fill title / artist / album / poster art from
+                // the local library so the right-panel queue + PutState nextTracks render
+                // correctly. Fire-and-forget — first playback push doesn't wait on it.
+                if (IsLocalPlaybackContext(command.ContextUri))
+                    _ = EnrichLocalQueueTracksAsync(ct);
+
                 // The UI supplies its own page-0 tracks (e.g. an extended top-tracks
                 // view) but doesn't know the next-page URL or total page count. Kick
                 // a background resolve so LoadMoreTracksAsync has somewhere to page
@@ -320,6 +327,10 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
                 var localStart = ContextResolver.FindTrackIndex(
                     localTracks, command.TrackUri, command.TrackUid, command.SkipToIndex);
                 _queue.SkipTo(localStart);
+
+                // Back-fill TMDB-aware display fields for every queue entry so prev/next
+                // tracks render with episode titles and poster art instead of filenames.
+                _ = EnrichLocalQueueTracksAsync(ct);
             }
             else if (hasRealContext)
             {
@@ -367,6 +378,12 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
                 _queue.Clear();
                 _queue.SetContext("spotify:internal:queue", false);
                 _queue.SetTracks(tracks, command.SkipToIndex ?? 0);
+
+                // Same enrichment as the context-bound paths — a queue-only play of
+                // local tracks (e.g. an Add-to-Queue chain from search results) still
+                // needs title / artist / poster art filled in for prev/next surfaces.
+                if (tracks.Any(t => Wavee.Local.LocalUri.IsLocal(t.Uri)))
+                    _ = EnrichLocalQueueTracksAsync(ct);
             }
 
             // Emit NewSessionIdEvent (and flush previous track's TrackTransition)
@@ -1071,6 +1088,64 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             ImageUrl: track.ArtworkUri);
 
     /// <summary>
+    /// Walks every wavee:local:* URI in the queue and back-fills the
+    /// QueueTrack's display title, artist, album, and poster art using
+    /// LocalLibraryService's TMDB-aware enrichment. Without this, the right-
+    /// panel queue renders blank rows (no title / no art) for prev_tracks /
+    /// next_tracks and PutState ships sparse ProvidedTrack metadata to
+    /// remote controllers — only the currently-playing track was enriched
+    /// at play-time (see PlayLocalCurrentTrackAsync).
+    /// Fire-and-forget from PlayAsync's queue-build paths so the synchronous
+    /// "start playback" path isn't blocked on N SQLite lookups; once the
+    /// walk completes, PublishQueueState re-emits state with the enriched
+    /// metadata so PutState picks it up on the next tick.
+    /// </summary>
+    private async Task EnrichLocalQueueTracksAsync(CancellationToken ct)
+    {
+        if (_localLibrary is null) return;
+
+        var uris = _queue.GetContextTrackUris()
+            .Where(Wavee.Local.LocalUri.IsLocal)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (uris.Count == 0) return;
+
+        var enrichedAny = false;
+        foreach (var uri in uris)
+        {
+            if (ct.IsCancellationRequested) return;
+
+            Wavee.Local.LocalPlaybackMetadata? meta;
+            try
+            {
+                meta = await _localLibrary.GetPlaybackMetadataAsync(uri, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Local queue enrichment lookup failed for {Uri}", uri);
+                continue;
+            }
+            if (meta is null) continue;
+
+            var displayTitle = meta.FormatDisplayTitle(filenameFallback: null);
+            var displayArtist = meta.FormatDisplayArtist(rawArtistFallback: null);
+
+            var replaced = _queue.EnrichByUri(uri, existing => existing with
+            {
+                Title = !string.IsNullOrEmpty(existing.Title) ? existing.Title : displayTitle,
+                Artist = !string.IsNullOrEmpty(existing.Artist) ? existing.Artist : (displayArtist ?? existing.Artist),
+                Album = !string.IsNullOrEmpty(existing.Album) ? existing.Album : (meta.RawAlbum ?? existing.Album),
+                ImageUrl = !string.IsNullOrEmpty(existing.ImageUrl) ? existing.ImageUrl : (meta.ArtworkUri ?? existing.ImageUrl),
+            });
+
+            if (replaced > 0) enrichedAny = true;
+        }
+
+        if (enrichedAny)
+            PublishQueueState();
+    }
+
+    /// <summary>
     /// Local-file playback path. Looks up the indexed file path and metadata.
     /// Dispatches to the UI MediaPlayer for video files (so the user sees the
     /// frames) and to AudioHost otherwise (BASS owns the audio pipeline). No
@@ -1151,7 +1226,16 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             _isSpotifyVideoActive = false;
         }
 
-        if (row.IsVideo && _localMediaPlayer is not null)
+        // Routing gate: row.IsVideo is driven by the scanner's file-extension
+        // check only (.mp4/.mov/.m4v/.mkv/.webm). That misses TV episodes /
+        // movies whose container isn't in the set (.avi, .ts, .flv, .wmv, ...),
+        // even when the classifier correctly identified them as video content.
+        // Widen the gate by OR'ing in the effective classification kind from
+        // the enrichment lookup we already performed — zero extra I/O.
+        var kindIsVideo = enriched is not null
+            && Wavee.Local.Classification.LocalContentKindExtensions.IsVideo(enriched.Kind);
+
+        if ((row.IsVideo || kindIsVideo) && _localMediaPlayer is not null)
         {
             // Video → UI MediaPlayer. Stop AudioHost so audio doesn't double up.
             try { await _proxy.StopAsync(ct); }
@@ -1672,7 +1756,12 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             ContextPageCount = _currentContextPageCount,
             IsSystemInitiated = _isSystemInitiated,
             VideoManifestId = _currentVideoManifestId,
-            MediaType = _isSpotifyVideoActive ? "video" : "audio",
+            // Local video playback (via _localMediaPlayer) sets _videoEngineActive=true
+            // but never flips _isSpotifyVideoActive — that flag is reserved for the
+            // PlayReady-protected Spotify music-video path. Both paths need to report
+            // "video" so PutState's track_player field stays accurate for remote
+            // controllers / the web player.
+            MediaType = (_isSpotifyVideoActive || _videoEngineActive) ? "video" : "audio",
         };
         _stateSubject.OnNext(enriched);
 

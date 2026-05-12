@@ -489,6 +489,73 @@ public sealed class PlaybackQueue : IDisposable
     }
 
     /// <summary>
+    /// Returns the URIs of every context track in their current logical
+    /// order. Used by the orchestrator's local-track enrichment pass so it
+    /// can figure out which queue entries need metadata lookups without
+    /// having to expose the entire <see cref="QueueTrack"/> list.
+    /// </summary>
+    public IReadOnlyList<string> GetContextTrackUris()
+    {
+        lock (_lock)
+        {
+            var result = new List<string>(_contextTracks.Count);
+            foreach (var t in _contextTracks)
+                result.Add(t.Uri);
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Replaces every queue entry — across the context, user queue, and
+    /// post-context buckets — whose <c>Uri</c> matches <paramref name="uri"/>,
+    /// applying <paramref name="updater"/> to each match. Used by the
+    /// orchestrator to back-fill <see cref="QueueTrack.Title"/> /
+    /// <see cref="QueueTrack.Artist"/> / <see cref="QueueTrack.ImageUrl"/>
+    /// after a TMDB enrichment lookup completes asynchronously. Identity
+    /// fields (<c>Uid</c>, <c>IsUserQueued</c>, <c>IsPostContext</c>,
+    /// <c>Provider</c>) are preserved because the updater receives the
+    /// existing entry as input.
+    /// </summary>
+    /// <returns>The number of entries replaced.</returns>
+    public int EnrichByUri(string uri, Func<QueueTrack, QueueTrack> updater)
+    {
+        if (string.IsNullOrEmpty(uri) || updater is null) return 0;
+
+        var count = 0;
+        lock (_lock)
+        {
+            for (var i = 0; i < _contextTracks.Count; i++)
+            {
+                if (string.Equals(_contextTracks[i].Uri, uri, StringComparison.Ordinal))
+                {
+                    _contextTracks[i] = updater(_contextTracks[i]);
+                    count++;
+                }
+            }
+            for (var i = 0; i < _userQueue.Count; i++)
+            {
+                if (string.Equals(_userQueue[i].Uri, uri, StringComparison.Ordinal))
+                {
+                    _userQueue[i] = updater(_userQueue[i]);
+                    count++;
+                }
+            }
+            for (var i = 0; i < _postContextQueue.Count; i++)
+            {
+                if (string.Equals(_postContextQueue[i].Uri, uri, StringComparison.Ordinal))
+                {
+                    _postContextQueue[i] = updater(_postContextQueue[i]);
+                    count++;
+                }
+            }
+        }
+
+        if (count > 0)
+            NotifyStateChanged();
+        return count;
+    }
+
+    /// <summary>
     /// Replaces the current context track in-place without changing queue
     /// position. Used when a Spotify video queue entry is converted back to
     /// its associated audio track.
