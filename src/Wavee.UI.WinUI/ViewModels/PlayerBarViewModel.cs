@@ -21,6 +21,7 @@ using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Services.Docking;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -692,7 +693,13 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             case nameof(IPlaybackStateService.CurrentTrackIsVideo):
                 OnPropertyChanged(nameof(IsCurrentTrackVideoCapable));
                 OnPropertyChanged(nameof(IsCurrentTrackAudioCapable));
+                OnPropertyChanged(nameof(IsVideoContent));
+                OnPropertyChanged(nameof(IsMusicOnlyContent));
                 TryAutoSwitchToVideo(e.PropertyName);
+                break;
+            case nameof(IPlaybackStateService.CurrentLocalContentKind):
+                OnPropertyChanged(nameof(IsVideoContent));
+                OnPropertyChanged(nameof(IsMusicOnlyContent));
                 break;
             case nameof(IPlaybackStateService.CurrentAlbumArtColor):
                 AlbumArtColor = _playbackStateService.CurrentAlbumArtColor;
@@ -964,6 +971,35 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         MaybeSavePodcastEpisodeProgress(force: true);
     }
 
+    // Video-content skip — 30 s steps, matching the VideoPlayerPage scrim
+    // buttons and Shift+Arrow accelerators. The 15 s variants above are for
+    // podcasts where smaller jumps feel right.
+
+    [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
+    private void SkipBack30()
+        => SeekByMilliseconds(-30_000);
+
+    [RelayCommand(CanExecute = nameof(CanExecutePlayback))]
+    private void SkipForward30()
+        => SeekByMilliseconds(30_000);
+
+    /// <summary>
+    /// Seek by a relative offset. Public so VideoPlayerPage can wire arrow
+    /// keys to small jumps (5 s) and Shift+Arrow to larger ones (30 s)
+    /// without each call site reimplementing the clamp + position-anchor
+    /// logic.
+    /// </summary>
+    public void SeekByMilliseconds(double offsetMs)
+    {
+        if (!CanExecutePlayback) return;
+        var target = Math.Clamp(Position + offsetMs, 0, Math.Max(0, Duration));
+        _logger?.LogInformation("[PlayerBar] SeekByMilliseconds({Offset}ms): {From}ms → {To}ms",
+            (long)offsetMs, (long)Position, (long)target);
+        ApplyPlaybackPosition(target, updateProgressBar: true, resetInterpolationClock: true);
+        _playbackStateService.Seek(target);
+        MaybeSavePodcastEpisodeProgress(force: true);
+    }
+
     [RelayCommand]
     private void ResumePodcastEpisode()
     {
@@ -1100,6 +1136,45 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     public bool IsCurrentTrackAudioCapable =>
         !_playbackStateService.IsPlayingRemotely
         && _playbackStateService.CurrentTrackIsVideo;
+
+    /// <summary>
+    /// True when the current item is video (Spotify music video, a
+    /// TMDB-enriched local TV episode or movie, or any local music-video).
+    /// Drives the visibility of music-only chrome (Lyrics / Friends Activity /
+    /// Details) — those collapse for video content because they're irrelevant.
+    /// </summary>
+    public bool IsVideoContent
+    {
+        get
+        {
+            if (_playbackStateService.CurrentTrackIsVideo)
+                return true;
+
+            var kind = _playbackStateService.CurrentLocalContentKind;
+            return kind is Wavee.Local.Classification.LocalContentKind.TvEpisode
+                or Wavee.Local.Classification.LocalContentKind.Movie
+                or Wavee.Local.Classification.LocalContentKind.MusicVideo;
+        }
+    }
+
+    /// <summary>
+    /// Inverse of <see cref="IsVideoContent"/> — bound from XAML for music-only
+    /// controls. Keeps XAML free of converter clutter.
+    /// </summary>
+    public bool IsMusicOnlyContent => !IsVideoContent;
+
+    private INowPlayingPresentationService? PresentationService =>
+        CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<INowPlayingPresentationService>();
+
+    [RelayCommand]
+    private void EnterTheatre() => PresentationService?.ToggleTheatre();
+
+    [RelayCommand]
+    private void EnterFullscreen() => PresentationService?.ToggleFullscreen();
+
+    [RelayCommand]
+    private void ExitExpandedPresentation() => PresentationService?.ExitToNormal();
 
     [ObservableProperty]
     private bool _preferVideoPlaybackInSession;
@@ -1310,6 +1385,28 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
     private void NavigateToArtist(object? parameter)
     {
+        // Local-content branch — for a TMDB-enriched TV episode the "artist"
+        // label IS the series name (see PlaybackOrchestrator.cs where
+        // FormatDisplayArtist returns SeriesName for episodes). Clicking
+        // that label should go to the show detail page, not to a Spotify
+        // artist URI that doesn't exist for local content. Movies mirror
+        // the title-click route — the movie detail page.
+        switch (_playbackStateService.CurrentLocalContentKind)
+        {
+            case Wavee.Local.Classification.LocalContentKind.TvEpisode
+                when !string.IsNullOrEmpty(_playbackStateService.CurrentLocalSeriesId):
+                NavigationHelpers.OpenLocalShowDetail(
+                    _playbackStateService.CurrentLocalSeriesId!,
+                    _playbackStateService.CurrentLocalSeriesName);
+                return;
+            case Wavee.Local.Classification.LocalContentKind.Movie
+                when !string.IsNullOrEmpty(_playbackStateService.CurrentTrackId):
+                NavigationHelpers.OpenLocalMovieDetail(
+                    _playbackStateService.CurrentTrackId!,
+                    TrackTitle);
+                return;
+        }
+
         switch (parameter)
         {
             case ContentNavigationParameter nav when !string.IsNullOrWhiteSpace(nav.Uri):

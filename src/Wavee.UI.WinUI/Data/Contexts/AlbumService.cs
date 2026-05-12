@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.Core.Storage.Abstractions;
+using Wavee.Local;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 
@@ -26,6 +27,7 @@ public sealed class AlbumService : IAlbumService
 {
     private readonly IPathfinderClient _pathfinder;
     private readonly IMetadataDatabase _db;
+    private readonly ILocalLibraryService? _localLibrary;
     private readonly ILogger? _logger;
 
     // Bounded LRU of resolved album track lists. Unbounded growth used to leak memory as
@@ -37,17 +39,34 @@ public sealed class AlbumService : IAlbumService
     public AlbumService(
         IPathfinderClient pathfinder,
         IMetadataDatabase db,
+        ILocalLibraryService? localLibrary = null,
         ILogger? logger = null,
         int hotCacheCapacity = 50)
     {
         _pathfinder = pathfinder;
         _db = db;
+        _localLibrary = localLibrary;
         _logger = logger;
         _hot = new AlbumTracksLruCache(hotCacheCapacity);
     }
 
     public async Task<List<AlbumTrackDto>> GetTracksAsync(string albumUri, CancellationToken ct = default)
     {
+        // Local-album branch: bypass Pathfinder + SQLite-cache (which only know
+        // Spotify) and resolve through the local library. The result still flows
+        // through the hot LRU so subsequent calls are O(1).
+        if (Wavee.Core.PlayableUri.IsLocalAlbum(albumUri))
+        {
+            if (_hot.TryGetValue(albumUri, out var localCached))
+                return localCached;
+            var detail = _localLibrary is null ? null : await _localLibrary.GetAlbumAsync(albumUri, ct).ConfigureAwait(false);
+            var localDtos = detail is null
+                ? new List<AlbumTrackDto>()
+                : detail.Tracks.Select((t, i) => MapLocalTrackToAlbumTrack(t, i + 1, detail)).ToList();
+            _hot.TryAdd(albumUri, localDtos);
+            return localDtos;
+        }
+
         // 1. Hot cache
         if (_hot.TryGetValue(albumUri, out var cached))
             return cached;
@@ -96,6 +115,21 @@ public sealed class AlbumService : IAlbumService
 
     public async Task<AlbumDetailResult> GetDetailAsync(string albumUri, CancellationToken ct = default)
     {
+        // Local-album branch — synthesize an AlbumDetailResult from
+        // ILocalLibraryService so AlbumStore + AlbumViewModel + AlbumPage all
+        // render the local album identically to a Spotify album. Spotify-only
+        // sections (more by artist / alternate releases / copyrights /
+        // palette) come back as empty defaults and their existing x:Load
+        // bindings collapse them automatically.
+        if (Wavee.Core.PlayableUri.IsLocalAlbum(albumUri))
+        {
+            if (_localLibrary is null)
+                throw new InvalidOperationException("Local library service not registered for local album URI: " + albumUri);
+            var local = await _localLibrary.GetAlbumAsync(albumUri, ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("Local album not found: " + albumUri);
+            return SynthesizeAlbumDetailResult(local);
+        }
+
         var response = await _pathfinder.GetAlbumAsync(albumUri, ct).ConfigureAwait(false);
         var album = response.Data?.AlbumUnion
             ?? throw new InvalidOperationException("Album not found");
@@ -227,6 +261,112 @@ public sealed class AlbumService : IAlbumService
     {
         if (date?.IsoString == null) return DateTimeOffset.MinValue;
         return DateTimeOffset.TryParse(date.IsoString, out var dt) ? dt : DateTimeOffset.MinValue;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Local album → AlbumDetailResult synthesis
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds an <see cref="AlbumDetailResult"/> from a <see cref="LocalAlbumDetail"/>
+    /// so the unified AlbumPage / AlbumViewModel / AlbumStore pipeline renders
+    /// local albums with no source-specific branching. Spotify-only fields come
+    /// back as empty defaults; their XAML bindings collapse the corresponding
+    /// sections.
+    /// </summary>
+    private static AlbumDetailResult SynthesizeAlbumDetailResult(LocalAlbumDetail local)
+    {
+        var year = local.Year ?? 0;
+        var releaseDate = year > 0
+            ? new DateTimeOffset(year, 1, 1, 0, 0, 0, TimeSpan.Zero)
+            : DateTimeOffset.MinValue;
+
+        var albumArtist = !string.IsNullOrWhiteSpace(local.AlbumArtist) ? local.AlbumArtist! : "Unknown Artist";
+        var artists = new List<AlbumArtistResult>
+        {
+            new()
+            {
+                Id = local.ArtistUri,
+                Uri = local.ArtistUri,
+                Name = albumArtist,
+                ImageUrl = null,
+            }
+        };
+
+        var tracks = local.Tracks
+            .Select((t, i) => MapLocalTrackToAlbumTrack(t, i + 1, local))
+            .ToList();
+
+        return new AlbumDetailResult
+        {
+            Name = local.Album,
+            Uri = local.AlbumUri,
+            Type = "album",
+            Label = null,
+            CoverArtUrl = local.ArtworkUri,
+            ColorDarkHex = null,
+            ColorLightHex = null,
+            ColorRawHex = null,
+            ReleaseDate = releaseDate,
+            IsSaved = false,
+            IsPreRelease = false,
+            PreReleaseEndDateTime = null,
+            Copyrights = new List<AlbumCopyrightResult>(),
+            Artists = artists,
+            Tracks = tracks,
+            MoreByArtist = new List<AlbumRelatedResult>(),
+            AlternateReleases = new List<AlbumAlternateReleaseResult>(),
+            TotalTracks = tracks.Count,
+            DiscCount = tracks.Select(t => t.DiscNumber).Distinct().Count(),
+            ShareUrl = null,
+            Palette = null,
+        };
+    }
+
+    /// <summary>
+    /// Maps a single <see cref="LocalTrackRow"/> to an <see cref="AlbumTrackDto"/>.
+    /// <see cref="AlbumTrackDto"/> implements <see cref="ITrackItem"/>; <c>ITrackItem.IsLocal</c>
+    /// auto-derives from the URI prefix so <c>TrackItem</c> renders the "On this PC"
+    /// badge and routes the HeartButton through the local-likes service correctly.
+    /// </summary>
+    private static AlbumTrackDto MapLocalTrackToAlbumTrack(LocalTrackRow t, int index, LocalAlbumDetail album)
+    {
+        var id = Wavee.Core.PlayableUri.ExtractId(t.TrackUri).ToString();
+        if (string.IsNullOrEmpty(id)) id = t.TrackUri;
+
+        var primaryArtist = t.Artist ?? t.AlbumArtist ?? album.AlbumArtist ?? "Unknown Artist";
+        var artistRefs = string.IsNullOrEmpty(t.ArtistUri)
+            ? Array.Empty<TrackArtistRef>()
+            : new[]
+              {
+                  new TrackArtistRef
+                  {
+                      Id = t.ArtistUri!,
+                      Uri = t.ArtistUri!,
+                      Name = primaryArtist,
+                  }
+              };
+
+        return new AlbumTrackDto
+        {
+            Id = id,
+            Uri = t.TrackUri,
+            Title = t.Title ?? System.IO.Path.GetFileNameWithoutExtension(t.FilePath),
+            ArtistName = primaryArtist,
+            ArtistId = t.ArtistUri ?? string.Empty,
+            AlbumName = album.Album,
+            AlbumId = album.AlbumUri,
+            ImageUrl = t.ArtworkUri ?? album.ArtworkUri,
+            Duration = TimeSpan.FromMilliseconds(t.DurationMs),
+            IsExplicit = false,
+            HasCanvas = false,
+            TrackNumber = t.TrackNumber ?? index,
+            DiscNumber = t.DiscNumber ?? 1,
+            IsPlayable = true,
+            OriginalIndex = index,
+            PlayCount = 0,
+            Artists = artistRefs,
+        };
     }
 
     private static AlbumTrackDto ToDto(AlbumTrackResult r, string albumUri = "")

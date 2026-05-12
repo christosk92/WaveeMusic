@@ -60,6 +60,9 @@ A **Spotify Premium** account is required, and the app is intended for personal 
     <td><img src="screenshots/screenshot-6.jpg" alt="Screenshot 6" width="400"></td>
     <td><img src="screenshots/screenshot-7.jpg" alt="Screenshot 7" width="400"></td>
   </tr>
+  <tr>
+    <td colspan="2"><img src="screenshots/screenshot-8.jpg" alt="Screenshot 8" width="820"></td>
+  </tr>
 </table>
 
 ## Quick start

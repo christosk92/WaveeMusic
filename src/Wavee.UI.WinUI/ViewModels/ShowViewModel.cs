@@ -556,7 +556,11 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         // Server flag is the source of truth for whether *this account* follows
         // the show; the local cache catches up on the next library sync. Use it
         // to seed the heart so the page paints accurately on first render.
-        _isFollowing = detail.IsSavedOnServer;
+        // Must go through the property setter (not the backing field) — otherwise
+        // RaiseAndSetIfChanged doesn't fire and the x:Bind to ViewModel.IsFollowing
+        // stays at its default (false → "Follow") even when the server says we're
+        // already subscribed.
+        IsFollowing = detail.IsSavedOnServer;
         RefreshFollowState();
     }
 

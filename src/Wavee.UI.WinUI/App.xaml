@@ -242,6 +242,8 @@
             <converters:ChipForegroundConverter x:Key="ChipForegroundConverter" />
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
             <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True" />
+            <converters:PlaylistLayoutModeBannerVisibilityConverter x:Key="PlaylistLayoutModeBannerVisibilityConverter" />
+            <converters:PlaylistLayoutModeCoverVisibilityConverter x:Key="PlaylistLayoutModeCoverVisibilityConverter" />
             <converters:BoolToFollowTextConverter x:Key="BoolToFollowTextConverter" />
             <converters:BoolToFollowGlyphConverter x:Key="BoolToFollowGlyphConverter" />
             <converters:BoolToHeartGlyphConverter x:Key="BoolToHeartGlyphConverter" />

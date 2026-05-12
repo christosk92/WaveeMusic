@@ -63,6 +63,14 @@
         <Compile Include="..\Wavee.Playback.Contracts\AudioFileCache.cs">
             <Link>Ipc\AudioFileCache.cs</Link>
         </Compile>
+        <!-- LocalFilePathStream lives in Wavee.Local for sharing with the
+             scanner side, but AudioHost source-includes it for the same
+             reason it source-includes IPC contracts: AudioHost has zero
+             project references on Wavee* assemblies. See CLAUDE.md
+             "IPC contract" section. -->
+        <Compile Include="..\Wavee.Local\Playback\LocalFilePathStream.cs">
+            <Link>Audio\Streaming\LocalFilePathStream.cs</Link>
+        </Compile>
     </ItemGroup>
 
     <ItemGroup Condition="Exists('..\Wavee\Core\Audio\PlayPlayConstants.cs')">

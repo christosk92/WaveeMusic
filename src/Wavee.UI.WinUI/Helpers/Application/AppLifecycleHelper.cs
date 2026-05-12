@@ -1,4 +1,5 @@
 using System;
+using Wavee.Audio;
 using System.IO;
 using System.Linq;
 using System.Reactive.Linq;
@@ -442,11 +443,12 @@ public static class AppLifecycleHelper
                     }
                     return svc;
                 })
+                .AddSingleton<Services.INowPlayingPresentationService, Services.NowPlayingPresentationService>()
                 // Windows-shell video frame thumbnail provider for the local
                 // scanner. Registered as IVideoThumbnailExtractor so the
                 // scanner DI in Wavee.Core picks it up without needing a
                 // direct reference to Windows.Storage in the core project.
-                .AddSingleton<Wavee.Core.Library.Local.IVideoThumbnailExtractor>(sp =>
+                .AddSingleton<Wavee.Local.IVideoThumbnailExtractor>(sp =>
                     new Services.WindowsVideoThumbnailExtractor(
                         sp.GetService<ILogger<Services.WindowsVideoThumbnailExtractor>>()))
                 .AddSingleton<IAuthState, AuthStateService>()
@@ -638,7 +640,7 @@ public static class AppLifecycleHelper
                     new Data.Contexts.TrackLikeService(
                         sp.GetRequiredService<IMetadataDatabase>(),
                         sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
-                        sp.GetService<Wavee.Core.Library.Local.ILocalLikeService>(),
+                        sp.GetService<Wavee.Local.ILocalLikeService>(),
                         sp.GetService<ILogger<Data.Contexts.TrackLikeService>>()))
                 .AddSingleton<Wavee.Core.Playlists.IPlaylistCacheService>(sp =>
                     new Wavee.Core.Playlists.PlaylistCacheService(
@@ -685,6 +687,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Wavee.Core.Http.IColorService>(),
                         sp.GetRequiredService<ILocationService>(),
                         sp.GetRequiredService<IMessenger>(),
+                        sp.GetService<Wavee.Local.ILocalLibraryService>(),
                         sp.GetService<ILogger<Data.Contexts.ArtistService>>()))
                 .AddSingleton(sp =>
                     new Data.Stores.ArtistStore(
@@ -704,6 +707,7 @@ public static class AppLifecycleHelper
                     new Data.Contexts.AlbumService(
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
+                        sp.GetService<Wavee.Local.ILocalLibraryService>(),
                         sp.GetService<ILogger<Data.Contexts.AlbumService>>(),
                         cacheCapacities.AlbumTracksHotCacheCapacity))
                 .AddSingleton<IPodcastService>(sp =>
@@ -777,7 +781,7 @@ public static class AppLifecycleHelper
                         sp.GetService<HomeResponseParserFactory>(),
                         sp.GetService<IAuthState>(),
                         sp.GetService<ILogger<HomeViewModel>>(),
-                        sp.GetService<Wavee.Core.Library.Local.ILocalLibraryService>()))
+                        sp.GetService<Wavee.Local.ILocalLibraryService>()))
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()
                 .AddTransient<ShowViewModel>()
@@ -811,7 +815,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetService<ILogger<SearchViewModel>>(),
-                        sp.GetService<Wavee.Core.Library.Local.ILocalLibraryService>(),
+                        sp.GetService<Wavee.Local.ILocalLibraryService>(),
                         sp.GetService<Wavee.UI.WinUI.Data.Contracts.ISearchService>()))
                 .AddTransient<DebugViewModel>()
                 .AddTransient<FeedbackViewModel>(sp =>
@@ -842,12 +846,92 @@ public static class AppLifecycleHelper
                         sp.GetService<LocalFilesViewModel>()))
                 .AddTransient<LocalFilesViewModel>(sp =>
                     new LocalFilesViewModel(
-                        sp.GetRequiredService<Wavee.Core.Library.Local.ILocalLibraryService>(),
+                        sp.GetRequiredService<Wavee.Local.ILocalLibraryService>(),
                         sp.GetService<ILogger<LocalFilesViewModel>>()))
                 .AddTransient<LocalLibraryViewModel>(sp =>
                     new LocalLibraryViewModel(
-                        sp.GetService<Wavee.Core.Library.Local.ILocalLibraryService>(),
+                        sp.GetService<Wavee.Local.ILocalLibraryService>(),
                         sp.GetService<ILogger<LocalLibraryViewModel>>()))
+
+                // Wavee.Local supporting services + UI facade (v17 redesign)
+                .AddSingleton<Wavee.Local.Subtitles.IEmbeddedTrackProber, Services.MediaFoundationEmbeddedTrackProber>()
+                .AddSingleton<Wavee.Local.Groups.LocalGroupService>(sp =>
+                {
+                    var dbPath = System.IO.Path.Combine(AppPaths.AppDataDirectory, "metadata.db");
+                    var cs = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+                    {
+                        DataSource = dbPath,
+                        Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWriteCreate,
+                        Cache = Microsoft.Data.Sqlite.SqliteCacheMode.Shared,
+                    }.ConnectionString;
+                    return new Wavee.Local.Groups.LocalGroupService(cs, sp.GetService<ILogger<Wavee.Local.Groups.LocalGroupService>>());
+                })
+                // Per-user TMDB bearer token, DPAPI-encrypted at rest.
+                // BYO model — every user pastes their own free TMDB token in
+                // Settings. The enrichment service spins its worker up only
+                // when a token is present.
+                .AddSingleton<Wavee.Local.Enrichment.ITmdbTokenStore>(sp =>
+                    new Services.DpapiTmdbTokenStore(
+                        sp.GetService<ILogger<Services.DpapiTmdbTokenStore>>()))
+                // Spotify search wrapper — feeds the music-enrichment path
+                // (Continuation 6: dropped MusicBrainz in favour of Spotify
+                // because we're already authenticated + their catalog wins).
+                .AddSingleton<Wavee.Local.Enrichment.ISpotifyTrackSearcher>(sp =>
+                    new Services.PathfinderSpotifyTrackSearcher(
+                        sp.GetRequiredService<Wavee.Core.Session.ISession>(),
+                        sp.GetService<ILogger<Services.PathfinderSpotifyTrackSearcher>>()))
+                .AddSingleton<Wavee.Local.Enrichment.ILocalEnrichmentService>(sp =>
+                    new Wavee.Local.Enrichment.LocalEnrichmentService(
+                        (Wavee.Local.LocalLibraryService)sp.GetRequiredService<Wavee.Local.ILocalLibraryService>(),
+                        sp.GetRequiredService<Wavee.Local.Enrichment.ITmdbTokenStore>(),
+                        spotifySearcher: sp.GetService<Wavee.Local.Enrichment.ISpotifyTrackSearcher>(),
+                        httpClient: sp.GetService<System.Net.Http.IHttpClientFactory>()?.CreateClient("enrichment"),
+                        logger: sp.GetService<ILogger<Wavee.Local.Enrichment.LocalEnrichmentService>>()))
+                .AddSingleton<Wavee.UI.Library.Local.ILocalLibraryFacade>(sp =>
+                    new Services.LocalLibraryFacade(
+                        (Wavee.Local.LocalLibraryService)sp.GetRequiredService<Wavee.Local.ILocalLibraryService>(),
+                        sp.GetRequiredService<Wavee.Local.ILocalLikeService>(),
+                        sp.GetRequiredService<Wavee.Local.Enrichment.ILocalEnrichmentService>(),
+                        sp.GetRequiredService<Wavee.Local.Groups.LocalGroupService>(),
+                        sp.GetService<ILogger<Services.LocalLibraryFacade>>()))
+                // Subscribes to LocalMediaPlayer state and persists resume position +
+                // flips watched_at + records local_plays. Singleton so the subscription
+                // lives for the lifetime of the app.
+                .AddSingleton<Services.LocalPlaybackProgressTracker>(sp =>
+                    new Services.LocalPlaybackProgressTracker(
+                        sp.GetRequiredService<Wavee.Audio.ILocalMediaPlayer>(),
+                        sp.GetRequiredService<Wavee.UI.Library.Local.ILocalLibraryFacade>(),
+                        sp.GetService<ILogger<Services.LocalPlaybackProgressTracker>>()))
+
+                // v17 redesign ViewModels — Local/ family
+                .AddTransient<ViewModels.Local.LocalLandingViewModel>(sp =>
+                    new ViewModels.Local.LocalLandingViewModel(
+                        sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>(),
+                        sp.GetService<ILogger<ViewModels.Local.LocalLandingViewModel>>()))
+                .AddTransient<ViewModels.Local.LocalShowsViewModel>(sp =>
+                    new ViewModels.Local.LocalShowsViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                .AddTransient<ViewModels.Local.LocalShowDetailViewModel>(sp =>
+                    new ViewModels.Local.LocalShowDetailViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                .AddTransient<ViewModels.Local.LocalMoviesViewModel>(sp =>
+                    new ViewModels.Local.LocalMoviesViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                .AddTransient<ViewModels.Local.LocalMovieDetailViewModel>(sp =>
+                    new ViewModels.Local.LocalMovieDetailViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                .AddTransient<ViewModels.Local.LocalPersonDetailViewModel>(sp =>
+                    new ViewModels.Local.LocalPersonDetailViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                .AddTransient<ViewModels.Local.LocalMusicViewModel>(sp =>
+                    new ViewModels.Local.LocalMusicViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                .AddTransient<ViewModels.Local.LocalMusicVideosViewModel>(sp =>
+                    new ViewModels.Local.LocalMusicVideosViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                .AddTransient<ViewModels.Local.LocalOtherViewModel>(sp =>
+                    new ViewModels.Local.LocalOtherViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                .AddTransient<ViewModels.Local.LocalLikedSongsViewModel>(sp =>
+                    new ViewModels.Local.LocalLikedSongsViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                .AddTransient<ViewModels.Local.LocalCollectionDetailViewModel>(sp =>
+                    new ViewModels.Local.LocalCollectionDetailViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                .AddTransient<ViewModels.Local.LocalItemDetailFlyoutViewModel>(sp =>
+                    new ViewModels.Local.LocalItemDetailFlyoutViewModel(
+                        sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>(),
+                        sp.GetService<ILogger<ViewModels.Local.LocalItemDetailFlyoutViewModel>>()))
 
                 // Drag & drop
                 .AddSingleton<DragStateService>()
@@ -1116,7 +1200,7 @@ public static class AppLifecycleHelper
                 proxy, trackResolver, contextResolver!, session.CommandHandler, logger,
                 events: session.Events,
                 localDeviceId: session.Config.DeviceId,
-                localLibrary: Ioc.Default.GetService<Wavee.Core.Library.Local.ILocalLibraryService>(),
+                localLibrary: Ioc.Default.GetService<Wavee.Local.ILocalLibraryService>(),
                 localMediaPlayer: Ioc.Default.GetService<Wavee.Audio.ILocalMediaPlayer>(),
                 spotifyVideoPlayback: Ioc.Default.GetService<Wavee.Audio.ISpotifyVideoPlayback>(),
                 localSpotifyPlaybackEnabled: session.Config.LocalSpotifyPlaybackEnabled);
@@ -1132,6 +1216,11 @@ public static class AppLifecycleHelper
             var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
             executor?.EnableLocalPlayback(orchestrator);
             executor?.EnableAudioPipelineControl(proxy);
+
+            // Force-resolve LocalPlaybackProgressTracker so it subscribes to the
+            // media-player state stream. Without this the singleton stays unbuilt
+            // and resume position / watched_at never get persisted.
+            _ = Ioc.Default.GetService<Services.LocalPlaybackProgressTracker>();
 
             // Bidirectional mode uses orchestrator's queue-enriched state stream
             session.PlaybackState?.EnableBidirectionalMode(
@@ -1283,7 +1372,7 @@ public static class AppLifecycleHelper
                         newProxy, trackResolver, contextResolver!, session.CommandHandler, logger,
                         events: session.Events,
                         localDeviceId: session.Config.DeviceId,
-                        localLibrary: Ioc.Default.GetService<Wavee.Core.Library.Local.ILocalLibraryService>(),
+                        localLibrary: Ioc.Default.GetService<Wavee.Local.ILocalLibraryService>(),
                         localMediaPlayer: Ioc.Default.GetService<Wavee.Audio.ILocalMediaPlayer>(),
                         spotifyVideoPlayback: Ioc.Default.GetService<Wavee.Audio.ISpotifyVideoPlayback>(),
                         localSpotifyPlaybackEnabled: session.Config.LocalSpotifyPlaybackEnabled);

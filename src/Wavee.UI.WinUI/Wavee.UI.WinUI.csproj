@@ -105,7 +105,6 @@
 		<PackageReference Include="CommunityToolkit.WinUI.Helpers" Version="8.3.260402-preview2" />
 		<PackageReference Include="ComputeSharp.D2D1.WinUI" Version="3.2.0" />
 		<PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
-		<PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.0-prerelease.251115.2" />
 		<PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
 		<PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.1" />
 		<PackageReference Include="FluentIcons.WinUI" Version="2.1.325" />
@@ -135,6 +134,9 @@
 		<InternalsVisibleTo Include="Wavee.Tests" />
 		<!-- Wavee core integration -->
 		<ProjectReference Include="..\Wavee\Wavee.csproj" />
+		<!-- Local-files library (registers IEmbeddedTrackProber +
+		     LocalMediaPlayer + IVideoThumbnailExtractor impls) -->
+		<ProjectReference Include="..\Wavee.Local\Wavee.Local.csproj" />
 		<!-- Plain-C# UI service layer (non-WinUI) -->
 		<ProjectReference Include="..\Wavee.UI\Wavee.UI.csproj" />
 		<!-- IPC contracts shared with AudioHost process (audio device DTOs, etc.) -->

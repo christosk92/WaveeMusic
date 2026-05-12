@@ -62,16 +62,24 @@ public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
         // bound MediaPlayerElements at the same instant — that's what makes
         // handoff glitch-free.
         var ownerChanged = !ReferenceEquals(_currentOwner, consumer);
+        var previousOwner = _currentOwner;
+        _logger?.LogInformation(
+            "[surface] AcquireSurface consumer={Consumer} (was={Previous}, ownerChanged={OwnerChanged}, hasSurface={HasSurface}, firstFrame={FirstFrame})",
+            consumer.GetType().Name,
+            previousOwner?.GetType().Name ?? "<none>",
+            ownerChanged,
+            ActiveSurface is not null,
+            _activeSurfaceHasFirstFrame);
         if (ownerChanged && _currentOwner is not null)
         {
-            try { _currentOwner.DetachSurface(); }
+            try { _currentOwner.DetachSurface(); _logger?.LogDebug("[surface] detached previous owner {Owner}", _currentOwner.GetType().Name); }
             catch (Exception ex) { _logger?.LogDebug(ex, "DetachSurface threw on previous owner"); }
         }
         _currentOwner = consumer;
         var surface = ActiveSurface;
         if (surface is not null)
         {
-            try { consumer.AttachSurface(surface); }
+            try { consumer.AttachSurface(surface); _logger?.LogDebug("[surface] attached MediaPlayer to {Consumer}", consumer.GetType().Name); }
             catch (Exception ex) { _logger?.LogDebug(ex, "AttachSurface threw"); }
             if (ownerChanged)
                 SurfaceOwnershipChanged?.Invoke(this, EventArgs.Empty);
@@ -81,8 +89,12 @@ public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
         var elementSurface = ActiveElementSurface;
         if (elementSurface is not null)
         {
-            try { consumer.AttachElementSurface(elementSurface); }
+            try { consumer.AttachElementSurface(elementSurface); _logger?.LogDebug("[surface] attached element surface to {Consumer}", consumer.GetType().Name); }
             catch (Exception ex) { _logger?.LogDebug(ex, "AttachElementSurface threw"); }
+        }
+        else
+        {
+            _logger?.LogInformation("[surface] no active surface to attach to {Consumer} — will attach when provider becomes active", consumer.GetType().Name);
         }
 
         if (ownerChanged)
@@ -91,7 +103,13 @@ public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
 
     public void ReleaseSurface(IMediaSurfaceConsumer consumer)
     {
-        if (!ReferenceEquals(_currentOwner, consumer)) return;
+        if (!ReferenceEquals(_currentOwner, consumer))
+        {
+            _logger?.LogDebug("[surface] ReleaseSurface no-op: {Consumer} is not current owner ({Current})",
+                consumer.GetType().Name, _currentOwner?.GetType().Name ?? "<none>");
+            return;
+        }
+        _logger?.LogInformation("[surface] ReleaseSurface owner={Consumer}", consumer.GetType().Name);
         try { consumer.DetachSurface(); }
         catch (Exception ex) { _logger?.LogDebug(ex, "DetachSurface threw on release"); }
         _currentOwner = null;
@@ -141,6 +159,17 @@ public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
             || oldIsBuffering != _activeSurfaceIsBuffering;
 
         if (!surfaceChanged && !readinessChanged) return;
+
+        _logger?.LogInformation(
+            "[surface] provider={Provider} state: hasSurface={HasSurface} hasElement={HasElement} loading={Loading} firstFrame={FirstFrame} buffering={Buffering} surfaceChanged={SurfaceChanged} readinessChanged={ReadinessChanged}",
+            newActive?.Kind ?? "<none>",
+            newSurface is not null,
+            newElementSurface is not null,
+            _activeSurfaceIsLoading,
+            _activeSurfaceHasFirstFrame,
+            _activeSurfaceIsBuffering,
+            surfaceChanged,
+            readinessChanged);
 
         // Push the new surface to the current owner (if any). Detach first
         // when the surface is going away, attach when it appears.

@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.Local;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Services;
@@ -24,6 +25,7 @@ public sealed class ArtistService : IArtistService
     private readonly IColorService _colorService;
     private readonly ILocationService _locationService;
     private readonly IMessenger _messenger;
+    private readonly ILocalLibraryService? _localLibrary;
     private readonly ILogger? _logger;
 
     public ArtistService(
@@ -31,17 +33,29 @@ public sealed class ArtistService : IArtistService
         IColorService colorService,
         ILocationService locationService,
         IMessenger messenger,
+        ILocalLibraryService? localLibrary = null,
         ILogger? logger = null)
     {
         _pathfinder = pathfinder;
         _colorService = colorService;
         _locationService = locationService;
         _messenger = messenger;
+        _localLibrary = localLibrary;
         _logger = logger;
     }
 
     public async Task<ArtistOverviewResult> GetOverviewAsync(string artistUri, CancellationToken ct = default)
     {
+        // Local-artist branch: synthesize the same shape Pathfinder would.
+        if (Wavee.Core.PlayableUri.IsLocalArtist(artistUri))
+        {
+            if (_localLibrary is null)
+                throw new InvalidOperationException("Local library service not registered for local artist URI: " + artistUri);
+            var local = await _localLibrary.GetArtistAsync(artistUri, ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("Local artist not found: " + artistUri);
+            return SynthesizeArtistOverviewResult(local);
+        }
+
         var response = await _pathfinder.GetArtistOverviewAsync(artistUri, ct).ConfigureAwait(false);
         var artist = response.Data?.ArtistUnion
             ?? throw new InvalidOperationException("Artist not found");
@@ -211,6 +225,20 @@ public sealed class ArtistService : IArtistService
     public async Task<List<ArtistReleaseResult>> GetDiscographyAllAsync(
         string artistUri, int offset = 0, int limit = 50, CancellationToken ct = default)
     {
+        // Local-artist discography is already included in GetArtistAsync — the
+        // overview synthesizer pre-populates Albums. The "view all" page calling
+        // back into this method gets the same list directly.
+        if (Wavee.Core.PlayableUri.IsLocalArtist(artistUri))
+        {
+            if (_localLibrary is null) return new List<ArtistReleaseResult>();
+            var local = await _localLibrary.GetArtistAsync(artistUri, ct).ConfigureAwait(false);
+            if (local is null) return new List<ArtistReleaseResult>();
+            return local.Albums
+                .Skip(offset).Take(limit)
+                .Select(MapLocalAlbumSummaryToRelease)
+                .ToList();
+        }
+
         var response = await _pathfinder.GetArtistDiscographyAllAsync(artistUri, offset, limit, ct).ConfigureAwait(false);
         var allGroup = response.Data?.ArtistUnion?.Discography?.All;
         if (allGroup?.Items == null) return [];
@@ -399,6 +427,17 @@ public sealed class ArtistService : IArtistService
     public async Task<List<ArtistTopTrackResult>> GetExtendedTopTracksAsync(
         string artistUri, CancellationToken ct = default)
     {
+        // Local artist: derive "top tracks" from the locally-indexed track list.
+        // The 10-track preview from GetArtistAsync is the v1 stand-in for
+        // Spotify's play-count-ordered top-tracks list.
+        if (Wavee.Core.PlayableUri.IsLocalArtist(artistUri))
+        {
+            if (_localLibrary is null) return new List<ArtistTopTrackResult>();
+            var local = await _localLibrary.GetArtistAsync(artistUri, ct).ConfigureAwait(false);
+            if (local is null) return new List<ArtistTopTrackResult>();
+            return local.AllTracks.Select(MapLocalTrackToArtistTopTrack).ToList();
+        }
+
         try
         {
             var request = _messenger.Send(new ExtendedTopTracksRequest
@@ -514,6 +553,94 @@ public sealed class ArtistService : IArtistService
             Uri = pin.Uri,
             ImageUrl = imageUrl,
             BackgroundImageUrl = pin.BackgroundImageV2?.Data?.Sources?.FirstOrDefault()?.Url
+        };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Local artist → ArtistOverviewResult synthesis
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds an <see cref="ArtistOverviewResult"/> from a <see cref="LocalArtistDetail"/>.
+    /// Same XAML / VM / Store pipeline as Spotify artists; Spotify-only sections
+    /// (concerts, related artists, gallery photos, biography, social links)
+    /// come back empty so their x:Load bindings collapse.
+    /// </summary>
+    private static ArtistOverviewResult SynthesizeArtistOverviewResult(LocalArtistDetail local)
+    {
+        var topTracks = local.AllTracks.Take(10).Select(MapLocalTrackToArtistTopTrack).ToList();
+        var albums = local.Albums.Select(MapLocalAlbumSummaryToRelease).ToList();
+
+        return new ArtistOverviewResult
+        {
+            Name = local.Name,
+            ImageUrl = local.ArtworkUri,
+            HeaderImageUrl = null,
+            GalleryHeroUrl = null,
+            HeroColorHex = null,
+            Palette = null,
+            MonthlyListeners = 0,
+            Followers = 0,
+            WorldRank = null,
+            Biography = null,
+            IsVerified = false,
+            LatestRelease = null,
+            TopTracks = topTracks,
+            Albums = albums,
+            Singles = new List<ArtistReleaseResult>(),
+            Compilations = new List<ArtistReleaseResult>(),
+            RelatedArtists = new List<RelatedArtistResult>(),
+            AlbumsTotalCount = albums.Count,
+            SinglesTotalCount = 0,
+            CompilationsTotalCount = 0,
+            PinnedItem = null,
+            WatchFeed = null,
+            Concerts = new List<ArtistConcertResult>(),
+            ExternalLinks = new List<ArtistSocialLinkResult>(),
+            TopCities = new List<ArtistTopCityResult>(),
+            GalleryPhotos = new List<string>(),
+            MusicVideoMappings = new List<ArtistMusicVideoMappingResult>(),
+        };
+    }
+
+    private static ArtistTopTrackResult MapLocalTrackToArtistTopTrack(LocalTrackRow t)
+    {
+        var id = Wavee.Core.PlayableUri.ExtractId(t.TrackUri).ToString();
+        if (string.IsNullOrEmpty(id)) id = t.TrackUri;
+        return new ArtistTopTrackResult
+        {
+            Id = id,
+            Title = t.Title ?? System.IO.Path.GetFileNameWithoutExtension(t.FilePath),
+            Uri = t.TrackUri,
+            AlbumImageUrl = t.ArtworkUri,
+            AlbumUri = t.AlbumUri,
+            AlbumName = t.Album,
+            Duration = TimeSpan.FromMilliseconds(t.DurationMs),
+            PlayCount = 0,
+            ArtistNames = t.Artist ?? t.AlbumArtist,
+            IsExplicit = false,
+            IsPlayable = true,
+            HasVideo = t.IsVideo,
+        };
+    }
+
+    private static ArtistReleaseResult MapLocalAlbumSummaryToRelease(LocalAlbumSummary a)
+    {
+        var id = Wavee.Core.PlayableUri.ExtractId(a.AlbumUri).ToString();
+        if (string.IsNullOrEmpty(id)) id = a.AlbumUri;
+        return new ArtistReleaseResult
+        {
+            Id = id,
+            Uri = a.AlbumUri,
+            Name = a.Album,
+            Type = "ALBUM",
+            ImageUrl = a.ArtworkUri,
+            ReleaseDate = a.Year is { } y && y > 0
+                ? new DateTimeOffset(y, 1, 1, 0, 0, 0, TimeSpan.Zero)
+                : DateTimeOffset.MinValue,
+            TrackCount = a.TrackCount,
+            Label = null,
+            Year = a.Year ?? 0,
         };
     }
 

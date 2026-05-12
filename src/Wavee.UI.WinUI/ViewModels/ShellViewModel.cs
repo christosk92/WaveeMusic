@@ -59,7 +59,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     // Omnibar grouped-search backend. Quicksearch is broadened to AllCached so anything
     // the user has seen/played (not just saved-library items) is findable.
-    private readonly Wavee.Core.Library.Local.ILocalLibraryService? _localLibrary;
+    private readonly Wavee.Local.ILocalLibraryService? _localLibrary;
 
     // Placeholder items used as the Spotify section's contents while the network call
     // is in flight. The Spotify section becomes visible from frame 1 (shimmer rows),
@@ -201,10 +201,111 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Bottom player is visible only when it is the selected shell location and
-    /// the popped-out player is not suppressing docked controls.
+    /// the popped-out player is not suppressing docked controls. Theatre /
+    /// Fullscreen presentation also collapse it — the expanded surface owns
+    /// the whole window in those modes. Also collapses when the active tab is
+    /// VideoPlayerPage — that page has its own scrim transport, duplicating it
+    /// at the bottom of the window is just noise.
     /// </summary>
     public bool IsBottomPlayerVisibleInShell =>
-        PlayerLocation == PlayerLocation.Bottom && !ShouldHideDockedPlayerForFloatingWindow;
+        PlayerLocation == PlayerLocation.Bottom
+        && !ShouldHideDockedPlayerForFloatingWindow
+        && IsNormalPresentation
+        && !IsOnVideoPage;
+
+    // ── Floating mini-video-player visibility ────────────────────────────
+    //
+    // Compound gate: Normal presentation (no Theatre / Fullscreen takeover)
+    // AND not on VideoPlayerPage in the active tab AND the mini-VM's own
+    // compound says it should be visible (which already includes first-frame
+    // gate, suppression flags, user-dismissed flag).
+    //
+    // Forwarding PropertyChanged from the mini-VM keeps this single XAML
+    // binding accurate without the consumer needing to track multiple sources.
+    private MiniVideoPlayerViewModel? _miniVideoVm;
+    public MiniVideoPlayerViewModel? MiniVideoPlayer =>
+        _miniVideoVm ??= ResolveAndSubscribeMiniVideoPlayer();
+
+    private MiniVideoPlayerViewModel? ResolveAndSubscribeMiniVideoPlayer()
+    {
+        var vm = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<MiniVideoPlayerViewModel>();
+        if (vm is not null)
+            vm.PropertyChanged += OnMiniVideoPlayerPropertyChanged;
+        return vm;
+    }
+
+    private void OnMiniVideoPlayerPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MiniVideoPlayerViewModel.IsVisible))
+            OnPropertyChanged(nameof(IsMiniPlayerVisibleInShell));
+    }
+
+    public bool IsMiniPlayerVisibleInShell =>
+        IsNormalPresentation
+        && !IsOnVideoPage
+        && MiniVideoPlayer?.IsVisible == true;
+
+    // ── Now-playing presentation (Theatre / Fullscreen) ─────────────────
+    // Lazily resolved to keep the existing constructor wiring untouched —
+    // INowPlayingPresentationService is a small singleton, no DI cycles.
+    private INowPlayingPresentationService? _presentation;
+    public INowPlayingPresentationService Presentation =>
+        _presentation ??= ResolveAndSubscribePresentation();
+
+    private INowPlayingPresentationService ResolveAndSubscribePresentation()
+    {
+        var svc = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetRequiredService<INowPlayingPresentationService>();
+        svc.PropertyChanged += OnPresentationPropertyChanged;
+        return svc;
+    }
+
+    private void OnPresentationPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // Only respond to the canonical Presentation change; the service
+        // raises IsExpanded + IsNormal alongside it (derived flags) but we'd
+        // otherwise re-fire every downstream property three times per
+        // transition.
+        if (e.PropertyName == nameof(INowPlayingPresentationService.Presentation))
+        {
+            OnPropertyChanged(nameof(IsNormalPresentation));
+            OnPropertyChanged(nameof(IsExpandedPresentation));
+            OnPropertyChanged(nameof(IsFullscreenPresentation));
+            OnPropertyChanged(nameof(IsTheatrePresentation));
+            // Chrome visibility helpers depend on presentation — re-raise so
+            // the shell page collapses sidebar / tabs / nav / playerbar when
+            // we expand into Theatre or Fullscreen.
+            RaisePlayerSurfaceVisibilityChanged();
+            OnPropertyChanged(nameof(IsTabBarVisibleInShell));
+            OnPropertyChanged(nameof(IsNavToolbarVisibleInShell));
+            OnPropertyChanged(nameof(IsSidebarVisibleInShell));
+            OnPropertyChanged(nameof(IsMiniPlayerVisibleInShell));
+        }
+    }
+
+    /// <summary>True when the now-playing surface is in its default docked state.</summary>
+    public bool IsNormalPresentation => Presentation.IsNormal;
+
+    /// <summary>True when in Theatre OR Fullscreen — chrome should hide.</summary>
+    public bool IsExpandedPresentation => Presentation.IsExpanded;
+
+    /// <summary>True specifically in Fullscreen (OS-level fullscreen presenter).</summary>
+    public bool IsFullscreenPresentation =>
+        Presentation.Presentation == NowPlayingPresentation.Fullscreen;
+
+    /// <summary>True specifically in Theatre (player fills app window, chrome hidden, title bar stays).</summary>
+    public bool IsTheatrePresentation =>
+        Presentation.Presentation == NowPlayingPresentation.Theatre;
+
+    /// <summary>Tab strip is hidden in Theatre / Fullscreen — the player owns the window.</summary>
+    public bool IsTabBarVisibleInShell => IsNormalPresentation;
+
+    /// <summary>Navigation toolbar (search / back / forward) hides in expanded modes.</summary>
+    public bool IsNavToolbarVisibleInShell => IsNormalPresentation;
+
+    /// <summary>Sidebar collapses to give the player the full width in expanded modes.</summary>
+    public bool IsSidebarVisibleInShell => IsNormalPresentation;
 
     [ObservableProperty]
     private bool _sidebarPlayerCollapsed;
@@ -266,7 +367,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         IDispatcherService? dispatcher = null,
         ILogger<ShellViewModel>? logger = null,
         PlaylistMosaicService? mosaicService = null,
-        Wavee.Core.Library.Local.ILocalLibraryService? localLibrary = null)
+        Wavee.Local.ILocalLibraryService? localLibrary = null)
     {
         _libraryDataService = libraryDataService;
         _playlistCache = playlistCache;
@@ -453,11 +554,35 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private void OnLibraryDataChanged(object? sender, EventArgs e)
     {
         // DataChanged fires for lots of unrelated things (liked-songs save state, Dealer
-        // deltas on non-playlist topics, etc). Previously we unconditionally rebuilt the
-        // WHOLE sidebar on every one of these events, which was the primary slowness cause.
-        // Now: only playlists-specific signals rebuild the sidebar via OnPlaylistsChanged,
-        // and DataChanged is a no-op here. Other VMs (PlaylistViewModel, LikedSongsViewModel)
-        // still listen to DataChanged for their own page-scoped refreshes — that's fine.
+        // deltas on non-playlist topics, etc). We deliberately don't rebuild the whole
+        // sidebar here — only OnPlaylistsChanged does the heavy work. But the four
+        // library badge counts (Albums / Artists / Liked Songs / Podcasts) ARE cheap to
+        // refresh, and missing one means the sidebar shows a stale number after the user
+        // likes/saves/follows something. So: stats-only refresh here.
+        _dispatcher?.TryEnqueue(async () =>
+        {
+            try { await RefreshLibraryBadgesAsync(); }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Sidebar badge refresh failed"); }
+        });
+    }
+
+    private async Task RefreshLibraryBadgesAsync()
+    {
+        var stats = await _libraryDataService.GetStatsAsync();
+        var librarySection = SidebarItems.FirstOrDefault(x => x.Tag == "YourLibrary");
+        if (librarySection?.Children is not ObservableCollection<SidebarItemModel> children) return;
+
+        var albums = children.FirstOrDefault(x => x.Tag as string == "Albums");
+        if (albums != null) albums.BadgeCount = stats.AlbumCount;
+
+        var artists = children.FirstOrDefault(x => x.Tag as string == "Artists");
+        if (artists != null) artists.BadgeCount = stats.ArtistCount;
+
+        var liked = children.FirstOrDefault(x => x.Tag as string == "LikedSongs");
+        if (liked != null) liked.BadgeCount = stats.LikedSongsCount;
+
+        var podcasts = children.FirstOrDefault(x => x.Tag as string is "Podcasts" or "YourEpisodes");
+        if (podcasts != null) podcasts.BadgeCount = stats.PodcastCount;
     }
 
     private void OnPlaylistsChanged(object? sender, EventArgs e)
@@ -534,27 +659,68 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                         Text = AppLocalization.GetString("Shell_SidebarAlbums"),
                         IconSource = new FontIconSource { Glyph = "\uE93C" },
                         Tag = "Albums",
-                        BadgeCount = 42 // TODO: Connect to library service
+                        BadgeCount = 0
                     },
                     new SidebarItemModel
                     {
                         Text = AppLocalization.GetString("Shell_SidebarArtists"),
                         IconSource = new FontIconSource { Glyph = "\uE77B" },
                         Tag = "Artists",
-                        BadgeCount = 15 // TODO: Connect to library service
+                        BadgeCount = 0
                     },
                     new SidebarItemModel
                     {
                         Text = AppLocalization.GetString("Shell_SidebarLikedSongs"),
                         IconSource = new FontIconSource { Glyph = "\uEB52" },
                         Tag = "LikedSongs",
-                        BadgeCount = 156 // TODO: Connect to library service
+                        BadgeCount = 0
                     },
                     new SidebarItemModel
                     {
                         Text = AppLocalization.GetString("Shell_SidebarPodcasts"),
                         IconSource = new FontIconSource { Glyph = "\uEC05" },
                         Tag = "Podcasts",
+                        BadgeCount = 0
+                    }
+                }
+            },
+            // Local media section \u2014 co-equal with Your Library. Surfaces the
+            // four content-typed drill-in pages directly so users don't have
+            // to bounce through the landing page when they know the kind.
+            new SidebarItemModel
+            {
+                Text = AppLocalization.GetString("Shell_SidebarLocalMedia"),
+                Tag = "LocalMedia",
+                IsExpanded = true,
+                IsSectionHeader = true,
+                Children = new ObservableCollection<SidebarItemModel>
+                {
+                    new SidebarItemModel
+                    {
+                        Text = AppLocalization.GetString("Shell_SidebarLocalShows"),
+                        IconSource = new FontIconSource { Glyph = FluentGlyphs.TvShow },
+                        Tag = "LocalShows",
+                        BadgeCount = 0
+                    },
+                    new SidebarItemModel
+                    {
+                        Text = AppLocalization.GetString("Shell_SidebarLocalMovies"),
+                        IconSource = new FontIconSource { Glyph = FluentGlyphs.Movie },
+                        Tag = "LocalMovies",
+                        BadgeCount = 0
+                    },
+                    new SidebarItemModel
+                    {
+                        Text = AppLocalization.GetString("Shell_SidebarLocalMusic"),
+                        IconSource = new FontIconSource { Glyph = FluentGlyphs.Album },
+                        Tag = "LocalMusic",
+                        BadgeCount = 0
+                    },
+                    new SidebarItemModel
+                    {
+                        Text = AppLocalization.GetString("Shell_SidebarLocalMusicVideos"),
+                        IconSource = new FontIconSource { Glyph = FluentGlyphs.MusicVideo },
+                        Tag = "LocalMusicVideos",
                         BadgeCount = 0
                     }
                 }
@@ -732,7 +898,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             Height = 24,
             VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Center,
             HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Center,
-            Flyout = menuFlyout
+            Flyout = menuFlyout,
+            // Suppress the default WinUI focus rectangle — it's a saturated
+            // accent-coloured rect that reads identically to the sidebar's
+            // selected-item border, making the "+" look perpetually selected
+            // after any interaction lands focus on it.
+            UseSystemFocusVisuals = false
         };
 
         return _playlistsAddButton;
@@ -890,6 +1061,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             // only mosaic-backed (null or spotify:mosaic:...) playlists need
             // re-composition on a content change.
             ImageUrl = playlist.ImageUrl,
+            IsOwner = playlist.IsOwner,
             BadgeCount = playlist.TrackCount,
             DropPredicate = payload => payload.DataFormat == "WaveeTrackIds"
         };
@@ -1598,7 +1770,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Calls <see cref="Wavee.Core.Library.Local.ILocalLibraryService.SearchAsync"/> across all
+    /// Calls <see cref="Wavee.Local.ILocalLibraryService.SearchAsync"/> across all
     /// cached entities (local files + cached Spotify tracks/albums/artists/playlists). Maps
     /// each result to a Local* suggestion type so the dispatcher knows whether to play (Track),
     /// open Album/Artist/Playlist pages, etc.
@@ -1608,13 +1780,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         if (_localLibrary is null || string.IsNullOrWhiteSpace(query))
             return new List<SearchSuggestionItem>();
 
-        IReadOnlyList<Wavee.Core.Library.Local.LocalSearchResult> results;
+        IReadOnlyList<Wavee.Local.LocalSearchResult> results;
         try
         {
             results = await _localLibrary.SearchAsync(
                 query,
                 limit: 8,
-                Wavee.Core.Library.Local.LocalSearchScope.AllCached,
+                Wavee.Local.LocalSearchScope.AllCached,
                 ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -1638,10 +1810,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 Uri = r.Uri,
                 Type = r.Type switch
                 {
-                    Wavee.Core.Library.Local.LocalSearchEntityType.Track    => SearchSuggestionType.LocalTrack,
-                    Wavee.Core.Library.Local.LocalSearchEntityType.Album    => SearchSuggestionType.LocalAlbum,
-                    Wavee.Core.Library.Local.LocalSearchEntityType.Artist   => SearchSuggestionType.LocalArtist,
-                    Wavee.Core.Library.Local.LocalSearchEntityType.Playlist => SearchSuggestionType.LocalPlaylist,
+                    Wavee.Local.LocalSearchEntityType.Track    => SearchSuggestionType.LocalTrack,
+                    Wavee.Local.LocalSearchEntityType.Album    => SearchSuggestionType.LocalAlbum,
+                    Wavee.Local.LocalSearchEntityType.Artist   => SearchSuggestionType.LocalArtist,
+                    Wavee.Local.LocalSearchEntityType.Playlist => SearchSuggestionType.LocalPlaylist,
                     _ => SearchSuggestionType.LocalTrack,
                 },
                 QueryText = query,
@@ -1762,6 +1934,23 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isOnSearchPage;
 
+    /// <summary>
+    /// True when the active tab is hosting <see cref="Wavee.UI.WinUI.Views.VideoPlayerPage"/>.
+    /// Drives both the bottom-bar suppression (the page owns the transport, no point
+    /// in duplicating it) and the floating mini-player suppression (the page already
+    /// owns the video surface). Single source of truth — replaces the old per-page
+    /// SetOnVideoPage flip in VideoPlayerPage.OnNavigatedTo/From which double-fired
+    /// when the same page type was also hosted in the Theatre overlay frame.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isOnVideoPage;
+
+    partial void OnIsOnVideoPageChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsBottomPlayerVisibleInShell));
+        OnPropertyChanged(nameof(IsMiniPlayerVisibleInShell));
+    }
+
     public void UpdateNavigationState()
     {
         bool onVideo = false;
@@ -1773,6 +1962,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             IsOnProfilePage = frame.Content is ProfilePage;
             IsOnSearchPage = frame.Content is SearchPage;
             onVideo = frame.Content is Wavee.UI.WinUI.Views.VideoPlayerPage;
+
+            if (frame.Content?.GetType() is { } contentType
+                && NavigationHelpers.GetLocalSidebarTag(contentType) is { } localSidebarTag)
+            {
+                SyncSidebarSelectionToTag(localSidebarTag);
+            }
         }
         else
         {
@@ -1783,11 +1978,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             IsOnSearchPage = false;
         }
 
-        // Drive the mini-player's "are we currently on the full video page"
-        // input. The mini hides itself whenever the user is already on the
-        // page that hosts the video — only takes over when the user
-        // navigates away. Resolved lazily via Ioc to keep the ShellViewModel
-        // ctor unchanged.
+        // Push the canonical "is on video page" signal. Sets the observable
+        // property that the bottom bar + mini-player visibility helpers
+        // depend on, AND keeps the legacy mini-VM SetOnVideoPage forward
+        // working for any subscribers that still listen there.
+        IsOnVideoPage = onVideo;
         try
         {
             var miniVm = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default

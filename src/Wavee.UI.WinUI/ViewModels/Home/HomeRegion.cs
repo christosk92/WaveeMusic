@@ -12,6 +12,11 @@ namespace Wavee.UI.WinUI.ViewModels.Home;
 public enum HomeRegionKind
 {
     Recents,
+    LocalFiles,        // "Local files" catch-all (legacy single-rail)
+    LocalShows,        // TV shows indexed locally
+    LocalMovies,       // Movies indexed locally
+    LocalMusic,        // Music albums indexed locally
+    LocalMusicVideos,  // Music videos indexed locally
     MadeForYou,
     Discover,
     Podcasts
@@ -47,6 +52,41 @@ public sealed partial class HomeRegion : ObservableObject
             Eyebrow = "YOUR ACTIVITY",
             Header = "Recently played",
             AccentColor = Color.FromArgb(255, 0xF5, 0x9E, 0x0B)
+        },
+        HomeRegionKind.LocalFiles => new HomeRegion
+        {
+            Kind = kind,
+            Eyebrow = "ON THIS PC",
+            Header = "Local files",
+            AccentColor = Color.FromArgb(255, 0x8B, 0x5C, 0xF6)
+        },
+        HomeRegionKind.LocalShows => new HomeRegion
+        {
+            Kind = kind,
+            Eyebrow = "ON THIS PC",
+            Header = "Local TV shows",
+            AccentColor = Color.FromArgb(255, 0x8B, 0x5C, 0xF6)
+        },
+        HomeRegionKind.LocalMovies => new HomeRegion
+        {
+            Kind = kind,
+            Eyebrow = "ON THIS PC",
+            Header = "Local movies",
+            AccentColor = Color.FromArgb(255, 0x8B, 0x5C, 0xF6)
+        },
+        HomeRegionKind.LocalMusic => new HomeRegion
+        {
+            Kind = kind,
+            Eyebrow = "ON THIS PC",
+            Header = "Local music",
+            AccentColor = Color.FromArgb(255, 0x8B, 0x5C, 0xF6)
+        },
+        HomeRegionKind.LocalMusicVideos => new HomeRegion
+        {
+            Kind = kind,
+            Eyebrow = "ON THIS PC",
+            Header = "Local music videos",
+            AccentColor = Color.FromArgb(255, 0x8B, 0x5C, 0xF6)
         },
         HomeRegionKind.MadeForYou => new HomeRegion
         {

@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Local.LocalItemDetailFlyout"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:appControls="using:Wavee.UI.WinUI.Controls"
+    xmlns:models="using:Wavee.Local.Models"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    AllowDrop="True"
+    DragOver="Root_DragOver"
+    Drop="Root_Drop"
+    MinWidth="340" MaxWidth="380">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:BoolToVisibilityConverter x:Key="InverseBoolToVis" Invert="True"/>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+        <StackPanel Spacing="14">
+            <!-- Artwork — drag-drop target -->
+            <Border CornerRadius="6" Width="160" Height="160"
+                    Background="{ThemeResource SubtleFillColorTertiaryBrush}"
+                    HorizontalAlignment="Center"
+                    ToolTipService.ToolTip="Drag an image file here to set cover art">
+                <Image Source="{x:Bind ViewModel.ArtworkUri, Mode=OneWay, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=320}"
+                       Stretch="UniformToFill"/>
+            </Border>
+
+            <!-- Kind chip -->
+            <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                <Border CornerRadius="10" Padding="8,2"
+                        Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                    <TextBlock Text="{x:Bind ViewModel.Kind, Mode=OneWay}"
+                               Style="{ThemeResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </Border>
+            </StackPanel>
+
+            <!-- Editable fields — per-kind. Visibility uses the IsXxx properties on the VM.
+                 Title is always editable. -->
+            <appControls:InlineEditableText Text="{x:Bind ViewModel.Title, Mode=TwoWay}"
+                                            Placeholder="Title"/>
+
+            <!-- Music / MusicVideo: Artist, Album, Year, Track#, Disc# -->
+            <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsMusic, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <appControls:InlineEditableText Text="{x:Bind ViewModel.Artist, Mode=TwoWay}"      Placeholder="Artist"/>
+                <appControls:InlineEditableText Text="{x:Bind ViewModel.AlbumArtist, Mode=TwoWay}" Placeholder="Album artist"/>
+                <appControls:InlineEditableText Text="{x:Bind ViewModel.Album, Mode=TwoWay}"       Placeholder="Album"/>
+            </StackPanel>
+            <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsMusicVideo, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <appControls:InlineEditableText Text="{x:Bind ViewModel.Artist, Mode=TwoWay}" Placeholder="Artist"/>
+            </StackPanel>
+
+            <!-- TV episode -->
+            <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsTvEpisode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <appControls:InlineEditableText Text="{x:Bind ViewModel.ShowName, Mode=TwoWay}"     Placeholder="Show name"/>
+                <appControls:InlineEditableText Text="{x:Bind ViewModel.EpisodeTitle, Mode=TwoWay}" Placeholder="Episode title"/>
+            </StackPanel>
+
+            <!-- Save -->
+            <Button Content="Save changes" HorizontalAlignment="Stretch" Click="Save_Click"/>
+
+            <!-- Subtitles -->
+            <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.IsVideo, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Subtitles" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                <ItemsControl ItemsSource="{x:Bind ViewModel.Subtitles}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="models:LocalSubtitle">
+                            <TextBlock>
+                                <Run Text="• "/>
+                                <Run Text="{x:Bind Language}"/>
+                                <Run Text=" "/>
+                                <Run Text="{x:Bind Path}"
+                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </TextBlock>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <!-- Audio tracks -->
+            <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.IsVideo, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Audio tracks" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                <ItemsControl ItemsSource="{x:Bind ViewModel.AudioTracks}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="models:LocalEmbeddedTrack">
+                            <TextBlock>
+                                <Run Text="• "/>
+                                <Run Text="{x:Bind Language}"/>
+                                <Run Text=" "/>
+                                <Run Text="{x:Bind Codec}"
+                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </TextBlock>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <!-- File details strip (read-only) -->
+            <StackPanel Spacing="2">
+                <TextBlock Text="{x:Bind ViewModel.FilePath, Mode=OneWay}"
+                           Style="{ThemeResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxLines="2"/>
+                <TextBlock Style="{ThemeResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}">
+                    <Run Text="{x:Bind ViewModel.Format, Mode=OneWay}"/>
+                    <Run Text=" · "/>
+                    <Run Text="{x:Bind ViewModel.FileSize, Mode=OneWay}"/>
+                    <Run Text=" bytes"/>
+                </TextBlock>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

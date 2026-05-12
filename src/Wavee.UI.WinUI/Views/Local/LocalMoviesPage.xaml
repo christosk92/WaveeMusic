@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.Local.LocalMoviesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:models="using:Wavee.Local.Models"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:transitions="using:CommunityToolkit.WinUI"
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
+    xmlns:local="using:Wavee.UI.WinUI.Views.Local"
+    NavigationCacheMode="Enabled"
+    Background="Transparent">
+
+    <Page.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:BoolToVisibilityConverter x:Key="InverseBoolToVis" Invert="True"/>
+
+        <transitions:TransitionHelper x:Key="LocalMoviesShyHeaderTransition"
+                                      Duration="0:0:0.36"
+                                      ReverseDuration="0:0:0.30"
+                                      DefaultEasingMode="EaseInOut"
+                                      SourceToggleMethod="ByVisibility"
+                                      TargetToggleMethod="ByVisibility"
+                                      IndependentElementShowDuration="0:0:0.18"
+                                      IndependentElementShowDelay="0:0:0.10"
+                                      IndependentElementHideDuration="0:0:0.12"
+                                      IsHitTestVisibleWhenAnimating="False">
+            <transitions:TransitionConfig Id="card-shell" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="library-title" ScaleMode="Custom">
+                <transitions:TransitionConfig.CustomScalingCalculator>
+                    <waveeHelpers:TransitionTextScalingCalculator/>
+                </transitions:TransitionConfig.CustomScalingCalculator>
+            </transitions:TransitionConfig>
+            <transitions:TransitionConfig Id="library-sync" ScaleMode="Scale"/>
+        </transitions:TransitionHelper>
+    </Page.Resources>
+
+    <Grid>
+        <ScrollView x:Name="PageScrollView">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Grid x:Name="HeroGrid"
+                      Grid.Row="0"
+                      Height="176">
+                    <Grid x:Name="HeroOverlayPanel">
+                        <Border transitions:TransitionHelper.Id="card-shell"
+                                Background="Transparent"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch"/>
+
+                        <Grid Padding="32,36,32,24" VerticalAlignment="Bottom">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Spacing="6" VerticalAlignment="Bottom">
+                                <TextBlock Text="LIBRARY"
+                                           FontWeight="SemiBold"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{ThemeResource CaptionTextBlockStyle}"/>
+                                <TextBlock Text="Movies"
+                                           Style="{ThemeResource TitleLargeTextBlockStyle}"
+                                           FontWeight="Bold"
+                                           transitions:TransitionHelper.Id="library-title"/>
+                                <TextBlock Text="{x:Bind ViewModel.SubtitleText, Mode=OneWay}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{ThemeResource BodyTextBlockStyle}"/>
+                            </StackPanel>
+
+                            <Button x:Name="SyncButton"
+                                    Grid.Column="1"
+                                    VerticalAlignment="Bottom"
+                                    Padding="16,10"
+                                    CornerRadius="20"
+                                    Click="SyncButton_Click"
+                                    transitions:TransitionHelper.Id="library-sync">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon x:Name="SyncButtonGlyph" Glyph="&#xE895;" FontSize="14"/>
+                                    <TextBlock x:Name="SyncButtonText" Text="Sync with TMDB"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </Grid>
+
+                <Grid Grid.Row="1" Padding="32,20,32,32">
+                    <StackPanel HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Spacing="8"
+                                Margin="0,80,0,0"
+                                Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <FontIcon Glyph="&#xE714;" FontSize="48" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                        <TextBlock Text="No local movies yet" Style="{ThemeResource SubtitleTextBlockStyle}" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Add a watched folder containing movie files in Settings."
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   HorizontalAlignment="Center"/>
+                    </StackPanel>
+
+                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.Movies}"
+                                   Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}">
+                        <ItemsRepeater.Layout>
+                            <UniformGridLayout Orientation="Horizontal"
+                                               MinItemWidth="180" MinItemHeight="320"
+                                               MinRowSpacing="20" MinColumnSpacing="16"/>
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="models:LocalMovie">
+                                <cards:ContentCard AspectMode="Tall"
+                                                   PlaceholderGlyph="&#xE714;"
+                                                   Tag="{x:Bind}"
+                                                   ImageUrl="{x:Bind PosterUri}"
+                                                   Title="{x:Bind Title}"
+                                                   Subtitle="{x:Bind local:LocalMoviesPage.FormatYear(Year)}"
+                                                   CardClick="MovieCard_CardClick"
+                                                   CardRightTapped="MovieCard_CardRightTapped"/>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </Grid>
+            </Grid>
+        </ScrollView>
+
+        <Grid x:Name="ShyHeaderHost"
+              Canvas.ZIndex="5"
+              VerticalAlignment="Top"
+              Margin="16,16,16,0">
+            <Grid x:Name="ShyHeaderCard"
+                  HorizontalAlignment="Center"
+                  MaxWidth="760"
+                  MinHeight="56"
+                  Visibility="Collapsed">
+                <Border transitions:TransitionHelper.Id="card-shell"
+                        CornerRadius="18"
+                        BorderThickness="1.5">
+                    <Border.BorderBrush>
+                        <SolidColorBrush Color="{ThemeResource SubtleFillColorTertiary}"/>
+                    </Border.BorderBrush>
+                    <Border.Background>
+                        <AcrylicBrush TintColor="{ThemeResource SolidBackgroundFillColorBase}"
+                                      TintOpacity="0.78"
+                                      FallbackColor="{ThemeResource CardBackgroundFillColorDefault}"/>
+                    </Border.Background>
+                    <Border.Shadow>
+                        <ThemeShadow/>
+                    </Border.Shadow>
+                </Border>
+
+                <Grid Padding="16,8" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
+                               Text="Movies"
+                               VerticalAlignment="Center"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis"
+                               MaxLines="1"
+                               transitions:TransitionHelper.Id="library-title"/>
+
+                    <Button Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Padding="14,7"
+                            CornerRadius="16"
+                            Click="SyncButton_Click"
+                            transitions:TransitionHelper.Id="library-sync">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon x:Name="ShySyncGlyph" Glyph="&#xE895;" FontSize="12"/>
+                            <TextBlock x:Name="ShySyncText" Text="Sync"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>

@@ -171,6 +171,22 @@
                                 <FontIcon Glyph="&#xE8F1;"/>
                             </controls:SettingsCard.HeaderIcon>
                             <StackPanel Orientation="Horizontal" Spacing="8">
+                                <!-- Per-folder soft classification hint. "Auto" leaves the
+                                     classifier to figure out kinds purely from file
+                                     signals; any other value biases ambiguous files
+                                     toward the chosen kind. Never overrides clear
+                                     signals (a movie misfiled in a music folder still
+                                     gets classified as Movie). -->
+                                <ComboBox SelectedIndex="{x:Bind ExpectedKindIndex, Mode=TwoWay}"
+                                          ToolTipService.ToolTip="Expected content kind for this folder"
+                                          MinWidth="140">
+                                    <ComboBoxItem Content="Auto"/>
+                                    <ComboBoxItem Content="Music"/>
+                                    <ComboBoxItem Content="Music videos"/>
+                                    <ComboBoxItem Content="TV shows"/>
+                                    <ComboBoxItem Content="Movies"/>
+                                    <ComboBoxItem Content="Other"/>
+                                </ComboBox>
                                 <TextBlock Text="{x:Bind LastScanDisplay}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            VerticalAlignment="Center"/>
@@ -202,6 +218,86 @@
                        Style="{ThemeResource CaptionTextBlockStyle}"
                        Margin="4,4,0,0"
                        Tag="local-files"/>
+
+            <!-- ── Online metadata lookups ──────────────────────────────────────────
+                 BYO TMDB v4 read-access token — every user pastes their own
+                 free token. Enrichment runs only on explicit Sync clicks
+                 (Shows / Movies / detail pages, or "Run now" below). -->
+            <settings:SettingsGroupHeader Title="Online metadata lookups"
+                                          Description="Enrich local files with posters and titles from TMDB and MusicBrainz."
+                                          IconGlyph="&#xE968;"
+                                          Tag="local-enrichment"/>
+
+            <!-- TMDB integration card with token PasswordBox + Test/Clear. -->
+            <controls:SettingsExpander Header="TMDB integration"
+                                       Description="Free service for movie and TV metadata."
+                                       Tag="local-enrichment"
+                                       IsExpanded="True">
+                <controls:SettingsExpander.HeaderIcon>
+                    <FontIcon Glyph="&#xE7F4;"/>
+                </controls:SettingsExpander.HeaderIcon>
+                <!-- Status pill in the collapsed-header slot. -->
+                <Border x:Name="TmdbStatusPill"
+                        Padding="10,3,10,4"
+                        CornerRadius="10"
+                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                        VerticalAlignment="Center">
+                    <TextBlock x:Name="TmdbStatusPillText"
+                               Text="Not configured"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </Border>
+
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard ContentAlignment="Vertical"
+                                           Tag="local-enrichment">
+                        <StackPanel Spacing="10" Padding="0,4,0,4">
+                            <TextBlock Text="Paste your TMDB v4 read-access token. The token is encrypted with Windows DPAPI and never leaves your machine."
+                                       TextWrapping="Wrap"
+                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <PasswordBox x:Name="TmdbTokenBox"
+                                         Password="{x:Bind ViewModel.LocalFiles.TmdbTokenInput, Mode=TwoWay}"
+                                         PlaceholderText="eyJhbGciOi..."
+                                         HorizontalAlignment="Stretch"/>
+                            <TextBlock x:Name="TmdbStatusMessageText"
+                                       Text="{x:Bind ViewModel.LocalFiles.TmdbStatusMessage, Mode=OneWay}"
+                                       TextWrapping="Wrap"
+                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button x:Name="TestTokenButton"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        Content="Verify"
+                                        Click="TestTmdbToken_Click"/>
+                                <Button x:Name="ClearTokenButton"
+                                        Content="Clear"
+                                        Click="ClearTmdbToken_Click"/>
+                                <HyperlinkButton Content="Get a free token (60 seconds) →"
+                                                 Click="GetTmdbToken_Click"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
+
+            <controls:SettingsCard Header="Run now"
+                                   Description="Manually re-queue every local file for metadata lookup."
+                                   Tag="local-enrichment">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE895;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <Button Content="Run now" Click="RunEnrichmentNow_Click"/>
+            </controls:SettingsCard>
+            <controls:SettingsCard Header="Clear cached lookups"
+                                   Description="Drop every previous TMDB / MusicBrainz match so the next Sync re-queries from scratch."
+                                   Tag="local-enrichment">
+                <controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE74D;"/>
+                </controls:SettingsCard.HeaderIcon>
+                <Button Content="Clear" Click="ClearCachedLookups_Click"/>
+            </controls:SettingsCard>
 
             <settings:SettingsGroupHeader Title="Connection"
                                           Description="Configure reconnect behavior and network timeouts."

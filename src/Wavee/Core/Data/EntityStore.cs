@@ -125,6 +125,27 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
         });
     }
 
+    /// <summary>
+    /// Synchronous, non-allocating peek at the current cached value for a key.
+    /// Returns the value if the slot exists and has reached <c>Ready</c> state
+    /// (Fresh or Stale — both are usable cached values), otherwise null.
+    /// Does NOT subscribe, does NOT trigger materialization, does NOT bump
+    /// the LRU touch counter — callers that care about subscription / refresh
+    /// semantics should use <see cref="Observe"/> instead.
+    /// </summary>
+    /// <remarks>
+    /// Designed for predictive UI decisions at navigation time — e.g. picking
+    /// a layout mode based on a previously-cached value before triggering a
+    /// fresh subscription. Tolerates the common case where the slot doesn't
+    /// exist yet (returns null, caller falls back to a heuristic).
+    /// </remarks>
+    public TValue? PeekCached(TKey key)
+    {
+        if (_disposed) return null;
+        if (!_slots.TryGetValue(key, out var slot)) return null;
+        return slot.Subject.Value is EntityState<TValue>.Ready ready ? ready.Value : null;
+    }
+
     public Task<TValue> GetOnceAsync(TKey key, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

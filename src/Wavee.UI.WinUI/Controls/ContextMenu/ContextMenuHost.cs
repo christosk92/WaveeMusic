@@ -64,7 +64,17 @@ public static class ContextMenuHost
 
     private static Style BuildPresenterStyle()
     {
-        var style = new Style(typeof(FlyoutPresenter));
+        // BasedOn the system default so the flyout keeps its open/close
+        // animations and the standard control template. Without this, the
+        // overrides below replace the default style wholesale and the flyout
+        // pops in without any transition.
+        Style? baseStyle = null;
+        if (Application.Current.Resources.TryGetValue("DefaultFlyoutPresenterStyle", out var v) && v is Style s)
+            baseStyle = s;
+
+        var style = baseStyle is null
+            ? new Style(typeof(FlyoutPresenter))
+            : new Style(typeof(FlyoutPresenter)) { BasedOn = baseStyle };
         style.Setters.Add(new Setter(FlyoutPresenter.PaddingProperty, new Thickness(6)));
         style.Setters.Add(new Setter(FlyoutPresenter.MinWidthProperty, 300d));
         style.Setters.Add(new Setter(FlyoutPresenter.MaxWidthProperty, 380d));

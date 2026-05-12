@@ -17,10 +17,13 @@ public class WaveeCacheOptions
     /// <summary>
     /// Root directory for the local-file artwork cache. Backs the
     /// <c>wavee-artwork://{hash}</c> URI scheme. Default:
-    /// <c>%LOCALAPPDATA%/Wavee/local-artwork</c>.
+    /// <c>%APPDATA%/Wavee/local-artwork</c> — same parent as the metadata
+    /// DB so enrichment writers (which derive their path from the DB
+    /// connection string) and the UI resolver (which reads
+    /// <see cref="LocalArtworkDirectory"/>) point to the same folder.
     /// </summary>
     public string LocalArtworkDirectory { get; set; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Wavee",
         "local-artwork");
 

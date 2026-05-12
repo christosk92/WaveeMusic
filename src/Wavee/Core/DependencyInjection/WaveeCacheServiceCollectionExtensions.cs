@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Wavee.Core.Library.Local;
+using Wavee.Local;
 using Wavee.Core.Storage;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.Core.Storage.Entities;
@@ -148,8 +148,12 @@ public static class WaveeCacheServiceCollectionExtensions
             // When null, the scanner skips the video-frame fallback and
             // simply doesn't write artwork for tag-less videos.
             var videoThumbnail = sp.GetService<IVideoThumbnailExtractor>();
+            // Optional — only registered on Windows (Wavee.UI.WinUI provides
+            // MediaFoundationEmbeddedTrackProber). Without it the scanner skips
+            // the embedded-track index pass for video files.
+            var embeddedTrackProber = sp.GetService<Wavee.Local.Subtitles.IEmbeddedTrackProber>();
             var logger = sp.GetService<ILogger<LocalFolderScanner>>();
-            return new LocalFolderScanner(extractor, artwork, videoThumbnail, logger);
+            return new LocalFolderScanner(extractor, artwork, videoThumbnail, embeddedTrackProber, logger);
         });
         services.AddSingleton<ILocalLibraryService>(sp =>
         {

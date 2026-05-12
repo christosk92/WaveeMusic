@@ -33,11 +33,24 @@ public sealed partial class MiniVideoPlayerViewModel : ObservableObject, IDispos
     [ObservableProperty] private bool _isSuppressedByFloatingPlayer;
     [ObservableProperty] private bool _isDismissedByUser;
 
+    /// <summary>
+    /// True only once the active video surface has rendered at least one
+    /// frame. Gates the mini-player's outer visibility so it never appears
+    /// as a black box during the brief window between surface handoff and
+    /// MediaFoundation's first-frame callback (the cause of the "lingering
+    /// black surface on nav-away" symptom).
+    /// </summary>
+    [ObservableProperty] private bool _hasVideoSurfaceWithFirstFrame;
+
     public bool IsVisible => IsVideoActive
+                             && HasVideoSurfaceWithFirstFrame
                              && !IsOnVideoPage
                              && !IsSuppressedBySidebarPlayer
                              && !IsSuppressedByFloatingPlayer
                              && !IsDismissedByUser;
+
+    partial void OnHasVideoSurfaceWithFirstFrameChanged(bool value)
+        => OnPropertyChanged(nameof(IsVisible));
 
     /// <summary>
     /// Re-uses the singleton <see cref="PlayerBarViewModel"/> for transport
@@ -72,6 +85,7 @@ public sealed partial class MiniVideoPlayerViewModel : ObservableObject, IDispos
             .GetService<PlayerBarViewModel>();
 
         IsVideoActive = _surface.HasActiveSurface;
+        HasVideoSurfaceWithFirstFrame = _surface.HasActiveSurface && _surface.HasActiveFirstFrame;
         Title = _state?.CurrentTrackTitle;
         _lastTrackId = _state?.CurrentTrackId;
 
@@ -93,6 +107,12 @@ public sealed partial class MiniVideoPlayerViewModel : ObservableObject, IDispos
             IsDismissedByUser = false;
 
         IsVideoActive = hasSurface;
+        // Re-evaluate the first-frame gate. ActiveVideoSurfaceService fires
+        // ActiveSurfaceChanged on EVERY readiness flip (HasActiveFirstFrame,
+        // IsActiveSurfaceLoading, IsActiveSurfaceBuffering — see the
+        // service's OnProviderSurfaceChanged), so this handler is the
+        // single hook needed to keep the gate in sync.
+        HasVideoSurfaceWithFirstFrame = hasSurface && _surface.HasActiveFirstFrame;
         OnPropertyChanged(nameof(IsVisible));
     }
 
@@ -159,6 +179,7 @@ public sealed partial class MiniVideoPlayerViewModel : ObservableObject, IDispos
         IsDismissedByUser = false;
         IsSuppressedBySidebarPlayer = false;
         IsVideoActive = _surface.HasActiveSurface;
+        HasVideoSurfaceWithFirstFrame = _surface.HasActiveSurface && _surface.HasActiveFirstFrame;
         OnPropertyChanged(nameof(IsVisible));
     }
 

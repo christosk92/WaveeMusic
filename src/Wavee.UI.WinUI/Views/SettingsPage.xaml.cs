@@ -34,32 +34,30 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
         new("On-device AI", "App", "ai", "availability", "local ai language model summarize explain lyrics"),
         new("AI availability", "On-device AI", "ai", "availability", "model hardware region install status"),
 
-        new("Playback & streaming", "Listening", "playback", "queue", "queue autoplay quality normalization lyrics player"),
-        new("Track click behavior", "Playback & streaming", "playback", "interaction", "single tap double tap track click"),
-        new("Default play action", "Playback & streaming", "playback", "queue", "play clear queue play next play later"),
-        new("Ask before playing", "Playback & streaming", "playback", "queue", "prompt replace queue confirm"),
-        new("Autoplay", "Playback & streaming", "playback", "queue", "similar songs end playlist album artist"),
-        new("Docked player", "Playback & streaming", "playback", "player", "bottom player sidebar floating popup visible"),
-        new("Streaming quality", "Playback & streaming", "playback", "audio", "normal high very high 96 160 320 kbps bitrate"),
-        new("Normalize volume", "Playback & streaming", "playback", "audio", "normalization loudness volume"),
-        new("Lyrics sources", "Playback & streaming", "playback", "lyrics", "lyrics provider source reorder"),
+        new("Playback & audio", "App", "playback-audio", "queue", "queue autoplay quality normalization lyrics player equalizer eq"),
+        new("Track click behavior", "Playback & audio", "playback-audio", "interaction", "single tap double tap track click"),
+        new("Default play action", "Playback & audio", "playback-audio", "queue", "play clear queue play next play later"),
+        new("Ask before playing", "Playback & audio", "playback-audio", "queue", "prompt replace queue confirm"),
+        new("Autoplay", "Playback & audio", "playback-audio", "queue", "similar songs end playlist album artist"),
+        new("Docked player", "Playback & audio", "playback-audio", "player", "bottom player sidebar floating popup visible"),
+        new("Streaming quality", "Playback & audio", "playback-audio", "audio", "normal high very high 96 160 320 kbps bitrate"),
+        new("Normalize volume", "Playback & audio", "playback-audio", "audio", "normalization loudness volume"),
+        new("Lyrics sources", "Playback & audio", "playback-audio", "lyrics", "lyrics provider source reorder"),
+        new("Equalizer preset", "Playback & audio", "playback-audio", "equalizer", "flat bass boost treble boost vocal radio eq proof"),
+        new("Manual equalizer", "Playback & audio", "playback-audio", "equalizer", "bands gains curve reset"),
 
-        new("Audio & equalizer", "Listening", "audio", "equalizer", "eq output preset bass treble vocal radio"),
-        new("Equalizer preset", "Audio & equalizer", "audio", "equalizer", "flat bass boost treble boost vocal radio eq proof"),
-        new("Manual equalizer", "Audio & equalizer", "audio", "equalizer", "bands gains curve reset"),
-
-        new("Storage & local files", "Library & devices", "storage", "audio-cache", "cache local files network connection folders"),
+        new("Storage & local files", "App", "storage", "audio-cache", "cache local files network connection folders"),
         new("Caching profile", "Storage & local files", "storage", "memory", "memory cache browsing speed"),
         new("Audio cache", "Storage & local files", "storage", "audio-cache", "enable cache size limit location clear"),
         new("Clear collection revisions", "Storage & local files", "storage", "audio-cache", "refresh library liked songs albums artists shows resync"),
         new("Local files", "Storage & local files", "storage", "local-files", "watched folders rescan add folder remove files home shelf"),
         new("Connection", "Storage & local files", "storage", "connection", "auto reconnect timeout network"),
 
-        new("Spotify Connect", "Library & devices", "connect", "events", "connect devices remote state local device"),
-        new("Diagnostics", "System", "diagnostics", "health", "logs clock sync audio health troubleshooting"),
+        new("Diagnostics", "App", "diagnostics", "health", "logs clock sync audio health troubleshooting"),
         new("Clock sync", "Diagnostics", "diagnostics", "clock", "server time sync interval"),
         new("Logs", "Diagnostics", "diagnostics", "logs", "new logs past logs filter copy export"),
-        new("About", "System", "about", "updates", "version update app information")
+        new("Spotify Connect events", "Diagnostics", "diagnostics", "connect-events", "connect devices remote state local device cluster dealer put state"),
+        new("About", "App", "about", "updates", "version update app information")
     ];
 
     public SettingsViewModel ViewModel { get; }
@@ -70,11 +68,9 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
 
     private GeneralSettingsSection? _generalSection;
     private AiSettingsSection? _aiSection;
-    private PlaybackSettingsSection? _playbackSection;
-    private AudioSettingsSection? _audioSection;
+    private PlaybackAudioSettingsSection? _playbackAudioSection;
     private StorageNetworkSettingsSection? _storageSection;
     private DiagnosticsSettingsSection? _diagnosticsSection;
-    private ConnectStateSection? _connectSection;
     private AboutSettingsSection? _aboutSection;
     private string? _activeSectionTag;
     private string? _activeSearchSectionTag;
@@ -106,12 +102,13 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
         // entry through the in-page AutoSuggestBox.
         if (e.Parameter is SettingsNavigationParameter param)
         {
-            _activeSearchSectionTag = param.SectionTag;
+            var normalizedTag = NormalizeTag(param.SectionTag);
+            _activeSearchSectionTag = normalizedTag;
             _activeSearchGroupKey = param.GroupKey;
             _activeSearchTitle = param.EntryTitle;
             UpdateSearchFilterChrome();
 
-            var item = GetNavigationItem(param.SectionTag);
+            var item = GetNavigationItem(normalizedTag);
             if (item is not null && !ReferenceEquals(SettingsNavigation.SelectedItem, item))
             {
                 _preserveSearchFilterForNavigation = true;
@@ -119,7 +116,7 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
                 _preserveSearchFilterForNavigation = false;
             }
 
-            ShowSection(param.SectionTag);
+            ShowSection(normalizedTag);
         }
     }
 
@@ -140,7 +137,6 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
 
         ViewModel.StopAudioDiagnostics();
         _diagnosticsSection?.Dispose();
-        _connectSection?.Dispose();
         ViewModel.Dispose();
     }
 
@@ -201,12 +197,13 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
     private void NavigateToSearchEntry(SettingsSearchEntry entry)
     {
         SettingsSearchBox.ItemsSource = null;
-        _activeSearchSectionTag = entry.Tag;
+        var normalizedTag = NormalizeTag(entry.Tag);
+        _activeSearchSectionTag = normalizedTag;
         _activeSearchGroupKey = entry.GroupKey;
         _activeSearchTitle = entry.Title;
         UpdateSearchFilterChrome();
 
-        var item = GetNavigationItem(entry.Tag);
+        var item = GetNavigationItem(normalizedTag);
         if (item is not null && !ReferenceEquals(SettingsNavigation.SelectedItem, item))
         {
             _preserveSearchFilterForNavigation = true;
@@ -214,8 +211,15 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
             _preserveSearchFilterForNavigation = false;
         }
 
-        ShowSection(entry.Tag);
+        ShowSection(normalizedTag);
     }
+
+    private static string NormalizeTag(string tag) => tag switch
+    {
+        "playback" or "audio" => "playback-audio",
+        "connect" => "diagnostics",
+        _ => tag
+    };
 
     private void ViewAllSettingsGroups_Click(object sender, RoutedEventArgs e)
     {
@@ -254,14 +258,15 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
 
     private NavigationViewItem? GetNavigationItem(string tag)
     {
+        // Persisted "last visited section" tags from prior builds may still be
+        // playback/audio/connect — remap them so users don't get bounced back
+        // to General after the merge.
         return tag switch
         {
             "ai" => AiItem,
-            "playback" => PlaybackItem,
-            "audio" => AudioItem,
+            "playback" or "audio" or "playback-audio" => PlaybackAudioItem,
             "storage" => StorageItem,
-            "diagnostics" => DiagnosticsItem,
-            "connect" => ConnectItem,
+            "diagnostics" or "connect" => DiagnosticsItem,
             "about" => AboutItem,
             _ => GeneralItem
         };
@@ -269,6 +274,11 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
 
     private void ShowSection(string tag)
     {
+        // Belt-and-suspenders: normalize legacy tags so the rest of this
+        // method only sees the post-merge canonical set, even if a future
+        // caller forgets.
+        tag = NormalizeTag(tag);
+
         if (ContentHost == null)
         {
             if (_deferredShowSectionAttempts < MaxDeferredShowSectionAttempts)
@@ -292,12 +302,9 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
                     Ioc.Default.GetRequiredService<ISettingsService>(),
                     Ioc.Default.GetRequiredService<AiCapabilities>(),
                     Ioc.Default.GetService<AiNotificationService>())),
-            "playback" => _playbackSection ??= new PlaybackSettingsSection(ViewModel),
-            "audio" => _audioSection ??= new AudioSettingsSection(ViewModel),
+            "playback-audio" => _playbackAudioSection ??= new PlaybackAudioSettingsSection(ViewModel),
             "storage" => _storageSection ??= new StorageNetworkSettingsSection(ViewModel),
             "diagnostics" => _diagnosticsSection ??= new DiagnosticsSettingsSection(ViewModel),
-            "connect" => _connectSection ??= new ConnectStateSection(
-                new ConnectStateViewModel(Ioc.Default.GetRequiredService<RemoteStateRecorder>())),
             "about" => _aboutSection ??= new AboutSettingsSection(ViewModel),
             _ => _generalSection ??= new GeneralSettingsSection(ViewModel)
         };
@@ -328,11 +335,9 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
         return tag switch
         {
             "ai" => ("On-device AI", "Local AI features, availability, and setup."),
-            "playback" => ("Playback & streaming", "Track click behavior, queue defaults, streaming quality, normalization, and lyrics sources."),
-            "audio" => ("Audio output & EQ", "Equalizer presets, manual EQ, and live audio processing status."),
+            "playback-audio" => ("Playback & audio", "Track click behavior, queue defaults, streaming quality, lyrics sources, equalizer presets, and manual EQ."),
             "storage" => ("Storage, cache & local files", "Memory cache behavior, audio cache limits, local music folders, and connection timeouts."),
-            "diagnostics" => ("Diagnostics", "Audio health, clock sync, logs, and troubleshooting tools."),
-            "connect" => ("Spotify Connect", "Inspect the local Connect device and current remote state."),
+            "diagnostics" => ("Diagnostics", "Audio health, clock sync, logs, Spotify Connect events, and troubleshooting tools."),
             "about" => ("About", "App version, update status, and project information."),
             _ => ("General", "Appearance, language, metadata locale, and display density.")
         };

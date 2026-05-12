@@ -374,6 +374,18 @@
                     </ItemsRepeater>
                 </Grid>
             </Grid>
+
+            <settings:SettingsGroupHeader Title="Spotify Connect events"
+                                          Description="Live log of cluster updates, dealer commands, and PUT state requests for the local device."
+                                          IconGlyph="&#xE703;"
+                                          Tag="connect-events"/>
+            <ContentControl x:Name="ConnectEventsHost"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch"
+                            HorizontalAlignment="Stretch"
+                            MinHeight="360"
+                            Height="520"
+                            Tag="connect-events"/>
         </StackPanel>
     </ScrollView>
 </UserControl>

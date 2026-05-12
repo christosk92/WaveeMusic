@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Wavee.Core.Library.Local;
+using Wavee.Local;
 using Windows.Storage;
 using Windows.Storage.FileProperties;
 
@@ -36,11 +36,14 @@ public sealed class WindowsVideoThumbnailExtractor : IVideoThumbnailExtractor
         if (string.IsNullOrEmpty(path)) return null;
         try
         {
-            return ExtractAsync(path).GetAwaiter().GetResult();
+            var result = ExtractAsync(path).GetAwaiter().GetResult();
+            if (result is null || result.Length == 0)
+                _logger?.LogInformation("[thumb] no shell thumbnail available for {Path}", path);
+            return result;
         }
         catch (Exception ex)
         {
-            _logger?.LogDebug(ex, "Video thumbnail extraction failed for {Path}", path);
+            _logger?.LogWarning(ex, "[thumb] video thumbnail extraction failed for {Path}", path);
             return null;
         }
     }
@@ -48,8 +51,23 @@ public sealed class WindowsVideoThumbnailExtractor : IVideoThumbnailExtractor
     private static async Task<byte[]?> ExtractAsync(string path)
     {
         var file = await StorageFile.GetFileFromPathAsync(path);
+
+        // Try VideosView first — fast, uses Windows' cached shell thumbnail
+        // if one exists. For screen recordings and HEVC .mkv files Windows
+        // often returns empty here because no cached thumb was generated.
+        var bytes = await TryGetThumbAsync(file, ThumbnailMode.VideosView).ConfigureAwait(false);
+        if (bytes is { Length: > 0 }) return bytes;
+
+        // Fallback: SingleItem mode is more aggressive — it forces frame
+        // extraction on-demand rather than relying on the shell index.
+        bytes = await TryGetThumbAsync(file, ThumbnailMode.SingleItem).ConfigureAwait(false);
+        return bytes;
+    }
+
+    private static async Task<byte[]?> TryGetThumbAsync(StorageFile file, ThumbnailMode mode)
+    {
         using var thumb = await file.GetThumbnailAsync(
-            ThumbnailMode.VideosView,
+            mode,
             RequestedSize,
             ThumbnailOptions.UseCurrentScale);
         if (thumb is null || thumb.Size == 0) return null;

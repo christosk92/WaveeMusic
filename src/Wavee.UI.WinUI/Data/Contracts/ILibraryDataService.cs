@@ -217,7 +217,16 @@ public interface ILibraryDataService
     Task SetPlaylistFollowedAsync(string playlistId, bool followed, CancellationToken ct = default);
 
     /// <summary>
-    /// Removes tracks from a playlist.
+    /// Appends tracks to a playlist (real Spotify tracks, not local overlays).
+    /// Accepts bare track IDs or full <c>spotify:track:</c> URIs.
+    /// Maps to a single ADD Op posted to <c>/playlist/v2/playlist/{id}/changes</c>
+    /// with <c>add_last=true</c>.
+    /// </summary>
+    Task AddTracksToPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes tracks from a playlist. Removes every occurrence whose URI matches
+    /// one of the supplied IDs / URIs (duplicate-aware via items_as_key).
     /// </summary>
     Task RemoveTracksFromPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default);
 

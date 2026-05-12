@@ -457,6 +457,12 @@ public sealed partial class PlayerBar : UserControl
 
     private void NavigateToAlbum()
     {
+        // Dismiss the floating expanded-album-art card before we leave the
+        // current page — otherwise it lingers as a giant sidebar overlay on
+        // top of the destination, which is exactly what the user reported
+        // when clicking a TV episode title.
+        ViewModel.IsAlbumArtExpanded = false;
+
         if (PodcastPlaybackNavigation.TryOpenCurrentEpisode(
                 _playbackStateService,
                 ViewModel.TrackTitle,
@@ -465,6 +471,29 @@ public sealed partial class PlayerBar : UserControl
                 ViewModel.AlbumArtLarge ?? ViewModel.AlbumArt))
         {
             return;
+        }
+
+        // Local-content branch — a TMDB-enriched TV episode goes to the show
+        // detail page, a movie goes to its own detail page. Falls through to
+        // the generic album path when the local item is plain music / not
+        // yet classified (matches the existing behaviour for those rows).
+        if (_playbackStateService is not null)
+        {
+            switch (_playbackStateService.CurrentLocalContentKind)
+            {
+                case Wavee.Local.Classification.LocalContentKind.TvEpisode
+                    when !string.IsNullOrEmpty(_playbackStateService.CurrentLocalSeriesId):
+                    NavigationHelpers.OpenLocalShowDetail(
+                        _playbackStateService.CurrentLocalSeriesId!,
+                        _playbackStateService.CurrentLocalSeriesName);
+                    return;
+                case Wavee.Local.Classification.LocalContentKind.Movie
+                    when !string.IsNullOrEmpty(_playbackStateService.CurrentTrackId):
+                    NavigationHelpers.OpenLocalMovieDetail(
+                        _playbackStateService.CurrentTrackId!,
+                        ViewModel.TrackTitle);
+                    return;
+            }
         }
 
         var albumId = ViewModel.CurrentAlbumId;
@@ -622,6 +651,99 @@ public sealed partial class PlayerBar : UserControl
     {
         if (args.Reason is TeachingTipCloseReason.LightDismiss or TeachingTipCloseReason.CloseButton)
             ViewModel.DismissPodcastResumePromptCommand.Execute(null);
+    }
+
+    // ── External subtitle drop on the bar ─────────────────────────────────
+    //
+    // Users can drop .srt / .vtt / .ass / .ssa / .sub onto the bar to side-
+    // load a subtitle into the active video. No-op when no video is playing
+    // (the LocalMediaPlayer's AddExternalSubtitleAsync guards against that
+    // case too — but rejecting the drop here keeps the visual feedback
+    // honest: the cursor never says "Copy" if the drop wouldn't land).
+
+    private static readonly System.Collections.Generic.HashSet<string> SubtitleExtensions =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ".srt", ".vtt", ".ass", ".ssa", ".sub", ".idx"
+        };
+
+    private async void PlayerBarRoot_DragOver(object sender, Microsoft.UI.Xaml.DragEventArgs e)
+    {
+        if (_playbackStateService?.CurrentTrackIsVideo != true
+            && _playbackStateService?.CurrentLocalContentKind
+                is not Wavee.Local.Classification.LocalContentKind.TvEpisode
+                and not Wavee.Local.Classification.LocalContentKind.Movie
+                and not Wavee.Local.Classification.LocalContentKind.MusicVideo)
+        {
+            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
+            return;
+        }
+
+        if (await HasSubtitleStorageItemAsync(e.DataView))
+        {
+            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+            e.DragUIOverride.Caption = "Add subtitle";
+            e.DragUIOverride.IsCaptionVisible = true;
+            e.DragUIOverride.IsGlyphVisible = true;
+        }
+        else
+        {
+            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
+        }
+    }
+
+    private void PlayerBarRoot_DragLeave(object sender, Microsoft.UI.Xaml.DragEventArgs e)
+    {
+        // No persistent overlay on the bar — the cursor caption is enough.
+    }
+
+    private async void PlayerBarRoot_Drop(object sender, Microsoft.UI.Xaml.DragEventArgs e)
+    {
+        if (!e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
+            return;
+
+        var local = Ioc.Default.GetService<LocalMediaPlayer>();
+        if (local is null) return;
+
+        var items = await e.DataView.GetStorageItemsAsync();
+        foreach (var item in items)
+        {
+            if (item is not Windows.Storage.StorageFile file) continue;
+            if (!SubtitleExtensions.Contains(System.IO.Path.GetExtension(file.Name))) continue;
+
+            var parsed = Wavee.Local.Subtitles.LocalSubtitleDiscoverer.ParseFromPath(file.Path);
+            var stem = System.IO.Path.GetFileNameWithoutExtension(file.Name);
+
+            await local.AddExternalSubtitleAsync(
+                file.Path,
+                parsed.Language,
+                label: stem,
+                forced: parsed.Forced,
+                sdh: parsed.Sdh);
+        }
+    }
+
+    private static async Task<bool> HasSubtitleStorageItemAsync(
+        Windows.ApplicationModel.DataTransfer.DataPackageView view)
+    {
+        if (!view.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
+            return false;
+        try
+        {
+            var items = await view.GetStorageItemsAsync();
+            foreach (var item in items)
+            {
+                if (item is not Windows.Storage.StorageFile file) continue;
+                if (SubtitleExtensions.Contains(System.IO.Path.GetExtension(file.Name)))
+                    return true;
+            }
+        }
+        catch
+        {
+            // GetStorageItemsAsync can throw if the drag is cancelled — treat
+            // as "no subtitle" rather than tripping the user.
+        }
+        return false;
     }
 
     // Old Slider PointerPressed/Released/CaptureLost handlers were removed when

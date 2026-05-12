@@ -7,6 +7,8 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
+using Wavee.UI.Contracts;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
@@ -28,6 +30,7 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
 
     private readonly ILibraryDataService _libraryDataService;
     private readonly IAlbumService _albumService;
+    private readonly IPlaybackService _playbackService;
     private readonly ITrackLikeService? _likeService;
     private readonly ISettingsService? _settingsService;
     private readonly LibraryRecentsService? _libraryRecents;
@@ -116,12 +119,14 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
     public AlbumsLibraryViewModel(
         ILibraryDataService libraryDataService,
         IAlbumService albumService,
+        IPlaybackService playbackService,
         ITrackLikeService? likeService = null,
         ISettingsService? settingsService = null,
         LibraryRecentsService? libraryRecents = null)
     {
         _libraryDataService = libraryDataService;
         _albumService = albumService;
+        _playbackService = playbackService;
         _likeService = likeService;
         _settingsService = settingsService;
         _libraryRecents = libraryRecents;
@@ -319,24 +324,28 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
     }
 
     [RelayCommand]
-    private void PlayAlbum()
+    private async Task PlayAlbumAsync()
     {
         if (SelectedAlbum == null) return;
-        // TODO: Play album via Wavee core
+        await _playbackService.PlayContextAsync(
+            SelectedAlbum.Id,
+            new PlayContextOptions { PlayOriginFeature = "album_library" });
     }
 
     [RelayCommand]
-    private void ShuffleAlbum()
+    private async Task ShuffleAlbumAsync()
     {
         if (SelectedAlbum == null) return;
-        // TODO: Shuffle play album via Wavee core
+        await _playbackService.PlayContextAsync(
+            SelectedAlbum.Id,
+            new PlayContextOptions { Shuffle = true, PlayOriginFeature = "album_library" });
     }
 
     [RelayCommand]
-    private void PlayTrack(object? track)
+    private async Task PlayTrackAsync(object? track)
     {
         if (track is not AlbumTrackDto albumTrack || SelectedAlbum == null) return;
-        // TODO: Play specific track via Wavee core
+        await _playbackService.PlayTrackInContextAsync(albumTrack.Uri, SelectedAlbum.Id);
     }
 
     [RelayCommand]
@@ -689,38 +698,49 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
 
     // Multi-select commands
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void PlaySelected()
+    private async Task PlaySelectedAsync()
     {
         if (!HasSelection) return;
-        // TODO: Play selected tracks via Wavee core
+        var trackUris = SelectedItems.OfType<AlbumTrackDto>().Select(t => t.Uri).ToList();
+        if (trackUris.Count == 0) return;
+        await _playbackService.PlayTracksAsync(trackUris);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void PlayAfter()
+    private async Task PlayAfterAsync()
     {
         if (!HasSelection) return;
-        // TODO: Play selected tracks after current track
+        foreach (var track in SelectedItems.OfType<AlbumTrackDto>())
+            await _playbackService.PlayNextAsync(track.Uri);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void AddSelectedToQueue()
+    private async Task AddSelectedToQueueAsync()
     {
         if (!HasSelection) return;
-        // TODO: Add selected tracks to queue
+        foreach (var track in SelectedItems.OfType<AlbumTrackDto>())
+            await _playbackService.AddToQueueAsync(track.Uri);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void RemoveSelected()
     {
-        if (!HasSelection) return;
-        // TODO: Remove selected tracks from library
+        if (!HasSelection || _likeService == null) return;
+        foreach (var track in SelectedItems.OfType<AlbumTrackDto>())
+        {
+            // Force currentlySaved=true so the toggle always lands on "unsaved" —
+            // matches the menu label "Remove from library".
+            _likeService.ToggleSave(SavedItemType.Track, track.Uri, currentlySaved: true);
+        }
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void AddToPlaylist(PlaylistSummaryDto? playlist)
+    private async Task AddToPlaylistAsync(PlaylistSummaryDto? playlist)
     {
         if (playlist == null || !HasSelection) return;
-        // TODO: Add selected tracks to playlist
+        var trackIds = SelectedItems.OfType<AlbumTrackDto>().Select(t => t.Uri).ToList();
+        if (trackIds.Count == 0) return;
+        await _libraryDataService.AddTracksToPlaylistAsync(playlist.Id, trackIds);
     }
 
     // Explicit ITrackListViewModel ICommand implementation

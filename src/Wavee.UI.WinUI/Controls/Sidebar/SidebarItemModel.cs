@@ -97,6 +97,14 @@ public class SidebarItemModel : ISidebarItemModel
     public string? ImageUrl { get; set; }
 
     /// <summary>
+    /// True when this row represents a playlist owned by the current user.
+    /// Lets the right-click context menu surface owner-only items (Delete,
+    /// Rename, etc.) and suppress non-sensical ones (Report, Exclude from
+    /// taste, Remove from Library).
+    /// </summary>
+    public bool IsOwner { get; set; }
+
+    /// <summary>
     /// Whether to show an empty placeholder when this group has no children.
     /// </summary>
     public bool ShowEmptyPlaceholder

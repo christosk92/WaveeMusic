@@ -124,6 +124,7 @@ public sealed partial class InlineEditableText : UserControl
     // ── State ───────────────────────────────────────────────────────────────
 
     private bool _isEditing;
+    private bool _isHovering;
     private bool _suppressLostFocusCommit;
 
     // The TextBox driven by the current edit session. EnterEditMode picks
@@ -149,6 +150,8 @@ public sealed partial class InlineEditableText : UserControl
         var busy = (bool)e.NewValue;
         c.BusyRing.IsActive = busy;
         c.BusyRing.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        // Hide the pencil while a save is in flight; the spinner takes its slot.
+        c.UpdatePlaceholderVisibility();
     }
 
     private void UpdatePlaceholderVisibility()
@@ -164,18 +167,39 @@ public sealed partial class InlineEditableText : UserControl
         DisplayText.Visibility = (_isEditing || showPlaceholder)
             ? Visibility.Collapsed
             : Visibility.Visible;
+
+        // Hover-only pencil hint — only shown while the pointer is over the
+        // control. Persistent visibility was confirmed too loud; the existing
+        // HoverFrame tint already announces "click to edit", and the pencil
+        // adds an explicit affordance without permanently cluttering the row.
+        if (EditAffordanceButton != null)
+        {
+            EditAffordanceButton.Visibility = IsEditable && _isHovering && !_isEditing && !IsBusy
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
     }
 
-    private void Frame_PointerEntered(object sender, PointerRoutedEventArgs e)
+    private void EditAffordanceButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!IsEditable || _isEditing) return;
+        EnterEditMode();
+    }
+
+    private void Root_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        _isHovering = true;
+        UpdatePlaceholderVisibility();
         if (!IsEditable || _isEditing) return;
         HoverFrame.Background = (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
         HoverFrame.BorderBrush = (Brush)Application.Current.Resources["ControlStrokeColorDefaultBrush"];
         ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.IBeam);
     }
 
-    private void Frame_PointerExited(object sender, PointerRoutedEventArgs e)
+    private void Root_PointerExited(object sender, PointerRoutedEventArgs e)
     {
+        _isHovering = false;
+        UpdatePlaceholderVisibility();
         if (_isEditing) return;
         HoverFrame.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         HoverFrame.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
@@ -185,8 +209,29 @@ public sealed partial class InlineEditableText : UserControl
     private void Frame_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (!IsEditable || _isEditing) return;
+
+        // Ignore taps that bubbled out of the edit host (Save / Cancel buttons
+        // live inside it). Sequence on Save: SaveButton.Click → CommitEdit →
+        // ExitEditMode (which flips _isEditing=false and collapses EditStack)
+        // → the same tap then bubbles to this Border. Without this guard the
+        // handler re-enters edit mode immediately.
+        if (e.OriginalSource is DependencyObject src && IsInsideEditStack(src))
+            return;
+
         EnterEditMode();
         e.Handled = true;
+    }
+
+    private bool IsInsideEditStack(DependencyObject node)
+    {
+        if (EditStack is null) return false;
+        var current = node;
+        while (current != null)
+        {
+            if (ReferenceEquals(current, EditStack)) return true;
+            current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
+        }
+        return false;
     }
 
     private void EnterEditMode()

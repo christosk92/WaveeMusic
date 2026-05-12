@@ -40,7 +40,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private readonly Services.RecentlyPlayedService? _recentlyPlayedService;
     private readonly Services.HomeResponseParserFactory _parserFactory;
     private readonly IAuthState? _authState;
-    private readonly Wavee.Core.Library.Local.ILocalLibraryService? _localLibrary;
+    private readonly Wavee.Local.ILocalLibraryService? _localLibrary;
     private readonly ILogger? _logger;
     private readonly DispatcherQueue _dispatcherQueue;
     private CancellationTokenSource? _baselineEnrichmentCts;
@@ -49,6 +49,15 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private bool _isDisposed;
     private const string LocalSectionUri = "wavee:local:home";
     private const int LocalSectionMaxItems = 20;
+
+    /// <summary>
+    /// Sentinel chip id for the synthetic, client-side "Local files" chip.
+    /// Lives outside the Spotify chip-id namespace (id strings from the
+    /// real API are short slugs like "music-chip" / "podcasts-chip") so
+    /// SelectChipAsync can short-circuit to local-only display mode
+    /// without touching Pathfinder.
+    /// </summary>
+    private const string LocalChipId = "wavee:chip:local";
 
     [ObservableProperty]
     private bool _isLoading;
@@ -77,6 +86,15 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     /// <summary>The chips currently displayed in the single row.</summary>
     [ObservableProperty]
     private ObservableCollection<HomeChipViewModel> _displayedChips = [];
+
+    /// <summary>
+    /// True while the synthetic "Local files" chip is selected. Drives the
+    /// region adapter to drop every non-local band and the hero band to
+    /// collapse — so the page reads as a focused local-only view without
+    /// rebuilding the underlying section collection.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isLocalChipActive;
 
     /// <summary>
     /// Adapter feeding the redesigned hero band + side rail + region buckets.
@@ -164,7 +182,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         Services.HomeResponseParserFactory? parserFactory = null,
         IAuthState? authState = null,
         ILogger<HomeViewModel>? logger = null,
-        Wavee.Core.Library.Local.ILocalLibraryService? localLibrary = null)
+        Wavee.Local.ILocalLibraryService? localLibrary = null)
     {
         _session = session;
         _settingsService = settingsService;
@@ -429,7 +447,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             return;
         }
 
-        IReadOnlyList<Wavee.Core.Library.Local.LocalTrackRow> rows;
+        IReadOnlyList<Wavee.Local.LocalTrackRow> rows;
         try
         {
             rows = await _localLibrary.GetAllTracksAsync();
@@ -458,7 +476,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         // file (videos, .mp3s with no ID3, etc.) collapses into one fake
         // "Unknown Album" card. Treating them as per-file track cards lets
         // the shelf surface them with their filename-derived Title instead.
-        bool IsSyntheticAlbum(Wavee.Core.Library.Local.LocalTrackRow r) =>
+        bool IsSyntheticAlbum(Wavee.Local.LocalTrackRow r) =>
             r.Album == "Unknown Album"
             && (r.AlbumArtist is null or "Unknown Artist")
             && (r.Artist is null or "Unknown Artist");
@@ -519,13 +537,16 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             existing.Items.Clear();
             foreach (var item in items) existing.Items.Add(item);
             MoveLocalSectionToPreferredPosition(existing);
+            EnsureLocalChipPresent();
             return;
         }
 
         var section = new HomeSection
         {
             Title = "Local files",
-            Subtitle = "On this PC",
+            // No Subtitle — the LocalFiles region band already carries the
+            // "ON THIS PC" eyebrow, so repeating it inside the inner section
+            // header reads as visual duplication.
             SectionType = HomeSectionType.Generic,
             SectionUri = LocalSectionUri,
             ViewAllUri = "wavee:local:library",
@@ -533,6 +554,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         foreach (var item in items) section.Items.Add(item);
         section.ApplyTheme(_isDarkTheme);
         Sections.Insert(GetLocalSectionInsertIndex(), section);
+        EnsureLocalChipPresent();
     }
 
     private int GetLocalSectionInsertIndex()
@@ -587,6 +609,71 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private void RemoveLocalSection()
     {
         _ = ExtractLocalSection();
+        RemoveLocalChip();
+    }
+
+    /// <summary>
+    /// Insert the synthetic "Local files" chip after the "All" chip in
+    /// <see cref="DisplayedChips"/>. No-op when the chip is already present,
+    /// when no chips have arrived yet (the chip can only ride alongside
+    /// real Spotify chips — it never seeds an empty row), or when the user
+    /// is currently in a sub-chip morphed view (don't fight the morph).
+    /// </summary>
+    private void EnsureLocalChipPresent()
+    {
+        if (_isDisposed) return;
+        if (DisplayedChips.Count == 0) return;
+        if (_activeParentChip is not null) return;
+        if (DisplayedChips.Any(c => c.Id == LocalChipId)) return;
+
+        var chip = new HomeChipViewModel
+        {
+            Id = LocalChipId,
+            Label = "Local files",
+            IsSelected = IsLocalChipActive,
+        };
+
+        // Insert after "All" (the empty-id chip at the front) so the new
+        // chip reads as a peer of "Music" / "Podcasts" rather than a
+        // trailing afterthought. If "All" isn't at index 0 (unexpected),
+        // just append.
+        var insertAt = DisplayedChips.Count > 0 && string.IsNullOrEmpty(DisplayedChips[0].Id) ? 1 : DisplayedChips.Count;
+        DisplayedChips.Insert(insertAt, chip);
+
+        // Mirror into _mainChips so morph→back-chip→revert keeps the local
+        // chip visible. _mainChips is the canonical row that
+        // <see cref="SelectChipAsync"/> restores from on back-chip click.
+        if (_mainChips is not null && !_mainChips.Any(c => c.Id == LocalChipId))
+        {
+            var mainInsertAt = _mainChips.Count > 0 && string.IsNullOrEmpty(_mainChips[0].Id) ? 1 : _mainChips.Count;
+            _mainChips.Insert(mainInsertAt, chip);
+        }
+    }
+
+    private void RemoveLocalChip()
+    {
+        if (_isDisposed) return;
+
+        for (int i = DisplayedChips.Count - 1; i >= 0; i--)
+        {
+            if (DisplayedChips[i].Id == LocalChipId)
+                DisplayedChips.RemoveAt(i);
+        }
+
+        if (_mainChips is not null)
+        {
+            for (int i = _mainChips.Count - 1; i >= 0; i--)
+            {
+                if (_mainChips[i].Id == LocalChipId)
+                    _mainChips.RemoveAt(i);
+            }
+        }
+
+        // If the local chip was the active filter, drop the filter too so
+        // the page doesn't sit on an empty "local-only" view after the
+        // last local folder is removed mid-session.
+        if (IsLocalChipActive)
+            IsLocalChipActive = false;
     }
 
     private void RemoveLocalSectionOnDispatcher()
@@ -597,7 +684,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             _dispatcherQueue.TryEnqueue(RemoveLocalSection);
     }
 
-    private void OnLocalSyncProgress(Wavee.Core.Library.Local.LocalSyncProgress p)
+    private void OnLocalSyncProgress(Wavee.Local.LocalSyncProgress p)
     {
         // Refresh on the final tick (CurrentPath == null) AND periodically while
         // a scan is in flight so the user sees the shelf grow as files come in.
@@ -663,6 +750,12 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         // "All" chip starts selected
         foreach (var c in chips) c.IsSelected = string.IsNullOrEmpty(c.Id);
         DisplayedChips = new ObservableCollection<HomeChipViewModel>(chips);
+
+        // If the local section already materialised before the Spotify chips
+        // arrived, surface the local chip alongside them. Without this the
+        // first scan's chip would be silently swallowed by the row swap.
+        if (Sections.Any(s => s.SectionUri == LocalSectionUri))
+            EnsureLocalChipPresent();
     }
 
     private void OnRecentlyPlayedItemsChanged()
@@ -1339,10 +1432,22 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
         System.Diagnostics.Debug.WriteLine($"[SelectChipAsync] chip={chip.Label}, id={chip.Id}, isBack={chip.IsBackChip}");
 
+        // Synthetic "Local files" chip — purely client-side. Flip the
+        // local-only filter, mark the chip as the lone selection, and
+        // skip the Pathfinder refetch (there's no Spotify facet to send).
+        if (chip.Id == LocalChipId)
+        {
+            _activeParentChip = null;
+            foreach (var c in DisplayedChips) c.IsSelected = c == chip;
+            IsLocalChipActive = true;
+            return;
+        }
+
         // Back chip → revert to main chips, refetch with no facet
         if (chip.IsBackChip)
         {
             _activeParentChip = null;
+            IsLocalChipActive = false;
             if (_mainChips != null)
             {
                 // Select "All" chip
@@ -1357,6 +1462,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         if (string.IsNullOrEmpty(chip.Id))
         {
             _activeParentChip = null;
+            IsLocalChipActive = false;
             foreach (var c in DisplayedChips) c.IsSelected = c == chip;
             await RefetchWithFacet(null);
             return;
@@ -1366,6 +1472,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         if (chip.SubChips is { Count: > 0 })
         {
             _activeParentChip = chip;
+            IsLocalChipActive = false;
 
             // Build morphed row: [✕ Parent] [Sub1] [Sub2] ...
             var backChip = new HomeChipViewModel
@@ -1389,6 +1496,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         }
 
         // Regular chip (no sub-chips) → select it, refetch
+        IsLocalChipActive = false;
         foreach (var c in DisplayedChips) c.IsSelected = c == chip;
         await RefetchWithFacet(chip.Id);
     }

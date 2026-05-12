@@ -90,7 +90,7 @@ namespace Wavee.Controls.Lyrics.Helper.Lyrics
                     ? 1.15
                     : lyricsEffect.LyricsScaleEffectAmount / 100.0;
 
-                var maxAnimationDurationMs = Math.Max(line.EndMs ?? 0 - currentPositionMs, 0);
+                var maxAnimationDurationMs = Math.Max((line.EndMs ?? 0) - currentPositionMs, 0);
 
                 bool isSecondaryLinePlaying = !isPreLyrics && line.GetIsPlaying(currentPositionMs);
                 bool isSecondaryLinePlayingChanged = line.IsPlayingLastFrame != isSecondaryLinePlaying;

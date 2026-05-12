@@ -79,6 +79,14 @@
       <BuildType Solution="Release-Unpackaged|*" Project="Release" />
     </Project>
 
+    <!-- Local-files library (scan, classify, index, enrich, query). No
+         dependency on Wavee.dll; framework-neutral. Wavee.dll references
+         THIS for orchestrator + v17 schema constants. -->
+    <Project Path="src/Wavee.Local/Wavee.Local.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+    </Project>
+
     <Project Path="src/Wavee.UI/Wavee.UI.csproj">
       <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
       <BuildType Solution="Release-Unpackaged|*" Project="Release" />
@@ -99,6 +107,11 @@
     </Project>
 
     <Project Path="test/Wavee.Tests/Wavee.Tests.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+    </Project>
+
+    <Project Path="test/Wavee.Local.Tests/Wavee.Local.Tests.csproj">
       <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
       <BuildType Solution="Release-Unpackaged|*" Project="Release" />
     </Project>

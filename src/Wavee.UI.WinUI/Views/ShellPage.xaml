@@ -39,12 +39,16 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Row 0: TitleBar with TabBar (full width) -->
+        <!-- Row 0: TitleBar with TabBar (full width).
+             The outer Grid stays mounted in Theatre / Fullscreen so the
+             custom title bar drag region remains addressable; only the tab
+             strip itself collapses inside it. -->
         <Grid Grid.Row="0" x:Name="TitleBarGrid">
             <tabbar:TabBar
                 x:Name="TabControl"
                 TabInstances="{x:Bind ViewModel.Tabs}"
                 SelectedIndex="{x:Bind ViewModel.SelectedTabIndex, Mode=TwoWay}"
+                Visibility="{x:Bind ViewModel.IsTabBarVisibleInShell, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                 TabCloseRequested="TabControl_TabCloseRequested"
                 TabSleepToggleRequested="TabControl_TabSleepToggleRequested"
                 AddTabRequested="TabControl_AddTabRequested"/>
@@ -54,6 +58,7 @@
         <navtoolbar:NavigationToolbar
             x:Name="NavToolbar"
             Grid.Row="1"
+            Visibility="{x:Bind ViewModel.IsNavToolbarVisibleInShell, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
             IsRightPanelOpen="{x:Bind ViewModel.IsRightPanelOpen, Mode=TwoWay}"
             CanGoBack="{x:Bind ViewModel.CanGoBack, Mode=OneWay}"
             CanGoForward="{x:Bind ViewModel.CanGoForward, Mode=OneWay}"
@@ -120,10 +125,13 @@
             </StackPanel>
         </Border>
 
-        <!-- Row 2: Main content area with sidebar -->
+        <!-- Row 2: Main content area with sidebar.
+             Collapses entirely when the player enters Theatre / Fullscreen —
+             the TheatrePlayerHost below takes over the whole window. -->
         <sidebar:SidebarView
             x:Name="SidebarControl"
             Grid.Row="2"
+            Visibility="{x:Bind ViewModel.IsSidebarVisibleInShell, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
             DisplayMode="{x:Bind ViewModel.SidebarDisplayMode, Mode=TwoWay}"
             IsPaneOpen="{x:Bind ViewModel.IsSidebarPaneOpen, Mode=TwoWay}"
             OpenPaneLength="{x:Bind ViewModel.SidebarWidth, Mode=TwoWay}"
@@ -227,13 +235,34 @@
              tear down on page navigation — that's the whole point of having
              it: video keeps playing while the user browses other pages. The
              control hides itself via Visibility binding to its VM, so an
-             always-mounted instance is cheap when no video is active. -->
+             always-mounted instance is cheap when no video is active.
+             Also forced-hidden in Theatre / Fullscreen — the expanded surface
+             already owns the video, the PiP would be redundant. -->
         <minivideo:MiniVideoPlayer
             x:Name="MiniVideoPlayerControl"
             Grid.Row="2"
             HorizontalAlignment="Right"
             VerticalAlignment="Bottom"
+            Visibility="{x:Bind ViewModel.IsMiniPlayerVisibleInShell, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
             Margin="0,0,16,16"/>
+
+        <!-- Theatre / Fullscreen overlay frame.
+             Visible only when Presentation != Normal. RowSpan=4 + Canvas.ZIndex=10
+             keep it above the entire shell grid so the player sees the whole
+             window real estate. Navigated to VideoPlayerPage in code-behind on
+             presentation change so a single source of truth (VideoPlayerPage)
+             handles surface acquisition / scrim / dock — no XAML duplication.
+             Background is solid black so the Mica backdrop doesn't bleed
+             through the letterbox bars. -->
+        <Border
+            x:Name="TheatreOverlayHost"
+            Grid.Row="0"
+            Grid.RowSpan="4"
+            Canvas.ZIndex="10"
+            Background="Black"
+            Visibility="{x:Bind ViewModel.IsExpandedPresentation, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Frame x:Name="TheatreFrame" Background="Transparent" />
+        </Border>
 
         <Border
             x:Name="VideoMiniPlayerPromptAnchor"

@@ -950,6 +950,21 @@ Aggressive</value>
   <data name="Shell_SidebarYourLibrary" xml:space="preserve">
     <value>내 라이브러리</value>
   </data>
+  <data name="Shell_SidebarLocalMedia" xml:space="preserve">
+    <value>로컬 미디어</value>
+  </data>
+  <data name="Shell_SidebarLocalShows" xml:space="preserve">
+    <value>TV 프로그램</value>
+  </data>
+  <data name="Shell_SidebarLocalMovies" xml:space="preserve">
+    <value>영화</value>
+  </data>
+  <data name="Shell_SidebarLocalMusic" xml:space="preserve">
+    <value>음악</value>
+  </data>
+  <data name="Shell_SidebarLocalMusicVideos" xml:space="preserve">
+    <value>뮤직비디오</value>
+  </data>
   <data name="TrackMenu_AddToPlaylist" xml:space="preserve">
     <value>플레이리스트에 추가</value>
   </data>
@@ -1743,6 +1758,9 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   </data>
   <data name="Playlist_AddTracksFailed" xml:space="preserve">
     <value>플레이리스트에 트랙을 추가하지 못했습니다</value>
+  </data>
+  <data name="Playlist_AddTracksSucceeded" xml:space="preserve">
+    <value>플레이리스트에 트랙 {0}개를 추가했습니다</value>
   </data>
   <data name="Changelog_1_0_0_Feature_SmartReconnect_Detail" xml:space="preserve">
     <value>이제 네트워크가 끊겨도 Wavee가 자동으로 다시 연결됩니다. 별도의 조작 없이 재생이 끊긴 지점에서 바로 이어집니다.</value>

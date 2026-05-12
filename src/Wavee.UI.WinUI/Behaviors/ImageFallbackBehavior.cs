@@ -1,9 +1,11 @@
 using System;
 using System.Runtime.CompilerServices;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Behaviors;
 
@@ -188,6 +190,8 @@ public static class ImageFallbackBehavior
     {
         if (sender is Image image)
         {
+            InvalidateFailedCacheEntry(image);
+
             // Hide the image so the fallback (FontIcon) can show
             image.Visibility = Visibility.Collapsed;
         }
@@ -219,6 +223,32 @@ public static class ImageFallbackBehavior
         {
             // Reset opacity on failure so placeholder shows correctly
             image.Opacity = 1;
+        }
+    }
+
+    private static void InvalidateFailedCacheEntry(Image image)
+    {
+        if (image.Source is not BitmapImage bitmapImage ||
+            bitmapImage.UriSource is not { } uri)
+        {
+            return;
+        }
+
+        var decodeSize = bitmapImage.DecodePixelWidth > 0
+            ? bitmapImage.DecodePixelWidth
+            : GetDecodePixelWidth(image);
+        if (decodeSize <= 0 && bitmapImage.DecodePixelHeight > 0)
+            decodeSize = bitmapImage.DecodePixelHeight;
+        if (decodeSize <= 0)
+            decodeSize = GetDecodePixelHeight(image);
+
+        try
+        {
+            Ioc.Default.GetService<ImageCacheService>()?.Invalidate(uri.AbsoluteUri, decodeSize);
+        }
+        catch
+        {
+            // Image failure handling must never throw from a XAML event.
         }
     }
 

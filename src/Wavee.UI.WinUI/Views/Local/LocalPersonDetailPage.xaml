@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.Local.LocalPersonDetailPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:models="using:Wavee.Local.Models"
+    xmlns:hero="using:Wavee.UI.WinUI.Controls.HeroHeader"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:local="using:Wavee.UI.WinUI.Views.Local"
+    Background="Transparent">
+
+    <Page.Resources>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+    </Page.Resources>
+
+    <Grid>
+        <ScrollView x:Name="PageScrollView">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" MinHeight="320"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Hero: profile photo blurred as backdrop (falls back to the
+                     procedural gradient when no image). White text over the
+                     same dark scrim the show/movie detail pages use. -->
+                <hero:HeroHeader x:Name="HeroGrid"
+                                 Grid.Row="0"
+                                 MinHeight="320"
+                                 ImageUrl="{x:Bind ViewModel.Person.ProfileImageUrl, Mode=OneWay}"
+                                 IntenseScrim="True"
+                                 InitialScale="1.0"
+                                 FinalScale="1.06"
+                                 AnimationDuration="0:0:0.8"
+                                 FadeStart="0.55"
+                                 FadeEnd="0.95">
+                    <hero:HeroHeader.OverlayContent>
+                        <Grid x:Name="HeroOverlayPanel">
+                            <Grid Padding="32,32,32,24"
+                                  VerticalAlignment="Bottom"
+                                  ColumnSpacing="20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Circular portrait, mirrors ArtistPage's avatar.
+                                     Theme-aware fallback (solid Ellipse + person
+                                     glyph) sits behind the image Ellipse so the
+                                     circle never becomes a transparent hole
+                                     onto the backdrop when TMDB hasn't returned
+                                     a profile image yet. -->
+                                <Grid Grid.Column="0" Width="140" Height="140">
+                                    <Grid.Shadow><ThemeShadow/></Grid.Shadow>
+                                    <Ellipse Fill="{ThemeResource CardBackgroundFillColorSecondaryBrush}"/>
+                                    <FontIcon Glyph="&#xE77B;" FontSize="56"
+                                              Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                                    <Ellipse>
+                                        <Ellipse.Fill>
+                                            <ImageBrush x:Name="HeroPortraitBrush"
+                                                        Stretch="UniformToFill"/>
+                                        </Ellipse.Fill>
+                                    </Ellipse>
+                                </Grid>
+
+                                <StackPanel Grid.Column="1"
+                                            Spacing="6"
+                                            VerticalAlignment="Bottom">
+                                    <TextBlock Text="CAST MEMBER"
+                                               FontWeight="SemiBold"
+                                               Foreground="#CCFFFFFF"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"/>
+                                    <TextBlock x:Name="HeroNameText"
+                                               Style="{ThemeResource TitleLargeTextBlockStyle}"
+                                               FontWeight="Bold"
+                                               Foreground="#FFFFFFFF"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxLines="2"/>
+                                    <TextBlock x:Name="HeroMetaText"
+                                               Foreground="#CCFFFFFF"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               TextWrapping="NoWrap"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxLines="1"/>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </hero:HeroHeader.OverlayContent>
+                </hero:HeroHeader>
+
+                <!-- Below-hero content: biography + shelves. -->
+                <StackPanel Grid.Row="1" Spacing="24" Padding="0,24,0,40">
+
+                    <!-- Biography — only renders when TMDB returned one. -->
+                    <StackPanel x:Name="BiographySection"
+                                Spacing="8"
+                                Padding="32,0,32,0"
+                                Visibility="Collapsed">
+                        <TextBlock Text="About"
+                                   Style="{ThemeResource SubtitleTextBlockStyle}"
+                                   FontWeight="SemiBold"/>
+                        <TextBlock x:Name="BiographyText"
+                                   Style="{ThemeResource BodyTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <!-- TV shows shelf. -->
+                    <StackPanel x:Name="ShowsSection" Spacing="10" Padding="32,0,0,0"
+                                Visibility="Collapsed">
+                        <TextBlock Text="TV shows in your library"
+                                   Style="{ThemeResource SubtitleTextBlockStyle}"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,32,0"/>
+                        <ScrollViewer HorizontalScrollMode="Auto"
+                                      HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollMode="Disabled">
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.ShowsInLibrary}">
+                                <ItemsRepeater.Layout>
+                                    <StackLayout Orientation="Horizontal" Spacing="16"/>
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="models:LocalShow">
+                                        <cards:ContentCard Width="180"
+                                                           AspectMode="Tall"
+                                                           PlaceholderGlyph="&#xE7F4;"
+                                                           Tag="{x:Bind Id}"
+                                                           ImageUrl="{x:Bind PosterArtworkUri}"
+                                                           Title="{x:Bind Name}"
+                                                           Subtitle="{x:Bind local:LocalPersonDetailPage.FormatShowMeta(SeasonCount, EpisodeCount)}"
+                                                           CardClick="ShowCard_CardClick"/>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </ScrollViewer>
+                    </StackPanel>
+
+                    <!-- Movies shelf. -->
+                    <StackPanel x:Name="MoviesSection" Spacing="10" Padding="32,0,0,0"
+                                Visibility="Collapsed">
+                        <TextBlock Text="Movies in your library"
+                                   Style="{ThemeResource SubtitleTextBlockStyle}"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,32,0"/>
+                        <ScrollViewer HorizontalScrollMode="Auto"
+                                      HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollMode="Disabled">
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.MoviesInLibrary}">
+                                <ItemsRepeater.Layout>
+                                    <StackLayout Orientation="Horizontal" Spacing="16"/>
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="models:LocalMovie">
+                                        <cards:ContentCard Width="180"
+                                                           AspectMode="Tall"
+                                                           PlaceholderGlyph="&#xE714;"
+                                                           Tag="{x:Bind TrackUri}"
+                                                           ImageUrl="{x:Bind PosterUri}"
+                                                           Title="{x:Bind Title}"
+                                                           Subtitle="{x:Bind local:LocalPersonDetailPage.FormatYear(Year)}"
+                                                           CardClick="MovieCard_CardClick"/>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </ScrollViewer>
+                    </StackPanel>
+
+                    <!-- Empty state: TMDB person fetched but they don't appear in any local title. -->
+                    <StackPanel x:Name="EmptyState"
+                                HorizontalAlignment="Center"
+                                Spacing="8"
+                                Margin="32,40,32,0"
+                                Visibility="Collapsed">
+                        <FontIcon Glyph="&#xE721;" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                        <TextBlock Text="Not in your library yet"
+                                   Style="{ThemeResource SubtitleTextBlockStyle}"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="Add TV shows or movies featuring this cast member to see them here."
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </ScrollView>
+    </Grid>
+</Page>

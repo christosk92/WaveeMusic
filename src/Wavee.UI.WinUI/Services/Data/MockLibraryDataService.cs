@@ -597,6 +597,21 @@ public sealed class MockLibraryDataService : ILibraryDataService
     public Task ReorderPlaylistOverlayAsync(string playlistUri, IReadOnlyList<string> orderedTrackUris, CancellationToken ct = default)
         => Task.CompletedTask;
 
+    public Task AddTracksToPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
+    {
+        // Mock can't synthesize full PlaylistTrackDto rows for arbitrary track
+        // IDs; bump the summary count so callers see "something happened" and
+        // the playlist refreshes its track list from upstream on next nav.
+        var summary = _mockPlaylists.FirstOrDefault(p => p.Id == playlistId);
+        if (summary != null && trackIds is { Count: > 0 })
+        {
+            var index = _mockPlaylists.IndexOf(summary);
+            _mockPlaylists[index] = summary with { TrackCount = summary.TrackCount + trackIds.Count };
+            PlaylistsChanged?.Invoke(this, EventArgs.Empty);
+        }
+        return Task.CompletedTask;
+    }
+
     public Task RemoveTracksFromPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
     {
         if (_mockPlaylistTracks.TryGetValue(playlistId, out var tracks))

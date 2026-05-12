@@ -1,4 +1,5 @@
 using System;
+using Wavee.Audio;
 using System.Collections.Immutable;
 using System.Runtime;
 using System.Threading;
@@ -146,7 +147,7 @@ public partial class App : Application
             var cacheOpts = Ioc.Default.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>();
             Wavee.UI.WinUI.Helpers.SpotifyImageHelper.LocalArtworkRoot = cacheOpts.LocalArtworkDirectory;
 
-            var indexer = Ioc.Default.GetRequiredService<Wavee.Core.Library.Local.LocalIndexerHostedService>();
+            var indexer = Ioc.Default.GetRequiredService<Wavee.Local.LocalIndexerHostedService>();
             _ = indexer.StartAsync();
         }
         catch (Exception ex)

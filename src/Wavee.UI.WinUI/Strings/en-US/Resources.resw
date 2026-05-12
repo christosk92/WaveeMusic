@@ -995,6 +995,21 @@ the music you previously queued?</value>
   <data name="Shell_SidebarYourLibrary" xml:space="preserve">
     <value>Your Library</value>
   </data>
+  <data name="Shell_SidebarLocalMedia" xml:space="preserve">
+    <value>Local media</value>
+  </data>
+  <data name="Shell_SidebarLocalShows" xml:space="preserve">
+    <value>TV shows</value>
+  </data>
+  <data name="Shell_SidebarLocalMovies" xml:space="preserve">
+    <value>Movies</value>
+  </data>
+  <data name="Shell_SidebarLocalMusic" xml:space="preserve">
+    <value>Music</value>
+  </data>
+  <data name="Shell_SidebarLocalMusicVideos" xml:space="preserve">
+    <value>Music videos</value>
+  </data>
   <data name="TrackMenu_AddToPlaylist" xml:space="preserve">
     <value>Add to playlist</value>
   </data>
@@ -1878,6 +1893,9 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   </data>
   <data name="Playlist_AddTracksFailed" xml:space="preserve">
     <value>Failed to add tracks to playlist</value>
+  </data>
+  <data name="Playlist_AddTracksSucceeded" xml:space="preserve">
+    <value>Added {0} track(s) to playlist</value>
   </data>
   <data name="Changelog_1_0_0_Feature_SmartReconnect_Detail" xml:space="preserve">
     <value>Wavee now automatically reconnects when your network drops. Audio playback resumes right where you left off with no manual intervention required.</value>

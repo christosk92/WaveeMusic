@@ -1,4 +1,5 @@
 using System;
+using Wavee.Audio;
 using System.Collections.Generic;
 using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
@@ -9,6 +10,7 @@ using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.Styles;
 using Wavee.UI.WinUI.ViewModels;
 using Wavee.UI.WinUI.Views;
 using Windows.System;
@@ -51,33 +53,25 @@ public static class NavigationHelpers
     }
 
     /// <summary>
-    /// Navigate to artist - within tab by default, new tab if openInNewTab=true.
-    /// Local artist URIs (<c>wavee:local:artist:</c>) route to the local detail
-    /// page when one is registered; until then they are silently ignored so the
-    /// click is a no-op rather than a Spotify-API miss.
+    /// Navigate to artist — both <c>spotify:artist:*</c> and
+    /// <c>wavee:local:artist:*</c> URIs route to the unified ArtistPage.
+    /// The service layer (<c>ArtistService.GetOverviewAsync</c>) branches on
+    /// URI prefix and synthesizes the same <c>ArtistOverviewResult</c> shape
+    /// from either Pathfinder or <c>ILocalLibraryService</c>, so the page +
+    /// VM + store stay source-agnostic.
     /// </summary>
     public static void OpenArtist(object parameter, string artistName, bool openInNewTab = false)
     {
-        if (parameter is string s && Wavee.Core.PlayableUri.IsLocal(s))
-        {
-            // TODO: route to LocalArtistPage when added.
-            return;
-        }
         Navigate(typeof(ArtistPage), parameter, artistName, CreateIconSource(typeof(ArtistPage), parameter), openInNewTab);
     }
 
     /// <summary>
-    /// Navigate to album - within tab by default, new tab if openInNewTab=true.
-    /// Local album URIs (<c>wavee:local:album:</c>) route to the local library
-    /// page (per-album detail page can land later).
+    /// Navigate to album — both <c>spotify:album:*</c> and
+    /// <c>wavee:local:album:*</c> URIs route to the unified AlbumPage.
+    /// <c>AlbumService.GetDetailAsync</c> handles the source branching.
     /// </summary>
     public static void OpenAlbum(object parameter, string albumName, bool openInNewTab = false)
     {
-        if (parameter is string s && Wavee.Core.PlayableUri.IsLocal(s))
-        {
-            OpenLocalLibrary(openInNewTab);
-            return;
-        }
         Navigate(typeof(AlbumPage), parameter, albumName, CreateIconSource(typeof(AlbumPage), parameter), openInNewTab);
     }
 
@@ -92,6 +86,47 @@ public static class NavigationHelpers
             CreateIconSource(typeof(LocalLibraryPage), null), openInNewTab);
     }
 
+    /// <summary>Sidebar "Local media → TV shows" entry point.</summary>
+    public static void OpenLocalShows(bool openInNewTab = false)
+    {
+        Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalShowsPage), null, "TV shows",
+            CreateIconSource(typeof(Wavee.UI.WinUI.Views.Local.LocalShowsPage), null), openInNewTab);
+    }
+
+    /// <summary>Sidebar "Local media → Movies" entry point.</summary>
+    public static void OpenLocalMovies(bool openInNewTab = false)
+    {
+        Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalMoviesPage), null, "Movies",
+            CreateIconSource(typeof(Wavee.UI.WinUI.Views.Local.LocalMoviesPage), null), openInNewTab);
+    }
+
+    /// <summary>Sidebar "Local media → Music" entry point.</summary>
+    public static void OpenLocalMusic(bool openInNewTab = false)
+    {
+        Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalMusicPage), null, "Local music",
+            CreateIconSource(typeof(Wavee.UI.WinUI.Views.Local.LocalMusicPage), null), openInNewTab);
+    }
+
+    /// <summary>Sidebar "Local media → Music videos" entry point.</summary>
+    public static void OpenLocalMusicVideos(bool openInNewTab = false)
+    {
+        Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalMusicVideosPage), null, "Music videos",
+            CreateIconSource(typeof(Wavee.UI.WinUI.Views.Local.LocalMusicVideosPage), null), openInNewTab);
+    }
+
+    /// <summary>
+    /// Open a TMDB cast member's detail page from a Local show / movie cast
+    /// strip. <paramref name="seedName"/> + <paramref name="seedImageUri"/>
+    /// seed the hero so it renders something before the TMDB fetch lands.
+    /// </summary>
+    public static void OpenLocalPersonDetail(int tmdbPersonId, string? seedName = null, string? seedImageUri = null, bool openInNewTab = false)
+    {
+        var header = string.IsNullOrWhiteSpace(seedName) ? "Cast" : seedName!;
+        var parameter = new Wavee.UI.WinUI.Views.Local.LocalPersonNavigationParameter(tmdbPersonId, seedName, seedImageUri);
+        Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalPersonDetailPage), parameter, header,
+            new SymbolIconSource { Symbol = Symbol.Contact }, openInNewTab);
+    }
+
     /// <summary>
     /// Navigate to the video player page. The page hosts a
     /// <c>MediaPlayerElement</c> bound to the app-wide
@@ -102,6 +137,31 @@ public static class NavigationHelpers
     {
         Navigate(typeof(VideoPlayerPage), null, "Now playing",
             CreateIconSource(typeof(VideoPlayerPage), null), openInNewTab);
+    }
+
+    /// <summary>
+    /// Open the detail page for a local TV show — the routed destination for
+    /// the PlayerBar title-click when the current track is a TMDB-enriched TV
+    /// episode. Falls back to the parent "album" page if no series id is known.
+    /// </summary>
+    public static void OpenLocalShowDetail(string showId, string? showName = null, bool openInNewTab = false)
+    {
+        if (string.IsNullOrWhiteSpace(showId)) return;
+        var header = string.IsNullOrWhiteSpace(showName) ? "Show" : showName!;
+        Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalShowDetailPage), showId, header,
+            CreateIconSource(typeof(Wavee.UI.WinUI.Views.Local.LocalShowDetailPage), showId), openInNewTab);
+    }
+
+    /// <summary>
+    /// Open the detail page for a local movie — the routed destination for the
+    /// PlayerBar title-click when the current track is a TMDB-enriched movie.
+    /// </summary>
+    public static void OpenLocalMovieDetail(string trackUri, string? movieTitle = null, bool openInNewTab = false)
+    {
+        if (string.IsNullOrWhiteSpace(trackUri)) return;
+        var header = string.IsNullOrWhiteSpace(movieTitle) ? "Movie" : movieTitle!;
+        Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalMovieDetailPage), trackUri, header,
+            CreateIconSource(typeof(Wavee.UI.WinUI.Views.Local.LocalMovieDetailPage), trackUri), openInNewTab);
     }
 
     /// <summary>
@@ -411,12 +471,35 @@ public static class NavigationHelpers
                 {
                     _shellViewModel.SyncSidebarSelectionToTag("PodcastBrowse");
                 }
+                else if (GetLocalSidebarTag(pageType) is { } localSidebarTag)
+                {
+                    _shellViewModel.SyncSidebarSelectionToTag(localSidebarTag);
+                }
                 else if (pageType != typeof(LibraryPage))
                 {
                     _shellViewModel.SelectedSidebarItem = null;
                 }
             }
         });
+    }
+
+    internal static string? GetLocalSidebarTag(Type pageType)
+    {
+        if (pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalShowsPage)
+            || pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalShowDetailPage))
+            return "LocalShows";
+
+        if (pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalMoviesPage)
+            || pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalMovieDetailPage))
+            return "LocalMovies";
+
+        if (pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalMusicPage))
+            return "LocalMusic";
+
+        if (pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalMusicVideosPage))
+            return "LocalMusicVideos";
+
+        return null;
     }
 
     private static void FocusMainWindow()
@@ -521,6 +604,20 @@ public static class NavigationHelpers
 
         if (pageType == typeof(LocalLibraryPage))
             return new SymbolIconSource { Symbol = Symbol.Folder };
+
+        if (pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalShowsPage)
+            || pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalShowDetailPage))
+            return new FontIconSource { Glyph = FluentGlyphs.TvShow };
+
+        if (pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalMoviesPage)
+            || pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalMovieDetailPage))
+            return new FontIconSource { Glyph = FluentGlyphs.Movie };
+
+        if (pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalMusicPage))
+            return new FontIconSource { Glyph = FluentGlyphs.Album };
+
+        if (pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalMusicVideosPage))
+            return new FontIconSource { Glyph = FluentGlyphs.MusicVideo };
 
         if (pageType == typeof(VideoPlayerPage))
             return new SymbolIconSource { Symbol = Symbol.Video };

@@ -133,6 +133,25 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     /// </summary>
     [ObservableProperty] private bool _isAtEndOfContext;
 
+    // ── Local-content (TMDB) properties ───────────────────────────────
+    // Populated by OnCurrentTrackIdChanged when a wavee:local:track:* URI lands.
+    // Drive PlayerBar title-click routing (show / movie detail vs album) and
+    // hide audio-only chrome (lyrics / friends / details) when the item is a
+    // film or TV episode.
+    [ObservableProperty] private Wavee.Local.Classification.LocalContentKind? _currentLocalContentKind;
+    [ObservableProperty] private string? _currentLocalSeriesId;
+    [ObservableProperty] private string? _currentLocalSeriesName;
+    [ObservableProperty] private int? _currentLocalSeasonNumber;
+    [ObservableProperty] private int? _currentLocalEpisodeNumber;
+    [ObservableProperty] private string? _currentLocalEpisodeTitle;
+    [ObservableProperty] private int? _currentLocalMovieYear;
+    [ObservableProperty] private int? _currentLocalTmdbId;
+
+    // Most-recently-resolved local URI — guards against re-running the SQLite
+    // lookup on every PlaybackStateSnapshot echo when CurrentTrackId hasn't
+    // actually flipped.
+    private string? _lastLocalLookupUri;
+
     public IReadOnlyList<QueueItem> Queue => _queue;
     public IReadOnlyList<QueueItem> PreviousTracks => _prevQueue;
     public IReadOnlyList<QueueItem> UserQueue => _userQueueCache ??= BuildUserQueueCache();
@@ -1268,6 +1287,12 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     {
         // Reset the music-video availability hint immediately on track change.
         CurrentTrackHasMusicVideo = false;
+
+        // Local-content lookup — populate kind / show id / movie year so the
+        // PlayerBar can route title-click and hide music-only controls. Runs
+        // before the early-return so clearing the track also clears local fields.
+        RefreshLocalContentForCurrentTrack(value);
+
         if (string.IsNullOrEmpty(value)) return;
         if (CurrentTrackIsVideo) return;
 
@@ -1309,6 +1334,90 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             return;
         }
         discovery.BeginBackgroundDiscovery(audioUri);
+    }
+
+    /// <summary>
+    /// Looks up the local index for the current track URI and populates the
+    /// CurrentLocal* properties. Cleared when the URI is null, non-local, or
+    /// missing from the index. Re-entrant safe: the URI guard skips the SQLite
+    /// call when the same value is echoed repeatedly by the state pipeline.
+    /// </summary>
+    private void RefreshLocalContentForCurrentTrack(string? trackUri)
+    {
+        if (string.IsNullOrEmpty(trackUri) || !trackUri.StartsWith("wavee:local:", StringComparison.Ordinal))
+        {
+            // Spotify (or no track) — clear local fields if they were set by a
+            // previously-playing local item.
+            if (_lastLocalLookupUri is not null)
+            {
+                CurrentLocalContentKind = null;
+                CurrentLocalSeriesId = null;
+                CurrentLocalSeriesName = null;
+                CurrentLocalSeasonNumber = null;
+                CurrentLocalEpisodeNumber = null;
+                CurrentLocalEpisodeTitle = null;
+                CurrentLocalMovieYear = null;
+                CurrentLocalTmdbId = null;
+                _lastLocalLookupUri = null;
+            }
+            return;
+        }
+
+        if (string.Equals(_lastLocalLookupUri, trackUri, StringComparison.Ordinal))
+            return;
+        _lastLocalLookupUri = trackUri;
+
+        var library = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<Wavee.Local.ILocalLibraryService>();
+        if (library is null)
+            return;
+
+        _ = LoadLocalContentAsync(trackUri, library);
+    }
+
+    private async Task LoadLocalContentAsync(string trackUri, Wavee.Local.ILocalLibraryService library)
+    {
+        try
+        {
+            var metadata = await library.GetPlaybackMetadataAsync(trackUri).ConfigureAwait(false);
+
+            // Race guard: a fresh track may have arrived while we were awaiting.
+            if (!string.Equals(_lastLocalLookupUri, trackUri, StringComparison.Ordinal))
+                return;
+
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                // Late check on the dispatcher too — same race, post-dispatch.
+                if (!string.Equals(_lastLocalLookupUri, trackUri, StringComparison.Ordinal))
+                    return;
+
+                if (metadata is null)
+                {
+                    CurrentLocalContentKind = null;
+                    CurrentLocalSeriesId = null;
+                    CurrentLocalSeriesName = null;
+                    CurrentLocalSeasonNumber = null;
+                    CurrentLocalEpisodeNumber = null;
+                    CurrentLocalEpisodeTitle = null;
+                    CurrentLocalMovieYear = null;
+                    CurrentLocalTmdbId = null;
+                    return;
+                }
+
+                CurrentLocalContentKind = metadata.Kind;
+                CurrentLocalSeriesId = metadata.SeriesId;
+                CurrentLocalSeriesName = metadata.SeriesName;
+                CurrentLocalSeasonNumber = metadata.SeasonNumber;
+                CurrentLocalEpisodeNumber = metadata.EpisodeNumber;
+                CurrentLocalEpisodeTitle = metadata.EpisodeTitle;
+                CurrentLocalMovieYear = metadata.MovieYear;
+                CurrentLocalTmdbId = metadata.TmdbId;
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "[PlaybackState] Local metadata lookup failed for {Uri}", trackUri);
+        }
     }
 
     partial void OnCurrentContextChanged(PlaybackContextInfo? value)

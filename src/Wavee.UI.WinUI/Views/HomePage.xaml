@@ -485,6 +485,7 @@
                      bind to the same SideCard0/1/2 view-model properties so
                      data stays single-source. -->
                 <Grid x:Name="HeroBand" Margin="0,4,0,12"
+                      Visibility="{x:Bind ViewModel.IsLocalChipActive, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                       SizeChanged="HeroBand_SizeChanged">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -616,8 +617,11 @@
                 <!-- Browse All — text-first genre selector at the bottom of home.
                      Lazy-fetched: BrowseAllSection's EffectiveViewportChanged
                      triggers HeroAdapter.LoadBrowseAsync only when the section
-                     enters within ~one viewport. Shimmer skeleton until then. -->
+                     enters within ~one viewport. Shimmer skeleton until then.
+                     Hidden under the Local files chip filter — it's Spotify-
+                     sourced and has no place in a local-only view. -->
                 <homeViews:BrowseAllSection
+                    Visibility="{x:Bind ViewModel.IsLocalChipActive, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                     Adapter="{x:Bind ViewModel.HeroAdapter, Mode=OneWay}"/>
             </StackPanel>
         </ScrollView>

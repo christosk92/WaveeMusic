@@ -273,6 +273,7 @@ public sealed partial class SidebarItem : Control
 			Decorator = Item.ItemDecorator;
 
 		TryStartLazyIconLoad();
+		ReapplyCurrentDisplayModeState(useAnimations: false);
 	}
 
 	/// <summary>
@@ -497,14 +498,26 @@ public sealed partial class SidebarItem : Control
 	{
 		if (Item?.Children is null) return;
 
-		var flyoutOwner = (GetTemplateChild("ElementGrid") as FrameworkElement)!;
+		var flyoutOwner = GetTemplateChild("ElementGrid") as FrameworkElement;
+		if (flyoutOwner is null)
+			return;
+
+		// ItemsRepeater can call HandleItemChange/SidebarDisplayModeChanged while
+		// preparing a recycled element, before the template root is attached to a
+		// XamlRoot. FlyoutBase.GetAttachedFlyout rejects that owner with
+		// ArgumentException("element"). If we are only trying to close the flyout,
+		// there is nothing visible to close yet, so skip the WinUI call.
+		if (!flyoutOwner.IsLoaded || flyoutOwner.XamlRoot is null)
+			return;
+
 		if (isOpen)
 		{
 			FlyoutBase.ShowAttachedFlyout(flyoutOwner);
 		}
 		else
 		{
-			FlyoutBase.GetAttachedFlyout(flyoutOwner)?.Hide();
+			(GetTemplateChild("ChildrenFlyout") as FlyoutBase
+			 ?? FlyoutBase.GetAttachedFlyout(flyoutOwner))?.Hide();
 		}
 	}
 
@@ -612,9 +625,17 @@ public sealed partial class SidebarItem : Control
 		Owner?.RaiseItemInvoked(this, pointerUpdateKind);
 	}
 
-	private void SidebarDisplayModeChanged(SidebarDisplayMode oldValue)
+	private void ReapplyCurrentDisplayModeState(bool useAnimations)
 	{
-		var useAnimations = oldValue != SidebarDisplayMode.Minimal;
+		if (Owner is not null)
+			DisplayMode = Owner.DisplayMode;
+
+		SidebarDisplayModeChanged(DisplayMode, useAnimations);
+	}
+
+	private void SidebarDisplayModeChanged(SidebarDisplayMode oldValue, bool? useAnimationsOverride = null)
+	{
+		var useAnimations = useAnimationsOverride ?? oldValue != SidebarDisplayMode.Minimal;
 		switch (DisplayMode)
 		{
 			case SidebarDisplayMode.Expanded:
@@ -649,11 +670,11 @@ public sealed partial class SidebarItem : Control
 				var compactState = isSectionHeader
 					? (hasDecorator ? "CompactGroupHeaderWithDecorator" : "CompactGroupHeader")
 					: "Compact";
-				VisualStateManager.GoToState(this, compactState, true);
+				VisualStateManager.GoToState(this, compactState, useAnimations);
 			}
 			else
 			{
-				VisualStateManager.GoToState(this, "NonCompact", true);
+				VisualStateManager.GoToState(this, "NonCompact", useAnimations);
 				// Compact / CompactGroupHeader forcibly hide layout owned by ExpansionStates
 				// (children, placeholder, chevron). Re-assert the expansion state after
 				// leaving the rail so expanded groups reliably restore their content.
@@ -783,6 +804,12 @@ public sealed partial class SidebarItem : Control
 
 	private bool ShouldShowSelectionIndicator()
 	{
+		if (DisplayMode == SidebarDisplayMode.Compact
+			&& Item is SidebarItemModel { IsSectionHeader: true })
+		{
+			return IsSelected;
+		}
+
 		if (IsExpanded && CollapseEnabled)
 		{
 			return IsSelected;
@@ -965,7 +992,13 @@ public sealed partial class SidebarItem : Control
 
 	private void ItemBorder_ContextRequested(UIElement sender, Microsoft.UI.Xaml.Input.ContextRequestedEventArgs args)
 	{
-		Owner?.RaiseContextRequested(this, args.TryGetPosition(this, out var point) ? point : default);
+		// Capture position in SidebarView coordinates (the Owner). The shell
+		// targets the SidebarView when opening the flyout, so the position has
+		// to be in the same coordinate space — using `this` (the SidebarItem)
+		// produced offsets that anchored the flyout at the top of the sidebar
+		// regardless of where the user actually right-clicked.
+		var reference = (UIElement?)Owner ?? this;
+		Owner?.RaiseContextRequested(this, args.TryGetPosition(reference, out var point) ? point : default);
 		args.Handled = true;
 	}
 

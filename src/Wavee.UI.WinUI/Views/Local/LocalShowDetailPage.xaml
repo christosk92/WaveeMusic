@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.Local.LocalShowDetailPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:localControls="using:Wavee.UI.WinUI.Controls.Local"
+    xmlns:models="using:Wavee.Local.Models"
+    xmlns:hero="using:Wavee.UI.WinUI.Controls.HeroHeader"
+    xmlns:transitions="using:CommunityToolkit.WinUI"
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
+    xmlns:local="using:Wavee.UI.WinUI.Views.Local"
+    Background="Transparent">
+
+    <Page.Resources>
+        <!-- Shy-header morph: hero overlay panel (full hero) <-> floating
+             acrylic pill (top of page once scrolled). Matched ids on the
+             inner poster / title / play button interpolate between the two
+             states. Unpaired chrome (the visible pill border) fades in via
+             the helper's independent show animation. Mirrors ArtistPage's
+             ArtistShyHeaderTransition resource. -->
+        <transitions:TransitionHelper x:Key="LocalShowShyHeaderTransition"
+                                      Duration="0:0:0.36"
+                                      ReverseDuration="0:0:0.30"
+                                      DefaultEasingMode="EaseInOut"
+                                      SourceToggleMethod="ByVisibility"
+                                      TargetToggleMethod="ByVisibility"
+                                      IndependentElementShowDuration="0:0:0.18"
+                                      IndependentElementShowDelay="0:0:0.10"
+                                      IndependentElementHideDuration="0:0:0.12"
+                                      IsHitTestVisibleWhenAnimating="False">
+            <transitions:TransitionConfig Id="card-shell" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="show-poster" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="show-title" ScaleMode="Custom">
+                <transitions:TransitionConfig.CustomScalingCalculator>
+                    <waveeHelpers:TransitionTextScalingCalculator/>
+                </transitions:TransitionConfig.CustomScalingCalculator>
+            </transitions:TransitionConfig>
+            <transitions:TransitionConfig Id="show-play" ScaleMode="Scale"/>
+        </transitions:TransitionHelper>
+    </Page.Resources>
+
+    <Grid>
+        <ScrollView x:Name="PageScrollView">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" MinHeight="360"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- HERO HEADER -->
+                <hero:HeroHeader x:Name="HeroGrid"
+                                 Grid.Row="0"
+                                 MinHeight="360"
+                                 ImageUrl="{x:Bind ViewModel.Show.BackdropArtworkUri, Mode=OneWay}"
+                                 ColorHex="{x:Bind ViewModel.HeaderHeroColorHex, Mode=OneWay}"
+                                 IntenseScrim="True"
+                                 InitialScale="1.0"
+                                 FinalScale="1.06"
+                                 AnimationDuration="0:0:0.8"
+                                 FadeStart="0.55"
+                                 FadeEnd="0.95">
+                    <hero:HeroHeader.OverlayContent>
+                        <Grid x:Name="HeroOverlayPanel">
+                            <!-- Invisible chrome: source for the floating pill's
+                                 card-shell. TransitionHelper morphs the visible
+                                 ShyHeaderCard border FROM these bounds (hero
+                                 bottom, full width) into the floating pill on
+                                 scroll. IsHitTestVisible=False so this stretched
+                                 invisible Border doesn't swallow clicks meant for
+                                 the Play / Mark Watched / Sync buttons that sit
+                                 above it in z-order — Background="Transparent" is
+                                 hit-testable by default, even though invisible. -->
+                            <Border transitions:TransitionHelper.Id="card-shell"
+                                    Background="Transparent"
+                                    IsHitTestVisible="False"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Stretch"/>
+
+                            <Grid Padding="32,32,32,24"
+                                  VerticalAlignment="Bottom"
+                                  ColumnSpacing="20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Poster: matched-id "show-poster". Plain
+                                     Border+Image (no ContentCard chrome / stray
+                                     hover play overlay) at an exact 2:3 ratio
+                                     (120×180). Mirrors AlbumPage's cover art
+                                     pattern. -->
+                                <Grid Grid.Column="0"
+                                      Width="120" Height="180"
+                                      transitions:TransitionHelper.Id="show-poster">
+                                    <Grid.Shadow><ThemeShadow/></Grid.Shadow>
+                                    <Border CornerRadius="8"
+                                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                        <Grid>
+                                            <FontIcon Glyph="&#xE7F4;" FontSize="40" Opacity="0.5"
+                                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                            <Image Source="{x:Bind ViewModel.Show.PosterArtworkUri, Mode=OneWay, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=480}"
+                                                   Stretch="UniformToFill"/>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+
+                                <StackPanel Grid.Column="1"
+                                            Spacing="6"
+                                            VerticalAlignment="Bottom">
+                                    <TextBlock Text="TV SHOW"
+                                               FontWeight="SemiBold"
+                                               Foreground="#CCFFFFFF"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"/>
+                                    <TextBlock Text="{x:Bind ViewModel.Show.Name, Mode=OneWay}"
+                                               Style="{ThemeResource TitleLargeTextBlockStyle}"
+                                               FontWeight="Bold"
+                                               Foreground="#FFFFFFFF"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxLines="2"
+                                               transitions:TransitionHelper.Id="show-title"/>
+
+                                    <TextBlock Text="{x:Bind ViewModel.Show.Tagline, Mode=OneWay}"
+                                               FontStyle="Italic"
+                                               Foreground="#CCFFFFFF"
+                                               Style="{ThemeResource BodyTextBlockStyle}"
+                                               TextWrapping="Wrap"
+                                               MaxLines="2"
+                                               TextTrimming="CharacterEllipsis"
+                                               Visibility="{x:Bind local:LocalShowDetailPage.VisibilityIfNonEmpty(ViewModel.Show.Tagline), Mode=OneWay}"/>
+
+                                    <StackPanel Orientation="Horizontal" Spacing="0">
+                                        <TextBlock x:Name="MetaLineText"
+                                                   Foreground="#CCFFFFFF"
+                                                   Style="{ThemeResource CaptionTextBlockStyle}"/>
+                                    </StackPanel>
+
+                                    <TextBlock Text="{x:Bind ViewModel.Show.Overview, Mode=OneWay}"
+                                               Foreground="#CCFFFFFF"
+                                               TextWrapping="Wrap"
+                                               MaxLines="3"
+                                               TextTrimming="CharacterEllipsis"
+                                               Margin="0,2,0,0"
+                                               Visibility="{x:Bind local:LocalShowDetailPage.VisibilityIfNonEmpty(ViewModel.Show.Overview), Mode=OneWay}"/>
+
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="8"
+                                                Margin="0,10,0,0">
+                                        <Button x:Name="PlayButton"
+                                                Style="{StaticResource AccentButtonStyle}"
+                                                Padding="20,10"
+                                                CornerRadius="20"
+                                                Click="PlayButton_Click"
+                                                transitions:TransitionHelper.Id="show-play">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <FontIcon Glyph="&#xE768;" FontSize="14"
+                                                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                                <TextBlock Text="Play"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button x:Name="MarkAllWatchedButton"
+                                                Padding="16,10"
+                                                CornerRadius="20"
+                                                Click="MarkAllWatchedButton_Click">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <FontIcon Glyph="&#xE73E;" FontSize="14"/>
+                                                <TextBlock Text="Mark all watched"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button x:Name="TmdbSyncButton"
+                                                Padding="16,10"
+                                                CornerRadius="20"
+                                                Click="TmdbSyncButton_Click"
+                                                ToolTipService.ToolTip="Sync with TMDB">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <FontIcon x:Name="TmdbSyncGlyph" Glyph="&#xE895;" FontSize="14"/>
+                                                <TextBlock x:Name="TmdbSyncText" Text="Sync with TMDB"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button x:Name="MoreButton"
+                                                Style="{StaticResource SubtleButtonStyle}"
+                                                Width="40" Height="40"
+                                                Padding="0"
+                                                CornerRadius="20"
+                                                ToolTipService.ToolTip="More">
+                                            <FontIcon Glyph="&#xE712;" FontSize="14"/>
+                                            <Button.Flyout>
+                                                <MenuFlyout>
+                                                    <MenuFlyoutItem x:Name="ForceResyncItem"
+                                                                    Text="Force re-sync with TMDB"
+                                                                    Click="ForceResync_Click">
+                                                        <MenuFlyoutItem.Icon>
+                                                            <FontIcon Glyph="&#xE72C;"/>
+                                                        </MenuFlyoutItem.Icon>
+                                                    </MenuFlyoutItem>
+                                                </MenuFlyout>
+                                            </Button.Flyout>
+                                        </Button>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </hero:HeroHeader.OverlayContent>
+                </hero:HeroHeader>
+
+                <!-- BELOW-HERO CONTENT -->
+                <StackPanel Grid.Row="1" Spacing="20" Padding="0,20,0,40">
+                    <!-- v21: Cast strip — horizontal scroll, circular ContentCards.
+                         Click a portrait to open the TMDB cast-member detail page
+                         that cross-references this person against local titles.
+                         Collapses to nothing when ShowCast is empty (TMDB not
+                         synced yet, no credits returned). IsExternal=True
+                         suppresses the play-button overlay (semantically wrong
+                         for a person) and shows a "navigate" globe instead;
+                         CardClick still fires on the card body. -->
+                    <StackPanel x:Name="CastSection" Spacing="10" Padding="32,0,0,0"
+                                Visibility="Collapsed">
+                        <TextBlock Text="Cast"
+                                   Style="{ThemeResource SubtitleTextBlockStyle}"
+                                   FontWeight="SemiBold"/>
+                        <ScrollViewer HorizontalScrollMode="Auto"
+                                      HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollMode="Disabled">
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.ShowCast}">
+                                <ItemsRepeater.Layout>
+                                    <StackLayout Orientation="Horizontal" Spacing="12"/>
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="models:LocalCastMember">
+                                        <!-- Tag carries the whole LocalCastMember row so
+                                             the CardClick handler doesn't depend on
+                                             ContentCard's DataContext propagating through
+                                             the deferred-circular-image template.
+                                             playback chrome is disabled because cast cards
+                                             navigate; they are not playable media. -->
+                                        <cards:ContentCard Width="140"
+                                                           IsCircularImage="True"
+                                                           CenterText="True"
+                                                           ShowPlaybackOverlay="False"
+                                                           PlaceholderGlyph="&#xE77B;"
+                                                           Tag="{x:Bind}"
+                                                           ImageUrl="{x:Bind ProfileImageUri}"
+                                                           Title="{x:Bind Name}"
+                                                           Subtitle="{x:Bind Character}"
+                                                           CardClick="CastMember_CardClick"/>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </ScrollViewer>
+                    </StackPanel>
+
+                    <!-- Season selector (hidden when 1 season). Visibility is set
+                         imperatively from SyncSeasonSelector when seasons load. -->
+                    <Grid Padding="32,0,32,0">
+                        <SelectorBar x:Name="SeasonSelector"
+                                     Visibility="Collapsed"
+                                     SelectionChanged="SeasonSelector_SelectionChanged"/>
+                    </Grid>
+
+                    <!-- Episode grid — responsive UniformGridLayout of
+                         LocalEpisodeCards. 16:9 thumbnails, hover scale +
+                         play overlay, resume bar / not-in-library badge /
+                         watched checkmark preserved from the old row layout. -->
+                    <Grid Padding="32,0,32,0">
+                        <ItemsRepeater x:Name="EpisodesRepeater"
+                                       ItemsSource="{x:Bind ViewModel.EpisodesForSelectedSeason, Mode=OneWay}">
+                            <ItemsRepeater.Layout>
+                                <UniformGridLayout Orientation="Horizontal"
+                                                   MinItemWidth="280" MinItemHeight="240"
+                                                   MinRowSpacing="16" MinColumnSpacing="16"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="models:LocalEpisode">
+                                    <localControls:LocalEpisodeCard Episode="{x:Bind}"
+                                                                    PlayRequested="EpisodeCard_PlayRequested"
+                                                                    ContextRequested="EpisodeCard_ContextRequested"/>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+        </ScrollView>
+
+        <!-- SHY HEADER: floating acrylic pill that morphs in once the hero
+             scrolls off. Matched ids (card-shell / show-poster / show-title
+             / show-play) pair with their hero-overlay counterparts so the
+             TransitionHelper interpolates position + scale during the morph. -->
+        <Grid x:Name="ShyHeaderHost"
+              Canvas.ZIndex="5"
+              VerticalAlignment="Top"
+              Margin="16,16,16,0">
+            <Grid x:Name="ShyHeaderCard"
+                  HorizontalAlignment="Center"
+                  MaxWidth="760"
+                  MinHeight="68"
+                  Visibility="Collapsed">
+                <Border transitions:TransitionHelper.Id="card-shell"
+                        CornerRadius="18"
+                        BorderThickness="1.5">
+                    <Border.BorderBrush>
+                        <SolidColorBrush Color="{ThemeResource SubtleFillColorTertiary}"/>
+                    </Border.BorderBrush>
+                    <Border.Background>
+                        <AcrylicBrush TintColor="{ThemeResource SolidBackgroundFillColorBase}"
+                                      TintOpacity="0.78"
+                                      FallbackColor="{ThemeResource CardBackgroundFillColorDefault}"/>
+                    </Border.Background>
+                    <Border.Shadow>
+                        <ThemeShadow/>
+                    </Border.Shadow>
+                </Border>
+
+                <Grid Padding="12,10" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
+                            Width="40"
+                            Height="40"
+                            CornerRadius="6"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            transitions:TransitionHelper.Id="show-poster">
+                        <Image Source="{x:Bind ViewModel.Show.PosterArtworkUri, Mode=OneWay, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=240}"
+                               Stretch="UniformToFill"/>
+                    </Border>
+
+                    <StackPanel Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Spacing="2">
+                        <TextBlock Text="{x:Bind ViewModel.Show.Name, Mode=OneWay}"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1"
+                                   transitions:TransitionHelper.Id="show-title"/>
+                        <TextBlock x:Name="ShyMetaText"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center">
+                        <Button Style="{StaticResource AccentButtonStyle}"
+                                Padding="16,8"
+                                CornerRadius="18"
+                                MinWidth="92"
+                                Click="PlayButton_Click"
+                                transitions:TransitionHelper.Id="show-play">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE768;" FontSize="12"
+                                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                <TextBlock Text="Play"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>

@@ -38,6 +38,16 @@ namespace Wavee.UI.WinUI.ViewModels;
 public enum PlaylistSortColumn { Custom, Title, Artist, Album, AddedAt }
 
 /// <summary>
+/// Drives the PlaylistPage layout fork: <see cref="Banner"/> = full-width
+/// hero image at top + two-column content below (editorial / radio
+/// playlists with a <c>header_image_url_desktop</c>); <see cref="Cover"/>
+/// = classic square cover in the left column + tracks on the right
+/// (user-created playlists). See PlaylistViewModel.LayoutMode for the
+/// detection chain (cache peek → URI heuristic → ApplyDetail authoritative).
+/// </summary>
+public enum PlaylistLayoutMode { Banner, Cover }
+
+/// <summary>
 /// ViewModel for the Playlist detail page with imperative filtering and sorting.
 /// </summary>
 public sealed partial class PlaylistViewModel : ObservableObject, ITrackListViewModel, IDisposable
@@ -63,6 +73,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     private string? _tracksLoadedFor;
     private bool _emptyPlaylistGenresLoadStarted;
     private bool _disposed;
+    private string? _pendingFallbackMosaicPlaylistId;
 
     [ObservableProperty]
     private string _playlistId = "";
@@ -192,6 +203,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     // guard the page rebuilds the avatar stack on every fire and a fresh nav
     // can trigger 3+ rebuilds back-to-back on a large playlist.
     private string? _lastCollaboratorSignature;
+    private readonly Dictionary<string, UserProfileSummary> _addedByProfilesById =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _addedByProfilesGate = new();
 
     [ObservableProperty]
     private bool _hasCollaborators;
@@ -216,6 +230,18 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     /// <summary>Bare current-user id, used to suppress the "added by" badge on
     /// rows the current user added themselves.</summary>
     public string? CurrentUserId => _session?.GetUserData()?.Username;
+
+    public bool TryGetAddedByProfile(string addedBy, out UserProfileSummary? profile)
+    {
+        if (string.IsNullOrWhiteSpace(addedBy))
+        {
+            profile = null;
+            return false;
+        }
+
+        lock (_addedByProfilesGate)
+            return _addedByProfilesById.TryGetValue(addedBy, out profile);
+    }
 
     /// <summary>True when the page should render the "…" overflow button — owners
     /// see Delete/Make-collaborative/Invite/Manage; collaborators see Leave.</summary>
@@ -289,6 +315,10 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     private bool _isDarkTheme;
 
     /// <summary>Subtle page-wash brush tinted toward the playlist's color. Null when no palette.</summary>
+    /// <remarks>No longer bound by PlaylistPage — the redesign drops the page-wide
+    /// wash so it doesn't bleed across the track table. Property kept so the
+    /// existing palette pipeline still computes (Album/Show/Concert/Episode pages
+    /// share the same shape) and so callers don't break if the binding returns.</remarks>
     [ObservableProperty]
     private Brush? _paletteBackdropBrush;
 
@@ -303,6 +333,92 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     /// <summary>Accent pill foreground brush — auto-computed from accent luminance.</summary>
     [ObservableProperty]
     private Brush? _paletteAccentPillForegroundBrush;
+
+    // ── Banner colors (no-image hero fallback) ────────────────────────────
+    // When the playlist has no header_image_url_desktop, the hero banner is
+    // painted by AnimatedHeroBackground (Win2D + MeshGradientShader) seeded
+    // from the cover-extracted palette. PrimaryColor/AccentColor below feed
+    // that control's two DPs. Computed in ApplyTheme; null fallback uses
+    // the system accent so cold-start (no palette yet) still renders something.
+
+    /// <summary>Banner fallback primary color — feeds AnimatedHeroBackground.PrimaryColor
+    /// when HeaderImageUrl is null. Sourced from AlbumPalette tier Background.</summary>
+    [ObservableProperty]
+    private Color _bannerPrimaryColor = Color.FromArgb(255, 90, 50, 160);
+
+    /// <summary>Banner fallback accent color — feeds AnimatedHeroBackground.AccentColor
+    /// when HeaderImageUrl is null. Sourced from AlbumPalette tier BackgroundTinted.</summary>
+    [ObservableProperty]
+    private Color _bannerAccentColor = Color.FromArgb(255, 36, 198, 220);
+
+    /// <summary>True when the playlist has a header image; used to route the banner
+    /// row between the composition image surface and the AnimatedHeroBackground
+    /// fallback. Mirrors HeaderImageUrl != null with a Bool shape so XAML can
+    /// bind both sides via BoolToVisibilityConverter without a custom converter.</summary>
+    public bool HasHeaderImage => !string.IsNullOrEmpty(HeaderImageUrl);
+
+    partial void OnHeaderImageUrlChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasHeaderImage));
+    }
+
+    /// <summary>
+    /// Drives the page-level layout fork: editorial / radio playlists with a
+    /// header image render the banner-style hero (full-width image at top,
+    /// title overlaid, two-column content below); user-created playlists
+    /// render the classic cover-in-left-column layout.
+    /// </summary>
+    /// <remarks>
+    /// Set in three phases (see <see cref="Activate"/> and <see cref="ApplyDetail"/>):
+    ///   1. Cache peek (<see cref="EntityStore{TKey,TValue}.PeekCached"/>)
+    ///      gives a definitive answer when the playlist was visited before
+    ///      in this session.
+    ///   2. URI-prefix heuristic (<see cref="IsLikelyEditorialPlaylist"/>)
+    ///      predicts based on the <c>spotify:playlist:37i9dQZ*</c> convention
+    ///      Spotify uses for curated and algorithmic playlists.
+    ///   3. After <see cref="ApplyDetail"/> the actual <see cref="HeaderImageUrl"/>
+    ///      is authoritative; PlaylistPage code-behind handles the fade-in
+    ///      crossfade if the prediction was wrong.
+    /// Default value <c>Cover</c> is the safer cold-start fallback (most
+    /// playlists are user-created).
+    /// </remarks>
+    [ObservableProperty]
+    private PlaylistLayoutMode _layoutMode = PlaylistLayoutMode.Cover;
+
+    /// <summary>
+    /// Spotify's curated and algorithmic playlists all share the
+    /// <c>spotify:playlist:37i9dQZ*</c> URI prefix:
+    ///   • <c>37i9dQZF1*</c> — editorial (Today's Top Hits, RapCaviar, etc.)
+    ///   • <c>37i9dQZEVXc*</c> / <c>37i9dQZF1E*</c> — personalised algorithmic
+    ///     (Discover Weekly, Daily Mix, etc.).
+    /// Both carry <c>header_image_url_desktop</c>, so a single prefix check
+    /// covers both. ~95% accurate; the remaining mismatches are corrected
+    /// authoritatively by ApplyDetail.
+    /// </summary>
+    private static bool IsLikelyEditorialPlaylist(string? playlistUri)
+    {
+        return !string.IsNullOrEmpty(playlistUri)
+            && playlistUri.StartsWith("spotify:playlist:37i9dQZ", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Pick the initial layout mode for a navigation. Tries the cache first
+    /// (definitive when present), falls back to the URI heuristic.
+    /// </summary>
+    private PlaylistLayoutMode PredictLayoutMode(string playlistId)
+    {
+        var cached = _playlistStore.PeekCached(playlistId);
+        if (cached is not null)
+        {
+            return string.IsNullOrEmpty(cached.HeaderImageUrl)
+                ? PlaylistLayoutMode.Cover
+                : PlaylistLayoutMode.Banner;
+        }
+
+        return IsLikelyEditorialPlaylist(playlistId)
+            ? PlaylistLayoutMode.Banner
+            : PlaylistLayoutMode.Cover;
+    }
 
     [ObservableProperty]
     private bool _hasError;
@@ -693,24 +809,24 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             return;
         }
 
-        var i = 0;
-        for (; i < rows.Count && i < FilteredTracks.Count; i++)
+        var merged = new List<ITrackItem>(rows.Count);
+        for (var i = 0; i < rows.Count; i++)
         {
-            if (FilteredTracks[i] is LazyTrackItem { IsLoaded: false } lazy)
+            if (i < FilteredTracks.Count && FilteredTracks[i] is LazyTrackItem { IsLoaded: false } lazy)
             {
                 lazy.Populate(rows[i]);
+                merged.Add(lazy);
             }
-            else if (!ReferenceEquals(FilteredTracks[i], rows[i]))
+            else
             {
-                FilteredTracks[i] = rows[i];
+                merged.Add(rows[i]);
             }
         }
 
-        while (FilteredTracks.Count > rows.Count)
-            FilteredTracks.RemoveAt(FilteredTracks.Count - 1);
-
-        for (; i < rows.Count; i++)
-            FilteredTracks.Add(rows[i]);
+        // One Reset instead of N Add/Remove/Replace notifications. TrackDataGrid
+        // re-snapshots and reprojects on every source collection change, so adding
+        // the post-placeholder tail one item at a time scales badly on large playlists.
+        FilteredTracks.ReplaceWith(merged);
     }
 
     private void UpdateAggregates()
@@ -856,31 +972,25 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             _sessionControlGroupId = null;
             TotalDuration = string.Empty;
             HasAnyAddedAt = false;
+            _pendingFallbackMosaicPlaylistId = null;
 
-            // Reset granular capability gates and remaining collaborator
-            // state on a low-priority dispatch so they don't add to the
-            // synchronous PropertyChanged storm before first paint. None
-            // of these affect the visible shimmer/hero/IsLoadingTracks gate.
-            // Capability gates only matter for owner affordances which are
-            // already x:Load-gated in the XAML; the brief window where
-            // they remain at their previous values is invisible.
-            _dispatcherQueue?.TryEnqueue(
-                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                () =>
-                {
-                    CanEditMetadata = false;
-                    CanEditName = false;
-                    CanEditDescription = false;
-                    CanEditPicture = false;
-                    CanEditCollaborative = false;
-                    CanDelete = false;
+            // Reset granular capability gates synchronously. Earlier this lived
+            // on a Low-priority dispatch ("don't add to the PropertyChanged
+            // storm before first paint"), but Low priority fires AFTER
+            // ApplyDetail when the playlist is cache-hot — and ApplyDetail
+            // setting these gates to true was getting stomped back to false
+            // by the delayed Reset. Hero owner affordances (pencil hint,
+            // cover Edit badge, etc.) then never appeared.
+            CanEditMetadata = false;
+            CanEditName = false;
+            CanEditDescription = false;
+            CanEditPicture = false;
+            CanEditCollaborative = false;
+            CanDelete = false;
 
-                    // Drop the previous playlist's collaborator state. (The
-                    // earlier Collaborators.Clear() above already covered the
-                    // collection; this duplicate-clear was a merge artifact —
-                    // collapsing it under the same low-priority block.)
-                    LatestInviteLink = null;
-                });
+            // Drop the previous playlist's collaborator state. (The earlier
+            // Collaborators.Clear() above already covered the collection.)
+            LatestInviteLink = null;
 
             // Drop chips from the previous playlist before the new DTO arrives
             // so they don't flicker visible during the reload.
@@ -909,6 +1019,13 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             // one's already-correct VM state.
             IsLoading = true;
         }
+
+        // Predict layout mode BEFORE the subscription fires its first emission
+        // so the shimmer skeleton renders the right shape from the first frame.
+        // ApplyDetail will set the authoritative value once the network/cache
+        // fetch resolves (mismatches between prediction and authoritative are
+        // handled by the page-level fade-in crossfade).
+        LayoutMode = PredictLayoutMode(playlistId);
 
         var streamSubscription = _playlistStore.Observe(playlistId)
             .Subscribe(
@@ -973,6 +1090,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         Collaborators.Clear();
         _lastCollaboratorSignature = null;
         HasCollaborators = false;
+        _pendingFallbackMosaicPlaylistId = null;
         _suppressSessionSignal = true;
         SessionControlChips.Clear();
         SelectedSessionControlChip = null;
@@ -1021,8 +1139,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     private void ApplyDetail(PlaylistDetailDto detail)
     {
         _logger?.LogInformation(
-            "Detail received: Name='{Name}', OwnerName='{OwnerName}', ImageUrl='{ImageUrl}', IsOwner={IsOwner}, FollowerCount={FollowerCount}",
-            detail.Name, detail.OwnerName, detail.ImageUrl, detail.IsOwner, detail.FollowerCount);
+            "Detail received: Name='{Name}', OwnerName='{OwnerName}', ImageUrl='{ImageUrl}', HeaderImageUrl='{HeaderImageUrl}', IsOwner={IsOwner}, FollowerCount={FollowerCount}",
+            detail.Name, detail.OwnerName, detail.ImageUrl, detail.HeaderImageUrl, detail.IsOwner, detail.FollowerCount);
 
         // Guard against the generic 'Playlist' fallback the data layer returns
         // for editorial mixes whose name lookup isn't implemented.
@@ -1048,16 +1166,25 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         }
         else if (_mosaicService is not null && !string.IsNullOrEmpty(PlaylistId))
         {
-            // Fire-and-forget: the compose can take a round-trip when the
-            // playlist's tracks aren't yet in the warm cache. Guard against
-            // races by checking PlaylistId hasn't changed (nav to a different
-            // playlist) before assigning the result.
             var playlistId = PlaylistId;
             var hint = detail.ImageUrl;
-            _logger?.LogInformation(
-                "ApplyDetail: kicking off mosaic hero for '{PlaylistId}' (hint='{Hint}')",
-                playlistId, hint ?? "null");
-            _ = ApplyMosaicHeroAsync(playlistId, hint);
+            if (!string.IsNullOrEmpty(hint))
+            {
+                // spotify:mosaic hints can be parsed directly, so this path does
+                // not need to wait for the track list.
+                _logger?.LogInformation(
+                    "ApplyDetail: kicking off mosaic hero for '{PlaylistId}' (hint='{Hint}')",
+                    playlistId, hint);
+                _ = ApplyMosaicHeroAsync(playlistId, hint);
+            }
+            else
+            {
+                // No hint means mosaic composition needs the playlist tracks.
+                // LoadTracksAsync is already fetching them, so let that path hand
+                // its snapshot to the mosaic service instead of starting a second
+                // GetPlaylistTracksAsync here.
+                _pendingFallbackMosaicPlaylistId = playlistId;
+            }
         }
         else
         {
@@ -1066,6 +1193,16 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 detail.ImageUrl ?? "null", _mosaicService is null, PlaylistId);
         }
         HeaderImageUrl = string.IsNullOrWhiteSpace(detail.HeaderImageUrl) ? null : detail.HeaderImageUrl;
+
+        // Authoritative layout decision now that the actual HeaderImageUrl is
+        // known. Common case: matches the prediction made in Activate, no
+        // visible change. Mismatch case (URI heuristic was wrong): the page-
+        // level PropertyChanged hook on LayoutMode triggers a fade-in on the
+        // newly-visible container.
+        LayoutMode = string.IsNullOrEmpty(HeaderImageUrl)
+            ? PlaylistLayoutMode.Cover
+            : PlaylistLayoutMode.Banner;
+
         _playlistFormatAttributes = detail.FormatAttributes;
         RecomputeChartHeader();
         _currentRevision = detail.Revision;
@@ -1153,12 +1290,18 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         DeletePlaylistCommand.NotifyCanExecuteChanged();
         ToggleCollaborativeCommand.NotifyCanExecuteChanged();
 
-        // The mutating members backend (LoadCollaboratorsAsync) is still a stub,
-        // so it isn't called here — the collaborator stack is fed by data we
-        // already have on screen instead. Seed it now with whatever we know
-        // (owner only at this point); LoadTracksAsync + addedBy resolution will
-        // call rebuild again as track contributors materialise.
+        // Seed the chip strip with whatever's on screen right now (owner +
+        // anyone present via track AddedBy fields) so the first paint isn't
+        // empty. LoadTracksAsync + addedBy resolution will rebuild again as
+        // track contributors materialise.
         RebuildCollaboratorsFromContext();
+
+        // Kick off the real members fetch in the background. When it returns,
+        // LoadCollaboratorsAsync replaces the chip strip with the role-aware
+        // list from the permission backend. Falls back silently to the seeded
+        // context-rebuild if the user lacks permission or the endpoint returns
+        // empty.
+        _ = LoadCollaboratorsCommand.ExecuteAsync(null);
 
         HasError = false;
         ErrorMessage = null;
@@ -1538,6 +1681,37 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         }
     }
 
+    private async Task ApplyMosaicHeroFromTracksAsync(string playlistId, IReadOnlyList<PlaylistTrackDto> tracks)
+    {
+        if (_mosaicService is null || tracks.Count == 0) return;
+
+        try
+        {
+            var path = await _mosaicService
+                .GetMosaicFilePathFromTracksAsync(playlistId, tracks, CancellationToken.None)
+                .ConfigureAwait(false);
+            if (string.IsNullOrEmpty(path))
+                return;
+
+            var fileUri = new Uri(path).AbsoluteUri;
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (_disposed || !string.Equals(PlaylistId, playlistId, StringComparison.Ordinal))
+                    return;
+                if (string.IsNullOrWhiteSpace(PlaylistImageUrl))
+                    PlaylistImageUrl = fileUri;
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            _logger?.LogDebug("ApplyMosaicHeroFromTracksAsync cancelled for {PlaylistId}", playlistId);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "ApplyMosaicHeroFromTracksAsync failed for {PlaylistId}", playlistId);
+        }
+    }
+
     private async Task LoadEmptyPlaylistGenresAsync(CancellationToken ct)
     {
         try
@@ -1681,6 +1855,10 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             PaletteHeroGradientBrush = null;
             PaletteAccentPillBrush = null;
             PaletteAccentPillForegroundBrush = null;
+            // Banner falls back to system-accent-ish defaults when no palette
+            // is available yet — cold start before LoadPaletteAsync resolves.
+            BannerPrimaryColor = Color.FromArgb(255, 90, 50, 160);
+            BannerAccentColor = Color.FromArgb(255, 36, 198, 220);
             return;
         }
 
@@ -1696,6 +1874,13 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         var heroBg     = isDark ? bg     : TintColorHelper.LightTint(bg);
         var heroBgTint = isDark ? bgTint : TintColorHelper.LightTint(bgTint);
         var washColor  = isDark ? bg     : TintColorHelper.LightTint(bg);
+
+        // Banner colors — feed AnimatedHeroBackground when the playlist has no
+        // header_image_url_desktop. Use the saturated tier values directly
+        // (not the LightTint blend used for the wash) so the procedural mesh
+        // gradient stays visually punchy regardless of theme.
+        BannerPrimaryColor = bg;
+        BannerAccentColor = bgTint;
 
         PaletteBackdropBrush = new SolidColorBrush(Color.FromArgb(
             (byte)(isDark ? 60 : 38), washColor.R, washColor.G, washColor.B));
@@ -1763,6 +1948,12 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                     _tracksLoadedFor = playlistId;
                     IsLoadingTracks = false;
                     ClearPendingSignalChip();
+                    if (string.Equals(_pendingFallbackMosaicPlaylistId, playlistId, StringComparison.Ordinal) &&
+                        string.IsNullOrWhiteSpace(PlaylistImageUrl))
+                    {
+                        _pendingFallbackMosaicPlaylistId = null;
+                        _ = ApplyMosaicHeroFromTracksAsync(playlistId, _allTracks.ToArray());
+                    }
                     _logger?.LogInformation(
                         "Tracks unchanged after refresh: {Count} same Ids for '{PlaylistId}' first3={First3}",
                         tracks.Count, playlistId,
@@ -1787,7 +1978,14 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 // _allTracks is populated — the unique addedBy set is now derivable.
                 // Rebuild seeds the stack with bare-id contributors immediately;
                 // ResolveAddedByUsernamesAsync upgrades the names + avatars below
-                // and calls rebuild again when its writeback completes.
+                // and calls rebuild again when the shared profile cache updates.
+                if (string.Equals(_pendingFallbackMosaicPlaylistId, playlistId, StringComparison.Ordinal) &&
+                    string.IsNullOrWhiteSpace(PlaylistImageUrl))
+                {
+                    _pendingFallbackMosaicPlaylistId = null;
+                    _ = ApplyMosaicHeroFromTracksAsync(playlistId, _allTracks.ToArray());
+                }
+
                 RebuildCollaboratorsFromContext();
                 // Defensive: ShouldShowAddedByColumn reads directly from
                 // _allTracks (which we just reassigned), and the rebuild above
@@ -2232,8 +2430,18 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         if (unique.Count == 0) return;
 
+        var missing = unique
+            .Where(id => !TryGetAddedByProfile(id, out _))
+            .ToList();
+
+        if (missing.Count == 0)
+        {
+            _logger?.LogInformation("[addedby] all profiles already cached for '{Id}'", forPlaylistId);
+            return;
+        }
+
         var lookup = new Dictionary<string, UserProfileSummary?>(StringComparer.OrdinalIgnoreCase);
-        await Task.WhenAll(unique.Select(async id =>
+        await Task.WhenAll(missing.Select(async id =>
         {
             try
             {
@@ -2263,21 +2471,30 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         var anyChanged = 0;
         var skippedNullProfile = 0;
-        foreach (var dto in snapshot)
+        lock (_addedByProfilesGate)
         {
-            if (string.IsNullOrEmpty(dto.AddedBy)) continue;
-            if (!lookup.TryGetValue(dto.AddedBy, out var profile) || profile is null)
+            foreach (var (id, profile) in lookup)
             {
-                skippedNullProfile++;
-                continue;
+                if (profile is null)
+                {
+                    skippedNullProfile++;
+                    continue;
+                }
+
+                if (_addedByProfilesById.TryGetValue(id, out var existing) &&
+                    string.Equals(existing.DisplayName, profile.DisplayName, StringComparison.Ordinal) &&
+                    string.Equals(existing.AvatarUrl, profile.AvatarUrl, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                _addedByProfilesById[id] = profile;
+                anyChanged++;
             }
-            dto.AddedByDisplayName = profile.DisplayName ?? dto.AddedBy;
-            dto.AddedByAvatarUrl = profile.AvatarUrl;
-            anyChanged++;
         }
 
         _logger?.LogInformation(
-            "[addedby] writeback complete for '{Id}': mutated={Changed} skippedNullProfile={Nul}",
+            "[addedby] profile cache update complete for '{Id}': changed={Changed} skippedNullProfile={Nul}",
             forPlaylistId, anyChanged, skippedNullProfile);
 
         // The TrackDataGrid pushes formatter values imperatively at row
@@ -2360,13 +2577,14 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             var addedBy = t.AddedBy;
             if (string.IsNullOrEmpty(addedBy)) continue;
             if (!seen.Add(addedBy)) continue;
+            TryGetAddedByProfile(addedBy, out var profile);
 
             members.Add(new PlaylistMemberResult
             {
                 UserId = addedBy,
                 Username = addedBy,
-                DisplayName = string.IsNullOrWhiteSpace(t.AddedByDisplayName) ? null : t.AddedByDisplayName,
-                AvatarUrl = t.AddedByAvatarUrl,
+                DisplayName = string.IsNullOrWhiteSpace(profile?.DisplayName) ? null : profile.DisplayName,
+                AvatarUrl = profile?.AvatarUrl,
                 Role = PlaylistMemberRole.Contributor,
             });
         }
@@ -2470,9 +2688,16 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 };
             })).ConfigureAwait(true);
 
-            Collaborators.Clear();
-            foreach (var m in enriched) Collaborators.Add(m);
-            HasCollaborators = Collaborators.Count > 0;
+            // Only replace the seeded (context-rebuild) chip strip when the
+            // backend actually returned something — otherwise we'd erase the
+            // owner + addedBy fallback for users who lack permission to view
+            // the real member list.
+            if (enriched.Length > 0)
+            {
+                Collaborators.Clear();
+                foreach (var m in enriched) Collaborators.Add(m);
+                HasCollaborators = Collaborators.Count > 0;
+            }
         }
         catch (Exception ex)
         {

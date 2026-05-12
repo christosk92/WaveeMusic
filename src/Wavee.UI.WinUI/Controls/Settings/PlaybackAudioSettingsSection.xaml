@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Settings.PlaybackAudioSettingsSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollView VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Hidden">
+        <StackPanel x:Name="Host" Spacing="16"/>
+    </ScrollView>
+</UserControl>

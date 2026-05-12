@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -453,6 +454,8 @@ public sealed partial class TrackItem : UserControl
     private ITrackItem? _observedTrack;
     private bool _isMessengerRegistered;
     private bool _isSaveStateSubscribed;
+    private string? _rowArtistsSignature;
+    private string? _boundColorHintUrl;
 
     // Guards against stale color-hint applies after a virtualized row is recycled.
     // Incremented on every ResolveImageColorHint invocation; an awaiting continuation
@@ -621,6 +624,7 @@ public sealed partial class TrackItem : UserControl
             RowTitle.Text = "";
             RowLocalBadge.Visibility = Visibility.Collapsed;
             RowDuration.Text = "";
+            _rowArtistsSignature = null;
             RowArtistsHost.Children.Clear();
             RowAlbumLink.Content = "";
             ApplyRowProgress(null);
@@ -894,6 +898,7 @@ public sealed partial class TrackItem : UserControl
         var rawUrl = Track?.ImageUrl;
         if (string.IsNullOrWhiteSpace(rawUrl))
         {
+            _boundColorHintUrl = null;
             ApplyPlaceholderColor(null);
             return;
         }
@@ -901,9 +906,14 @@ public sealed partial class TrackItem : UserControl
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(rawUrl);
         if (string.IsNullOrWhiteSpace(httpsUrl))
         {
+            _boundColorHintUrl = null;
             ApplyPlaceholderColor(null);
             return;
         }
+
+        if (string.Equals(_boundColorHintUrl, httpsUrl, StringComparison.Ordinal))
+            return;
+        _boundColorHintUrl = httpsUrl;
 
         var version = System.Threading.Interlocked.Increment(ref _colorHintVersion);
 
@@ -1858,18 +1868,120 @@ public sealed partial class TrackItem : UserControl
 
     private void ApplyObservedTrackChange(string? propertyName)
     {
-        if (string.IsNullOrEmpty(propertyName) || IsTrackContentProperty(propertyName))
+        if (string.IsNullOrEmpty(propertyName) || propertyName == "Data")
         {
-            SyncLoadingStateFromTrack();
-            BindTrackData();
-            ResolveImageColorHint();
-            RefreshPlaybackState();
-            UpdateOverlayState();
+            RebindObservedTrack();
             return;
         }
 
-        if (propertyName == nameof(ITrackItem.HasVideo))
-            UpdateBadgePlacement();
+        var track = Track;
+        switch (propertyName)
+        {
+            case nameof(ITrackItem.IsLoaded):
+                SyncLoadingStateFromTrack();
+                UpdateOverlayState();
+                return;
+
+            case nameof(ITrackItem.IsLiked):
+                if (track is not null)
+                {
+                    CompactHeartButton.IsLiked = GetTrackLikedState(track);
+                    RowHeartButton.IsLiked = GetTrackLikedState(track);
+                }
+                return;
+
+            case nameof(ITrackItem.HasVideo):
+            case nameof(ITrackItem.IsExplicit):
+                UpdateBadgePlacement();
+                return;
+
+            case nameof(ITrackItem.PlaybackProgress):
+            case nameof(ITrackItem.PlaybackProgressText):
+            case nameof(ITrackItem.HasPlaybackProgressError):
+                if (Mode == TrackItemDisplayMode.Row)
+                    ApplyRowProgress(track);
+                return;
+
+            case nameof(ITrackItem.ImageUrl):
+            case nameof(ITrackItem.ImageSmallUrl):
+                if (Mode == TrackItemDisplayMode.Compact)
+                    ApplyCompactAlbumArt(track?.ImageSmallUrl ?? track?.ImageUrl);
+                else
+                    ApplyRowAlbumArt(track?.ImageSmallUrl ?? track?.ImageUrl);
+                ResolveImageColorHint();
+                return;
+
+            case nameof(ITrackItem.Title):
+                if (Mode == TrackItemDisplayMode.Compact)
+                    CompactTitle.Text = track?.Title ?? "";
+                else
+                    RowTitle.Text = track?.Title ?? "";
+                UpdateOverlayState();
+                return;
+
+            case nameof(ITrackItem.ArtistName):
+            case nameof(ITrackItem.ArtistId):
+            case nameof(ITrackItem.Artists):
+                if (Mode == TrackItemDisplayMode.Compact)
+                {
+                    CompactSubtitle.Text = track?.ArtistName ?? "";
+                }
+                else if (track is not null)
+                {
+                    var artistName = track.ArtistName ?? "";
+                    RebuildArtistsSubline(track);
+                    RowArtistsHost.Visibility = (ShowArtistColumn && !ShowProgress && !string.IsNullOrEmpty(artistName))
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+                    UpdateBadgePlacement();
+                }
+                return;
+
+            case nameof(ITrackItem.AlbumName):
+            case nameof(ITrackItem.AlbumId):
+                if (Mode == TrackItemDisplayMode.Row)
+                {
+                    RowAlbumLink.Content = track?.AlbumName ?? "";
+                    RowAlbumLink.Tag = track?.AlbumId;
+                }
+                return;
+
+            case nameof(ITrackItem.Duration):
+            case nameof(ITrackItem.DurationFormatted):
+                if (Mode == TrackItemDisplayMode.Compact)
+                    CompactDuration.Text = track?.DurationFormatted ?? "";
+                else
+                    RowDuration.Text = track?.DurationFormatted ?? "";
+                return;
+
+            case nameof(ITrackItem.OriginalIndex):
+                if (Mode == TrackItemDisplayMode.Row)
+                {
+                    RowIndexText.Text = track?.OriginalIndex > 0
+                        ? track.OriginalIndex.ToString()
+                        : RowIndex > 0 ? RowIndex.ToString() : "";
+                }
+                return;
+
+            case nameof(ITrackItem.IsLocal):
+                if (Mode == TrackItemDisplayMode.Compact)
+                    CompactLocalBadge.Visibility = track?.IsLocal == true ? Visibility.Visible : Visibility.Collapsed;
+                else
+                    RowLocalBadge.Visibility = track?.IsLocal == true ? Visibility.Visible : Visibility.Collapsed;
+                return;
+        }
+
+        if (IsTrackContentProperty(propertyName))
+            RebindObservedTrack();
+    }
+
+    private void RebindObservedTrack()
+    {
+        SyncLoadingStateFromTrack();
+        BindTrackData();
+        ResolveImageColorHint();
+        RefreshPlaybackState();
+        UpdateOverlayState();
     }
 
     private static bool IsTrackContentProperty(string propertyName) => propertyName switch
@@ -1882,6 +1994,7 @@ public sealed partial class TrackItem : UserControl
         nameof(ITrackItem.AlbumName) => true,
         nameof(ITrackItem.AlbumId) => true,
         nameof(ITrackItem.ImageUrl) => true,
+        nameof(ITrackItem.ImageSmallUrl) => true,
         nameof(ITrackItem.Duration) => true,
         nameof(ITrackItem.DurationFormatted) => true,
         nameof(ITrackItem.OriginalIndex) => true,
@@ -1893,6 +2006,7 @@ public sealed partial class TrackItem : UserControl
         nameof(ITrackItem.PlaybackProgress) => true,
         nameof(ITrackItem.PlaybackProgressText) => true,
         nameof(ITrackItem.HasPlaybackProgressError) => true,
+        nameof(ITrackItem.Artists) => true,
         "Data" => true,
         _ => false,
     };
@@ -2036,6 +2150,11 @@ public sealed partial class TrackItem : UserControl
     /// </summary>
     private void RebuildArtistsSubline(ITrackItem track)
     {
+        var signature = BuildArtistsSignature(track);
+        if (string.Equals(signature, _rowArtistsSignature, StringComparison.Ordinal))
+            return;
+
+        _rowArtistsSignature = signature;
         RowArtistsHost.Children.Clear();
 
         var captionStyle = (Microsoft.UI.Xaml.Style)Application.Current.Resources["CaptionTextBlockStyle"];
@@ -2067,6 +2186,21 @@ public sealed partial class TrackItem : UserControl
             var a = artists[i];
             RowArtistsHost.Children.Add(BuildArtistLink(a.Name, a.Uri, captionStyle, subduedBrush));
         }
+    }
+
+    private static string BuildArtistsSignature(ITrackItem track)
+    {
+        var artists = track.Artists;
+        if (artists == null || artists.Count == 0)
+            return $"{track.ArtistName}|{track.ArtistId}";
+
+        var sb = new StringBuilder(artists.Count * 32);
+        for (var i = 0; i < artists.Count; i++)
+        {
+            if (i > 0) sb.Append('|');
+            sb.Append(artists[i].Name).Append('@').Append(artists[i].Uri);
+        }
+        return sb.ToString();
     }
 
     private HyperlinkButton BuildArtistLink(

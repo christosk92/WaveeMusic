@@ -43,7 +43,7 @@ public static class SidebarPlaylistContextMenuBuilder
         items.Add(new ContextMenuItemModel
         {
             Text = AppLocalization.GetString("SidebarMenu_AddToQueue"),
-            Glyph = FluentGlyphs.AddToQueue,
+            Glyph = FluentGlyphs.AddToQueue,
             AccentIconStyleKey = "App.AccentIcons.Media.PlayAfter",
             Command = ctx.AddToQueueCommand,
             CommandParameter = uri,
@@ -58,9 +58,11 @@ public static class SidebarPlaylistContextMenuBuilder
             Text = AppLocalization.GetString(ctx.IsInLibrary
                 ? "SidebarMenu_RemoveFromLibrary"
                 : "SidebarMenu_SaveToLibrary"),
-            Glyph = ctx.IsInLibrary ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline,
+            Glyph = ctx.IsInLibrary ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline,
             AccentIconStyleKey = ctx.IsInLibrary ? "App.AccentIcons.Media.Saved" : "App.AccentIcons.Media.Save",
             IsPrimary = true,
+            // Owners delete instead of unfollowing — hide the heart for them.
+            ShowItem = !ctx.IsOwner,
             Invoke = ctx.ToggleLibraryAction ?? (() => Debug.WriteLine($"ToggleLibrary: {uri}"))
         });
 
@@ -78,6 +80,8 @@ public static class SidebarPlaylistContextMenuBuilder
         {
             Text = AppLocalization.GetString("SidebarMenu_Report"),
             Glyph = FluentGlyphs.Report,
+            // Reporting your own playlist is nonsense — hide for owners.
+            ShowItem = !ctx.IsOwner,
             Invoke = ctx.ReportAction ?? (() => Debug.WriteLine($"Report: {uri}"))
         });
 
@@ -105,6 +109,8 @@ public static class SidebarPlaylistContextMenuBuilder
         {
             Text = AppLocalization.GetString("SidebarMenu_ExcludeFromTaste"),
             Glyph = FluentGlyphs.Exclude,
+            // Taste-profile signal is owner-implicit; hide for owned playlists.
+            ShowItem = !ctx.IsOwner,
             Invoke = ctx.ExcludeFromTasteAction ?? (() => Debug.WriteLine($"ExcludeFromTaste: {uri}"))
         });
 

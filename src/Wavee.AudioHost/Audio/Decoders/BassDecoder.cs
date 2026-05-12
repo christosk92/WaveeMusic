@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using ManagedBass;
 using Microsoft.Extensions.Logging;
 using Wavee.AudioHost.Audio.Abstractions;
+using Wavee.Local.Playback;
 using Wavee.AudioHost.Audio.Streaming;
 
 namespace Wavee.AudioHost.Audio.Decoders;

@@ -18,6 +18,8 @@ public static class FluentGlyphs
     // ── Playback ──────────────────────────────────────────────────────────
     /// <summary>Play — E768.</summary>
     public const string Play = "";
+    /// <summary>Pause — E769.</summary>
+    public const string Pause = "";
     /// <summary>Next — E893 (play-next glyph historically E71A Forward; we keep E71A).</summary>
     public const string PlayNext = "";
     /// <summary>Add (plus) — E710. Used for "Add to queue".</summary>
@@ -100,8 +102,35 @@ public static class FluentGlyphs
     public const string ChevronRight = "";
     /// <summary>ChevronLeft — E76B.</summary>
     public const string ChevronLeft = "";
+    /// <summary>FullScreen — E740. Enter-fullscreen affordance (corner-arrows out).</summary>
+    public const string FullScreen = "";
+    /// <summary>BackToWindow — E73F. Exit-fullscreen affordance (corner-arrows in).</summary>
+    public const string BackToWindow = "";
     /// <summary>Video — E714. Used for "Watch Video" / music-video toggle.</summary>
     public const string Video = "";
+
+    // ── Local-media kind placeholders ────────────────────────────────────
+    // Per-kind glyphs used by ContentCard.PlaceholderGlyph for local rails
+    // (TV shows / movies / music videos / episodes) so missing artwork
+    // surfaces a recognisable kind hint instead of an empty gray box.
+    /// <summary>TVMonitor — E7F4. Placeholder for a local TV show.</summary>
+    public const string TvShow = "";
+    /// <summary>Video — E714. Placeholder for a local movie. Same codepoint
+    /// as <see cref="Video"/>; the constant exists so call sites read as the
+    /// content kind, not the action ("local movie" vs "watch video toggle").</summary>
+    public const string Movie = "";
+    /// <summary>Video — E714. Placeholder for a local music video. Reuses the
+    /// Video glyph; context (Wide aspect, music-video rail) distinguishes it
+    /// from the Movie placeholder at the surface.</summary>
+    public const string MusicVideo = "";
+    /// <summary>Slideshow — E786. Placeholder for a single TV episode still.</summary>
+    public const string Episode = "";
+
+    // ── Misc UI ──────────────────────────────────────────────────────────
+    /// <summary>Refresh — E72C. Used for Sync / Reload affordances.</summary>
+    public const string Refresh = "";
+    /// <summary>Setting / cogwheel — E713. Used for "Set up X" deep-link CTAs.</summary>
+    public const string SettingsGear = "";
 
     /// <summary>Devices2 — remote-device cluster icon (E703).</summary>
     // ---- Chart status (chart-format playlists) -------------------------

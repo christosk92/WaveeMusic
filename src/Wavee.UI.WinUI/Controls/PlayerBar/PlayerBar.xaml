@@ -163,6 +163,10 @@
             Closed="PodcastResumeTeachingTip_Closed" />
 
     <Border
+        AllowDrop="True"
+        DragOver="PlayerBarRoot_DragOver"
+        DragLeave="PlayerBarRoot_DragLeave"
+        Drop="PlayerBarRoot_Drop"
         Visibility="{x:Bind ViewModel.HasTrack, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
         <toolkit:Effects.Shadow>
             <media:AttachedCardShadow BlurRadius="32" Offset="0,-2" Opacity="0.4" Color="Black" CornerRadius="8" />
@@ -494,6 +498,7 @@
                                 Padding="0"
                                 IsChecked="{x:Bind ViewModel.IsDetailsPanelActive, Mode=OneWay}"
                                 Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}"
+                                Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                 ToolTipService.ToolTip="Details">
                                 <FontIcon Glyph="&#xE946;" FontSize="14" />
                             </ToggleButton>
@@ -505,6 +510,7 @@
                                 Padding="0"
                                 IsChecked="{x:Bind ViewModel.IsLyricsPanelActive, Mode=OneWay}"
                                 Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}"
+                                Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                 ToolTipService.ToolTip="Lyrics">
                                 <FontIcon Glyph="&#xED1E;" FontSize="14" />
                             </ToggleButton>
@@ -516,6 +522,7 @@
                                 Padding="0"
                                 IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
                                 Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}"
+                                Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                 ToolTipService.ToolTip="Friends Activity">
                                 <FontIcon Glyph="&#xE716;" FontSize="14" />
                             </ToggleButton>
@@ -564,15 +571,63 @@
                                 </Grid>
                             </Button>
 
+                            <!-- Standalone Pop-Out — first-class only for music / podcast
+                                 content. For video, Pop-Out moves inside the
+                                 "Expand player" DropDownButton below so the bar has
+                                 a single expand affordance. -->
                             <Button
                                 Style="{StaticResource TransparentButtonStyle}"
                                 Width="32"
                                 Height="32"
                                 Padding="0"
                                 Click="PopOutToWindow_Click"
+                                Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                 ToolTipService.ToolTip="Pop out player">
                                 <FontIcon Glyph="&#xE8A7;" FontSize="14" />
                             </Button>
+
+                            <!-- Expand player (video only). One DropDownButton replaces
+                                 Theatre + Fullscreen + Pop-Out so the three near-identical
+                                 expand glyphs don't read as the same button to the user.
+                                 Each menu item has its own glyph + label, so the choice
+                                 is unambiguous. -->
+                            <DropDownButton
+                                x:Name="ExpandPlayerDropDown"
+                                Width="32"
+                                Height="32"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Visibility="{x:Bind ViewModel.IsVideoContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                ToolTipService.ToolTip="Expand player">
+                                <FontIcon Glyph="&#xE740;" FontSize="14" />
+                                <DropDownButton.Flyout>
+                                    <MenuFlyout Placement="TopEdgeAlignedRight">
+                                        <MenuFlyoutItem
+                                            Text="Theatre mode"
+                                            Command="{x:Bind ViewModel.EnterTheatreCommand}">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE73F;" FontSize="14" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem
+                                            Text="Fullscreen"
+                                            Command="{x:Bind ViewModel.EnterFullscreenCommand}"
+                                            KeyboardAcceleratorTextOverride="F11">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE740;" FontSize="14" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem
+                                            Text="Pop out to window"
+                                            Click="PopOutToWindow_Click">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE8A7;" FontSize="14" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                    </MenuFlyout>
+                                </DropDownButton.Flyout>
+                            </DropDownButton>
                         </StackPanel>
 
                         <Button
@@ -605,7 +660,8 @@
                                     <ToggleMenuFlyoutItem
                                         Text="Lyrics"
                                         IsChecked="{x:Bind ViewModel.IsLyricsPanelActive, Mode=OneWay}"
-                                        Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}">
+                                        Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}"
+                                        Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                         <ToggleMenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xED1E;" FontSize="14" />
                                         </ToggleMenuFlyoutItem.Icon>
@@ -613,7 +669,8 @@
                                     <ToggleMenuFlyoutItem
                                         Text="Details"
                                         IsChecked="{x:Bind ViewModel.IsDetailsPanelActive, Mode=OneWay}"
-                                        Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}">
+                                        Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}"
+                                        Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                         <ToggleMenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE946;" FontSize="14" />
                                         </ToggleMenuFlyoutItem.Icon>
@@ -621,11 +678,29 @@
                                     <ToggleMenuFlyoutItem
                                         Text="Friends Activity"
                                         IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
-                                        Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}">
+                                        Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}"
+                                        Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                         <ToggleMenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE716;" FontSize="14" />
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        Text="Theatre mode"
+                                        Command="{x:Bind ViewModel.EnterTheatreCommand}"
+                                        Visibility="{x:Bind ViewModel.IsVideoContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE73F;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        Text="Fullscreen"
+                                        Command="{x:Bind ViewModel.EnterFullscreenCommand}"
+                                        Visibility="{x:Bind ViewModel.IsVideoContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                        KeyboardAcceleratorTextOverride="F11">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE740;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutItem
                                         Text="Watch Video"
                                         Command="{x:Bind ViewModel.SwitchToVideoCommand}"
@@ -957,7 +1032,8 @@
                                     <ToggleMenuFlyoutItem
                                         Text="Lyrics"
                                         IsChecked="{x:Bind ViewModel.IsLyricsPanelActive, Mode=OneWay}"
-                                        Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}">
+                                        Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}"
+                                        Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                         <ToggleMenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xED1E;" FontSize="14" />
                                         </ToggleMenuFlyoutItem.Icon>
@@ -965,7 +1041,8 @@
                                     <ToggleMenuFlyoutItem
                                         Text="Details"
                                         IsChecked="{x:Bind ViewModel.IsDetailsPanelActive, Mode=OneWay}"
-                                        Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}">
+                                        Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}"
+                                        Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                         <ToggleMenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE946;" FontSize="14" />
                                         </ToggleMenuFlyoutItem.Icon>
@@ -973,11 +1050,29 @@
                                     <ToggleMenuFlyoutItem
                                         Text="Friends Activity"
                                         IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
-                                        Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}">
+                                        Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}"
+                                        Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                         <ToggleMenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE716;" FontSize="14" />
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        Text="Theatre mode"
+                                        Command="{x:Bind ViewModel.EnterTheatreCommand}"
+                                        Visibility="{x:Bind ViewModel.IsVideoContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE73F;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        Text="Fullscreen"
+                                        Command="{x:Bind ViewModel.EnterFullscreenCommand}"
+                                        Visibility="{x:Bind ViewModel.IsVideoContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                        KeyboardAcceleratorTextOverride="F11">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE740;" FontSize="14" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutItem
                                         Text="Watch Video"
                                         Command="{x:Bind ViewModel.SwitchToVideoCommand}"

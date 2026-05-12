@@ -1,4 +1,5 @@
 using System;
+using Wavee.Audio;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading;
@@ -44,6 +45,12 @@ public sealed class LocalMediaPlayer : Wavee.Audio.ILocalMediaPlayer, IVideoSurf
     private TrackMetadataDto? _currentMetadata;
     private long _currentDurationMs;
     private bool _disposed;
+
+    // Track collections — populated when PlayFileAsync wraps MediaSource in a
+    // MediaPlaybackItem (which is the only container that exposes embedded
+    // audio / video / subtitle track lists). Null when idle. Drives the
+    // track menus in the Theatre / Fullscreen surface.
+    private MediaPlaybackItem? _currentPlaybackItem;
 
     public LocalMediaPlayer(ILogger<LocalMediaPlayer>? logger = null)
     {
@@ -121,7 +128,15 @@ public sealed class LocalMediaPlayer : Wavee.Audio.ILocalMediaPlayer, IVideoSurf
         {
             try
             {
-                _player.Source = MediaSource.CreateFromUri(new Uri(filePath));
+                _externalSubtitleLabels.Clear();
+
+                var source = MediaSource.CreateFromUri(new Uri(filePath));
+                // Wrap in MediaPlaybackItem so AudioTracks / VideoTracks /
+                // TimedMetadataTracks are reachable — MediaSource alone
+                // doesn't expose them.
+                var item = new MediaPlaybackItem(source);
+                _currentPlaybackItem = item;
+                _player.Source = item;
                 if (startPositionMs > 0)
                 {
                     _player.PlaybackSession.Position = TimeSpan.FromMilliseconds(startPositionMs);
@@ -133,6 +148,13 @@ public sealed class LocalMediaPlayer : Wavee.Audio.ILocalMediaPlayer, IVideoSurf
                 // — it will push us as the active provider so any registered
                 // IMediaSurfaceConsumer (page or mini-player) gets bound.
                 _surfaceChangesSubject.OnNext(new VideoSurfaceChange(_player, "local"));
+                _playbackItemChanged?.Invoke(this, item);
+
+                // Auto-attach previously-scanned + user-saved external subtitles
+                // for this file from local_subtitle_files. The scanner's
+                // sibling-discovery and the user's drag-drop history both
+                // funnel through that table, so a single read here covers both.
+                _ = AttachPersistedSubtitlesAsync(filePath, source);
             }
             catch (Exception ex)
             {
@@ -146,6 +168,212 @@ public sealed class LocalMediaPlayer : Wavee.Audio.ILocalMediaPlayer, IVideoSurf
             }
         });
     }
+
+    /// <summary>
+    /// The live <see cref="MediaPlaybackItem"/> driving the player, or null
+    /// when idle. Exposed so the Theatre / Fullscreen surface can populate
+    /// audio / video / subtitle track menus from
+    /// <see cref="MediaPlaybackItem.AudioTracks"/> etc.
+    /// </summary>
+    public MediaPlaybackItem? CurrentPlaybackItem => _currentPlaybackItem;
+
+    /// <summary>
+    /// Fires after a fresh <see cref="MediaPlaybackItem"/> is assigned. The
+    /// Theatre surface uses this to repopulate its track menus when the
+    /// playing item changes.
+    /// </summary>
+    public event EventHandler<MediaPlaybackItem>? PlaybackItemChanged
+    {
+        add => _playbackItemChanged += value;
+        remove => _playbackItemChanged -= value;
+    }
+    private EventHandler<MediaPlaybackItem>? _playbackItemChanged;
+
+    /// <summary>
+    /// Side-loaded external subtitle (dropped onto the player surface). The
+    /// file is loaded as a <see cref="TimedTextSource"/> on the active
+    /// <see cref="MediaSource"/>, then auto-selected so it renders. Also
+    /// persisted to <c>local_subtitle_files</c> via
+    /// <see cref="Wavee.Local.ILocalLibraryService"/> so subsequent plays of
+    /// the same video re-attach the subtitle without the user re-dropping it.
+    /// <paramref name="label"/> is shown in the subtitle menu — typically the
+    /// filename stem.
+    /// </summary>
+    public Task AddExternalSubtitleAsync(
+        string filePath,
+        string? languageCode,
+        string? label,
+        bool forced = false,
+        bool sdh = false,
+        CancellationToken ct = default)
+    {
+        if (_disposed || _currentPlaybackItem is null)
+            return Task.CompletedTask;
+
+        // Persist for future plays — fire-and-forget; the live attach below
+        // is the immediately user-visible bit, the DB insert just makes it
+        // sticky next session. Skipped silently when no library is registered.
+        var videoUri = _currentTrackUri;
+        if (videoUri is not null)
+        {
+            _ = PersistDroppedSubtitleAsync(filePath, languageCode, forced, sdh, videoUri);
+        }
+
+        return RunOnUiAsync(() =>
+        {
+            try
+            {
+                // CreateFromUri's (uri, defaultLanguage) overload imprints the
+                // language on every TimedMetadataTrack the source resolves —
+                // TimedMetadataTrack.Language is read-only at runtime so this
+                // is the only way to set it. Falls back to the no-language
+                // overload when we don't have a code (the menu then shows
+                // whatever MediaFoundation reports).
+                var tts = string.IsNullOrEmpty(languageCode)
+                    ? TimedTextSource.CreateFromUri(new Uri(filePath))
+                    : TimedTextSource.CreateFromUri(new Uri(filePath), languageCode);
+
+                tts.Resolved += (sender, args) =>
+                {
+                    if (args.Error is not null)
+                    {
+                        _logger?.LogDebug("Subtitle resolve failed for {Path}: {Code} / {ExtErr}",
+                            filePath, args.Error.ErrorCode, args.Error.ExtendedError);
+                        return;
+                    }
+
+                    // Auto-select the freshly-added subtitle once it resolves.
+                    // The platform appends the new track(s) to the playback
+                    // item's TimedMetadataTracks; selecting the highest-index
+                    // entry matches what the user just dropped.
+                    var item = _currentPlaybackItem;
+                    if (item is null) return;
+                    _dispatcher.TryEnqueue(() =>
+                    {
+                        var count = item.TimedMetadataTracks.Count;
+                        if (count == 0) return;
+                        for (uint k = 0; k < count; k++)
+                        {
+                            item.TimedMetadataTracks.SetPresentationMode(k,
+                                k == count - 1
+                                    ? TimedMetadataTrackPresentationMode.PlatformPresented
+                                    : TimedMetadataTrackPresentationMode.Disabled);
+                        }
+                    });
+                };
+
+                _currentPlaybackItem.Source.ExternalTimedTextSources.Add(tts);
+
+                // Remember the human-readable label for the menu — the
+                // platform doesn't let us mutate TimedMetadataTrack.Label,
+                // but we track our own mapping from subtitle file to label
+                // so the flyout can display "Movie.eng.srt" instead of an
+                // empty string. Key = absolute path; value = label.
+                if (!string.IsNullOrEmpty(label))
+                    _externalSubtitleLabels[filePath] = label!;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "LocalMediaPlayer: failed to attach subtitle {Path}", filePath);
+            }
+        });
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _externalSubtitleLabels
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Snapshot of human-readable labels keyed by subtitle file path. The
+    /// Theatre / Fullscreen track flyout consults this so a side-loaded
+    /// "Movie.eng.srt" reads as "eng" / its filename in the menu instead of
+    /// the empty string MediaFoundation often hands us for sidecar files.
+    /// </summary>
+    public System.Collections.Generic.IReadOnlyDictionary<string, string> ExternalSubtitleLabels
+        => _externalSubtitleLabels;
+
+    /// <summary>
+    /// Loads all rows from <c>local_subtitle_files</c> for the given video and
+    /// attaches them to the live <see cref="MediaSource"/> as
+    /// <see cref="TimedTextSource"/>s. Runs in the background — playback starts
+    /// immediately and subtitles materialise in <c>TimedMetadataTracks</c> as
+    /// MediaFoundation finishes parsing them. Skipped silently when no library
+    /// service is registered (tests, headless contexts).
+    /// </summary>
+    private async Task PersistDroppedSubtitleAsync(
+        string subtitlePath,
+        string? languageCode,
+        bool forced,
+        bool sdh,
+        string trackUri)
+    {
+        try
+        {
+            var library = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<Wavee.Local.ILocalLibraryService>();
+            if (library is null) return;
+
+            // local_subtitle_files is keyed by the on-disk video path, not by
+            // the wavee:local:track URI. Resolve via the existing lookup so we
+            // don't widen the contract.
+            var videoPath = await library.GetFilePathForTrackAsync(trackUri).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(videoPath)) return;
+
+            await library.AddExternalSubtitleAsync(
+                videoFilePath: videoPath,
+                subtitlePath: subtitlePath,
+                language: languageCode,
+                forced: forced,
+                sdh: sdh).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "PersistDroppedSubtitleAsync failed for {Path}", subtitlePath);
+        }
+    }
+
+    private async Task AttachPersistedSubtitlesAsync(string filePath, MediaSource source)
+    {
+        try
+        {
+            var library = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<Wavee.Local.ILocalLibraryService>();
+            if (library is null) return;
+
+            var subs = await library.GetSubtitlesForAsync(filePath).ConfigureAwait(false);
+            if (subs.Count == 0) return;
+
+            await RunOnUiAsync(() =>
+            {
+                foreach (var sub in subs)
+                {
+                    // Skip embedded entries — those are already in
+                    // MediaPlaybackItem.TimedMetadataTracks via the container.
+                    if (sub.Embedded) continue;
+                    if (string.IsNullOrEmpty(sub.Path)) continue;
+
+                    try
+                    {
+                        var tts = string.IsNullOrEmpty(sub.Language)
+                            ? TimedTextSource.CreateFromUri(new Uri(sub.Path))
+                            : TimedTextSource.CreateFromUri(new Uri(sub.Path), sub.Language);
+                        source.ExternalTimedTextSources.Add(tts);
+
+                        var stem = System.IO.Path.GetFileNameWithoutExtension(sub.Path);
+                        _externalSubtitleLabels[sub.Path] = sub.Language ?? stem;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogDebug(ex, "Failed to attach persisted subtitle {Path}", sub.Path);
+                    }
+                }
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "AttachPersistedSubtitlesAsync failed for {Path}", filePath);
+        }
+    }
+
 
     public Task PauseAsync(CancellationToken ct = default)
     {
@@ -194,6 +422,7 @@ public sealed class LocalMediaPlayer : Wavee.Audio.ILocalMediaPlayer, IVideoSurf
             _currentTrackUri = null;
             _currentMetadata = null;
             _currentDurationMs = 0;
+            _currentPlaybackItem = null;
             _stateSubject.OnNext(LocalPlaybackState.Empty);
             _surfaceChangesSubject.OnNext(new VideoSurfaceChange(null, "local"));
         });

@@ -39,6 +39,7 @@ public sealed partial class ShellPage : Page
     private readonly IPlaybackStateService? _playbackState;
     private readonly IActiveVideoSurfaceService? _videoSurface;
     private readonly MiniVideoPlayerViewModel? _miniVideoViewModel;
+    private readonly ILibraryDataService? _libraryDataService;
 
     private const double ZoomStep = 0.1;
     private const double ZoomMin = 0.5;
@@ -65,6 +66,7 @@ public sealed partial class ShellPage : Page
         _playbackState = Ioc.Default.GetService<IPlaybackStateService>();
         _videoSurface = Ioc.Default.GetService<IActiveVideoSurfaceService>();
         _miniVideoViewModel = Ioc.Default.GetService<MiniVideoPlayerViewModel>();
+        _libraryDataService = Ioc.Default.GetService<ILibraryDataService>();
         InitializeComponent();
 
         // Apply saved zoom level
@@ -276,6 +278,47 @@ public sealed partial class ShellPage : Page
     {
         if (e.PropertyName == nameof(ShellViewModel.IsOnSearchPage))
             NavToolbar.SuppressSearchFlyout = ViewModel.IsOnSearchPage;
+        else if (e.PropertyName == nameof(ShellViewModel.IsExpandedPresentation))
+            SyncTheatreFrame();
+    }
+
+    /// <summary>
+    /// Navigate the TheatreFrame to VideoPlayerPage when entering an expanded
+    /// presentation, clear it when returning to Normal. The frame lives at
+    /// RowSpan=4 / ZIndex=10 so it covers the entire shell — the user only
+    /// sees the player while expanded.
+    /// </summary>
+    private void SyncTheatreFrame()
+    {
+        _logger?.LogInformation(
+            "[ShellPage.SyncTheatreFrame] expanded={Expanded} fullscreen={Fullscreen} currentSourcePageType={Current} hasContent={HasContent}",
+            ViewModel.IsExpandedPresentation,
+            ViewModel.IsFullscreenPresentation,
+            TheatreFrame.CurrentSourcePageType?.Name ?? "<none>",
+            TheatreFrame.Content is not null);
+        if (ViewModel.IsExpandedPresentation)
+        {
+            // Check `Content` not `CurrentSourcePageType`. After
+            // `Content = null` (our exit path) the Frame keeps the
+            // CurrentSourcePageType in its back-stack metadata, so the
+            // type-check returned true and the Navigate was skipped — but
+            // the visual tree was empty. Net effect: a black overlay with
+            // no content. Checking the live Content reference avoids the
+            // stale-metadata trap.
+            if (TheatreFrame.Content is not VideoPlayerPage)
+            {
+                _logger?.LogInformation("[ShellPage] TheatreFrame.Navigate(VideoPlayerPage)");
+                TheatreFrame.Navigate(typeof(VideoPlayerPage));
+            }
+        }
+        else
+        {
+            // Clearing the BackStack avoids the VideoPlayerPage holding a
+            // reference to the MediaPlayer surface while invisible.
+            _logger?.LogInformation("[ShellPage] TheatreFrame.Content = null (exit expanded)");
+            TheatreFrame.Content = null;
+            TheatreFrame.BackStack.Clear();
+        }
     }
 
     private AuthStatus _previousAuthStatus = AuthStatus.Unknown;
@@ -664,6 +707,18 @@ public sealed partial class ShellPage : Page
                 case "PodcastBrowse":
                     NavigationHelpers.OpenPodcastBrowse(openInNewTab);
                     break;
+                case "LocalShows":
+                    NavigationHelpers.OpenLocalShows(openInNewTab);
+                    break;
+                case "LocalMovies":
+                    NavigationHelpers.OpenLocalMovies(openInNewTab);
+                    break;
+                case "LocalMusic":
+                    NavigationHelpers.OpenLocalMusic(openInNewTab);
+                    break;
+                case "LocalMusicVideos":
+                    NavigationHelpers.OpenLocalMusicVideos(openInNewTab);
+                    break;
                 default:
                     // Handle playlist navigation (tags starting with "spotify:playlist:").
                     // Pass a ContentNavigationParameter (not just the raw URI string) so
@@ -755,23 +810,61 @@ public sealed partial class ShellPage : Page
                 IsPinned = false
             });
         }
-        else if (model.Tag.StartsWith("spotify:playlist:", StringComparison.Ordinal)
-                 || !model.Tag.Contains(':'))
+        else if (model.Tag.StartsWith("spotify:playlist:", StringComparison.Ordinal))
         {
-            var playlistId = model.Tag.StartsWith("spotify:playlist:", StringComparison.Ordinal)
-                ? model.Tag["spotify:playlist:".Length..]
-                : model.Tag;
+            // Strictly playlist URIs only. The previous fallback ("any tag
+            // without a colon") was catching library-section entries
+            // (Albums / Artists / LikedSongs / Podcasts) and the Playlists
+            // section header (where the "+" decorator sits), opening the
+            // playlist context menu for them by mistake.
+            var playlistId = model.Tag["spotify:playlist:".Length..];
+            var playlistUri = "spotify:playlist:" + playlistId;
             items = SidebarPlaylistContextMenuBuilder.Build(new SidebarPlaylistMenuContext
             {
                 PlaylistId = playlistId,
                 PlaylistName = model.Text,
                 IsInLibrary = true,
-                IsOwner = false
+                IsOwner = model.IsOwner,
+                DeleteAction = model.IsOwner
+                    ? () => _ = ConfirmAndDeleteSidebarPlaylistAsync(playlistUri, model.Text)
+                    : null,
+                ToggleLibraryAction = model.IsOwner
+                    ? null  // owners can't "remove from library" — use Delete instead (builder hides this row)
+                    : () => _ = _libraryDataService?.SetPlaylistFollowedAsync(playlistUri, followed: false)!
             });
         }
 
         if (items is null) return;
         ContextMenuHost.Show(SidebarControl, items, e.Position);
+    }
+
+    private async System.Threading.Tasks.Task ConfirmAndDeleteSidebarPlaylistAsync(string playlistUri, string playlistName)
+    {
+        if (_libraryDataService is null) return;
+
+        var dialog = new ContentDialog
+        {
+            Title = "Delete playlist?",
+            Content = $"\"{playlistName}\" will be removed from your library. This cannot be undone.",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot
+        };
+        dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
+
+        var result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary) return;
+
+        try
+        {
+            await _libraryDataService.DeletePlaylistAsync(playlistUri);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to delete playlist {Uri} from sidebar", playlistUri);
+            ViewModel.ShowNotification("Couldn't delete the playlist");
+        }
     }
 
     private async void SidebarControl_ItemDropped(object? sender, ItemDroppedEventArgs e)
@@ -786,10 +879,13 @@ public sealed partial class ShellPage : Page
         {
             var data = await e.DroppedItem.GetDataAsync("WaveeTrackIds") as string;
             var trackIds = data?.Split('|', StringSplitOptions.RemoveEmptyEntries);
-            if (trackIds is { Length: > 0 })
+            if (trackIds is { Length: > 0 } && _libraryDataService != null)
             {
-                // TODO: Call _libraryDataService.AddTracksToPlaylistAsync(playlistId, trackIds)
-                _logger?.LogInformation("Dropped {TrackCount} track(s) onto playlist {PlaylistId}", trackIds.Length, playlistId);
+                await _libraryDataService.AddTracksToPlaylistAsync(playlistId, trackIds);
+                _logger?.LogInformation("Added {TrackCount} track(s) to playlist {PlaylistId}", trackIds.Length, playlistId);
+                ViewModel.ShowNotification(string.Format(
+                    AppLocalization.GetString("Playlist_AddTracksSucceeded"),
+                    trackIds.Length));
             }
         }
         catch (Exception ex)
@@ -819,6 +915,29 @@ public sealed partial class ShellPage : Page
 
     protected override void OnProcessKeyboardAccelerators(ProcessKeyboardAcceleratorEventArgs args)
     {
+        // Theatre / Fullscreen shortcuts — F11 toggles fullscreen, Esc exits
+        // any expanded mode. Handled before the Ctrl-modifier checks so the
+        // unmodified F11 / Esc path isn't shadowed by a modifier branch.
+        if (args.Modifiers == VirtualKeyModifiers.None)
+        {
+            if (args.Key == VirtualKey.F11)
+            {
+                Ioc.Default.GetService<INowPlayingPresentationService>()?.ToggleFullscreen();
+                args.Handled = true;
+                return;
+            }
+            if (args.Key == VirtualKey.Escape)
+            {
+                var presentation = Ioc.Default.GetService<INowPlayingPresentationService>();
+                if (presentation is { IsExpanded: true })
+                {
+                    presentation.ExitToNormal();
+                    args.Handled = true;
+                    return;
+                }
+            }
+        }
+
         if (args.Modifiers == VirtualKeyModifiers.Control)
         {
             switch (args.Key)

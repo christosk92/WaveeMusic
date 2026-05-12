@@ -18,15 +18,13 @@ namespace Wavee.Controls.Lyrics.Renderer
             ICanvasResourceCreator resourceCreator,
             CanvasDrawingSession ds,
             int strokeWidth,
-            ICanvasImage cachedStroke,
+            ICanvasImage? cachedStroke,
             ICanvasImage cachedFill,
             ICanvasImage unplayedComp,
             RenderLyricsLine line,
             double currentProgressMs,
             LyricsEffectSettings settings)
         {
-            if (cachedStroke == null) return;
-
             DrawTertiaryText(ds, unplayedComp, strokeWidth, line);
             DrawPrimaryText(resourceCreator, ds, strokeWidth, cachedStroke, cachedFill, line, currentProgressMs, settings);
             DrawSecondaryText(ds, unplayedComp, strokeWidth, line);
@@ -88,7 +86,7 @@ namespace Wavee.Controls.Lyrics.Renderer
             ICanvasResourceCreator resourceCreator,
             CanvasDrawingSession ds,
             int strokeWidth,
-            ICanvasImage cachedStroke,
+            ICanvasImage? cachedStroke,
             ICanvasImage cachedFill,
             RenderLyricsLine line,
             double currentProgressMs,
@@ -106,7 +104,7 @@ namespace Wavee.Controls.Lyrics.Renderer
             ICanvasResourceCreator resourceCreator,
             CanvasDrawingSession ds,
             int strokeWidth,
-            ICanvasImage cachedStroke,
+            ICanvasImage? cachedStroke,
             ICanvasImage cachedFill,
             RenderLyricsLine line,
             CanvasTextLayoutRegion subLineRegion,
@@ -204,7 +202,7 @@ namespace Wavee.Controls.Lyrics.Renderer
             region.FinalFillEffect.Source = fillGradientLayer;
             ICanvasImage finalOutputImage = region.FinalFillEffect;
 
-            bool hasStroke = cachedStroke != null && region.FinalStrokeEffect != null && region.CombinedEffect != null;
+            bool hasStroke = strokeWidth > 0 && cachedStroke != null && region.FinalStrokeEffect != null && region.CombinedEffect != null;
 
             var strokeGradientLayer = hasStroke ? region.GetStrokeGradientLayer(resourceCreator) : null;
 
@@ -236,18 +234,47 @@ namespace Wavee.Controls.Lyrics.Renderer
                 finalOutputImage = region.CombinedEffect!;
             }
 
-            if (!settings.IsLyricsFloatAnimationEnabled && !settings.IsLyricsGlowEffectEnabled && !settings.IsLyricsScaleEffectEnabled)
+            int endCharIndex = subLineRegion.CharacterIndex + subLineRegion.CharacterCount;
+            if (!HasActiveCharacterEffects(line, subLineRegion.CharacterIndex, endCharIndex, settings))
             {
                 ds.DrawImage(finalOutputImage);
             }
             else
             {
-                int endCharIndex = subLineRegion.CharacterIndex + subLineRegion.CharacterCount;
                 for (int i = subLineRegion.CharacterIndex; i < endCharIndex; i++)
                 {
                     DrawSingleCharacter(ds, line, i, finalOutputImage);
                 }
             }
+        }
+
+        private static bool HasActiveCharacterEffects(
+            RenderLyricsLine line,
+            int startCharIndex,
+            int endCharIndex,
+            LyricsEffectSettings settings)
+        {
+            if (!settings.IsLyricsFloatAnimationEnabled
+                && !settings.IsLyricsGlowEffectEnabled
+                && !settings.IsLyricsScaleEffectEnabled)
+            {
+                return false;
+            }
+
+            int safeStart = Math.Max(0, startCharIndex);
+            int safeEnd = Math.Min(endCharIndex, line.PrimaryRenderChars.Count);
+            for (int i = safeStart; i < safeEnd; i++)
+            {
+                var renderChar = line.PrimaryRenderChars[i];
+                if (settings.IsLyricsScaleEffectEnabled && Math.Abs(renderChar.ScaleTransition.Value - 1.0) > 0.001)
+                    return true;
+                if (settings.IsLyricsGlowEffectEnabled && renderChar.GlowTransition.Value > 0.001)
+                    return true;
+                if (settings.IsLyricsFloatAnimationEnabled && Math.Abs(renderChar.FloatTransition.Value) > 0.001)
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>

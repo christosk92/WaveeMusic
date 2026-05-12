@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Specialized;
 using System.Diagnostics;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.Settings;
@@ -12,6 +14,7 @@ public sealed partial class DiagnosticsSettingsSection : UserControl, ISettingsS
 {
     private bool _disposed;
     private bool _userScrolledLogs;
+    private ConnectStateSection? _connectEvents;
 
     public SettingsViewModel ViewModel { get; }
 
@@ -22,6 +25,16 @@ public sealed partial class DiagnosticsSettingsSection : UserControl, ISettingsS
 
         ViewModel.UpdateRttChart = (data, count, unit) => RttChart.Update(data, count, unit);
         ViewModel.FilteredLogEntries.CollectionChanged += OnLogEntriesChanged;
+
+        // Embed the Connect events inspector (previously a top-level settings
+        // tab) so cluster-state diagnostics live alongside the rest of the
+        // diagnostics surface.
+        var recorder = Ioc.Default.GetService<RemoteStateRecorder>();
+        if (recorder is not null)
+        {
+            _connectEvents = new ConnectStateSection(new ConnectStateViewModel(recorder));
+            ConnectEventsHost.Content = _connectEvents;
+        }
     }
 
     public void Dispose()
@@ -31,6 +44,7 @@ public sealed partial class DiagnosticsSettingsSection : UserControl, ISettingsS
 
         ViewModel.FilteredLogEntries.CollectionChanged -= OnLogEntriesChanged;
         ViewModel.UpdateRttChart = null;
+        _connectEvents?.Dispose();
     }
 
     public void ApplySearchFilter(string? groupKey)

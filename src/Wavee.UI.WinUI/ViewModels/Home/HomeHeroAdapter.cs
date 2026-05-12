@@ -131,10 +131,17 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         {
             case nameof(HomeViewModel.Sections):
                 AttachSectionsListener(_host.Sections);
-                Dispatch(Rebuild);
+                RequestRebuild();
                 break;
             case nameof(HomeViewModel.FeaturedItem):
                 Dispatch(RebuildHeroSlides);
+                break;
+            case nameof(HomeViewModel.IsLocalChipActive):
+                // Filter toggle is user-driven and should feel instant — keep
+                // it synchronous so the page doesn't visibly lag the chip
+                // press. Goes through Dispatch (not the queued RequestRebuild
+                // path) so the visible state change tracks the click.
+                Dispatch(() => { RebuildRegions(); RebuildHeroSlides(); });
                 break;
         }
     }
@@ -142,7 +149,30 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
     private void OnSectionsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (_disposed) return;
-        Dispatch(Rebuild);
+        // Coalesce the rebuild storm. PopulateSectionsChunkedAsync adds
+        // sections one at a time with Task.Yield every 4, and
+        // ApplyBackgroundRefresh does Extract → ApplyDiff → Restore which
+        // fires N more events. Without coalescing, RebuildRegions ran ~20×
+        // per load on a mid-construction Regions collection — the path that
+        // produced duplicate LocalFiles regions and tripped the layout-cycle
+        // guard. One queued dispatch consolidates the whole burst.
+        RequestRebuild();
+    }
+
+    private bool _rebuildQueued;
+
+    private void RequestRebuild()
+    {
+        if (_rebuildQueued) return;
+        _rebuildQueued = true;
+        _dispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                _rebuildQueued = false;
+                if (_disposed) return;
+                Rebuild();
+            });
     }
 
     private void AttachSectionsListener(INotifyCollectionChanged? newSource)
@@ -183,9 +213,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
 
     private void RebuildRegions()
     {
-        // Bucket sections by classifier. Preserve identity of existing region
-        // instances so the outer ItemsRepeater can recycle their visual trees
-        // instead of throwing them away on every refresh.
+        // Bucket sections by classifier in feed order (preserves intra-region order).
         var bucket = new Dictionary<HomeRegionKind, List<HomeSection>>();
         foreach (var section in _host.Sections)
         {
@@ -199,50 +227,79 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
             list.Add(section);
         }
 
-        var ordered = new[]
-        {
-            HomeRegionKind.Recents,
-            HomeRegionKind.MadeForYou,
-            HomeRegionKind.Discover,
-            HomeRegionKind.Podcasts
-        };
+        // Local-only filter (driven by the "Local files" chip) collapses
+        // the page down to just the LocalFiles band — every Spotify-sourced
+        // region is dropped from the output.
+        var ordered = _host.IsLocalChipActive
+            ? new[] { HomeRegionKind.LocalFiles }
+            : new[]
+            {
+                HomeRegionKind.Recents,
+                HomeRegionKind.LocalFiles,
+                HomeRegionKind.MadeForYou,
+                HomeRegionKind.Discover,
+                HomeRegionKind.Podcasts
+            };
 
-        // Walk the desired order; mutate Regions in place to minimise
-        // ItemsRepeater churn.
-        int writeIndex = 0;
+        // Reuse existing HomeRegion identity per Kind where possible so the
+        // outer ItemsRepeater can recycle the rendered visual tree. Crucially,
+        // TryAdd keeps the FIRST same-kind region and drops any duplicates —
+        // the previous IndexOfRegion(kind, writeIndex) algorithm searched
+        // forward only and could leave a stale region in front of writeIndex,
+        // accumulating duplicate "Local files" bands across navigations. This
+        // clear-and-rebuild pattern is bounded by HomeRegionKind (≤5 entries)
+        // so the perf delta vs. the old in-place Move is negligible.
+        var existingByKind = new Dictionary<HomeRegionKind, HomeRegion>();
+        foreach (var region in Regions)
+            existingByKind.TryAdd(region.Kind, region);
+
+        var desired = new List<HomeRegion>(ordered.Length);
         foreach (var kind in ordered)
         {
             if (!bucket.TryGetValue(kind, out var sectionsForKind) || sectionsForKind.Count == 0)
                 continue;
 
-            HomeRegion region;
-            int existingAt = IndexOfRegion(kind, writeIndex);
-            if (existingAt >= 0)
-            {
-                region = Regions[existingAt];
-                if (existingAt != writeIndex)
-                    Regions.Move(existingAt, writeIndex);
-            }
-            else
-            {
-                region = HomeRegion.Create(kind);
-                Regions.Insert(writeIndex, region);
-            }
-
+            var region = existingByKind.TryGetValue(kind, out var reuse)
+                ? reuse
+                : HomeRegion.Create(kind);
             ReplaceSections(region.Sections, sectionsForKind);
-            writeIndex++;
+            desired.Add(region);
         }
 
-        // Drop any trailing regions that no longer have content.
-        while (Regions.Count > writeIndex)
-            Regions.RemoveAt(Regions.Count - 1);
-    }
+        // Reconcile Regions to `desired`. If the structure (order + identity)
+        // already matches, no-op — steady-state rebuilds (item-only updates
+        // inside existing regions) don't churn the visual tree at all. If
+        // anything structural differs, full Clear + Add: ItemsRepeater
+        // releases every realized container on Reset and re-realizes from
+        // scratch.
+        //
+        // Why not in-place Replace/Add/Remove: the previous approach mutated
+        // mid-pass, which left ItemsRepeater with stale realized containers
+        // (a HomeRegionView bound to LocalFiles when Regions=[LocalFiles]
+        // would never get Unloaded after the rebuild expanded Regions to 5
+        // entries — its data item was reused by reference and the layout
+        // didn't request the now-out-of-realization index, so ItemsRepeater
+        // skipped recycling it). Result: two LocalFiles bands painted at
+        // different Y offsets. Clear+Add side-steps the desync at the cost
+        // of N≤5 fresh realizations on structural change — negligible.
+        bool sameStructure = Regions.Count == desired.Count;
+        if (sameStructure)
+        {
+            for (int i = 0; i < desired.Count; i++)
+            {
+                if (!ReferenceEquals(Regions[i], desired[i]))
+                {
+                    sameStructure = false;
+                    break;
+                }
+            }
+        }
 
-    private int IndexOfRegion(HomeRegionKind kind, int startIndex)
-    {
-        for (int i = startIndex; i < Regions.Count; i++)
-            if (Regions[i].Kind == kind) return i;
-        return -1;
+        if (!sameStructure)
+        {
+            Regions.Clear();
+            foreach (var r in desired) Regions.Add(r);
+        }
     }
 
     private static void ReplaceSections(ObservableCollection<HomeSection> target, List<HomeSection> source)
@@ -263,8 +320,15 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         var slides = new List<HeroCarouselItem>();
         var seenUris = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Local-only filter — the hero never shows Spotify content while the
+        // user has the "Local files" chip selected. FeaturedItem is the most-
+        // recently-played Spotify item, so skip the "Pick up where you left
+        // off" slide entirely; the per-section walk below sticks to the
+        // local-section's items via the same SectionUri prefix filter.
+        bool localOnly = _host.IsLocalChipActive;
+
         // Slide 0 — FeaturedItem ("Pick up where you left off")
-        if (_host.FeaturedItem is { } featured && HasResolvableImage(featured.ImageUrl))
+        if (!localOnly && _host.FeaturedItem is { } featured && HasResolvableImage(featured.ImageUrl))
         {
             slides.Add(BuildSlide(
                 featured,
@@ -290,6 +354,9 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
             if (slides.Count >= MaxHeroSlides) break;
             if (section.SectionType is HomeSectionType.Shorts or HomeSectionType.RecentlyPlayed) continue;
             if (section.Items.Count == 0) continue;
+            if (localOnly && (string.IsNullOrEmpty(section.SectionUri)
+                              || !section.SectionUri.StartsWith("wavee:local:", StringComparison.Ordinal)))
+                continue;
 
             var first = section.Items[0];
             if (!HasResolvableImage(first.ImageUrl)) continue;

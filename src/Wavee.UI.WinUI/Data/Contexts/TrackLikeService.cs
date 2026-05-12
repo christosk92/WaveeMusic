@@ -7,7 +7,7 @@ using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect;
-using Wavee.Core.Library.Local;
+using Wavee.Local;
 using Wavee.Core.Library.Spotify;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.WinUI.Data.Contracts;

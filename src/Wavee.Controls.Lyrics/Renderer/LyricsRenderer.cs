@@ -160,19 +160,20 @@ namespace Wavee.Controls.Lyrics.Renderer
                 ds.Transform *= Matrix3x2.CreateTranslation((float)xOffset, (float)yOffset);
 
                 line.EnsureCaches(control, styleSettings.LyricsFontStrokeWidth);
-                if (line.CachedStroke == null || line.CachedFill == null) continue;
-                if (line.UnplayedFillTint == null || line.UnplayedStrokeTint == null || line.UnplayedComposite == null) continue;
+                var unplayedTextLayer = line.UnplayedTextLayer;
+                if (line.CachedFill == null || line.UnplayedFillTint == null || unplayedTextLayer == null) continue;
 
                 line.UnplayedFillTint.Color = line.UnplayedFillColorTransition.Value;
-                line.UnplayedStrokeTint.Color = line.UnplayedStrokeColorTransition.Value;
+                if (line.UnplayedStrokeTint != null)
+                    line.UnplayedStrokeTint.Color = line.UnplayedStrokeColorTransition.Value;
 
                 if (isPlaying)
                 {
-                    PlayingLineRenderer.Draw(control, ds, styleSettings.LyricsFontStrokeWidth, line.CachedStroke, line.CachedFill, line.UnplayedComposite, line, currentProgressMs, effectSettings);
+                    PlayingLineRenderer.Draw(control, ds, styleSettings.LyricsFontStrokeWidth, line.CachedStroke, line.CachedFill, unplayedTextLayer, line, currentProgressMs, effectSettings);
                 }
                 else
                 {
-                    UnplayingLineRenderer.Draw(ds, line.UnplayedComposite, styleSettings.LyricsFontStrokeWidth, line);
+                    UnplayingLineRenderer.Draw(ds, unplayedTextLayer, styleSettings.LyricsFontStrokeWidth, line);
                 }
 
                 if (i == mouseHoverLineIndex)

@@ -63,6 +63,58 @@ public sealed partial class MainWindow : WindowEx
         // and on every runtime theme switch.
         RootFrame.ActualThemeChanged += OnRootThemeChanged;
         Helpers.Application.TitleBarHelper.ApplyCaptionButtonColors(AppWindow, RootFrame.ActualTheme);
+
+        // Subscribe to now-playing presentation so we can swap the AppWindow
+        // presenter between Overlapped (Normal / Theatre) and FullScreen.
+        // The service is registered before the window is constructed via
+        // AppLifecycleHelper, so resolving here is safe.
+        try
+        {
+            _presentation = Ioc.Default.GetService<Services.INowPlayingPresentationService>();
+            if (_presentation is not null)
+                _presentation.PropertyChanged += OnPresentationPropertyChanged;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"MainWindow presentation service resolve failed: {ex}");
+        }
+    }
+
+    private readonly Services.INowPlayingPresentationService? _presentation;
+    private bool _wasFullScreen;
+
+    private void OnPresentationPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(Services.INowPlayingPresentationService.Presentation))
+            return;
+        if (_presentation is null) return;
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var logger = Ioc.Default.GetService<ILogger<MainWindow>>();
+            // OS-level fullscreen only when Presentation == Fullscreen. Theatre
+            // stays in the normal (overlapped) presenter so the title bar and
+            // caption buttons remain visible — same window chrome, just the
+            // app's own shell collapses.
+            var wantsFullScreen = _presentation.Presentation == Services.NowPlayingPresentation.Fullscreen;
+            var isFullScreen = AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen;
+            logger?.LogInformation(
+                "[MainWindow.OnPresentation] presentation={Presentation} wantsFs={Wants} isFs={Is}",
+                _presentation.Presentation, wantsFullScreen, isFullScreen);
+
+            if (wantsFullScreen && !isFullScreen)
+            {
+                _wasFullScreen = true;
+                logger?.LogInformation("[MainWindow] AppWindow.SetPresenter → FullScreen");
+                AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+            }
+            else if (!wantsFullScreen && isFullScreen)
+            {
+                _wasFullScreen = false;
+                logger?.LogInformation("[MainWindow] AppWindow.SetPresenter → Overlapped");
+                AppWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
+            }
+        });
     }
 
     private void OnRootThemeChanged(FrameworkElement sender, object args)
@@ -76,6 +128,8 @@ public sealed partial class MainWindow : WindowEx
         AppWindow.Changed -= OnAppWindowChangedForMemoryRelease;
         AppWindow.Closing -= OnAppWindowClosing;
         RootFrame.ActualThemeChanged -= OnRootThemeChanged;
+        if (_presentation is not null)
+            _presentation.PropertyChanged -= OnPresentationPropertyChanged;
         if (_memoryReleaseTimer != null)
         {
             _memoryReleaseTimer.Stop();

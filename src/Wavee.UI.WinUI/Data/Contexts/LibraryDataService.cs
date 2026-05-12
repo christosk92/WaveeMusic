@@ -1253,8 +1253,135 @@ public sealed class LibraryDataService : ILibraryDataService
         return tracks;
     }
 
-    public Task RemoveTracksFromPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
-        => Task.CompletedTask;
+    public async Task AddTracksToPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+        if (trackIds is null || trackIds.Count == 0) return;
+
+        var userData = _session.GetUserData()
+            ?? throw new InvalidOperationException("AddTracksToPlaylistAsync requires an authenticated session");
+        var username = userData.Username;
+        var spClient = _session.SpClient;
+        var playlistUri = NormalizePlaylistUri(playlistId);
+
+        var addOp = new Wavee.Protocol.Playlist.Op
+        {
+            Kind = Wavee.Protocol.Playlist.Op.Types.Kind.Add,
+            Add = new Wavee.Protocol.Playlist.Add
+            {
+                AddLast = true,
+            }
+        };
+
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        foreach (var raw in trackIds)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            addOp.Add.Items.Add(new Wavee.Protocol.Playlist.Item
+            {
+                Uri = NormalizeTrackUri(raw),
+                Attributes = new Wavee.Protocol.Playlist.ItemAttributes
+                {
+                    Timestamp = nowMs,
+                }
+            });
+        }
+        if (addOp.Add.Items.Count == 0) return;
+
+        var cached = await _playlistCache.GetPlaylistAsync(playlistUri, ct: ct);
+
+        var changes = new Wavee.Protocol.Playlist.ListChanges
+        {
+            BaseRevision = ByteString.CopyFrom(cached.Revision),
+            Deltas =
+            {
+                new Wavee.Protocol.Playlist.Delta
+                {
+                    Ops = { addOp },
+                    Info = new Wavee.Protocol.Playlist.ChangeInfo
+                    {
+                        User = username,
+                        Timestamp = nowMs,
+                    },
+                }
+            },
+            WantResultingRevisions = true,
+            WantSyncResult = true,
+            Nonces = { RandomNumberGenerator.GetInt32(1, int.MaxValue) },
+        };
+
+        var fresh = await spClient.ChangePlaylistAsync(playlistUri, changes, ct);
+        await _playlistCache.ApplyFreshContentAsync(playlistUri, fresh, ct);
+        ScheduleChangeEmit(dataChanged: true, playlistsChanged: false);
+    }
+
+    public async Task RemoveTracksFromPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+        if (trackIds is null || trackIds.Count == 0) return;
+
+        var userData = _session.GetUserData()
+            ?? throw new InvalidOperationException("RemoveTracksFromPlaylistAsync requires an authenticated session");
+        var username = userData.Username;
+        var spClient = _session.SpClient;
+        var playlistUri = NormalizePlaylistUri(playlistId);
+
+        var remOp = new Wavee.Protocol.Playlist.Op
+        {
+            Kind = Wavee.Protocol.Playlist.Op.Types.Kind.Rem,
+            // items_as_key=true lets the server match by Item.uri without
+            // requiring stable indices — survives concurrent edits and
+            // sidesteps duplicate-row ambiguity.
+            Rem = new Wavee.Protocol.Playlist.Rem
+            {
+                ItemsAsKey = true,
+            }
+        };
+        foreach (var raw in trackIds)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            remOp.Rem.Items.Add(new Wavee.Protocol.Playlist.Item
+            {
+                Uri = NormalizeTrackUri(raw),
+            });
+        }
+        if (remOp.Rem.Items.Count == 0) return;
+
+        var cached = await _playlistCache.GetPlaylistAsync(playlistUri, ct: ct);
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        var changes = new Wavee.Protocol.Playlist.ListChanges
+        {
+            BaseRevision = ByteString.CopyFrom(cached.Revision),
+            Deltas =
+            {
+                new Wavee.Protocol.Playlist.Delta
+                {
+                    Ops = { remOp },
+                    Info = new Wavee.Protocol.Playlist.ChangeInfo
+                    {
+                        User = username,
+                        Timestamp = nowMs,
+                    },
+                }
+            },
+            WantResultingRevisions = true,
+            WantSyncResult = true,
+            Nonces = { RandomNumberGenerator.GetInt32(1, int.MaxValue) },
+        };
+
+        var fresh = await spClient.ChangePlaylistAsync(playlistUri, changes, ct);
+        await _playlistCache.ApplyFreshContentAsync(playlistUri, fresh, ct);
+        ScheduleChangeEmit(dataChanged: true, playlistsChanged: false);
+    }
+
+    private static string NormalizeTrackUri(string idOrUri)
+    {
+        var value = idOrUri.Trim();
+        return value.StartsWith("spotify:", StringComparison.Ordinal)
+            ? value
+            : $"spotify:track:{value}";
+    }
 
     // ── Local-track playlist overlays ──
 
@@ -1577,12 +1704,43 @@ public sealed class LibraryDataService : ILibraryDataService
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<PlaylistMemberResult>> GetPlaylistMembersAsync(string playlistId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<PlaylistMemberResult>> GetPlaylistMembersAsync(string playlistId, CancellationToken ct = default)
     {
-        _logger?.LogInformation(
-            "GetPlaylistMembersAsync stub invoked: playlistId={Id} (no backend wire-up yet — returning empty)", playlistId);
-        return Task.FromResult<IReadOnlyList<PlaylistMemberResult>>(System.Array.Empty<PlaylistMemberResult>());
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+
+        try
+        {
+            var raw = await _session.SpClient.GetPlaylistMembersAsync(playlistId, ct);
+            if (raw.Count == 0) return Array.Empty<PlaylistMemberResult>();
+
+            var results = new List<PlaylistMemberResult>(raw.Count);
+            foreach (var m in raw)
+            {
+                results.Add(new PlaylistMemberResult
+                {
+                    UserId = m.UserId,
+                    Username = m.Username,
+                    DisplayName = m.DisplayName,
+                    AvatarUrl = m.ImageUrl,
+                    Role = MapPermissionLevel(m.PermissionLevel),
+                });
+            }
+            return results;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogDebug(ex, "GetPlaylistMembersAsync failed for {Id} — returning empty", playlistId);
+            return Array.Empty<PlaylistMemberResult>();
+        }
     }
+
+    private static PlaylistMemberRole MapPermissionLevel(string level) => level?.ToUpperInvariant() switch
+    {
+        "OWNER" => PlaylistMemberRole.Owner,
+        "CONTRIBUTOR" => PlaylistMemberRole.Contributor,
+        "BLOCKED" => PlaylistMemberRole.Blocked,
+        _ => PlaylistMemberRole.Viewer,
+    };
 
     public Task SetPlaylistMemberRoleAsync(string playlistId, string memberUserId, PlaylistMemberRole role, CancellationToken ct = default)
     {
@@ -1637,12 +1795,92 @@ public sealed class LibraryDataService : ILibraryDataService
         }
     }
 
-    public Task SetPlaylistFollowedAsync(string playlistId, bool followed, CancellationToken ct = default)
+    public async Task SetPlaylistFollowedAsync(string playlistId, bool followed, CancellationToken ct = default)
     {
-        _logger?.LogInformation(
-            "SetPlaylistFollowedAsync stub invoked: playlistId={Id}, followed={Followed} (no backend wire-up yet — succeeding silently)",
-            playlistId, followed);
-        return Task.CompletedTask;
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+
+        var userData = _session.GetUserData()
+            ?? throw new InvalidOperationException("SetPlaylistFollowedAsync requires an authenticated session");
+        var username = userData.Username;
+        var playlistUri = NormalizePlaylistUri(playlistId);
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        // Spotify's desktop client treats "follow playlist" as "add to my rootlist"
+        // and "unfollow" as "remove from my rootlist" — the same path
+        // DeletePlaylistAsync / CreatePlaylistAsync use. There is no separate
+        // /v1/playlists/{id}/followers call in the desktop flow.
+        var rootlist = await _playlistCache.GetRootlistAsync(ct: ct);
+        var existingIndex = FindRootlistPlaylistIndex(rootlist, playlistUri);
+
+        if (followed && existingIndex >= 0) return; // already in library
+        if (!followed && existingIndex < 0) return; // already absent
+
+        Wavee.Protocol.Playlist.Op op;
+        if (followed)
+        {
+            op = new Wavee.Protocol.Playlist.Op
+            {
+                Kind = Wavee.Protocol.Playlist.Op.Types.Kind.Add,
+                Add = new Wavee.Protocol.Playlist.Add
+                {
+                    FromIndex = 0,
+                    Items =
+                    {
+                        new Wavee.Protocol.Playlist.Item
+                        {
+                            Uri = playlistUri,
+                            Attributes = new Wavee.Protocol.Playlist.ItemAttributes
+                            {
+                                Timestamp = nowMs,
+                                Public = true,
+                            }
+                        }
+                    }
+                }
+            };
+        }
+        else
+        {
+            op = new Wavee.Protocol.Playlist.Op
+            {
+                Kind = Wavee.Protocol.Playlist.Op.Types.Kind.Rem,
+                Rem = new Wavee.Protocol.Playlist.Rem
+                {
+                    FromIndex = existingIndex,
+                    Length = 1,
+                }
+            };
+        }
+
+        var changes = new Wavee.Protocol.Playlist.ListChanges
+        {
+            BaseRevision = ByteString.CopyFrom(rootlist.Revision),
+            Deltas =
+            {
+                new Wavee.Protocol.Playlist.Delta
+                {
+                    Ops = { op },
+                    Info = BuildRootlistChangeInfo(username, nowMs),
+                }
+            },
+            WantResultingRevisions = true,
+            WantSyncResult = true,
+            Nonces = { NextRootlistNonce() },
+        };
+
+        await _session.SpClient.PostRootlistChangesAsync(username, changes, ct);
+        await _playlistCache.InvalidateAsync(PlaylistCacheUris.Rootlist, ct);
+
+        try
+        {
+            await _playlistCache.GetRootlistAsync(forceRefresh: true, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogDebug(ex, "SetPlaylistFollowedAsync: rootlist refresh failed after toggling {Uri}", playlistUri);
+        }
+
+        ScheduleChangeEmit(dataChanged: true, playlistsChanged: true);
     }
 
     public async Task<AlbumPalette?> GetPlaylistPaletteAsync(string playlistId, CancellationToken ct = default)

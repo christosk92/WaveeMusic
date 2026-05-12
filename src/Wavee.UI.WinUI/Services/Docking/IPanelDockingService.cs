@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Threading.Tasks;
 using Microsoft.UI.Windowing;
 using Windows.Graphics;
+using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Services.Docking;
 
@@ -40,7 +41,7 @@ public interface IPanelDockingService : INotifyPropertyChanged
 
     /// <summary>
     /// Called by the floating window when geometry changes (move/resize). The service
-    /// persists the new rect via <see cref="Data.Contracts.IShellSessionService"/>.
+    /// persists the new rect via <see cref="IShellSessionService"/>.
     /// </summary>
     void NotifyFloatingGeometryChanged(DetachablePanel panel);
 

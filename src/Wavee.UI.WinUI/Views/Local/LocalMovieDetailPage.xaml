@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.Local.LocalMovieDetailPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:models="using:Wavee.Local.Models"
+    xmlns:hero="using:Wavee.UI.WinUI.Controls.HeroHeader"
+    xmlns:transitions="using:CommunityToolkit.WinUI"
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
+    xmlns:local="using:Wavee.UI.WinUI.Views.Local"
+    Background="Transparent">
+
+    <Page.Resources>
+        <transitions:TransitionHelper x:Key="LocalMovieShyHeaderTransition"
+                                      Duration="0:0:0.36"
+                                      ReverseDuration="0:0:0.30"
+                                      DefaultEasingMode="EaseInOut"
+                                      SourceToggleMethod="ByVisibility"
+                                      TargetToggleMethod="ByVisibility"
+                                      IndependentElementShowDuration="0:0:0.18"
+                                      IndependentElementShowDelay="0:0:0.10"
+                                      IndependentElementHideDuration="0:0:0.12"
+                                      IsHitTestVisibleWhenAnimating="False">
+            <transitions:TransitionConfig Id="card-shell" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="movie-poster" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="movie-title" ScaleMode="Custom">
+                <transitions:TransitionConfig.CustomScalingCalculator>
+                    <waveeHelpers:TransitionTextScalingCalculator/>
+                </transitions:TransitionConfig.CustomScalingCalculator>
+            </transitions:TransitionConfig>
+            <transitions:TransitionConfig Id="movie-play" ScaleMode="Scale"/>
+        </transitions:TransitionHelper>
+    </Page.Resources>
+
+    <Grid>
+        <ScrollView x:Name="PageScrollView">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" MinHeight="360"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <hero:HeroHeader x:Name="HeroGrid"
+                                 Grid.Row="0"
+                                 MinHeight="360"
+                                 ImageUrl="{x:Bind ViewModel.Movie.BackdropUri, Mode=OneWay}"
+                                 ColorHex="{x:Bind ViewModel.HeaderHeroColorHex, Mode=OneWay}"
+                                 IntenseScrim="True"
+                                 InitialScale="1.0"
+                                 FinalScale="1.06"
+                                 AnimationDuration="0:0:0.8"
+                                 FadeStart="0.55"
+                                 FadeEnd="0.95">
+                    <hero:HeroHeader.OverlayContent>
+                        <Grid x:Name="HeroOverlayPanel">
+                            <Border transitions:TransitionHelper.Id="card-shell"
+                                    Background="Transparent"
+                                    IsHitTestVisible="False"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Stretch"/>
+
+                            <Grid Padding="32,32,32,24"
+                                  VerticalAlignment="Bottom"
+                                  ColumnSpacing="20">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Poster: matched-id "movie-poster". Plain
+                                     Border+Image (no ContentCard chrome / stray
+                                     hover play overlay) at an exact 2:3 ratio. -->
+                                <Grid Grid.Column="0"
+                                      Width="140" Height="210"
+                                      transitions:TransitionHelper.Id="movie-poster">
+                                    <Grid.Shadow><ThemeShadow/></Grid.Shadow>
+                                    <Border CornerRadius="8"
+                                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                        <Grid>
+                                            <FontIcon Glyph="&#xE714;" FontSize="44" Opacity="0.5"
+                                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                            <Image Source="{x:Bind ViewModel.Movie.PosterUri, Mode=OneWay, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=480}"
+                                                   Stretch="UniformToFill"/>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+
+                                <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Bottom">
+                                    <TextBlock Text="MOVIE"
+                                               FontWeight="SemiBold"
+                                               Foreground="#CCFFFFFF"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"/>
+                                    <TextBlock Text="{x:Bind ViewModel.Movie.Title, Mode=OneWay}"
+                                               Style="{ThemeResource TitleLargeTextBlockStyle}"
+                                               FontWeight="Bold"
+                                               Foreground="#FFFFFFFF"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxLines="2"
+                                               transitions:TransitionHelper.Id="movie-title"/>
+                                    <TextBlock x:Name="TaglineText"
+                                               FontStyle="Italic"
+                                               Foreground="#CCFFFFFF"
+                                               TextWrapping="Wrap"
+                                               MaxLines="1"
+                                               TextTrimming="CharacterEllipsis"
+                                               Visibility="Collapsed"/>
+                                    <TextBlock x:Name="MetaLineText"
+                                               Foreground="#CCFFFFFF"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Margin="0,2,0,0"/>
+
+                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,10,0,0">
+                                        <Button Style="{ThemeResource AccentButtonStyle}"
+                                                Padding="20,10"
+                                                CornerRadius="20"
+                                                Click="Play_Click"
+                                                transitions:TransitionHelper.Id="movie-play">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <FontIcon Glyph="&#xE768;" FontSize="14"
+                                                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                                <TextBlock Text="Play"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Padding="16,10"
+                                                CornerRadius="20"
+                                                Click="MarkWatched_Click">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <FontIcon Glyph="&#xE73E;" FontSize="14"/>
+                                                <TextBlock Text="Mark watched"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button x:Name="TmdbSyncButton"
+                                                Padding="16,10"
+                                                CornerRadius="20"
+                                                Click="TmdbSyncButton_Click"
+                                                ToolTipService.ToolTip="Sync with TMDB">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <FontIcon x:Name="TmdbSyncGlyph" Glyph="&#xE895;" FontSize="14"/>
+                                                <TextBlock x:Name="TmdbSyncText" Text="Sync with TMDB"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button x:Name="MoreButton"
+                                                Style="{StaticResource SubtleButtonStyle}"
+                                                Width="40" Height="40"
+                                                Padding="0"
+                                                CornerRadius="20"
+                                                ToolTipService.ToolTip="More">
+                                            <FontIcon Glyph="&#xE712;" FontSize="14"/>
+                                            <Button.Flyout>
+                                                <MenuFlyout>
+                                                    <MenuFlyoutItem Text="Force re-sync with TMDB"
+                                                                    Click="ForceResync_Click">
+                                                        <MenuFlyoutItem.Icon>
+                                                            <FontIcon Glyph="&#xE72C;"/>
+                                                        </MenuFlyoutItem.Icon>
+                                                    </MenuFlyoutItem>
+                                                </MenuFlyout>
+                                            </Button.Flyout>
+                                        </Button>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </hero:HeroHeader.OverlayContent>
+                </hero:HeroHeader>
+
+                <StackPanel Grid.Row="1" Spacing="20" Padding="0,20,0,40">
+                    <Grid Padding="32,0,32,0"
+                          Visibility="{x:Bind local:LocalMovieDetailPage.VisibilityIfNonEmpty(ViewModel.Movie.Overview), Mode=OneWay}">
+                        <TextBlock Text="{x:Bind ViewModel.Movie.Overview, Mode=OneWay}"
+                                   TextWrapping="Wrap"
+                                   Style="{ThemeResource BodyTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </Grid>
+
+                    <StackPanel x:Name="CastSection" Spacing="10" Padding="32,0,0,0"
+                                Visibility="Collapsed">
+                        <TextBlock Text="Cast"
+                                   Style="{ThemeResource SubtitleTextBlockStyle}"
+                                   FontWeight="SemiBold"/>
+                        <ScrollViewer HorizontalScrollMode="Auto"
+                                      HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollMode="Disabled">
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Cast}">
+                                <ItemsRepeater.Layout>
+                                    <StackLayout Orientation="Horizontal" Spacing="12"/>
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="models:LocalCastMember">
+                                        <cards:ContentCard Width="140"
+                                                           IsCircularImage="True"
+                                                           CenterText="True"
+                                                           PlaceholderGlyph="&#xE77B;"
+                                                           Tag="{x:Bind}"
+                                                           ImageUrl="{x:Bind ProfileImageUri}"
+                                                           Title="{x:Bind Name}"
+                                                           Subtitle="{x:Bind Character}"
+                                                           CardClick="CastMember_CardClick"/>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </ScrollViewer>
+                    </StackPanel>
+
+                    <StackPanel Spacing="6" Padding="32,0,32,0">
+                        <TextBlock Text="Subtitles" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.Subtitles}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:LocalSubtitle">
+                                    <TextBlock Margin="0,2">
+                                        <Run Text="• "/>
+                                        <Run Text="{x:Bind Language}"/>
+                                        <Run Text=" — "/>
+                                        <Run Text="{x:Bind Path}"/>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <StackPanel Spacing="6" Padding="32,0,32,0">
+                        <TextBlock Text="Audio tracks" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.AudioTracks}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:LocalEmbeddedTrack">
+                                    <TextBlock Margin="0,2">
+                                        <Run Text="• "/>
+                                        <Run Text="{x:Bind Language}"/>
+                                        <Run Text=" "/>
+                                        <Run Text="{x:Bind Codec}"/>
+                                        <Run Text=" "/>
+                                        <Run Text="{x:Bind Label}"/>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </ScrollView>
+
+        <Grid x:Name="ShyHeaderHost"
+              Canvas.ZIndex="5"
+              VerticalAlignment="Top"
+              Margin="16,16,16,0">
+            <Grid x:Name="ShyHeaderCard"
+                  HorizontalAlignment="Center"
+                  MaxWidth="760"
+                  MinHeight="68"
+                  Visibility="Collapsed">
+                <Border transitions:TransitionHelper.Id="card-shell"
+                        CornerRadius="18"
+                        BorderThickness="1.5">
+                    <Border.BorderBrush>
+                        <SolidColorBrush Color="{ThemeResource SubtleFillColorTertiary}"/>
+                    </Border.BorderBrush>
+                    <Border.Background>
+                        <AcrylicBrush TintColor="{ThemeResource SolidBackgroundFillColorBase}"
+                                      TintOpacity="0.78"
+                                      FallbackColor="{ThemeResource CardBackgroundFillColorDefault}"/>
+                    </Border.Background>
+                    <Border.Shadow>
+                        <ThemeShadow/>
+                    </Border.Shadow>
+                </Border>
+
+                <Grid Padding="12,10" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
+                            Width="40"
+                            Height="40"
+                            CornerRadius="6"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            transitions:TransitionHelper.Id="movie-poster">
+                        <Image Source="{x:Bind ViewModel.Movie.PosterUri, Mode=OneWay, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=240}"
+                               Stretch="UniformToFill"/>
+                    </Border>
+
+                    <StackPanel Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Spacing="2">
+                        <TextBlock Text="{x:Bind ViewModel.Movie.Title, Mode=OneWay}"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1"
+                                   transitions:TransitionHelper.Id="movie-title"/>
+                        <TextBlock x:Name="ShyMetaText"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center">
+                        <Button Style="{StaticResource AccentButtonStyle}"
+                                Padding="16,8"
+                                CornerRadius="18"
+                                MinWidth="92"
+                                Click="Play_Click"
+                                transitions:TransitionHelper.Id="movie-play">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE768;" FontSize="12"
+                                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                <TextBlock Text="Play"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>

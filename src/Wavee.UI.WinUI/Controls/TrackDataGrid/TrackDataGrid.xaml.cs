@@ -1498,11 +1498,13 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void ReprojectRows()
     {
-        _visibleRows.Clear();
-        _visibleGroups.Clear();
         var source = _sourceSnapshot;
         if (source.Count == 0)
         {
+            if (_visibleRows.Count > 0)
+                _visibleRows.Clear();
+            if (_visibleGroups.Count > 0)
+                _visibleGroups.Clear();
             ApplyRowsItemsSource();
             return;
         }
@@ -1539,13 +1541,15 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 _groupedRowsViewSource.Source = _visibleGroups;
             if (!ReferenceEquals(RowsList.ItemsSource, _groupedRowsViewSource.View))
                 RowsList.ItemsSource = _groupedRowsViewSource.View;
-            RowsItemsView.ItemsSource = _visibleRows;
+            if (!ReferenceEquals(RowsItemsView.ItemsSource, _visibleRows))
+                RowsItemsView.ItemsSource = _visibleRows;
             return;
         }
 
         if (!ReferenceEquals(RowsList.ItemsSource, _visibleRows))
             RowsList.ItemsSource = _visibleRows;
-        RowsItemsView.ItemsSource = _visibleRows;
+        if (!ReferenceEquals(RowsItemsView.ItemsSource, _visibleRows))
+            RowsItemsView.ItemsSource = _visibleRows;
     }
 
     private void ApplyGroupHeaderTemplate()
@@ -1558,6 +1562,9 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void RebuildGroups(IReadOnlyList<ITrackItem> rows)
     {
+        if (_visibleGroups.Count > 0)
+            _visibleGroups.Clear();
+
         if (!IsGrouped || GroupKeySelector is null)
             return;
 

@@ -8,7 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
-using Wavee.Core.Library.Local;
+using Wavee.Local;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -117,39 +117,20 @@ public sealed partial class LocalLibraryViewModel : ObservableObject, IDisposabl
     private void PlayTrack(LocalTrackRowViewModel? row)
     {
         if (row is null) return;
-        var engine = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetService<Wavee.Connect.IPlaybackEngine>();
-        if (engine is null)
-        {
-            _logger?.LogWarning("PlaybackEngine not registered; cannot play local track {Uri}", row.TrackUri);
-            return;
-        }
 
         // Build a one-context "Local files" play. PageTracks lets the orchestrator
         // wire next/prev within the local library even though there's no Spotify
         // context entity backing this URI.
-        var pageTracks = Albums
+        var trackUris = Albums
             .SelectMany(a => a.Tracks)
-            .Select(t => new Wavee.Connect.Commands.PageTrack(t.TrackUri, ""))
+            .Select(t => t.TrackUri)
             .ToList();
-        var skipToIndex = pageTracks.FindIndex(t => t.Uri == row.TrackUri);
+        var skipToIndex = trackUris.FindIndex(uri => uri == row.TrackUri);
 
-        var cmd = new Wavee.Connect.Commands.PlayCommand
-        {
-            Endpoint           = "play",
-            Key                = "local/0",
-            MessageId          = 0,
-            MessageIdent       = "local",
-            SenderDeviceId     = "",
-            ContextUri         = "wavee:local:library",
-            TrackUri           = row.TrackUri,
-            PageTracks         = pageTracks,
-            SkipToIndex        = skipToIndex < 0 ? 0 : skipToIndex,
-            ContextDescription = "Local files",
-            ContextFeature     = "collection",
-        };
-
-        _ = Task.Run(() => engine.PlayAsync(cmd));
+        Services.LocalPlaybackLauncher.PlayQueue(
+            trackUris,
+            skipToIndex < 0 ? 0 : skipToIndex,
+            contextName: "Local files");
     }
 
     public void Dispose()

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Wavee.Audio;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
@@ -71,6 +72,9 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     // "started on last track" edge cases). Null outside the fetch.
     private Task? _pendingAutoplayTask;
 
+    private static bool IsLocalPlaybackContext(string? contextUri)
+        => Wavee.Local.LocalUri.IsLocal(contextUri);
+
     /// <summary>
     /// Lazy-read check for whether autoplay is enabled. Invoked once per
     /// candidate autoplay trigger in <see cref="TryTriggerAutoplayAsync"/>;
@@ -98,7 +102,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     private const long PrefetchRemainingMsThreshold = 20_000;
     private const double PrefetchHalfwayFraction = 0.5;
 
-    private readonly Wavee.Core.Library.Local.ILocalLibraryService? _localLibrary;
+    private readonly Wavee.Local.ILocalLibraryService? _localLibrary;
     private readonly Wavee.Audio.ILocalMediaPlayer? _localMediaPlayer;
     private readonly Wavee.Audio.ISpotifyVideoPlayback? _spotifyVideoPlayback;
     private readonly bool _localSpotifyPlaybackEnabled;
@@ -126,7 +130,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         ILogger? logger,
         EventService? events = null,
         string? localDeviceId = null,
-        Wavee.Core.Library.Local.ILocalLibraryService? localLibrary = null,
+        Wavee.Local.ILocalLibraryService? localLibrary = null,
         Wavee.Audio.ILocalMediaPlayer? localMediaPlayer = null,
         Wavee.Audio.ISpotifyVideoPlayback? spotifyVideoPlayback = null,
         bool localSpotifyPlaybackEnabled = true)
@@ -275,25 +279,30 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
                 // The UI supplies its own page-0 tracks (e.g. an extended top-tracks
                 // view) but doesn't know the next-page URL or total page count. Kick
                 // a background resolve so LoadMoreTracksAsync has somewhere to page
-                // to once the user plays through what the UI provided.
-                _ = Task.Run(async () =>
+                // to once the user plays through what the UI provided. Local contexts
+                // are already represented by PageTracks here; Spotify's resolver does
+                // not understand wavee:local:* URIs.
+                if (!IsLocalPlaybackContext(command.ContextUri))
                 {
-                    try
+                    _ = Task.Run(async () =>
                     {
-                        var resolved = await _contextResolver.LoadContextAsync(command.ContextUri!);
-                        _currentNextPageUrl = resolved.NextPageUrl;
-                        _currentContextPageCount = resolved.PageCount;
-                        _logger?.LogDebug(
-                            "Pagination seeded for {Uri}: nextPage={HasNext}, pageCount={Count}",
-                            command.ContextUri, resolved.NextPageUrl != null, resolved.PageCount);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogDebug(ex, "Pagination seed failed for {Uri}", command.ContextUri);
-                    }
-                });
+                        try
+                        {
+                            var resolved = await _contextResolver.LoadContextAsync(command.ContextUri!);
+                            _currentNextPageUrl = resolved.NextPageUrl;
+                            _currentContextPageCount = resolved.PageCount;
+                            _logger?.LogDebug(
+                                "Pagination seeded for {Uri}: nextPage={HasNext}, pageCount={Count}",
+                                command.ContextUri, resolved.NextPageUrl != null, resolved.PageCount);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogDebug(ex, "Pagination seed failed for {Uri}", command.ContextUri);
+                        }
+                    });
+                }
             }
-            else if (hasRealContext && Wavee.Core.Library.Local.LocalUri.IsAny(command.ContextUri))
+            else if (hasRealContext && IsLocalPlaybackContext(command.ContextUri))
             {
                 // Local URI without UI-supplied PageTracks (typical when the
                 // user clicks a card on the home shelf or a deep-link path).
@@ -303,6 +312,8 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
                 // whatever the local kind resolves to (single track, album
                 // tracklist, or artist tracks).
                 var localTracks = await ResolveLocalContextAsync(command.ContextUri!, ct).ConfigureAwait(false);
+                if (localTracks.Count == 0 && Wavee.Core.PlayableUri.IsLocalTrack(command.TrackUri))
+                    localTracks.Add(new QueueTrack(command.TrackUri!, command.TrackUid ?? string.Empty));
                 _queue.Clear();
                 _queue.SetContext(command.ContextUri!, isInfinite: false, totalTracks: localTracks.Count);
                 _queue.SetTracks(localTracks);
@@ -1005,12 +1016,20 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             return result;
         }
 
-        if (!Wavee.Core.Library.Local.LocalUri.TryParse(contextUri, out var kind, out _))
+        if (Wavee.Local.LocalUri.IsLibrary(contextUri))
+        {
+            var tracks = await _localLibrary.GetAllTracksAsync(ct).ConfigureAwait(false);
+            foreach (var t in tracks)
+                result.Add(ToLocalQueueTrack(t));
+            return result;
+        }
+
+        if (!Wavee.Local.LocalUri.TryParse(contextUri, out var kind, out _))
             return result;
 
         switch (kind)
         {
-            case Wavee.Core.Library.Local.LocalUriKind.Track:
+            case Wavee.Local.LocalUriKind.Track:
             {
                 // Single-track context: just enqueue the track itself. The
                 // local play path in PlayLocalCurrentTrackAsync handles
@@ -1020,45 +1039,36 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
                 result.Add(new Wavee.Audio.Queue.QueueTrack(contextUri));
                 break;
             }
-            case Wavee.Core.Library.Local.LocalUriKind.Album:
+            case Wavee.Local.LocalUriKind.Album:
             {
                 var album = await _localLibrary.GetAlbumAsync(contextUri, ct).ConfigureAwait(false);
                 if (album is null) break;
                 foreach (var t in album.Tracks)
-                {
-                    result.Add(new Wavee.Audio.Queue.QueueTrack(
-                        t.TrackUri,
-                        Title: t.Title,
-                        Artist: t.Artist ?? t.AlbumArtist,
-                        Album: t.Album,
-                        AlbumUri: t.AlbumUri,
-                        ArtistUri: t.ArtistUri,
-                        DurationMs: (int)Math.Min(int.MaxValue, t.DurationMs),
-                        ImageUrl: t.ArtworkUri));
-                }
+                    result.Add(ToLocalQueueTrack(t));
                 break;
             }
-            case Wavee.Core.Library.Local.LocalUriKind.Artist:
+            case Wavee.Local.LocalUriKind.Artist:
             {
                 var artist = await _localLibrary.GetArtistAsync(contextUri, ct).ConfigureAwait(false);
                 if (artist is null) break;
                 foreach (var t in artist.AllTracks)
-                {
-                    result.Add(new Wavee.Audio.Queue.QueueTrack(
-                        t.TrackUri,
-                        Title: t.Title,
-                        Artist: t.Artist ?? t.AlbumArtist,
-                        Album: t.Album,
-                        AlbumUri: t.AlbumUri,
-                        ArtistUri: t.ArtistUri,
-                        DurationMs: (int)Math.Min(int.MaxValue, t.DurationMs),
-                        ImageUrl: t.ArtworkUri));
-                }
+                    result.Add(ToLocalQueueTrack(t));
                 break;
             }
         }
         return result;
     }
+
+    private static Wavee.Audio.Queue.QueueTrack ToLocalQueueTrack(Wavee.Local.LocalTrackRow track)
+        => new(
+            track.TrackUri,
+            Title: track.Title,
+            Artist: track.Artist ?? track.AlbumArtist,
+            Album: track.Album,
+            AlbumUri: track.AlbumUri,
+            ArtistUri: track.ArtistUri,
+            DurationMs: (int)Math.Min(int.MaxValue, track.DurationMs),
+            ImageUrl: track.ArtworkUri);
 
     /// <summary>
     /// Local-file playback path. Looks up the indexed file path and metadata.
@@ -1087,12 +1097,37 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             return;
         }
 
+        // Resume-on-play: if the caller didn't specify a position (positionMs == 0)
+        // and we have a saved resume point on the row, pick it up. Callers that
+        // explicitly seek (Seek / transfer) pass a non-zero positionMs and win.
+        if (positionMs == 0 && row.LastPositionMs > 0)
+        {
+            positionMs = row.LastPositionMs;
+            _logger?.LogInformation("Resuming local track {Uri} at {Pos} ms (from last saved position)",
+                current.Uri, positionMs);
+        }
+
         // No metrics / gabo for local URIs — Spotify event reporting is Spotify-only.
+
+        // Pull TMDB enrichment so a TV episode reads as "S01E01 · Pilot" / its
+        // series name instead of the raw filename / "Unknown Artist". Falls back
+        // to the row's own title when not enriched (or for plain music). Used
+        // by the player bar, the expanded layout, the theatre / fullscreen
+        // surfaces, and the AudioHost echo (so OS-level smart media transport
+        // shows the same string).
+        var enriched = await _localLibrary.GetPlaybackMetadataAsync(current.Uri, ct);
+        var filenameFallback = Path.GetFileNameWithoutExtension(row.FilePath);
+        var displayTitle = enriched?.FormatDisplayTitle(filenameFallback)
+                           ?? row.Title
+                           ?? filenameFallback;
+        var displayArtist = enriched?.FormatDisplayArtist(row.AlbumArtist)
+                            ?? row.Artist
+                            ?? row.AlbumArtist;
 
         var metadata = new Wavee.Playback.Contracts.TrackMetadataDto
         {
-            Title = row.Title ?? Path.GetFileNameWithoutExtension(row.FilePath),
-            Artist = row.Artist ?? row.AlbumArtist,
+            Title = displayTitle,
+            Artist = displayArtist,
             Album = row.Album,
             AlbumUri = row.AlbumUri,
             ArtistUri = row.ArtistUri,

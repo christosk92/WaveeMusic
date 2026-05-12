@@ -76,7 +76,14 @@ public sealed class MetadataDatabase : IMetadataDatabase
     //      entities.is_locally_liked; watched_folders gains include_subfolders + scan-status cols.
     // v16: local_files.is_video flag — flips routing from AudioHost (BASS) to UI MediaPlayer
     //      for files whose extension is in the video set (.mp4 .mov .m4v .mkv .webm).
-    private const int CurrentSchemaVersion = 16;
+    // v17: Local-files redesign as classified mixed media. Adds auto_kind / kind_override /
+    //      metadata_overrides / TV series + season + episode columns, watched_at /
+    //      last_position_ms / watch_count for resume, enrichment caches; new tables for
+    //      local_series, local_groups, local_subtitle_files, local_embedded_tracks,
+    //      local_enrichment_negatives, local_plays, local_lyrics. SQL constants live in
+    //      Wavee.Local.Schema.LocalSchemaV17 (in the new Wavee.Local classlib that owns
+    //      all local-files logic). See docs/superpowers/specs/2026-05-12-local-files-redesign-design.md.
+    private const int CurrentSchemaVersion = 21;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -221,7 +228,53 @@ public sealed class MetadataDatabase : IMetadataDatabase
             ToVersion: 16,
             Sql: """
                 ALTER TABLE local_files ADD COLUMN is_video INTEGER NOT NULL DEFAULT 0;
-                """)
+                """),
+
+        // v17: Local-files redesign — classifier output, override columns, TV series
+        // grouping, subtitle/embedded-track indices, enrichment cache, resume position,
+        // recently-played, lyrics. All SQL lives in Wavee.Local so the schema and the
+        // code that reads/writes it ship together; here we just sequence the migration.
+        new SchemaMigration(
+            FromVersion: 16,
+            ToVersion: 17,
+            Sql: Wavee.Local.Schema.LocalSchemaV17.MigrationSql),
+
+        // v18: Spotify-powered music enrichment. New spotify_track_uri /
+        // album_uri / artist_uri / cover_url columns on local_files let the
+        // UI borrow Spotify's rich metadata (high-res covers, click-through
+        // to canonical Spotify pages). Replaces the MusicBrainz path.
+        // Additive — v17's musicbrainz_id column stays dormant.
+        new SchemaMigration(
+            FromVersion: 17,
+            ToVersion: 18,
+            Sql: Wavee.Local.Schema.LocalSchemaV18.MigrationSql),
+
+        // v19: TMDB episode roster cache + show totals. Powers the Show
+        // Detail page's missing-episode / missing-season visualization and
+        // surfaces episode descriptions that previously got dropped on the
+        // floor (only the matched episode's overview was persisted; the
+        // rest of the season's data was thrown away).
+        new SchemaMigration(
+            FromVersion: 18,
+            ToVersion: 19,
+            Sql: Wavee.Local.Schema.LocalSchemaV19.MigrationSql),
+
+        // v20: Full movie details + cast. New columns on local_files store
+        // the rich movie metadata directly (no metadata_overrides JSON
+        // parsing on read), and local_movie_cast holds the top-10 cast
+        // list. Fed by TMDB's /3/movie/{id}?append_to_response=credits.
+        new SchemaMigration(
+            FromVersion: 19,
+            ToVersion: 20,
+            Sql: Wavee.Local.Schema.LocalSchemaV20.MigrationSql),
+
+        // v21: Same shape as v20, but for TV shows. tagline/status/dates/
+        // genres/vote/networks land on local_series; local_show_cast holds
+        // the top-10 principal cast. Fed by /3/tv/{id}?append_to_response=credits.
+        new SchemaMigration(
+            FromVersion: 20,
+            ToVersion: 21,
+            Sql: Wavee.Local.Schema.LocalSchemaV21.MigrationSql)
     ];
 
     private sealed record SchemaMigration(int FromVersion, int ToVersion, string Sql);
@@ -560,32 +613,70 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         include_subfolders       INTEGER NOT NULL DEFAULT 1,
                         last_scan_status         TEXT,
                         last_scan_error          TEXT,
-                        last_scan_duration_ms    INTEGER
+                        last_scan_duration_ms    INTEGER,
+                        -- v17 — soft kind hint that biases the classifier for files in this folder.
+                        expected_kind            TEXT
                     );
                     """;
                 cmd.ExecuteNonQuery();
             }
 
-            // Local file library (v15) — per-file fingerprint, artwork cache, playlist overlays.
+            // Local file library (v15+v16+v17) — per-file fingerprint, artwork cache,
+            // playlist overlays, classifier output, TV series grouping, subtitle/
+            // embedded-track indices, enrichment cache, resume position, recently-
+            // played, lyrics. Schema for fresh DBs starts at the latest version.
             using (var cmd = connection.CreateCommand())
             {
                 cmd.Transaction = transaction;
                 cmd.CommandText = """
                     CREATE TABLE IF NOT EXISTS local_files (
-                        path                TEXT PRIMARY KEY NOT NULL,
-                        folder_id           INTEGER NOT NULL,
-                        track_uri           TEXT NOT NULL,
-                        file_size           INTEGER NOT NULL,
-                        file_mtime_ticks    INTEGER NOT NULL,
-                        content_hash        TEXT NOT NULL,
-                        last_indexed_at     INTEGER NOT NULL,
-                        last_seen_at        INTEGER NOT NULL,
-                        scan_error          TEXT,
-                        is_video            INTEGER NOT NULL DEFAULT 0,
+                        path                  TEXT PRIMARY KEY NOT NULL,
+                        folder_id             INTEGER NOT NULL,
+                        track_uri             TEXT NOT NULL,
+                        file_size             INTEGER NOT NULL,
+                        file_mtime_ticks      INTEGER NOT NULL,
+                        content_hash          TEXT NOT NULL,
+                        last_indexed_at       INTEGER NOT NULL,
+                        last_seen_at          INTEGER NOT NULL,
+                        scan_error            TEXT,
+                        is_video              INTEGER NOT NULL DEFAULT 0,
+                        -- v17 columns
+                        auto_kind             TEXT    NOT NULL DEFAULT 'Other',
+                        kind_override         TEXT,
+                        metadata_overrides    TEXT,
+                        series_id             TEXT,
+                        season_number         INTEGER,
+                        episode_number        INTEGER,
+                        episode_title         TEXT,
+                        movie_year            INTEGER,
+                        tmdb_id               INTEGER,
+                        musicbrainz_id        TEXT,
+                        enrichment_state      TEXT    NOT NULL DEFAULT 'Pending',
+                        enrichment_at         INTEGER,
+                        last_position_ms      INTEGER NOT NULL DEFAULT 0,
+                        watched_at            INTEGER,
+                        watch_count           INTEGER NOT NULL DEFAULT 0,
+                        -- v18 columns (Spotify-powered music enrichment)
+                        spotify_track_uri     TEXT,
+                        spotify_album_uri     TEXT,
+                        spotify_artist_uri    TEXT,
+                        spotify_cover_url     TEXT,
+                        -- v20 columns (movie detail enrichment)
+                        movie_overview        TEXT,
+                        movie_tagline         TEXT,
+                        movie_runtime_min     INTEGER,
+                        movie_genres          TEXT,
+                        movie_vote_average    REAL,
+                        movie_backdrop_hash   TEXT,
                         FOREIGN KEY (folder_id) REFERENCES watched_folders(id) ON DELETE CASCADE
                     );
-                    CREATE INDEX IF NOT EXISTS idx_local_files_track_uri ON local_files(track_uri);
-                    CREATE INDEX IF NOT EXISTS idx_local_files_folder    ON local_files(folder_id);
+                    CREATE INDEX IF NOT EXISTS idx_local_files_track_uri    ON local_files(track_uri);
+                    CREATE INDEX IF NOT EXISTS idx_local_files_folder       ON local_files(folder_id);
+                    CREATE INDEX IF NOT EXISTS idx_local_files_auto_kind    ON local_files(auto_kind);
+                    CREATE INDEX IF NOT EXISTS idx_local_files_series       ON local_files(series_id, season_number, episode_number);
+                    CREATE INDEX IF NOT EXISTS idx_local_files_watched      ON local_files(watched_at) WHERE watched_at IS NOT NULL;
+                    CREATE INDEX IF NOT EXISTS idx_local_files_resume       ON local_files(last_position_ms) WHERE last_position_ms > 0;
+                    CREATE INDEX IF NOT EXISTS idx_local_files_spotify_track ON local_files(spotify_track_uri);
 
                     CREATE TABLE IF NOT EXISTS local_artwork (
                         image_hash    TEXT PRIMARY KEY NOT NULL,
@@ -613,6 +704,147 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         PRIMARY KEY (playlist_uri, item_uri, added_at)
                     );
                     CREATE INDEX IF NOT EXISTS idx_playlist_overlay_pl ON playlist_overlay_items(playlist_uri);
+
+                    -- v17 tables: classification, grouping, subtitles, embedded tracks,
+                    -- enrichment cache, recently-played, lyrics. See Wavee.Local for code.
+                    CREATE TABLE IF NOT EXISTS local_series (
+                        id              TEXT PRIMARY KEY NOT NULL,
+                        name            TEXT NOT NULL,
+                        poster_hash     TEXT,
+                        backdrop_hash   TEXT,
+                        tmdb_id         INTEGER,
+                        overview        TEXT,
+                        created_at      INTEGER NOT NULL,
+                        -- v19 — total counts from TMDB /tv/{id}, drives the
+                        -- "X of Y episodes / S of T seasons" hero meta.
+                        total_seasons         INTEGER,
+                        total_episodes_tmdb   INTEGER,
+                        tmdb_last_fetched_at  INTEGER,
+                        -- v21 — rich show details (append_to_response=credits).
+                        tagline               TEXT,
+                        status                TEXT,
+                        first_air_date        TEXT,
+                        last_air_date         TEXT,
+                        genres                TEXT,
+                        vote_average          REAL,
+                        networks              TEXT
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_local_series_name ON local_series(name);
+
+                    -- v19 — full TMDB roster per show (one row per season+episode).
+                    -- Spine of the Show Detail page; local_files LEFT JOINs against it
+                    -- so missing episodes surface as gray placeholder rows.
+                    CREATE TABLE IF NOT EXISTS local_series_episodes (
+                        series_id     TEXT    NOT NULL,
+                        season        INTEGER NOT NULL,
+                        episode       INTEGER NOT NULL,
+                        tmdb_id       INTEGER,
+                        title         TEXT,
+                        overview      TEXT,
+                        runtime_min   INTEGER,
+                        air_date      TEXT,
+                        still_hash    TEXT,
+                        fetched_at    INTEGER NOT NULL,
+                        PRIMARY KEY (series_id, season, episode)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_series_episodes_series ON local_series_episodes(series_id, season);
+
+                    -- v20 — principal cast for matched movies. Top-10 entries
+                    -- in TMDB billing order. The Movie Detail page renders a
+                    -- horizontal portrait strip from this.
+                    CREATE TABLE IF NOT EXISTS local_movie_cast (
+                        track_uri      TEXT NOT NULL,
+                        order_index    INTEGER NOT NULL,
+                        person_id      INTEGER,
+                        name           TEXT NOT NULL,
+                        character_name TEXT,
+                        profile_hash   TEXT,
+                        PRIMARY KEY (track_uri, order_index)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_local_movie_cast_track ON local_movie_cast(track_uri);
+
+                    -- v21 — principal cast for matched TV shows.
+                    CREATE TABLE IF NOT EXISTS local_show_cast (
+                        series_id      TEXT NOT NULL,
+                        order_index    INTEGER NOT NULL,
+                        person_id      INTEGER,
+                        name           TEXT NOT NULL,
+                        character_name TEXT,
+                        profile_hash   TEXT,
+                        PRIMARY KEY (series_id, order_index)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_local_show_cast_series ON local_show_cast(series_id);
+
+                    CREATE TABLE IF NOT EXISTS local_groups (
+                        id              TEXT PRIMARY KEY NOT NULL,
+                        name            TEXT NOT NULL,
+                        kind            TEXT NOT NULL,
+                        poster_hash     TEXT,
+                        created_at      INTEGER NOT NULL,
+                        user_created    INTEGER NOT NULL DEFAULT 0
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_local_groups_kind ON local_groups(kind);
+
+                    CREATE TABLE IF NOT EXISTS local_group_members (
+                        group_id        TEXT NOT NULL,
+                        local_file_path TEXT NOT NULL,
+                        sort_order      INTEGER NOT NULL,
+                        PRIMARY KEY (group_id, local_file_path),
+                        FOREIGN KEY (group_id)        REFERENCES local_groups(id)   ON DELETE CASCADE,
+                        FOREIGN KEY (local_file_path) REFERENCES local_files(path)  ON DELETE CASCADE
+                    );
+
+                    CREATE TABLE IF NOT EXISTS local_subtitle_files (
+                        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                        local_file_path     TEXT NOT NULL,
+                        subtitle_path       TEXT NOT NULL,
+                        language            TEXT,
+                        forced              INTEGER NOT NULL DEFAULT 0,
+                        sdh                 INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY (local_file_path) REFERENCES local_files(path) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_local_subs_file ON local_subtitle_files(local_file_path);
+
+                    CREATE TABLE IF NOT EXISTS local_embedded_tracks (
+                        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                        local_file_path     TEXT NOT NULL,
+                        kind                TEXT NOT NULL,
+                        stream_index        INTEGER NOT NULL,
+                        language            TEXT,
+                        label               TEXT,
+                        codec               TEXT,
+                        is_default          INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY (local_file_path) REFERENCES local_files(path) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_local_embedded_file_kind ON local_embedded_tracks(local_file_path, kind);
+
+                    CREATE TABLE IF NOT EXISTS local_enrichment_negatives (
+                        local_file_path     TEXT NOT NULL,
+                        provider            TEXT NOT NULL,
+                        queried_at          INTEGER NOT NULL,
+                        PRIMARY KEY (local_file_path, provider),
+                        FOREIGN KEY (local_file_path) REFERENCES local_files(path) ON DELETE CASCADE
+                    );
+
+                    CREATE TABLE IF NOT EXISTS local_plays (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        track_uri       TEXT NOT NULL,
+                        played_at       INTEGER NOT NULL,
+                        position_ms     INTEGER NOT NULL DEFAULT 0,
+                        duration_ms     INTEGER NOT NULL DEFAULT 0
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_local_plays_played_at ON local_plays(played_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_local_plays_track_uri ON local_plays(track_uri);
+
+                    CREATE TABLE IF NOT EXISTS local_lyrics (
+                        local_file_path     TEXT PRIMARY KEY NOT NULL,
+                        source              TEXT NOT NULL,
+                        format              TEXT NOT NULL,
+                        body                TEXT NOT NULL,
+                        language            TEXT,
+                        fetched_at          INTEGER NOT NULL,
+                        FOREIGN KEY (local_file_path) REFERENCES local_files(path) ON DELETE CASCADE
+                    );
                     """;
                 cmd.ExecuteNonQuery();
             }

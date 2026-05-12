@@ -70,6 +70,49 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     /// </summary>
     bool CurrentTrackIsVideo { get; }
 
+    // ── Local-content (TMDB) shape ───────────────────────────────────────
+    //
+    // Populated when the current track is a <c>wavee:local:track:</c> URI and
+    // its row in <c>local_files</c> has been classified — TV episode, movie,
+    // music, music video, or other. Used by the PlayerBar to route title-click
+    // to the correct detail page (show / movie / album) and by the now-playing
+    // surfaces to hide music-only chrome (lyrics / friends / details) when the
+    // current item is a film or show. Reset to <see cref="LocalNowPlayingKind.None"/>
+    // for Spotify content.
+
+    /// <summary>
+    /// Classification of the current local item, or null for Spotify content
+    /// (and during the brief window before a freshly-loaded local URI has been
+    /// looked up in the index). Drives which controls render in the player
+    /// chrome and which detail page the title links to.
+    /// </summary>
+    Wavee.Local.Classification.LocalContentKind? CurrentLocalContentKind { get; }
+
+    /// <summary>
+    /// Local-show id (e.g. "person-of-interest" or whatever the indexer assigned)
+    /// when the current track is a TV episode — the navigation target for
+    /// title-click. Null otherwise.
+    /// </summary>
+    string? CurrentLocalSeriesId { get; }
+
+    /// <summary>TMDB-fetched series name (e.g. "Person of Interest"). Null when not enriched.</summary>
+    string? CurrentLocalSeriesName { get; }
+
+    /// <summary>Season number for TV episodes. Null otherwise.</summary>
+    int? CurrentLocalSeasonNumber { get; }
+
+    /// <summary>Episode number for TV episodes. Null otherwise.</summary>
+    int? CurrentLocalEpisodeNumber { get; }
+
+    /// <summary>TMDB-fetched episode title (e.g. "Pilot"). Null when not enriched.</summary>
+    string? CurrentLocalEpisodeTitle { get; }
+
+    /// <summary>Release year for movies. Null otherwise.</summary>
+    int? CurrentLocalMovieYear { get; }
+
+    /// <summary>TMDB id for the episode / movie (whichever applies). Null when not matched.</summary>
+    int? CurrentLocalTmdbId { get; }
+
     /// <summary>
     /// Theme-appropriate hex color extracted from the current album art.
     /// Uses DarkHex in dark theme, LightHex in light theme.

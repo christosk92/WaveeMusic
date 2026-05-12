@@ -39,6 +39,26 @@ internal static class HomeSectionClassifier
         if (section.SectionType == HomeSectionType.RecentlyPlayed)
             return HomeRegionKind.Recents;
 
+        // Local files sections — built client-side by HomeViewModel with
+        // synthetic SectionUri prefixes. Per-kind URIs fan out to dedicated
+        // region bands so the Home page shows separate "Local TV / movies /
+        // music / music videos" shelves instead of one mixed lump.
+        // Generic "wavee:local:" prefix still routes to the legacy
+        // catch-all band for back-compat.
+        if (!string.IsNullOrEmpty(section.SectionUri))
+        {
+            if (section.SectionUri.StartsWith("wavee:local:shows", StringComparison.Ordinal))
+                return HomeRegionKind.LocalShows;
+            if (section.SectionUri.StartsWith("wavee:local:movies", StringComparison.Ordinal))
+                return HomeRegionKind.LocalMovies;
+            if (section.SectionUri.StartsWith("wavee:local:music_videos", StringComparison.Ordinal))
+                return HomeRegionKind.LocalMusicVideos;
+            if (section.SectionUri.StartsWith("wavee:local:music", StringComparison.Ordinal))
+                return HomeRegionKind.LocalMusic;
+            if (section.SectionUri.StartsWith("wavee:local:", StringComparison.Ordinal))
+                return HomeRegionKind.LocalFiles;
+        }
+
         // Podcast/episode sections — every item is podcast or episode content.
         // Honour the upstream IsPodcastSection flag too (it's set when the parser
         // detects all-podcast items + uses a fixed purple accent).

@@ -75,6 +75,10 @@ public sealed partial class HeroHeader : UserControl
         DependencyProperty.Register(nameof(ScrollFadeProgress), typeof(double), typeof(HeroHeader),
             new PropertyMetadata(0.0, OnScrollFadeProgressChanged));
 
+    public static readonly DependencyProperty IntenseScrimProperty =
+        DependencyProperty.Register(nameof(IntenseScrim), typeof(bool), typeof(HeroHeader),
+            new PropertyMetadata(false, OnIntenseScrimChanged));
+
     public string? ImageUrl
     {
         get => (string?)GetValue(ImageUrlProperty);
@@ -135,6 +139,20 @@ public sealed partial class HeroHeader : UserControl
         set => SetValue(ScrollFadeProgressProperty, value);
     }
 
+    /// <summary>
+    /// When true, override the theme-aware scrim with a much stronger
+    /// black-regardless-of-theme gradient. Used by media-banner pages
+    /// (local TV / movie / cast detail) where overlay text is forced
+    /// white and needs a Netflix / Disney+-style dark scrim under it —
+    /// regardless of whether the app is in Light or Dark mode. Default
+    /// false preserves the existing ArtistPage / PlaylistPage look.
+    /// </summary>
+    public bool IntenseScrim
+    {
+        get => (bool)GetValue(IntenseScrimProperty);
+        set => SetValue(IntenseScrimProperty, value);
+    }
+
     public HeroHeader()
     {
         InitializeComponent();
@@ -158,6 +176,21 @@ public sealed partial class HeroHeader : UserControl
             return;
         }
 
+        if (IntenseScrim)
+        {
+            // Intense (banner) scrim — always black, much higher alphas than
+            // the theme-aware default. Designed for pages where overlay text
+            // is forced white regardless of theme (local TV/movie/cast detail).
+            // Mid stop hits ~67% black so the title region reads white-on-black
+            // even when the photo is bright; top stays transparent so the upper
+            // hero still shows the photo cleanly.
+            SetScrimStop(_scrimTopStop,    0, 0, 0, 0,   animate);
+            SetScrimStop(_scrimUpperStop,  0, 0, 0, 60,  animate);
+            SetScrimStop(_scrimMidStop,    0, 0, 0, 170, animate);
+            SetScrimStop(_scrimBottomStop, 0, 0, 0, 235, animate);
+            return;
+        }
+
         // Inverted scrim by theme:
         //   Dark   → black gradient (photo fades into dark page, white overlay text)
         //   Light  → white gradient (photo fades into bright page, dark overlay text)
@@ -176,6 +209,12 @@ public sealed partial class HeroHeader : UserControl
         SetScrimStop(_scrimUpperStop, scrimR, scrimG, scrimB, upper, animate);
         SetScrimStop(_scrimMidStop, scrimR, scrimG, scrimB, mid, animate);
         SetScrimStop(_scrimBottomStop, scrimR, scrimG, scrimB, bottom, animate);
+    }
+
+    private static void OnIntenseScrimChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is HeroHeader header)
+            header.ApplyScrimForTheme(header.ActualTheme);
     }
 
     private void SetScrimStop(CompositionColorGradientStop stop, byte r, byte g, byte b, byte alpha, bool animate)

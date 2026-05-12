@@ -8,13 +8,6 @@
     mc:Ignorable="d"
     Background="Transparent">
 
-    <Page.Resources>
-        <Thickness x:Key="NavigationViewItemButtonMargin">4,2,8,2</Thickness>
-        <Thickness x:Key="NavigationViewItemContentPresenterMargin">8,-1,8,-1</Thickness>
-        <Thickness x:Key="NavigationViewItemInnerHeaderMargin">12,0</Thickness>
-        <x:Double x:Key="NavigationViewItemOnLeftMinHeight">40</x:Double>
-    </Page.Resources>
-
     <Grid Padding="32,24,32,0" RowSpacing="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -76,18 +69,12 @@
 
         <NavigationView x:Name="SettingsNavigation"
                         Grid.Row="3"
-                        PaneDisplayMode="Left"
-                        IsPaneOpen="True"
+                        PaneDisplayMode="Top"
                         IsPaneToggleButtonVisible="False"
                         IsSettingsVisible="False"
                         IsBackButtonVisible="Collapsed"
-                        OpenPaneLength="272"
-                        CompactPaneLength="0"
-                        PaneTitle="Sections"
-                        Background="Transparent"
                         SelectionChanged="SettingsNavigation_SelectionChanged">
             <NavigationView.MenuItems>
-                <NavigationViewItemHeader Content="App"/>
                 <NavigationViewItem x:Name="GeneralItem" Tag="general">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon Width="18" Glyph="&#xE713;" FontSize="15"/>
@@ -100,36 +87,18 @@
                         <TextBlock Text="On-device AI"/>
                     </StackPanel>
                 </NavigationViewItem>
-
-                <NavigationViewItemHeader Content="Listening"/>
-                <NavigationViewItem x:Name="PlaybackItem" Tag="playback">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <FontIcon Width="18" Glyph="&#xE768;" FontSize="15"/>
-                        <TextBlock Text="Playback &amp; streaming"/>
-                    </StackPanel>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="AudioItem" Tag="audio">
+                <NavigationViewItem x:Name="PlaybackAudioItem" Tag="playback-audio">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon Width="18" Glyph="&#xE8D6;" FontSize="15"/>
-                        <TextBlock Text="Audio &amp; equalizer"/>
+                        <TextBlock Text="Playback &amp; audio"/>
                     </StackPanel>
                 </NavigationViewItem>
-
-                <NavigationViewItemHeader Content="Library &amp; devices"/>
                 <NavigationViewItem x:Name="StorageItem" Tag="storage">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon Width="18" Glyph="&#xE8B7;" FontSize="15"/>
                         <TextBlock Text="Storage &amp; local files"/>
                     </StackPanel>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="ConnectItem" Tag="connect">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <FontIcon Width="18" Glyph="&#xE703;" FontSize="15"/>
-                        <TextBlock Text="Connect devices"/>
-                    </StackPanel>
-                </NavigationViewItem>
-
-                <NavigationViewItemHeader Content="System"/>
                 <NavigationViewItem x:Name="DiagnosticsItem" Tag="diagnostics">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon Width="18" Glyph="&#xE9D9;" FontSize="15"/>
@@ -144,7 +113,7 @@
                 </NavigationViewItem>
             </NavigationView.MenuItems>
 
-            <Grid Padding="40,24,16,0" RowSpacing="16">
+            <Grid Padding="0,16,0,0" RowSpacing="16">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>

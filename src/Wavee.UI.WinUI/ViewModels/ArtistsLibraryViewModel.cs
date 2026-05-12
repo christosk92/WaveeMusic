@@ -872,15 +872,22 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void RemoveSelected()
     {
-        if (!HasSelection) return;
-        // TODO: Remove selected tracks from library (not a playback operation)
+        if (!HasSelection || _likeService == null) return;
+        foreach (var track in SelectedItems.OfType<AlbumTrackDto>())
+        {
+            // Force currentlySaved=true so the toggle always lands on "unsaved" —
+            // matches the menu label "Remove from library".
+            _likeService.ToggleSave(SavedItemType.Track, track.Uri, currentlySaved: true);
+        }
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void AddToPlaylist(PlaylistSummaryDto? playlist)
+    private async Task AddToPlaylistAsync(PlaylistSummaryDto? playlist)
     {
         if (playlist == null || !HasSelection) return;
-        // TODO: Add selected tracks to playlist (not a playback operation)
+        var trackIds = SelectedItems.OfType<AlbumTrackDto>().Select(t => t.Uri).ToList();
+        if (trackIds.Count == 0) return;
+        await _libraryDataService.AddTracksToPlaylistAsync(playlist.Id, trackIds);
     }
 
     // Explicit ITrackListViewModel ICommand implementation

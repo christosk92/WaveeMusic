@@ -246,6 +246,14 @@ public sealed class AppSettings
     /// is true. Default true.
     /// </summary>
     public bool AiLyricsSummarizeEnabled { get; set; } = true;
+
+    /// <summary>
+    /// True once the user dismisses the "Get free posters and metadata" InfoBar
+    /// on the Local files landing page. The CTA never appears again. Detail-page
+    /// inline banners ignore this flag — they're tied to actual content state and
+    /// auto-resolve as soon as enrichment runs.
+    /// </summary>
+    public bool TmdbTeaserDismissed { get; set; } = false;
 }
 
 public sealed class LibraryTabPreferences

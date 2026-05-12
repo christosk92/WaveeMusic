@@ -5,18 +5,24 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:vmLocal="using:Wavee.UI.WinUI.ViewModels.Local"
+    xmlns:models="using:Wavee.Local.Models"
+    xmlns:waveeLocal="using:Wavee.Local"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:local="using:Wavee.UI.WinUI.Views"
     NavigationCacheMode="Enabled"
     mc:Ignorable="d">
 
     <Page.Resources>
-        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:BoolToVisibilityConverter x:Key="InverseBoolToVis" Invert="True"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVis"/>
     </Page.Resources>
 
-    <Grid Padding="32,24,32,16" RowSpacing="16">
+    <Grid Padding="32,24,32,16" RowSpacing="12">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
@@ -26,110 +32,214 @@
             <TextBlock Text="Local files" Style="{StaticResource TitleTextBlockStyle}" FontWeight="Bold"/>
             <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Style="{ThemeResource BodyTextBlockStyle}">
-                <Run Text="{x:Bind ViewModel.TrackCount, Mode=OneWay}"/>
-                <Run Text=" tracks · "/>
-                <Run Text="{x:Bind ViewModel.AlbumCount, Mode=OneWay}"/>
-                <Run Text=" albums"/>
+                <Run Text="{x:Bind ViewModel.ShowCount, Mode=OneWay}"/>
+                <Run Text=" shows · "/>
+                <Run Text="{x:Bind ViewModel.MovieCount, Mode=OneWay}"/>
+                <Run Text=" movies · "/>
+                <Run Text="{x:Bind ViewModel.MusicCount, Mode=OneWay}"/>
+                <Run Text=" music · "/>
+                <Run Text="{x:Bind ViewModel.MusicVideoCount, Mode=OneWay}"/>
+                <Run Text=" music videos · "/>
+                <Run Text="{x:Bind ViewModel.OtherCount, Mode=OneWay}"/>
+                <Run Text=" other"/>
             </TextBlock>
         </StackPanel>
 
+        <!-- Banner row: TMDB CTA + live enrichment progress. Both InfoBars
+             show/hide independently — typically only one is visible at a
+             time (CTA before token, progress after a Sync click). -->
+        <StackPanel Grid.Row="1" Spacing="8">
+            <!-- BYO-token CTA: hidden once a token is set or once the user
+                 dismisses it. Drives the explicit-sync onboarding flow. -->
+            <InfoBar x:Name="TmdbCtaBar"
+                     IsOpen="{x:Bind ViewModel.ShowTmdbCta, Mode=OneWay}"
+                     IsClosable="True"
+                     Closed="TmdbCtaBar_Closed"
+                     Severity="Informational"
+                     Title="Get free posters and metadata"
+                     Message="Add a TMDB token in Settings to fetch posters and episode info for your local movies and shows.">
+                <InfoBar.ActionButton>
+                    <Button Content="Set up TMDB" Click="SetUpTmdb_Click"/>
+                </InfoBar.ActionButton>
+            </InfoBar>
+
+            <!-- Live enrichment progress — only visible while a Sync is
+                 actively processing items. -->
+            <InfoBar IsOpen="{x:Bind ViewModel.HasEnrichmentProgress, Mode=OneWay}"
+                     IsClosable="False"
+                     Severity="Informational"
+                     Title="Enriching local metadata"
+                     Message="{x:Bind ViewModel.EnrichmentRibbon, Mode=OneWay}"/>
+        </StackPanel>
+
         <!-- Empty state -->
-        <StackPanel Grid.Row="1"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Spacing="8"
-                    Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-            <FontIcon Glyph="&#xE8B7;" FontSize="48"
-                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-            <TextBlock Text="No local files indexed yet"
-                       Style="{ThemeResource SubtitleTextBlockStyle}"
-                       HorizontalAlignment="Center"/>
+        <StackPanel Grid.Row="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8"
+                    Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <FontIcon Glyph="&#xE8B7;" FontSize="48" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+            <TextBlock Text="No local files indexed yet" Style="{ThemeResource SubtitleTextBlockStyle}" HorizontalAlignment="Center"/>
             <TextBlock Text="Add a watched folder in Settings → Storage and Network → Local Files."
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        Style="{ThemeResource BodyTextBlockStyle}"
-                       HorizontalAlignment="Center"
-                       TextWrapping="Wrap"
-                       MaxWidth="420"
-                       TextAlignment="Center"/>
+                       HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"/>
         </StackPanel>
 
-        <!-- Album list -->
-        <ScrollView Grid.Row="1"
-                      VerticalScrollBarVisibility="Auto"
-                      Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Invert}">
-            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Albums}">
-                <ItemsRepeater.Layout>
-                    <StackLayout Spacing="24"/>
-                </ItemsRepeater.Layout>
-                <ItemsRepeater.ItemTemplate>
-                    <DataTemplate x:DataType="vm:LocalAlbumGroupViewModel">
-                        <Grid ColumnSpacing="16" Padding="0,8,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="120"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
+        <!-- Rails -->
+        <ScrollViewer Grid.Row="2"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled"
+                      Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource InverseBoolToVis}}">
+            <StackPanel Spacing="32">
 
-                            <!-- Art -->
-                            <Grid Grid.Column="0" Width="120" Height="120"
-                                  Background="{ThemeResource SubtleFillColorTertiaryBrush}"
-                                  CornerRadius="6">
-                                <Image Source="{x:Bind ArtworkUri, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=240, Mode=OneTime}"
-                                       Stretch="UniformToFill"/>
-                            </Grid>
+                <!-- Continue watching/listening -->
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasContinue, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="Continue watching" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                    <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled">
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.Continue}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="14"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="models:LocalContinueItem">
+                                    <cards:ContentCard Width="220"
+                                                       AspectMode="Backdrop"
+                                                       PlaceholderGlyph="&#xE714;"
+                                                       Tag="{x:Bind}"
+                                                       ImageUrl="{x:Bind ArtworkUri}"
+                                                       Title="{x:Bind DisplayName}"
+                                                       CardClick="ContinueItem_CardClick"/>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollViewer>
+                </StackPanel>
 
-                            <!-- Title + tracks -->
-                            <StackPanel Grid.Column="1" Spacing="6">
-                                <StackPanel Spacing="2">
-                                    <TextBlock Text="{x:Bind AlbumTitle}"
-                                               Style="{ThemeResource SubtitleTextBlockStyle}"
-                                               FontWeight="SemiBold"
-                                               TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Text="{x:Bind SubtitleDisplay}"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               Style="{ThemeResource CaptionTextBlockStyle}"/>
-                                </StackPanel>
+                <!-- TV shows -->
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasShows, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <Grid>
+                        <TextBlock Text="TV shows" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <HyperlinkButton Content="See all →" HorizontalAlignment="Right" Click="SeeAllShows_Click"/>
+                    </Grid>
+                    <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled">
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.Shows}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="14"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="models:LocalShow">
+                                    <cards:ContentCard Width="160"
+                                                       AspectMode="Tall"
+                                                       PlaceholderGlyph="&#xE7F4;"
+                                                       Tag="{x:Bind Id}"
+                                                       ImageUrl="{x:Bind PosterArtworkUri}"
+                                                       Title="{x:Bind Name}"
+                                                       Subtitle="{x:Bind local:LocalLibraryPage.FormatEpisodes(EpisodeCount)}"
+                                                       CardClick="ShowCard_CardClick"/>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollViewer>
+                </StackPanel>
 
-                                <ItemsControl ItemsSource="{x:Bind Tracks}" Margin="0,4,0,0">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:LocalTrackRowViewModel">
-                                            <Grid Padding="6,6,6,6" ColumnSpacing="12"
-                                                  Background="Transparent"
-                                                  PointerEntered="TrackRow_PointerEntered"
-                                                  PointerExited="TrackRow_PointerExited"
-                                                  Tapped="TrackRow_Tapped"
-                                                  Tag="{x:Bind}">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="32"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{x:Bind Index}"
-                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                           VerticalAlignment="Center"
-                                                           HorizontalAlignment="Right"/>
-                                                <StackPanel Grid.Column="1" Spacing="0">
-                                                    <TextBlock Text="{x:Bind Title}"
-                                                               TextTrimming="CharacterEllipsis"
-                                                               MaxLines="1"/>
-                                                    <TextBlock Text="{x:Bind Artist}"
-                                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                               Style="{ThemeResource CaptionTextBlockStyle}"
-                                                               TextTrimming="CharacterEllipsis"
-                                                               MaxLines="1"/>
-                                                </StackPanel>
-                                                <TextBlock Grid.Column="2"
-                                                           Text="{x:Bind DurationDisplay}"
-                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                           VerticalAlignment="Center"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </Grid>
-                    </DataTemplate>
-                </ItemsRepeater.ItemTemplate>
-            </ItemsRepeater>
-        </ScrollView>
+                <!-- Movies -->
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasMovies, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <Grid>
+                        <TextBlock Text="Movies" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <HyperlinkButton Content="See all →" HorizontalAlignment="Right" Click="SeeAllMovies_Click"/>
+                    </Grid>
+                    <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled">
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.Movies}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="14"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="models:LocalMovie">
+                                    <cards:ContentCard Width="160"
+                                                       AspectMode="Tall"
+                                                       PlaceholderGlyph="&#xE714;"
+                                                       Tag="{x:Bind TrackUri}"
+                                                       ImageUrl="{x:Bind PosterUri}"
+                                                       Title="{x:Bind Title}"
+                                                       Subtitle="{x:Bind local:LocalLibraryPage.FormatYear(Year)}"
+                                                       CardClick="MovieCard_CardClick"/>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollViewer>
+                </StackPanel>
+
+                <!-- Music videos -->
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasMusicVideos, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <Grid>
+                        <TextBlock Text="Music videos" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <HyperlinkButton Content="See all →" HorizontalAlignment="Right" Click="SeeAllMusicVideos_Click"/>
+                    </Grid>
+                    <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled">
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.MusicVideos}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="14"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="models:LocalMusicVideo">
+                                    <cards:ContentCard Width="220"
+                                                       AspectMode="Wide"
+                                                       PlaceholderGlyph="&#xE714;"
+                                                       Tag="{x:Bind TrackUri}"
+                                                       ImageUrl="{x:Bind ThumbnailUri}"
+                                                       Title="{x:Bind Title}"
+                                                       Subtitle="{x:Bind Artist}"
+                                                       CardClick="MusicVideoCard_CardClick"/>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollViewer>
+                </StackPanel>
+
+                <!-- Music (recently added) -->
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasMusic, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <Grid>
+                        <TextBlock Text="Music — recently added" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <HyperlinkButton Content="See all →" HorizontalAlignment="Right" Click="SeeAllMusic_Click"/>
+                    </Grid>
+                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.RecentlyAdded}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Spacing="4"/>
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="waveeLocal:LocalTrackRow">
+                                <Grid Padding="6,4" ColumnSpacing="12" Tag="{x:Bind TrackUri}" Tapped="MusicRow_Tapped">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border CornerRadius="4" Background="{ThemeResource SubtleFillColorTertiaryBrush}">
+                                        <Image Source="{x:Bind EffectiveCoverUri, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=80, Mode=OneTime}" Stretch="UniformToFill"/>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Spacing="0">
+                                        <TextBlock Text="{x:Bind Title}" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                                        <TextBlock Text="{x:Bind Artist}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                                   TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+
+                <!-- Other -->
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasOthers, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <Grid>
+                        <TextBlock Text="Other" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <HyperlinkButton Content="See all →" HorizontalAlignment="Right" Click="SeeAllOthers_Click"/>
+                    </Grid>
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Style="{ThemeResource CaptionTextBlockStyle}"
+                               Text="Files we couldn't classify. Right-click an item to set its type."/>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
     </Grid>
 </Page>

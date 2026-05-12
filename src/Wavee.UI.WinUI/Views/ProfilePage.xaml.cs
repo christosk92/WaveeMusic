@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.WinUI.Controls.HeroHeader;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Services;
@@ -28,10 +29,7 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
     private bool _showingContent;
     private bool _isNavigatingAway;
 
-    private TransitionHelper? _shyHeaderTransition;
-    private bool _isShyHeaderPinned;
-    private bool _isShyHeaderTransitionRunning;
-    private bool _shyHeaderRecheckPending;
+    private ShyHeaderController? _shyHeader;
     private bool _identityCardRevealed;
     private bool _pageBleedRevealed;
     private bool _isDisposed;
@@ -82,13 +80,29 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
             return;
 
         _isNavigatingAway = false;
-        EnsureShyHeaderTransition();
+        EnsureShyHeader();
         ViewModel.IsDarkTheme = ActualTheme == ElementTheme.Dark;
         ActualThemeChanged += ProfilePage_ActualThemeChanged;
         UpdateIdentityCardBackground();
-        PageScrollView.ViewChanged += PageScrollView_ViewChanged;
+        _shyHeader?.Attach();
         IdentityCardWrap.SizeChanged += IdentityCardWrap_SizeChanged;
         _viewSubscriptionsAttached = true;
+    }
+
+    private void EnsureShyHeader()
+    {
+        if (_shyHeader is not null) return;
+        _shyHeader = new ShyHeaderController(
+            PageScrollView, IdentityCardWrap, HeroOverlayPanel, ShyHeaderCard,
+            (TransitionHelper)Resources["ProfileShyHeaderTransition"],
+            // Profile has no traditional hero — the bleed wash is the visual
+            // that fades as the user scrolls past the identity card. Ignore
+            // the controller's progress arg; UpdatePageBleedOpacity has its
+            // own formula (Max(80, cardHeight)) the controller doesn't know.
+            applyHeroFade: _ => UpdatePageBleedOpacity(),
+            ShyHeaderPinOffset.BelowElement(IdentityCardWrap, 32),
+            canEvaluate: () => !_isNavigatingAway,
+            logger: _logger);
     }
 
     private void ProfilePage_ActualThemeChanged(FrameworkElement sender, object args)
@@ -114,8 +128,7 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
         if (!_viewSubscriptionsAttached)
             return;
 
-        if (PageScrollView != null)
-            PageScrollView.ViewChanged -= PageScrollView_ViewChanged;
+        _shyHeader?.Detach();
         if (IdentityCardWrap != null)
             IdentityCardWrap.SizeChanged -= IdentityCardWrap_SizeChanged;
         ActualThemeChanged -= ProfilePage_ActualThemeChanged;
@@ -158,6 +171,8 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
         Loaded -= ProfilePage_Loaded;
         Unloaded -= ProfilePage_Unloaded;
         CleanupSubscriptions();
+        _shyHeader?.Dispose();
+        _shyHeader = null;
         if (ProfileAvatar != null)
             ProfileAvatar.ProfilePicture = null;
     }
@@ -199,6 +214,7 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
 
         _trimmedForNavigationCache = true;
         _isNavigatingAway = true;
+        _shyHeader?.Stop();
         DetachDataSubscriptions();
         ViewModel.Hibernate();
 
@@ -224,6 +240,7 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
         ViewModel.ResumeFromHibernate();
         UpdateProfileAvatar(ViewModel.ProfileImageUrl);
         UpdateIdentityCardBackground();
+        _shyHeader?.Reset();
     }
 
     // ── ViewModel events ──
@@ -415,78 +432,12 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
         }
     }
 
-    // ── Shy header morph ──
-
-    private void EnsureShyHeaderTransition()
-    {
-        if (_shyHeaderTransition != null) return;
-        if (Resources.TryGetValue("ProfileShyHeaderTransition", out var resource)
-            && resource is TransitionHelper helper)
-        {
-            helper.Source = HeroOverlayPanel;
-            helper.Target = ShyHeaderCard;
-            _shyHeaderTransition = helper;
-        }
-    }
-
     private void IdentityCardWrap_SizeChanged(object sender, SizeChangedEventArgs e)
     {
+        // Card resize moves the pin threshold; the controller re-evaluates
+        // pinOffset() each call so we just need to nudge it.
         UpdatePageBleedOpacity();
-        _ = EvaluateShyHeaderAsync();
-    }
-
-    private void PageScrollView_ViewChanged(ScrollView sender, object args)
-    {
-        UpdatePageBleedOpacity();
-        _ = EvaluateShyHeaderAsync();
-    }
-
-    private async Task EvaluateShyHeaderAsync()
-    {
-        if (_shyHeaderTransition == null || HeroOverlayPanel == null || ShyHeaderCard == null || IdentityCardWrap == null)
-            return;
-
-        if (_isShyHeaderTransitionRunning)
-        {
-            _shyHeaderRecheckPending = true;
-            return;
-        }
-
-        while (true)
-        {
-            if (_isNavigatingAway || !IdentityCardWrap.IsLoaded || !ShyHeaderHost.IsLoaded)
-                return;
-
-            // Pin once the identity card has scrolled most of the way out of view
-            // (top of card past the floating card position + a 24px lead).
-            double pinOffset = Math.Max(0, IdentityCardWrap.ActualHeight + 32);
-            bool shouldPin = PageScrollView.VerticalOffset >= pinOffset;
-
-            if (shouldPin == _isShyHeaderPinned) return;
-
-            _isShyHeaderTransitionRunning = true;
-            _shyHeaderRecheckPending = false;
-
-            try
-            {
-                if (shouldPin)
-                    await _shyHeaderTransition.StartAsync();
-                else
-                    await _shyHeaderTransition.ReverseAsync();
-                _isShyHeaderPinned = shouldPin;
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogDebug(ex, "Shy header transition skipped.");
-                return;
-            }
-            finally
-            {
-                _isShyHeaderTransitionRunning = false;
-            }
-
-            if (!_shyHeaderRecheckPending) return;
-        }
+        _ = _shyHeader?.EvaluateAsync();
     }
 
     private void OnCacheDataRefreshed(ProfileSnapshot snapshot)

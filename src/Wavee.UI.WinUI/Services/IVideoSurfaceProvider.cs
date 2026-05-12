@@ -1,4 +1,5 @@
 using System;
+using Wavee.Audio;
 using Microsoft.UI.Xaml;
 using Windows.Media.Playback;
 

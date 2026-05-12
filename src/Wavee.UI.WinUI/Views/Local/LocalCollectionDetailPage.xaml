@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Wavee.UI.WinUI.Views.Local.LocalCollectionDetailPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:waveeLocal="using:Wavee.Local">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Padding="32,24">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Collection" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Style="{ThemeResource CaptionTextBlockStyle}"/>
+                <TextBlock Text="{x:Bind ViewModel.Collection.Name, Mode=OneWay}"
+                           Style="{ThemeResource TitleLargeTextBlockStyle}" FontWeight="Bold"/>
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Style="{ThemeResource CaptionTextBlockStyle}">
+                    <Run Text="{x:Bind ViewModel.Collection.ItemCount, Mode=OneWay}"/>
+                    <Run Text=" items"/>
+                </TextBlock>
+            </StackPanel>
+
+            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Members}">
+                <ItemsRepeater.Layout>
+                    <StackLayout Spacing="2"/>
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="waveeLocal:LocalTrackRow">
+                        <Grid Padding="6,6" ColumnSpacing="14" Tag="{x:Bind}" Tapped="Member_Tapped" RightTapped="Member_RightTapped">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="48"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border CornerRadius="4" Background="{ThemeResource SubtleFillColorTertiaryBrush}">
+                                <Image Source="{x:Bind EffectiveCoverUri, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=96, Mode=OneTime}" Stretch="UniformToFill"/>
+                            </Border>
+                            <StackPanel Grid.Column="1" Spacing="0" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind Title}" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                                <TextBlock Text="{x:Bind Artist}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                           TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Text="{x:Bind DurationMs}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

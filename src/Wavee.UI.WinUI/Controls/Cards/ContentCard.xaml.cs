@@ -76,6 +76,19 @@ public sealed partial class ContentCard : UserControl
         DependencyProperty.Register(nameof(ImageSize), typeof(double), typeof(ContentCard),
             new PropertyMetadata(0.0)); // 0 = auto (fill width for square, 120 for circle)
 
+    /// <summary>
+    /// Controls the image-host aspect ratio. <see cref="CardAspectMode.Square"/> is the
+    /// historical default and keeps every existing ContentCard call site unchanged.
+    /// <see cref="CardAspectMode.Tall"/> is 2:3 portrait (TV/movie posters);
+    /// <see cref="CardAspectMode.Wide"/> and <see cref="CardAspectMode.Backdrop"/> are
+    /// 16:9 landscape (music videos / continue-watching hero rails).
+    /// Mutually exclusive with <see cref="IsCircularImage"/> — setting both falls back
+    /// to circular at runtime.
+    /// </summary>
+    public static readonly DependencyProperty AspectModeProperty =
+        DependencyProperty.Register(nameof(AspectMode), typeof(CardAspectMode), typeof(ContentCard),
+            new PropertyMetadata(CardAspectMode.Square, OnAspectModeChanged));
+
     public string? ImageUrl
     {
         get => (string?)GetValue(ImageUrlProperty);
@@ -135,6 +148,12 @@ public sealed partial class ContentCard : UserControl
         set => SetValue(ImageSizeProperty, value);
     }
 
+    public CardAspectMode AspectMode
+    {
+        get => (CardAspectMode)GetValue(AspectModeProperty);
+        set => SetValue(AspectModeProperty, value);
+    }
+
     public static readonly DependencyProperty NavigationUriProperty =
         DependencyProperty.Register(nameof(NavigationUri), typeof(string), typeof(ContentCard),
             new PropertyMetadata(null, OnNavigationUriChanged));
@@ -166,6 +185,10 @@ public sealed partial class ContentCard : UserControl
         DependencyProperty.Register(nameof(IsExternal), typeof(bool), typeof(ContentCard),
             new PropertyMetadata(false));
 
+    public static readonly DependencyProperty ShowPlaybackOverlayProperty =
+        DependencyProperty.Register(nameof(ShowPlaybackOverlay), typeof(bool), typeof(ContentCard),
+            new PropertyMetadata(true, OnShowPlaybackOverlayChanged));
+
     public static readonly DependencyProperty UseConnectedAnimationProperty =
         DependencyProperty.Register(nameof(UseConnectedAnimation), typeof(bool), typeof(ContentCard),
             new PropertyMetadata(true));
@@ -192,6 +215,16 @@ public sealed partial class ContentCard : UserControl
     {
         get => (bool)GetValue(IsExternalProperty);
         set => SetValue(IsExternalProperty, value);
+    }
+
+    /// <summary>
+    /// Controls the play / now-playing hover chrome for non-playable cards that
+    /// still use ContentCard's layout and click routing, such as cast members.
+    /// </summary>
+    public bool ShowPlaybackOverlay
+    {
+        get => (bool)GetValue(ShowPlaybackOverlayProperty);
+        set => SetValue(ShowPlaybackOverlayProperty, value);
     }
 
     public static readonly DependencyProperty IsPassiveProperty =
@@ -519,6 +552,22 @@ public sealed partial class ContentCard : UserControl
         card.UpdateImageMode();
     }
 
+    private static void OnAspectModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var card = (ContentCard)d;
+        // Recompute the image-host height under the new aspect ratio. The
+        // SizeChanged path won't fire if the container's measured width is
+        // unchanged, so push from here directly.
+        if (card.SquareImageContainer != null)
+        {
+            var width = card.ImageSize > 0
+                ? card.ImageSize
+                : card.SquareImageContainer.ActualWidth;
+            if (width > 0)
+                card.SetSquareImageSide(width);
+        }
+    }
+
     private static void OnCenterTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var card = (ContentCard)d;
@@ -828,22 +877,41 @@ public sealed partial class ContentCard : UserControl
 
     private void SquareImageContainer_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        var side = ImageSize > 0 ? ImageSize : e.NewSize.Width;
-        if (side <= 0) return;
+        var width = ImageSize > 0 ? ImageSize : e.NewSize.Width;
+        if (width <= 0) return;
 
-        // Keep the image area square: height = width
-        SetSquareImageSide(side);
+        SetSquareImageSide(width);
     }
 
-    private void SetSquareImageSide(double side)
+    /// <summary>
+    /// Height multiplier for the current <see cref="AspectMode"/>:
+    /// height = width × ratio. Square = 1, Tall (2:3 portrait) = 1.5,
+    /// Wide / Backdrop (16:9 landscape) = 0.5625.
+    /// </summary>
+    private double AspectHeightRatio() => AspectMode switch
     {
-        if (SquareImageContainer == null || side <= 0)
+        CardAspectMode.Tall                                  => 1.5,
+        CardAspectMode.Wide or CardAspectMode.Backdrop       => 9.0 / 16.0,
+        _                                                    => 1.0,
+    };
+
+    /// <summary>
+    /// Sets the image-host box height from a measured width, honoring the current
+    /// <see cref="AspectMode"/>. Name kept for back-compat — historically only
+    /// "Square" existed so the parameter was a single side. With aspect modes the
+    /// height is derived from the width per ratio.
+    /// </summary>
+    private void SetSquareImageSide(double width)
+    {
+        if (SquareImageContainer == null || width <= 0)
             return;
 
-        if (double.IsNaN(SquareImageContainer.Height) || Math.Abs(SquareImageContainer.Height - side) > 0.5)
-            SquareImageContainer.Height = side;
+        var height = width * AspectHeightRatio();
 
-        UpdateSquareImageClip(side);
+        if (double.IsNaN(SquareImageContainer.Height) || Math.Abs(SquareImageContainer.Height - height) > 0.5)
+            SquareImageContainer.Height = height;
+
+        UpdateSquareImageClip(width, height);
     }
 
     private void SetCircleImageSide(double side)
@@ -861,7 +929,7 @@ public sealed partial class ContentCard : UserControl
         CircleImage.Height = side;
     }
 
-    private void UpdateSquareImageClip(double side)
+    private void UpdateSquareImageClip(double width, double height)
     {
         // Grid.CornerRadius only clips background paint in WinUI 3. SquareImageContainer
         // is a Grid (not a Border), so its CornerRadius does not clip child UIElements.
@@ -872,8 +940,8 @@ public sealed partial class ContentCard : UserControl
         var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(SquareImageContainer);
         var compositor = visual.Compositor;
         var clip = compositor.CreateRectangleClip();
-        clip.Right = (float)side;
-        clip.Bottom = (float)side;
+        clip.Right = (float)width;
+        clip.Bottom = (float)height;
         clip.TopLeftRadius = new System.Numerics.Vector2(4f);
         clip.TopRightRadius = new System.Numerics.Vector2(4f);
         clip.BottomLeftRadius = new System.Numerics.Vector2(4f);
@@ -905,9 +973,10 @@ public sealed partial class ContentCard : UserControl
         }
         else
         {
-            var side = ImageSize > 0 ? ImageSize : contentWidth;
-            if (double.IsNaN(SquareImageContainer.Height) || Math.Abs(SquareImageContainer.Height - side) > 0.5)
-                SquareImageContainer.Height = side;
+            var width = ImageSize > 0 ? ImageSize : contentWidth;
+            var height = width * AspectHeightRatio();
+            if (double.IsNaN(SquareImageContainer.Height) || Math.Abs(SquareImageContainer.Height - height) > 0.5)
+                SquareImageContainer.Height = height;
         }
     }
 
@@ -1093,6 +1162,11 @@ public sealed partial class ContentCard : UserControl
 
     // ── Playing state ──
 
+    private static void OnShowPlaybackOverlayChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        ((ContentCard)d).UpdatePlayingState();
+    }
+
     private static void OnIsPlayingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var card = (ContentCard)d;
@@ -1120,10 +1194,11 @@ public sealed partial class ContentCard : UserControl
         var isPaused = IsContextPaused;
         var isActiveContext = isPlaying || isPaused;
         var isPending = _isPlaybackPending;
+        var showPlaybackChrome = ShowPlaybackOverlay && !IsExternal;
 
-        var showSquarePlaying = (isPlaying || isPaused) && !isPending && !IsCircularImage;
-        var showCirclePlaying = (isPlaying || isPaused) && !isPending && IsCircularImage;
-        var showPlayButton = _isPointerOver || isPaused || isPending;
+        var showSquarePlaying = showPlaybackChrome && (isPlaying || isPaused) && !isPending && !IsCircularImage;
+        var showCirclePlaying = showPlaybackChrome && (isPlaying || isPaused) && !isPending && IsCircularImage;
+        var showPlayButton = showPlaybackChrome && (_isPointerOver || isPaused || isPending);
 
         if (showSquarePlaying && SquarePlayingIndicator == null)
             this.FindName("SquarePlayingIndicator");
@@ -1154,6 +1229,11 @@ public sealed partial class ContentCard : UserControl
             // visibility is purely hover-driven, handled in Card_PointerEntered/Exited.
             // Keep the play button collapsed in case a card flipped from non-external
             // to external while realized.
+            if (SquarePlayButton != null) SquarePlayButton.Visibility = Visibility.Collapsed;
+            if (CirclePlayButton != null) CirclePlayButton.Visibility = Visibility.Collapsed;
+        }
+        else if (!ShowPlaybackOverlay)
+        {
             if (SquarePlayButton != null) SquarePlayButton.Visibility = Visibility.Collapsed;
             if (CirclePlayButton != null) CirclePlayButton.Visibility = Visibility.Collapsed;
         }
@@ -1470,6 +1550,9 @@ public sealed partial class ContentCard : UserControl
             return;
         }
 
+        if (!ShowPlaybackOverlay)
+            return;
+
         if (IsCircularImage)
             EnsureCircleRealized();
         else if (SquarePlayButton == null)
@@ -1486,6 +1569,8 @@ public sealed partial class ContentCard : UserControl
     private Button? GetActiveOverlayButton()
         => IsExternal
             ? SquareExternalButton
+            : !ShowPlaybackOverlay
+                ? null
             : (IsCircularImage ? CirclePlayButton : SquarePlayButton);
 
     private void SetPlaybackPending(bool pending)

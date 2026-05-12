@@ -137,13 +137,13 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
 
-    private readonly Wavee.Core.Library.Local.ILocalLibraryService? _localLibrary;
+    private readonly Wavee.Local.ILocalLibraryService? _localLibrary;
 
     public SearchViewModel(
         IPathfinderClient pathfinderClient,
         IPlaybackStateService playbackStateService,
         ILogger<SearchViewModel>? logger = null,
-        Wavee.Core.Library.Local.ILocalLibraryService? localLibrary = null,
+        Wavee.Local.ILocalLibraryService? localLibrary = null,
         ISearchService? searchService = null)
     {
         _pathfinderClient = pathfinderClient;
@@ -278,7 +278,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
                 SearchScope.All,
                 limit: 50));
             var localTask = _localLibrary is null
-                ? Task.FromResult<IReadOnlyList<Wavee.Core.Library.Local.LocalSearchResult>>(Array.Empty<Wavee.Core.Library.Local.LocalSearchResult>())
+                ? Task.FromResult<IReadOnlyList<Wavee.Local.LocalSearchResult>>(Array.Empty<Wavee.Local.LocalSearchResult>())
                 : _localLibrary.SearchAsync(query, limit: 12);
             await Task.WhenAll(spotifyTask, localTask);
             var result = spotifyTask.Result;
@@ -366,7 +366,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
 
     private static IReadOnlyList<SearchResultItem> MergeLocalIntoSpotifyResults(
         IReadOnlyList<SearchResultItem> spotify,
-        IReadOnlyList<Wavee.Core.Library.Local.LocalSearchResult> local)
+        IReadOnlyList<Wavee.Local.LocalSearchResult> local)
     {
         if (local.Count == 0) return spotify;
 
@@ -378,10 +378,10 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         {
             var type = l.Type switch
             {
-                Wavee.Core.Library.Local.LocalSearchEntityType.Track    => SearchResultType.Track,
-                Wavee.Core.Library.Local.LocalSearchEntityType.Album    => SearchResultType.Album,
-                Wavee.Core.Library.Local.LocalSearchEntityType.Artist   => SearchResultType.Artist,
-                Wavee.Core.Library.Local.LocalSearchEntityType.Playlist => SearchResultType.Playlist,
+                Wavee.Local.LocalSearchEntityType.Track    => SearchResultType.Track,
+                Wavee.Local.LocalSearchEntityType.Album    => SearchResultType.Album,
+                Wavee.Local.LocalSearchEntityType.Artist   => SearchResultType.Artist,
+                Wavee.Local.LocalSearchEntityType.Playlist => SearchResultType.Playlist,
                 _ => SearchResultType.Track,
             };
             merged.Add(new SearchResultItem

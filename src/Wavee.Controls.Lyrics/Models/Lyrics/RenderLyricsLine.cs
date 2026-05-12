@@ -82,6 +82,7 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
         public TintEffect? UnplayedFillTint { get; private set; }
         public TintEffect? UnplayedStrokeTint { get; private set; }
         public CompositeEffect? UnplayedComposite { get; private set; }
+        public ICanvasImage? UnplayedTextLayer => UnplayedComposite != null ? (ICanvasImage)UnplayedComposite : UnplayedFillTint;
 
         private CropEffect? _primaryCropEffect;
         private GaussianBlurEffect? _primaryBlurEffect;
@@ -305,22 +306,34 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
 
         public void EnsureCaches(ICanvasResourceCreator resourceCreator, double strokeWidth)
         {
-            if (CachedStroke != null && CachedFill != null) return;
+            bool needsStroke = strokeWidth > 0;
+            bool hasRegionCaches = PrimaryTextRegions == null ||
+                (RenderLyricsRegions != null && RenderLyricsRegions.Length == PrimaryTextRegions.Length);
 
-            // 缓存纯白色的填充（作为 Fill Mask）
-            CachedFill = new CanvasCommandList(resourceCreator);
-            using (var ds = CachedFill.CreateDrawingSession())
+            if (CachedFill != null
+                && UnplayedFillTint != null
+                && (!needsStroke || (CachedStroke != null && UnplayedStrokeTint != null && UnplayedComposite != null))
+                && hasRegionCaches)
             {
-                if (TertiaryTextLayout != null) ds.DrawTextLayout(TertiaryTextLayout, TertiaryPosition, Colors.White);
-                if (PrimaryTextLayout != null) ds.DrawTextLayout(PrimaryTextLayout, PrimaryPosition, Colors.White);
-                if (SecondaryTextLayout != null) ds.DrawTextLayout(SecondaryTextLayout, SecondaryPosition, Colors.White);
+                return;
             }
 
-            CachedStroke = new CanvasCommandList(resourceCreator);
+            // 缓存纯白色的填充（作为 Fill Mask）
+            if (CachedFill == null)
+            {
+                CachedFill = new CanvasCommandList(resourceCreator);
+                using (var ds = CachedFill.CreateDrawingSession())
+                {
+                    if (TertiaryTextLayout != null) ds.DrawTextLayout(TertiaryTextLayout, TertiaryPosition, Colors.White);
+                    if (PrimaryTextLayout != null) ds.DrawTextLayout(PrimaryTextLayout, PrimaryPosition, Colors.White);
+                    if (SecondaryTextLayout != null) ds.DrawTextLayout(SecondaryTextLayout, SecondaryPosition, Colors.White);
+                }
+            }
 
             // 缓存纯白色的描边（作为 Stroke Mask）
-            if (strokeWidth > 0)
+            if (needsStroke && CachedStroke == null)
             {
+                CachedStroke = new CanvasCommandList(resourceCreator);
                 using var roundStrokeStyle = new CanvasStrokeStyle
                 {
                     LineJoin = CanvasLineJoin.Round,
@@ -332,10 +345,25 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
                 if (PrimaryCanvasGeometry != null) ds.DrawGeometry(PrimaryCanvasGeometry, PrimaryPosition, Colors.White, (float)strokeWidth, roundStrokeStyle);
                 if (SecondaryCanvasGeometry != null) ds.DrawGeometry(SecondaryCanvasGeometry, SecondaryPosition, Colors.White, (float)strokeWidth, roundStrokeStyle);
             }
+            else if (!needsStroke && CachedStroke != null)
+            {
+                CachedStroke.Dispose();
+                CachedStroke = null;
+            }
 
-            UnplayedFillTint = new TintEffect { Source = CachedFill, Color = Colors.White };
-            UnplayedStrokeTint = new TintEffect { Source = CachedStroke, Color = Colors.White };
-            UnplayedComposite = new CompositeEffect { Sources = { UnplayedStrokeTint, UnplayedFillTint }, Mode = CanvasComposite.SourceOver };
+            UnplayedFillTint ??= new TintEffect { Source = CachedFill, Color = Colors.White };
+            if (needsStroke && CachedStroke != null)
+            {
+                UnplayedStrokeTint ??= new TintEffect { Source = CachedStroke, Color = Colors.White };
+                UnplayedComposite ??= new CompositeEffect { Sources = { UnplayedStrokeTint, UnplayedFillTint }, Mode = CanvasComposite.SourceOver };
+            }
+            else
+            {
+                UnplayedComposite?.Dispose();
+                UnplayedStrokeTint?.Dispose();
+                UnplayedComposite = null;
+                UnplayedStrokeTint = null;
+            }
 
             if (PrimaryTextRegions != null && (RenderLyricsRegions == null || RenderLyricsRegions.Length != PrimaryTextRegions.Length))
             {

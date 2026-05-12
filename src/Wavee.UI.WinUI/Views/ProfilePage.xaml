@@ -399,7 +399,7 @@
         </ScrollView>
 
         <!-- ═══════════════════════════════════════════════════════════════
-             FLOATING SHY HEADER — collapsed initially. EvaluateShyHeaderAsync
+             FLOATING SHY HEADER — collapsed initially. ShyHeaderController
              pins it via TransitionHelper when the identity card scrolls past.
              Matched ids morph the avatar / name / meta from inside the
              identity card into this compact pinned card. ──────────────── -->

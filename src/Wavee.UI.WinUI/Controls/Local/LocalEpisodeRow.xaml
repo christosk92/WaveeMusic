@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Local.LocalEpisodeRow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Row chrome — mirrors Controls/ShowEpisode/ShowEpisodeRow.xaml so
+         local TV episodes share the same visual language as Spotify
+         podcast episodes. 16:9 thumb + title + 2-line overview + meta. -->
+    <Border x:Name="RowContainer"
+            CornerRadius="6"
+            BorderThickness="0,0,0,1"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            Background="Transparent">
+        <Grid x:Name="RowRoot"
+              Background="Transparent"
+              Padding="12,8,12,8"
+              ColumnSpacing="14"
+              PointerEntered="RowRoot_PointerEntered"
+              PointerExited="RowRoot_PointerExited"
+              Tapped="RowRoot_Tapped"
+              RightTapped="RowRoot_RightTapped">
+
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Hover wash. -->
+            <Border x:Name="HoverFill"
+                    Grid.ColumnSpan="3"
+                    Grid.RowSpan="3"
+                    CornerRadius="6"
+                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                    Opacity="0"
+                    IsHitTestVisible="False"/>
+
+            <!-- 16:9 thumbnail with episode-glyph placeholder. -->
+            <Grid x:Name="ThumbContainer"
+                  Grid.Column="0"
+                  Grid.RowSpan="3"
+                  Width="160" Height="90"
+                  CornerRadius="6"
+                  Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                  VerticalAlignment="Top">
+                <FontIcon x:Name="ThumbPlaceholderIcon"
+                          Glyph="&#xE786;"
+                          FontSize="28"
+                          Opacity="0.4"
+                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"/>
+                <Image x:Name="ThumbImage"
+                       Stretch="UniformToFill"
+                       Opacity="0"
+                       ImageOpened="ThumbImage_ImageOpened"/>
+
+                <!-- Resume-position underline on the thumb. -->
+                <Grid x:Name="ResumeBar"
+                      Visibility="Collapsed"
+                      Height="3"
+                      VerticalAlignment="Bottom">
+                    <Border Background="{ThemeResource CardStrokeColorDefaultBrush}"
+                            CornerRadius="0,0,6,6"/>
+                    <Border x:Name="ResumeFill"
+                            HorizontalAlignment="Left"
+                            Width="0"
+                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                            CornerRadius="0,0,0,6"/>
+                </Grid>
+
+                <!-- Hover-only play overlay. -->
+                <Button x:Name="PlayOverlay"
+                        Opacity="0"
+                        Width="36" Height="36"
+                        CornerRadius="18"
+                        Padding="0"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource AccentButtonStyle}"
+                        IsHitTestVisible="False">
+                    <FontIcon Glyph="&#xE768;" FontSize="14"
+                              Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                </Button>
+
+                <!-- v19 "Not in library" badge — shown when the episode is in
+                     the TMDB roster but not on disk. Sits top-left of the
+                     thumb so it doesn't fight the resume bar at the bottom. -->
+                <Border x:Name="NotInLibraryBadge"
+                        Visibility="Collapsed"
+                        Margin="6,6,0,0"
+                        Padding="6,2,6,3"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        CornerRadius="4"
+                        Background="{ThemeResource SystemFillColorCautionBackgroundBrush}">
+                    <TextBlock Text="Not in library"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+                </Border>
+            </Grid>
+
+            <!-- Title row with optional Episode-number chip. -->
+            <StackPanel Grid.Column="1" Grid.Row="0" Spacing="2">
+                <Grid ColumnSpacing="6" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border x:Name="EpisodeNumberChip"
+                            Grid.Column="0"
+                            Visibility="Collapsed"
+                            Padding="7,1,7,2"
+                            CornerRadius="6"
+                            Background="{ThemeResource ControlFillColorTertiaryBrush}"
+                            VerticalAlignment="Center">
+                        <TextBlock x:Name="EpisodeNumberText"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </Border>
+
+                    <TextBlock x:Name="TitleText"
+                               Grid.Column="1"
+                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                               TextTrimming="CharacterEllipsis"
+                               MaxLines="1"
+                               VerticalAlignment="Center"/>
+
+                    <FontIcon x:Name="SubtitleGlyph"
+                              Grid.Column="2"
+                              Visibility="Collapsed"
+                              Glyph="&#xED1E;"
+                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="12"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                              VerticalAlignment="Center"/>
+                </Grid>
+
+                <TextBlock x:Name="OverviewText"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextWrapping="Wrap"
+                           TextTrimming="CharacterEllipsis"
+                           MaxLines="2"/>
+            </StackPanel>
+
+            <!-- Right-side meta cluster: duration + watched glyph. -->
+            <StackPanel Grid.Column="2" Grid.Row="0"
+                        Orientation="Horizontal"
+                        Spacing="10"
+                        VerticalAlignment="Center">
+                <TextBlock x:Name="DurationText"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           VerticalAlignment="Center"/>
+                <FontIcon x:Name="WatchedGlyph"
+                          Visibility="Collapsed"
+                          Glyph="&#xE73E;"
+                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="14"
+                          Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                          VerticalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

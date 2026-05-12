@@ -15,6 +15,7 @@ using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.AvatarStack;
@@ -27,14 +28,18 @@ using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Diagnostics;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipant, IDisposable, IContentPageHost
 {
+    private const int PlaylistCoverDecodeSize = 280;
+
     private readonly ILogger? _logger;
     private readonly ISettingsService _settings;
+    private readonly ImageCacheService? _imageCache;
     private bool _isNarrowMode;
     // Tracks the last-rendered playlist so the cached page can reset per-playlist
     // view state (filter text) when the bound playlist actually changes.
@@ -44,21 +49,25 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     private bool _trimmedForNavigationCache;
     private string? _lastRestoredPlaylistId;
 
-    // Composition resources for the left-anchored hero backdrop. Surface is
-    // (re)loaded whenever HeaderImageUrl changes. Null when no header image.
-    // The hero tree is: ContainerVisual → { _heroSprite (image, masked), _heroScrimSprite
-    // (theme-colored scrim with the same mask shape so text on top stays legible) }.
+    // Composition resources for the full-width hero banner image. Surface is
+    // (re)loaded whenever HeaderImageUrl changes; null when no header image.
+    // The hero tree is: ContainerVisual → { SpriteVisual(image), SpriteVisual(scrim) }.
+    // Scrim lives on the composition layer (not XAML) so it travels with the
+    // image surface and fades cleanly into the page surface color via a
+    // theme-aware linear gradient — same pattern HeroHeader uses for the
+    // album / show / artist heroes.
     private Compositor? _heroCompositor;
     private ContainerVisual? _heroContainer;
     private CompositionSurfaceBrush? _heroSurfaceBrush;
     private SpriteVisual? _heroSprite;
     private SpriteVisual? _heroScrimSprite;
-    private CompositionColorBrush? _heroScrimColorBrush;
+    private CompositionLinearGradientBrush? _heroScrimBrush;
+    private CompositionColorGradientStop? _heroScrimTopStop;
+    private CompositionColorGradientStop? _heroScrimMidStop;
+    private CompositionColorGradientStop? _heroScrimBottomStop;
     private LoadedImageSurface? _heroImageSurface;
     private string? _appliedHeroUrl;
-
-    // Scrim strength: tune alpha to taste. 0xB0 (~69%) matched the prior XAML scrim.
-    private const byte HeroScrimMaxAlpha = 0xB0;
+    private string? _retriedCoverImageUrl;
 
     public PlaylistViewModel ViewModel { get; }
 
@@ -79,8 +88,11 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         ViewModel = Ioc.Default.GetRequiredService<PlaylistViewModel>();
         _logger = Ioc.Default.GetService<ILogger<PlaylistPage>>();
         _settings = Ioc.Default.GetRequiredService<ISettingsService>();
+        _imageCache = Ioc.Default.GetService<ImageCacheService>();
         PageController = new ContentPageController(this, _logger);
         InitializeComponent();
+        CoverImage.ImageFailed += CoverImage_ImageFailed;
+        CoverImage.ImageOpened += CoverImage_ImageOpened;
 
         Func<object, string> addedFormatter = item =>
         {
@@ -108,9 +120,13 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
                 : (item is LazyTrackItem lz ? lz.Data as PlaylistTrackDto : null);
             if (dto is null || string.IsNullOrEmpty(dto.AddedBy)) return Controls.TrackDataGrid.AddedByCellInfo.Empty;
 
-            var label = dto.AddedByDisplayName ?? "@" + dto.AddedBy;
-            System.Diagnostics.Debug.WriteLine($"[addedby-fmt] addedBy={dto.AddedBy} display={dto.AddedByDisplayName ?? "<null>"} avatar={(string.IsNullOrEmpty(dto.AddedByAvatarUrl) ? "<null>" : "set")}");
-            return new Controls.TrackDataGrid.AddedByCellInfo(label, dto.AddedByAvatarUrl);
+            var hasProfile = ViewModel.TryGetAddedByProfile(dto.AddedBy, out var profile);
+            var label = hasProfile && !string.IsNullOrWhiteSpace(profile?.DisplayName)
+                ? profile.DisplayName
+                : "@" + dto.AddedBy;
+            var avatarUrl = hasProfile ? profile?.AvatarUrl : null;
+            System.Diagnostics.Debug.WriteLine($"[addedby-fmt] addedBy={dto.AddedBy} display={(profile?.DisplayName ?? "<null>")} avatar={(string.IsNullOrEmpty(avatarUrl) ? "<null>" : "set")}");
+            return new Controls.TrackDataGrid.AddedByCellInfo(label, avatarUrl);
         };
 
         WidePlaylistPanel.RightTapped += (_, e) =>
@@ -179,6 +195,18 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             ApplyDateAddedColumnVisibility();
         else if (ev.PropertyName == nameof(PlaylistViewModel.HeaderImageUrl))
             ApplyHeaderBackground();
+        else if (ev.PropertyName == nameof(PlaylistViewModel.LayoutMode))
+            OnLayoutModeChanged();
+        else if (ev.PropertyName == nameof(PlaylistViewModel.PlaylistImageUrl))
+        {
+            _retriedCoverImageUrl = null;
+            _logger?.LogDebug(
+                "Playlist cover URL changed: playlist={PlaylistId}, image={ImageUrl}, header={HeaderImageUrl}, layout={LayoutMode}",
+                ViewModel.PlaylistId,
+                ViewModel.PlaylistImageUrl ?? "<null>",
+                ViewModel.HeaderImageUrl ?? "<null>",
+                ViewModel.LayoutMode);
+        }
         else if (ev.PropertyName == nameof(PlaylistViewModel.PlaylistDescription))
             RebuildDescriptionInlines();
         else if (ev.PropertyName == nameof(PlaylistViewModel.IsLoading))
@@ -222,6 +250,78 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         });
     }
 
+    private void CoverImage_ImageOpened(object sender, RoutedEventArgs e)
+    {
+        var url = ResolveCurrentCoverImageUrl();
+        if (string.Equals(_retriedCoverImageUrl, url, StringComparison.Ordinal))
+            _retriedCoverImageUrl = null;
+
+        if (ViewModel.LayoutMode == PlaylistLayoutMode.Cover)
+            CoverHeroBlock.Opacity = 1;
+
+        _logger?.LogDebug(
+            "Playlist cover image loaded: playlist={PlaylistId}, url={Url}, header={HeaderImageUrl}, layout={LayoutMode}",
+            ViewModel.PlaylistId,
+            url ?? "<null>",
+            ViewModel.HeaderImageUrl ?? "<null>",
+            ViewModel.LayoutMode);
+    }
+
+    private void CoverImage_ImageFailed(object sender, ExceptionRoutedEventArgs e)
+    {
+        var url = ResolveCurrentCoverImageUrl();
+        if (!string.IsNullOrWhiteSpace(url))
+            _imageCache?.Invalidate(url, PlaylistCoverDecodeSize);
+
+        _logger?.LogWarning(
+            "Playlist cover image failed: playlist={PlaylistId}, rawUrl={RawUrl}, resolvedUrl={Url}, header={HeaderImageUrl}, layout={LayoutMode}, error={Error}",
+            ViewModel.PlaylistId,
+            ViewModel.PlaylistImageUrl ?? "<null>",
+            url ?? "<null>",
+            ViewModel.HeaderImageUrl ?? "<null>",
+            ViewModel.LayoutMode,
+            string.IsNullOrWhiteSpace(e.ErrorMessage) ? "<no message>" : e.ErrorMessage);
+
+        if (string.IsNullOrWhiteSpace(url) ||
+            !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            string.Equals(_retriedCoverImageUrl, url, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _retriedCoverImageUrl = url;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_isDisposed ||
+                !IsLoaded ||
+                !string.Equals(ResolveCurrentCoverImageUrl(), url, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var retryImage = new BitmapImage
+            {
+                DecodePixelWidth = PlaylistCoverDecodeSize
+            };
+            retryImage.UriSource = uri;
+
+            CoverImage.Visibility = Visibility.Visible;
+            CoverImage.Opacity = 0;
+            CoverImage.Source = retryImage;
+
+            _logger?.LogDebug(
+                "Playlist cover image retry started: playlist={PlaylistId}, url={Url}",
+                ViewModel.PlaylistId,
+                url);
+        });
+    }
+
+    private string? ResolveCurrentCoverImageUrl()
+    {
+        var raw = ViewModel.PlaylistImageUrl;
+        return SpotifyImageHelper.ToHttpsUrl(raw) ?? raw;
+    }
+
     public void Dispose()
     {
         if (_isDisposed) return;
@@ -231,6 +331,8 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         ViewModel.Collaborators.CollectionChanged -= Collaborators_CollectionChanged;
         ViewModel.AddedByResolved -= ViewModel_AddedByResolved;
+        CoverImage.ImageFailed -= CoverImage_ImageFailed;
+        CoverImage.ImageOpened -= CoverImage_ImageOpened;
         HeaderBackgroundHost.Loaded -= HeaderBackgroundHost_Loaded;
         HeaderBackgroundHost.Unloaded -= HeaderBackgroundHost_Unloaded;
         ActualThemeChanged -= PlaylistPage_ActualThemeChanged;
@@ -240,6 +342,10 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         _heroSurfaceBrush = null;
         _heroSprite = null;
         _heroScrimSprite = null;
+        _heroScrimBrush = null;
+        _heroScrimTopStop = null;
+        _heroScrimMidStop = null;
+        _heroScrimBottomStop = null;
         _heroContainer = null;
         (ViewModel as IDisposable)?.Dispose();
     }
@@ -247,20 +353,42 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
     private void PlaylistPage_ActualThemeChanged(FrameworkElement sender, object args)
     {
-        if (_heroScrimColorBrush != null)
-            _heroScrimColorBrush.Color = GetHeroScrimColor();
-        // Re-derive the palette brushes for the new theme. The album-style
-        // ApplyTheme call rebuilds backdrop / hero / pill brushes against the
-        // appropriate contrast tier.
+        // Re-seed scrim colours for the new theme so the bottom of the hero
+        // image fades cleanly into the page surface (white in light, dark in
+        // dark) instead of leaving a hard seam.
+        ApplyHeroScrimForTheme();
+        // Re-derive the palette brushes (and BannerPrimary/AccentColor) for
+        // the new theme so AnimatedHeroBackground can re-pick its
+        // tier-appropriate colors.
         ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
     }
 
-    private Windows.UI.Color GetHeroScrimColor()
+    /// <summary>
+    /// Resolve the page's surface colour from theme resources and seed the
+    /// scrim's three gradient stops:
+    ///   • top    → fully transparent (image fully visible up here)
+    ///   • mid    → half-alpha tint (gentle ramp begins)
+    ///   • bottom → opaque surface colour (image dissolves into page bg)
+    /// Covers light + dark theme + runtime theme switch by repulling the
+    /// resource each time.
+    /// </summary>
+    private void ApplyHeroScrimForTheme()
     {
-        // Scrim to the theme's base surface color so the hero image gets tinted back
-        // toward the normal page background — restoring the contrast track-row text
-        // was designed against. Pulls directly from the theme dictionary so a runtime
-        // theme switch can repaint without restart.
+        if (_heroScrimTopStop is null || _heroScrimMidStop is null || _heroScrimBottomStop is null)
+            return;
+
+        var surface = ResolveHeroScrimSurfaceColor();
+        _heroScrimTopStop.Color = Windows.UI.Color.FromArgb(0, surface.R, surface.G, surface.B);
+        _heroScrimMidStop.Color = Windows.UI.Color.FromArgb(0x40, surface.R, surface.G, surface.B);
+        _heroScrimBottomStop.Color = Windows.UI.Color.FromArgb(0xFF, surface.R, surface.G, surface.B);
+    }
+
+    private Windows.UI.Color ResolveHeroScrimSurfaceColor()
+    {
+        // Pull SolidBackgroundFillColorBase from the appropriate theme
+        // dictionary so a runtime theme switch repaints the scrim without
+        // restart. Falls back to the standard lookup if the theme dict is
+        // missing for any reason.
         var themeKey = ActualTheme == ElementTheme.Light ? "Light" : "Default";
         if (Application.Current.Resources.ThemeDictionaries.TryGetValue(themeKey, out var dictObj)
             && dictObj is ResourceDictionary themeDict
@@ -269,7 +397,6 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         {
             return themed;
         }
-        // Resource missing — let WinUI resolve via standard lookup.
         return (Windows.UI.Color)Application.Current.Resources["SolidBackgroundFillColorBase"];
     }
 
@@ -286,7 +413,22 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         if (!ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PlaylistArt))
             return false;
 
-        // Skip the standard crossfade — connected animation paints content directly.
+        // Banner-mode playlists hide PlaylistArtContainer (square cover slot)
+        // — the destination element is collapsed, so the connected animation
+        // has nowhere to land. Cancel + fall through to standard crossfade.
+        // Banner→banner card-to-banner stretchy animation is a future
+        // enhancement; this path keeps the page render clean today.
+        if (ViewModel.LayoutMode != PlaylistLayoutMode.Cover)
+        {
+            ConnectedAnimationHelper.CancelPending();
+            _logger?.LogDebug(
+                "[xfade][playlist:{Id}] connected.playlistArt action=cancelled (banner mode — no cover destination)",
+                XfadeLog.Tag(ViewModel.PlaylistId));
+            return false;
+        }
+
+        // Cover mode: original animation path. Skip the standard crossfade —
+        // connected animation paints content directly.
         PageController.MarkContentShownDirectly();
         TwoColumnGrid.Opacity = 1;
 
@@ -295,11 +437,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             // Element-scoped UpdateLayout: walks up the parent chain to lay
             // out enough to position PlaylistArtContainer for the connected
             // animation, but skips siblings (side rail, action buttons,
-            // description, TrackDataGrid). Microsoft docs flag UpdateLayout
-            // as taboo in general — narrowing the scope is the closest we
-            // can get while still satisfying the connected-anim handshake
-            // (the destination must be measured before TryStartAnimation
-            // computes its target rect).
+            // description, TrackDataGrid).
             PlaylistArtContainer.UpdateLayout();
         }
         var started = ConnectedAnimationHelper.TryStartAnimation(
@@ -520,6 +658,59 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             border.Height = e.NewSize.Width;
     }
 
+    /// <summary>
+    /// Fade-in the container that just became visible because LayoutMode
+    /// changed. Common case — VM's prediction in Activate matched the
+    /// authoritative value set in ApplyDetail — runs once at activation
+    /// when nothing was visible yet (initial Visibility binding settles to
+    /// Visible at the same time the fade starts; fade is invisible because
+    /// the container wasn't on screen yet).
+    /// Mismatch case (URI heuristic was wrong, ~5% of cold loads): one
+    /// container Visibility binding flips from Visible to Collapsed (the
+    /// previously-shown wrong-mode container disappears instantly) and the
+    /// other flips from Collapsed to Visible — that one fades in over
+    /// 280 ms, which masks the snap.
+    /// Defensive: skip the animation if the target element isn't yet in
+    /// the visual tree (early in page lifecycle, before InitializeComponent
+    /// has fully wired x:Name'd fields).
+    /// </summary>
+    private async void OnLayoutModeChanged()
+    {
+        if (_isDisposed) return;
+
+        FrameworkElement? target = ViewModel.LayoutMode switch
+        {
+            PlaylistLayoutMode.Banner => HeroBannerRow,
+            PlaylistLayoutMode.Cover  => CoverHeroBlock,
+            _ => null
+        };
+
+        if (target is null) return;
+
+        // Reset opacity to 0 then animate to 1 so the container fades in
+        // smoothly even if it had been Visible at full opacity moments ago.
+        target.Opacity = 0;
+        try
+        {
+            await CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
+                .Opacity(to: 1, duration: TimeSpan.FromMilliseconds(280))
+                .StartAsync(target);
+        }
+        catch
+        {
+            // Animation can throw if the element unloads mid-animation
+            // (page navigation away). Restore opacity defensively.
+        }
+
+        // StartAsync can complete without visibly applying the final value when
+        // the target was Collapsed or not fully attached during the layout-mode
+        // swap. Always restore the final state so a Banner -> Cover correction
+        // cannot leave the square artwork block transparent while its Image has
+        // successfully loaded.
+        if (!_isDisposed)
+            target.Opacity = 1;
+    }
+
     private void HeaderBackgroundHost_Loaded(object sender, RoutedEventArgs e)
     {
         // First-time setup: build the composition tree. Must happen after the element
@@ -529,72 +720,55 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             var visual = ElementCompositionPreview.GetElementVisual(HeaderBackgroundHost);
             _heroCompositor = visual.Compositor;
 
-            // Corner-anchored 2D fade: opaque at the top-left, falling off radially
-            // toward both the right and bottom edges, fully transparent toward the
-            // bottom-right. A single CompositionRadialGradientBrush gives BOTH
-            // horizontal and vertical falloff in one brush — accepted by
-            // CompositionMaskBrush.Mask, no Win2D effect tree required.
-            //
-            // Why this shape and not the alternatives:
-            //   • Two-stage mask chains (MaskBrush.Source = MaskBrush) throw at
-            //     runtime — "Unsupported source brush type".
-            //   • CompositionMaskBrush.Mask also rejects CompositionEffectBrush, so a
-            //     gradient-multiply baked via ArithmeticCompositeEffect can't be used
-            //     as a mask either.
-            //   • Assigning the effect brush directly to a sprite worked on first
-            //     load but stopped re-rendering after the source surface was swapped
-            //     for a new playlist's image (the effect tree got stuck on a stale /
-            //     transiently-disposed surface).
-            //   • RadialGradient with EllipseCenter at (0,0) avoids all three issues
-            //     and inherits the surface-swap robustness of MaskBrush.
-            CompositionRadialGradientBrush BuildCornerFadeMask(byte maxAlpha)
-            {
-                var g = _heroCompositor.CreateRadialGradientBrush();
-                g.EllipseCenter = new Vector2(0f, 0f); // top-left corner
-                g.EllipseRadius = new Vector2(1f, 1f); // reaches the bottom-right corner (normalized)
-                g.ColorStops.Add(_heroCompositor.CreateColorGradientStop(0f,
-                    Windows.UI.Color.FromArgb(maxAlpha, 255, 255, 255)));
-                g.ColorStops.Add(_heroCompositor.CreateColorGradientStop(1f,
-                    Windows.UI.Color.FromArgb(0, 255, 255, 255)));
-                return g;
-            }
-
             // ── Hero image sprite ──────────────────────────────────────────────
+            // Banner is full-width and 280 px tall. Center-anchor the source
+            // image's horizontal crop — Spotify's editorial banners are
+            // composed with the focal point centered. Vertical alignment 0.5
+            // so the middle band of the source shows.
             _heroSurfaceBrush = _heroCompositor.CreateSurfaceBrush();
             _heroSurfaceBrush.Stretch = CompositionStretch.UniformToFill;
-            // Anchor the crop to the left edge of the source image — it's the portion
-            // the user will actually see after the gradient eats the right side.
-            _heroSurfaceBrush.HorizontalAlignmentRatio = 0f;
+            _heroSurfaceBrush.HorizontalAlignmentRatio = 0.5f;
             _heroSurfaceBrush.VerticalAlignmentRatio = 0.5f;
 
-            var heroMask = _heroCompositor.CreateMaskBrush();
-            heroMask.Source = _heroSurfaceBrush;
-            heroMask.Mask = BuildCornerFadeMask(0xFF);
-
+            // No mask brush wrapper on the image — the image fills the host
+            // edge to edge. The scrim sprite below provides the bottom-fade
+            // legibility / page-surface handoff.
             _heroSprite = _heroCompositor.CreateSpriteVisual();
-            _heroSprite.Brush = heroMask;
+            _heroSprite.Brush = _heroSurfaceBrush;
             _heroSprite.RelativeSizeAdjustment = Vector2.One;
 
-            // ── Theme-aware scrim sprite (layered above the hero) ─────────────
-            // Solid color pulled from SolidBackgroundFillColorBase so the scrim
-            // tints toward the page's normal surface color — legible contrast is
-            // whatever the theme already designs for. Mask alpha caps at
-            // HeroScrimMaxAlpha so the hero still bleeds through, not a flat block.
-            _heroScrimColorBrush = _heroCompositor.CreateColorBrush(GetHeroScrimColor());
-
-            var scrimMask = _heroCompositor.CreateMaskBrush();
-            scrimMask.Source = _heroScrimColorBrush;
-            scrimMask.Mask = BuildCornerFadeMask(HeroScrimMaxAlpha);
+            // ── Bottom-fade scrim (composition sibling, layered above image) ──
+            // Vertical linear gradient: transparent at top → theme surface
+            // color at the bottom. Stops are theme-aware via
+            // ApplyHeroScrimForTheme below; runtime theme flips re-seed the
+            // colors. This lives on the composition layer (not in XAML)
+            // because composition-side gradients render edge-to-edge of the
+            // host's actual size (no measure/arrange race when the host's
+            // Visibility flips), and the brush sits in the same visual tree
+            // as the image so they always paint together.
+            _heroScrimBrush = _heroCompositor.CreateLinearGradientBrush();
+            _heroScrimBrush.StartPoint = new Vector2(0.5f, 0f);
+            _heroScrimBrush.EndPoint = new Vector2(0.5f, 1f);
+            _heroScrimTopStop = _heroCompositor.CreateColorGradientStop(0f,
+                Windows.UI.Color.FromArgb(0, 0, 0, 0));
+            _heroScrimMidStop = _heroCompositor.CreateColorGradientStop(0.45f,
+                Windows.UI.Color.FromArgb(0, 0, 0, 0));
+            _heroScrimBottomStop = _heroCompositor.CreateColorGradientStop(1f,
+                Windows.UI.Color.FromArgb(0, 0, 0, 0));
+            _heroScrimBrush.ColorStops.Add(_heroScrimTopStop);
+            _heroScrimBrush.ColorStops.Add(_heroScrimMidStop);
+            _heroScrimBrush.ColorStops.Add(_heroScrimBottomStop);
 
             _heroScrimSprite = _heroCompositor.CreateSpriteVisual();
-            _heroScrimSprite.Brush = scrimMask;
+            _heroScrimSprite.Brush = _heroScrimBrush;
             _heroScrimSprite.RelativeSizeAdjustment = Vector2.One;
 
-            // ── Container holding both, attached as the element's child visual ─
             _heroContainer = _heroCompositor.CreateContainerVisual();
             _heroContainer.RelativeSizeAdjustment = Vector2.One;
-            _heroContainer.Children.InsertAtBottom(_heroSprite);   // image at the back
-            _heroContainer.Children.InsertAtTop(_heroScrimSprite); // scrim in front
+            _heroContainer.Children.InsertAtBottom(_heroSprite);     // image at back
+            _heroContainer.Children.InsertAtTop(_heroScrimSprite);   // scrim in front
+
+            ApplyHeroScrimForTheme();
         }
 
         // (Re)attach the container on every Loaded. WinUI detaches the child visual when
@@ -603,9 +777,8 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         if (_heroContainer != null)
             ElementCompositionPreview.SetElementChildVisual(HeaderBackgroundHost, _heroContainer);
 
-        // Theme may have changed while the page was cached — refresh the scrim color.
-        if (_heroScrimColorBrush != null)
-            _heroScrimColorBrush.Color = GetHeroScrimColor();
+        // Theme could have changed while the page was cached — refresh the scrim color.
+        ApplyHeroScrimForTheme();
 
         // ApplyHeaderBackground's own _appliedHeroUrl dedup short-circuits when the
         // ViewModel's HeaderImageUrl matches what's already loaded — so a cached-tab
@@ -633,8 +806,6 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
         if (_heroSurfaceBrush != null)
             _heroSurfaceBrush.Surface = null;
-
-        SetHeroScrimVisible(false);
     }
 
     private void ApplyHeaderBackground()
@@ -657,25 +828,46 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         {
             _heroSurfaceBrush.Surface = null;
             _appliedHeroUrl = null;
-            // No hero → also hide the scrim, otherwise a solid color block would
-            // darken the left of the page on playlists with no header image.
-            SetHeroScrimVisible(false);
+            // No hero image → HasHeaderImage flips false in the VM and the
+            // banner row swaps to AnimatedHeroBackground via its visibility
+            // converter binding. Nothing to do here.
             return;
         }
 
         var desiredSize = new Windows.Foundation.Size(
-            Math.Max(1, HeaderBackgroundHost.ActualWidth > 0 ? HeaderBackgroundHost.ActualWidth : 1200),
-            Math.Max(1, HeaderBackgroundHost.ActualHeight > 0 ? HeaderBackgroundHost.ActualHeight : 800));
+            Math.Max(1, HeaderBackgroundHost.ActualWidth > 0 ? HeaderBackgroundHost.ActualWidth : 1600),
+            Math.Max(1, HeaderBackgroundHost.ActualHeight > 0 ? HeaderBackgroundHost.ActualHeight : 280));
         _heroImageSurface = LoadedImageSurface.StartLoadFromUri(new Uri(httpsUrl), desiredSize);
+        // LoadCompleted fires once per surface (success OR fail). Without
+        // this hook, a bad URL / network timeout left the brush silently
+        // empty AND the AnimatedHeroBackground was hidden by the
+        // HasHeaderImage gate — user saw a blank banner. On failure we null
+        // the brush surface and clear HeaderImageUrl so the gradient
+        // fallback takes over via the existing visibility binding.
+        _heroImageSurface.LoadCompleted += OnHeroImageLoadCompleted;
         _heroSurfaceBrush.Surface = _heroImageSurface;
         _appliedHeroUrl = url;
-        SetHeroScrimVisible(true);
     }
 
-    private void SetHeroScrimVisible(bool visible)
+    private void OnHeroImageLoadCompleted(LoadedImageSurface sender, LoadedImageSourceLoadCompletedEventArgs args)
     {
-        if (_heroScrimSprite != null)
-            _heroScrimSprite.IsVisible = visible;
+        if (args.Status == LoadedImageSourceLoadStatus.Success) return;
+        if (_isDisposed) return;
+
+        _logger?.LogDebug(
+            "Hero image decode failed for {Url}: status={Status}",
+            _appliedHeroUrl ?? "<null>", args.Status);
+
+        // Drop the broken surface so the brush reads as empty (and the
+        // composition visual stops trying to render zero-pixel garbage).
+        if (_heroSurfaceBrush != null)
+            _heroSurfaceBrush.Surface = null;
+
+        // Tell the VM the header image is unusable. The HasHeaderImage
+        // notification flips AnimatedHeroBackground.Visibility on via its
+        // existing InverseBoolToVisibility binding — user gets the palette
+        // gradient instead of a blank banner.
+        ViewModel.HeaderImageUrl = null;
     }
 
     private void PlaylistSplitter_ResizeCompleted(object? sender, GridSplitterResizeCompletedEventArgs e)
@@ -798,7 +990,11 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             ViewModel.UpdateDescriptionCommand.Execute(newDescription);
     }
 
-    // ── Cover photo edit — Phase 2 ───────────────────────────────────────────
+    // ── Cover photo edit (Cover layout mode only) ────────────────────────────
+    // Handlers wire to the cover Grid in WidePlaylistPanel which is gated on
+    // LayoutMode == Cover. Banner-mode playlists (editorial / radio) hide the
+    // cover entirely so these never fire there. ViewModel.ChangeCoverCommand /
+    // RemoveCoverCommand encode the SpClient upload pipeline.
 
     private async void CoverEditOverlay_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
@@ -826,10 +1022,6 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
         try
         {
-            // Show the picked image immediately as a local preview while the
-            // upload runs. On success the VM's PlaylistImageUrl will refresh
-            // from the next store push and CoverPreviewImage falls back behind
-            // the bound Image. On failure we revert.
             using (var stream = await file.OpenReadAsync())
             {
                 var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
@@ -856,13 +1048,9 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             }
 
             await ViewModel.ChangeCoverCommand.ExecuteAsync(jpegBytes);
-            // Success: leave the preview up until the bound URL refreshes.
-            // (The store push that lands the new URL will hide it implicitly
-            // because the underlying Image then renders the canonical URL.)
         }
         catch
         {
-            // ChangeCoverCommand already toasts; revert the preview here.
             ClearCoverPreview();
         }
         finally
@@ -881,7 +1069,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         var remove = new MenuFlyoutItem
         {
             Text = "Remove photo",
-            Icon = new FontIcon { Glyph = "" }
+            Icon = new FontIcon { Glyph = Wavee.UI.WinUI.Styles.FluentGlyphs.Delete }
         };
         remove.Click += (_, _) =>
         {
@@ -900,7 +1088,6 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         picker.FileTypeFilter.Add(".jpeg");
         picker.FileTypeFilter.Add(".png");
 
-        // FileOpenPicker requires a window handle in WinUI 3 desktop.
         WinRT.Interop.InitializeWithWindow.Initialize(picker, MainWindow.Instance.WindowHandle);
 
         return await picker.PickSingleFileAsync();
@@ -1344,6 +1531,11 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             await ViewModel.LeavePlaylistCommand.ExecuteAsync(null);
             NavigationHelpers.OpenHome();
         }
+    }
+
+    private async void HeroDeleteButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ConfirmAndDeletePlaylistAsync();
     }
 
     private async System.Threading.Tasks.Task ConfirmAndDeletePlaylistAsync()

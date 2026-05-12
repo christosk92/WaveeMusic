@@ -61,6 +61,7 @@ public partial class LazyItemVm<T> : ObservableObject where T : class
 public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
 {
     private string _id = "";
+    private bool _suppressDelegatedDataNotifications;
 
     public required string Id
     {
@@ -75,13 +76,27 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
 
     public void Populate(ITrackItem data)
     {
-        Data = data;
-        IsLoaded = true;
+        _suppressDelegatedDataNotifications = true;
+        try
+        {
+            Data = data;
+            IsLoaded = true;
+        }
+        finally
+        {
+            _suppressDelegatedDataNotifications = false;
+        }
     }
 
-    // Notify all delegated properties when Data changes so OneWay bindings refresh
+    // Most consumers bind LazyTrackItem through TrackItem.Track, so the generated
+    // Data notification is enough to trigger one full row rebind. Keep the
+    // delegated fan-out only for non-Populate assignments; otherwise replacing a
+    // shimmer row with data causes one full bind per delegated property.
     partial void OnDataChanged(ITrackItem? value)
     {
+        if (_suppressDelegatedDataNotifications)
+            return;
+
         OnPropertyChanged(nameof(Id));
         OnPropertyChanged(nameof(Uri));
         OnPropertyChanged(nameof(Title));

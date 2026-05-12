@@ -63,6 +63,8 @@ public sealed class PlaylistMosaicService
     // Lazy<Task> defers the async method invocation until .Value is accessed on
     // the winner, so the loser's Lazy is discarded before any Task is ever created.
     private readonly ConcurrentDictionary<string, Lazy<Task<IconSource?>>> _inFlight = new();
+    private readonly ConcurrentDictionary<string, string> _lastMosaicPathByPlaylist =
+        new(StringComparer.Ordinal);
 
     // Permanent (process-lifetime) negative cache for playlists whose backing
     // resource returned NotFound. Without this, every sidebar row recycle and
@@ -144,17 +146,22 @@ public sealed class PlaylistMosaicService
             if (icon is null)
                 return null;
 
-            var tileUrls = await ResolveTileUrlsAsync(playlistId, mosaicHint, ct).ConfigureAwait(false);
-            if (tileUrls.Count == 0)
-                return null;
+            if (_lastMosaicPathByPlaylist.TryGetValue(playlistId, out var cachedBuiltPath) &&
+                File.Exists(cachedBuiltPath))
+            {
+                return cachedBuiltPath;
+            }
 
             var folder = await GetCacheFolderAsync().ConfigureAwait(false);
             if (folder is null)
                 return null;
 
-            var fileName = BuildMosaicFileName(playlistId, ComputeHash(tileUrls));
-            var path = Path.Combine(folder.Path, fileName);
-            return File.Exists(path) ? path : null;
+            var prefix = SanitizeId(playlistId) + "_";
+            var suffix = "_" + MosaicCacheVersion + ".png";
+            return Directory
+                .EnumerateFiles(folder.Path, prefix + "*" + suffix)
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault();
         }
         catch (OperationCanceledException)
         {
@@ -164,6 +171,51 @@ public sealed class PlaylistMosaicService
         {
             _logger?.LogDebug(ex, "GetMosaicFilePathAsync failed for {PlaylistId}", playlistId);
             return null;
+        }
+    }
+
+    public async Task<string?> GetMosaicFilePathFromTracksAsync(
+        string playlistId,
+        IReadOnlyList<PlaylistTrackDto> tracks,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(playlistId) || tracks.Count == 0)
+            return null;
+
+        var tileUrls = ResolveTileUrlsFromTracks(tracks);
+        if (tileUrls.Count == 0)
+            return null;
+
+        var hash = ComputeHash(tileUrls);
+        var fileName = BuildMosaicFileName(playlistId, hash);
+
+        await _buildThrottle.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var folder = await GetCacheFolderAsync().ConfigureAwait(false);
+            if (folder is null)
+                return null;
+
+            var path = Path.Combine(folder.Path, fileName);
+            if (File.Exists(path))
+            {
+                _lastMosaicPathByPlaylist[playlistId] = path;
+                return path;
+            }
+
+            var pngBytes = await ComposeMosaicPngAsync(tileUrls, ct).ConfigureAwait(false);
+            if (pngBytes is null)
+                return null;
+
+            await WriteToDiskAsync(folder, fileName, pngBytes, SanitizeId(playlistId)).ConfigureAwait(false);
+            _lastMosaicPathByPlaylist[playlistId] = path;
+            return path;
+        }
+        finally
+        {
+            _buildThrottle.Release();
         }
     }
 
@@ -193,6 +245,7 @@ public sealed class PlaylistMosaicService
         if (string.IsNullOrEmpty(playlistId)) return;
 
         _inFlight.TryRemove(playlistId, out _);
+        _lastMosaicPathByPlaylist.TryRemove(playlistId, out _);
 
         if (_cacheFolder is null) return;
         try
@@ -270,7 +323,10 @@ public sealed class PlaylistMosaicService
             {
                 var cachedPath = Path.Combine(folder.Path, fileName);
                 if (File.Exists(cachedPath))
+                {
+                    _lastMosaicPathByPlaylist[playlistId] = cachedPath;
                     return await CreateIconFromPathAsync(cachedPath, ct).ConfigureAwait(false);
+                }
             }
 
             var pngBytes = await ComposeMosaicPngAsync(tileUrls, ct).ConfigureAwait(false);
@@ -286,6 +342,7 @@ public sealed class PlaylistMosaicService
                 // queue up under rapid sidebar scroll.
                 var composedPath = Path.Combine(folder.Path, fileName);
                 await WriteToDiskAsync(folder, fileName, pngBytes, SanitizeId(playlistId)).ConfigureAwait(false);
+                _lastMosaicPathByPlaylist[playlistId] = composedPath;
                 return await CreateIconFromPathAsync(composedPath, ct).ConfigureAwait(false);
             }
 
@@ -321,6 +378,11 @@ public sealed class PlaylistMosaicService
         var tracks = await _libraryDataService.GetPlaylistTracksAsync(playlistId, ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
 
+        return ResolveTileUrlsFromTracks(tracks);
+    }
+
+    private static IReadOnlyList<string> ResolveTileUrlsFromTracks(IEnumerable<PlaylistTrackDto> tracks)
+    {
         var urls = new List<string>(4);
         var seenAlbums = new HashSet<string>(StringComparer.Ordinal);
         foreach (var track in tracks)

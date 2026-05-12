@@ -8,16 +8,21 @@
     mc:Ignorable="d"
     Background="Transparent">
 
-    <Grid x:Name="Root">
+    <Grid x:Name="Root"
+          Background="Transparent"
+          PointerEntered="Root_PointerEntered"
+          PointerExited="Root_PointerExited">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
         <!-- HoverFrame wraps the text/textbox and carries the editable affordance.
              Background + BorderBrush flip in code-behind on pointer enter/exit
-             when IsEditable; otherwise stays transparent. CornerRadius/Padding
-             keep the chrome unobtrusive. -->
+             (tracked at the Root level so moving from text → pencil doesn't
+             collapse the affordance). CornerRadius/Padding keep the chrome
+             unobtrusive. -->
         <Border x:Name="HoverFrame"
                 Grid.Column="0"
                 Background="Transparent"
@@ -25,8 +30,6 @@
                 BorderThickness="1"
                 CornerRadius="4"
                 Padding="6,2"
-                PointerEntered="Frame_PointerEntered"
-                PointerExited="Frame_PointerExited"
                 Tapped="Frame_Tapped">
             <Grid>
                 <TextBlock x:Name="DisplayText"
@@ -160,9 +163,28 @@
             </Grid>
         </Border>
 
+        <!-- Persistent pencil hint — visible when IsEditable && not editing && not busy.
+             Click also enters edit mode (in addition to the hover-frame Tapped). -->
+        <Button x:Name="EditAffordanceButton"
+                Grid.Column="1"
+                Width="24" Height="24"
+                MinWidth="24" MinHeight="24"
+                CornerRadius="12"
+                Padding="0"
+                Margin="6,0,0,0"
+                VerticalAlignment="Center"
+                Background="Transparent"
+                BorderThickness="0"
+                Visibility="Collapsed"
+                ToolTipService.ToolTip="Edit"
+                Click="EditAffordanceButton_Click">
+            <FontIcon Glyph="&#xE70F;" FontSize="12"
+                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+        </Button>
+
         <!-- Inline busy spinner (driven by IsBusy from the consumer). -->
         <ProgressRing x:Name="BusyRing"
-                      Grid.Column="1"
+                      Grid.Column="2"
                       Width="14"
                       Height="14"
                       Margin="6,0,0,0"

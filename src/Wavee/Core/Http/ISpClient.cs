@@ -403,6 +403,16 @@ public interface ISpClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lists current members of a collaborative playlist via
+    /// <c>GET /playlist-permission/v1/playlist/{id}/permission/members</c>.
+    /// Returns an empty list if the caller lacks permission to view the member
+    /// list, the endpoint shape is unexpected, or the playlist isn't collaborative.
+    /// </summary>
+    Task<System.Collections.Generic.IReadOnlyList<SpotifyPlaylistMember>> GetPlaylistMembersAsync(
+        string playlistId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Fetches a user's following list via the spclient profile endpoint.
     /// </summary>
     Task<SpotifyFollowingResponse> GetUserFollowingAsync(

@@ -25,6 +25,7 @@ using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 using Wavee.UI.WinUI.Controls.Cards;
 using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.HeroHeader;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -45,7 +46,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private const int ScrollRestoreRetryDelayMs = 16;
     private const int NavigationCacheTrimDelaySeconds = 45;
     private static readonly TimeSpan PageTintTransitionDuration = TimeSpan.FromMilliseconds(420);
-    private const double ShyHeaderPinThresholdPx = 24;
 
     // Avatar collapse — when the artist has a header image but no watch-feed
     // video, the 120px circular avatar is redundant with the hero and collapses
@@ -69,11 +69,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     // ColorAnimation each call — palette + theme changes can fire 4× per
     // event, and ApplyTheme cascades on every Palette change.
     private readonly System.Collections.Generic.Dictionary<GradientStop, (Storyboard Sb, ColorAnimation Anim)> _pageTintAnims = new();
-    private TransitionHelper? _shyHeaderTransition;
-    private bool _isShyHeaderPinned;
-    private bool _isShyHeaderTransitionRunning;
-    private bool _shyHeaderRecheckPending;
-    private bool _suppressShyHeaderEvaluation;
+    private ShyHeaderController? _shyHeader;
     private bool _suppressContentReveal;
     private bool _heroRevealed;
     private bool _crossfadeScheduled;
@@ -152,9 +148,15 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             ContextMenuHost.Show(HeroGrid, items, e.GetPosition(HeroGrid));
             e.Handled = true;
         };
-        PageScrollView.ViewChanged += PageScrollView_ViewChanged;
-        EnsureShyHeaderTransition();
-        ResetShyHeaderState();
+        _shyHeader = new ShyHeaderController(
+            PageScrollView, HeroGrid, HeroOverlayPanel, ShyHeaderCard,
+            (TransitionHelper)Resources["ArtistShyHeaderTransition"],
+            ShyHeaderFade.ForHeroHeader(HeroGrid),
+            ShyHeaderPinOffset.Below(HeroGrid, 120),
+            canEvaluate: () => !_isNavigatingAway,
+            logger: _logger);
+        _shyHeader.Attach();
+        _shyHeader.Reset();
 
         // PointerWheelChanged via AddHandler with handledEventsToo=true so we
         // still see horizontal-pan events even when a child TrackItem (or any
@@ -225,130 +227,25 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     {
         _heroResizeDebounce?.Stop();
         UpdatePageTint();
-        if (_suppressShyHeaderEvaluation)
-            return;
-        _ = EvaluateShyHeaderAsync();
-    }
-
-    private void EnsureShyHeaderTransition()
-    {
-        if (_shyHeaderTransition != null)
-            return;
-
-        // Helper is declared in Page.Resources so it survives navigation cache.
-        // Source/Target are wired here because XAML resources can't ElementName-bind.
-        if (Resources.TryGetValue("ArtistShyHeaderTransition", out var resource)
-            && resource is TransitionHelper helper)
-        {
-            helper.Source = HeroOverlayPanel;
-            helper.Target = ShyHeaderCard;
-            _shyHeaderTransition = helper;
-        }
-    }
-
-    private void ResetShyHeaderState()
-    {
-        _isShyHeaderPinned = false;
-        _isShyHeaderTransitionRunning = false;
-        _shyHeaderRecheckPending = false;
-        ForceHeroHeaderSourceState();
-        // Reset to source state: hero overlay visible, floating card collapsed.
-        _shyHeaderTransition?.Reset(toInitialState: true);
-        ForceHeroHeaderSourceState();
+        _ = _shyHeader?.EvaluateAsync();
     }
 
     private void SuppressShyHeaderForContentReset()
     {
-        _suppressShyHeaderEvaluation = true;
-        try { _shyHeaderTransition?.Stop(); } catch { }
-        ResetShyHeaderState();
+        if (_shyHeader is null) return;
+        _shyHeader.Suppressed = true;
+        _shyHeader.Stop();
+        _shyHeader.Reset();
         if (HeroGrid != null)
             HeroGrid.ScrollFadeProgress = 0;
     }
 
     private void ResumeShyHeaderAfterContentReset()
     {
-        _suppressShyHeaderEvaluation = false;
-        ResetShyHeaderState();
-        UpdateHeroScrollFade();
-    }
-
-    private void PageScrollView_ViewChanged(ScrollView sender, object args)
-    {
-        UpdateHeroScrollFade();
-        if (_suppressShyHeaderEvaluation)
-            return;
-
-        _ = EvaluateShyHeaderAsync();
-    }
-
-    private void UpdateHeroScrollFade()
-    {
-        if (HeroGrid == null) return;
-        var heroH = HeroGrid.ActualHeight;
-        if (heroH <= 0)
-        {
-            HeroGrid.ScrollFadeProgress = 0;
-            return;
-        }
-        HeroGrid.ScrollFadeProgress = Math.Clamp(PageScrollView.VerticalOffset / heroH, 0.0, 1.0);
-    }
-
-    private async Task EvaluateShyHeaderAsync()
-    {
-        if (_suppressShyHeaderEvaluation)
-            return;
-
-        if (_shyHeaderTransition == null || HeroOverlayPanel == null || ShyHeaderCard == null || HeroGrid == null)
-            return;
-
-        if (_isShyHeaderTransitionRunning)
-        {
-            // Coalesce: re-check once the in-flight transition lands.
-            _shyHeaderRecheckPending = true;
-            return;
-        }
-
-        while (true)
-        {
-            if (_suppressShyHeaderEvaluation)
-                return;
-
-            if (_isNavigatingAway || !HeroGrid.IsLoaded || !ShyHeaderHost.IsLoaded)
-                return;
-
-            double pinOffset = Math.Max(0, HeroGrid.ActualHeight - 120);
-            bool shouldPin = PageScrollView.VerticalOffset >= pinOffset;
-
-            if (shouldPin == _isShyHeaderPinned)
-                return;
-
-            _isShyHeaderTransitionRunning = true;
-            _shyHeaderRecheckPending = false;
-
-            try
-            {
-                if (shouldPin)
-                    await _shyHeaderTransition.StartAsync();
-                else
-                    await _shyHeaderTransition.ReverseAsync();
-
-                _isShyHeaderPinned = shouldPin;
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogDebug(ex, "Shy header transition skipped.");
-                return;
-            }
-            finally
-            {
-                _isShyHeaderTransitionRunning = false;
-            }
-
-            // Loop only if a scroll event arrived during the transition.
-            if (!_shyHeaderRecheckPending)
-                return;
-        }
+        if (_shyHeader is null) return;
+        _shyHeader.Suppressed = false;
+        _shyHeader.Reset();
+        _shyHeader.UpdateHeroFade();
     }
 
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
@@ -842,7 +739,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         // we know the final HeaderImageUrl + WatchFeed state.
         UpdateAvatarLayout(animate: true);
 
-        await EvaluateShyHeaderAsync();
+        if (_shyHeader is not null) await _shyHeader.EvaluateAsync();
     }
 
     private void ArtistPage_Unloaded(object sender, RoutedEventArgs e)
@@ -1293,7 +1190,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         CancelResizeDebounce();
         CollapseExpandedAlbum();
         TeardownWatchFeed();
-        try { _shyHeaderTransition?.Stop(); } catch { }
+        _shyHeader?.Stop();
 
         // Hibernate releases the store subscription and heavy bound collections
         // before the page is hidden. Revisit speed comes from warm data caches.
@@ -1347,9 +1244,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
         _trimmedForNavigationCache = false;
         _isNavigatingAway = false;
-        _suppressShyHeaderEvaluation = false;
+        if (_shyHeader is not null) _shyHeader.Suppressed = false;
         _suppressContentReveal = false;
-        ResetShyHeaderState();
+        _shyHeader?.Reset();
         // Defer the hero-surface rehydration to a low-priority dispatch
         // (same rationale as OnNavigatedTo above).
         DispatcherQueue.TryEnqueue(
@@ -1430,8 +1327,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
             var target = Math.Clamp(offset, 0, maxOffset);
             PageScrollView.ScrollToImmediate(0, target);
-            UpdateHeroScrollFade();
-            _ = EvaluateShyHeaderAsync();
+            _shyHeader?.UpdateHeroFade();
+            _ = _shyHeader?.EvaluateAsync();
             ClearPendingNavigationScrollPosition();
             return;
         }
@@ -1547,9 +1444,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         Bindings?.Update();
         _trimmedForNavigationCache = false;
         _isNavigatingAway = false;
-        _suppressShyHeaderEvaluation = false;
+        if (_shyHeader is not null) _shyHeader.Suppressed = false;
         _suppressContentReveal = false;
-        ResetShyHeaderState();
+        _shyHeader?.Reset();
 
         // Rehydrate the hero surface if it was released on prior navigate-away.
         // No-op on first visit (LoadImage's URL-equality guard short-circuits).
@@ -1613,7 +1510,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         SetHeroOverlayOpacity(0);
         ShimmerGate.Reset(() => ShimmerContainer, () => ContentContainer);
         PageScrollView.ScrollToImmediate(0, 0);
-        UpdateHeroScrollFade();
+        _shyHeader?.UpdateHeroFade();
         RestoreDiscographyRepeaters();
 
         if (parameter is ContentNavigationParameter navParam)
@@ -1847,7 +1744,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         CancelResizeDebounce();
         CollapseExpandedAlbum();
         TeardownWatchFeed();
-        try { _shyHeaderTransition?.Stop(); } catch { }
+        _shyHeader?.Stop();
     }
 
     public void Dispose()
@@ -1860,8 +1757,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         SizeChanged -= OnSizeChanged;
         if (HeroGrid != null)
             HeroGrid.SizeChanged -= HeroGrid_SizeChanged;
-        if (PageScrollView != null)
-            PageScrollView.ViewChanged -= PageScrollView_ViewChanged;
+        _shyHeader?.Dispose();
+        _shyHeader = null;
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         if (_navigationTrimTimer is not null)
@@ -1873,7 +1770,6 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         CancelResizeDebounce();
         CollapseExpandedAlbum();
         TeardownWatchFeed();
-        try { _shyHeaderTransition?.Stop(); } catch { }
         ReleaseNavigationCachedImages();
         (ViewModel as IDisposable)?.Dispose();
     }

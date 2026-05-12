@@ -257,9 +257,10 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
     {
         var target = GetTargetDeviceId();
         var selfId = _session.Config.DeviceId;
+        var forceLocalPlayback = IsLocalPlaybackCommand(typedPlayCommand);
 
         // No active device OR self-targeted: route to local AudioPipeline.
-        if (string.IsNullOrEmpty(target) || target == selfId)
+        if (string.IsNullOrEmpty(target) || target == selfId || forceLocalPlayback)
         {
             if (ShouldBlockLocalSpotifyPlayback(endpoint, typedPlayCommand, data, out var blockedUri))
                 return LocalSpotifyPlaybackDisabledResult(endpoint, blockedUri);
@@ -339,6 +340,15 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
 
         return ToPlaybackResult(result);
     }
+
+    private static bool IsLocalPlaybackCommand(Wavee.Connect.Commands.PlayCommand? command)
+        => command is not null
+           && (IsLocalUri(command.TrackUri)
+               || IsLocalUri(command.ContextUri)
+               || command.PageTracks?.Any(t => IsLocalUri(t.Uri)) == true);
+
+    private static bool IsLocalUri(string? uri)
+        => uri?.StartsWith("wavee:local:", StringComparison.Ordinal) == true;
 
     private static TimeSpan GetAckTimeout(string endpoint) => endpoint switch
     {
@@ -424,9 +434,10 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
 
     public Task<PlaybackResult> PlayTracksAsync(IReadOnlyList<string> trackUris, int startIndex, PlaybackContextInfo? context, IReadOnlyList<QueueItem>? richTracks, CancellationToken ct)
     {
-        // Normalize bare IDs to full spotify:track: URIs
-        var normalizedUris = trackUris.Select(uri =>
-            uri.StartsWith("spotify:", StringComparison.Ordinal) ? uri : $"spotify:track:{uri}").ToList();
+        // Normalize bare Spotify IDs, but preserve already-typed URI schemes
+        // such as spotify:* and wavee:local:*. Local playback pages pass full
+        // wavee:local:track:* URIs and must not be rewritten as Spotify IDs.
+        var normalizedUris = trackUris.Select(NormalizeTrackUri).ToList();
 
         // Align rich tracks one-to-one with normalizedUris when supplied. If the
         // caller gave a mismatched count we ignore richTracks — the bare URI
@@ -502,12 +513,22 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             ContextFeature = context is null ? null : PlayOriginFeatureFor(context.Type),
             ContextTrackCount = context is null ? null : normalizedUris.Count,
             ContextFormatAttributes = context?.FormatAttributes,
+            TrackUri = startUri,
             SkipToIndex = startIndex > 0 ? startIndex : null,
             PositionMs = forceEpisodeStartAtZero ? 0L : null,
             PageTracks = pageTracks,
         };
 
         return SendAsync("play", data, typedCmd, ct);
+    }
+
+    private static string NormalizeTrackUri(string uri)
+    {
+        if (uri.StartsWith("spotify:", StringComparison.Ordinal) ||
+            uri.StartsWith("wavee:local:", StringComparison.Ordinal))
+            return uri;
+
+        return $"spotify:track:{uri}";
     }
 
     private static string PlayOriginFeatureFor(PlaybackContextType? type) => type switch
@@ -756,30 +777,36 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
                                 "[Executor] resume: queue empty — seeding from cluster: context={Context}, track={Track}, pos={Pos}ms (enginePos={EPos}ms, clusterPos={CPos}ms)",
                                 seedContext, seedTrack, seedPos, enginePos, clusterState?.PositionMs ?? 0);
 
-                            // For "spotify:internal:queue" context, PlaybackOrchestrator's context-resolver
-                            // branch is skipped. We must supply PageTracks so the queue is populated.
+                            // For contexts that cannot be resolved from Spotify, rebuild the page from
+                            // the restored cluster queue. This preserves local episode/show ordering after
+                            // app restart: prev + current + next becomes the orchestrator's in-memory queue.
                             List<Wavee.Connect.Commands.PageTrack>? pageTracks = null;
                             int? skipToIndex = null;
 
-                            if (seedContext == "spotify:internal:queue")
+                            var seedIsInternalQueue = seedContext == "spotify:internal:queue";
+                            var seedIsLocalContext = IsLocalUri(seedContext);
+                            if (seedIsInternalQueue || seedIsLocalContext)
                             {
-                                // Build a flat track list: prevTracks (oldest first) + current + nextTracks
                                 var prevTracks = clusterState?.PrevTracks ?? [];
                                 var nextTracks = clusterState?.NextTracks ?? [];
 
-                                pageTracks = [];
-                                foreach (var t in prevTracks)
-                                    pageTracks.Add(new Wavee.Connect.Commands.PageTrack(t.Uri, t.Uid));
+                                if (seedIsInternalQueue || prevTracks.Count > 0 || nextTracks.Count > 0)
+                                {
+                                    // Build a flat track list: prevTracks (oldest first) + current + nextTracks
+                                    pageTracks = [];
+                                    foreach (var t in prevTracks)
+                                        pageTracks.Add(new Wavee.Connect.Commands.PageTrack(t.Uri, t.Uid));
 
-                                skipToIndex = pageTracks.Count; // current track lands here
-                                pageTracks.Add(new Wavee.Connect.Commands.PageTrack(seedTrack, seedUid ?? ""));
+                                    skipToIndex = pageTracks.Count; // current track lands here
+                                    pageTracks.Add(new Wavee.Connect.Commands.PageTrack(seedTrack, seedUid ?? ""));
 
-                                foreach (var t in nextTracks)
-                                    pageTracks.Add(new Wavee.Connect.Commands.PageTrack(t.Uri, t.Uid));
+                                    foreach (var t in nextTracks)
+                                        pageTracks.Add(new Wavee.Connect.Commands.PageTrack(t.Uri, t.Uid));
 
-                                _logger?.LogInformation(
-                                    "[Executor] resume: built PageTracks for internal queue: prev={Prev}, current=@{Idx}, next={Next}, total={Total}",
-                                    prevTracks.Count, skipToIndex, nextTracks.Count, pageTracks.Count);
+                                    _logger?.LogInformation(
+                                        "[Executor] resume: rebuilt restored queue for {Context}: prev={Prev}, current=@{Idx}, next={Next}, total={Total}",
+                                        seedContext, prevTracks.Count, skipToIndex, nextTracks.Count, pageTracks.Count);
+                                }
                             }
 
                             var seedCmd = new Wavee.Connect.Commands.PlayCommand

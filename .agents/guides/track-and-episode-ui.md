@@ -1,8 +1,8 @@
 ---
 guide: track-and-episode-ui
 scope: Every WaveeMusic UI surface that renders a track or podcast episode as a row, cell, or card.
-last_verified: 2026-05-11
-verified_by: read+grep over src/Wavee.UI.WinUI (no build/run)
+last_verified: 2026-05-12
+verified_by: read+grep over src/Wavee.UI.WinUI track/playlist paths (build interrupted before completion)
 root_index: AGENTS.md (Codex) and CLAUDE.md (Claude Code)
 ---
 
@@ -44,7 +44,7 @@ Scope:
 
 | Surface | Host file:line | DTO | Source binding |
 | --- | --- | --- | --- |
-| Playlist tracks | `Views/PlaylistPage.xaml:410` | `PlaylistTrackDto` (`LazyTrackItem`) via `ITrackItem` | `PlaylistViewModel.FilteredTracks` |
+| Playlist tracks | `Views/PlaylistPage.xaml:526` | `PlaylistTrackDto` (`LazyTrackItem`) via `ITrackItem` | `PlaylistViewModel.FilteredTracks` |
 | Album tracks | `Views/AlbumPage.xaml:358` | `AlbumTrackDto` (`LazyTrackItem`) via `ITrackItem` | `AlbumViewModel.FilteredTracks` |
 | Liked Songs | `Views/LikedSongsView.xaml:60` | `LikedSongDto` via `ITrackItem` | `LikedSongsViewModel.FilteredSongs` |
 | Liked Songs (hidden legacy) | `Views/LikedSongsView.xaml:119` | `LikedSongDto` | hidden `TrackListView`, kept for old wiring |
@@ -116,6 +116,12 @@ DTOs that intentionally bypass `ITrackItem`:
   local badges, progress display, date added, play count, added-by, and row
   selection.
 - Wires `TrackBehavior` (input) and `TrackStateBehavior` (state visuals).
+- Performance contract: full row rebinds should be reserved for `Track`
+  replacement / `LazyTrackItem.Data` changes. Simple source updates such as
+  liked state, video availability, playback progress, duration, title, and
+  album/artist text are expected to update only their affected visuals. Artist
+  link children are signature-guarded; don't remove that guard unless replacing
+  it with an equivalent reuse strategy.
 
 `src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackDataGrid.xaml(.cs)`
 - Modern sortable / filterable / list-grid host. Rows are always `TrackItem`
@@ -131,6 +137,14 @@ DTOs that intentionally bypass `ITrackItem`:
   - `podcasts`: index, like, art, title, duration, plus inline progress.
 - Column header chrome lives in
   `Controls/TrackDataGrid/TrackDataGridColumnHeader.xaml(.cs)`.
+- `TrackDataGrid` snapshots and reprojects whenever its source collection
+  raises `CollectionChanged`. Producers should batch large source replacements
+  with `ObservableCollectionExtensions.ReplaceWith` instead of adding/removing
+  rows one at a time.
+- `LazyTrackItem` (`ViewModels/LazyItemVm.cs`) deliberately suppresses delegated
+  property fan-out during `Populate`. Consumers that need to react to a shimmer
+  row becoming real should listen for `Data` and/or `IsLoaded`, not every
+  delegated `ITrackItem` property.
 
 `src/Wavee.UI.WinUI/Controls/TrackList/TrackListView.xaml(.cs)`
 - Older reusable list host. Rows are `TrackItem` in row mode (templated at
@@ -157,13 +171,23 @@ DTOs that intentionally bypass `ITrackItem`:
 
 ## Track List Surfaces
 
-`src/Wavee.UI.WinUI/Views/PlaylistPage.xaml:410`
+`src/Wavee.UI.WinUI/Views/PlaylistPage.xaml:526`
 - Surface: playlist track table.
 - Host: `TrackDataGrid`, `PageKey="playlist"`, `UseItemsViewRows="True"`.
 - Source: `PlaylistViewModel.FilteredTracks` (`PlaylistTrackDto` and
   `LazyTrackItem` placeholders, both via `ITrackItem`).
 - Notes: added-by column is controlled by `ShouldShowAddedByColumn`;
-  filter bar (`:420`) includes "music videos only".
+  filter bar (`:536`) includes "music videos only".
+- Load behavior: `PlaylistViewModel.Activate` seeds a small set of
+  `LazyTrackItem` shimmer rows, then `LoadTracksAsync` merges real rows into
+  `FilteredTracks` with one collection reset. Keep that batched shape; adding
+  the post-placeholder tail one row at a time causes `TrackDataGrid` to
+  re-snapshot/reproject once per add.
+- Added-by display names / avatars are cached in `PlaylistViewModel` and pulled
+  by `PlaylistPage`'s `TrackGrid.AddedByFormatter`; avoid mutating every
+  `PlaylistTrackDto` just to refresh resolved user labels.
+- Fallback playlist mosaics should use the track snapshot already fetched by
+  `LoadTracksAsync` when no `spotify:mosaic:` hint is available.
 
 `src/Wavee.UI.WinUI/Views/AlbumPage.xaml:358`
 - Surface: album track table.
@@ -418,6 +442,10 @@ When changing track rows:
 - Check custom surfaces separately — local files, queue, search cards,
   omnibar suggestions, and show episode controls do not all flow through
   `TrackItem`.
+- For load/performance work, preserve these shared invariants: batch collection
+  source changes, coalesce lazy-row population, keep `TrackItem` property
+  updates incremental, and avoid rebuilding per-artist link controls when the
+  artist signature did not change.
 
 When changing episode rows:
 - Saved/recent episodes in `YourEpisodesView` go through `LibraryEpisodeDto`

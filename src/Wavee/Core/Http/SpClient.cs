@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.Extensions.Logging;
@@ -1817,7 +1818,8 @@ public sealed class SpClient : ISpClient
 
         using var request = BuildPlaylistV2Request(url, accessToken.Token);
         request.Headers.Accept.ParseAdd("application/json");
-        var payload = JsonSerializer.Serialize(new { uploadToken });
+        // AOT-safe: anonymous-type Serialize trips IL2026/IL3050 under strict AOT.
+        var payload = new JsonObject { ["uploadToken"] = uploadToken }.ToJsonString();
         request.Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
         if (_clientTokenManager != null)
             await TryAttachClientTokenAsync(request, cancellationToken);
@@ -2319,6 +2321,115 @@ public sealed class SpClient : ISpClient
             return count;
 
         return 0;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<SpotifyPlaylistMember>> GetPlaylistMembersAsync(
+        string playlistId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+
+        var bareId = playlistId;
+        const string prefix = "spotify:playlist:";
+        if (bareId.StartsWith(prefix, StringComparison.Ordinal))
+            bareId = bareId[prefix.Length..];
+
+        var url = $"{_baseUrl}/playlist-permission/v1/playlist/{Uri.EscapeDataString(bareId)}/permission/members";
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        if (_clientTokenManager != null)
+        {
+            try
+            {
+                var clientToken = await _clientTokenManager.GetClientTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(clientToken))
+                    request.Headers.Add("client-token", clientToken);
+            }
+            catch { }
+        }
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        // 401/403/404 mean we can't see the member list (non-owner viewing a
+        // non-collab playlist, or the playlist doesn't exist). Treat as empty.
+        if (response.StatusCode is HttpStatusCode.Unauthorized
+            or HttpStatusCode.Forbidden
+            or HttpStatusCode.NotFound)
+            return Array.Empty<SpotifyPlaylistMember>();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger?.LogDebug("GetPlaylistMembersAsync: non-success {Status} for {Id}", response.StatusCode, bareId);
+            return Array.Empty<SpotifyPlaylistMember>();
+        }
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        // Endpoint shape isn't publicly documented; parse defensively. Walk the
+        // top-level looking for a "members" array (or any array of objects with
+        // a username field) and synthesise an Owner row from "ownerUsername" if
+        // present.
+        var results = new List<SpotifyPlaylistMember>();
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            string? ownerUsername = null;
+            if (root.TryGetProperty("ownerUsername", out var ownerProp)
+                && ownerProp.ValueKind == JsonValueKind.String)
+            {
+                ownerUsername = ownerProp.GetString();
+            }
+
+            if (root.TryGetProperty("members", out var members)
+                && members.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var m in members.EnumerateArray())
+                {
+                    if (m.ValueKind != JsonValueKind.Object) continue;
+                    var username = TryGetString(m, "username")
+                                   ?? TryGetString(m, "userId");
+                    if (string.IsNullOrEmpty(username)) continue;
+                    results.Add(new SpotifyPlaylistMember
+                    {
+                        UserId = TryGetString(m, "userId") ?? username,
+                        Username = username,
+                        PermissionLevel = TryGetString(m, "permissionLevel") ?? "VIEWER",
+                        DisplayName = TryGetString(m, "displayName"),
+                        ImageUrl = TryGetString(m, "imageUrl"),
+                    });
+                }
+            }
+
+            if (!string.IsNullOrEmpty(ownerUsername)
+                && !results.Any(m => string.Equals(m.Username, ownerUsername, StringComparison.OrdinalIgnoreCase)))
+            {
+                results.Insert(0, new SpotifyPlaylistMember
+                {
+                    UserId = ownerUsername!,
+                    Username = ownerUsername!,
+                    PermissionLevel = "OWNER",
+                });
+            }
+        }
+        catch (JsonException ex)
+        {
+            _logger?.LogDebug(ex, "GetPlaylistMembersAsync: failed to parse response for {Id}", bareId);
+            return Array.Empty<SpotifyPlaylistMember>();
+        }
+
+        return results;
+
+        static string? TryGetString(JsonElement element, string propertyName)
+            => element.TryGetProperty(propertyName, out var prop)
+               && prop.ValueKind == JsonValueKind.String
+                ? prop.GetString()
+                : null;
     }
 
     /// <inheritdoc />

@@ -6,6 +6,7 @@ using Wavee.AudioHost.Audio.Abstractions;
 using Wavee.AudioHost.Audio.Decoders;
 using Wavee.AudioHost.Audio.Processors;
 using Wavee.AudioHost.Audio.Sinks;
+using Wavee.Local.Playback;
 using Wavee.AudioHost.Audio.Streaming;
 using Wavee.Playback.Contracts;
 

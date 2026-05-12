@@ -7,7 +7,6 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
-    xmlns:trackList="using:Wavee.UI.WinUI.Controls.TrackList"
     xmlns:tdg="using:Wavee.UI.WinUI.Controls.TrackDataGrid"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     mc:Ignorable="d"
@@ -112,25 +111,5 @@
                 </ToggleButton>
             </tdg:TrackDataGrid.FilterBarContent>
         </tdg:TrackDataGrid>
-
-        <!-- Legacy TrackListView kept hidden — DateAddedFormatter hookup in the
-             code-behind still binds to this instance. Remove when AlbumPage + this
-             view are fully migrated and the old control is retired. -->
-        <trackList:TrackListView
-            Grid.Row="1"
-            x:Name="TrackList"
-            Visibility="Collapsed"
-            ViewModel="{x:Bind ViewModel, Mode=OneWay}"
-            ItemsSource="{x:Bind ViewModel.FilteredSongs, Mode=OneWay}"
-            IsLoading="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
-            HasError="{x:Bind ViewModel.HasError, Mode=OneWay}"
-            ErrorMessage="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-            RetryCommand="{x:Bind ViewModel.RetryCommand}"
-            ShowDateAddedColumn="True"
-            UseImageColorHint="True"
-            RemoveActionLabel="Remove from Liked"
-            ArtistClicked="TrackList_ArtistClicked"
-            AlbumClicked="TrackList_AlbumClicked"
-            NewPlaylistRequested="TrackList_NewPlaylistRequested"/>
     </Grid>
 </UserControl>
