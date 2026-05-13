@@ -53,10 +53,11 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
         new("Local files", "Storage & local files", "storage", "local-files", "watched folders rescan add folder remove files home shelf"),
         new("Connection", "Storage & local files", "storage", "connection", "auto reconnect timeout network"),
 
-        new("Diagnostics", "App", "diagnostics", "health", "logs clock sync audio health troubleshooting"),
+        new("Diagnostics", "App", "diagnostics", "health", "configuration logs clock sync audio health troubleshooting"),
         new("Clock sync", "Diagnostics", "diagnostics", "clock", "server time sync interval"),
-        new("Logs", "Diagnostics", "diagnostics", "logs", "new logs past logs filter copy export"),
-        new("Spotify Connect events", "Diagnostics", "diagnostics", "connect-events", "connect devices remote state local device cluster dealer put state"),
+        new("Logs", "Diagnostics", "diagnostics", "logs", "logging verbose new logs past logs filter copy export"),
+        new("Verbose logging", "Diagnostics", "diagnostics", "logs", "logging diagnostic output bug reports audio engine restart"),
+        new("Spotify Connect events", "Diagnostics", "diagnostics", "connect-events", "connect updates devices remote state local device cluster dealer put state"),
         new("About", "App", "about", "updates", "version update app information")
     ];
 

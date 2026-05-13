@@ -16,10 +16,13 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.Audio.Queue;
 using Wavee.UI.Contracts;
 using Wavee.UI.Enums;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
+using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
+using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.Services;
 using Wavee.UI.WinUI.Services;
@@ -112,6 +115,7 @@ public sealed partial class QueueControl : UserControl
             or nameof(IPlaybackStateService.CurrentTrackTitle)
             or nameof(IPlaybackStateService.CurrentArtistName)
             or nameof(IPlaybackStateService.CurrentAlbumArt)
+            or nameof(IPlaybackStateService.CurrentContext)
             or nameof(IPlaybackStateService.IsShuffle)
             or nameof(IPlaybackStateService.RepeatMode))
         {
@@ -137,6 +141,8 @@ public sealed partial class QueueControl : UserControl
 
         _logger?.LogDebug("QueueControl.Refresh: hasTrack={HasTrack}, rawNext={RawCount}",
             hasTrack, rawNextQueue.Count);
+
+        ApplyContextCard();
 
         // ── Now Playing ──
         NowPlayingCard.Visibility = hasTrack ? Visibility.Visible : Visibility.Collapsed;
@@ -259,6 +265,107 @@ public sealed partial class QueueControl : UserControl
         // ── Empty state ──
         EmptyState.Visibility = !hasTrack && userQueued.Count == 0 && nextFrom.Count == 0 && postContext.Count == 0 && !hasAutoplay
             ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ApplyContextCard()
+    {
+        var context = _playbackService?.CurrentContext;
+        if (context is null || !IsNavigableContext(context))
+        {
+            ContextCard.Visibility = Visibility.Collapsed;
+            ContextArt.Source = null;
+            return;
+        }
+
+        ContextCard.Visibility = Visibility.Visible;
+        ContextTitle.Text = GetContextTitle(context);
+
+        var artUrl = SpotifyImageHelper.ToHttpsUrl(
+            FirstNonWhiteSpace(
+                context.ImageUrl,
+                _playbackService?.CurrentAlbumArtLarge,
+                _playbackService?.CurrentAlbumArt));
+        ContextArt.Source = artUrl != null
+            ? _imageCache?.GetOrCreate(artUrl, 48)
+              ?? new BitmapImage(new System.Uri(artUrl)) { DecodePixelWidth = 48 }
+            : null;
+    }
+
+    private void ContextCard_Click(object sender, RoutedEventArgs e)
+    {
+        OpenCurrentContext();
+    }
+
+    private void OpenCurrentContext()
+    {
+        var context = _playbackService?.CurrentContext;
+        if (context is null || !IsNavigableContext(context))
+            return;
+
+        var title = GetContextTitle(context);
+        var param = new ContentNavigationParameter
+        {
+            Uri = context.ContextUri,
+            Title = title,
+            ImageUrl = context.ImageUrl ?? _playbackService?.CurrentAlbumArtLarge ?? _playbackService?.CurrentAlbumArt
+        };
+
+        switch (context.Type)
+        {
+            case PlaybackContextType.Playlist:
+                NavigationHelpers.OpenPlaylist(param, param.Title);
+                break;
+            case PlaybackContextType.Album:
+                NavigationHelpers.OpenAlbum(param, param.Title);
+                break;
+            case PlaybackContextType.Artist:
+                NavigationHelpers.OpenArtist(param, param.Title);
+                break;
+            case PlaybackContextType.LikedSongs:
+                NavigationHelpers.OpenLikedSongs();
+                break;
+            case PlaybackContextType.Show:
+                NavigationHelpers.OpenShowPage(param.Uri, param.Title);
+                break;
+            case PlaybackContextType.Episode:
+                if (param.Uri.Contains("your-episodes", StringComparison.OrdinalIgnoreCase))
+                    NavigationHelpers.OpenYourEpisodes();
+                else
+                    NavigationHelpers.OpenEpisodePage(param.Uri, param.Title);
+                break;
+        }
+    }
+
+    private static bool IsNavigableContext(PlaybackContextInfo context)
+        => !string.IsNullOrWhiteSpace(context.ContextUri)
+           && context.Type is PlaybackContextType.Playlist
+              or PlaybackContextType.Album
+              or PlaybackContextType.Artist
+              or PlaybackContextType.LikedSongs
+              or PlaybackContextType.Show
+              or PlaybackContextType.Episode;
+
+    private static string GetContextTitle(PlaybackContextInfo context)
+        => FirstNonWhiteSpace(context.Name, context.Type switch
+        {
+            PlaybackContextType.Playlist => "Playlist",
+            PlaybackContextType.Album => "Album",
+            PlaybackContextType.Artist => "Artist",
+            PlaybackContextType.LikedSongs => "Liked Songs",
+            PlaybackContextType.Show => "Show",
+            PlaybackContextType.Episode => "Episode",
+            _ => "Playback context"
+        })!;
+
+    private static string? FirstNonWhiteSpace(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
     }
 
     private static QueueDisplayItem ToDisplay(QueueTrack t, double opacity) => new()

@@ -38,24 +38,26 @@
             </StackPanel>
 
             <!-- Editable fields — per-kind. Visibility uses the IsXxx properties on the VM.
-                 Title is always editable. -->
+                 Title is always editable. Click any field to enter edit mode. -->
             <appControls:InlineEditableText Text="{x:Bind ViewModel.Title, Mode=TwoWay}"
-                                            Placeholder="Title"/>
+                                            Placeholder="Title"
+                                            IsEditable="True"
+                                            FontWeight="SemiBold"/>
 
             <!-- Music / MusicVideo: Artist, Album, Year, Track#, Disc# -->
             <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsMusic, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <appControls:InlineEditableText Text="{x:Bind ViewModel.Artist, Mode=TwoWay}"      Placeholder="Artist"/>
-                <appControls:InlineEditableText Text="{x:Bind ViewModel.AlbumArtist, Mode=TwoWay}" Placeholder="Album artist"/>
-                <appControls:InlineEditableText Text="{x:Bind ViewModel.Album, Mode=TwoWay}"       Placeholder="Album"/>
+                <appControls:InlineEditableText Text="{x:Bind ViewModel.Artist, Mode=TwoWay}"      Placeholder="Artist"       IsEditable="True"/>
+                <appControls:InlineEditableText Text="{x:Bind ViewModel.AlbumArtist, Mode=TwoWay}" Placeholder="Album artist" IsEditable="True"/>
+                <appControls:InlineEditableText Text="{x:Bind ViewModel.Album, Mode=TwoWay}"       Placeholder="Album"        IsEditable="True"/>
             </StackPanel>
             <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsMusicVideo, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <appControls:InlineEditableText Text="{x:Bind ViewModel.Artist, Mode=TwoWay}" Placeholder="Artist"/>
+                <appControls:InlineEditableText Text="{x:Bind ViewModel.Artist, Mode=TwoWay}" Placeholder="Artist" IsEditable="True"/>
             </StackPanel>
 
             <!-- TV episode -->
             <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsTvEpisode, Mode=OneWay, Converter={StaticResource BoolToVis}}">
-                <appControls:InlineEditableText Text="{x:Bind ViewModel.ShowName, Mode=TwoWay}"     Placeholder="Show name"/>
-                <appControls:InlineEditableText Text="{x:Bind ViewModel.EpisodeTitle, Mode=TwoWay}" Placeholder="Episode title"/>
+                <appControls:InlineEditableText Text="{x:Bind ViewModel.ShowName, Mode=TwoWay}"     Placeholder="Show name"     IsEditable="True"/>
+                <appControls:InlineEditableText Text="{x:Bind ViewModel.EpisodeTitle, Mode=TwoWay}" Placeholder="Episode title" IsEditable="True"/>
             </StackPanel>
 
             <!-- Save -->

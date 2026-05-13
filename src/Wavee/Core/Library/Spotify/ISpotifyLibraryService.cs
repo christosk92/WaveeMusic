@@ -165,6 +165,19 @@ public interface ISpotifyLibraryService : IAsyncDisposable
     /// </summary>
     Task<bool> UnsubscribeShowAsync(string showUri, CancellationToken ct = default);
 
+    /// <summary>
+    /// Pins an item (playlist / album / artist / show / Liked Songs / Your Episodes)
+    /// to the user's Your-Library Pinned section. Mirrors the local DB before the
+    /// network call so the UI reflects the change immediately; rolls back the local
+    /// write on failure.
+    /// </summary>
+    Task<bool> PinToSidebarAsync(string uri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes an item from the user's Your-Library Pinned section.
+    /// </summary>
+    Task<bool> UnpinFromSidebarAsync(string uri, CancellationToken ct = default);
+
     #endregion
 
     #region Outbox

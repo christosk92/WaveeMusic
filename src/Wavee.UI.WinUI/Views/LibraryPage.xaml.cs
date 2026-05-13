@@ -268,28 +268,52 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
             _ => null
         };
 
-        if (tag != null)
+        if (tag == null) return;
+
+        // If the user navigated here from a Pinned-section row whose tag is the
+        // pseudo-URI for the same destination (e.g. spotify:collection for Liked
+        // Songs), keep that row selected. Without this guard, the Your-Library
+        // canonical row below grabs the highlight back from the pinned row.
+        var currentTag = (shellViewModel.SelectedSidebarItem as Controls.Sidebar.SidebarItemModel)?.Tag;
+        if (currentTag is not null && IsEquivalentSidebarTag(tag, currentTag))
+            return;
+
+        foreach (var item in shellViewModel.SidebarItems)
         {
-            foreach (var item in shellViewModel.SidebarItems)
+            if (item.Children is System.Collections.IEnumerable children)
             {
-                if (item.Children is System.Collections.IEnumerable children)
+                foreach (var child in children)
                 {
-                    foreach (var child in children)
+                    if (child is Controls.Sidebar.SidebarItemModel sidebarChild && sidebarChild.Tag == tag)
                     {
-                        if (child is Controls.Sidebar.SidebarItemModel sidebarChild && sidebarChild.Tag == tag)
-                        {
-                            shellViewModel.SelectedSidebarItem = sidebarChild;
-                            return;
-                        }
+                        shellViewModel.SelectedSidebarItem = sidebarChild;
+                        return;
                     }
                 }
-                if (item.Tag as string == tag)
-                {
-                    shellViewModel.SelectedSidebarItem = item;
-                    return;
-                }
+            }
+            if (item.Tag as string == tag)
+            {
+                shellViewModel.SelectedSidebarItem = item;
+                return;
             }
         }
+    }
+
+    private static bool IsEquivalentSidebarTag(string canonicalTag, string currentTag)
+    {
+        if (string.Equals(canonicalTag, currentTag, System.StringComparison.Ordinal))
+            return true;
+
+        return canonicalTag switch
+        {
+            "LikedSongs" =>
+                currentTag == "spotify:collection"
+                || (currentTag.StartsWith("spotify:user:", System.StringComparison.Ordinal)
+                    && currentTag.EndsWith(":collection", System.StringComparison.Ordinal)),
+            "Podcasts" =>
+                currentTag == "spotify:collection:your-episodes",
+            _ => false
+        };
     }
 
     public void RefreshWithParameter(object? parameter)

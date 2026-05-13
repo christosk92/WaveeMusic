@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Threading;
@@ -25,6 +26,7 @@ using Wavee.UI.WinUI.Data.Stores;
 using Wavee.UI.WinUI.Diagnostics;
 using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Helpers;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
@@ -33,6 +35,12 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// Sort column options for album tracks.
 /// </summary>
 public enum AlbumSortColumn { Title, Artist, TrackNumber }
+
+/// <summary>
+/// Header payload for one disc in a multi-disc album. Bound by the
+/// <c>TrackDataGrid.GroupHeaderTemplate</c> in <c>AlbumPage.xaml</c>.
+/// </summary>
+public sealed record DiscGroupHeader(int Number, string TitleText, string DurationFormatted);
 
 /// <summary>
 /// ViewModel for the Album detail page.
@@ -575,6 +583,39 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private readonly ObservableCollection<LazyTrackItem> _filteredTracks = [];
     public IReadOnlyList<LazyTrackItem> FilteredTracks => _filteredTracks;
 
+    // Per-disc totals computed once whenever _allTracks is replaced. Used by the
+    // disc-grouping header in AlbumPage to render "Disc N · X songs · M min".
+    private IReadOnlyDictionary<int, TimeSpan> _discDurations =
+        new Dictionary<int, TimeSpan>();
+    private bool _isMultiDisc;
+
+    /// <summary>
+    /// True when this album has more than one disc. Drives <c>IsGrouped</c> on
+    /// the track grid so single-disc albums keep today's flat list.
+    /// </summary>
+    public bool IsMultiDisc
+    {
+        get => _isMultiDisc;
+        private set => this.RaiseAndSetIfChanged(ref _isMultiDisc, value);
+    }
+
+    /// <summary>
+    /// Stringified disc number used as the group key by <c>TrackDataGrid</c>.
+    /// </summary>
+    public Func<ITrackItem, object?> DiscGroupKeySelector { get; }
+
+    /// <summary>
+    /// Builds the <see cref="DiscGroupHeader"/> payload for one disc, looking up
+    /// the cached total duration so the header can render "Disc N · M min".
+    /// Called once per group with the group's first item.
+    /// </summary>
+    public Func<ITrackItem, object> DiscGroupHeaderSelector { get; }
+
+    /// <summary>
+    /// "N songs" formatter for the disc header. Singular for one-track discs.
+    /// </summary>
+    public Func<int, string> DiscGroupCountFormatter { get; }
+
     // Sort indicator properties for column headers
     public bool IsSortingByTitle => CurrentSortColumn == AlbumSortColumn.Title;
     public bool IsSortingByArtist => CurrentSortColumn == AlbumSortColumn.Artist;
@@ -586,12 +627,15 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// </summary>
     public string SortChevronGlyph => IsSortDescending ? "\uE70D" : "\uE70E";
 
+    private readonly IMusicVideoMetadataService? _musicVideoMetadata;
+
     public AlbumViewModel(
         IAlbumService albumService,
         AlbumStore albumStore,
         ILibraryDataService libraryDataService,
         IPlaybackStateService playbackStateService,
         ITrackLikeService? likeService = null,
+        IMusicVideoMetadataService? musicVideoMetadata = null,
         ILogger<AlbumViewModel>? logger = null)
     {
         _albumService = albumService;
@@ -599,8 +643,33 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
         _likeService = likeService;
+        _musicVideoMetadata = musicVideoMetadata;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _logger = logger;
+
+        DiscGroupKeySelector = item =>
+        {
+            var disc = (item is LazyTrackItem l && l.Data is AlbumTrackDto d)
+                ? d.DiscNumber
+                : 1;
+            return disc.ToString(CultureInfo.InvariantCulture);
+        };
+
+        DiscGroupHeaderSelector = item =>
+        {
+            var disc = (item is LazyTrackItem l && l.Data is AlbumTrackDto d)
+                ? d.DiscNumber
+                : 1;
+            var duration = _discDurations.TryGetValue(disc, out var ts)
+                ? ts
+                : TimeSpan.Zero;
+            return new DiscGroupHeader(
+                disc,
+                $"Disc {disc.ToString(CultureInfo.InvariantCulture)}",
+                FormatDuration(duration.TotalSeconds));
+        };
+
+        DiscGroupCountFormatter = n => n == 1 ? "1 song" : $"{n:N0} songs";
 
         AttachLongLivedServices();
 
@@ -684,10 +753,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
                     this.RaisePropertyChanged(nameof(HasMerch));
                 });
             this.RaisePropertyChanged(nameof(AlbumTypeUpper));
-            PaletteBackdropBrush = null;
-            PaletteAccentPillBrush = null;
-            PaletteAccentPillForegroundBrush = null;
-            PaletteHeroGradientBrush = null;
+            _albumPalette = null;
+            ApplyTheme(_isDarkTheme);
 
             // Force the page + grid back into the loading/skeleton states so the
             // cached page doesn't paint old tracks under the new header during the
@@ -695,9 +762,10 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             IsLoading = !preserveHeaderPrefill || string.IsNullOrEmpty(AlbumImageUrl);
             IsLoadingTracks = true;
             _allTracks = [];
+            RebuildDiscMetadata();
             _popularTrackIds.Clear();
-            _filteredTracks.ReplaceWith(Enumerable.Range(0, 10)
-                .Select(i => LazyTrackItem.Placeholder($"ph-{i}", i + 1)));
+            if (_filteredTracks.Count > 0)
+                _filteredTracks.Clear();
         }
 
         AlbumId = albumId;
@@ -753,6 +821,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
         _filteredTracks.Clear();
         _allTracks = [];
+        RebuildDiscMetadata();
         _popularTrackIds.Clear();
         _alternateReleases.Clear();
         HasAlternateReleases = false;
@@ -856,6 +925,32 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         };
     }
 
+    /// <summary>
+    /// Recomputes <see cref="IsMultiDisc"/> and the per-disc total durations
+    /// used by the disc-group header. Call after <c>_allTracks</c> is replaced.
+    /// </summary>
+    private void RebuildDiscMetadata()
+    {
+        if (_allTracks.Count == 0)
+        {
+            _discDurations = new Dictionary<int, TimeSpan>();
+            IsMultiDisc = false;
+            return;
+        }
+
+        var byDisc = new Dictionary<int, TimeSpan>();
+        foreach (var t in _allTracks)
+        {
+            var disc = (t.Data as AlbumTrackDto)?.DiscNumber ?? 1;
+            byDisc[disc] = byDisc.TryGetValue(disc, out var acc)
+                ? acc + t.Duration
+                : t.Duration;
+        }
+
+        _discDurations = byDisc;
+        IsMultiDisc = byDisc.Count > 1;
+    }
+
     private static HashSet<string> BuildPopularTrackIdSet(IReadOnlyList<AlbumTrackDto> tracks)
     {
         var count = tracks.Count switch
@@ -945,8 +1040,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         {
             PaletteBackdropBrush = null;
             PaletteHeroGradientBrush = null;
-            PaletteAccentPillBrush = null;
-            PaletteAccentPillForegroundBrush = null;
+            PaletteAccentPillBrush = ResolveSystemBrush("AccentFillColorDefaultBrush");
+            PaletteAccentPillForegroundBrush = ResolveSystemBrush("TextOnAccentFillColorPrimaryBrush");
             return;
         }
 
@@ -982,6 +1077,16 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         var accentLuma = (accentBase.R * 299 + accentBase.G * 587 + accentBase.B * 114) / 1000;
         PaletteAccentPillForegroundBrush = new SolidColorBrush(
             accentLuma > 160 ? Color.FromArgb(255, 0, 0, 0) : Color.FromArgb(255, 255, 255, 255));
+    }
+
+    private static Brush? ResolveSystemBrush(string resourceKey)
+    {
+        if (Microsoft.UI.Xaml.Application.Current?.Resources is { } res
+            && res.TryGetValue(resourceKey, out var value)
+            && value is Brush brush)
+            return brush;
+
+        return null;
     }
 
     /// <summary>
@@ -1023,13 +1128,6 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
         try
         {
-            // Show shimmer placeholders immediately if we don't have any tracks yet.
-            if (_allTracks.Count == 0)
-            {
-                _filteredTracks.ReplaceWith(Enumerable.Range(0, 10)
-                    .Select(i => LazyTrackItem.Placeholder($"ph-{i}", i + 1)));
-            }
-
             // Rootlist for "Add to playlist" — fire-and-forget so it doesn't block detail render.
             _ = LoadRootlistAsync();
 
@@ -1108,17 +1206,28 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             _allTracks = detail.Tracks
                 .Select((t, i) => LazyTrackItem.Loaded(t.Id, i + 1, t))
                 .ToList();
+            RebuildDiscMetadata();
             _popularTrackIds = BuildPopularTrackIdSet(detail.Tracks);
 
             TotalTracks = _allTracks.Count;
             TotalDuration = FormatDuration(_allTracks.Sum(t => t.Duration.TotalSeconds));
             IsLoadingTracks = false;
 
-            // Swap directly from shimmer placeholders to real tracks — one realization
-            // burst instead of two, and no visible empty-state flash. The previous
-            // "clear -> delay -> repopulate" pattern forced the ListView to tear down
-            // every container, flash empty for 50 ms, then rebuild every container,
-            // which read as "buggy and laggy" in the transition.
+            // Light the music-video badge on rows whose Spotify track is linked
+            // to a local music-video file. Fire-and-forget; the DTO's
+            // HasLinkedLocalVideo setter raises PropertyChanged so TrackItem
+            // updates its badge live when the result lands.
+            if (_musicVideoMetadata is not null && detail.Tracks.Count > 0)
+            {
+                _ = _musicVideoMetadata.ApplyAvailabilityToAsync(
+                    detail.Tracks,
+                    static t => t.Uri,
+                    static (t, v) => t.HasLinkedLocalVideo = v,
+                    CancellationToken.None);
+            }
+
+            // Apply the real track snapshot in one reset. The grid-level loading
+            // skeleton avoids constructing placeholder TrackItems before this.
             ApplyFilterAndSort();
 
             // Related albums

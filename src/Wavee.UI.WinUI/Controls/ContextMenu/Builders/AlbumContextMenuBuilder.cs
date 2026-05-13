@@ -17,10 +17,12 @@ public sealed class AlbumMenuContext
     public string? ArtistId { get; init; }
     public string? ArtistName { get; init; }
     public bool IsSaved { get; init; }
+    public bool IsPinned { get; init; }
 
     public ICommand? PlayCommand { get; init; }
     public ICommand? ShuffleCommand { get; init; }
     public ICommand? ToggleSaveCommand { get; init; }
+    public ICommand? TogglePinCommand { get; init; }
     public ICommand? AddToQueueCommand { get; init; }
     public ICommand? ShareCommand { get; init; }
 }
@@ -62,6 +64,15 @@ public static class AlbumContextMenuBuilder
             AccentIconStyleKey = ctx.IsSaved ? "App.AccentIcons.Media.Saved" : "App.AccentIcons.Media.Save",
             Command = ctx.ToggleSaveCommand,
             Invoke = ctx.ToggleSaveCommand is null ? () => Debug.WriteLine($"ToggleAlbumSave: {uri}") : null,
+            IsPrimary = true
+        });
+
+        items.Add(new ContextMenuItemModel
+        {
+            Text = AppLocalization.GetString(ctx.IsPinned ? "SidebarMenu_UnpinFolder" : "SidebarMenu_PinFolder"),
+            Glyph = ctx.IsPinned ? FluentGlyphs.Unpin : FluentGlyphs.Pin,
+            Command = ctx.TogglePinCommand,
+            Invoke = ctx.TogglePinCommand is null ? () => Debug.WriteLine($"TogglePinAlbum: {uri}") : null,
             IsPrimary = true
         });
 

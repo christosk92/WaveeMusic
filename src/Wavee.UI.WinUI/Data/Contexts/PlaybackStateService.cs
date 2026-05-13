@@ -20,6 +20,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
@@ -41,6 +42,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger? _logger;
     private readonly IHomeFeedCache? _homeFeedCache;
+    private readonly INotificationService? _notificationService;
 
     // Lazily resolved to break the construction cycle with the discovery
     // service (which depends on this state service for CurrentArtistId).
@@ -177,7 +179,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         IMessenger messenger,
         DispatcherQueue dispatcherQueue,
         ILogger? logger = null,
-        IHomeFeedCache? homeFeedCache = null)
+        IHomeFeedCache? homeFeedCache = null,
+        INotificationService? notificationService = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _playbackService = playbackService ?? throw new ArgumentNullException(nameof(playbackService));
@@ -186,6 +189,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         _dispatcherQueue = dispatcherQueue ?? throw new ArgumentNullException(nameof(dispatcherQueue));
         _logger = logger;
         _homeFeedCache = homeFeedCache;
+        _notificationService = notificationService;
 
         // Register for auth status changes to subscribe after session connects
         _messenger.Register<AuthStatusChangedMessage>(this);
@@ -513,7 +517,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 if (state.Changes.HasFlag(StateChanges.Context))
                 {
                     _logger?.LogDebug("UI bridge: context → {Context}", state.ContextUri);
-                    CurrentContext = ParseContext(state.ContextUri);
+                    CurrentContext = ParseContext(state);
                 }
 
                 // Queue
@@ -932,8 +936,9 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     }
 
-    private static PlaybackContextInfo? ParseContext(string? contextUri)
+    private static PlaybackContextInfo? ParseContext(PlaybackState state)
     {
+        var contextUri = state.ContextUri;
         if (string.IsNullOrEmpty(contextUri)) return null;
 
         var type = contextUri switch
@@ -947,7 +952,21 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             _ => PlaybackContextType.Unknown
         };
 
-        return new PlaybackContextInfo { ContextUri = contextUri, Type = type };
+        return new PlaybackContextInfo
+        {
+            ContextUri = contextUri,
+            Type = type,
+            Name = FirstNonWhiteSpace(
+                state.ContextDescription,
+                TryGetMetadataValue(state.ContextFormatAttributes, "context_description"),
+                TryGetMetadataValue(state.ContextFormatAttributes, "session_control_display.displayName"),
+                TryGetMetadataValue(state.ContextFormatAttributes, "session_control_display.displayName.short"),
+                TryGetMetadataValue(state.ContextFormatAttributes, "session_control_display.displayName.long")),
+            ImageUrl = FirstNonWhiteSpace(
+                state.ContextImageUrl,
+                TryGetMetadataValue(state.ContextFormatAttributes, "image_url")),
+            FormatAttributes = state.ContextFormatAttributes
+        };
     }
 
     // ── IRecipient<QueueMetadataEnrichedMessage> ──
@@ -1216,7 +1235,20 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 var audioUrix = GetCurrentTrackUri();
                 string? videoUri = null;
                 if (!string.IsNullOrEmpty(audioUrix))
-                    VideoMetadata?.TryGetVideoUri(audioUrix, out videoUri);
+                {
+                    videoUri = await TryResolveLinkedLocalVideoUriAsync(audioUrix);
+                    if (string.IsNullOrEmpty(videoUri))
+                        VideoMetadata?.TryGetVideoUri(audioUrix, out videoUri);
+                }
+
+                if (IsLocalTrackUri(videoUri))
+                {
+                    var localResult = await _playbackService.SwitchToVideoAsync(
+                        manifestIdOverride: null,
+                        videoTrackUriOverride: videoUri,
+                        CancellationToken.None);
+                    return localResult?.IsSuccess ?? false;
+                }
 
                 var result = await _playbackService.SwitchToVideoAsync(
                     CurrentTrackManifestId,
@@ -1243,12 +1275,21 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         try
         {
             var manifestId = await discovery.ResolveManifestIdAsync(audioUri, CancellationToken.None);
+            discovery.TryGetVideoUri(audioUri, out var videoUri);
+            if (IsLocalTrackUri(videoUri))
+            {
+                var localResult = await _playbackService.SwitchToVideoAsync(
+                    manifestIdOverride: null,
+                    videoTrackUriOverride: videoUri,
+                    CancellationToken.None);
+                return localResult?.IsSuccess ?? false;
+            }
+
             if (string.IsNullOrEmpty(manifestId))
             {
                 _logger?.LogWarning("[Cmd] SwitchToVideo: discovery service returned no manifest for {Track}", audioUri);
                 return false;
             }
-            discovery.TryGetVideoUri(audioUri, out var videoUri);
             var result = await _playbackService.SwitchToVideoAsync(
                 manifestId,
                 string.IsNullOrEmpty(videoUri) ? null : videoUri,
@@ -1259,6 +1300,33 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         {
             _logger?.LogError(ex, "[Cmd] SwitchToVideo (linked-URI) FAILED for {Track}", audioUri);
             return false;
+        }
+    }
+
+    private static bool IsLocalTrackUri(string? uri)
+        => !string.IsNullOrWhiteSpace(uri)
+           && uri.StartsWith("wavee:local:track:", StringComparison.Ordinal);
+
+    private async Task<string?> TryResolveLinkedLocalVideoUriAsync(string audioUri)
+    {
+        if (!IsSpotifyTrackUri(audioUri)) return null;
+
+        var library = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<Wavee.Local.ILocalLibraryService>();
+        if (library is null) return null;
+
+        try
+        {
+            var video = await library.GetLinkedMusicVideoForSpotifyTrackAsync(audioUri, CancellationToken.None);
+            if (video is null || string.IsNullOrWhiteSpace(video.TrackUri)) return null;
+
+            VideoMetadata?.NoteVideoUri(audioUri, video.TrackUri);
+            return video.TrackUri;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "[Cmd] SwitchToVideo: local association lookup failed for {Track}", audioUri);
+            return null;
         }
     }
 
@@ -1660,11 +1728,69 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             return;
         }
 
-        PlayContext(new PlaybackContextInfo
+        var isCurrentSongRadio = IsSpotifyTrackUri(seedUri) && IsCurrentTrackSeed(seedUri);
+        PlaybackResult result;
+
+        if (isCurrentSongRadio)
         {
-            ContextUri = playlistUri,
-            Type = PlaybackContextType.Playlist,
-            Name = displayName
+            result = await _playbackService.SwitchToContextAfterCurrentAsync(
+                playlistUri,
+                currentTrackUri: seedUri,
+                displayName: displayName);
+        }
+        else
+        {
+            result = await _playbackService.PlayContextAsync(
+                playlistUri,
+                new PlayContextOptions
+                {
+                    StartIndex = 1,
+                    PlayOriginFeature = "playlist",
+                    BypassPrompt = true
+                });
+        }
+
+        if (!result.IsSuccess)
+        {
+            _logger?.LogWarning(
+                "[Cmd] StartRadio FAILED starting playlist={Playlist}: {Error}",
+                playlistUri,
+                result.ErrorMessage ?? "<none>");
+            return;
+        }
+
+        ShowRadioStartedNotification(playlistUri, displayName);
+    }
+
+    private bool IsCurrentTrackSeed(string seedUri)
+    {
+        var seedId = ExtractTrackId(seedUri);
+        if (string.IsNullOrEmpty(seedId)) return false;
+
+        if (string.Equals(CurrentTrackId, seedId, StringComparison.Ordinal))
+            return true;
+
+        if (string.Equals(CurrentOriginalTrackId, seedId, StringComparison.Ordinal))
+            return true;
+
+        return string.Equals(GetCurrentTrackUri(), seedUri, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ShowRadioStartedNotification(string playlistUri, string? displayName)
+    {
+        _notificationService?.Show(new NotificationInfo
+        {
+            Message = "Radio has started.",
+            Severity = NotificationSeverity.Success,
+            AutoDismissAfter = TimeSpan.FromSeconds(5),
+            ActionLabel = "Open playlist",
+            Action = () =>
+            {
+                NavigationHelpers.OpenPlaylist(
+                    playlistUri,
+                    string.IsNullOrWhiteSpace(displayName) ? "Radio" : displayName!);
+                return Task.CompletedTask;
+            }
         });
     }
 

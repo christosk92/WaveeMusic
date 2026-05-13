@@ -7,6 +7,22 @@ public interface IPlaylistCacheService
 {
     Task<RootlistSnapshot> GetRootlistAsync(bool forceRefresh = false, CancellationToken ct = default);
     Task<RootlistTree> GetRootlistTreeAsync(bool forceRefresh = false, CancellationToken ct = default);
+
+    /// <summary>
+    /// Cache-only rootlist read. Checks the hot in-memory cache then SQLite. Never
+    /// triggers a network refresh. Returns <c>null</c> when neither tier has data
+    /// (cold launch, signed-out user, never-cached account). Used by the sidebar
+    /// to hydrate playlists immediately on launch while a real fetch runs in the
+    /// background.
+    /// </summary>
+    Task<RootlistSnapshot?> TryGetRootlistFromCacheAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Cache-only tree build. Returns <c>null</c> when the underlying rootlist
+    /// snapshot isn't in cache. Pair with <see cref="TryGetRootlistFromCacheAsync"/>.
+    /// </summary>
+    Task<RootlistTree?> TryGetRootlistTreeFromCacheAsync(CancellationToken ct = default);
+
     Task<CachedPlaylist> GetPlaylistAsync(string playlistUri, bool forceRefresh = false, CancellationToken ct = default);
     Task InvalidateAsync(string playlistUri, CancellationToken ct = default);
 

@@ -518,8 +518,9 @@
                 Width="12"
                 ResizeCompleted="PlaylistSplitter_ResizeCompleted"/>
 
-            <!-- Track grid in column 2. IsLoading is driven by IsLoadingTracks because
-                 playlist tracks lazy-load independently of metadata. Rewrite swapped
+            <!-- Track grid in column 2. IsLoading is driven by IsLoadingTracks so
+                 the grid can show lightweight skeleton rows while playlist tracks
+                 lazy-load independently of metadata. Rewrite swapped
                  TrackListView for TrackDataGrid — filter/sort/columns live inside the
                  grid's toolbar now; the page-level hero + narrow-mode header that used
                  to nest inside TrackListView.HeaderContent still render above the grid. -->
@@ -530,6 +531,7 @@
                 Margin="0,0,0,0"
                 PageKey="playlist"
                 UseItemsViewRows="True"
+                IsLoading="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay}"
                 AddedByVisible="{x:Bind ViewModel.ShouldShowAddedByColumn, Mode=OneWay}"
                 ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"
                 PlayCommand="{x:Bind ViewModel.PlayTrackCommand}">

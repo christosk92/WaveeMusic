@@ -157,7 +157,14 @@ public sealed record LocalMusicVideo(
     string? Artist,
     int? Year,
     long DurationMs,
-    string? ThumbnailUri);
+    string? ThumbnailUri)
+{
+    /// <summary>
+    /// Spotify audio track this local music video is associated with. Populated
+    /// by Spotify enrichment or by a manual user link.
+    /// </summary>
+    public string? LinkedSpotifyTrackUri { get; init; }
+}
 
 /// <summary>
 /// "Other" / unclassified item — files that didn't fit any known kind.

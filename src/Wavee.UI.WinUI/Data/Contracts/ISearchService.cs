@@ -77,6 +77,17 @@ public enum SearchSuggestionType
     LocalAlbum,
     LocalArtist,
     LocalPlaylist,
+
+    // Spotify entity types the omnibar produces when the user pastes a Spotify
+    // URL / URI. The shell's OnSuggestionChosen routes these via the matching
+    // NavigationHelpers.Open* call (Episode → EpisodePage, User → ProfilePage).
+    Episode,
+    User,
+
+    // Umbrella for pseudo-URI link pastes that don't map to a single entity
+    // page — currently Liked Songs (spotify:collection) and Your Episodes
+    // (spotify:collection:your-episodes). Destination is encoded in Uri.
+    LinkAction,
 }
 
 public sealed record SearchSuggestionItem

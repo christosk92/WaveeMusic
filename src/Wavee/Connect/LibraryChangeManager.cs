@@ -61,14 +61,32 @@ public sealed class LibraryChangeManager : IAsyncDisposable
         try
         {
             _logger?.LogDebug("Received library change: {Uri}", message.Uri);
-            if (message.Payload.Length == 0) return;
+            var setFromUri = DetermineSetFromUri(message.Uri);
+            if (message.Payload.Length == 0)
+            {
+                if (setFromUri == "ylpin")
+                {
+                    _logger?.LogDebug("Emitting ylpin change from empty notification: {Uri}", message.Uri);
+                    _changes.OnNext(BuildBasicEvent(message, setFromUri));
+                }
+
+                return;
+            }
 
             // Drop the text/plain JSON preview of collection deltas — it's a
             // duplicate of the binary form on /collection/{user}, and trying to
             // parse JSON text as protobuf produced a stream of "Failed to parse"
             // debug lines per liked-song toggle.
             if (message.Uri.EndsWith("/json", StringComparison.OrdinalIgnoreCase))
+            {
+                if (setFromUri == "ylpin")
+                {
+                    _logger?.LogDebug("Emitting ylpin change from JSON notification: {Uri}", message.Uri);
+                    _changes.OnNext(BuildBasicEvent(message, setFromUri));
+                }
+
                 return;
+            }
 
             // Dispatch by URI shape. Each helper catches its own exceptions and
             // returns null on failure so we fall through to the basic-event
@@ -93,15 +111,7 @@ public sealed class LibraryChangeManager : IAsyncDisposable
             // Basic event so downstream consumers can still react to anything we
             // didn't recognize (e.g. invalidate broadly). RawPayload is preserved
             // for debugging.
-            changeEvent ??= new LibraryChangeEvent
-            {
-                Uri = message.Uri,
-                Set = DetermineSetFromUri(message.Uri),
-                IsRootlist = message.Uri.Contains("rootlist", StringComparison.OrdinalIgnoreCase),
-                Items = Array.Empty<LibraryChangeItem>(),
-                Timestamp = DateTimeOffset.UtcNow,
-                RawPayload = message.Payload,
-            };
+            changeEvent ??= BuildBasicEvent(message, setFromUri);
 
             _changes.OnNext(changeEvent);
         }
@@ -260,10 +270,51 @@ public sealed class LibraryChangeManager : IAsyncDisposable
 
     private static string DetermineSetFromUri(string uri)
     {
+        // Path-segment parse. Spotify's dealer URIs for collections look like
+        //   hm://collection/<set>/<userId>[/json]
+        // The previous implementation substring-cascaded on "collection" and
+        // returned "collection" for every variant, so ylpin / listenlater /
+        // artist / show pushes were all misclassified as the Tracks-and-Albums
+        // catch-all. Walking the second path segment gets the correct set name.
+        const string scheme = "hm://";
+        var path = uri.StartsWith(scheme, StringComparison.OrdinalIgnoreCase)
+            ? uri.AsSpan(scheme.Length)
+            : uri.AsSpan();
+
+        var firstSlash = path.IndexOf('/');
+        if (firstSlash > 0)
+        {
+            var first = path.Slice(0, firstSlash);
+            var rest = path.Slice(firstSlash + 1);
+            var secondSlash = rest.IndexOf('/');
+            var second = secondSlash >= 0 ? rest.Slice(0, secondSlash) : rest;
+
+            if (first.Equals("collection", StringComparison.OrdinalIgnoreCase))
+            {
+                if (second.Equals("ylpin", StringComparison.OrdinalIgnoreCase)) return "ylpin";
+                if (second.Equals("listenlater", StringComparison.OrdinalIgnoreCase)) return "listenlater";
+                if (second.Equals("artist", StringComparison.OrdinalIgnoreCase)) return "artists";
+                if (second.Equals("show", StringComparison.OrdinalIgnoreCase)) return "shows";
+                if (second.Equals("collection", StringComparison.OrdinalIgnoreCase)) return "collection";
+                // Unknown inner set — fall through to the legacy substring heuristic.
+            }
+        }
+
+        // Playlist / rootlist surfaces — match first since their URIs don't
+        // start with /collection/.
+        if (uri.Contains("playlist", StringComparison.OrdinalIgnoreCase) ||
+            uri.Contains("rootlist", StringComparison.OrdinalIgnoreCase))
+        {
+            return "playlists";
+        }
+
+        // Legacy fallbacks for any shapes we haven't enumerated explicitly.
+        // ylpin / listenlater / artist / show no longer reach here because the
+        // path-segment branch above catches them.
         if (uri.Contains("track", StringComparison.OrdinalIgnoreCase) ||
             uri.Contains("collection", StringComparison.OrdinalIgnoreCase))
         {
-            return "collection"; // Tracks
+            return "collection";
         }
         if (uri.Contains("album", StringComparison.OrdinalIgnoreCase))
         {
@@ -273,11 +324,20 @@ public sealed class LibraryChangeManager : IAsyncDisposable
         {
             return "artists";
         }
-        if (uri.Contains("playlist", StringComparison.OrdinalIgnoreCase))
-        {
-            return "playlists";
-        }
         return "unknown";
+    }
+
+    private static LibraryChangeEvent BuildBasicEvent(DealerMessage message, string? set = null)
+    {
+        return new LibraryChangeEvent
+        {
+            Uri = message.Uri,
+            Set = set ?? DetermineSetFromUri(message.Uri),
+            IsRootlist = message.Uri.Contains("rootlist", StringComparison.OrdinalIgnoreCase),
+            Items = Array.Empty<LibraryChangeItem>(),
+            Timestamp = DateTimeOffset.UtcNow,
+            RawPayload = message.Payload,
+        };
     }
 
     public async ValueTask DisposeAsync()

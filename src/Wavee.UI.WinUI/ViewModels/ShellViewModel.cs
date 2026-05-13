@@ -32,6 +32,7 @@ using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Services.Docking;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Wavee.Core;
 using Wavee.Core.Playlists;
 using Microsoft.UI.Xaml.Media;
 
@@ -60,6 +61,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     // Omnibar grouped-search backend. Quicksearch is broadened to AllCached so anything
     // the user has seen/played (not just saved-library items) is findable.
     private readonly Wavee.Local.ILocalLibraryService? _localLibrary;
+
+    // Resolves Spotify URL / URI pastes to a single entity preview shown in the omnibar.
+    // Optional — when null, link pastes still navigate but show only the synthetic
+    // "Open {kind}" placeholder card (no real name / cover).
+    private readonly ISpotifyLinkPreviewService? _linkPreviewService;
+
+    // CTS scoped to the currently-typed URL paste, so a fresh keystroke cancels any
+    // in-flight preview fetch before the result lands on a stale query.
+    private CancellationTokenSource? _linkPreviewCts;
 
     // Placeholder items used as the Spotify section's contents while the network call
     // is in flight. The Spotify section becomes visible from frame 1 (shimmer rows),
@@ -367,7 +377,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         IDispatcherService? dispatcher = null,
         ILogger<ShellViewModel>? logger = null,
         PlaylistMosaicService? mosaicService = null,
-        Wavee.Local.ILocalLibraryService? localLibrary = null)
+        Wavee.Local.ILocalLibraryService? localLibrary = null,
+        ISpotifyLinkPreviewService? linkPreviewService = null)
     {
         _libraryDataService = libraryDataService;
         _playlistCache = playlistCache;
@@ -382,6 +393,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _logger = logger;
         _mosaicService = mosaicService;
         _localLibrary = localLibrary;
+        _linkPreviewService = linkPreviewService;
 
         // Initialize from AppModel (one-time read)
         _sidebarWidth = appModel.SidebarWidth;
@@ -534,6 +546,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             playlistChildren.Clear();
         }
+
+        var pinnedSection = SidebarItems.FirstOrDefault(x => x.Tag == "Pinned");
+        if (pinnedSection?.Children is ObservableCollection<SidebarItemModel> pinnedChildren)
+        {
+            pinnedChildren.Clear();
+        }
     }
 
     /// <summary>
@@ -563,6 +581,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             try { await RefreshLibraryBadgesAsync(); }
             catch (Exception ex) { _logger?.LogDebug(ex, "Sidebar badge refresh failed"); }
+            try { await RefreshPinnedAsync(); }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Sidebar pinned refresh failed"); }
         });
     }
 
@@ -615,17 +635,48 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         try
         {
+            // Phase 1 — cache-only. SQLite + hot in-memory only, never the network.
+            // When the user has been signed in before, this hydrates the sidebar in
+            // a few ms. When the cache is empty (cold launch / signed-out), both
+            // helpers return null and the shimmer stays visible until Phase 2.
+            var cachedPlaylistsTask = _libraryDataService.TryGetUserPlaylistsFromCacheAsync();
+            var cachedTreeTask = _playlistCache.TryGetRootlistTreeFromCacheAsync();
+            await Task.WhenAll(cachedPlaylistsTask, cachedTreeTask);
+
+            var cachedPlaylists = await cachedPlaylistsTask;
+            var cachedTree = await cachedTreeTask;
+            if (cachedPlaylists is not null && cachedTree is not null)
+            {
+                PopulatePlaylistsSidebar(cachedPlaylists, cachedTree);
+                ClearPlaylistsLoadingState();
+            }
+
+            // Phase 2 — network-backed refresh. Runs to completion even when Phase 1
+            // already painted from cache; the smart diff in PopulatePlaylistsSidebar
+            // reuses existing SidebarItemModels by Tag, so unchanged rows do not
+            // flicker. Network failures here surface as caught exceptions but the
+            // sidebar keeps whatever Phase 1 already rendered.
             var playlistsTask = _libraryDataService.GetUserPlaylistsAsync();
             var treeTask = _playlistCache.GetRootlistTreeAsync();
-
             await Task.WhenAll(playlistsTask, treeTask);
             PopulatePlaylistsSidebar(await playlistsTask, await treeTask);
+            ClearPlaylistsLoadingState();
         }
         catch (Exception ex)
         {
+            // Network refresh failed — still drop the loading state so the user
+            // isn't left staring at perpetual shimmer when the cache was empty.
+            ClearPlaylistsLoadingState();
             _logger?.LogError(ex, "Failed to refresh playlists from service");
             throw;
         }
+    }
+
+    private void ClearPlaylistsLoadingState()
+    {
+        var playlistsSection = SidebarItems.FirstOrDefault(x => x.Tag == "Playlists");
+        if (playlistsSection is not null && playlistsSection.IsLoadingChildren)
+            playlistsSection.IsLoadingChildren = false;
     }
 
     private void InitializeSidebarItems()
@@ -652,6 +703,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 Tag = "YourLibrary",
                 IsExpanded = true,
                 IsSectionHeader = true,
+                ShowCompactSeparatorBefore = true,
                 Children = new ObservableCollection<SidebarItemModel>
                 {
                     new SidebarItemModel
@@ -673,65 +725,44 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                         Text = AppLocalization.GetString("Shell_SidebarLikedSongs"),
                         IconSource = new FontIconSource { Glyph = "\uEB52" },
                         Tag = "LikedSongs",
-                        BadgeCount = 0
+                        BadgeCount = 0,
+                        ShowPinToggleButton = true
                     },
                     new SidebarItemModel
                     {
                         Text = AppLocalization.GetString("Shell_SidebarPodcasts"),
                         IconSource = new FontIconSource { Glyph = "\uEC05" },
                         Tag = "Podcasts",
+                        BadgeCount = 0,
+                        ShowPinToggleButton = true
+                    },
+                    // Local files landing page. The typed shelves stay one click
+                    // deeper inside LocalLibraryPage instead of occupying four
+                    // separate sidebar rows. FontIconSource (not SymbolIconSource)
+                    // for parity with its siblings — SymbolIconSource carries a
+                    // different default size/margin that visibly stretches the
+                    // icon column and squeezes the label.
+                    new SidebarItemModel
+                    {
+                        Text = AppLocalization.GetString("Shell_SidebarLocalFiles"),
+                        IconSource = new FontIconSource { Glyph = FluentGlyphs.Folder },
+                        Tag = "LocalFiles",
                         BadgeCount = 0
                     }
                 }
             },
-            // Local media section \u2014 co-equal with Your Library. Surfaces the
-            // four content-typed drill-in pages directly so users don't have
-            // to bounce through the landing page when they know the kind.
-            new SidebarItemModel
-            {
-                Text = AppLocalization.GetString("Shell_SidebarLocalMedia"),
-                Tag = "LocalMedia",
-                IsExpanded = true,
-                IsSectionHeader = true,
-                Children = new ObservableCollection<SidebarItemModel>
-                {
-                    new SidebarItemModel
-                    {
-                        Text = AppLocalization.GetString("Shell_SidebarLocalShows"),
-                        IconSource = new FontIconSource { Glyph = FluentGlyphs.TvShow },
-                        Tag = "LocalShows",
-                        BadgeCount = 0
-                    },
-                    new SidebarItemModel
-                    {
-                        Text = AppLocalization.GetString("Shell_SidebarLocalMovies"),
-                        IconSource = new FontIconSource { Glyph = FluentGlyphs.Movie },
-                        Tag = "LocalMovies",
-                        BadgeCount = 0
-                    },
-                    new SidebarItemModel
-                    {
-                        Text = AppLocalization.GetString("Shell_SidebarLocalMusic"),
-                        IconSource = new FontIconSource { Glyph = FluentGlyphs.Album },
-                        Tag = "LocalMusic",
-                        BadgeCount = 0
-                    },
-                    new SidebarItemModel
-                    {
-                        Text = AppLocalization.GetString("Shell_SidebarLocalMusicVideos"),
-                        IconSource = new FontIconSource { Glyph = FluentGlyphs.MusicVideo },
-                        Tag = "LocalMusicVideos",
-                        BadgeCount = 0
-                    }
-                }
-            },
-            // Playlists section (collapsible)
+            // Playlists section (collapsible). IsLoadingChildren=true on cold boot
+            // so the sidebar shows shimmer rows the instant it realizes, before any
+            // cache or network read has completed. RefreshPlaylistsAsync flips this
+            // back to false as soon as either tier yields a result.
             new SidebarItemModel
             {
                 Text = AppLocalization.GetString("Shell_SidebarPlaylists"),
                 Tag = "Playlists",
                 IsExpanded = true,
                 IsSectionHeader = true,
+                ShowCompactSeparatorBefore = true,
+                IsLoadingChildren = true,
                 ShowEmptyPlaceholder = true,
                 EmptyPlaceholderText = AppLocalization.GetString("Shell_SidebarNoPlaylists"),
                 ItemDecorator = CreatePlaylistsAddButton(),
@@ -923,12 +954,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         try
         {
-            // Load stats and playlists in parallel
+            // Stats run in parallel with the two-phase playlist refresh. The
+            // playlists fan-out (cache + network) is owned by RefreshPlaylistsAsync
+            // so cold-launch shimmer / warm-launch instant-hydrate behave identically
+            // here and on subsequent PlaylistsChanged events.
             var statsTask = _libraryDataService.GetStatsAsync();
-            var playlistsTask = _libraryDataService.GetUserPlaylistsAsync();
-            var treeTask = _playlistCache.GetRootlistTreeAsync();
+            var playlistsRefreshTask = RefreshPlaylistsAsync();
+            var pinnedRefreshTask = RefreshPinnedAsync();
 
-            await Task.WhenAll(statsTask, playlistsTask, treeTask);
+            await Task.WhenAll(statsTask, playlistsRefreshTask, pinnedRefreshTask);
 
             var stats = await statsTask;
 
@@ -948,8 +982,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 var podcastsItem = libraryChildren.FirstOrDefault(x => x.Tag as string is "Podcasts" or "YourEpisodes");
                 if (podcastsItem != null) podcastsItem.BadgeCount = stats.PodcastCount;
             }
-
-            PopulatePlaylistsSidebar(await playlistsTask, await treeTask);
         }
         catch (Exception ex)
         {
@@ -962,25 +994,397 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         IReadOnlyList<PlaylistSummaryDto> playlists,
         RootlistTree tree)
     {
-        // Walks the tree built by RootlistTreeBuilder — which already handles folder
-        // nesting (ID-matched pop, self-healed unclosed folders) — rather than re-parsing
-        // the flat rootlist items here. Previous flat walker blindly popped on end-group
-        // which corrupted nesting whenever IDs didn't match one-to-one.
+        // Smart key-based diff. Reuses existing SidebarItemModel instances by Tag,
+        // inserts new ones in place, moves reordered ones, and trims removed ones.
+        // Replaces the previous Clear() + walk-and-append, which made the sidebar
+        // flash on every refresh even when the fresh data was identical to what
+        // was already painted (the common case after the cache→network fan-out).
         var playlistsSection = SidebarItems.FirstOrDefault(x => x.Tag == "Playlists");
         if (playlistsSection?.Children is not ObservableCollection<SidebarItemModel> playlistChildren)
             return;
 
-        playlistChildren.Clear();
-
         var playlistLookup = playlists.ToDictionary(x => x.Id, StringComparer.Ordinal);
-
-        // Top-level rows (root playlists + root folders) are at depth 0; folders push +1 per nesting level.
-        AppendNodeChildren(tree.Root, playlistChildren, playlistLookup, depth: 0);
-
-        ApplyPersistedSidebarState(playlistsSection);
+        var target = BuildPlaylistTargetNodes(tree.Root, playlistLookup);
+        DiffPlaylistCollection(playlistChildren, target, depth: 0);
 
         if (_shellSession.GetSelectedSidebarTag() is { Length: > 0 } selectedTag)
-            SelectedSidebarItem = FindSidebarItemByTag(selectedTag);
+        {
+            var match = FindSidebarItemByTag(selectedTag);
+            if (!ReferenceEquals(SelectedSidebarItem, match))
+                SelectedSidebarItem = match;
+        }
+    }
+
+    private async Task RefreshPinnedAsync()
+    {
+        try
+        {
+            var items = await _libraryDataService.GetPinnedItemsAsync();
+            PopulatePinnedSidebar(items);
+            SyncCanonicalRowsPinnedState();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to refresh pinned items");
+        }
+    }
+
+    /// <summary>
+    /// Flips the <c>IsPinned</c> flag on the canonical Your-Library Liked Songs
+    /// and Podcasts rows based on whether their corresponding pseudo-URIs are in
+    /// the pinned set. Drives the pin/unpin glyph on the always-visible toggle
+    /// button.
+    /// </summary>
+    private void SyncCanonicalRowsPinnedState()
+    {
+        var librarySection = SidebarItems.FirstOrDefault(x => x.Tag == "YourLibrary");
+        if (librarySection?.Children is not ObservableCollection<SidebarItemModel> children) return;
+
+        foreach (var row in children)
+        {
+            if (row.Tag == "LikedSongs")
+            {
+                row.IsPinned = _libraryDataService.IsPinned("spotify:collection");
+            }
+            else if (row.Tag == "Podcasts" || row.Tag == "YourEpisodes")
+            {
+                row.IsPinned = _libraryDataService.IsPinned("spotify:collection:your-episodes");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Handles a click on the inline pin/unpin button on any sidebar row.
+    /// For Pinned-section rows (Tag = the raw URI), always unpins. For
+    /// canonical Your-Library rows (Tag = "LikedSongs" / "Podcasts"), maps to
+    /// the pseudo-URI and unpins only when currently pinned. Optimistic: the
+    /// local DB is updated by the service before the network call.
+    /// </summary>
+    public async Task HandleSidebarPinButtonAsync(SidebarItemModel model)
+    {
+        if (model is null) return;
+
+        if (model.ShowUnpinButton)
+        {
+            // Pinned-section row — Tag IS the URI we want to unpin.
+            if (string.IsNullOrEmpty(model.Tag)) return;
+            try
+            {
+                var ok = await _libraryDataService.UnpinAsync(model.Tag);
+                if (!ok)
+                    NotifyPinFailure(unpinned: true);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Unpin failed for {Uri}", model.Tag);
+                NotifyPinFailure(unpinned: true);
+            }
+            return;
+        }
+
+        if (!model.ShowPinToggleButton) return;
+
+        // Canonical YL row — map the row tag to its pseudo-URI.
+        var uri = model.Tag switch
+        {
+            "LikedSongs" => "spotify:collection",
+            "Podcasts" or "YourEpisodes" => "spotify:collection:your-episodes",
+            _ => null
+        };
+        if (uri is null) return;
+
+        var wasPinned = _libraryDataService.IsPinned(uri);
+        if (!wasPinned)
+            return;
+
+        try
+        {
+            var ok = await _libraryDataService.UnpinAsync(uri);
+            if (!ok)
+                NotifyPinFailure(unpinned: wasPinned);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Pin toggle failed for {Uri}", uri);
+            NotifyPinFailure(unpinned: wasPinned);
+        }
+    }
+
+    private void NotifyPinFailure(bool unpinned)
+    {
+        // Toast surfaces the rollback to the user: the optimistic local write
+        // already reverted inside SpotifyLibraryService, so the sidebar shows
+        // the correct (unchanged) state — this message just explains why.
+        var message = unpinned
+            ? "Couldn't unpin from the sidebar. Check your connection and try again."
+            : "Couldn't pin to the sidebar. Check your connection and try again.";
+        ShowNotification(message, InfoBarSeverity.Warning);
+    }
+
+    private void PopulatePinnedSidebar(IReadOnlyList<PinnedItemDto> items)
+    {
+        var pinnedSection = SidebarItems.FirstOrDefault(x => x.Tag == "Pinned");
+        if (pinnedSection?.Children is not ObservableCollection<SidebarItemModel> children)
+            return;
+
+        // Flat key-based diff — same shape as DiffPlaylistCollection but without
+        // folder recursion. Reuses existing rows by URI so selection survives,
+        // and updates Text/Image in place when an unchanged row's title comes
+        // back from a fresh metadata fetch.
+        for (int i = 0; i < items.Count; i++)
+        {
+            var t = items[i];
+            if (i < children.Count && string.Equals(children[i].Tag, t.Uri, StringComparison.Ordinal))
+            {
+                UpdatePinnedRow(children[i], t);
+                continue;
+            }
+
+            int found = -1;
+            for (int j = i + 1; j < children.Count; j++)
+            {
+                if (string.Equals(children[j].Tag, t.Uri, StringComparison.Ordinal))
+                {
+                    found = j;
+                    break;
+                }
+            }
+
+            if (found >= 0)
+            {
+                children.Move(found, i);
+                UpdatePinnedRow(children[i], t);
+            }
+            else
+            {
+                children.Insert(i, BuildPinnedRow(t));
+            }
+        }
+
+        while (children.Count > items.Count)
+            children.RemoveAt(children.Count - 1);
+
+        if (_shellSession.GetSelectedSidebarTag() is { Length: > 0 } selectedTag)
+        {
+            var match = FindSidebarItemByTag(selectedTag);
+            if (!ReferenceEquals(SelectedSidebarItem, match))
+                SelectedSidebarItem = match;
+        }
+    }
+
+    private static void UpdatePinnedRow(SidebarItemModel current, PinnedItemDto t)
+    {
+        current.Text = t.Title;
+
+        // ImageUrl on the model is captured for parity with playlist rows; if
+        // the cover URL has changed (metadata backfill landed) reseat the icon.
+        if (!string.Equals(current.ImageUrl, t.ImageUrl, StringComparison.Ordinal))
+        {
+            current.ImageUrl = t.ImageUrl;
+            current.IconSource = CreatePinnedIconSource(t);
+        }
+    }
+
+    private static SidebarItemModel BuildPinnedRow(PinnedItemDto t)
+    {
+        return new SidebarItemModel
+        {
+            Text = t.Title,
+            Tag = t.Uri,
+            ImageUrl = t.ImageUrl,
+            IconSource = CreatePinnedIconSource(t),
+            Depth = 0,
+            ShowUnpinButton = true
+        };
+    }
+
+    private static IconSource CreatePinnedIconSource(PinnedItemDto t)
+    {
+        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(t.ImageUrl);
+        if (!string.IsNullOrEmpty(httpsUrl))
+        {
+            return new ImageIconSource
+            {
+                ImageSource = new BitmapImage
+                {
+                    UriSource = new Uri(httpsUrl),
+                    DecodePixelWidth = 44
+                }
+            };
+        }
+
+        // No cover yet — fall back to a kind-appropriate Fluent glyph so the
+        // row reads correctly while the metadata backfill is in flight.
+        // Liked Songs / Your Episodes are pseudo-URIs with no cover at all, so
+        // the glyph IS the icon — picked to match their "Your Library" siblings.
+        var glyph = t.Kind switch
+        {
+            PinnedItemKind.Artist => FluentGlyphs.Artist,
+            PinnedItemKind.Album => FluentGlyphs.Album,
+            PinnedItemKind.Show => FluentGlyphs.Radio,
+            PinnedItemKind.LikedSongs => FluentGlyphs.HeartFilled,
+            PinnedItemKind.YourEpisodes => FluentGlyphs.Radio,
+            _ => FluentGlyphs.Playlist
+        };
+        return new FontIconSource { Glyph = glyph };
+    }
+
+    /// <summary>
+    /// Ephemeral plan of what each position in a sidebar collection should look
+    /// like after a refresh. Carries enough state to either mutate an existing
+    /// row in place or build a fresh one without re-walking the rootlist tree.
+    /// </summary>
+    private sealed record PlaylistTargetNode(
+        string Key,
+        string Name,
+        bool IsFolder,
+        PlaylistSummaryDto? Summary,
+        IReadOnlyList<PlaylistTargetNode> Children);
+
+    private static IReadOnlyList<PlaylistTargetNode> BuildPlaylistTargetNodes(
+        RootlistNode node,
+        IReadOnlyDictionary<string, PlaylistSummaryDto> playlistLookup)
+    {
+        var list = new List<PlaylistTargetNode>();
+        foreach (var child in node.Children)
+        {
+            switch (child)
+            {
+                case RootlistChildPlaylist playlist:
+                    if (playlistLookup.TryGetValue(playlist.Uri, out var summary))
+                    {
+                        list.Add(new PlaylistTargetNode(
+                            Key: summary.Id,
+                            Name: summary.Name,
+                            IsFolder: false,
+                            Summary: summary,
+                            Children: Array.Empty<PlaylistTargetNode>()));
+                    }
+                    break;
+
+                case RootlistChildFolder folder:
+                    list.Add(new PlaylistTargetNode(
+                        Key: $"folder:{folder.Folder.Id}",
+                        Name: folder.Folder.Name ?? string.Empty,
+                        IsFolder: true,
+                        Summary: null,
+                        Children: BuildPlaylistTargetNodes(folder.Folder, playlistLookup)));
+                    break;
+            }
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// Walks the target list position-by-position against the live collection:
+    /// in-place updates matching keys, Move-s already-existing keys into position,
+    /// and Insert-s newcomers. Trailing items beyond the target length are removed
+    /// at the end. Recurses into folder children so a moved folder retains its
+    /// expanded state and its children diff against the folder's existing
+    /// ObservableCollection rather than being torn down.
+    /// </summary>
+    private void DiffPlaylistCollection(
+        ObservableCollection<SidebarItemModel> current,
+        IReadOnlyList<PlaylistTargetNode> target,
+        int depth)
+    {
+        for (int i = 0; i < target.Count; i++)
+        {
+            var t = target[i];
+            if (i < current.Count && string.Equals(current[i].Tag, t.Key, StringComparison.Ordinal))
+            {
+                UpdatePlaylistMutableFields(current[i], t, depth);
+            }
+            else
+            {
+                int found = -1;
+                for (int j = i + 1; j < current.Count; j++)
+                {
+                    if (string.Equals(current[j].Tag, t.Key, StringComparison.Ordinal))
+                    {
+                        found = j;
+                        break;
+                    }
+                }
+
+                if (found >= 0)
+                {
+                    current.Move(found, i);
+                    UpdatePlaylistMutableFields(current[i], t, depth);
+                }
+                else
+                {
+                    current.Insert(i, BuildSidebarItemFromTarget(t, depth));
+                }
+            }
+
+            if (t.IsFolder && current[i].Children is ObservableCollection<SidebarItemModel> nested)
+            {
+                DiffPlaylistCollection(nested, t.Children, depth + 1);
+            }
+        }
+
+        while (current.Count > target.Count)
+        {
+            current.RemoveAt(current.Count - 1);
+        }
+    }
+
+    private void UpdatePlaylistMutableFields(SidebarItemModel current, PlaylistTargetNode t, int depth)
+    {
+        // SetProperty short-circuits on equality, so PropertyChanged only fires
+        // when a field actually changed — keeps unchanged rows from animating.
+        current.Depth = depth;
+
+        if (t.IsFolder)
+        {
+            var newName = string.IsNullOrWhiteSpace(t.Name)
+                ? AppLocalization.GetString("Shell_NewFolder")
+                : t.Name;
+            current.Text = newName;
+            return;
+        }
+
+        if (t.Summary is { } summary)
+        {
+            current.Text = summary.Name;
+            current.BadgeCount = summary.TrackCount;
+            current.IsOwner = summary.IsOwner;
+        }
+    }
+
+    private SidebarItemModel BuildSidebarItemFromTarget(PlaylistTargetNode t, int depth)
+    {
+        if (t.IsFolder)
+        {
+            var children = new ObservableCollection<SidebarItemModel>();
+            var folderItem = new SidebarItemModel
+            {
+                Text = string.IsNullOrWhiteSpace(t.Name)
+                    ? AppLocalization.GetString("Shell_NewFolder")
+                    : t.Name,
+                IconSource = new FontIconSource
+                {
+                    Glyph = FluentGlyphs.FolderOpen,
+                    FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets")
+                },
+                Tag = t.Key,
+                IsExpanded = true,
+                Depth = depth,
+                IsFolder = true,
+                ShowEmptyPlaceholder = true,
+                EmptyPlaceholderText = AppLocalization.GetString("Shell_SidebarFolderEmpty"),
+                Children = children
+            };
+            folderItem.PropertyChanged += OnSidebarGroupPropertyChanged;
+            ApplyPersistedSidebarState(folderItem);
+            DiffPlaylistCollection(children, t.Children, depth + 1);
+            return folderItem;
+        }
+
+        var item = CreatePlaylistSidebarItem(t.Summary!);
+        item.Depth = depth;
+        return item;
     }
 
     private SidebarItemModel BuildFolderSidebarItem(
@@ -1509,6 +1913,61 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // Navigation is handled in ShellPage.SidebarControl_ItemInvoked
         // to support modifier keys (Ctrl/middle-click for new tab)
         _shellSession.UpdateSelectedSidebarTag((value as SidebarItemModel)?.Tag);
+        UpdateAliasSelections(value);
+    }
+
+    /// <summary>
+    /// Walks the sidebar tree and toggles <see cref="SidebarItemModel.IsAliasSelected"/>
+    /// on rows that aren't the primary selection but represent the same logical
+    /// destination — e.g. when the pinned <c>spotify:collection</c> row is selected,
+    /// the Your-Library "Liked Songs" row also lights up. Without this, only one of
+    /// the two surfaces shows the selected indicator even though both point at the
+    /// same page.
+    /// </summary>
+    private void UpdateAliasSelections(ISidebarItemModel? selected)
+    {
+        var selectedTag = (selected as SidebarItemModel)?.Tag;
+        ApplyAliasSelections(SidebarItems, selected, selectedTag);
+    }
+
+    private static void ApplyAliasSelections(
+        IEnumerable<SidebarItemModel> items,
+        ISidebarItemModel? selected,
+        string? selectedTag)
+    {
+        foreach (var item in items)
+        {
+            var isAlias = !ReferenceEquals(item, selected)
+                && selectedTag is { Length: > 0 }
+                && !string.IsNullOrEmpty(item.Tag)
+                && AreEquivalentSidebarTags(selectedTag, item.Tag!);
+
+            if (item.IsAliasSelected != isAlias)
+                item.IsAliasSelected = isAlias;
+
+            if (item.Children is IEnumerable<SidebarItemModel> children)
+                ApplyAliasSelections(children, selected, selectedTag);
+        }
+    }
+
+    private static bool AreEquivalentSidebarTags(string a, string b)
+    {
+        if (string.Equals(a, b, StringComparison.Ordinal)) return false;
+        return IsAliasOf(a, b) || IsAliasOf(b, a);
+    }
+
+    private static bool IsAliasOf(string canonical, string candidate)
+    {
+        return canonical switch
+        {
+            "LikedSongs" =>
+                candidate == "spotify:collection"
+                || (candidate.StartsWith("spotify:user:", StringComparison.Ordinal)
+                    && candidate.EndsWith(":collection", StringComparison.Ordinal)),
+            "Podcasts" =>
+                candidate == "spotify:collection:your-episodes",
+            _ => false
+        };
     }
 
     public ElementTheme CurrentTheme => _themeService.CurrentTheme;
@@ -1653,6 +2112,17 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(query)) return;
 
+        // URL / URI paste — navigate straight to the entity instead of searching for
+        // the literal URL on the SearchPage. Uses whatever placeholder data we have;
+        // destination pages prefill their hero from the URI.
+        if (SpotifyLink.TryParse(query.Trim(), out var link))
+        {
+            _linkPreviewCts?.Cancel();
+            ClearSearchSuggestionState();
+            NavigateToLink(link, title: null, imageUrl: null);
+            return;
+        }
+
         InvalidateRecentSearchesCache();
 
         // Navigate to search page with query
@@ -1666,6 +2136,21 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         try
         {
+            // Fast path: Spotify URL / URI paste. Replaces the normal three-section
+            // search with a single "Open link" suggestion that previews the entity.
+            // Skip-ahead works regardless of current page (including SearchPage) — we
+            // don't want to re-search for the literal URL.
+            if (!string.IsNullOrWhiteSpace(normalizedText)
+                && SpotifyLink.TryParse(normalizedText, out var link))
+            {
+                ApplyLinkPasteSuggestion(link, normalizedText);
+                return;
+            }
+
+            // Text is not a link: drop any in-flight preview so a late-arriving result
+            // can't overwrite the now-valid search suggestions.
+            _linkPreviewCts?.Cancel();
+
             // If already on SearchPage, re-search directly instead of showing suggestions
             if (SelectedTabItem?.ContentFrame?.Content is SearchPage searchPage
                 && !string.IsNullOrWhiteSpace(normalizedText))
@@ -1883,6 +2368,36 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 NavigationHelpers.OpenSearch(query);
                 break;
 
+            // Omnibar link-paste destinations (entity types not produced by free-text search).
+            case SearchSuggestionType.Podcast:
+                NavigationHelpers.OpenShowPage(suggestion.Uri, suggestion.Title, subtitle: null, imageUrl: suggestion.ImageUrl);
+                break;
+            case SearchSuggestionType.Episode:
+                NavigationHelpers.OpenEpisodePage(suggestion.Uri, suggestion.Title, suggestion.ImageUrl);
+                break;
+            case SearchSuggestionType.User:
+                NavigationHelpers.OpenProfile(new ContentNavigationParameter
+                {
+                    Uri = suggestion.Uri,
+                    Title = suggestion.Title,
+                    ImageUrl = suggestion.ImageUrl,
+                }, suggestion.Title);
+                break;
+            case SearchSuggestionType.Genre:
+                NavigationHelpers.OpenBrowsePage(new ContentNavigationParameter
+                {
+                    Uri = suggestion.Uri,
+                    Title = string.IsNullOrWhiteSpace(suggestion.Title) ? "Browse" : suggestion.Title,
+                    ImageUrl = suggestion.ImageUrl,
+                });
+                break;
+            case SearchSuggestionType.LinkAction:
+                if (suggestion.Uri == "spotify:collection")
+                    NavigationHelpers.OpenLikedSongs();
+                else if (suggestion.Uri == "spotify:collection:your-episodes")
+                    NavigationHelpers.OpenYourEpisodes();
+                break;
+
             // Omnibar Settings deep-link — reuse the in-page filter via existing
             // NavigateToSearchEntry path on SettingsPage.OnNavigatedTo.
             case SearchSuggestionType.Setting:
@@ -2008,6 +2523,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         }
 
         _searchDebouncer.Dispose();
+        _linkPreviewCts?.Cancel();
+        _linkPreviewCts?.Dispose();
+        _linkPreviewCts = null;
         _libraryDataService.PlaylistsChanged -= OnPlaylistsChanged;
         _libraryDataService.DataChanged -= OnLibraryDataChanged;
         _playlistMosaicChangesSubscription?.Dispose();
@@ -2212,6 +2730,166 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         IsSearchSuggestionsLoading = false;
         SearchSuggestions = null;
         SuggestionGroups = null;
+    }
+
+    // ── Spotify URL / URI paste handling (omnibar fast path) ──────────────────────────
+
+    /// <summary>
+    /// Replaces the omnibar suggestions with a single "Open link" card for the parsed
+    /// Spotify URL / URI, and kicks off an async metadata fetch to fill in the real
+    /// title and cover art.
+    /// </summary>
+    private void ApplyLinkPasteSuggestion(SpotifyLink link, string rawText)
+    {
+        _searchDebouncer.Cancel();
+        _linkPreviewCts?.Cancel();
+        _linkPreviewCts?.Dispose();
+        _linkPreviewCts = new CancellationTokenSource();
+
+        SearchSuggestionErrorMessage = null;
+        SearchSuggestions = null;
+        IsSearchSuggestionsLoading = false;
+
+        SuggestionGroups = new List<SearchSuggestionGroup>
+        {
+            new("OPEN LINK", new List<SearchSuggestionItem>
+            {
+                BuildLinkSuggestion(link, rawText, preview: null),
+            }),
+        };
+
+        if (_linkPreviewService is not null)
+            _ = ResolveLinkPreviewAsync(link, rawText, _linkPreviewCts.Token);
+    }
+
+    private async Task ResolveLinkPreviewAsync(SpotifyLink link, string rawText, CancellationToken ct)
+    {
+        if (_linkPreviewService is null) return;
+        LinkPreview? preview;
+        try
+        {
+            preview = await _linkPreviewService.ResolveAsync(link, ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        // Bail out if the user typed past this URL while the fetch was in flight.
+        if (ct.IsCancellationRequested) return;
+        if (!string.Equals(_activeSearchText, rawText, StringComparison.Ordinal)) return;
+        if (preview is null) return;
+
+        SuggestionGroups = new List<SearchSuggestionGroup>
+        {
+            new("OPEN LINK", new List<SearchSuggestionItem>
+            {
+                BuildLinkSuggestion(link, rawText, preview),
+            }),
+        };
+    }
+
+    private static SearchSuggestionItem BuildLinkSuggestion(SpotifyLink link, string rawText, LinkPreview? preview)
+    {
+        var (placeholderTitle, placeholderSubtitle) = GetLinkPlaceholder(link.Kind);
+
+        return new SearchSuggestionItem
+        {
+            Title = preview?.Title ?? placeholderTitle,
+            Subtitle = preview?.Subtitle ?? placeholderSubtitle ?? TrimLinkForDisplay(rawText),
+            ImageUrl = preview?.ImageUrl,
+            Uri = link.CanonicalUri,
+            Type = MapLinkKindToSuggestionType(link.Kind),
+            QueryText = rawText,
+        };
+    }
+
+    private static (string Title, string? Subtitle) GetLinkPlaceholder(SpotifyLinkKind kind) => kind switch
+    {
+        SpotifyLinkKind.Track        => ("Open track", "Track"),
+        SpotifyLinkKind.Album        => ("Open album", "Album"),
+        SpotifyLinkKind.Artist       => ("Open artist", "Artist"),
+        SpotifyLinkKind.Playlist     => ("Open playlist", "Playlist"),
+        SpotifyLinkKind.Show         => ("Open podcast", "Podcast"),
+        SpotifyLinkKind.Episode      => ("Open episode", "Episode"),
+        SpotifyLinkKind.User         => ("Open profile", "Profile"),
+        SpotifyLinkKind.LikedSongs   => ("Liked Songs", "Playlist"),
+        SpotifyLinkKind.YourEpisodes => ("Your Episodes", "Podcasts"),
+        SpotifyLinkKind.Genre        => ("Open browse page", null),
+        _                            => ("Open link", null),
+    };
+
+    private static SearchSuggestionType MapLinkKindToSuggestionType(SpotifyLinkKind kind) => kind switch
+    {
+        SpotifyLinkKind.Track        => SearchSuggestionType.Track,
+        SpotifyLinkKind.Album        => SearchSuggestionType.Album,
+        SpotifyLinkKind.Artist       => SearchSuggestionType.Artist,
+        SpotifyLinkKind.Playlist     => SearchSuggestionType.Playlist,
+        SpotifyLinkKind.Show         => SearchSuggestionType.Podcast,
+        SpotifyLinkKind.Episode      => SearchSuggestionType.Episode,
+        SpotifyLinkKind.User         => SearchSuggestionType.User,
+        SpotifyLinkKind.Genre        => SearchSuggestionType.Genre,
+        SpotifyLinkKind.LikedSongs   => SearchSuggestionType.LinkAction,
+        SpotifyLinkKind.YourEpisodes => SearchSuggestionType.LinkAction,
+        _                            => SearchSuggestionType.TextQuery,
+    };
+
+    private static string TrimLinkForDisplay(string raw)
+    {
+        const int max = 64;
+        return raw.Length <= max ? raw : string.Concat(raw.AsSpan(0, max - 1), "…");
+    }
+
+    /// <summary>
+    /// Direct-navigation path used when the user presses Enter without a suggestion
+    /// selected. Mirrors the dispatch in <see cref="OnSuggestionChosen"/> but takes
+    /// raw link data instead of a built suggestion.
+    /// </summary>
+    private void NavigateToLink(SpotifyLink link, string? title, string? imageUrl)
+    {
+        switch (link.Kind)
+        {
+            case SpotifyLinkKind.Track:
+                _playbackStateService.PlayTrack(link.EntityId ?? string.Empty);
+                break;
+            case SpotifyLinkKind.Album:
+                NavigationHelpers.OpenAlbum(link.CanonicalUri, title ?? "Album");
+                break;
+            case SpotifyLinkKind.Artist:
+                NavigationHelpers.OpenArtist(link.CanonicalUri, title ?? "Artist");
+                break;
+            case SpotifyLinkKind.Playlist:
+                NavigationHelpers.OpenPlaylist(link.CanonicalUri, title ?? "Playlist");
+                break;
+            case SpotifyLinkKind.Show:
+                NavigationHelpers.OpenShowPage(link.CanonicalUri, title, subtitle: null, imageUrl: imageUrl);
+                break;
+            case SpotifyLinkKind.Episode:
+                NavigationHelpers.OpenEpisodePage(link.CanonicalUri, title, imageUrl);
+                break;
+            case SpotifyLinkKind.User:
+                NavigationHelpers.OpenProfile(new ContentNavigationParameter
+                {
+                    Uri = link.CanonicalUri,
+                    Title = title,
+                    ImageUrl = imageUrl,
+                }, title);
+                break;
+            case SpotifyLinkKind.LikedSongs:
+                NavigationHelpers.OpenLikedSongs();
+                break;
+            case SpotifyLinkKind.YourEpisodes:
+                NavigationHelpers.OpenYourEpisodes();
+                break;
+            case SpotifyLinkKind.Genre:
+                NavigationHelpers.OpenBrowsePage(new ContentNavigationParameter
+                {
+                    Uri = link.CanonicalUri,
+                    Title = title ?? "Browse",
+                    ImageUrl = imageUrl,
+                });
+                break;
+        }
     }
 
     private void ApplySearchSuggestionFailure(string querySnapshot, Exception ex)

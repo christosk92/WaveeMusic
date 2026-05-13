@@ -16,11 +16,32 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <TextBlock x:Uid="Views_SettingsPage__TextBlock_1"
-                   Grid.Row="0"
-                   Text="Settings"
-                   Style="{StaticResource TitleTextBlockStyle}"
-                   Margin="0,0,0,2"/>
+        <Grid Grid.Row="0" ColumnSpacing="12" Margin="0,0,0,2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Spacing="2">
+                <TextBlock x:Name="SectionTitleText"
+                           Style="{StaticResource TitleTextBlockStyle}"
+                           TextWrapping="NoWrap"
+                           TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="SectionDescriptionText"
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextWrapping="WrapWholeWords"
+                           MaxLines="2"
+                           TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+
+            <Button x:Name="ViewAllSettingsGroupsButton"
+                    Grid.Column="1"
+                    Content="View all sections"
+                    Visibility="Collapsed"
+                    VerticalAlignment="Center"
+                    Click="ViewAllSettingsGroups_Click"/>
+        </Grid>
 
         <AutoSuggestBox x:Name="SettingsSearchBox"
                         Grid.Row="1"
@@ -69,11 +90,19 @@
 
         <NavigationView x:Name="SettingsNavigation"
                         Grid.Row="3"
+                        Background="Transparent"
                         PaneDisplayMode="Top"
                         IsPaneToggleButtonVisible="False"
                         IsSettingsVisible="False"
                         IsBackButtonVisible="Collapsed"
                         SelectionChanged="SettingsNavigation_SelectionChanged">
+            <NavigationView.Resources>
+                <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent"/>
+                <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="Transparent"/>
+                <Thickness x:Key="NavigationViewContentGridBorderThickness">0</Thickness>
+                <Thickness x:Key="TopNavigationViewContentGridBorderThickness">0</Thickness>
+            </NavigationView.Resources>
+
             <NavigationView.MenuItems>
                 <NavigationViewItem x:Name="GeneralItem" Tag="general">
                     <StackPanel Orientation="Horizontal" Spacing="10">
@@ -113,38 +142,8 @@
                 </NavigationViewItem>
             </NavigationView.MenuItems>
 
-            <Grid Padding="0,16,0,0" RowSpacing="16">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <Grid Grid.Row="0" ColumnSpacing="12" Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0" Spacing="2">
-                        <TextBlock x:Name="SectionTitleText"
-                                   Style="{StaticResource SubtitleTextBlockStyle}"
-                                   FontSize="22"/>
-                        <TextBlock x:Name="SectionDescriptionText"
-                                   Style="{StaticResource BodyTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="WrapWholeWords"/>
-                    </StackPanel>
-
-                    <Button x:Name="ViewAllSettingsGroupsButton"
-                            Grid.Column="1"
-                            Content="View all sections"
-                            Visibility="Collapsed"
-                            VerticalAlignment="Center"
-                            Click="ViewAllSettingsGroups_Click"/>
-                </Grid>
-
+            <Grid Padding="0,16,0,0">
                 <ContentControl x:Name="ContentHost"
-                                Grid.Row="1"
                                 HorizontalContentAlignment="Stretch"
                                 VerticalContentAlignment="Stretch">
                     <ContentControl.ContentTransitions>

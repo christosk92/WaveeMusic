@@ -992,8 +992,43 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             : new[] { all, recent! };
         FilteredShows.ReplaceWith(leadingShows.Concat(sorted));
 
-        if (previousId != null && FilteredShows.All(show => !string.Equals(show.Id, previousId, StringComparison.OrdinalIgnoreCase)))
+        PreserveSelectedShowAfterFilter(previousId, fallbackToFirst: true);
+        QueueSelectedShowResync(previousId);
+    }
+
+    private void PreserveSelectedShowAfterFilter(string? selectedId, bool fallbackToFirst)
+    {
+        if (string.IsNullOrEmpty(selectedId))
+            return;
+
+        var selected = FilteredShows.FirstOrDefault(show =>
+            string.Equals(show.Id, selectedId, StringComparison.OrdinalIgnoreCase));
+
+        if (selected != null && !ReferenceEquals(SelectedShow, selected))
+        {
+            SelectedShow = selected;
+        }
+        else if (selected == null
+                 && fallbackToFirst
+                 && string.Equals(SelectedShow?.Id, selectedId, StringComparison.OrdinalIgnoreCase))
+        {
             SelectedShow = FilteredShows.FirstOrDefault();
+        }
+    }
+
+    private void QueueSelectedShowResync(string? selectedId)
+    {
+        if (string.IsNullOrEmpty(selectedId))
+            return;
+
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            if (_disposed)
+                return;
+
+            if (SelectedShow is null || string.Equals(SelectedShow.Id, selectedId, StringComparison.OrdinalIgnoreCase))
+                PreserveSelectedShowAfterFilter(selectedId, fallbackToFirst: false);
+        });
     }
 
     private IEnumerable<LibraryPodcastShowDto> SortShows(IEnumerable<LibraryPodcastShowDto> source)
@@ -1402,7 +1437,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
         var includeSelectedShow = !UseNarrowLayout ||
                                   NarrowStage == PodcastLibraryStage.Episodes ||
                                   SelectedEpisode is not null;
-        if (includeSelectedShow && SelectedShow is { IsAllPodcasts: false } selectedShow)
+        if (includeSelectedShow && SelectedShow is { } selectedShow)
         {
             BreadcrumbItems.Add(selectedShow.Name);
         }

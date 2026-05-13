@@ -159,16 +159,16 @@
 
                     <!-- Type / Year token row. -->
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <!-- Album type pill (TokenItem SELECTED state, system accent). -->
+                        <!-- Album type pill (TokenItem SELECTED state, album palette accent). -->
                         <Border CornerRadius="14"
                                 Padding="10,3,10,5"
-                                Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                Background="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
+                                BorderBrush="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
                                 BorderThickness="1">
                             <TextBlock Text="{x:Bind ViewModel.AlbumTypeUpper, Mode=OneWay}"
                                        FontSize="11"
                                        FontWeight="SemiBold"
-                                       Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                       Foreground="{x:Bind ViewModel.PaletteAccentPillForegroundBrush, Mode=OneWay}"/>
                         </Border>
                         <!-- Year pill (neutral TokenItem look). -->
                         <Border CornerRadius="14"
@@ -273,6 +273,8 @@
                          narrow to fit them inline (matches PlaylistPage pattern). -->
                     <controls:WrapPanel Orientation="Horizontal" HorizontalSpacing="8" VerticalSpacing="8" Margin="0,8,0,0">
                         <Button Style="{StaticResource AccentButtonStyle}"
+                                Background="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
+                                Foreground="{x:Bind ViewModel.PaletteAccentPillForegroundBrush, Mode=OneWay}"
                                 Command="{x:Bind ViewModel.PlayAlbumCommand}"
                                 Padding="18,10" CornerRadius="20"
                                 ToolTipService.ToolTip="Play">
@@ -361,8 +363,30 @@
                                    ShowToolbar="False"
                                    AllowHorizontalRowScroll="False"
                                    ForceShowArtistColumn="{x:Bind ViewModel.HasMultipleArtists, Mode=OneWay}"
+                                   IsLoading="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay}"
                                    ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"
-                                   PlayCommand="{x:Bind ViewModel.PlayTrackCommand}">
+                                   PlayCommand="{x:Bind ViewModel.PlayTrackCommand}"
+                                   IsGrouped="{x:Bind ViewModel.IsMultiDisc, Mode=OneWay}"
+                                   GroupKeySelector="{x:Bind ViewModel.DiscGroupKeySelector, Mode=OneTime}"
+                                   GroupHeaderSelector="{x:Bind ViewModel.DiscGroupHeaderSelector, Mode=OneTime}"
+                                   GroupCountFormatter="{x:Bind ViewModel.DiscGroupCountFormatter, Mode=OneTime}">
+                    <tdg:TrackDataGrid.GroupHeaderTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="6"
+                                        Padding="8,18,8,6"
+                                        VerticalAlignment="Bottom">
+                                <TextBlock Text="{Binding Header.TitleText}"
+                                           FontSize="14"
+                                           FontWeight="SemiBold"/>
+                                <TextBlock Text="·" Opacity="0.6"/>
+                                <TextBlock Text="{Binding CountText}" Opacity="0.7"/>
+                                <TextBlock Text="·" Opacity="0.6"/>
+                                <TextBlock Text="{Binding Header.DurationFormatted}"
+                                           Opacity="0.7"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </tdg:TrackDataGrid.GroupHeaderTemplate>
                     <tdg:TrackDataGrid.FooterContent>
                         <StackPanel Spacing="32" Padding="16,32,16,32">
 

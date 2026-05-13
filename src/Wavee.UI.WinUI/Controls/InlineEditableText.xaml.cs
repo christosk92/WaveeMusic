@@ -169,14 +169,24 @@ public sealed partial class InlineEditableText : UserControl
             : Visibility.Visible;
 
         // Hover-only pencil hint — only shown while the pointer is over the
-        // control. Persistent visibility was confirmed too loud; the existing
-        // HoverFrame tint already announces "click to edit", and the pencil
-        // adds an explicit affordance without permanently cluttering the row.
+        // control. We toggle opacity (not Visibility) when the field is
+        // editable so the pencil's Grid column stays reserved at all times.
+        // Otherwise the column collapses to 0 when not hovering and expands
+        // back when hovering, shifting the title text horizontally — the
+        // "UI moves on hover" flicker the user reported.
         if (EditAffordanceButton != null)
         {
-            EditAffordanceButton.Visibility = IsEditable && _isHovering && !_isEditing && !IsBusy
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            if (!IsEditable)
+            {
+                EditAffordanceButton.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                EditAffordanceButton.Visibility = Visibility.Visible;
+                var show = _isHovering && !_isEditing && !IsBusy;
+                EditAffordanceButton.Opacity = show ? 1 : 0;
+                EditAffordanceButton.IsHitTestVisible = show;
+            }
         }
     }
 
@@ -350,7 +360,13 @@ public sealed partial class InlineEditableText : UserControl
         ExitEditMode(restoreHover: false);
 
         if (!string.Equals(newValue, oldValue, StringComparison.Ordinal))
+        {
+            // Propagate through the Text DP so a TwoWay {x:Bind … Mode=TwoWay}
+            // pushes the new value back to the bound source. Consumers that
+            // also want the event get it after the DP write.
+            SetValue(TextProperty, newValue);
             Committed?.Invoke(this, newValue);
+        }
     }
 
     private static bool IsCtrlPressed()

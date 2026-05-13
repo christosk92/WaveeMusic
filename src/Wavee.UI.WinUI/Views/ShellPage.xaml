@@ -137,7 +137,8 @@
             OpenPaneLength="{x:Bind ViewModel.SidebarWidth, Mode=TwoWay}"
             MenuItemsSource="{x:Bind ViewModel.SidebarItems}"
             SelectedItem="{x:Bind ViewModel.SelectedSidebarItem, Mode=TwoWay}"
-            ItemInvoked="SidebarControl_ItemInvoked">
+            ItemInvoked="SidebarControl_ItemInvoked"
+            PinButtonClicked="SidebarControl_PinButtonClicked">
 
             <!-- Main Content + Right Panel (each with independent shadow) -->
             <sidebar:SidebarView.InnerContent>

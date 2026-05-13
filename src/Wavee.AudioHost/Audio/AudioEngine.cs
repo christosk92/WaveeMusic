@@ -29,6 +29,7 @@ public sealed class AudioEngine : IAsyncDisposable
     //   a) Persist newly downloaded tracks for future cache hits
     //   b) Open locally cached files when LocalCacheFileId is set in DeferredResult
     private readonly string? _audioCacheDirectory;
+    private readonly long? _audioCacheMaxBytes;
 
     // Volume/EQ shortcuts
     private readonly VolumeProcessor? _volumeProcessor;
@@ -77,7 +78,8 @@ public sealed class AudioEngine : IAsyncDisposable
         HttpClient httpClient,
         VolumeProcessor? volumeProcessor = null,
         ILogger? logger = null,
-        string? audioCacheDirectory = null)
+        string? audioCacheDirectory = null,
+        long? audioCacheMaxBytes = null)
     {
         _audioSink = audioSink ?? throw new ArgumentNullException(nameof(audioSink));
         _decoderRegistry = decoderRegistry ?? throw new ArgumentNullException(nameof(decoderRegistry));
@@ -85,6 +87,7 @@ public sealed class AudioEngine : IAsyncDisposable
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger;
         _audioCacheDirectory = audioCacheDirectory;
+        _audioCacheMaxBytes = audioCacheMaxBytes;
 
         if (audioCacheDirectory != null)
             Wavee.Playback.Contracts.AudioFileCache.EnsureDirectoryExists(audioCacheDirectory);
@@ -379,6 +382,7 @@ public sealed class AudioEngine : IAsyncDisposable
             fileId,
             _logger,
             _audioCacheDirectory,
+            audioCacheMaxBytes: _audioCacheMaxBytes,
             playbackToken: ct);
 
         // Read normalization from head data if available

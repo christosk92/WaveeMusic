@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:local="using:Wavee.UI.WinUI.Controls.Local"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -213,6 +214,20 @@
                                                 Surface="Main" />
                 </StackPanel>
             </Grid>
+
+            <!--
+                Up-Next overlay (Netflix-style "Next episode" card). Sits
+                ABOVE the auto-fading Scrim so the chrome hide-on-idle
+                doesn't drag the card with it. Top-right, pushed below the
+                heart / "Listen as audio" chip row (~28+40+16). Visibility
+                + animation + binding all driven by
+                UpNextEpisodeOverlayViewModel; the page wires the VM only
+                when the current item is a local TV episode.
+            -->
+            <local:UpNextEpisodeOverlay x:Name="UpNextOverlay"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Top"
+                                        Margin="0,84,32,0"/>
         </Grid>
 
         <!-- Subtitle drop overlay. Visible only while a valid drag is over

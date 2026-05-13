@@ -1,20 +1,17 @@
 using System;
-using System.Collections.Specialized;
-using System.Diagnostics;
-using CommunityToolkit.Mvvm.DependencyInjection;
-using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
-using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.Settings;
 
 public sealed partial class DiagnosticsSettingsSection : UserControl, ISettingsSearchFilter, IDisposable
 {
+    private DiagnosticsConfigurationSection? _configurationSection;
+    private DiagnosticsLoggingSection? _loggingSection;
+    private DiagnosticsConnectUpdatesSection? _connectUpdatesSection;
     private bool _disposed;
-    private bool _userScrolledLogs;
-    private ConnectStateSection? _connectEvents;
+    private bool _selectingSection;
+    private string _activeSectionTag = "configuration";
 
     public SettingsViewModel ViewModel { get; }
 
@@ -23,18 +20,8 @@ public sealed partial class DiagnosticsSettingsSection : UserControl, ISettingsS
         ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         InitializeComponent();
 
-        ViewModel.UpdateRttChart = (data, count, unit) => RttChart.Update(data, count, unit);
-        ViewModel.FilteredLogEntries.CollectionChanged += OnLogEntriesChanged;
-
-        // Embed the Connect events inspector (previously a top-level settings
-        // tab) so cluster-state diagnostics live alongside the rest of the
-        // diagnostics surface.
-        var recorder = Ioc.Default.GetService<RemoteStateRecorder>();
-        if (recorder is not null)
-        {
-            _connectEvents = new ConnectStateSection(new ConnectStateViewModel(recorder));
-            ConnectEventsHost.Content = _connectEvents;
-        }
+        DiagnosticsSubNavigation.SelectedItem = ConfigurationItem;
+        ShowSection("configuration", null);
     }
 
     public void Dispose()
@@ -42,58 +29,87 @@ public sealed partial class DiagnosticsSettingsSection : UserControl, ISettingsS
         if (_disposed) return;
         _disposed = true;
 
-        ViewModel.FilteredLogEntries.CollectionChanged -= OnLogEntriesChanged;
-        ViewModel.UpdateRttChart = null;
-        _connectEvents?.Dispose();
+        _configurationSection?.Dispose();
+        _loggingSection?.Dispose();
+        _connectUpdatesSection?.Dispose();
     }
 
     public void ApplySearchFilter(string? groupKey)
-        => SettingsGroupFilter.Apply(SettingsGroupsRoot, groupKey);
-
-    private void LogScrollView_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
-        => _userScrolledLogs = true;
-
-    private void OnLogEntriesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (_disposed) return;
+        var sectionTag = string.IsNullOrWhiteSpace(groupKey)
+            ? _activeSectionTag
+            : GetSectionTagForGroup(groupKey);
 
-        if (e.Action == NotifyCollectionChangedAction.Reset)
-        {
-            _userScrolledLogs = false;
-            ResumeScrollButton.Visibility = Visibility.Collapsed;
+        ShowSection(sectionTag, groupKey);
+    }
+
+    private void DiagnosticsSubNavigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    {
+        if (_selectingSection || args.SelectedItem is not NavigationViewItem selectedItem)
             return;
-        }
 
-        if (e.Action == NotifyCollectionChangedAction.Add && ViewModel.FilteredLogEntries.Count > 0)
+        ShowSection(selectedItem.Tag?.ToString() ?? "configuration", null);
+    }
+
+    private void ShowSection(string sectionTag, string? groupKey)
+    {
+        sectionTag = NormalizeSectionTag(sectionTag);
+        var view = GetSection(sectionTag);
+
+        if (!ReferenceEquals(DiagnosticsContentHost.Content, view))
+            DiagnosticsContentHost.Content = view;
+
+        if (view is ISettingsSearchFilter filter)
+            filter.ApplySearchFilter(groupKey);
+
+        SelectNavigationItem(sectionTag);
+        _activeSectionTag = sectionTag;
+    }
+
+    private UserControl GetSection(string sectionTag)
+    {
+        return sectionTag switch
         {
-            if (_userScrolledLogs)
-            {
-                ResumeScrollButton.Visibility = Visibility.Visible;
-                return;
-            }
-
-            try
-            {
-                LogScrollView.ScrollTo(0, 0);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Failed to scroll log list into view: {ex.Message}");
-            }
-        }
+            "logging" => _loggingSection ??= new DiagnosticsLoggingSection(ViewModel),
+            "connect-updates" => _connectUpdatesSection ??= new DiagnosticsConnectUpdatesSection(),
+            _ => _configurationSection ??= new DiagnosticsConfigurationSection(ViewModel)
+        };
     }
 
-    private void ResumeScroll_Click(object sender, RoutedEventArgs e)
+    private void SelectNavigationItem(string sectionTag)
     {
-        _userScrolledLogs = false;
-        ResumeScrollButton.Visibility = Visibility.Collapsed;
-        if (ViewModel.FilteredLogEntries.Count > 0)
-            LogScrollView.ScrollTo(0, 0);
+        var item = sectionTag switch
+        {
+            "logging" => LoggingItem,
+            "connect-updates" => ConnectUpdatesItem,
+            _ => ConfigurationItem
+        };
+
+        if (ReferenceEquals(DiagnosticsSubNavigation.SelectedItem, item))
+            return;
+
+        _selectingSection = true;
+        DiagnosticsSubNavigation.SelectedItem = item;
+        _selectingSection = false;
     }
 
-    private void OpenLogFile_Click(object sender, RoutedEventArgs e)
+    private static string GetSectionTagForGroup(string groupKey)
     {
-        if (sender is Button btn && btn.CommandParameter is string path)
-            ViewModel.OpenLogFileCommand.Execute(path);
+        return groupKey switch
+        {
+            "logs" => "logging",
+            "connect-events" => "connect-updates",
+            _ => "configuration"
+        };
+    }
+
+    private static string NormalizeSectionTag(string sectionTag)
+    {
+        return sectionTag switch
+        {
+            "logging" => "logging",
+            "connect-updates" => "connect-updates",
+            _ => "configuration"
+        };
     }
 }

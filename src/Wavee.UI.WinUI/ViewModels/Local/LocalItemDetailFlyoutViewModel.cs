@@ -96,6 +96,8 @@ public sealed partial class LocalItemDetailFlyoutViewModel : ObservableObject, I
         var row = coreLibrary is null ? null : await coreLibrary.GetTrackAsync(trackUri, ct);
         if (row is null) return;
 
+        // GetTrackAsync now returns the overlaid title/artist/etc directly
+        // (the overlay lives inside LocalLibraryService's row builders).
         FilePath = row.FilePath;
         Title = row.Title;
         Artist = row.Artist;
@@ -109,8 +111,10 @@ public sealed partial class LocalItemDetailFlyoutViewModel : ObservableObject, I
         FileSize = TryFileSize(row.FilePath);
         Format = System.IO.Path.GetExtension(row.FilePath).TrimStart('.').ToUpperInvariant();
 
-        // Effective kind = kind_override ?? auto_kind. Driven through the
-        // enrichment-row read so we already get the merged value.
+        // Effective kind = kind_override ?? auto_kind. Episode-tree-only fields
+        // (Season / Episode / ShowName / EpisodeTitle) come from the enrichment
+        // row — the metadata_overrides overlay for EpisodeTitle is already
+        // applied wherever it's read for display (e.g. GetShowSeasonsAsync).
         if (coreLibrary is not null)
         {
             var er = await coreLibrary.GetEnrichmentRowAsync(trackUri, ct);
@@ -120,7 +124,7 @@ public sealed partial class LocalItemDetailFlyoutViewModel : ObservableObject, I
                 Season = er.SeasonNumber;
                 Episode = er.EpisodeNumber;
                 ShowName = er.SeriesName;
-                EpisodeTitle = null; // sourced from metadata_overrides below
+                EpisodeTitle = null;
             }
         }
 

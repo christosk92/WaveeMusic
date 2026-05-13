@@ -263,15 +263,11 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
                 Bindings?.Update();
             }
         }
-        if (string.IsNullOrEmpty(ViewModel.AlbumId))
-            return;
-
-        PageController.ResetForNewLoad();
-        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.activate"))
-        {
-            ViewModel.Activate(ViewModel.AlbumId);
-        }
-        DispatcherQueue.TryEnqueue(PageController.TryShowContentNow);
+        // ResetForNewLoad + ViewModel.Activate + TryShowContentNow used to run here
+        // too — but OnNavigatedTo → LoadNewContent fires next on the same dispatch
+        // with the authoritative parameter and does the same Activate. Running both
+        // caused two ApplyDetail dispatches against AlbumStore and two waves of
+        // TrackItem materialization per navigation.
     }
 
     // Same-tab navigation between two albums reuses this Page instance and never

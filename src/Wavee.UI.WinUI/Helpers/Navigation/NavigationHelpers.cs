@@ -460,12 +460,26 @@ public static class NavigationHelpers
                 // Sync sidebar selection to the target page:
                 //   - PlaylistPage: resolve the parameter (playlist id or URI) to the matching
                 //     sidebar row. Clears if the playlist isn't in the user's library.
+                //   - AlbumPage / ArtistPage / ShowPage: try to match the navigated URI against
+                //     a Pinned-section row (their Tag is the raw spotify:<kind>:<id>). Clears
+                //     when not pinned. Without this, navigating to a pinned album/artist/show
+                //     wipes the pinned row's highlight via the catch-all clear below.
                 //   - LibraryPage: leave alone. LibraryPage.OnSelectedItemChanged keeps
                 //     Albums/Artists/LikedSongs/Playlists sub-tab selection in sync.
                 //   - Everything else (Search, Concert, Profile, Settings, …): clear.
                 if (pageType == typeof(PlaylistPage))
                 {
                     _shellViewModel.SyncSidebarSelectionToPlaylist(parameter);
+                }
+                else if (pageType == typeof(AlbumPage)
+                    || pageType == typeof(ArtistPage)
+                    || pageType == typeof(ShowPage))
+                {
+                    var uri = ExtractUriFromParameter(parameter);
+                    if (!string.IsNullOrEmpty(uri))
+                        _shellViewModel.SyncSidebarSelectionToTag(uri);
+                    else
+                        _shellViewModel.SelectedSidebarItem = null;
                 }
                 else if (pageType == typeof(PodcastBrowsePage))
                 {
@@ -483,21 +497,34 @@ public static class NavigationHelpers
         });
     }
 
+    private static string? ExtractUriFromParameter(object? parameter)
+    {
+        return parameter switch
+        {
+            Wavee.UI.WinUI.Data.Parameters.ContentNavigationParameter nav => nav.Uri,
+            string s => s,
+            _ => null
+        };
+    }
+
     internal static string? GetLocalSidebarTag(Type pageType)
     {
+        if (pageType == typeof(LocalLibraryPage))
+            return "LocalFiles";
+
         if (pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalShowsPage)
             || pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalShowDetailPage))
-            return "LocalShows";
+            return "LocalFiles";
 
         if (pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalMoviesPage)
             || pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalMovieDetailPage))
-            return "LocalMovies";
+            return "LocalFiles";
 
         if (pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalMusicPage))
-            return "LocalMusic";
+            return "LocalFiles";
 
         if (pageType == typeof(Wavee.UI.WinUI.Views.Local.LocalMusicVideosPage))
-            return "LocalMusicVideos";
+            return "LocalFiles";
 
         return null;
     }

@@ -162,6 +162,19 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
 
     private async Task CheckAsync(CancellationToken ct)
     {
+        // While a navigation is in flight, defer the whole check cycle. The
+        // cleanup paths below tear down HotCache<TrackCacheEntry> and the warm
+        // cache layer — exactly what the in-flight nav is trying to read from.
+        // Letting them run mid-nav evicted the very state the next transition
+        // wanted (visible as the post-nav stall). TryDeferRelease already gated
+        // the working-set trim, but the cache shootdowns weren't gated, which
+        // was the actual cost. The next 10 s tick re-checks; if we're still
+        // over budget after the nav window closes, cleanup runs then. OS
+        // pressure events also route through here — a 4 s nav-window deferral
+        // is acceptable for those.
+        if (NavigationGcCoordinator.IsNavigationCritical)
+            return;
+
         var snapshot = Capture();
         var observedBytes = Math.Max(snapshot.WorkingSetBytes, snapshot.PrivateBytes);
         if (observedBytes < _budgetBytes)

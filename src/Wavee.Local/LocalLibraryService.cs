@@ -258,7 +258,8 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
                    e.image_url,
                    lf.series_id, s.name AS series_name,
                    lf.season_number, lf.episode_number, lf.episode_title,
-                   lf.movie_year, lf.tmdb_id
+                   lf.movie_year, lf.tmdb_id,
+                   lf.metadata_overrides
               FROM local_files lf
               INNER JOIN entities e ON e.uri = lf.track_uri
               LEFT JOIN local_series s ON s.id = lf.series_id
@@ -277,19 +278,20 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
         var artworkUri = !string.IsNullOrEmpty(hash)
             ? LocalArtworkCache.UriScheme + hash
             : spotifyImageUrl;
+        var overrides = ParseMetadataOverrides(r.IsDBNull(14) ? null : r.GetString(14));
 
         return Task.FromResult<LocalPlaybackMetadata?>(new LocalPlaybackMetadata(
             TrackUri: r.GetString(0),
             Kind: kind,
-            RawTitle: r.IsDBNull(2) ? null : r.GetString(2),
-            RawArtist: r.IsDBNull(3) ? null : r.GetString(3),
-            RawAlbum: r.IsDBNull(4) ? null : r.GetString(4),
+            RawTitle: OverlayString(overrides?.Title, r.IsDBNull(2) ? null : r.GetString(2)),
+            RawArtist: OverlayString(overrides?.Artist, r.IsDBNull(3) ? null : r.GetString(3)),
+            RawAlbum: OverlayString(overrides?.Album, r.IsDBNull(4) ? null : r.GetString(4)),
             ArtworkUri: artworkUri,
             SeriesId: r.IsDBNull(7) ? null : r.GetString(7),
             SeriesName: r.IsDBNull(8) ? null : r.GetString(8),
             SeasonNumber: r.IsDBNull(9) ? null : r.GetInt32(9),
             EpisodeNumber: r.IsDBNull(10) ? null : r.GetInt32(10),
-            EpisodeTitle: r.IsDBNull(11) ? null : r.GetString(11),
+            EpisodeTitle: OverlayString(overrides?.EpisodeTitle, r.IsDBNull(11) ? null : r.GetString(11)),
             MovieYear: r.IsDBNull(12) ? null : r.GetInt32(12),
             TmdbId: r.IsDBNull(13) ? null : r.GetInt32(13)));
     }
@@ -514,7 +516,8 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
                    (SELECT uri FROM entities x WHERE x.entity_type = 3 AND x.title = e.artist_name AND x.source_type = 1 LIMIT 1) AS artist_uri,
                    lf.is_video,
                    lf.last_position_ms,
-                   lf.spotify_track_uri, lf.spotify_album_uri, lf.spotify_artist_uri, lf.spotify_cover_url
+                   lf.spotify_track_uri, lf.spotify_album_uri, lf.spotify_artist_uri, lf.spotify_cover_url,
+                   lf.metadata_overrides
             FROM entities e
             INNER JOIN local_files lf ON lf.track_uri = e.uri
             LEFT JOIN local_artwork_links la
@@ -531,17 +534,17 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
         {
             var uri = r.GetString(0);
             var path = r.GetString(1);
-            var title = r.IsDBNull(2) ? null : r.GetString(2);
-            var artist = r.IsDBNull(3) ? null : r.GetString(3);
-            var album = r.IsDBNull(4) ? null : r.GetString(4);
+            var rawTitle = r.IsDBNull(2) ? null : r.GetString(2);
+            var rawArtist = r.IsDBNull(3) ? null : r.GetString(3);
+            var rawAlbum = r.IsDBNull(4) ? null : r.GetString(4);
             var albumUri = r.IsDBNull(5) ? null : r.GetString(5);
             var duration = r.IsDBNull(6) ? 0L : r.GetInt64(6);
-            var trackNo = r.IsDBNull(7) ? (int?)null : r.GetInt32(7);
-            var discNo = r.IsDBNull(8) ? (int?)null : r.GetInt32(8);
-            var year = r.IsDBNull(9) ? (int?)null : r.GetInt32(9);
+            var rawTrackNo = r.IsDBNull(7) ? (int?)null : r.GetInt32(7);
+            var rawDiscNo = r.IsDBNull(8) ? (int?)null : r.GetInt32(8);
+            var rawYear = r.IsDBNull(9) ? (int?)null : r.GetInt32(9);
             var artHash = r.GetString(10);
             var artworkUri = string.IsNullOrEmpty(artHash) ? null : LocalArtworkCache.UriScheme + artHash;
-            var albumArtist = r.IsDBNull(11) ? null : r.GetString(11);
+            var rawAlbumArtist = r.IsDBNull(11) ? null : r.GetString(11);
             var artistUri = r.IsDBNull(12) ? null : r.GetString(12);
             var isVideo = !r.IsDBNull(13) && r.GetInt32(13) != 0;
             var lastPositionMs = r.IsDBNull(14) ? 0L : r.GetInt64(14);
@@ -549,6 +552,15 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
             var spotifyAlbumUri = r.IsDBNull(16) ? null : r.GetString(16);
             var spotifyArtistUri = r.IsDBNull(17) ? null : r.GetString(17);
             var spotifyCoverUrl = r.IsDBNull(18) ? null : r.GetString(18);
+            var overrides = ParseMetadataOverrides(r.IsDBNull(19) ? null : r.GetString(19));
+
+            var title = OverlayString(overrides?.Title, rawTitle);
+            var artist = OverlayString(overrides?.Artist, rawArtist);
+            var album = OverlayString(overrides?.Album, rawAlbum);
+            var albumArtist = OverlayString(overrides?.AlbumArtist, rawAlbumArtist);
+            var year = OverlayValue(overrides?.Year, rawYear);
+            var trackNo = OverlayValue(overrides?.TrackNumber, rawTrackNo);
+            var discNo = OverlayValue(overrides?.DiscNumber, rawDiscNo);
 
             list.Add(new LocalTrackRow(uri, path, title, artist, albumArtist, album, albumUri, artistUri,
                 duration, trackNo, discNo, year, artworkUri, isVideo, lastPositionMs)
@@ -744,7 +756,8 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
                         (SELECT COUNT(*) FROM local_embedded_tracks WHERE local_file_path = lf.path AND kind = 'audio')
                    ELSE 0 END AS audio_count,
                    COALESCE(lf.tmdb_id, rse.tmdb_id) AS tmdb_id,
-                   (lf.path IS NOT NULL) AS is_on_disk
+                   (lf.path IS NOT NULL) AS is_on_disk,
+                   lf.metadata_overrides
             FROM local_series_episodes rse
             LEFT JOIN local_files lf
                 ON lf.series_id = rse.series_id
@@ -763,13 +776,15 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
             var season = r.GetInt32(0);
             var artHash = r.GetString(9);
             var isOnDisk = r.GetInt32(13) != 0;
+            var overrides = ParseMetadataOverrides(r.IsDBNull(14) ? null : r.GetString(14));
+            var rawTitle = r.IsDBNull(2) ? null : r.GetString(2);
             var ep = new Models.LocalEpisode(
                 TrackUri: r.IsDBNull(5) ? null : r.GetString(5),
                 FilePath: r.IsDBNull(4) ? null : r.GetString(4),
                 ShowId: showId,
                 Season: season,
                 Episode: r.GetInt32(1),
-                Title: r.IsDBNull(2) ? null : r.GetString(2),
+                Title: OverlayString(overrides?.EpisodeTitle, rawTitle),
                 DurationMs: r.IsDBNull(6) ? 0L : r.GetInt64(6),
                 LastPositionMs: r.IsDBNull(7) ? 0L : r.GetInt64(7),
                 WatchedAt: r.IsDBNull(8) ? null : r.GetInt64(8),
@@ -807,7 +822,8 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
                    (SELECT COUNT(*) FROM local_subtitle_files WHERE local_file_path = lf.path)
                  + (SELECT COUNT(*) FROM local_embedded_tracks WHERE local_file_path = lf.path AND kind = 'subtitle') AS sub_count,
                    (SELECT COUNT(*) FROM local_embedded_tracks WHERE local_file_path = lf.path AND kind = 'audio') AS audio_count,
-                   lf.tmdb_id
+                   lf.tmdb_id,
+                   lf.metadata_overrides
             FROM local_files lf
             INNER JOIN entities e ON e.uri = lf.track_uri
             LEFT JOIN local_artwork_links la ON la.entity_uri = lf.track_uri AND la.role = 'cover'
@@ -821,13 +837,15 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
         {
             var season = r.IsDBNull(0) ? 1 : r.GetInt32(0);
             var artHash = r.GetString(8);
+            var overrides = ParseMetadataOverrides(r.IsDBNull(12) ? null : r.GetString(12));
+            var rawTitle = r.IsDBNull(2) ? null : r.GetString(2);
             var ep = new Models.LocalEpisode(
                 TrackUri: r.GetString(4),
                 FilePath: r.GetString(3),
                 ShowId: showId,
                 Season: season,
                 Episode: r.IsDBNull(1) ? 0 : r.GetInt32(1),
-                Title: r.IsDBNull(2) ? null : r.GetString(2),
+                Title: OverlayString(overrides?.EpisodeTitle, rawTitle),
                 DurationMs: r.IsDBNull(5) ? 0L : r.GetInt64(5),
                 LastPositionMs: r.GetInt64(6),
                 WatchedAt: r.IsDBNull(7) ? null : r.GetInt64(7),
@@ -870,13 +888,7 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
     {
         using var conn = OpenConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT lf.track_uri, lf.path, e.title, e.artist_name, e.release_year,
-                   e.duration_ms,
-                   COALESCE(la.image_hash, '') AS art_hash
-            FROM local_files lf
-            INNER JOIN entities e ON e.uri = lf.track_uri
-            LEFT JOIN local_artwork_links la ON la.entity_uri = lf.track_uri AND la.role = 'cover'
+        cmd.CommandText = MusicVideoSelectSql + """
             WHERE COALESCE(lf.kind_override, lf.auto_kind) = 'MusicVideo'
             ORDER BY lf.last_indexed_at DESC;
             """;
@@ -884,18 +896,199 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
-            var artHash = r.GetString(6);
-            list.Add(new Models.LocalMusicVideo(
-                TrackUri: r.GetString(0),
-                FilePath: r.GetString(1),
-                Title: r.IsDBNull(2) ? Path.GetFileNameWithoutExtension(r.GetString(1)) : r.GetString(2),
-                Artist: r.IsDBNull(3) ? null : r.GetString(3),
-                Year: r.IsDBNull(4) ? null : r.GetInt32(4),
-                DurationMs: r.IsDBNull(5) ? 0L : r.GetInt64(5),
-                ThumbnailUri: HashToArtUri(artHash)));
+            list.Add(ReadMusicVideo(r));
         }
         return Task.FromResult<IReadOnlyList<Models.LocalMusicVideo>>(list);
     }
+
+    public Task<Models.LocalMusicVideo?> GetMusicVideoAsync(string trackUri, CancellationToken ct = default)
+    {
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = MusicVideoSelectSql + """
+            WHERE COALESCE(lf.kind_override, lf.auto_kind) = 'MusicVideo'
+              AND lf.track_uri = $u
+            LIMIT 1;
+            """;
+        cmd.Parameters.AddWithValue("$u", trackUri);
+        using var r = cmd.ExecuteReader();
+        return Task.FromResult(r.Read() ? ReadMusicVideo(r) : null);
+    }
+
+    public Task<Models.LocalMusicVideo?> GetLinkedMusicVideoForSpotifyTrackAsync(
+        string spotifyTrackUri,
+        CancellationToken ct = default)
+    {
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = MusicVideoSelectSql + """
+            WHERE COALESCE(lf.kind_override, lf.auto_kind) = 'MusicVideo'
+              AND lf.spotify_track_uri = $u
+            ORDER BY lf.last_indexed_at DESC
+            LIMIT 1;
+            """;
+        cmd.Parameters.AddWithValue("$u", spotifyTrackUri);
+        using var r = cmd.ExecuteReader();
+        return Task.FromResult(r.Read() ? ReadMusicVideo(r) : null);
+    }
+
+    public Task<IReadOnlyDictionary<string, string>> GetLinkedMusicVideoUrisForSpotifyTracksAsync(
+        IEnumerable<string> spotifyTrackUris,
+        CancellationToken ct = default)
+    {
+        var uris = spotifyTrackUris
+            .Where(IsSpotifyTrackUri)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (uris.Length == 0)
+            return Task.FromResult<IReadOnlyDictionary<string, string>>(
+                new Dictionary<string, string>(StringComparer.Ordinal));
+
+        using var conn = OpenConnection();
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var batch in uris.Chunk(200))
+        {
+            ct.ThrowIfCancellationRequested();
+            using var cmd = conn.CreateCommand();
+            var parameterNames = new string[batch.Length];
+            for (var i = 0; i < batch.Length; i++)
+            {
+                var name = "$u" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                parameterNames[i] = name;
+                cmd.Parameters.AddWithValue(name, batch[i]);
+            }
+
+            cmd.CommandText = $"""
+                SELECT lf.spotify_track_uri, lf.track_uri
+                  FROM local_files lf
+                 WHERE COALESCE(lf.kind_override, lf.auto_kind) = 'MusicVideo'
+                   AND lf.spotify_track_uri IN ({string.Join(", ", parameterNames)})
+                 ORDER BY lf.last_indexed_at DESC;
+                """;
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var spotifyUri = r.GetString(0);
+                if (result.ContainsKey(spotifyUri)) continue;
+                result[spotifyUri] = r.GetString(1);
+            }
+        }
+
+        return Task.FromResult<IReadOnlyDictionary<string, string>>(result);
+    }
+
+    public Task LinkMusicVideoToSpotifyTrackAsync(
+        string localMusicVideoTrackUri,
+        string spotifyTrackUri,
+        CancellationToken ct = default)
+    {
+        if (!LocalUri.IsTrack(localMusicVideoTrackUri))
+            throw new ArgumentException("Expected a wavee:local:track:* music-video URI.", nameof(localMusicVideoTrackUri));
+        if (!IsSpotifyTrackUri(spotifyTrackUri))
+            throw new ArgumentException("Expected a spotify:track:* URI.", nameof(spotifyTrackUri));
+
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            UPDATE local_files
+               SET spotify_track_uri = $spotify,
+                   enrichment_state = 'Matched',
+                   enrichment_at = $now
+             WHERE track_uri = $local
+               AND COALESCE(kind_override, auto_kind) = 'MusicVideo';
+            """;
+        cmd.Parameters.AddWithValue("$spotify", spotifyTrackUri);
+        cmd.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        cmd.Parameters.AddWithValue("$local", localMusicVideoTrackUri);
+        var rows = cmd.ExecuteNonQuery();
+        if (rows == 0)
+            throw new InvalidOperationException("The selected local item is not an indexed music video.");
+        return Task.CompletedTask;
+    }
+
+    public Task UnlinkMusicVideoFromSpotifyTrackAsync(string localMusicVideoTrackUri, CancellationToken ct = default)
+    {
+        if (!LocalUri.IsTrack(localMusicVideoTrackUri))
+            throw new ArgumentException("Expected a wavee:local:track:* music-video URI.", nameof(localMusicVideoTrackUri));
+
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            UPDATE local_files
+               SET spotify_track_uri = NULL,
+                   enrichment_at = $now
+             WHERE track_uri = $local
+               AND COALESCE(kind_override, auto_kind) = 'MusicVideo';
+            """;
+        cmd.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        cmd.Parameters.AddWithValue("$local", localMusicVideoTrackUri);
+        cmd.ExecuteNonQuery();
+        return Task.CompletedTask;
+    }
+
+    private const string MusicVideoSelectSql = """
+        SELECT lf.track_uri, lf.path, e.title, e.artist_name, e.release_year,
+               e.duration_ms,
+               COALESCE(la.image_hash, '') AS art_hash,
+               lf.spotify_track_uri,
+               lf.metadata_overrides
+          FROM local_files lf
+          INNER JOIN entities e ON e.uri = lf.track_uri
+          LEFT JOIN local_artwork_links la ON la.entity_uri = lf.track_uri AND la.role = 'cover'
+        """;
+
+    private static Models.LocalMusicVideo ReadMusicVideo(SqliteDataReader r)
+    {
+        var path = r.GetString(1);
+        var artHash = r.GetString(6);
+        var overrides = ParseMetadataOverrides(r.IsDBNull(8) ? null : r.GetString(8));
+
+        var baseTitle = r.IsDBNull(2) ? Path.GetFileNameWithoutExtension(path) : r.GetString(2);
+        var baseArtist = r.IsDBNull(3) ? null : r.GetString(3);
+        var baseYear = r.IsDBNull(4) ? (int?)null : r.GetInt32(4);
+
+        return new Models.LocalMusicVideo(
+            TrackUri: r.GetString(0),
+            FilePath: path,
+            Title: OverlayString(overrides?.Title, baseTitle) ?? baseTitle,
+            Artist: OverlayString(overrides?.Artist, baseArtist),
+            Year: OverlayValue(overrides?.Year, baseYear),
+            DurationMs: r.IsDBNull(5) ? 0L : r.GetInt64(5),
+            ThumbnailUri: HashToArtUri(artHash))
+        {
+            LinkedSpotifyTrackUri = r.IsDBNull(7) ? null : r.GetString(7)
+        };
+    }
+
+    private static Models.MetadataPatch? ParseMetadataOverrides(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<Models.MetadataPatch>(json);
+        }
+        catch
+        {
+            // Malformed JSON shouldn't blow up the whole music-video query.
+            return null;
+        }
+    }
+
+    // Field-by-field "non-null override wins" merge used by every row builder
+    // that consumes a MetadataPatch. Lifted out so we don't replicate the
+    // ternaries across ReadTracks / ReadMovies / ReadMusicVideo / episode /
+    // continue-watching / playback-metadata.
+    private static string? OverlayString(string? @override, string? baseValue)
+        => string.IsNullOrWhiteSpace(@override) ? baseValue : @override;
+
+    private static T? OverlayValue<T>(T? @override, T? baseValue) where T : struct
+        => @override.HasValue ? @override : baseValue;
+
+    private static bool IsSpotifyTrackUri(string? uri)
+        => !string.IsNullOrWhiteSpace(uri)
+           && uri.StartsWith("spotify:track:", StringComparison.Ordinal)
+           && uri.Length > "spotify:track:".Length;
 
     /// <summary>Lists unclassified ("Other") items.</summary>
     public Task<IReadOnlyList<Models.LocalOtherItem>> GetOthersAsync(CancellationToken ct = default)
@@ -904,7 +1097,7 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT lf.track_uri, lf.path, e.title, e.duration_ms, lf.file_size,
-                   lf.auto_kind, lf.kind_override
+                   lf.auto_kind, lf.kind_override, lf.metadata_overrides
             FROM local_files lf
             INNER JOIN entities e ON e.uri = lf.track_uri
             WHERE COALESCE(lf.kind_override, lf.auto_kind) = 'Other'
@@ -915,10 +1108,12 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
         while (r.Read())
         {
             var path = r.GetString(1);
+            var overrides = ParseMetadataOverrides(r.IsDBNull(7) ? null : r.GetString(7));
+            var rawTitle = r.IsDBNull(2) ? Path.GetFileNameWithoutExtension(path) : r.GetString(2);
             list.Add(new Models.LocalOtherItem(
                 TrackUri: r.GetString(0),
                 FilePath: path,
-                DisplayName: r.IsDBNull(2) ? Path.GetFileNameWithoutExtension(path) : r.GetString(2),
+                DisplayName: OverlayString(overrides?.Title, rawTitle) ?? rawTitle,
                 DurationMs: r.IsDBNull(3) ? 0L : r.GetInt64(3),
                 FileSize: r.GetInt64(4),
                 Extension: Path.GetExtension(path),
@@ -937,7 +1132,8 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
             SELECT lf.track_uri, lf.path, COALESCE(e.title, ''), e.duration_ms,
                    lf.last_position_ms, lf.last_indexed_at,
                    COALESCE(la.image_hash, '') AS art_hash,
-                   COALESCE(lf.kind_override, lf.auto_kind) AS effective_kind
+                   COALESCE(lf.kind_override, lf.auto_kind) AS effective_kind,
+                   lf.metadata_overrides
             FROM local_files lf
             INNER JOIN entities e ON e.uri = lf.track_uri
             LEFT JOIN local_artwork_links la ON la.entity_uri = lf.track_uri AND la.role = 'cover'
@@ -953,10 +1149,14 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
         while (r.Read())
         {
             var artHash = r.GetString(6);
+            var path = r.GetString(1);
+            var overrides = ParseMetadataOverrides(r.IsDBNull(8) ? null : r.GetString(8));
+            var rawTitle = r.GetString(2);
+            var baseName = string.IsNullOrEmpty(rawTitle) ? Path.GetFileNameWithoutExtension(path) : rawTitle;
             list.Add(new Models.LocalContinueItem(
                 TrackUri: r.GetString(0),
-                FilePath: r.GetString(1),
-                DisplayName: string.IsNullOrEmpty(r.GetString(2)) ? Path.GetFileNameWithoutExtension(r.GetString(1)) : r.GetString(2),
+                FilePath: path,
+                DisplayName: OverlayString(overrides?.Title, baseName) ?? baseName,
                 DurationMs: r.IsDBNull(3) ? 0L : r.GetInt64(3),
                 LastPositionMs: r.GetInt64(4),
                 PlayedAt: r.GetInt64(5),
@@ -1947,6 +2147,21 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
     }
 
     /// <summary>
+    /// Removes the cover-role link for an entity so any previous artwork override
+    /// stops applying. The hashed blob in <c>local_artwork</c> stays — it may be
+    /// referenced by other entities and is cheap to keep on disk.
+    /// </summary>
+    public Task ClearArtworkOverrideAsync(string entityUri, CancellationToken ct = default)
+    {
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM local_artwork_links WHERE entity_uri = $u AND role = 'cover';";
+        cmd.Parameters.AddWithValue("$u", entityUri);
+        cmd.ExecuteNonQuery();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Stores raw bytes as a local-artwork blob (hashed) and returns the
     /// <c>wavee-artwork://{hash}</c> URI plus the hash. Caller can then link
     /// it to an entity via UpsertEnrichmentResultAsync (poster) or write the
@@ -2059,7 +2274,8 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
                    (SELECT COUNT(*) FROM local_subtitle_files WHERE local_file_path = lf.path)
                  + (SELECT COUNT(*) FROM local_embedded_tracks WHERE local_file_path = lf.path AND kind = 'subtitle') AS sub_count,
                    (SELECT COUNT(*) FROM local_embedded_tracks WHERE local_file_path = lf.path AND kind = 'audio') AS audio_count,
-                   lf.movie_tagline, lf.movie_runtime_min, lf.movie_genres, lf.movie_vote_average
+                   lf.movie_tagline, lf.movie_runtime_min, lf.movie_genres, lf.movie_vote_average,
+                   lf.metadata_overrides
             FROM local_files lf
             INNER JOIN entities e ON e.uri = lf.track_uri
             LEFT JOIN local_artwork_links la_p ON la_p.entity_uri = lf.track_uri AND la_p.role = 'cover'
@@ -2074,7 +2290,8 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
         {
             var path = r.GetString(1);
             var titleFromDb = r.GetString(2);
-            var displayTitle = string.IsNullOrEmpty(titleFromDb) ? Path.GetFileNameWithoutExtension(path) : titleFromDb;
+            var rawTitle = string.IsNullOrEmpty(titleFromDb) ? Path.GetFileNameWithoutExtension(path) : titleFromDb;
+            var rawYear = r.IsDBNull(3) ? (int?)null : r.GetInt32(3);
             var posterHash = r.GetString(8);
             var backdropHash = r.GetString(9);
             var overview = r.IsDBNull(10) ? null : r.GetString(10);
@@ -2082,11 +2299,12 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
             var runtimeMin = r.IsDBNull(15) ? (int?)null : r.GetInt32(15);
             var genresCsv = r.IsDBNull(16) ? null : r.GetString(16);
             var voteAvg = r.IsDBNull(17) ? (double?)null : r.GetDouble(17);
+            var overrides = ParseMetadataOverrides(r.IsDBNull(18) ? null : r.GetString(18));
             list.Add(new Models.LocalMovie(
                 TrackUri: r.GetString(0),
                 FilePath: path,
-                Title: displayTitle,
-                Year: r.IsDBNull(3) ? null : r.GetInt32(3),
+                Title: OverlayString(overrides?.Title, rawTitle) ?? rawTitle,
+                Year: OverlayValue(overrides?.Year, rawYear),
                 DurationMs: r.IsDBNull(4) ? 0L : r.GetInt64(4),
                 LastPositionMs: r.GetInt64(5),
                 WatchedAt: r.IsDBNull(6) ? null : r.GetInt64(6),

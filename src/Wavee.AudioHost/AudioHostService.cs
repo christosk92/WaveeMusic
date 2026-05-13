@@ -165,7 +165,8 @@ internal sealed class AudioHostService : IAsyncDisposable
         });
 
         _engine = new AudioEngine(sink, decoderRegistry, processingChain, httpClient, volumeProcessor, _logger,
-            audioCacheDirectory: config?.AudioCacheDirectory);
+            audioCacheDirectory: config?.AudioCacheDirectory,
+            audioCacheMaxBytes: config?.AudioCacheMaxBytes);
         _previewAnalysisService = new PreviewAnalysisService(
             _bassDecoder ?? new BassDecoder(_logger),
             SendPreviewVisualizationFrameAsync,

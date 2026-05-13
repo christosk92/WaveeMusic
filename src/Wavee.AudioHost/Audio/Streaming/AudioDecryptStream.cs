@@ -135,6 +135,41 @@ public sealed class AudioDecryptStream : Stream
     {
         if (_aes is null) return;
 
+        ApplySpotifyCtr(
+            _aes,
+            buffer,
+            streamPosition,
+            _keystreamBlock,
+            ref _keystreamBlockPosition);
+    }
+
+    /// <summary>
+    /// Applies the Spotify audio AES-CTR transform in-place. CTR is symmetric,
+    /// so callers can use this for both decrypting CDN bytes and re-encrypting
+    /// clear head bytes before writing the persistent cache file.
+    /// </summary>
+    internal static void ApplySpotifyCtr(byte[] key, Span<byte> buffer, long streamPosition)
+    {
+        if (key.Length != AES_BLOCK_SIZE)
+            throw new ArgumentException("AES-128 key must be exactly 16 bytes", nameof(key));
+
+        using var aes = Aes.Create();
+        aes.KeySize = 128;
+        aes.Key = key;
+        aes.Padding = PaddingMode.None;
+
+        Span<byte> keyStreamBlock = stackalloc byte[AES_BLOCK_SIZE];
+        var keyStreamBlockPosition = -1L;
+        ApplySpotifyCtr(aes, buffer, streamPosition, keyStreamBlock, ref keyStreamBlockPosition);
+    }
+
+    private static void ApplySpotifyCtr(
+        Aes aes,
+        Span<byte> buffer,
+        long streamPosition,
+        Span<byte> keyStreamBlock,
+        ref long keyStreamBlockPosition)
+    {
         long currentPosition = streamPosition;
         int bufferOffset = 0;
 
@@ -143,17 +178,17 @@ public sealed class AudioDecryptStream : Stream
             long blockIndex = currentPosition / AES_BLOCK_SIZE;
             int offsetInBlock = (int)(currentPosition % AES_BLOCK_SIZE);
 
-            if (_keystreamBlockPosition != blockIndex)
+            if (keyStreamBlockPosition != blockIndex)
             {
-                GenerateKeystreamBlock(blockIndex, _keystreamBlock);
-                _keystreamBlockPosition = blockIndex;
+                GenerateKeystreamBlock(aes, blockIndex, keyStreamBlock);
+                keyStreamBlockPosition = blockIndex;
             }
 
             int bytesToProcess = Math.Min(buffer.Length - bufferOffset, AES_BLOCK_SIZE - offsetInBlock);
 
             XorBytes(
                 buffer.Slice(bufferOffset, bytesToProcess),
-                MemoryMarshal.CreateReadOnlySpan(ref _keystreamBlock[offsetInBlock], bytesToProcess));
+                MemoryMarshal.CreateReadOnlySpan(ref keyStreamBlock[offsetInBlock], bytesToProcess));
 
             bufferOffset += bytesToProcess;
             currentPosition += bytesToProcess;
@@ -181,14 +216,12 @@ public sealed class AudioDecryptStream : Stream
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void GenerateKeystreamBlock(long blockIndex, Span<byte> output)
+    private static void GenerateKeystreamBlock(Aes aes, long blockIndex, Span<byte> output)
     {
-        if (_aes is null) return;
-
         Span<byte> counterBlock = stackalloc byte[AES_BLOCK_SIZE];
         AUDIO_AESIV.CopyTo(counterBlock);
         AddBigEndianSpan(counterBlock, blockIndex);
-        _aes.EncryptEcb(counterBlock, output, PaddingMode.None);
+        aes.EncryptEcb(counterBlock, output, PaddingMode.None);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

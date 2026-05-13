@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Windows.Input;
 using Microsoft.UI.Xaml;
@@ -17,7 +18,7 @@ public sealed partial class LibraryGridView : UserControl
 
     public static readonly DependencyProperty ItemsSourceProperty =
         DependencyProperty.Register(nameof(ItemsSource), typeof(IEnumerable), typeof(LibraryGridView),
-            new PropertyMetadata(null));
+            new PropertyMetadata(null, OnItemsSourceChanged));
 
     public static readonly DependencyProperty ItemTemplateProperty =
         DependencyProperty.Register(nameof(ItemTemplate), typeof(DataTemplate), typeof(LibraryGridView),
@@ -305,12 +306,15 @@ public sealed partial class LibraryGridView : UserControl
 
     // Placeholder items to drive the shimmer ItemsRepeater DataTemplate
     private static readonly object[] ShimmerPlaceholders = Enumerable.Range(0, 8).Cast<object>().ToArray();
+    private INotifyCollectionChanged? _observedItemsSource;
+    private bool _itemsSourceRefreshInProgress;
 
     public LibraryGridView()
     {
         InitializeComponent();
         ShimmerOverlay.ItemsSource = ShimmerPlaceholders;
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
         ItemsGridView.DoubleTapped += ItemsGridView_DoubleTapped;
 
         // Apply the initial ViewMode / template once named elements exist.
@@ -443,8 +447,16 @@ public sealed partial class LibraryGridView : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        if (_observedItemsSource is null)
+            AttachItemsSourceCollectionChanged(ItemsSource);
+
         // Sync selection when control is loaded (important for page cache restoration)
         SyncSelectionToItemsView();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        DetachItemsSourceCollectionChanged();
     }
 
     private void SyncSelectionToItemsView()
@@ -467,10 +479,54 @@ public sealed partial class LibraryGridView : UserControl
 
     private void ItemsGridView_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs args)
     {
+        if (_itemsSourceRefreshInProgress && sender.SelectedItem is null && SelectedItem is not null)
+            return;
+
         if (sender.SelectedItem != SelectedItem)
         {
             SelectedItem = sender.SelectedItem;
         }
+    }
+
+    private static void OnItemsSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not LibraryGridView control)
+            return;
+
+        control.DetachItemsSourceCollectionChanged();
+        control.AttachItemsSourceCollectionChanged(e.NewValue as IEnumerable);
+        control.SyncSelectionToItemsView();
+    }
+
+    private void AttachItemsSourceCollectionChanged(IEnumerable? itemsSource)
+    {
+        if (itemsSource is not INotifyCollectionChanged observable)
+            return;
+
+        _observedItemsSource = observable;
+        observable.CollectionChanged += ItemsSource_CollectionChanged;
+    }
+
+    private void DetachItemsSourceCollectionChanged()
+    {
+        if (_observedItemsSource is null)
+            return;
+
+        _observedItemsSource.CollectionChanged -= ItemsSource_CollectionChanged;
+        _observedItemsSource = null;
+    }
+
+    private void ItemsSource_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (SelectedItem is null)
+            return;
+
+        _itemsSourceRefreshInProgress = true;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _itemsSourceRefreshInProgress = false;
+            SyncSelectionToItemsView();
+        });
     }
 
     private static void OnIsLoadingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

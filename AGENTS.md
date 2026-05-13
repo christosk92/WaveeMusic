@@ -12,6 +12,14 @@ Read the relevant guide before changing that area:
 - **Track and episode UI** — every track/episode row, list, card, search cell,
   omnibar suggestion, queue row, home episode card, and now-playing surface.
   `.agents/guides/track-and-episode-ui.md`
+- **Spotify Connect (dealer / device state / playback state / commands)** —
+  dealer WebSocket, this-device announce (PutState), cluster state, remote
+  commands, queue from cluster, device picker / volume / now-playing UI.
+  `.agents/guides/connect-state.md`
+- **User library and sync** — collection sync (tracks / albums / artists /
+  shows / pins / listen-later), playlist cache, dealer-driven incremental
+  updates, save / pin / follow write paths, library and pinned UI surfaces.
+  `.agents/guides/library-and-sync.md`
 
 ## How To Add A New Component Guide
 

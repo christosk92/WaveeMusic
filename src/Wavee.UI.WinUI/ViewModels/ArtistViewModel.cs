@@ -863,7 +863,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                     ArtistNames = track.ArtistNames,
                     IsExplicit = track.IsExplicit,
                     IsPlayable = track.IsPlayable,
-                    HasVideo = track.HasVideo
+                    HasCanvasVideo = track.HasVideo
                 };
                 newTracks.Add(LazyTrackItem.Loaded(trackVm.Id, idx, trackVm));
                 if (videoMetadata is not null && !string.IsNullOrEmpty(track.Uri))
@@ -881,6 +881,23 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                     videoMetadata.NoteVideoUri(mapping.AudioTrackUri, mapping.VideoTrackUri);
                     _logger?.LogDebug("[VideoCache]   {AudioUri} -> {VideoUri}",
                         mapping.AudioTrackUri, mapping.VideoTrackUri);
+                }
+
+                // Light the music-video badge on rows whose Spotify track is
+                // linked to a local music-video file. Fire-and-forget; the
+                // VM's HasLinkedLocalVideo setter raises PropertyChanged so
+                // TrackItem updates its badge live when the result lands.
+                var topTrackVms = newTracks
+                    .Where(i => i.IsLoaded && i.Data is ArtistTopTrackVm)
+                    .Select(i => (ArtistTopTrackVm)i.Data!)
+                    .ToList();
+                if (topTrackVms.Count > 0)
+                {
+                    _ = videoMetadata.ApplyAvailabilityToAsync(
+                        topTrackVms,
+                        static t => t.Uri,
+                        static (t, v) => t.HasLinkedLocalVideo = v,
+                        CancellationToken.None);
                 }
             }
 
@@ -1698,7 +1715,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                         ArtistNames = vm.ArtistNames,
                         IsExplicit = vm.IsExplicit,
                         IsPlayable = vm.IsPlayable,
-                        HasVideo = vm.HasVideo,
+                        HasCanvasVideo = vm.HasCanvasVideo,
+                        HasLinkedLocalVideo = vm.HasLinkedLocalVideo,
                     };
                     entry.Populate(patched);
                     anyPatched = true;
@@ -1745,6 +1763,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 }
 
                 int idx = startIdx;
+                var addedVms = new List<ArtistTopTrackVm>();
                 foreach (var track in extendedTracks)
                 {
                     if (existingUris.Contains(track.Uri ?? "")) continue;
@@ -1763,10 +1782,11 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                         ArtistNames = track.ArtistNames,
                         IsExplicit = track.IsExplicit,
                         IsPlayable = track.IsPlayable,
-                        HasVideo = track.HasVideo
+                        HasCanvasVideo = track.HasVideo
                     };
 
                     TopTracks.Add(LazyTrackItem.Loaded(trackVm.Id, idx, trackVm));
+                    addedVms.Add(trackVm);
                     idx++;
                 }
 
@@ -1774,6 +1794,20 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 OnPropertyChanged(nameof(TotalPages));
                 OnPropertyChanged(nameof(HasMultiplePages));
                 OnPropertyChanged(nameof(PagedTopTracks));
+
+                if (addedVms.Count > 0)
+                {
+                    var videoMetadata = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                        .GetService<Wavee.UI.WinUI.Services.IMusicVideoMetadataService>();
+                    if (videoMetadata is not null)
+                    {
+                        _ = videoMetadata.ApplyAvailabilityToAsync(
+                            addedVms,
+                            static t => t.Uri,
+                            static (t, v) => t.HasLinkedLocalVideo = v,
+                            CancellationToken.None);
+                    }
+                }
             });
         }
         catch (Exception ex)
@@ -1920,7 +1954,32 @@ public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
     public string? AlbumUri { get; init; }
     public long PlayCountRaw { get; init; }
     public bool IsPlayable { get; init; }
-    public bool HasVideo { get; init; }
+    /// <summary>
+    /// True when the Spotify track itself ships a Canvas video (set at row
+    /// build time from the API payload).
+    /// </summary>
+    public bool HasCanvasVideo { get; init; }
+
+    private bool _hasLinkedLocalVideo;
+    /// <summary>
+    /// True when the audio URI has a linked local music-video file. Populated
+    /// asynchronously by <see cref="IMusicVideoMetadataService.ApplyAvailabilityToAsync"/>
+    /// after top tracks load. Fires PropertyChanged on both itself and
+    /// <see cref="HasVideo"/> so <c>TrackItem</c>'s badge updates live.
+    /// </summary>
+    public bool HasLinkedLocalVideo
+    {
+        get => _hasLinkedLocalVideo;
+        set
+        {
+            if (_hasLinkedLocalVideo == value) return;
+            _hasLinkedLocalVideo = value;
+            OnPropertyChanged(nameof(HasLinkedLocalVideo));
+            OnPropertyChanged(nameof(HasVideo));
+        }
+    }
+
+    public bool HasVideo => HasCanvasVideo || _hasLinkedLocalVideo;
 
     // ── ITrackItem implementation ──
     string Data.Contracts.ITrackItem.Uri => Uri ?? $"spotify:track:{Id}";

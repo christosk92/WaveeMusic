@@ -375,7 +375,8 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IMessenger>(),
                         Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(),
                         sp.GetService<ILogger<PlaybackStateService>>(),
-                        sp.GetService<IHomeFeedCache>()))
+                        sp.GetService<IHomeFeedCache>(),
+                        sp.GetService<INotificationService>()))
                 // Per-session in-memory cache for music-video metadata. Fed
                 // by GraphQL response handlers on artist / album / search
                 // surfaces; consumed by the discovery service to avoid
@@ -387,6 +388,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
                         sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
                         sp.GetRequiredService<Services.IMusicVideoCatalogCache>(),
+                        sp.GetService<Wavee.Local.ILocalLibraryService>(),
                         sp.GetService<ILogger<Services.MusicVideoMetadataService>>()))
                 // Music-video discovery for the linked-URI catalog pattern
                 // (audio URI ≠ video URI; e.g. drunk text). Invoked directly
@@ -418,6 +420,12 @@ public static class AppLifecycleHelper
                         sp.GetService<ILogger<Services.LocalMediaPlayer>>()))
                 .AddSingleton<Wavee.Audio.ILocalMediaPlayer>(sp =>
                     sp.GetRequiredService<Services.LocalMediaPlayer>())
+                // Per-session cache of MKV/MP4 chapter cues read from
+                // local TV episodes — feeds the Up-Next overlay's
+                // credits-detection. Singleton so the same scan result is
+                // reused across overlay instances when a user re-opens
+                // the same episode.
+                .AddSingleton<Services.LocalEpisodeChapterScanner>()
                 .AddSingleton<Services.IVideoSurfaceProvider>(sp =>
                     sp.GetRequiredService<Services.LocalMediaPlayer>())
                 // Spotify music-video engine — registered as a concrete singleton
@@ -666,6 +674,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>(),
                         sp.GetRequiredService<Data.Stores.ExtendedMetadataStore>(),
                         sp.GetRequiredService<Services.IMusicVideoMetadataService>(),
+                        sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
                         sp.GetService<ILogger<Data.Contexts.LibraryDataService>>()))
                 .AddSingleton(sp =>
                     new Data.Stores.PlaylistStore(
@@ -721,6 +730,11 @@ public static class AppLifecycleHelper
                 .AddSingleton<ISearchService>(sp =>
                     new Data.Contexts.SearchService(
                         sp.GetRequiredService<ISession>().Pathfinder))
+                .AddSingleton<Services.ISpotifyLinkPreviewService>(sp =>
+                    new Services.SpotifyLinkPreviewService(
+                        sp.GetRequiredService<ISession>().Pathfinder,
+                        sp.GetRequiredService<ISession>().SpClient,
+                        sp.GetService<ILogger<Services.SpotifyLinkPreviewService>>()))
                 .AddSingleton<ITrackDescriptorFetcher>(sp =>
                     new Data.Contexts.TrackDescriptorFetcher(
                         sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
@@ -893,7 +907,9 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Wavee.Local.ILocalLikeService>(),
                         sp.GetRequiredService<Wavee.Local.Enrichment.ILocalEnrichmentService>(),
                         sp.GetRequiredService<Wavee.Local.Groups.LocalGroupService>(),
-                        sp.GetService<ILogger<Services.LocalLibraryFacade>>()))
+                        metadataClient: sp.GetService<Wavee.Core.Http.IExtendedMetadataClient>(),
+                        httpClientFactory: sp.GetService<System.Net.Http.IHttpClientFactory>(),
+                        logger: sp.GetService<ILogger<Services.LocalLibraryFacade>>()))
                 // Subscribes to LocalMediaPlayer state and persists resume position +
                 // flips watched_at + records local_plays. Singleton so the subscription
                 // lives for the lifetime of the app.
@@ -1099,11 +1115,19 @@ public static class AppLifecycleHelper
             };
             _audioProcessManager.StateChanged += _audioStateChangedHandler;
 
-            // Audio cache directory: shared between this process (to check HasCompleteFile)
+            var settingsForAudioPipeline = Ioc.Default.GetService<ISettingsService>();
+
+            // Audio cache directory: shared between this process (to check cache hits)
             // and AudioHost (to write new downloads and read cached files).
-            var audioCacheDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Wavee", "AudioCache");
+            var audioCacheSettings = settingsForAudioPipeline?.Settings;
+            var audioCacheDirectory = audioCacheSettings?.CacheEnabled != false
+                ? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Wavee", "AudioCache")
+                : null;
+            long? audioCacheMaxBytes = audioCacheDirectory != null
+                ? Math.Max(1, audioCacheSettings?.CacheSizeLimitBytes ?? 1L * 1024 * 1024 * 1024)
+                : null;
 
             // Now start the audio process (state/error events are already wired above)
             var clusterVol = (int)(session.PlaybackState?.CurrentState?.Volume ?? 0);
@@ -1114,8 +1138,8 @@ public static class AppLifecycleHelper
                 session.Config.DeviceId,
                 initialVolumePercent: clusterVol,
                 audioCacheDirectory: audioCacheDirectory,
+                audioCacheMaxBytes: audioCacheMaxBytes,
                 CancellationToken.None);
-            var settingsForAudioPipeline = Ioc.Default.GetService<ISettingsService>();
             await ApplyAudioPipelineSettingsAsync(proxy, settingsForAudioPipeline, logger, CancellationToken.None);
 
             // Create PlaybackOrchestrator — owns queue, track resolution, remote commands

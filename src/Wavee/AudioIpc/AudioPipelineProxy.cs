@@ -135,6 +135,7 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
         bool normalizationEnabled = true,
         int initialVolumePercent = 0,
         string? audioCacheDirectory = null,
+        long? audioCacheMaxBytes = null,
         int parentProcessId = 0,
         string? sessionId = null,
         string? launchToken = null,
@@ -149,6 +150,7 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
             NormalizationEnabled = normalizationEnabled,
             InitialVolumePercent = initialVolumePercent,
             AudioCacheDirectory = audioCacheDirectory,
+            AudioCacheMaxBytes = audioCacheMaxBytes,
         };
         var configJson = IpcPayloadHelper.SerializeToUtf8(config);
         await _transport.SendAsync(IpcMessageTypes.Configure, configJson, ct: ct);

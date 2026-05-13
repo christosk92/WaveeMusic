@@ -627,16 +627,13 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
     public void RestoreFromNavigationCache()
     {
-        if (!_trimmedForNavigationCache)
-            return;
-
-        // Don't reset _trimmedForNavigationCache here. The next LoadParameter
-        // (called either by Restore's tail below, by the subsequent OnNavigatedTo,
-        // or both) sees the flag still true and runs Bindings.Update() to re-attach
-        // x:Bind to the now-cleared VM. Setting the flag false here would skip
-        // that re-attach and leave the hero stuck on its pre-trim values.
-        if (!string.IsNullOrEmpty(ViewModel.PlaylistId))
-            LoadParameter(ViewModel.PlaylistId);
+        // No-op by design. OnNavigatedTo fires next on the same Frame.Navigate
+        // dispatch with the authoritative parameter and routes through LoadParameter,
+        // which re-attaches bindings (Bindings.Update at its top, guarded by
+        // _trimmedForNavigationCache) and runs Activate. Calling LoadParameter here
+        // too duplicated every downstream effect: two Activates, two PlaylistStore
+        // subscriptions, two ApplyDetailState dispatches, two LoadTracksAsync runs,
+        // two FilteredTracks.ReplaceWith resets, two waves of TrackItem materialization.
     }
 
     private void RestorePlaylistPanelWidth(string playlistId)

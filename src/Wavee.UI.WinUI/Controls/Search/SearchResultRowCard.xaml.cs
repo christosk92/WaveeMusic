@@ -1,13 +1,16 @@
 using System;
+using System.Numerics;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using CommunityToolkit.WinUI.Animations;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Foundation;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
@@ -21,6 +24,8 @@ namespace Wavee.UI.WinUI.Controls.Search;
 
 public sealed partial class SearchResultRowCard : UserControl
 {
+    private static readonly InputCursor HandCursor = InputSystemCursor.Create(InputSystemCursorShape.Hand);
+
     public static readonly DependencyProperty ItemProperty =
         DependencyProperty.Register(
             nameof(Item),
@@ -42,17 +47,25 @@ public sealed partial class SearchResultRowCard : UserControl
     private string? _trackId;
     private bool _isTrack;
     private bool _isHovered;
+    private bool _isPressed;
     private bool _isThisTrackPlaying;
     private bool _isThisTrackPaused;
     private bool _isBuffering;
     private bool _subscribedToPlayback;
 
+    public event TypedEventHandler<SearchResultRowCard, RightTappedRoutedEventArgs>? CardRightTapped;
+
     public SearchResultRowCard()
     {
         InitializeComponent();
+        ProtectedCursor = HandCursor;
         PointerEntered += OnPointerEntered;
         PointerExited += OnPointerExited;
+        PointerPressed += OnPointerPressed;
+        PointerReleased += OnPointerReleased;
+        PointerCanceled += OnPointerReleased;
         Tapped += OnTapped;
+        RightTapped += OnRightTapped;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         ActualThemeChanged += OnActualThemeChanged;
@@ -62,15 +75,25 @@ public sealed partial class SearchResultRowCard : UserControl
     {
         // Refresh code-behind-set brushes so they pick up the new theme.
         ApplyTitleAccent();
-        ApplyHoverBackground();
+        ApplyInteractionState();
     }
 
-    private void ApplyHoverBackground()
+    private void ApplyInteractionState()
     {
-        var key = _isHovered
-            ? "CardBackgroundFillColorSecondaryBrush"
-            : "CardBackgroundFillColorDefaultBrush";
-        RootBorder.Background = (Brush)Application.Current.Resources[key];
+        var backgroundKey = _isPressed
+            ? "CardBackgroundFillColorTertiaryBrush"
+            : _isHovered
+                ? "CardBackgroundFillColorSecondaryBrush"
+                : "CardBackgroundFillColorDefaultBrush";
+
+        RootBorder.Background = (Brush)Application.Current.Resources[backgroundKey];
+        RootBorder.BorderBrush = (Brush)Application.Current.Resources[_isHovered || _isPressed
+            ? "ControlStrokeColorDefaultBrush"
+            : "CardStrokeColorDefaultBrush"];
+        ActionIcon.Foreground = (Brush)Application.Current.Resources[_isHovered || _isPressed
+            ? "TextFillColorPrimaryBrush"
+            : "TextFillColorSecondaryBrush"];
+        RootBorder.Opacity = _isPressed ? 0.92 : 1.0;
     }
 
     private static void OnItemChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -313,15 +336,43 @@ public sealed partial class SearchResultRowCard : UserControl
     private void OnPointerEntered(object sender, PointerRoutedEventArgs e)
     {
         _isHovered = true;
-        ApplyHoverBackground();
+        ApplyInteractionState();
         UpdateOverlayState();
+        AnimationBuilder.Create()
+            .Scale(to: new Vector2(1.004f, 1.004f), duration: TimeSpan.FromMilliseconds(120))
+            .Start(RootBorder);
     }
 
     private void OnPointerExited(object sender, PointerRoutedEventArgs e)
     {
         _isHovered = false;
-        ApplyHoverBackground();
+        _isPressed = false;
+        ApplyInteractionState();
         UpdateOverlayState();
+        AnimationBuilder.Create()
+            .Scale(to: Vector2.One, duration: TimeSpan.FromMilliseconds(120))
+            .Start(RootBorder);
+    }
+
+    private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _isPressed = true;
+        ApplyInteractionState();
+        AnimationBuilder.Create()
+            .Scale(to: new Vector2(0.996f, 0.996f), duration: TimeSpan.FromMilliseconds(80))
+            .Start(RootBorder);
+    }
+
+    private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_isPressed)
+            return;
+
+        _isPressed = false;
+        ApplyInteractionState();
+        AnimationBuilder.Create()
+            .Scale(to: _isHovered ? new Vector2(1.004f, 1.004f) : Vector2.One, duration: TimeSpan.FromMilliseconds(100))
+            .Start(RootBorder);
     }
 
     private void OnTapped(object sender, TappedRoutedEventArgs e)
@@ -335,6 +386,12 @@ public sealed partial class SearchResultRowCard : UserControl
 
         _playbackStateService ??= Ioc.Default.GetService<IPlaybackStateService>();
         _playbackStateService?.NotifyBuffering(_trackId);
+    }
+
+    private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        CardRightTapped?.Invoke(this, e);
+        e.Handled = true;
     }
 
     private void StartPendingBeam()

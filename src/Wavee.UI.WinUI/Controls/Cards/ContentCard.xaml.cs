@@ -1403,6 +1403,10 @@ public sealed partial class ContentCard : UserControl
 
     private void CardButton_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
+        CardRightTapped?.Invoke(this, e);
+        if (e.Handled)
+            return;
+
         if (!string.IsNullOrEmpty(NavigationUri))
         {
             var items = Controls.ContextMenu.Builders.CardContextMenuBuilder.Build(new Controls.ContextMenu.Builders.CardMenuContext
@@ -1418,9 +1422,9 @@ public sealed partial class ContentCard : UserControl
                 }
             });
             Controls.ContextMenu.ContextMenuHost.Show(this, items, e.GetPosition(this));
+            e.Handled = true;
             return;
         }
-        CardRightTapped?.Invoke(this, e);
     }
 
     // ── Navigation ──

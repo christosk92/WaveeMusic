@@ -154,6 +154,52 @@
         <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="0" Padding="0,0,0,160">
 
+                <!-- Playing-from breadcrumb. Borderless / fill-less single line; the
+                     visual contrast against the bordered NowPlayingCard below is what
+                     differentiates "what we're playing from" from "what's playing now". -->
+                <Button x:Name="ContextCard"
+                        Visibility="Collapsed"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        Margin="0,0,0,8"
+                        Padding="6,6"
+                        CornerRadius="2"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        ToolTipService.ToolTip="Open playback context"
+                        Click="ContextCard_Click">
+                    <Grid ColumnSpacing="10" MinHeight="28">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Width="20" Height="20" CornerRadius="3"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                            <Image x:Name="ContextArt" Stretch="UniformToFill"/>
+                        </Border>
+
+                        <TextBlock Grid.Column="1"
+                                   VerticalAlignment="Center"
+                                   FontSize="12"
+                                   MaxLines="1"
+                                   TextTrimming="CharacterEllipsis">
+                            <Run Text="Playing from "
+                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <Run x:Name="ContextTitle"
+                                 FontWeight="SemiBold"/>
+                        </TextBlock>
+
+                        <FontIcon Grid.Column="2"
+                                  Glyph="&#xE8A7;"
+                                  FontSize="12"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  VerticalAlignment="Center"
+                                  Margin="2,0,2,0"/>
+                    </Grid>
+                </Button>
+
                 <!-- Now Playing card -->
                 <Border x:Name="NowPlayingCard"
                         Visibility="Collapsed"

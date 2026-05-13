@@ -1,0 +1,442 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Local.LinkSpotifyTrackFlyout"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="using:Wavee.UI.WinUI.Controls.Local"
+    xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    xmlns:pathfinder="using:Wavee.Core.Http.Pathfinder"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+
+        <!-- Result-row template -->
+        <DataTemplate x:Key="ResultRowTemplate" x:DataType="pathfinder:SearchResultItem">
+            <Grid MinHeight="60"
+                  Padding="10,8"
+                  ColumnSpacing="12"
+                  Background="Transparent"
+                  Tag="{x:Bind Uri}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="40"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="16"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Thumbnail -->
+                <Border Grid.Column="0"
+                        Width="40" Height="40"
+                        CornerRadius="6"
+                        Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                    <Image Stretch="UniformToFill"
+                           behaviors:ImageFallbackBehavior.HideOnError="True"
+                           behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                           Source="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=96}"/>
+                </Border>
+
+                <!-- Title + subtitle -->
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                    <TextBlock Text="{x:Bind Name}"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis"
+                               MaxLines="1"/>
+                    <TextBlock Text="{x:Bind DisplaySubtitle}"
+                               FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               MaxLines="1"/>
+                </StackPanel>
+
+                <!-- Duration -->
+                <TextBlock Grid.Column="2"
+                           Text="{x:Bind local:LinkSpotifyTrackFlyout.FormatDuration(DurationMs)}"
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+
+                <!-- Trailing chevron -->
+                <FontIcon Grid.Column="3"
+                          FontSize="11"
+                          Glyph="&#xE76C;"
+                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                          VerticalAlignment="Center"
+                          HorizontalAlignment="Right"
+                          Opacity="0.55"/>
+            </Grid>
+        </DataTemplate>
+
+        <!-- Shimmer skeleton row -->
+        <DataTemplate x:Key="ShimmerRowTemplate">
+            <Grid Padding="8,6" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="44"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="40"/>
+                    <ColumnDefinition Width="14"/>
+                </Grid.ColumnDefinitions>
+                <controls:Shimmer Grid.Column="0" Width="44" Height="44" CornerRadius="6"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                    <controls:Shimmer Height="13" HorizontalAlignment="Stretch" CornerRadius="3"/>
+                    <controls:Shimmer Width="120" Height="11" HorizontalAlignment="Left" CornerRadius="3"/>
+                </StackPanel>
+                <controls:Shimmer Grid.Column="2" Width="32" Height="11" CornerRadius="3" VerticalAlignment="Center"/>
+            </Grid>
+        </DataTemplate>
+
+        <!-- Tight container style: full-width row, no extra padding, rounded selection -->
+        <Style x:Key="LinkRowItemStyle" TargetType="ListViewItem">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="MinHeight" Value="60"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+        </Style>
+
+    </UserControl.Resources>
+
+    <!-- ────────────────────────────── Surface ────────────────────────────── -->
+    <!-- Fixed dimensions so the popup never resizes between states.            -->
+    <Border x:Name="RootSurface"
+            CornerRadius="0"
+            BorderThickness="0"
+            Background="Transparent"
+            Padding="0"
+            Width="440"
+            Height="500">
+
+        <Grid Padding="16" RowSpacing="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <!-- header -->
+                <RowDefinition Height="Auto"/>
+                <!-- search input -->
+                <RowDefinition Height="Auto"/>
+                <!-- currently-linked banner -->
+                <RowDefinition Height="*"/>
+                <!-- results area (fills the rest, fixed by the parent surface) -->
+            </Grid.RowDefinitions>
+
+            <!-- ───────── Header ───────── -->
+            <Grid Grid.Row="0" ColumnSpacing="8" Padding="2,2,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <FontIcon FontSize="13"
+                          Glyph="&#xE71B;"
+                          Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                          VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1"
+                           Text="Link Spotify track"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                <ProgressRing x:Name="SearchSpinner"
+                              Grid.Column="2"
+                              Width="16" Height="16"
+                              IsActive="False"
+                              Visibility="Collapsed"/>
+            </Grid>
+
+            <!-- ───────── Search input ───────── -->
+            <Grid Grid.Row="1">
+                <TextBox x:Name="QueryBox"
+                         FontSize="14"
+                         MinHeight="40"
+                         PlaceholderText="Search Spotify or paste a track link"
+                         TextChanged="QueryBox_TextChanged"
+                         KeyDown="QueryBox_KeyDown"
+                         VerticalAlignment="Center"
+                         VerticalContentAlignment="Center"
+                         Padding="36,7,12,7"/>
+
+                <!-- Leading search glyph -->
+                <FontIcon FontSize="14"
+                          Glyph="&#xE721;"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Center"
+                          Margin="12,0,0,0"
+                          IsHitTestVisible="False"/>
+            </Grid>
+
+            <!-- ───────── Currently-linked banner ───────── -->
+            <Border x:Name="CurrentLinkBanner"
+                    Grid.Row="2"
+                    CornerRadius="6"
+                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                    BorderThickness="1"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                    Padding="10,7"
+                    Visibility="Collapsed">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Grid.Column="0" FontSize="12" Glyph="&#xE71B;"
+                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                              VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="0">
+                        <TextBlock Text="Currently linked"
+                                   FontSize="10"
+                                   CharacterSpacing="120"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                        <TextBlock x:Name="CurrentLinkText"
+                                   FontSize="12"
+                                   FontFamily="Consolas"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ───────── Results area ───────── -->
+            <Grid x:Name="ResultsArea"
+                  Grid.Row="3"
+                  Margin="0,2,0,0">
+
+                <!-- Thin top in-progress strip (warm-search) -->
+                <Border x:Name="InProgressStrip"
+                        VerticalAlignment="Top"
+                        Height="2"
+                        CornerRadius="1"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                        Opacity="0"
+                        IsHitTestVisible="False"
+                        Canvas.ZIndex="5"/>
+
+                <!-- Search results list (warm + cold) -->
+                <ListView x:Name="ResultsHost"
+                          Visibility="Collapsed"
+                          SelectionMode="Single"
+                          IsItemClickEnabled="True"
+                          ItemClick="ResultsHost_ItemClick"
+                          ItemContainerStyle="{StaticResource LinkRowItemStyle}"
+                          ItemTemplate="{StaticResource ResultRowTemplate}"
+                          ScrollViewer.HorizontalScrollMode="Disabled"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          Padding="0,2"/>
+
+                <!-- Shimmer skeleton (cold search only) -->
+                <ItemsControl x:Name="ShimmerHost"
+                              Visibility="Collapsed"
+                              IsHitTestVisible="False"
+                              ItemTemplate="{StaticResource ShimmerRowTemplate}"
+                              Padding="0,2"/>
+
+                <!-- Empty state -->
+                <StackPanel x:Name="EmptyPanel"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="8"
+                            MaxWidth="280">
+                    <FontIcon FontSize="24"
+                              Glyph="&#xE721;"
+                              Opacity="0.28"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock Text="No matching tracks"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="Try a different search, or paste a Spotify track link."
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Idle state (no query yet) -->
+                <StackPanel x:Name="IdlePanel"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="8"
+                            MaxWidth="300">
+                    <FontIcon FontSize="22"
+                              Glyph="&#xE721;"
+                              Opacity="0.24"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock Text="Search for a Spotify track"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="Start typing above, or paste a Spotify share link."
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Error state -->
+                <StackPanel x:Name="ErrorPanel"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="10"
+                            MaxWidth="280">
+                    <FontIcon FontSize="24"
+                              Glyph="&#xE783;"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock x:Name="ErrorText"
+                               Text="Search failed."
+                               FontSize="13"
+                               TextWrapping="WrapWholeWords"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"/>
+                    <Button Content="Retry"
+                            HorizontalAlignment="Center"
+                            Click="RetryButton_Click"/>
+                </StackPanel>
+
+                <!-- Preview card host -->
+                <Grid x:Name="PreviewPanel"
+                      Visibility="Collapsed"
+                      VerticalAlignment="Top">
+
+                    <!-- Resolving — shimmer card -->
+                    <Border x:Name="PreviewResolvingCard"
+                            CornerRadius="8"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Padding="12"
+                            Visibility="Collapsed">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="64"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <controls:Shimmer Grid.Column="0" Width="64" Height="64" CornerRadius="8"/>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                                <controls:Shimmer Height="14" HorizontalAlignment="Stretch" CornerRadius="3"/>
+                                <controls:Shimmer Width="160" Height="11" HorizontalAlignment="Left" CornerRadius="3"/>
+                                <controls:Shimmer Width="90" Height="10" HorizontalAlignment="Left" CornerRadius="3"/>
+                            </StackPanel>
+                            <controls:Shimmer Grid.Column="2"
+                                              Width="100" Height="30"
+                                              CornerRadius="6"
+                                              VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- PreviewReady — resolved track card -->
+                    <Border x:Name="PreviewReadyCard"
+                            CornerRadius="8"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Padding="12"
+                            Visibility="Collapsed">
+                        <Grid ColumnSpacing="12" RowSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="64"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Border Grid.Column="0" Grid.Row="0"
+                                    Width="64" Height="64"
+                                    CornerRadius="8"
+                                    Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                                <Image x:Name="PreviewArt"
+                                       Stretch="UniformToFill"
+                                       behaviors:ImageFallbackBehavior.HideOnError="True"
+                                       behaviors:ImageFallbackBehavior.FadeInOnLoad="True"/>
+                            </Border>
+                            <StackPanel Grid.Column="1" Grid.Row="0"
+                                        VerticalAlignment="Center" Spacing="2">
+                                <TextBlock x:Name="PreviewTitle"
+                                           FontSize="15"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxLines="1"/>
+                                <TextBlock x:Name="PreviewSubtitle"
+                                           FontSize="12"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxLines="1"/>
+                                <TextBlock x:Name="PreviewMeta"
+                                           FontSize="11"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxLines="1"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="0" Grid.Row="1"
+                                        Grid.ColumnSpan="2"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Right"
+                                        Spacing="8">
+                                <Button x:Name="PreviewDismissButton"
+                                        Click="ClearButton_Click"
+                                        Content="Cancel"/>
+                                <Button x:Name="PreviewLinkButton"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        Click="PreviewLinkButton_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon FontSize="12" Glyph="&#xE71B;"/>
+                                        <TextBlock Text="Link this track"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- PreviewError -->
+                    <Border x:Name="PreviewErrorCard"
+                            CornerRadius="8"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Padding="12"
+                            Visibility="Collapsed">
+                        <StackPanel Spacing="10">
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Grid.Column="0"
+                                          FontSize="18"
+                                          Glyph="&#xE7BA;"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                          VerticalAlignment="Center"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="Couldn't fetch track details"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"/>
+                                    <TextBlock Text="The link looks valid - you can link it anyway."
+                                               FontSize="12"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                            </Grid>
+                            <Button HorizontalAlignment="Right"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    Content="Link by URI"
+                                    Click="PreviewLinkByUriButton_Click"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>

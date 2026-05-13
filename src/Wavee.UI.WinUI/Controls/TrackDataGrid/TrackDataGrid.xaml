@@ -5,7 +5,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:contracts="using:Wavee.UI.WinUI.Data.Contracts"
     xmlns:local="using:Wavee.UI.WinUI.Controls.TrackDataGrid"
-    xmlns:track="using:Wavee.UI.WinUI.Controls.Track">
+    xmlns:track="using:Wavee.UI.WinUI.Controls.Track"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
 
     <UserControl.Resources>
         <!--
@@ -391,6 +392,47 @@
                     </DataTemplate>
                 </ItemsView.ItemTemplate>
             </ItemsView>
+
+            <ItemsRepeater
+                x:Name="LoadingRowsRepeater"
+                Grid.Row="1"
+                Margin="0,2,0,0"
+                IsHitTestVisible="False"
+                Visibility="Collapsed">
+                <ItemsRepeater.Layout>
+                    <StackLayout Orientation="Vertical" Spacing="4"/>
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate>
+                        <Border
+                            Padding="8,8"
+                            CornerRadius="6"
+                            Background="Transparent">
+                            <Grid ColumnSpacing="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="52"/>
+                                    <ColumnDefinition Width="32"/>
+                                    <ColumnDefinition Width="42"/>
+                                    <ColumnDefinition Width="*" MinWidth="120" MaxWidth="640"/>
+                                    <ColumnDefinition Width="180"/>
+                                    <ColumnDefinition Width="0"/>
+                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="0"/>
+                                    <ColumnDefinition Width="60"/>
+                                </Grid.ColumnDefinitions>
+                                <toolkit:Shimmer Grid.Column="2" Width="34" Height="34" CornerRadius="4" HorizontalAlignment="Left"/>
+                                <StackPanel Grid.Column="3" Spacing="6" VerticalAlignment="Center" Margin="12,0,8,0">
+                                    <toolkit:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>
+                                    <toolkit:Shimmer Width="100" Height="10" HorizontalAlignment="Left"/>
+                                </StackPanel>
+                                <toolkit:Shimmer Grid.Column="4" Width="120" Height="12" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                <toolkit:Shimmer Grid.Column="6" Width="80" Height="12" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                <toolkit:Shimmer Grid.Column="8" Width="36" Height="12" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
         </Grid>
     </Grid>
 </UserControl>

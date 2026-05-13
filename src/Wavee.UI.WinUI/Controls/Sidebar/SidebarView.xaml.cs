@@ -27,6 +27,7 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 	public event EventHandler<ItemContextInvokedArgs>? ItemContextInvoked;
 	public event EventHandler<ItemDragOverEventArgs>? ItemDragOver;
 	public event EventHandler<ItemDroppedEventArgs>? ItemDropped;
+	public event EventHandler<SidebarItemModel>? PinButtonClicked;
 	public event PropertyChangedEventHandler? PropertyChanged;
 
 	internal SidebarItem? SelectedItemContainer = null;
@@ -69,6 +70,11 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 	{
 		if (sideBarItem.Item is null) return;
 		ItemDragOver?.Invoke(this, new(sideBarItem.Item, rawEvent.DataView, dropPosition, rawEvent));
+	}
+
+	internal void RaisePinButtonClicked(SidebarItemModel model)
+	{
+		PinButtonClicked?.Invoke(this, model);
 	}
 
 	private void UpdateMinimalMode()

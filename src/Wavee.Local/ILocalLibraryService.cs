@@ -48,9 +48,37 @@ public interface ILocalLibraryService
     /// <c>local_files</c> + <c>entities</c> + <c>local_series</c> so the
     /// orchestrator can format a TMDB-enriched display title (S01E01 · "Pilot")
     /// and the PlayerBar can route title-click to the show / movie detail page.
-    /// Returns null when the URI isn't in the local index.
+    /// Returns null when the URI isn't in the local index. The
+    /// <c>metadata_overrides</c> overlay is already applied to the returned
+    /// fields — callers don't need to re-apply it.
     /// </summary>
     Task<LocalPlaybackMetadata?> GetPlaybackMetadataAsync(string trackUri, CancellationToken ct = default);
+
+    /// <summary>Lists all locally indexed music videos.</summary>
+    Task<IReadOnlyList<Models.LocalMusicVideo>> GetMusicVideosAsync(CancellationToken ct = default);
+
+    /// <summary>Reads one locally indexed music video by its wavee local track URI.</summary>
+    Task<Models.LocalMusicVideo?> GetMusicVideoAsync(string trackUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves the local music video linked to a Spotify audio track, if one
+    /// has been matched by enrichment or manually linked by the user.
+    /// </summary>
+    Task<Models.LocalMusicVideo?> GetLinkedMusicVideoForSpotifyTrackAsync(string spotifyTrackUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Bulk form used by video-availability surfaces. Returns
+    /// spotify:track:* URI -> wavee:local:track:* music-video URI.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, string>> GetLinkedMusicVideoUrisForSpotifyTracksAsync(
+        IEnumerable<string> spotifyTrackUris,
+        CancellationToken ct = default);
+
+    /// <summary>Manually associates one local music video with a Spotify track.</summary>
+    Task LinkMusicVideoToSpotifyTrackAsync(string localMusicVideoTrackUri, string spotifyTrackUri, CancellationToken ct = default);
+
+    /// <summary>Clears a local music video's Spotify track association.</summary>
+    Task UnlinkMusicVideoFromSpotifyTrackAsync(string localMusicVideoTrackUri, CancellationToken ct = default);
 
     /// <summary>
     /// External subtitles + embedded subtitle tracks for one video, merged in

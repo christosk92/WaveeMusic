@@ -29,4 +29,10 @@ public sealed record PlayContextOptions
     /// Feature identifier for play origin tracking (e.g. "artist_page", "album_page").
     /// </summary>
     public string? PlayOriginFeature { get; init; }
+
+    /// <summary>
+    /// Executes the play command directly without applying the user's generic
+    /// play-next/play-later prompt. Use for explicit commands such as radio.
+    /// </summary>
+    public bool BypassPrompt { get; init; }
 }

@@ -178,11 +178,11 @@ DTOs that intentionally bypass `ITrackItem`:
   `LazyTrackItem` placeholders, both via `ITrackItem`).
 - Notes: added-by column is controlled by `ShouldShowAddedByColumn`;
   filter bar (`:536`) includes "music videos only".
-- Load behavior: `PlaylistViewModel.Activate` seeds a small set of
-  `LazyTrackItem` shimmer rows, then `LoadTracksAsync` merges real rows into
-  `FilteredTracks` with one collection reset. Keep that batched shape; adding
-  the post-placeholder tail one row at a time causes `TrackDataGrid` to
-  re-snapshot/reproject once per add.
+- Load behavior: `PlaylistViewModel.Activate` clears stale rows and drives
+  `TrackDataGrid.IsLoading` so the grid renders lightweight skeleton rows.
+  `LoadTracksAsync` applies the real `FilteredTracks` snapshot with one
+  collection reset. Keep that batched shape; adding rows one at a time causes
+  `TrackDataGrid` to re-snapshot/reproject once per add.
 - Added-by display names / avatars are cached in `PlaylistViewModel` and pulled
   by `PlaylistPage`'s `TrackGrid.AddedByFormatter`; avoid mutating every
   `PlaylistTrackDto` just to refresh resolved user labels.
@@ -195,6 +195,9 @@ DTOs that intentionally bypass `ITrackItem`:
 - Source: `AlbumViewModel.FilteredTracks` (`LazyTrackItem` over `AlbumTrackDto`).
 - Notes: `ForceShowArtistColumn` is true for multi-artist albums; footer
   (`:366`) hosts related album / merch shelves but those are not track rows.
+- Load behavior: `AlbumViewModel.Initialize` clears old rows and drives
+  `TrackDataGrid.IsLoading` from `IsLoadingTracks`, so the album grid uses the
+  shared lightweight skeleton instead of `LazyTrackItem` placeholder rows.
 
 `src/Wavee.UI.WinUI/Views/LikedSongsView.xaml:60`
 - Surface: liked songs table.

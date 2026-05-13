@@ -422,6 +422,7 @@ public sealed partial class TrackItem : UserControl
 
     public event EventHandler<string>? ArtistClicked;
     public event EventHandler<string>? AlbumClicked;
+    public event EventHandler? TrackChanged;
 
     #endregion
 
@@ -550,6 +551,7 @@ public sealed partial class TrackItem : UserControl
         item.ResolveImageColorHint();
         item.RefreshPlaybackState();
         item.UpdateOverlayState();
+        item.TrackChanged?.Invoke(item, EventArgs.Empty);
     }
 
     private void BindTrackData()

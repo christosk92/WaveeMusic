@@ -239,9 +239,24 @@ public interface IMetadataDatabase : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Removes an item from the Spotify library.
+    /// Removes an item from the Spotify library. Deletes every row in
+    /// <c>spotify_library</c> matching the URI regardless of <c>item_type</c>.
+    /// Don't use this for type-scoped operations like unpinning — a track that
+    /// is both Liked and YlPin would lose its Like state. Use the overload that
+    /// takes <see cref="SpotifyLibraryItemType"/> instead.
     /// </summary>
     Task RemoveFromSpotifyLibraryAsync(string itemUri, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes only the row of a specific <paramref name="itemType"/> for the
+    /// given URI. Use this when one URI can legally exist in multiple library
+    /// collections (e.g. the same track being Liked and Pinned) and you only
+    /// want to remove one membership.
+    /// </summary>
+    Task RemoveFromSpotifyLibraryAsync(
+        string itemUri,
+        SpotifyLibraryItemType itemType,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Checks if an item is in the Spotify library.

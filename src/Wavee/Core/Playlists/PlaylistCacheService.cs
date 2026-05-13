@@ -167,6 +167,35 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         return RootlistTreeBuilder.Build(snapshot.Items, _logger);
     }
 
+    public async Task<RootlistSnapshot?> TryGetRootlistFromCacheAsync(CancellationToken ct = default)
+    {
+        if (_hotRootlist != null)
+            return _hotRootlist;
+
+        var username = GetCurrentUsername();
+        if (string.IsNullOrWhiteSpace(username))
+            return null;
+
+        var rootlistUri = $"spotify:user:{username}:rootlist";
+        var persisted = await _database.GetRootlistCacheEntryAsync(rootlistUri, touchAccess: false, ct);
+        if (persisted is null)
+            return null;
+
+        var snapshot = DeserializeRootlistSnapshot(persisted);
+        if (snapshot != null)
+            _hotRootlist = snapshot;
+
+        return snapshot;
+    }
+
+    public async Task<RootlistTree?> TryGetRootlistTreeFromCacheAsync(CancellationToken ct = default)
+    {
+        var snapshot = await TryGetRootlistFromCacheAsync(ct);
+        if (snapshot is null)
+            return null;
+        return RootlistTreeBuilder.Build(snapshot.Items, _logger);
+    }
+
     public async Task<CachedPlaylist> GetPlaylistAsync(
         string playlistUri,
         bool forceRefresh = false,

@@ -7,6 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Component-specific, LLM-friendly guides live in `.agents/guides/`. Read the relevant guide before touching that area:
 
 - `.agents/guides/track-and-episode-ui.md` — every track/episode row/list/card/search/queue/now-playing surface.
+- `.agents/guides/connect-state.md` — Spotify Connect: dealer WebSocket, this-device announce (PutState), cluster state, remote commands (Play/Pause/Seek/Transfer/SetVolume/Queue), device picker / volume / now-playing UI.
+- `.agents/guides/library-and-sync.md` — User library lifecycle: collection sync (tracks / albums / artists / shows / pins / listen-later), playlist cache, dealer-driven incremental updates, save / pin / follow write paths, library and pinned UI surfaces.
 
 When adding a new component guide, follow the frontmatter, Quick-find table, and authoring conventions in `AGENTS.md` (single source of truth), and update the index in both `AGENTS.md` and this file.
 

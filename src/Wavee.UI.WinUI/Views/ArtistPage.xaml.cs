@@ -1263,18 +1263,12 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         {
             Bindings?.Update();
         }
-
-        if (!string.IsNullOrEmpty(ViewModel.ArtistId))
-        {
-            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.artist.initialize"))
-            {
-                ViewModel.Initialize(ViewModel.ArtistId);
-            }
-            RestoreDiscographyRepeaters();
-            SetupWatchFeedVideo();
-            TryShowContentNow();
-            TryRestorePendingNavigationScroll();
-        }
+        // Initialize + RestoreDiscographyRepeaters + SetupWatchFeedVideo +
+        // TryShowContentNow + TryRestorePendingNavigationScroll used to run here
+        // too — but OnNavigatedTo fires next on the same dispatch and its
+        // same-artist branch (or LoadNewContent for a different artist) runs the
+        // exact same chain. Running both caused two ApplyOverview dispatches
+        // against ArtistStore and two discography rebuilds per navigation.
     }
 
     private void CaptureNavigationScrollPosition()

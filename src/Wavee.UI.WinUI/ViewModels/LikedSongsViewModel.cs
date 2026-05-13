@@ -447,37 +447,29 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
     {
         if (_musicVideoMetadata is null || _allSongs.Count == 0) return;
 
-        var songsByUri = _allSongs
+        // Snapshot to avoid touching _allSongs from a Task.Run continuation.
+        var snapshot = _allSongs
             .Where(song => !string.IsNullOrWhiteSpace(song.Uri))
-            .GroupBy(song => song.Uri, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
-        if (songsByUri.Count == 0) return;
+            .ToList();
+        if (snapshot.Count == 0) return;
 
         _ = Task.Run(async () =>
         {
             try
             {
-                var availability = await _musicVideoMetadata
-                    .EnsureAvailabilityAsync(songsByUri.Keys, CancellationToken.None)
-                    .ConfigureAwait(false);
+                await _musicVideoMetadata.ApplyAvailabilityToAsync(
+                    snapshot,
+                    static s => s.Uri,
+                    (s, v) =>
+                    {
+                        if (s.HasVideo == v) return;
+                        s.HasVideo = v;
+                    },
+                    CancellationToken.None).ConfigureAwait(false);
 
                 _dispatcherQueue.TryEnqueue(() =>
                 {
                     if (_disposed) return;
-                    var changed = false;
-                    foreach (var entry in availability)
-                    {
-                        if (!songsByUri.TryGetValue(entry.Key, out var songs)) continue;
-                        foreach (var song in songs)
-                        {
-                            if (song.HasVideo == entry.Value) continue;
-                            song.HasVideo = entry.Value;
-                            changed = true;
-                        }
-                    }
-
-                    if (!changed) return;
-
                     NotifyVideoFilterProperties();
                     if (ShowOnlyVideoTracks)
                         ApplyFilterAndSort();

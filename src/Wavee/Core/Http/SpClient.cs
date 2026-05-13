@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Google.Protobuf;
@@ -1007,7 +1008,7 @@ public sealed class SpClient : ISpClient
 
         response.EnsureSuccessStatusCode();
 
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        var json = await ReadStringContentLenientAsync(response.Content, cancellationToken);
         if (string.IsNullOrEmpty(json)) return null;
 
         var raw = JsonSerializer.Deserialize(json, InspiredByMixJsonContext.Default.InspiredByMixRawResponse);
@@ -2839,6 +2840,32 @@ public sealed class SpClient : ISpClient
             SpClientFailureReason.RequestFailed,
             $"Failed after {MaxRetries} attempts",
             lastException);
+    }
+
+    private static async Task<string> ReadStringContentLenientAsync(
+        HttpContent content,
+        CancellationToken cancellationToken)
+    {
+        var bytes = await content.ReadAsByteArrayAsync(cancellationToken);
+        if (bytes.Length == 0)
+            return string.Empty;
+
+        var charset = content.Headers.ContentType?.CharSet?.Trim().Trim('"');
+        var encoding = Encoding.UTF8;
+        if (!string.IsNullOrWhiteSpace(charset)
+            && !charset.Equals("UTF8", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                encoding = Encoding.GetEncoding(charset);
+            }
+            catch (ArgumentException)
+            {
+                encoding = Encoding.UTF8;
+            }
+        }
+
+        return encoding.GetString(bytes);
     }
 
     /// <inheritdoc cref="ISpClient.GetVideoManifestAsync"/>

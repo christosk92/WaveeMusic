@@ -5,12 +5,14 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Composition;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Foundation;
 using Wavee.Core.Data;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.Contracts;
@@ -25,6 +27,8 @@ namespace Wavee.UI.WinUI.Controls.Search;
 
 public sealed partial class SearchResultHeroCard : UserControl
 {
+    private static readonly InputCursor HandCursor = InputSystemCursor.Create(InputSystemCursorShape.Hand);
+
     public static readonly DependencyProperty ItemProperty =
         DependencyProperty.Register(
             nameof(Item),
@@ -61,6 +65,7 @@ public sealed partial class SearchResultHeroCard : UserControl
     private string? _trackId;
     private bool _isTrack;
     private bool _isHovered;
+    private bool _isPressed;
     private bool _isThisTrackPlaying;
     private bool _isThisTrackPaused;
     private bool _isBuffering;
@@ -87,12 +92,19 @@ public sealed partial class SearchResultHeroCard : UserControl
     // gradient brush with the correct tier without refetching.
     private ArtistPalette? _currentPalette;
 
+    public event TypedEventHandler<SearchResultHeroCard, RightTappedRoutedEventArgs>? CardRightTapped;
+
     public SearchResultHeroCard()
     {
         InitializeComponent();
+        ProtectedCursor = HandCursor;
         PointerEntered += OnPointerEntered;
         PointerExited += OnPointerExited;
+        PointerPressed += OnPointerPressed;
+        PointerReleased += OnPointerReleased;
+        PointerCanceled += OnPointerReleased;
         Tapped += OnTapped;
+        RightTapped += OnRightTapped;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         ActualThemeChanged += OnActualThemeChanged;
@@ -119,10 +131,16 @@ public sealed partial class SearchResultHeroCard : UserControl
 
     private void ApplyHoverBackground()
     {
-        var key = _isHovered
+        var key = _isPressed
+            ? "CardBackgroundFillColorTertiaryBrush"
+            : _isHovered
             ? "CardBackgroundFillColorTertiaryBrush"
             : "CardBackgroundFillColorSecondaryBrush";
         RootBorder.Background = (Brush)Application.Current.Resources[key];
+        RootBorder.BorderBrush = (Brush)Application.Current.Resources[_isHovered || _isPressed
+            ? "ControlStrokeColorDefaultBrush"
+            : "CardStrokeColorDefaultBrush"];
+        PlayActionButton.Opacity = _isPressed ? 0.86 : 1.0;
     }
 
     private static void OnItemChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -622,10 +640,38 @@ public sealed partial class SearchResultHeroCard : UserControl
     private void OnPointerExited(object sender, PointerRoutedEventArgs e)
     {
         _isHovered = false;
+        _isPressed = false;
         ApplyHoverBackground();
         AnimationBuilder.Create()
             .Scale(to: new System.Numerics.Vector2(1.0f, 1.0f), duration: TimeSpan.FromMilliseconds(180))
             .Start(PlayActionButton);
+    }
+
+    private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _isPressed = true;
+        ApplyHoverBackground();
+        AnimationBuilder.Create()
+            .Scale(to: new Vector2(0.98f, 0.98f), duration: TimeSpan.FromMilliseconds(80))
+            .Start(PlayActionButton);
+    }
+
+    private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_isPressed)
+            return;
+
+        _isPressed = false;
+        ApplyHoverBackground();
+        AnimationBuilder.Create()
+            .Scale(to: _isHovered ? new Vector2(1.04f, 1.04f) : Vector2.One, duration: TimeSpan.FromMilliseconds(120))
+            .Start(PlayActionButton);
+    }
+
+    private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        CardRightTapped?.Invoke(this, e);
+        e.Handled = true;
     }
 
     private void StartPendingBeam()

@@ -30,6 +30,10 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     // Optional persistent cache: when set, the fully downloaded file is copied here
     // so future plays can bypass CDN resolution entirely.
     private readonly string? _persistCachePath;
+    private readonly long? _maxCacheBytes;
+    private readonly byte[]? _persistentCacheAudioKey;
+    private readonly int _clearHeadBytes;
+    private int _persistStarted;
 
     private readonly RangeSet _downloadedRanges = new();
     private readonly FileStream _tempFile;
@@ -105,6 +109,8 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     /// <param name="persistCachePath">
     /// When set, the fully downloaded file is written here so future plays can skip CDN resolution.
     /// </param>
+    /// <param name="maxCacheBytes">Maximum persistent cache size before LRU pruning.</param>
+    /// <param name="persistentCacheAudioKey">Audio key used to re-encrypt clear head data before cache commit.</param>
     public ProgressiveDownloader(
         HttpClient httpClient,
         string cdnUrl,
@@ -113,7 +119,9 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         byte[]? headData = null,
         AudioFetchParams? @params = null,
         ILogger? logger = null,
-        string? persistCachePath = null)
+        string? persistCachePath = null,
+        long? maxCacheBytes = null,
+        byte[]? persistentCacheAudioKey = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentException.ThrowIfNullOrWhiteSpace(cdnUrl);
@@ -127,6 +135,11 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
         _params = @params ?? AudioFetchParams.Default;
         _logger = logger;
         _persistCachePath = persistCachePath;
+        _maxCacheBytes = maxCacheBytes is > 0 ? maxCacheBytes : null;
+        _persistentCacheAudioKey = persistentCacheAudioKey is { Length: 16 }
+            ? persistentCacheAudioKey.ToArray()
+            : null;
+        _clearHeadBytes = headData?.Length ?? 0;
 
         // Create a unique temp file per downloader instance.
         // Reusing only fileId in the name can collide when old playback is still disposing
@@ -638,9 +651,7 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
                     if (gaps.Count == 0)
                     {
                         _logger?.LogDebug("Background download complete for file {FileId}", _fileId.ToBase16());
-                        // Persist to audio cache so future plays skip CDN resolution
-                        if (_persistCachePath != null)
-                            _ = PersistToCacheAsync(_persistCachePath, CancellationToken.None);
+                        await PersistToCacheIfCompleteAsync(CancellationToken.None);
                         break;
                     }
 
@@ -670,6 +681,12 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
                 // Brief yield to let playback thread process data
                 await Task.Yield();
             }
+
+            if (!loopToken.IsCancellationRequested && IsFullyDownloaded)
+            {
+                _logger?.LogDebug("Background download complete for file {FileId}", _fileId.ToBase16());
+                await PersistToCacheIfCompleteAsync(CancellationToken.None);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -696,8 +713,19 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
 
     /// <summary>
     /// Copies the fully downloaded temp file to the persistent cache path.
-    /// Fire-and-forget: if it fails we just lose the cache benefit for this session.
+    /// If it fails we just lose the cache benefit for this session.
     /// </summary>
+    private Task PersistToCacheIfCompleteAsync(CancellationToken ct)
+    {
+        if (_persistCachePath == null || !IsFullyDownloaded)
+            return Task.CompletedTask;
+
+        if (Interlocked.Exchange(ref _persistStarted, 1) != 0)
+            return Task.CompletedTask;
+
+        return PersistToCacheAsync(_persistCachePath, ct);
+    }
+
     private async Task PersistToCacheAsync(string cachePath, CancellationToken ct)
     {
         try
@@ -712,18 +740,101 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
             await using (var dest = new FileStream(swapPath, FileMode.Create, FileAccess.Write,
                 FileShare.None, 4096, useAsync: true))
             {
-                await _tempFile.CopyToAsync(dest, ct);
+                await CopyTempFileForPersistentCacheAsync(dest, ct);
             }
             File.Move(swapPath, cachePath, overwrite: true);
+            File.SetLastAccessTimeUtc(cachePath, DateTime.UtcNow);
 
             _logger?.LogInformation("Audio file {FileId} persisted to cache ({Bytes} bytes)",
                 _fileId.ToBase16(), _fileSize);
+
+            if (_maxCacheBytes is > 0 && dir != null)
+                PruneCacheDirectory(dir, cachePath, _maxCacheBytes.Value);
         }
         catch (Exception ex)
         {
             _logger?.LogDebug(ex, "Failed to persist audio cache for {FileId}", _fileId.ToBase16());
         }
     }
+
+    private async Task CopyTempFileForPersistentCacheAsync(FileStream destination, CancellationToken ct)
+    {
+        if (_clearHeadBytes <= 0 || _persistentCacheAudioKey == null)
+        {
+            await _tempFile.CopyToAsync(destination, ct);
+            return;
+        }
+
+        var buffer = _bufferPool.Rent(Math.Min(_clearHeadBytes, 128 * 1024));
+        try
+        {
+            long streamOffset = 0;
+            var remainingHead = _clearHeadBytes;
+            while (remainingHead > 0)
+            {
+                var toRead = Math.Min(buffer.Length, remainingHead);
+                var read = await _tempFile.ReadAsync(buffer.AsMemory(0, toRead), ct);
+                if (read <= 0)
+                    break;
+
+                AudioDecryptStream.ApplySpotifyCtr(_persistentCacheAudioKey, buffer.AsSpan(0, read), streamOffset);
+                await destination.WriteAsync(buffer.AsMemory(0, read), ct);
+                streamOffset += read;
+                remainingHead -= read;
+            }
+
+            await _tempFile.CopyToAsync(destination, ct);
+        }
+        finally
+        {
+            _bufferPool.Return(buffer);
+        }
+    }
+
+    private void PruneCacheDirectory(string cacheDirectory, string protectedPath, long maxBytes)
+    {
+        try
+        {
+            var protectedFullPath = Path.GetFullPath(protectedPath);
+            var files = new DirectoryInfo(cacheDirectory)
+                .EnumerateFiles("*.enc", SearchOption.TopDirectoryOnly)
+                .OrderBy(f => string.Equals(Path.GetFullPath(f.FullName), protectedFullPath, StringComparison.OrdinalIgnoreCase)
+                    ? DateTime.MaxValue
+                    : EffectiveLastAccessUtc(f))
+                .ToList();
+
+            var totalBytes = files.Sum(f => f.Length);
+            foreach (var file in files)
+            {
+                if (totalBytes <= maxBytes)
+                    break;
+
+                if (string.Equals(Path.GetFullPath(file.FullName), protectedFullPath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var length = file.Length;
+                try
+                {
+                    file.Delete();
+                    totalBytes -= length;
+                    _logger?.LogInformation("Pruned cached audio file {File} ({Bytes} bytes)", file.Name, length);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Failed to prune cached audio file {File}", file.FullName);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Audio cache pruning failed");
+        }
+    }
+
+    private static DateTime EffectiveLastAccessUtc(FileInfo file)
+        => file.LastAccessTimeUtc > DateTime.UnixEpoch
+            ? file.LastAccessTimeUtc
+            : file.LastWriteTimeUtc;
 
     #endregion
 

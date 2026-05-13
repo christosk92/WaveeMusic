@@ -208,10 +208,98 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
         => SyncCollectionAsync(ListenLaterSet, SpotifyLibraryItemType.ListenLater, "listen later", null, ct);
 
     /// <summary>
-    /// Syncs Your Library pinned items from Spotify.
+    /// Syncs Your Library pinned items from Spotify, then backfills playlist
+    /// metadata for any pinned playlist whose entities-table row still has the
+    /// URI placeholder title (e.g. items added under the old code path that
+    /// only wrote a placeholder, or pinned playlists the user doesn't follow
+    /// and that therefore never came through the rootlist sync).
     /// </summary>
-    public Task SyncYlPinsAsync(CancellationToken ct = default)
-        => SyncCollectionAsync(YlPinSet, SpotifyLibraryItemType.YlPin, "pins", null, ct);
+    public async Task SyncYlPinsAsync(CancellationToken ct = default)
+    {
+        await SyncCollectionAsync(YlPinSet, SpotifyLibraryItemType.YlPin, "pins", null, ct);
+        await BackfillPinnedPlaylistMetadataAsync(ct);
+    }
+
+    /// <summary>
+    /// Resolves the entity row for a single pinned playlist URI by calling
+    /// SpClient and writing the real title + cover into the entities table.
+    /// Catches its own exceptions — a missing playlist (gone, private) must
+    /// not kill the whole sync.
+    /// </summary>
+    private async Task ResolvePinnedPlaylistEntityAsync(string playlistUri, CancellationToken ct)
+    {
+        try
+        {
+            var playlist = await _spClient.GetPlaylistAsync(
+                playlistUri,
+                decorate: new[] { "attributes", "length", "owner" },
+                cancellationToken: ct);
+
+            string? imageUrl = null;
+            if (playlist.Attributes?.PictureSize.Count > 0)
+            {
+                imageUrl = playlist.Attributes.PictureSize
+                    .FirstOrDefault(p => p.TargetName == "default")?.Url
+                    ?? playlist.Attributes.PictureSize.FirstOrDefault()?.Url;
+            }
+
+            var name = playlist.Attributes?.Name;
+            await _database.UpsertEntityAsync(
+                uri: playlistUri,
+                entityType: EntityType.Playlist,
+                title: !string.IsNullOrWhiteSpace(name) ? name : playlistUri,
+                imageUrl: imageUrl,
+                trackCount: playlist.Length,
+                cancellationToken: ct);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to resolve pinned playlist metadata for {Uri} — leaving placeholder", playlistUri);
+            // Fall back to placeholder so the INNER JOIN in
+            // GetSpotifyLibraryItemsAsync still returns the row; sidebar will
+            // render the raw URI until the next sync's retry succeeds.
+            await _database.UpsertEntityAsync(
+                uri: playlistUri,
+                entityType: EntityType.Playlist,
+                title: playlistUri,
+                cancellationToken: ct);
+        }
+    }
+
+    /// <summary>
+    /// Backfill pass for pinned playlists whose entities-table row was seated
+    /// before <see cref="ResolvePinnedPlaylistEntityAsync"/> existed (placeholder
+    /// title equal to the URI). Resolves them via SpClient so the sidebar shows
+    /// the real name and cover on the next observe.
+    /// </summary>
+    private async Task BackfillPinnedPlaylistMetadataAsync(CancellationToken ct)
+    {
+        try
+        {
+            var entities = await _database.GetSpotifyLibraryItemsAsync(
+                SpotifyLibraryItemType.YlPin, int.MaxValue, 0, ct);
+
+            var stale = entities
+                .Where(e => e.Uri.StartsWith("spotify:playlist:", StringComparison.Ordinal)
+                            && (string.IsNullOrWhiteSpace(e.Title) || e.Title == e.Uri))
+                .Select(e => e.Uri)
+                .ToList();
+
+            if (stale.Count == 0) return;
+
+            _logger?.LogDebug("Backfilling metadata for {Count} pinned playlists with placeholder titles", stale.Count);
+            foreach (var uri in stale)
+            {
+                ct.ThrowIfCancellationRequested();
+                await ResolvePinnedPlaylistEntityAsync(uri, ct);
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Pinned-playlist backfill failed; will retry on next sync");
+        }
+    }
 
     /// <summary>
     /// Syncs enhanced playlist tracks from Spotify.
@@ -690,6 +778,162 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
     public Task<bool> UnsubscribeShowAsync(string showUri, CancellationToken ct = default)
         => RemoveItemAsync(showUri, ShowsSet, SpotifyLibraryItemType.Show, "show", ct);
 
+    /// <inheritdoc/>
+    public async Task<bool> PinToSidebarAsync(string uri, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uri);
+
+        var addedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // 1. Optimistic local write so the sidebar reflects the pin immediately.
+        try
+        {
+            await _database.AddToSpotifyLibraryAsync(uri, SpotifyLibraryItemType.YlPin, addedAt, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Local pin write failed for {Uri}", uri);
+            return false;
+        }
+
+        // 2. Resolve entity metadata so the INNER-JOIN read in
+        //    GetSpotifyLibraryItemsAsync returns the new row with a real
+        //    title + cover (not a placeholder). Best-effort — a metadata
+        //    fetch failure shouldn't fail the pin itself.
+        try
+        {
+            await ResolvePinnedEntityMetadataAsync(uri, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Pin metadata fetch failed for {Uri} — row will show placeholder until next sync", uri);
+        }
+
+        // 3. Server write. If it fails, roll back the local DB row so the
+        //    sidebar doesn't keep showing a pin that didn't land server-side.
+        //    Caller (UI) surfaces a toast on the false return.
+        try
+        {
+            var username = GetUsername();
+            var item = new CollectionItem
+            {
+                Uri = uri,
+                AddedAt = (int)addedAt,
+                IsRemoved = false
+            };
+            await _spClient.WriteCollectionAsync(username, YlPinSet, new[] { item }, ct);
+            _logger?.LogInformation("Pin: {Uri}", uri);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Server pin failed — rolling back local write for {Uri}", uri);
+            try
+            {
+                await _database.RemoveFromSpotifyLibraryAsync(uri, SpotifyLibraryItemType.YlPin, ct);
+            }
+            catch (Exception rbEx)
+            {
+                _logger?.LogError(rbEx, "Pin rollback failed for {Uri} — local DB now inconsistent with server", uri);
+            }
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> UnpinFromSidebarAsync(string uri, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uri);
+
+        // 1. Optimistic local delete (type-scoped so a Liked Song that's also
+        //    pinned keeps its Track row).
+        try
+        {
+            await _database.RemoveFromSpotifyLibraryAsync(uri, SpotifyLibraryItemType.YlPin, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Local unpin write failed for {Uri}", uri);
+            return false;
+        }
+
+        // 2. Server write. On failure, re-add the row so the sidebar restores
+        //    the pin. The exact AddedAt is lost on rollback (would need a
+        //    type-scoped library read API to preserve it) — using "now" means
+        //    the restored pin may briefly jump to the top of the sort until the
+        //    next dealer push reconciles, which is acceptable for an error case.
+        try
+        {
+            var username = GetUsername();
+            var item = new CollectionItem
+            {
+                Uri = uri,
+                AddedAt = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                IsRemoved = true
+            };
+            await _spClient.WriteCollectionAsync(username, YlPinSet, new[] { item }, ct);
+            _logger?.LogInformation("Unpin: {Uri}", uri);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Server unpin failed — restoring local row for {Uri}", uri);
+            try
+            {
+                await _database.AddToSpotifyLibraryAsync(
+                    uri,
+                    SpotifyLibraryItemType.YlPin,
+                    DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    ct);
+            }
+            catch (Exception rbEx)
+            {
+                _logger?.LogError(rbEx, "Unpin rollback failed for {Uri} — local DB now inconsistent with server", uri);
+            }
+            return false;
+        }
+    }
+
+    private async Task ResolvePinnedEntityMetadataAsync(string uri, CancellationToken ct)
+    {
+        if (uri.StartsWith("spotify:playlist:", StringComparison.Ordinal))
+        {
+            await ResolvePinnedPlaylistEntityAsync(uri, ct);
+        }
+        else if (uri.StartsWith(TrackUriPrefix, StringComparison.Ordinal))
+        {
+            await FetchAndStoreMetadataAsync([uri], ExtensionKind.TrackV4, "pin", ct);
+        }
+        else if (uri.StartsWith(AlbumUriPrefix, StringComparison.Ordinal))
+        {
+            await FetchAndStoreMetadataAsync([uri], ExtensionKind.AlbumV4, "pin", ct);
+        }
+        else if (uri.StartsWith(ArtistUriPrefix, StringComparison.Ordinal))
+        {
+            await FetchAndStoreMetadataAsync([uri], ExtensionKind.ArtistV4, "pin", ct);
+        }
+        else if (uri.StartsWith("spotify:show:", StringComparison.Ordinal))
+        {
+            await FetchAndStoreMetadataAsync([uri], ExtensionKind.ShowV4, "pin", ct);
+        }
+        else if (uri.StartsWith("spotify:episode:", StringComparison.Ordinal))
+        {
+            await FetchAndStoreMetadataAsync([uri], ExtensionKind.EpisodeV4, "pin", ct);
+        }
+        else
+        {
+            // Pseudo-URIs (spotify:collection, spotify:collection:your-episodes,
+            // spotify:user:*:collection) — seat a placeholder so the join returns
+            // the row. The UI layer in LibraryDataService.GetPinnedItemsAsync
+            // synthesizes the real title.
+            await _database.UpsertEntityAsync(
+                uri: uri,
+                entityType: EntityType.Playlist,
+                title: uri,
+                cancellationToken: ct);
+        }
+    }
+
     private async Task<bool> SaveItemAsync(
         string uri,
         string set,
@@ -857,6 +1101,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
         SpotifyLibraryItemType.Album => CollectionSet,
         SpotifyLibraryItemType.Artist => ArtistsSet,
         SpotifyLibraryItemType.Show => ShowsSet,
+        SpotifyLibraryItemType.YlPin => YlPinSet,
         _ => CollectionSet
     };
 
@@ -1133,14 +1378,15 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
         if (episodes.Count > 0)
             await FetchAndStoreMetadataAsync(episodes, ExtensionKind.EpisodeV4, displayName, ct);
 
-        // Create minimal entities for types that don't have extended metadata API
+        // Playlists don't have an ExtensionKind-backed bulk fetch, so resolve
+        // each one against SpClient.GetPlaylistAsync. Without this, pinned
+        // playlists the user doesn't *follow* (e.g. editorial 37i9... playlists)
+        // would never see their name+cover written into the entities table —
+        // the sidebar would render the raw URI string instead of the title.
+        // Per-playlist try/catch so one missing playlist doesn't kill the sync.
         foreach (var playlistUri in playlists)
         {
-            await _database.UpsertEntityAsync(
-                uri: playlistUri,
-                entityType: EntityType.Playlist,
-                title: playlistUri, // Will be updated when playlist is synced
-                cancellationToken: ct);
+            await ResolvePinnedPlaylistEntityAsync(playlistUri, ct);
         }
 
         foreach (var userUri in users)

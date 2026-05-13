@@ -247,10 +247,8 @@ public sealed partial class LocalShowDetailPage : Page
     }
 
     private List<LocalEpisode> BuildShowQueue()
-        => ViewModel.Seasons
-            .OrderBy(s => s.SeasonNumber)
-            .SelectMany(s => s.Episodes.OrderBy(ep => ep.Episode))
-            .Where(ep => ep.IsOnDisk && !string.IsNullOrEmpty(ep.TrackUri))
+        => Wavee.UI.WinUI.Services.LocalShowEpisodeQueue
+            .BuildPlayableQueue(ViewModel.Seasons)
             .ToList();
 
     private async void MarkAllWatchedButton_Click(object sender, RoutedEventArgs e)

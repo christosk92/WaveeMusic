@@ -109,7 +109,9 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
 
     public async Task<PlaybackResult> PlayContextAsync(string contextUri, PlayContextOptions? options, CancellationToken ct)
     {
-        var action = await _promptService.ResolvePlayActionAsync();
+        var action = options?.BypassPrompt == true
+            ? Controls.PlayAction.PlayAndClear
+            : await _promptService.ResolvePlayActionAsync();
         return action switch
         {
             Controls.PlayAction.Cancelled => PlaybackResult.Success(),
@@ -122,7 +124,9 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
     public async Task<PlaybackResult> PlayTrackInContextAsync(string trackUri, string contextUri, PlayContextOptions? options, CancellationToken ct)
     {
         BufferingStarted?.Invoke(ExtractId(trackUri));
-        var action = await _promptService.ResolvePlayActionAsync();
+        var action = options?.BypassPrompt == true
+            ? Controls.PlayAction.PlayAndClear
+            : await _promptService.ResolvePlayActionAsync();
         return action switch
         {
             Controls.PlayAction.Cancelled => PlaybackResult.Success(),
@@ -149,6 +153,17 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
             _ => await ExecuteWithRetryAsync(c => _executor.PlayTracksAsync(trackUris, startIndex, context, richTracks, c), nameof(PlayTracksAsync), ct, maxRetries: 0, isPlayCommand: true)
         };
     }
+
+    public Task<PlaybackResult> SwitchToContextAfterCurrentAsync(
+        string contextUri,
+        string? currentTrackUri,
+        string? displayName,
+        CancellationToken ct)
+        => ExecuteWithRetryAsync(
+            c => _executor.SwitchToContextAfterCurrentAsync(contextUri, currentTrackUri, displayName, c),
+            nameof(SwitchToContextAfterCurrentAsync),
+            ct,
+            maxRetries: 0);
 
     private async Task<PlaybackResult> ExecuteQueueMultipleAsync(IReadOnlyList<string> trackUris, CancellationToken ct)
     {

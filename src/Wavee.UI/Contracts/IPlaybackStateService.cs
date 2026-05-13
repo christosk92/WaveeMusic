@@ -206,8 +206,9 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     /// <summary>
     /// Starts a Spotify "Inspired by …" radio mix seeded from a track,
     /// artist, or album URI. Resolves to a playlist URI server-side and
-    /// then plays it via the standard playlist flow. Fire-and-forget;
-    /// failures log internally.
+    /// then starts the generated playlist from its first recommendation. If
+    /// the seed is the current track, only the context changes and playback
+    /// continues until the current track finishes.
     /// </summary>
     /// <param name="seedUri">"spotify:track:&lt;id&gt;" / "spotify:artist:&lt;id&gt;" / "spotify:album:&lt;id&gt;".</param>
     /// <param name="displayName">Optional placeholder shown until the playlist resolves.</param>

@@ -102,17 +102,13 @@ public sealed partial class LocalShowDetailViewModel : ObservableObject, IDispos
     /// <summary>
     /// Returns the next episode to play when the user taps "Play" on the hero:
     /// the first unwatched on-disk episode in season order, or — if everything
-    /// is watched — the very first on-disk episode. Missing-from-disk roster
-    /// entries (TrackUri is null) are skipped, they can't be played.
+    /// is watched — the very first on-disk episode. Delegates to the shared
+    /// <see cref="Wavee.UI.WinUI.Services.LocalShowEpisodeQueue"/> so the
+    /// hero Play, the per-episode tap, and the Up-Next overlay all agree on
+    /// what "next" means.
     /// </summary>
     public LocalEpisode? PickPlayTarget()
-    {
-        var onDisk = Seasons.SelectMany(s => s.Episodes)
-            .Where(e => !string.IsNullOrEmpty(e.TrackUri))
-            .ToList();
-        var firstUnwatched = onDisk.FirstOrDefault(e => e.WatchedAt is null);
-        return firstUnwatched ?? onDisk.FirstOrDefault();
-    }
+        => Wavee.UI.WinUI.Services.LocalShowEpisodeQueue.PickFirstUnwatched(Seasons);
 
     public async Task MarkAllWatchedAsync(bool watched, CancellationToken ct = default)
     {

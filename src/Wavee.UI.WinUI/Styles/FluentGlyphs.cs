@@ -144,6 +144,11 @@ public static class FluentGlyphs
 
     /// <summary>Devices2 — remote-device cluster icon (E703).</summary>
     // ---- Chart status (chart-format playlists) -------------------------
+    /// <summary>ClosedCaption \u2014 E7F0. Subtitles / CC track picker on video items.</summary>
+    public const string ClosedCaption = "\uE7F0";
+    /// <summary>Volume3 (loud speaker) \u2014 E995. Audio-track picker on video items.</summary>
+    public const string AudioTrack = "\uE995";
+
     /// <summary>CaretSolidUp - EDDB. Chart track trending up vs. previous period.</summary>
     public const string ChartUp = "\uEDDB";
     /// <summary>CaretSolidDown - EDDC. Chart track trending down vs. previous period.</summary>

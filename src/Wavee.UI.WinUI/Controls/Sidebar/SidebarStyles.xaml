@@ -3,20 +3,18 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:local="using:Wavee.UI.WinUI.Controls.Sidebar">
 
     <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
     <converters:BoolToVisibilityConverter x:Key="SidebarBoolToVisibilityConverter" />
 
-    <!-- Selection wash. Earlier opacities (0.18/0.26/0.32 + 0.58 border)
-         tracked Windows' SystemAccentColor too closely and looked neon for
-         users on bright accents (cyan / lime / hot pink). Halved so the
-         selection reads as a quiet tint rather than a saturated outline. -->
-    <SolidColorBrush x:Key="SidebarSelectedAccentBackgroundBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.10" />
-    <SolidColorBrush x:Key="SidebarSelectedAccentPointerOverBackgroundBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.15" />
-    <SolidColorBrush x:Key="SidebarSelectedAccentPressedBackgroundBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.20" />
-    <SolidColorBrush x:Key="SidebarSelectedAccentBorderBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.30" />
+    <!-- Selection wash. Mirrors stock NavigationViewItem: the left pill
+         carries the accent, the fill stays a neutral SubtleFillColor* gray.
+         Earlier accent-tinted fills (even at 0.10 opacity) read as a saturated
+         slab against bright user accents (cyan / lime / hot pink); the neutral
+         fill is theme-aware and works the same under any accent. -->
 
     <x:Double x:Key="SidebarOpenPaneLength">300</x:Double>
     <x:Double x:Key="SidebarNegativeOpenPaneLength">-300</x:Double>
@@ -39,11 +37,13 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <!--  Drag Target Indicator  -->
                         <Rectangle
                             x:Name="DragTargetIndicator"
+                            Grid.Row="1"
                             Grid.ColumnSpan="3"
                             Height="2"
                             Margin="4,-2"
@@ -55,10 +55,20 @@
                             RadiusY="4"
                             Visibility="Collapsed" />
 
+                        <Border
+                            x:Name="CompactSectionSeparator"
+                            Grid.Row="0"
+                            Height="1"
+                            Margin="10,8,10,6"
+                            HorizontalAlignment="Stretch"
+                            Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                            Opacity="0.8"
+                            Visibility="Collapsed" />
+
                         <!--  Focusable Visual  -->
                         <Border
                             x:Name="ElementBorder"
-                            Grid.Row="0"
+                            Grid.Row="1"
                             Height="44"
                             Background="Transparent"
                             Padding="{Binding Depth, Converter={StaticResource DepthToThicknessConverter}, ConverterParameter=20}">
@@ -82,6 +92,8 @@
                                     <!--  Text  -->
                                     <ColumnDefinition Width="*" />
                                     <!--  Badge  -->
+                                    <ColumnDefinition Width="Auto" />
+                                    <!--  Pin / Unpin button  -->
                                     <ColumnDefinition Width="Auto" />
                                     <!--  Decorator  -->
                                     <ColumnDefinition Width="Auto" />
@@ -149,10 +161,32 @@
                                         Visibility="{Binding BadgeCount, Converter={StaticResource NullToVisibilityConverter}, Mode=OneWay}" />
                                 </Grid>
 
+                                <!--  Pin / Unpin button (Pinned-section rows + Liked Songs / Podcasts YL rows)  -->
+                                <Button
+                                    x:Name="PinButton"
+                                    Grid.Column="4"
+                                    Width="28"
+                                    Height="28"
+                                    Margin="0,0,4,0"
+                                    Padding="0"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Pin or unpin"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Visibility="Collapsed">
+                                    <FontIcon
+                                        x:Name="PinButtonGlyph"
+                                        FontFamily="{StaticResource SymbolThemeFontFamily}"
+                                        FontSize="14"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Glyph="" />
+                                </Button>
+
                                 <!--  Decorator  -->
                                 <ContentPresenter
                                     x:Name="ItemDecoratorPresenter"
-                                    Grid.Column="4"
+                                    Grid.Column="5"
                                     Margin="0,0,4,0"
                                     HorizontalContentAlignment="Center"
                                     VerticalContentAlignment="Center"
@@ -163,7 +197,7 @@
                                 <!--  Chevron  -->
                                 <AnimatedIcon
                                     x:Name="ExpandCollapseChevron"
-                                    Grid.Column="5"
+                                    Grid.Column="6"
                                     Width="{StaticResource ExpanderChevronGlyphSize}"
                                     Height="{StaticResource ExpanderChevronGlyphSize}"
                                     Margin="0,0,8,0"
@@ -255,6 +289,64 @@
                                 <StackLayout />
                             </ItemsRepeater.Layout>
                         </ItemsRepeater>
+
+                        <!--
+                            Loading shimmer skeleton — paint side-by-side with ChildrenPresenter.
+                            Hidden by default; the LoadingStates VSM flips Visibility when the
+                            bound SidebarItemModel sets IsLoadingChildren=true (sections whose
+                            children load async, e.g. user playlists during the initial fetch).
+                            Five 32-px stub rows mimic the SidebarItem cadence: 16-px icon slot
+                            + variable-width text bar so the skeleton doesn't read as a copy.
+                        -->
+                        <StackPanel
+                            x:Name="ChildrenShimmer"
+                            Grid.Row="2"
+                            Padding="24,4,8,4"
+                            HorizontalAlignment="Stretch"
+                            IsHitTestVisible="False"
+                            Spacing="6"
+                            Visibility="Collapsed">
+                            <Grid Height="20" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <controls:Shimmer Grid.Column="0" Width="16" Height="16" CornerRadius="2" />
+                                <controls:Shimmer Grid.Column="1" Height="12" CornerRadius="2" HorizontalAlignment="Left" Width="160" />
+                            </Grid>
+                            <Grid Height="20" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <controls:Shimmer Grid.Column="0" Width="16" Height="16" CornerRadius="2" />
+                                <controls:Shimmer Grid.Column="1" Height="12" CornerRadius="2" HorizontalAlignment="Left" Width="120" />
+                            </Grid>
+                            <Grid Height="20" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <controls:Shimmer Grid.Column="0" Width="16" Height="16" CornerRadius="2" />
+                                <controls:Shimmer Grid.Column="1" Height="12" CornerRadius="2" HorizontalAlignment="Left" Width="180" />
+                            </Grid>
+                            <Grid Height="20" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <controls:Shimmer Grid.Column="0" Width="16" Height="16" CornerRadius="2" />
+                                <controls:Shimmer Grid.Column="1" Height="12" CornerRadius="2" HorizontalAlignment="Left" Width="140" />
+                            </Grid>
+                            <Grid Height="20" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <controls:Shimmer Grid.Column="0" Width="16" Height="16" CornerRadius="2" />
+                                <controls:Shimmer Grid.Column="1" Height="12" CornerRadius="2" HorizontalAlignment="Left" Width="100" />
+                            </Grid>
+                        </StackPanel>
 
                         <!--
                             Empty Section Placeholder (Drag-Drop Style)
@@ -365,7 +457,7 @@
                                         <Setter Target="ElementGrid.BorderBrush" Value="Transparent" />
                                         <Setter Target="SelectionIndicator.Visibility" Value="Collapsed" />
                                         <Setter Target="IconPresenter.Visibility" Value="Collapsed" />
-                                        <Setter Target="ExpandCollapseChevron.Visibility" Value="Collapsed" />
+                                        <Setter Target="ExpandCollapseChevron.Visibility" Value="Visible" />
                                         <Setter Target="ItemDecoratorPresenter.Visibility" Value="Visible" />
                                         <Setter Target="ItemNameTextBlock.Margin" Value="8,0,12,0" />
                                         <Setter Target="ItemNameTextBlock.FontSize" Value="11" />
@@ -385,7 +477,7 @@
                                         <Setter Target="ElementGrid.BorderBrush" Value="Transparent" />
                                         <Setter Target="SelectionIndicator.Visibility" Value="Collapsed" />
                                         <Setter Target="IconPresenter.Visibility" Value="Collapsed" />
-                                        <Setter Target="ExpandCollapseChevron.Visibility" Value="Collapsed" />
+                                        <Setter Target="ExpandCollapseChevron.Visibility" Value="Visible" />
                                         <Setter Target="ItemDecoratorPresenter.Visibility" Value="Visible" />
                                         <Setter Target="ItemNameTextBlock.Margin" Value="8,0,12,0" />
                                         <Setter Target="ItemNameTextBlock.FontSize" Value="11" />
@@ -405,7 +497,7 @@
                                         <Setter Target="ElementGrid.BorderBrush" Value="Transparent" />
                                         <Setter Target="SelectionIndicator.Visibility" Value="Collapsed" />
                                         <Setter Target="IconPresenter.Visibility" Value="Collapsed" />
-                                        <Setter Target="ExpandCollapseChevron.Visibility" Value="Collapsed" />
+                                        <Setter Target="ExpandCollapseChevron.Visibility" Value="Visible" />
                                         <Setter Target="ItemDecoratorPresenter.Visibility" Value="Visible" />
                                         <Setter Target="ItemNameTextBlock.Margin" Value="8,0,12,0" />
                                         <Setter Target="ItemNameTextBlock.FontSize" Value="11" />
@@ -524,8 +616,8 @@
                                 <VisualState x:Name="Selected">
                                     <VisualState.Setters>
                                         <Setter Target="SelectionIndicator.Opacity" Value="1" />
-                                        <Setter Target="ElementGrid.BorderBrush" Value="{StaticResource SidebarSelectedAccentBorderBrush}" />
-                                        <Setter Target="ElementGrid.Background" Value="{StaticResource SidebarSelectedAccentBackgroundBrush}" />
+                                        <Setter Target="ElementGrid.BorderBrush" Value="Transparent" />
+                                        <Setter Target="ElementGrid.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                             </VisualStateGroup>
@@ -534,8 +626,8 @@
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="NormalSelected">
                                     <VisualState.Setters>
-                                        <Setter Target="ElementGrid.Background" Value="{StaticResource SidebarSelectedAccentBackgroundBrush}" />
-                                        <Setter Target="ElementGrid.BorderBrush" Value="{StaticResource SidebarSelectedAccentBorderBrush}" />
+                                        <Setter Target="ElementGrid.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                        <Setter Target="ElementGrid.BorderBrush" Value="Transparent" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="PointerOver">
@@ -546,8 +638,8 @@
                                 </VisualState>
                                 <VisualState x:Name="PointerOverSelected">
                                     <VisualState.Setters>
-                                        <Setter Target="ElementGrid.Background" Value="{StaticResource SidebarSelectedAccentPointerOverBackgroundBrush}" />
-                                        <Setter Target="ElementGrid.BorderBrush" Value="{ThemeResource AccentFillColorSecondaryBrush}" />
+                                        <Setter Target="ElementGrid.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
+                                        <Setter Target="ElementGrid.BorderBrush" Value="Transparent" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">
@@ -558,8 +650,8 @@
                                 </VisualState>
                                 <VisualState x:Name="PressedSelected">
                                     <VisualState.Setters>
-                                        <Setter Target="ElementGrid.Background" Value="{StaticResource SidebarSelectedAccentPressedBackgroundBrush}" />
-                                        <Setter Target="ElementGrid.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                                        <Setter Target="ElementGrid.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                        <Setter Target="ElementGrid.BorderBrush" Value="Transparent" />
                                     </VisualState.Setters>
                                 </VisualState>
 
@@ -630,12 +722,17 @@
                                         <Setter Target="ExpandCollapseChevron.Visibility" Value="Collapsed" />
                                         <Setter Target="ChildrenPresenter.Visibility" Value="Collapsed" />
                                         <Setter Target="ItemBadgeHost.Visibility" Value="Collapsed" />
+                                        <Setter Target="PinButton.Visibility" Value="Collapsed" />
                                         <!-- Center icon in compact mode -->
                                         <Setter Target="IconPresenter.Margin" Value="0" />
                                         <Setter Target="IconPresenter.(Grid.Column)" Value="0" />
-                                        <Setter Target="IconPresenter.(Grid.ColumnSpan)" Value="6" />
+                                        <Setter Target="IconPresenter.(Grid.ColumnSpan)" Value="7" />
                                         <Setter Target="IconPresenter.HorizontalAlignment" Value="Center" />
-                                        <Setter Target="SelectionIndicator.Visibility" Value="Collapsed" />
+                                        <!-- Pill stays visible in compact mode (column 0, width 3,
+                                             aligned Left) — mirrors stock NavigationView's compact
+                                             rail. Icon spans all 6 columns centered, so the two
+                                             don't overlap visually. -->
+                                        <Setter Target="SelectionIndicator.Visibility" Value="Visible" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <!-- Compact mode for group headers: hide the header row, show children directly -->
@@ -671,12 +768,32 @@
                                         <!-- Center the decorator (the "+" button) across the full rail. -->
                                         <Setter Target="ItemDecoratorPresenter.Width" Value="Auto" />
                                         <Setter Target="ItemDecoratorPresenter.(Grid.Column)" Value="0" />
-                                        <Setter Target="ItemDecoratorPresenter.(Grid.ColumnSpan)" Value="6" />
+                                        <Setter Target="ItemDecoratorPresenter.(Grid.ColumnSpan)" Value="7" />
                                         <Setter Target="ItemDecoratorPresenter.HorizontalAlignment" Value="Center" />
                                         <Setter Target="ItemDecoratorPresenter.Margin" Value="0" />
                                         <Setter Target="ItemDecoratorPresenter.Visibility" Value="Visible" />
                                         <Setter Target="ChildrenPresenter.Visibility" Value="Visible" />
                                         <Setter Target="ChildrenPresenter.Margin" Value="0" />
+                                        <Setter Target="EmptyPlaceholder.Visibility" Value="Collapsed" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+
+                            <!--
+                                LoadingStates — flipped by SidebarItem.UpdateExpansionState
+                                when the bound model's IsLoadingChildren is true. The
+                                shimmer skeleton then paints in place of the children
+                                presenter so the user never sees an empty section while
+                                playlists fetch on cold launch. EmptyPlaceholder is also
+                                suppressed so the "Drop items here..." placeholder doesn't
+                                briefly flash before the shimmer takes over.
+                            -->
+                            <VisualStateGroup x:Name="LoadingStates">
+                                <VisualState x:Name="NotLoadingChildren" />
+                                <VisualState x:Name="LoadingChildren">
+                                    <VisualState.Setters>
+                                        <Setter Target="ChildrenShimmer.Visibility" Value="Visible" />
+                                        <Setter Target="ChildrenPresenter.Visibility" Value="Collapsed" />
                                         <Setter Target="EmptyPlaceholder.Visibility" Value="Collapsed" />
                                     </VisualState.Setters>
                                 </VisualState>

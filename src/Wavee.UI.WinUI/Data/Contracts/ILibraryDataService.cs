@@ -45,6 +45,44 @@ public interface ILibraryDataService
     Task<IReadOnlyList<PlaylistSummaryDto>> GetUserPlaylistsAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Cache-only variant of <see cref="GetUserPlaylistsAsync"/>. Returns <c>null</c>
+    /// when the playlist cache has nothing for this user (cold launch / signed-out
+    /// / never synced). Returns an empty list when the cache is present but the
+    /// user genuinely has zero playlists. Used by the sidebar to render playlists
+    /// instantly on launch while the real fetch + diff runs in the background.
+    /// </summary>
+    Task<IReadOnlyList<PlaylistSummaryDto>?> TryGetUserPlaylistsFromCacheAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets the user's pinned library items (Spotify's <c>ylpin</c> collection),
+    /// filtered to the kinds Wavee currently surfaces (playlist / album / artist /
+    /// show + the Liked Songs / Your Episodes pseudo-URIs) and ordered by
+    /// pinned-at descending so the newest pin sits at the top of the sidebar.
+    /// </summary>
+    Task<IReadOnlyList<PinnedItemDto>> GetPinnedItemsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Pins an item (any pinnable Spotify URI — playlist / album / artist /
+    /// show / <c>spotify:collection</c> / <c>spotify:collection:your-episodes</c>)
+    /// to the user's Pinned section. Returns true on success. The optimistic local
+    /// write happens before the network call; UI surfaces refresh via
+    /// <see cref="DataChanged"/>.
+    /// </summary>
+    Task<bool> PinAsync(string uri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes an item from the user's Pinned section.
+    /// </summary>
+    Task<bool> UnpinAsync(string uri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fast in-memory check for whether the given URI is currently pinned. Backed
+    /// by the cached pinned-set; refreshed on every <see cref="GetPinnedItemsAsync"/>
+    /// call and after every <see cref="PinAsync"/> / <see cref="UnpinAsync"/>.
+    /// </summary>
+    bool IsPinned(string uri);
+
+    /// <summary>
     /// Gets all albums in the user's library.
     /// </summary>
     Task<IReadOnlyList<LibraryAlbumDto>> GetAlbumsAsync(CancellationToken ct = default);

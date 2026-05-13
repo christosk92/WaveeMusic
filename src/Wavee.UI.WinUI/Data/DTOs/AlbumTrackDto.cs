@@ -26,7 +26,28 @@ public sealed record AlbumTrackDto : ITrackItem
     /// film-strip glyph next to the title in the album track grid.
     /// </summary>
     public bool HasCanvas { get; init; }
-    public bool HasVideo => HasCanvas;
+
+    private bool _hasLinkedLocalVideo;
+    /// <summary>
+    /// True when the track's audio URI has a local music-video file linked to
+    /// it (via the right-click "Link Spotify track…" flow). Populated by
+    /// <see cref="IMusicVideoMetadataService.ApplyAvailabilityToAsync"/> after
+    /// the album loads. Fires PropertyChanged on both itself and
+    /// <see cref="HasVideo"/> so <c>TrackItem</c>'s badge updates live.
+    /// </summary>
+    public bool HasLinkedLocalVideo
+    {
+        get => _hasLinkedLocalVideo;
+        set
+        {
+            if (_hasLinkedLocalVideo == value) return;
+            _hasLinkedLocalVideo = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(HasLinkedLocalVideo)));
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(HasVideo)));
+        }
+    }
+
+    public bool HasVideo => HasCanvas || _hasLinkedLocalVideo;
     public int TrackNumber { get; init; }
     public int DiscNumber { get; init; }
     public bool IsPlayable { get; init; } = true;

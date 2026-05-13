@@ -52,6 +52,16 @@ public interface IPlaybackService : INotifyPropertyChanged
         IReadOnlyList<QueueItem>? richTracks = null,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Replaces the active playback context without restarting the current track.
+    /// Used when the current track should finish before the new context advances.
+    /// </summary>
+    Task<PlaybackResult> SwitchToContextAfterCurrentAsync(
+        string contextUri,
+        string? currentTrackUri = null,
+        string? displayName = null,
+        CancellationToken ct = default);
+
     // ── Transport controls ──
 
     Task<PlaybackResult> ResumeAsync(CancellationToken ct = default);

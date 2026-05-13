@@ -112,6 +112,14 @@ public sealed class LibrarySyncOrchestrator : IDisposable
                 return;
             }
 
+            // Seed from SQLite before taking the baseline. On cold start the
+            // in-memory cache can still be empty even though the local library
+            // DB is current, which would make every saved item look newly added.
+            if (_likeService != null)
+            {
+                await _likeService.InitializeAsync().ConfigureAwait(false);
+            }
+
             // Capture before-counts for delta calculation
             var beforeTracks = _likeService?.GetCount(Data.Contracts.SavedItemType.Track) ?? 0;
             var beforeAlbums = _likeService?.GetCount(Data.Contracts.SavedItemType.Album) ?? 0;
@@ -132,6 +140,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
                     ("artists",       ct => _libraryService.SyncArtistsAsync(ct)),
                     ("shows",         ct => _libraryService.SyncShowsAsync(ct)),
                     ("listen-later",  ct => _libraryService.SyncListenLaterAsync(ct)),
+                    ("ylpin",         ct => _libraryService.SyncYlPinsAsync(ct)),
                 };
                 for (int i = 0; i < collections.Length; i++)
                 {
@@ -172,7 +181,6 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             // Reload in-memory cache from freshly synced DB
             if (_likeService != null)
             {
-                await _likeService.InitializeAsync().ConfigureAwait(false);
                 await _likeService.ReloadCacheAsync().ConfigureAwait(false);
                 _logger?.LogInformation("TrackLikeService cache reloaded after sync");
             }
@@ -279,8 +287,35 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             {
                 _logger?.LogDebug("Dealer library change: set={Set}, items={Count}", evt.Set, evt.Items.Count);
                 _messenger.Send(new LibraryDataChangedMessage());
-                if (evt.Set is "playlists")
+                var isPlaylists = string.Equals(evt.Set, "playlists", StringComparison.OrdinalIgnoreCase);
+                var isYlpin = string.Equals(evt.Set, "ylpin", StringComparison.OrdinalIgnoreCase);
+
+                if (isPlaylists)
                     _messenger.Send(new PlaylistsChangedMessage());
+
+                // ylpin pushes don't carry an item payload (LibraryChangeManager
+                // has no parser for the hm://collection/ylpin/<user> shape), so
+                // the pre-emit above triggers a sidebar refresh that reads the
+                // still-stale DB. Re-run the incremental sync — cheap because
+                // it uses the stored sync token — then fire DataChanged again
+                // so the sidebar re-reads the freshly-synced rows. The 150ms
+                // coalesce window in LibraryDataService absorbs the overlap
+                // when the sync is fast.
+                if (isYlpin)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await svc.SyncYlPinsAsync().ConfigureAwait(false);
+                            _messenger.Send(new LibraryDataChangedMessage());
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogWarning(ex, "Dealer-driven ylpin sync failed");
+                        }
+                    });
+                }
             });
             _logger?.LogInformation("Subscribed to Dealer library changes");
         }

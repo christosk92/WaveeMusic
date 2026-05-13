@@ -138,6 +138,7 @@
                                             
                                              Margin="0,0,0,10"
                                              Item="{x:Bind ViewModel.TopResult, Mode=OneWay}"
+                                             CardRightTapped="TopResult_RightTapped"
                                              Tapped="TopResult_Tapped"
                                              Visibility="{x:Bind ViewModel.ShowHeroCard, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
@@ -174,7 +175,9 @@
                                                 Subtitle="{x:Bind DisplaySubtitle}"
                                                 IsCircularImage="False"
                                                 NavigationUri="{x:Bind Uri}"
-                                                NavigationTitle="{x:Bind Name}"/>
+                                                NavigationTitle="{x:Bind Name}"
+                                                Tag="{x:Bind}"
+                                                CardRightTapped="SectionCard_RightTapped"/>
                                         </DataTemplate>
                                     </ItemsRepeater.ItemTemplate>
                                 </ItemsRepeater>
@@ -190,7 +193,9 @@
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="pathfinder:SearchResultItem">
-                            <search:SearchResultRowCard Item="{x:Bind}" Tapped="ResultRow_Tapped"/>
+                            <search:SearchResultRowCard Item="{x:Bind}"
+                                                        CardRightTapped="ResultRow_RightTapped"
+                                                        Tapped="ResultRow_Tapped"/>
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>

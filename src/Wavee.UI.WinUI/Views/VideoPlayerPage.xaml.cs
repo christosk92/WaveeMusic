@@ -62,6 +62,8 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
 
     public PlayerBarViewModel ViewModel { get; }
 
+    private ViewModels.Local.UpNextEpisodeOverlayViewModel? _upNextViewModel;
+
     private MediaPlayerElement? _videoElement;
     private FrameworkElement? _videoElementSurface;
 
@@ -118,6 +120,8 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
 
         _surface.AcquireSurface(this);
 
+        EnsureUpNextOverlay();
+
         ApplyVideoStatusOverlay();
         ApplyListenAsAudioVisibility();
         UpdateHeartState();
@@ -135,6 +139,8 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
             "[VideoPlayerPage.OnUnloaded] instance={Hash} ownsSurface={Owns}",
             GetHashCode(), _surface.IsOwnedBy(this));
         UnsubscribeEvents();
+
+        TeardownUpNextOverlay();
 
         // Defensive — always restore the cursor on page teardown. ShowCursor
         // is a per-thread counter; an unmatched HideCursor would leave the
@@ -407,6 +413,47 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         {
             DispatcherQueue?.TryEnqueue(UpdateHeartState);
         }
+
+        // The Up-Next overlay rebinds to whichever local TV episode is
+        // currently playing. Local-content classification can land a beat
+        // after CurrentTrackId, so we react to either signal — the VM
+        // dedups same-episode refreshes internally.
+        if (e.PropertyName is nameof(IPlaybackStateService.CurrentTrackId)
+            or nameof(IPlaybackStateService.CurrentLocalContentKind)
+            or nameof(IPlaybackStateService.CurrentLocalSeriesId))
+        {
+            DispatcherQueue?.TryEnqueue(() => _upNextViewModel?.RefreshFromPlaybackState());
+        }
+    }
+
+    private void EnsureUpNextOverlay()
+    {
+        if (_upNextViewModel is not null) return;
+        if (_playbackStateService is null) return;
+
+        var facade = Ioc.Default.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>();
+        var scanner = Ioc.Default.GetService<Services.LocalEpisodeChapterScanner>();
+        var localPlayer = Ioc.Default.GetService<Services.LocalMediaPlayer>();
+        if (facade is null || scanner is null) return;
+
+        _upNextViewModel = new ViewModels.Local.UpNextEpisodeOverlayViewModel(
+            _playbackStateService,
+            facade,
+            scanner,
+            localPlayer,
+            Ioc.Default.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()
+                ?.CreateLogger<ViewModels.Local.UpNextEpisodeOverlayViewModel>());
+
+        UpNextOverlay.ViewModel = _upNextViewModel;
+        _upNextViewModel.RefreshFromPlaybackState();
+    }
+
+    private void TeardownUpNextOverlay()
+    {
+        if (_upNextViewModel is null) return;
+        UpNextOverlay.ViewModel = null;
+        _upNextViewModel.Dispose();
+        _upNextViewModel = null;
     }
 
     private void OnLikeStateChanged()

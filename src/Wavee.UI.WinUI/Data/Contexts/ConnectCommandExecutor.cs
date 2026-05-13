@@ -379,6 +379,60 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
 
     // ── Playback commands ──
 
+    public async Task<PlaybackResult> SwitchToContextAfterCurrentAsync(
+        string contextUri,
+        string? currentTrackUri,
+        string? displayName,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(contextUri))
+            return PlaybackResult.Failure(PlaybackErrorKind.Unknown, "Context URI is required.");
+
+        var target = GetTargetDeviceId();
+        var selfId = _session.Config.DeviceId;
+
+        if (string.IsNullOrEmpty(target) || target == selfId)
+        {
+            if (_localEngine is Wavee.Audio.PlaybackOrchestrator orchestrator)
+            {
+                try
+                {
+                    await Task.Run(
+                        async () => await orchestrator.SwitchToContextAfterCurrentAsync(
+                            contextUri,
+                            currentTrackUri,
+                            displayName,
+                            ct).ConfigureAwait(false),
+                        ct).ConfigureAwait(false);
+
+                    _logger?.LogInformation(
+                        "[Executor] switch context after current OK (context={Context}, current={Current})",
+                        contextUri,
+                        currentTrackUri ?? "<none>");
+                    return PlaybackResult.Success();
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "[Executor] switch context after current FAILED");
+                    return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
+                }
+            }
+
+            return PlaybackResult.Failure(
+                PlaybackErrorKind.DeviceUnavailable,
+                "No local playback engine available.");
+        }
+
+        var data = new Dictionary<string, object>
+        {
+            ["context_uri"] = contextUri
+        };
+        if (!string.IsNullOrWhiteSpace(displayName))
+            data["context_description"] = displayName!;
+
+        return await SendAsync("update_context", data, ct).ConfigureAwait(false);
+    }
+
     public Task<PlaybackResult> PlayContextAsync(string contextUri, PlayContextOptions? options, CancellationToken ct)
     {
         var data = new Dictionary<string, object>

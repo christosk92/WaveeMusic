@@ -17,7 +17,6 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class YourEpisodesView : UserControl, IDisposable
 {
-    private const double NarrowLayoutBreakpoint = 980;
     private const double WideLayoutSplitterTotalWidth = 24;
     private const double DefaultShowsColumnWidth = 260;
     private const double DefaultEpisodesColumnWidth = 520;
@@ -25,6 +24,8 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable
     private const double MaxShowsColumnWidth = 340;
     private const double MinEpisodesColumnWidth = 320;
     private const double MinDetailsColumnWidth = 280;
+    private const double NarrowLayoutBreakpoint =
+        MinShowsColumnWidth + MinEpisodesColumnWidth + MinDetailsColumnWidth + WideLayoutSplitterTotalWidth + 24;
 
     private readonly List<TrackDataGrid> _episodeGroupGrids = [];
     private bool _hasInitializedLayoutMode;

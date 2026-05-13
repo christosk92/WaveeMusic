@@ -52,6 +52,7 @@ public sealed class LocalPlaybackProgressTracker : IDisposable
         try
         {
             if (string.IsNullOrEmpty(state.TrackUri)) return;
+            if (!Wavee.Local.LocalUri.IsTrack(state.TrackUri)) return;
             if (state.TrackUri != _lastTrackUri)
             {
                 _lastTrackUri = state.TrackUri;
@@ -89,6 +90,7 @@ public sealed class LocalPlaybackProgressTracker : IDisposable
         try
         {
             if (string.IsNullOrEmpty(msg.TrackUri)) return;
+            if (!Wavee.Local.LocalUri.IsTrack(msg.TrackUri)) return;
             await _facade.RecordPlayAsync(
                 msg.TrackUri,
                 _maxPositionForCurrentTrack,

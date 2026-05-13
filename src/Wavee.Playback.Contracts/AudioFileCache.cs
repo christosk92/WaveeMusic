@@ -27,7 +27,15 @@ public static class AudioFileCache
             return false;
 
         var path = GetCachedFilePath(cacheDirectory, fileIdHex);
-        return File.Exists(path) && new FileInfo(path).Length > 0;
+        if (!File.Exists(path))
+            return false;
+
+        var info = new FileInfo(path);
+        if (info.Length <= 0)
+            return false;
+
+        TryTouch(info);
+        return true;
     }
 
     /// <summary>
@@ -40,7 +48,9 @@ public static class AudioFileCache
 
         var path = GetCachedFilePath(cacheDirectory, fileIdHex);
         if (!File.Exists(path)) return 0;
-        return new FileInfo(path).Length;
+        var info = new FileInfo(path);
+        TryTouch(info);
+        return info.Length;
     }
 
     /// <summary>
@@ -51,5 +61,17 @@ public static class AudioFileCache
         var dir = Path.Combine(cacheDirectory, AudioSubDir);
         if (!Directory.Exists(dir))
             Directory.CreateDirectory(dir);
+    }
+
+    private static void TryTouch(FileInfo info)
+    {
+        try
+        {
+            info.LastAccessTimeUtc = DateTime.UtcNow;
+        }
+        catch
+        {
+            // Cache access timestamps are best-effort metadata for LRU pruning.
+        }
     }
 }

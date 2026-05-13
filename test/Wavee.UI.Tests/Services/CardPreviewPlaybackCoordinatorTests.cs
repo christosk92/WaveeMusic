@@ -424,6 +424,9 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         public Task<PlaybackResult> PlayTracksAsync(IReadOnlyList<string> trackUris, int startIndex = 0, PlaybackContextInfo? context = null, IReadOnlyList<QueueItem>? richTracks = null, CancellationToken ct = default)
             => Task.FromResult(PlaybackResult.Success());
 
+        public Task<PlaybackResult> SwitchToContextAfterCurrentAsync(string contextUri, string? currentTrackUri = null, string? displayName = null, CancellationToken ct = default)
+            => Task.FromResult(PlaybackResult.Success());
+
         public Task<PlaybackResult> ResumeAsync(CancellationToken ct = default)
             => Task.FromResult(PlaybackResult.Success());
 
@@ -511,8 +514,25 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         public string? CurrentAlbumArtLarge => null;
         public string? CurrentArtistId => null;
         public string? CurrentAlbumId => null;
+        public string? CurrentOriginalTrackId => null;
+        public string? CurrentOriginalTrackTitle => null;
+        public string? CurrentOriginalArtistName => null;
+        public string? CurrentOriginalAlbumArt => null;
+        public string? CurrentOriginalAlbumArtLarge => null;
+        public string? CurrentOriginalArtistId => null;
+        public string? CurrentOriginalAlbumId => null;
+        public double CurrentOriginalDuration => 0;
         public string? CurrentTrackManifestId => null;
         public bool CurrentTrackHasMusicVideo => false;
+        public bool CurrentTrackIsVideo => false;
+        public Wavee.Local.Classification.LocalContentKind? CurrentLocalContentKind => null;
+        public string? CurrentLocalSeriesId => null;
+        public string? CurrentLocalSeriesName => null;
+        public int? CurrentLocalSeasonNumber => null;
+        public int? CurrentLocalEpisodeNumber => null;
+        public string? CurrentLocalEpisodeTitle => null;
+        public int? CurrentLocalMovieYear => null;
+        public int? CurrentLocalTmdbId => null;
         public IReadOnlyList<ArtistCredit>? CurrentArtists => null;
         public string? CurrentAlbumArtColor => null;
 
@@ -605,6 +625,9 @@ public sealed class CardPreviewPlaybackCoordinatorTests
         public void PlayTrack(string trackId, PlaybackContextInfo? context = null)
         {
         }
+
+        public Task StartRadioAsync(string seedUri, string? displayName = null)
+            => Task.CompletedTask;
 
         public void AddToQueue(string trackId)
         {

@@ -14,9 +14,11 @@ public sealed class ArtistMenuContext
     public required string ArtistId { get; init; }
     public required string ArtistName { get; init; }
     public bool IsFollowing { get; init; }
+    public bool IsPinned { get; init; }
 
     public ICommand? PlayCommand { get; init; }
     public ICommand? ToggleFollowCommand { get; init; }
+    public ICommand? TogglePinCommand { get; init; }
     public ICommand? AddToQueueCommand { get; init; }
     public ICommand? ShareCommand { get; init; }
 }
@@ -48,6 +50,15 @@ public static class ArtistContextMenuBuilder
             AccentIconStyleKey = ctx.IsFollowing ? "App.AccentIcons.Media.Saved" : "App.AccentIcons.Media.Save",
             Command = ctx.ToggleFollowCommand,
             Invoke = ctx.ToggleFollowCommand is null ? () => Debug.WriteLine($"ToggleFollowArtist: {uri}") : null,
+            IsPrimary = true
+        });
+
+        items.Add(new ContextMenuItemModel
+        {
+            Text = AppLocalization.GetString(ctx.IsPinned ? "SidebarMenu_UnpinFolder" : "SidebarMenu_PinFolder"),
+            Glyph = ctx.IsPinned ? FluentGlyphs.Unpin : FluentGlyphs.Pin,
+            Command = ctx.TogglePinCommand,
+            Invoke = ctx.TogglePinCommand is null ? () => Debug.WriteLine($"TogglePinArtist: {uri}") : null,
             IsPrimary = true
         });
 

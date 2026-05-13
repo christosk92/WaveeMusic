@@ -472,10 +472,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     public IReadOnlyList<PlaylistSummaryDto> Playlists => _playlists;
 
     /// <summary>
-    /// Track rows bound to TrackListView. Holds either real <see cref="PlaylistTrackDto"/>s
-    /// or <see cref="LazyTrackItem"/> placeholders during the initial load — both
-    /// implement <see cref="ITrackItem"/>, and TrackListView renders per-row shimmer
-    /// for any LazyTrackItem whose IsLoaded is false.
+    /// Track rows bound to TrackDataGrid. Initial loading is represented by the
+    /// grid's lightweight skeleton rows via <see cref="IsLoadingTracks"/>; this
+    /// collection only receives real rows once the track snapshot is available.
     /// </summary>
     public ObservableCollection<ITrackItem> FilteredTracks { get; } = [];
 
@@ -1003,11 +1002,12 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             _sessionSignalCts?.Dispose();
             _sessionSignalCts = null;
 
-            // Seed shimmer rows synchronously before any async work so the first
-            // frame shows placeholders rather than an empty list.
-            FilteredTracks.ReplaceWith(
-                Enumerable.Range(0, 10).Select(i =>
-                    (ITrackItem)LazyTrackItem.Placeholder($"ph-{i}", i + 1)));
+            // Clear the previous playlist's rows and let TrackDataGrid render its
+            // lightweight loading skeleton. Creating placeholder TrackItems here
+            // costs almost as much as creating real rows, then the real snapshot
+            // causes a second row-materialization wave a few frames later.
+            if (FilteredTracks.Count > 0)
+                FilteredTracks.Clear();
             IsLoadingTracks = true;
 
             // Force a false → true transition on IsLoading so the next Ready
@@ -1073,8 +1073,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     /// Lightweight identity (PlaylistId, name, image URL, palette brushes) is
     /// preserved so the hero still renders correctly between re-Activate and
     /// the BehaviorSubject re-emitting. Setting <c>_tracksLoadedFor = null</c>
-    /// forces Activate's <c>isNewPlaylist</c> branch on revisit so the shimmer
-    /// re-seeds before the warm store value lands.
+    /// forces Activate's <c>isNewPlaylist</c> branch on revisit so the grid
+    /// loading skeleton shows before the warm store value lands.
     /// </summary>
     public void Hibernate()
     {
@@ -1107,7 +1107,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         switch (state)
         {
             case EntityState<PlaylistDetailDto>.Initial:
-                // Nothing to render yet — shimmer already seeded in Activate.
+                // Nothing to render yet — TrackDataGrid's loading skeleton is driven by IsLoadingTracks.
                 IsLoading = true;
                 break;
 
@@ -2105,45 +2105,31 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         if (_musicVideoMetadata is null || _allTracks.Count == 0)
             return;
 
-        var tracksByUri = _allTracks
+        // Snapshot to avoid touching _allTracks from a Task.Run continuation.
+        var snapshot = _allTracks
             .Where(track => !string.IsNullOrWhiteSpace(track.Uri))
-            .GroupBy(track => track.Uri, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
-        if (tracksByUri.Count == 0)
+            .ToList();
+        if (snapshot.Count == 0)
             return;
 
         _ = Task.Run(async () =>
         {
             try
             {
-                var availability = await _musicVideoMetadata
-                    .EnsureAvailabilityAsync(tracksByUri.Keys, cancellationToken)
-                    .ConfigureAwait(false);
+                await _musicVideoMetadata.ApplyAvailabilityToAsync(
+                    snapshot,
+                    static t => t.Uri,
+                    (t, v) =>
+                    {
+                        if (t.HasVideo == v) return;
+                        t.HasVideo = v;
+                    },
+                    cancellationToken).ConfigureAwait(false);
 
                 _dispatcherQueue.TryEnqueue(() =>
                 {
                     if (_disposed || PlaylistId != playlistId)
                         return;
-
-                    var changed = false;
-                    foreach (var entry in availability)
-                    {
-                        if (!tracksByUri.TryGetValue(entry.Key, out var tracks))
-                            continue;
-
-                        foreach (var track in tracks)
-                        {
-                            if (track.HasVideo == entry.Value)
-                                continue;
-
-                            track.HasVideo = entry.Value;
-                            changed = true;
-                        }
-                    }
-
-                    if (!changed)
-                        return;
-
                     NotifyVideoFilterProperties();
                     if (ShowOnlyVideoTracks)
                         ApplyFilterAndSort();

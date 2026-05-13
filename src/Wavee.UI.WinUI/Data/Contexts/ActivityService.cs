@@ -53,9 +53,14 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
             if (_activeSyncId.HasValue)
             {
                 var summary = msg.Value;
-                var text = summary.HasChanges
-                    ? string.Join(", ", summary.Entries.Select(e => $"{e.CountText} {e.Label.ToLower()}"))
-                    : "Everything up to date";
+                if (!summary.HasChanges && !summary.HadPartialFailure)
+                {
+                    Remove(_activeSyncId.Value);
+                    _activeSyncId = null;
+                    return;
+                }
+
+                var text = string.Join(", ", summary.Entries.Select(e => $"{e.CountText} {e.Label.ToLower()}"));
 
                 if (summary.HadPartialFailure)
                 {
@@ -232,6 +237,18 @@ public sealed partial class ActivityService : ObservableObject, IActivityService
 
     private IActivityItem? FindItem(Guid id) =>
         _items.FirstOrDefault(i => i.Id == id);
+
+    private void Remove(Guid id)
+    {
+        Dispatch(() =>
+        {
+            var item = _items.FirstOrDefault(i => i.Id == id);
+            if (item == null) return;
+
+            _items.Remove(item);
+            UpdateUnreadCount();
+        });
+    }
 
     private void UpdateUnreadCount() =>
         UnreadCount = _items.Count(i => !i.IsRead);

@@ -591,6 +591,12 @@ public sealed class AudioHostConfig
     /// </summary>
     [JsonPropertyName("audioCacheDirectory")]
     public string? AudioCacheDirectory { get; init; }
+
+    /// <summary>
+    /// Maximum bytes allowed in the persistent audio cache. Null means no pruning.
+    /// </summary>
+    [JsonPropertyName("audioCacheMaxBytes")]
+    public long? AudioCacheMaxBytes { get; init; }
 }
 
 // ── Well-known message types ──

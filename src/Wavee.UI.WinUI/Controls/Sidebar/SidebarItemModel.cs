@@ -31,6 +31,12 @@ public class SidebarItemModel : ISidebarItemModel
     private int _depth;
     private bool _isFolder;
     private bool _isSectionHeader;
+    private bool _isLoadingChildren;
+    private bool _isAliasSelected;
+    private bool _showCompactSeparatorBefore;
+    private bool _showUnpinButton;
+    private bool _showPinToggleButton;
+    private bool _isPinned;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -162,6 +168,76 @@ public class SidebarItemModel : ISidebarItemModel
     {
         get => _isSectionHeader;
         set => SetProperty(ref _isSectionHeader, value);
+    }
+
+    /// <summary>
+    /// When true, the sidebar template renders a shimmer skeleton in place of the
+    /// children presenter — used to signal "fetching, please wait" for sections
+    /// whose content is loaded asynchronously (e.g. user playlists on cold launch).
+    /// Flip back to false once the section has been populated. Toggling at runtime
+    /// re-runs the VSM transition via <see cref="SidebarItem"/>'s property handler.
+    /// </summary>
+    public bool IsLoadingChildren
+    {
+        get => _isLoadingChildren;
+        set => SetProperty(ref _isLoadingChildren, value);
+    }
+
+    /// <summary>
+    /// True when this row is not the primary <see cref="SelectedSidebarItem"/>
+    /// but represents the same logical destination as the row that is — e.g.
+    /// the Your-Library "Liked Songs" row when a pinned <c>spotify:collection</c>
+    /// row is selected. The sidebar template renders both with the selected
+    /// visual state so the user can see both surfaces light up. Set by
+    /// <c>ShellViewModel</c> whenever <c>SelectedSidebarItem</c> changes.
+    /// </summary>
+    public bool IsAliasSelected
+    {
+        get => _isAliasSelected;
+        set => SetProperty(ref _isAliasSelected, value);
+    }
+
+    /// <summary>
+    /// Adds a hairline section break above this top-level section in compact
+    /// sidebar mode. Expanded mode keeps the normal text section headers.
+    /// </summary>
+    public bool ShowCompactSeparatorBefore
+    {
+        get => _showCompactSeparatorBefore;
+        set => SetProperty(ref _showCompactSeparatorBefore, value);
+    }
+
+    /// <summary>
+    /// Renders an always-visible unpin (pushpin) button on the right side of
+    /// the row. Used by Pinned-section rows so the user can remove a pin in
+    /// one click. Mutually exclusive with <see cref="ShowPinToggleButton"/>.
+    /// </summary>
+    public bool ShowUnpinButton
+    {
+        get => _showUnpinButton;
+        set => SetProperty(ref _showUnpinButton, value);
+    }
+
+    /// <summary>
+    /// Renders an unpin button on the right side of pinned canonical
+    /// Your-Library Liked-Songs / Podcasts rows whose pinned destination is
+    /// represented by a pseudo-URI.
+    /// </summary>
+    public bool ShowPinToggleButton
+    {
+        get => _showPinToggleButton;
+        set => SetProperty(ref _showPinToggleButton, value);
+    }
+
+    /// <summary>
+    /// Whether the item this row represents is currently pinned. Drives the
+    /// visibility of rows that show <see cref="ShowPinToggleButton"/>.
+    /// Pinned-section rows always show the Unpin glyph regardless of this flag.
+    /// </summary>
+    public bool IsPinned
+    {
+        get => _isPinned;
+        set => SetProperty(ref _isPinned, value);
     }
 
     /// <summary>

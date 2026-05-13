@@ -24,6 +24,8 @@ public interface ILocalLibraryFacade
     Task<IReadOnlyList<LocalMovie>>         GetMoviesAsync(CancellationToken ct = default);
     Task<LocalMovie?>                       GetMovieAsync(string trackUri, CancellationToken ct = default);
     Task<IReadOnlyList<LocalMusicVideo>>    GetMusicVideosAsync(CancellationToken ct = default);
+    Task<LocalMusicVideo?>                  GetMusicVideoAsync(string trackUri, CancellationToken ct = default);
+    Task<LocalMusicVideo?>                  GetLinkedMusicVideoForSpotifyTrackAsync(string spotifyTrackUri, CancellationToken ct = default);
     Task<IReadOnlyList<LocalOtherItem>>     GetOthersAsync(CancellationToken ct = default);
     Task<IReadOnlyList<LocalContinueItem>>  GetContinueWatchingAsync(int limit = 20, CancellationToken ct = default);
     Task<IReadOnlyList<LocalTrackRow>>      GetRecentlyAddedAsync(int limit = 30, CancellationToken ct = default);
@@ -62,11 +64,26 @@ public interface ILocalLibraryFacade
     /// Returns the new <c>wavee-artwork://hash</c> URI.
     /// </summary>
     Task<string> SetArtworkOverrideAsync(string entityUri, byte[] bytes, string? mimeType, CancellationToken ct = default);
+    /// <summary>
+    /// Removes any cover-role artwork override for the entity. Any future read
+    /// will fall back to whatever artwork link the indexer / enrichment pipeline
+    /// produced (or no thumbnail).
+    /// </summary>
+    Task ClearArtworkOverrideAsync(string entityUri, CancellationToken ct = default);
     Task RemoveFromLibraryAsync(string filePath, CancellationToken ct = default);
     Task MarkWatchedAsync(string trackUri, bool watched, CancellationToken ct = default);
     Task SetLastPositionAsync(string trackUri, long positionMs, CancellationToken ct = default);
     Task RecordPlayAsync(string trackUri, long positionMs, long durationMs, CancellationToken ct = default);
     Task RefreshMetadataAsync(string trackUri, CancellationToken ct = default);
+    Task LinkMusicVideoToSpotifyTrackAsync(string localMusicVideoTrackUri, string spotifyTrackUri, CancellationToken ct = default);
+    Task UnlinkMusicVideoFromSpotifyTrackAsync(string localMusicVideoTrackUri, CancellationToken ct = default);
+    /// <summary>
+    /// Pulls the linked Spotify track's title / artist / album / cover and writes
+    /// them on top of the local file as overrides — so the displayed card switches
+    /// to the Spotify metadata. Best-effort: any failure (no network, unknown
+    /// track, etc.) is swallowed so the link itself still stands.
+    /// </summary>
+    Task EnrichLinkedMusicVideoFromSpotifyAsync(string localTrackUri, string filePath, string spotifyTrackUri, CancellationToken ct = default);
 
     // -------- Observables --------
     /// <summary>Fires when any row's metadata, kind, watched-state, or
@@ -88,6 +105,7 @@ public enum LocalLibraryChangeKind
     WatchedStateChanged,
     CollectionChanged,
     EnrichmentResult,
+    MusicVideoAssociationChanged,
     FileRemoved,
     ScanCompleted,
 }

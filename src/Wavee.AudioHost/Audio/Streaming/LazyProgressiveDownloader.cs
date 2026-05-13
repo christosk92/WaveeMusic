@@ -24,6 +24,7 @@ public sealed class LazyProgressiveDownloader : Stream
     // Optional audio cache directory. When the deferred result carries a LocalCacheFileId,
     // we open the cached file from here instead of downloading from CDN.
     private readonly string? _audioCacheDirectory;
+    private readonly long? _audioCacheMaxBytes;
 
     private long _position;
     private long _fileSize;
@@ -67,6 +68,7 @@ public sealed class LazyProgressiveDownloader : Stream
     /// Directory where persistent audio cache files live. When the deferred result sets
     /// <c>LocalCacheFileId</c>, the file is opened from here instead of CDN.
     /// </param>
+    /// <param name="audioCacheMaxBytes">Maximum persistent cache size before LRU pruning.</param>
     public LazyProgressiveDownloader(
         byte[] headData,
         Task<DeferredResult> deferredTask,
@@ -74,6 +76,7 @@ public sealed class LazyProgressiveDownloader : Stream
         FileId fileId,
         ILogger? logger = null,
         string? audioCacheDirectory = null,
+        long? audioCacheMaxBytes = null,
         CancellationToken playbackToken = default)
     {
         ArgumentNullException.ThrowIfNull(headData);
@@ -86,6 +89,7 @@ public sealed class LazyProgressiveDownloader : Stream
         _fileId = fileId;
         _logger = logger;
         _audioCacheDirectory = audioCacheDirectory;
+        _audioCacheMaxBytes = audioCacheMaxBytes;
 
         _initWaitCts = playbackToken.CanBeCanceled
             ? CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, playbackToken)
@@ -327,7 +331,9 @@ public sealed class LazyProgressiveDownloader : Stream
                 _fileId,
                 _headData,
                 logger: _logger,
-                persistCachePath: persistCachePath);
+                persistCachePath: persistCachePath,
+                maxCacheBytes: _audioCacheMaxBytes,
+                persistentCacheAudioKey: audioKey);
 
             // Forward events
             _cdnDownloader.BufferStateChanged += status => BufferStateChanged?.Invoke(status);

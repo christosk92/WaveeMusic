@@ -67,6 +67,16 @@ internal sealed class MusicVideoCatalogCache : IMusicVideoCatalogCache
         return false;
     }
 
+    public void ForgetVideoAssociation(string audioTrackUri)
+    {
+        if (string.IsNullOrEmpty(audioTrackUri)) return;
+        if (_entries.TryRemove(audioTrackUri, out var removed)
+            && !string.IsNullOrEmpty(removed.VideoUri))
+        {
+            _audioUrisByVideoUri.TryRemove(removed.VideoUri, out _);
+        }
+    }
+
     public void NoteManifestId(string audioTrackUri, string manifestId)
     {
         if (string.IsNullOrEmpty(audioTrackUri) || string.IsNullOrEmpty(manifestId)) return;

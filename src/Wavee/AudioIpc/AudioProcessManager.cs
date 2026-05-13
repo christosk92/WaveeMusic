@@ -59,6 +59,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
     private string? _deviceId;
     private int _initialVolumePercent;
     private string? _audioCacheDirectory;
+    private long? _audioCacheMaxBytes;
 
     // ── Resilience configuration ──
     private const int MaxRestartAttempts = 5;
@@ -233,6 +234,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
         string username, byte[] storedCredential, string deviceId,
         int initialVolumePercent = 0,
         string? audioCacheDirectory = null,
+        long? audioCacheMaxBytes = null,
         CancellationToken ct = default)
     {
         // Cache config for auto-restart (credentials no longer sent to AudioHost)
@@ -241,6 +243,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
         _deviceId = deviceId;
         _initialVolumePercent = initialVolumePercent;
         _audioCacheDirectory = audioCacheDirectory;
+        _audioCacheMaxBytes = audioCacheMaxBytes;
         _restartCount = 0;
 
         return await LaunchAndConnectAsync(ct);
@@ -337,6 +340,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
         var success = await _proxy.ConfigureAsync(_deviceId!, normalizationEnabled: true,
             initialVolumePercent: _initialVolumePercent,
             audioCacheDirectory: _audioCacheDirectory,
+            audioCacheMaxBytes: _audioCacheMaxBytes,
             parentProcessId: _launchContext.ParentProcessId,
             sessionId: _launchContext.SessionId,
             launchToken: _launchContext.LaunchToken,

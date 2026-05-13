@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -7,13 +8,22 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Foundation;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.UI.WinUI.Controls.Cards;
+using Wavee.UI.WinUI.Controls.ContextMenu;
+using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Controls.Search;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.UI;
+using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.Styles;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
@@ -201,10 +211,37 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
         ExecuteResult(ViewModel.TopResult);
     }
 
+    private void TopResult_RightTapped(SearchResultHeroCard sender, RightTappedRoutedEventArgs e)
+    {
+        if (ViewModel.TopResult is not { } item)
+            return;
+
+        ShowSearchResultContextMenu(sender, item, e.GetPosition(sender));
+        e.Handled = true;
+    }
+
     private void ResultRow_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (sender is SearchResultRowCard card && card.Item is { } item)
             ExecuteResult(item);
+    }
+
+    private void ResultRow_RightTapped(SearchResultRowCard sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender.Item is not { } item)
+            return;
+
+        ShowSearchResultContextMenu(sender, item, e.GetPosition(sender));
+        e.Handled = true;
+    }
+
+    private void SectionCard_RightTapped(ContentCard sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender.Tag is not SearchResultItem item)
+            return;
+
+        ShowSearchResultContextMenu(sender, item, e.GetPosition(sender));
+        e.Handled = true;
     }
 
     private void ExecuteResult(SearchResultItem? item)
@@ -215,20 +252,176 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
         switch (item.Type)
         {
             case SearchResultType.Track:
-                var adapted = ViewModel.AdaptedTracks.FirstOrDefault(t => t.Uri == item.Uri)
-                              ?? new SearchTrackAdapter(item);
-                ViewModel.PlayTrackCommand.Execute(adapted);
+                ViewModel.PlayTrackCommand.Execute(GetTrackAdapter(item));
                 break;
-            case SearchResultType.Artist:
-                NavigationHelpers.OpenArtist(item.Uri, item.Name);
-                break;
-            case SearchResultType.Album:
-                NavigationHelpers.OpenAlbum(item.Uri, item.Name);
-                break;
-            case SearchResultType.Playlist:
-                NavigationHelpers.OpenPlaylist(item.Uri, item.Name);
+            default:
+                OpenResult(item, NavigationHelpers.IsCtrlPressed());
                 break;
         }
+    }
+
+    private void ShowSearchResultContextMenu(FrameworkElement target, SearchResultItem item, Point position)
+    {
+        var items = BuildSearchResultMenu(item);
+        if (items.Count == 0)
+            return;
+
+        ContextMenuHost.Show(target, items, position);
+    }
+
+    private IReadOnlyList<ContextMenuItemModel> BuildSearchResultMenu(SearchResultItem item)
+    {
+        if (item.Type == SearchResultType.Track)
+        {
+            var track = GetTrackAdapter(item);
+            return TrackContextMenuBuilder.Build(track, new TrackMenuContext
+            {
+                PlayCommand = ViewModel.PlayTrackCommand,
+                ExtraItems =
+                [
+                    ContextMenuItemModel.Separator,
+                    CreateShareMenuItem(item)
+                ]
+            });
+        }
+
+        var items = new List<ContextMenuItemModel>();
+        if (CanOpenResult(item))
+        {
+            items.Add(new ContextMenuItemModel
+            {
+                Text = AppLocalization.GetString("CardMenu_Open"),
+                Glyph = FluentGlyphs.Open,
+                IsPrimary = true,
+                Invoke = () => OpenResult(item, openInNewTab: false)
+            });
+            items.Add(new ContextMenuItemModel
+            {
+                Text = AppLocalization.GetString("CardMenu_OpenInNewTab"),
+                Glyph = FluentGlyphs.OpenInNewTab,
+                IsPrimary = true,
+                Invoke = () => OpenResult(item, openInNewTab: true)
+            });
+        }
+
+        if (item.Type == SearchResultType.Episode)
+        {
+            items.Add(new ContextMenuItemModel
+            {
+                Text = AppLocalization.GetString("TrackMenu_Play"),
+                Glyph = FluentGlyphs.Play,
+                AccentIconStyleKey = "App.AccentIcons.Media.Play",
+                IsPrimary = true,
+                Invoke = () => NavigationHelpers.PlayEpisode(item.Uri)
+            });
+        }
+
+        if (items.Count > 0)
+            items.Add(ContextMenuItemModel.Separator);
+
+        items.Add(CreateShareMenuItem(item));
+        return items;
+    }
+
+    private ITrackItem GetTrackAdapter(SearchResultItem item)
+        => ViewModel.AdaptedTracks.FirstOrDefault(t => t.Uri == item.Uri)
+           ?? new SearchTrackAdapter(item);
+
+    private static ContextMenuItemModel CreateShareMenuItem(SearchResultItem item)
+        => new()
+        {
+            Text = AppLocalization.GetString("CardMenu_Share"),
+            Glyph = FluentGlyphs.Share,
+            KeyboardAcceleratorTextOverride = "Ctrl+Shift+C",
+            Invoke = () => CopyShareLink(item)
+        };
+
+    private static bool CanOpenResult(SearchResultItem item)
+        => item.Type is SearchResultType.Artist
+            or SearchResultType.Album
+            or SearchResultType.Playlist
+            or SearchResultType.Podcast
+            or SearchResultType.Episode
+            or SearchResultType.User
+            or SearchResultType.Genre;
+
+    private static void OpenResult(SearchResultItem item, bool openInNewTab)
+    {
+        var parameter = ToNavigationParameter(item);
+
+        switch (item.Type)
+        {
+            case SearchResultType.Artist:
+                NavigationHelpers.OpenArtist(parameter, item.Name, openInNewTab);
+                break;
+            case SearchResultType.Album:
+                NavigationHelpers.OpenAlbum(parameter, item.Name, openInNewTab);
+                break;
+            case SearchResultType.Playlist:
+                NavigationHelpers.OpenPlaylist(parameter, item.Name, openInNewTab);
+                break;
+            case SearchResultType.Podcast:
+                NavigationHelpers.OpenShowPage(parameter, openInNewTab);
+                break;
+            case SearchResultType.Episode:
+                NavigationHelpers.OpenEpisodePage(
+                    item.Uri,
+                    item.Name,
+                    item.ImageUrl,
+                    item.ParentUri,
+                    item.ParentName,
+                    openInNewTab: openInNewTab);
+                break;
+            case SearchResultType.User:
+                NavigationHelpers.OpenProfile(parameter, item.Name, openInNewTab);
+                break;
+            case SearchResultType.Genre:
+                NavigationHelpers.OpenBrowsePage(parameter, openInNewTab);
+                break;
+        }
+    }
+
+    private static ContentNavigationParameter ToNavigationParameter(SearchResultItem item)
+        => new()
+        {
+            Uri = item.Uri,
+            Title = item.Name,
+            Subtitle = item.DisplaySubtitle,
+            ImageUrl = item.ImageUrl
+        };
+
+    private static void CopyShareLink(SearchResultItem item)
+    {
+        var text = ToOpenSpotifyUrl(item.Uri) ?? item.Uri;
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        var package = new DataPackage();
+        package.SetText(text);
+        Clipboard.SetContent(package);
+    }
+
+    private static string? ToOpenSpotifyUrl(string? uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+            return null;
+
+        var parts = uri.Split(':', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 3 || !string.Equals(parts[0], "spotify", StringComparison.OrdinalIgnoreCase))
+            return uri;
+
+        var kind = parts[1].ToLowerInvariant();
+        var id = parts[2];
+        var pathKind = kind switch
+        {
+            "track" or "artist" or "album" or "playlist" or "show" or "episode" or "user" or "genre" => kind,
+            "page" or "section" => "genre",
+            _ => null
+        };
+
+        return pathKind is null
+            ? uri
+            : $"https://open.spotify.com/{pathKind}/{Uri.EscapeDataString(id)}";
     }
 
     public object? CaptureSleepState()

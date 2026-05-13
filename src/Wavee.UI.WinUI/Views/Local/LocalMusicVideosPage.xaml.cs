@@ -40,7 +40,8 @@ public sealed partial class LocalMusicVideosPage : Page
             sender, e,
             trackUri: mv.TrackUri,
             filePath: mv.FilePath,
-            kind: Wavee.Local.Classification.LocalContentKind.MusicVideo);
+            kind: Wavee.Local.Classification.LocalContentKind.MusicVideo,
+            linkedSpotifyTrackUri: mv.LinkedSpotifyTrackUri);
         e.Handled = true;
     }
 }

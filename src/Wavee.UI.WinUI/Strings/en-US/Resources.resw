@@ -998,6 +998,9 @@ the music you previously queued?</value>
   <data name="Shell_SidebarLocalMedia" xml:space="preserve">
     <value>Local media</value>
   </data>
+  <data name="Shell_SidebarLocalFiles" xml:space="preserve">
+    <value>Local files</value>
+  </data>
   <data name="Shell_SidebarLocalShows" xml:space="preserve">
     <value>TV shows</value>
   </data>

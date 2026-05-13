@@ -656,6 +656,12 @@ public sealed partial class ShellPage : Page
         ViewModel.OnSuggestionActionClicked(item);
     }
 
+    private async void SidebarControl_PinButtonClicked(object? sender, Controls.Sidebar.SidebarItemModel model)
+    {
+        try { await ViewModel.HandleSidebarPinButtonAsync(model); }
+        catch { /* errors already logged inside the handler */ }
+    }
+
     private void SidebarControl_ItemInvoked(object? sender, ItemInvokedEventArgs e)
     {
         if (sender is not SidebarItem item || item.Item is not SidebarItemModel model)
@@ -707,6 +713,9 @@ public sealed partial class ShellPage : Page
                 case "PodcastBrowse":
                     NavigationHelpers.OpenPodcastBrowse(openInNewTab);
                     break;
+                case "LocalFiles":
+                    NavigationHelpers.OpenLocalLibrary(openInNewTab);
+                    break;
                 case "LocalShows":
                     NavigationHelpers.OpenLocalShows(openInNewTab);
                     break;
@@ -720,6 +729,24 @@ public sealed partial class ShellPage : Page
                     NavigationHelpers.OpenLocalMusicVideos(openInNewTab);
                     break;
                 default:
+                    // Pinned pseudo-URIs (Spotify "canonical pointer" entries) —
+                    // match more specific before the prefix chains. Mirrors
+                    // ContentCard.xaml.cs:1447–1464 so a pinned Liked-Songs /
+                    // Your-Episodes row behaves the same as any other surface
+                    // that opens those pages.
+                    if (tag == "spotify:collection:your-episodes")
+                    {
+                        NavigationHelpers.OpenYourEpisodes(openInNewTab);
+                        break;
+                    }
+                    if (tag == "spotify:collection"
+                        || (tag.StartsWith("spotify:user:", StringComparison.Ordinal)
+                            && tag.EndsWith(":collection", StringComparison.Ordinal)))
+                    {
+                        NavigationHelpers.OpenLikedSongs(openInNewTab);
+                        break;
+                    }
+
                     // Handle playlist navigation (tags starting with "spotify:playlist:").
                     // Pass a ContentNavigationParameter (not just the raw URI string) so
                     // PlaylistPage.LoadParameter takes the prefill branch — without this,
@@ -738,6 +765,41 @@ public sealed partial class ShellPage : Page
                                 ImageUrl = model.ImageUrl
                             },
                             model.Text,
+                            openInNewTab);
+                    }
+                    else if (tag.StartsWith("spotify:album:"))
+                    {
+                        NavigationHelpers.OpenAlbum(
+                            new Data.Parameters.ContentNavigationParameter
+                            {
+                                Uri = tag,
+                                Title = model.Text,
+                                ImageUrl = model.ImageUrl
+                            },
+                            model.Text,
+                            openInNewTab);
+                    }
+                    else if (tag.StartsWith("spotify:artist:"))
+                    {
+                        NavigationHelpers.OpenArtist(
+                            new Data.Parameters.ContentNavigationParameter
+                            {
+                                Uri = tag,
+                                Title = model.Text,
+                                ImageUrl = model.ImageUrl
+                            },
+                            model.Text,
+                            openInNewTab);
+                    }
+                    else if (tag.StartsWith("spotify:show:"))
+                    {
+                        NavigationHelpers.OpenShowPage(
+                            new Data.Parameters.ContentNavigationParameter
+                            {
+                                Uri = tag,
+                                Title = model.Text,
+                                ImageUrl = model.ImageUrl
+                            },
                             openInNewTab);
                     }
                     break;

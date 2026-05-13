@@ -20,6 +20,7 @@ internal sealed class MusicVideoMetadataService : IMusicVideoMetadataService
     private readonly IExtendedMetadataClient _extendedMetadataClient;
     private readonly IMetadataDatabase _database;
     private readonly IMusicVideoCatalogCache _catalogCache;
+    private readonly Wavee.Local.ILocalLibraryService? _localLibrary;
     private readonly ILogger<MusicVideoMetadataService>? _logger;
 
     public MusicVideoMetadataService(
@@ -27,12 +28,14 @@ internal sealed class MusicVideoMetadataService : IMusicVideoMetadataService
         IExtendedMetadataClient extendedMetadataClient,
         IMetadataDatabase database,
         IMusicVideoCatalogCache catalogCache,
+        Wavee.Local.ILocalLibraryService? localLibrary = null,
         ILogger<MusicVideoMetadataService>? logger = null)
     {
         _extendedMetadataStore = extendedMetadataStore;
         _extendedMetadataClient = extendedMetadataClient;
         _database = database;
         _catalogCache = catalogCache;
+        _localLibrary = localLibrary;
         _logger = logger;
     }
 
@@ -48,8 +51,17 @@ internal sealed class MusicVideoMetadataService : IMusicVideoMetadataService
         if (unique.Length == 0) return result;
 
         var diskCandidates = new List<string>(unique.Length);
+        var localMappings = await TryGetLinkedLocalVideoUrisAsync(unique, cancellationToken).ConfigureAwait(false);
+        foreach (var entry in localMappings)
+        {
+            result[entry.Key] = true;
+            _catalogCache.NoteVideoUri(entry.Key, entry.Value);
+        }
+
         foreach (var uri in unique)
         {
+            if (result.ContainsKey(uri)) continue;
+
             var hot = _catalogCache.GetHasVideo(uri);
             if (hot.HasValue)
             {
@@ -120,6 +132,66 @@ internal sealed class MusicVideoMetadataService : IMusicVideoMetadataService
         return result;
     }
 
+    public async Task ApplyAvailabilityToAsync<T>(
+        IReadOnlyList<T> items,
+        Func<T, string?> getSpotifyTrackUri,
+        Action<T, bool> setHasVideo,
+        CancellationToken cancellationToken = default)
+    {
+        if (items is null || items.Count == 0) return;
+
+        // Build URI → list-of-items so one URI matching multiple rows fans out.
+        var byUri = new Dictionary<string, List<T>>(StringComparer.Ordinal);
+        foreach (var item in items)
+        {
+            var uri = getSpotifyTrackUri(item);
+            if (string.IsNullOrWhiteSpace(uri)) continue;
+            if (!byUri.TryGetValue(uri, out var bucket))
+            {
+                bucket = new List<T>(1);
+                byUri[uri] = bucket;
+            }
+            bucket.Add(item);
+        }
+        if (byUri.Count == 0) return;
+
+        IReadOnlyDictionary<string, bool> availability;
+        try
+        {
+            availability = await EnsureAvailabilityAsync(byUri.Keys, cancellationToken)
+                .ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "ApplyAvailabilityToAsync: EnsureAvailabilityAsync failed");
+            return;
+        }
+
+        var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        if (dispatcher is null)
+        {
+            ApplyResults(byUri, availability, setHasVideo);
+        }
+        else
+        {
+            dispatcher.TryEnqueue(() => ApplyResults(byUri, availability, setHasVideo));
+        }
+    }
+
+    private static void ApplyResults<T>(
+        Dictionary<string, List<T>> byUri,
+        IReadOnlyDictionary<string, bool> availability,
+        Action<T, bool> setHasVideo)
+    {
+        foreach (var (uri, bucket) in byUri)
+        {
+            if (!availability.TryGetValue(uri, out var hasVideo) || !hasVideo) continue;
+            foreach (var item in bucket)
+                setHasVideo(item, true);
+        }
+    }
+
     public bool TryGetVideoUri(string audioTrackUri, out string videoTrackUri)
         => _catalogCache.TryGetVideoUri(audioTrackUri, out videoTrackUri);
 
@@ -131,6 +203,11 @@ internal sealed class MusicVideoMetadataService : IMusicVideoMetadataService
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(audioTrackUri)) return null;
+
+        var localVideoUri = await TryResolveLocalVideoUriAsync(audioTrackUri, cancellationToken)
+            .ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(localVideoUri))
+            return localVideoUri;
 
         var data = await _extendedMetadataClient
             .GetExtensionAsync(audioTrackUri, ExtensionKind.VideoAssociations, cancellationToken)
@@ -152,6 +229,10 @@ internal sealed class MusicVideoMetadataService : IMusicVideoMetadataService
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(videoTrackUri)) return null;
+        if (IsLocalTrackUri(videoTrackUri))
+            return await TryResolveAudioUriForLocalVideoAsync(videoTrackUri, cancellationToken)
+                .ConfigureAwait(false);
+
         if (!videoTrackUri.StartsWith("spotify:track:", StringComparison.Ordinal)) return null;
         if (_catalogCache.TryGetAudioUri(videoTrackUri, out var cachedAudioUri)) return cachedAudioUri;
 
@@ -178,11 +259,17 @@ internal sealed class MusicVideoMetadataService : IMusicVideoMetadataService
 
         if (!_catalogCache.TryGetVideoUri(audioTrackUri, out var videoTrackUri))
         {
+            var localVideoUri = await TryResolveLocalVideoUriAsync(audioTrackUri, cancellationToken)
+                .ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(localVideoUri))
+                return null;
+
             videoTrackUri = await TryResolveVideoUriViaExtendedMetadataAsync(audioTrackUri, cancellationToken)
                 .ConfigureAwait(false) ?? string.Empty;
         }
 
         if (string.IsNullOrWhiteSpace(videoTrackUri)) return null;
+        if (IsLocalTrackUri(videoTrackUri)) return null;
 
         var videoTrack = await _extendedMetadataClient
             .GetTrackAudioFilesAsync(videoTrackUri, cancellationToken)
@@ -202,6 +289,9 @@ internal sealed class MusicVideoMetadataService : IMusicVideoMetadataService
 
     public void NoteVideoUri(string audioTrackUri, string videoTrackUri)
         => _catalogCache.NoteVideoUri(audioTrackUri, videoTrackUri);
+
+    public void ForgetVideoAssociation(string audioTrackUri)
+        => _catalogCache.ForgetVideoAssociation(audioTrackUri);
 
     public void NoteManifestId(string audioTrackUri, string manifestId)
         => _catalogCache.NoteManifestId(audioTrackUri, manifestId);
@@ -244,10 +334,97 @@ internal sealed class MusicVideoMetadataService : IMusicVideoMetadataService
         }
     }
 
+    private async Task<IReadOnlyDictionary<string, string>> TryGetLinkedLocalVideoUrisAsync(
+        IEnumerable<string> audioTrackUris,
+        CancellationToken cancellationToken)
+    {
+        if (_localLibrary is null)
+            return new Dictionary<string, string>(StringComparer.Ordinal);
+
+        try
+        {
+            return await _localLibrary
+                .GetLinkedMusicVideoUrisForSpotifyTracksAsync(audioTrackUris, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to read local music-video associations");
+            return new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+    }
+
+    private async Task<string?> TryResolveLocalVideoUriAsync(
+        string audioTrackUri,
+        CancellationToken cancellationToken)
+    {
+        if (_localLibrary is null || !IsSpotifyTrackUri(audioTrackUri)) return null;
+
+        try
+        {
+            var video = await _localLibrary
+                .GetLinkedMusicVideoForSpotifyTrackAsync(audioTrackUri, cancellationToken)
+                .ConfigureAwait(false);
+            if (video is null || string.IsNullOrWhiteSpace(video.TrackUri)) return null;
+
+            _catalogCache.NoteVideoUri(audioTrackUri, video.TrackUri);
+            _logger?.LogInformation("[VideoDiscovery] local association {Audio} -> {Video}", audioTrackUri, video.TrackUri);
+            return video.TrackUri;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to resolve local music-video association for {Track}", audioTrackUri);
+            return null;
+        }
+    }
+
+    private async Task<string?> TryResolveAudioUriForLocalVideoAsync(
+        string videoTrackUri,
+        CancellationToken cancellationToken)
+    {
+        if (_localLibrary is null) return null;
+
+        try
+        {
+            var video = await _localLibrary.GetMusicVideoAsync(videoTrackUri, cancellationToken)
+                .ConfigureAwait(false);
+            var audioUri = video?.LinkedSpotifyTrackUri;
+            if (string.IsNullOrWhiteSpace(audioUri) || !IsSpotifyTrackUri(audioUri)) return null;
+
+            _catalogCache.NoteVideoUri(audioUri, videoTrackUri);
+            return audioUri;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to resolve local music-video audio URI for {Video}", videoTrackUri);
+            return null;
+        }
+    }
+
     private static string[] NormalizeTrackUris(IEnumerable<string> trackUris)
         => trackUris
             .Where(uri => !string.IsNullOrWhiteSpace(uri)
                           && uri.StartsWith("spotify:track:", StringComparison.Ordinal))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
+
+    private static bool IsSpotifyTrackUri(string? uri)
+        => !string.IsNullOrWhiteSpace(uri)
+           && uri.StartsWith("spotify:track:", StringComparison.Ordinal);
+
+    private static bool IsLocalTrackUri(string? uri)
+        => !string.IsNullOrWhiteSpace(uri)
+           && uri.StartsWith("wavee:local:track:", StringComparison.Ordinal);
 }

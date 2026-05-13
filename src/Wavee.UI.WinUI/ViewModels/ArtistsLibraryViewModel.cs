@@ -741,6 +741,8 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
 
     private void ApplyFilter()
     {
+        var selectedId = SelectedArtist?.Id;
+
         FilteredArtists.Clear();
 
         var query = SearchQuery?.Trim() ?? "";
@@ -755,6 +757,26 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
                 ? FormatRecentsSubtitle(ts)
                 : null;
             FilteredArtists.Add(artist);
+        }
+
+        PreserveSelectedArtistAfterFilter(selectedId);
+    }
+
+    private void PreserveSelectedArtistAfterFilter(string? selectedId)
+    {
+        if (string.IsNullOrEmpty(selectedId))
+            return;
+
+        var selected = FilteredArtists.FirstOrDefault(a =>
+            string.Equals(a.Id, selectedId, StringComparison.OrdinalIgnoreCase));
+
+        if (selected != null && !ReferenceEquals(SelectedArtist, selected))
+        {
+            SelectedArtist = selected;
+        }
+        else if (selected == null && string.Equals(SelectedArtist?.Id, selectedId, StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedArtist = null;
         }
     }
 

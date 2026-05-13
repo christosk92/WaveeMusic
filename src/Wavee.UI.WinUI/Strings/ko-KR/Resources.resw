@@ -953,6 +953,9 @@ Aggressive</value>
   <data name="Shell_SidebarLocalMedia" xml:space="preserve">
     <value>로컬 미디어</value>
   </data>
+  <data name="Shell_SidebarLocalFiles" xml:space="preserve">
+    <value>&#xB85C;&#xCEEC; &#xD30C;&#xC77C;</value>
+  </data>
   <data name="Shell_SidebarLocalShows" xml:space="preserve">
     <value>TV 프로그램</value>
   </data>

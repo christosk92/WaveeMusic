@@ -18,6 +18,7 @@ using System.Collections;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using Wavee.UI.WinUI.DragDrop;
+using Wavee.UI.WinUI.Styles;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 
@@ -38,6 +39,9 @@ public sealed partial class SidebarItem : Control
 	private ItemsRepeater? childrenRepeater;
 	private ISidebarItemModel? lastSubscriber;
 	private ContentPresenter? iconPresenter;
+	private FrameworkElement? compactSectionSeparator;
+	private Button? _pinButton;
+	private FontIcon? _pinButtonGlyph;
 	private long _displayModeCallbackToken;
 	private long _selectedItemCallbackToken;
 	private SidebarView? _ownerAtSubscription;
@@ -83,7 +87,56 @@ public sealed partial class SidebarItem : Control
 	{
 		base.OnApplyTemplate();
 		iconPresenter = GetTemplateChild("IconPresenter") as ContentPresenter;
+		compactSectionSeparator = GetTemplateChild("CompactSectionSeparator") as FrameworkElement;
+
+		if (_pinButton is not null)
+			_pinButton.Click -= PinButton_Click;
+		_pinButton = GetTemplateChild("PinButton") as Button;
+		_pinButtonGlyph = GetTemplateChild("PinButtonGlyph") as FontIcon;
+		if (_pinButton is not null)
+			_pinButton.Click += PinButton_Click;
+
 		UpdateIconPresenter();
+		UpdateCompactSectionSeparator();
+		UpdatePinButton();
+	}
+
+	private void UpdatePinButton()
+	{
+		if (_pinButton is null) return;
+
+		var model = Item as SidebarItemModel;
+		if (model is null)
+		{
+			_pinButton.Visibility = Visibility.Collapsed;
+			return;
+		}
+
+		if (model.ShowUnpinButton)
+		{
+			// Pinned-section rows: always show unpin glyph.
+			_pinButton.Visibility = Visibility.Visible;
+			if (_pinButtonGlyph is not null)
+				_pinButtonGlyph.Glyph = FluentGlyphs.Unpin;
+			ToolTipService.SetToolTip(_pinButton, "Unpin from sidebar");
+		}
+		else if (model.ShowPinToggleButton && model.IsPinned)
+		{
+			_pinButton.Visibility = Visibility.Visible;
+			if (_pinButtonGlyph is not null)
+				_pinButtonGlyph.Glyph = FluentGlyphs.Unpin;
+			ToolTipService.SetToolTip(_pinButton, "Unpin from sidebar");
+		}
+		else
+		{
+			_pinButton.Visibility = Visibility.Collapsed;
+		}
+	}
+
+	private void PinButton_Click(object sender, RoutedEventArgs e)
+	{
+		if (Item is not SidebarItemModel model) return;
+		Owner?.RaisePinButtonClicked(model);
 	}
 
 	private void UpdateIconPresenter()
@@ -274,6 +327,8 @@ public sealed partial class SidebarItem : Control
 
 		TryStartLazyIconLoad();
 		ReapplyCurrentDisplayModeState(useAnimations: false);
+		UpdateCompactSectionSeparator();
+		UpdatePinButton();
 	}
 
 	/// <summary>
@@ -537,6 +592,27 @@ public sealed partial class SidebarItem : Control
 		{
 			UpdateIcon();
 		}
+		else if (args.PropertyName == nameof(SidebarItemModel.IsLoadingChildren))
+		{
+			UpdateExpansionState();
+		}
+		else if (args.PropertyName == nameof(SidebarItemModel.IsAliasSelected))
+		{
+			// Alias flag flipped — invalidate the cached verdict so the
+			// OR-ed isNowSelected in ReevaluateSelection re-applies.
+			_lastAppliedIsSelected = null;
+			ReevaluateSelection();
+		}
+		else if (args.PropertyName == nameof(SidebarItemModel.ShowUnpinButton)
+			|| args.PropertyName == nameof(SidebarItemModel.ShowPinToggleButton)
+			|| args.PropertyName == nameof(SidebarItemModel.IsPinned))
+		{
+			UpdatePinButton();
+		}
+		else if (args.PropertyName == nameof(SidebarItemModel.ShowCompactSeparatorBefore))
+		{
+			UpdateCompactSectionSeparator();
+		}
 	}
 
 	// Cached results of the previous evaluation. Without these, every
@@ -554,7 +630,8 @@ public sealed partial class SidebarItem : Control
 	{
 		if (!IsGroupHeader)
 		{
-			bool isNowSelected = Item == Owner?.SelectedItem;
+			bool isNowSelected = Item == Owner?.SelectedItem
+				|| (Item is SidebarItemModel m && m.IsAliasSelected);
 			if (_lastAppliedIsSelected == isNowSelected) return;
 			_lastAppliedIsSelected = isNowSelected;
 
@@ -680,7 +757,18 @@ public sealed partial class SidebarItem : Control
 				// leaving the rail so expanded groups reliably restore their content.
 				UpdateExpansionState(false);
 			}
+			UpdateCompactSectionSeparator();
 		}
+	}
+
+	private void UpdateCompactSectionSeparator()
+	{
+		if (compactSectionSeparator is null)
+			return;
+
+		var show = DisplayMode == SidebarDisplayMode.Compact
+			&& Item is SidebarItemModel { IsSectionHeader: true, ShowCompactSeparatorBefore: true };
+		compactSectionSeparator.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
 	}
 
 	private void UpdateSelectionState()
@@ -858,6 +946,7 @@ public sealed partial class SidebarItem : Control
 				state = (showPlaceholder && IsExpanded)
 					? "SectionHeaderExpandedWithPlaceholder"
 					: (IsExpanded ? "SectionHeaderExpanded" : "SectionHeaderCollapsed");
+				VisualStateManager.GoToState(this, IsExpanded ? "ExpandedIconNormal" : "CollapsedIconNormal", useAnimations);
 			}
 			else if (showPlaceholder)
 			{
@@ -900,6 +989,7 @@ public sealed partial class SidebarItem : Control
 			if (isSectionHeader)
 			{
 				VisualStateManager.GoToState(this, IsExpanded ? "SectionHeaderExpanded" : "SectionHeaderCollapsed", useAnimations);
+				VisualStateManager.GoToState(this, IsExpanded ? "ExpandedIconNormal" : "CollapsedIconNormal", useAnimations);
 			}
 			else
 			{
@@ -907,6 +997,10 @@ public sealed partial class SidebarItem : Control
 				VisualStateManager.GoToState(this, IsExpanded ? "ExpandedIconNormal" : "CollapsedIconNormal", useAnimations);
 			}
 		}
+
+		var isLoading = (Item as SidebarItemModel)?.IsLoadingChildren ?? false;
+		VisualStateManager.GoToState(this, isLoading ? "LoadingChildren" : "NotLoadingChildren", useAnimations);
+
 		UpdateSelectionState();
 	}
 

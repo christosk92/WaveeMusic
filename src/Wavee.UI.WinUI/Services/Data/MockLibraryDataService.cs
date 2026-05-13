@@ -143,6 +143,11 @@ public sealed class MockLibraryDataService : ILibraryDataService
         return Task.FromResult<IReadOnlyList<PlaylistSummaryDto>>(_mockPlaylists);
     }
 
+    public Task<IReadOnlyList<PlaylistSummaryDto>?> TryGetUserPlaylistsFromCacheAsync(CancellationToken ct = default)
+    {
+        return Task.FromResult<IReadOnlyList<PlaylistSummaryDto>?>(_mockPlaylists);
+    }
+
     public Task<IReadOnlyList<LibraryAlbumDto>> GetAlbumsAsync(CancellationToken ct = default)
     {
         return Task.FromResult<IReadOnlyList<LibraryAlbumDto>>(_mockAlbums);
@@ -1202,4 +1207,17 @@ public sealed class MockLibraryDataService : ILibraryDataService
 
         return playlistTracks;
     }
+
+    public Task<IReadOnlyList<PinnedItemDto>> GetPinnedItemsAsync(CancellationToken ct = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<bool> PinAsync(string uri, CancellationToken ct = default)
+        => Task.FromResult(false);
+
+    public Task<bool> UnpinAsync(string uri, CancellationToken ct = default)
+        => Task.FromResult(false);
+
+    public bool IsPinned(string uri) => false;
 }

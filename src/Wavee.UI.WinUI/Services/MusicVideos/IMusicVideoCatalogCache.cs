@@ -54,6 +54,13 @@ public interface IMusicVideoCatalogCache
     bool TryGetAudioUri(string videoTrackUri, out string audioTrackUri);
 
     /// <summary>
+    /// Removes the cached association for an audio URI. Used when a local
+    /// manual association is cleared so stale session state does not keep
+    /// surfacing the video affordance.
+    /// </summary>
+    void ForgetVideoAssociation(string audioTrackUri);
+
+    /// <summary>
     /// Records the resolved hex manifest_id (from
     /// <c>Track.OriginalVideo[0].Gid</c> on the video URI's TrackV4).
     /// </summary>

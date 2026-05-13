@@ -1,17 +1,22 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using Microsoft.Extensions.Logging;
+using Wavee.Core.Http;
 using Wavee.Local;
 using Wavee.Local.Classification;
 using Wavee.Local.Enrichment;
 using Wavee.Local.Groups;
 using Wavee.Local.Models;
+using Wavee.Protocol.Metadata;
 using Wavee.UI.Library.Local;
+using Wavee.UI.WinUI.Helpers;
+using ProtoImage = Wavee.Protocol.Metadata.Image;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -31,6 +36,8 @@ public sealed class LocalLibraryFacade : ILocalLibraryFacade, IDisposable
     private readonly ILocalLikeService _likes;
     private readonly ILocalEnrichmentService _enrichment;
     private readonly LocalGroupService _groups;
+    private readonly IExtendedMetadataClient? _metadataClient;
+    private readonly IHttpClientFactory? _httpClientFactory;
     private readonly Subject<LocalLibraryChange> _changes = new();
     private readonly IDisposable? _likeChangesSub;
     private readonly IDisposable? _scanProgressSub;
@@ -42,12 +49,16 @@ public sealed class LocalLibraryFacade : ILocalLibraryFacade, IDisposable
         ILocalLikeService likes,
         ILocalEnrichmentService enrichment,
         LocalGroupService groups,
+        IExtendedMetadataClient? metadataClient = null,
+        IHttpClientFactory? httpClientFactory = null,
         ILogger<LocalLibraryFacade>? logger = null)
     {
         _library = library ?? throw new ArgumentNullException(nameof(library));
         _likes = likes ?? throw new ArgumentNullException(nameof(likes));
         _enrichment = enrichment ?? throw new ArgumentNullException(nameof(enrichment));
         _groups = groups ?? throw new ArgumentNullException(nameof(groups));
+        _metadataClient = metadataClient;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
 
         // Fan upstream signals into the facade's single Changes stream.
@@ -75,6 +86,8 @@ public sealed class LocalLibraryFacade : ILocalLibraryFacade, IDisposable
     public Task<IReadOnlyList<LocalMovie>>         GetMoviesAsync(CancellationToken ct = default) => _library.GetMoviesAsync(ct);
     public Task<LocalMovie?>                       GetMovieAsync(string uri, CancellationToken ct = default) => _library.GetMovieAsync(uri, ct);
     public Task<IReadOnlyList<LocalMusicVideo>>    GetMusicVideosAsync(CancellationToken ct = default) => _library.GetMusicVideosAsync(ct);
+    public Task<LocalMusicVideo?>                  GetMusicVideoAsync(string uri, CancellationToken ct = default) => _library.GetMusicVideoAsync(uri, ct);
+    public Task<LocalMusicVideo?>                  GetLinkedMusicVideoForSpotifyTrackAsync(string uri, CancellationToken ct = default) => _library.GetLinkedMusicVideoForSpotifyTrackAsync(uri, ct);
     public Task<IReadOnlyList<LocalOtherItem>>     GetOthersAsync(CancellationToken ct = default) => _library.GetOthersAsync(ct);
     public Task<IReadOnlyList<LocalContinueItem>>  GetContinueWatchingAsync(int limit = 20, CancellationToken ct = default) => _library.GetContinueWatchingAsync(limit, ct);
     public Task<IReadOnlyList<LocalTrackRow>>      GetRecentlyAddedAsync(int limit = 30, CancellationToken ct = default) => _library.GetRecentlyAddedAsync(limit, ct);
@@ -163,6 +176,12 @@ public sealed class LocalLibraryFacade : ILocalLibraryFacade, IDisposable
         return uri;
     }
 
+    public async Task ClearArtworkOverrideAsync(string entityUri, CancellationToken ct = default)
+    {
+        await _library.ClearArtworkOverrideAsync(entityUri, ct);
+        _changes.OnNext(new LocalLibraryChange(LocalLibraryChangeKind.MetadataOverrideChanged, entityUri));
+    }
+
     public async Task RemoveFromLibraryAsync(string filePath, CancellationToken ct = default)
     {
         await _library.RemoveFromLibraryAsync(filePath, ct);
@@ -183,6 +202,109 @@ public sealed class LocalLibraryFacade : ILocalLibraryFacade, IDisposable
 
     public Task RefreshMetadataAsync(string trackUri, CancellationToken ct = default) =>
         _enrichment.ForceRefreshAsync(trackUri, ct);
+
+    public async Task LinkMusicVideoToSpotifyTrackAsync(
+        string localMusicVideoTrackUri,
+        string spotifyTrackUri,
+        CancellationToken ct = default)
+    {
+        await _library.LinkMusicVideoToSpotifyTrackAsync(localMusicVideoTrackUri, spotifyTrackUri, ct);
+        _changes.OnNext(new LocalLibraryChange(LocalLibraryChangeKind.MusicVideoAssociationChanged, localMusicVideoTrackUri));
+    }
+
+    public async Task UnlinkMusicVideoFromSpotifyTrackAsync(string localMusicVideoTrackUri, CancellationToken ct = default)
+    {
+        await _library.UnlinkMusicVideoFromSpotifyTrackAsync(localMusicVideoTrackUri, ct);
+        _changes.OnNext(new LocalLibraryChange(LocalLibraryChangeKind.MusicVideoAssociationChanged, localMusicVideoTrackUri));
+    }
+
+    public async Task EnrichLinkedMusicVideoFromSpotifyAsync(
+        string localTrackUri,
+        string filePath,
+        string spotifyTrackUri,
+        CancellationToken ct = default)
+    {
+        if (_metadataClient is null)
+        {
+            _logger?.LogDebug("EnrichLinkedMusicVideoFromSpotifyAsync skipped: no IExtendedMetadataClient registered");
+            return;
+        }
+
+        Track? track;
+        try
+        {
+            track = await _metadataClient.GetTrackAsync(spotifyTrackUri, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "EnrichLinkedMusicVideoFromSpotifyAsync: GetTrackAsync failed for {SpotifyUri}", spotifyTrackUri);
+            return;
+        }
+
+        if (track is null) return;
+
+        // 1) Persist title / artist / album / year as a metadata override.
+        try
+        {
+            var artist = track.Artist is { Count: > 0 }
+                ? string.Join(", ", track.Artist.Select(a => a.Name).Where(n => !string.IsNullOrWhiteSpace(n)))
+                : null;
+            int? year = null;
+            if (track.Album?.Date is { Year: > 0 } d)
+                year = d.Year;
+
+            var patch = new MetadataPatch(
+                Title: string.IsNullOrWhiteSpace(track.Name) ? null : track.Name,
+                Artist: string.IsNullOrWhiteSpace(artist) ? null : artist,
+                Album: string.IsNullOrWhiteSpace(track.Album?.Name) ? null : track.Album!.Name,
+                Year: year);
+
+            await PatchMetadataAsync(filePath, patch, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "EnrichLinkedMusicVideoFromSpotifyAsync: metadata patch failed");
+        }
+
+        // 2) Fetch the album cover and persist as an artwork override.
+        try
+        {
+            var imageHttpsUrl = PickCoverUrl(track);
+            if (!string.IsNullOrEmpty(imageHttpsUrl) && _httpClientFactory is not null)
+            {
+                var http = _httpClientFactory.CreateClient("Spotify");
+                using var resp = await http.GetAsync(imageHttpsUrl, ct);
+                if (resp.IsSuccessStatusCode)
+                {
+                    var bytes = await resp.Content.ReadAsByteArrayAsync(ct);
+                    if (bytes.Length > 0)
+                    {
+                        var mime = resp.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
+                        await SetArtworkOverrideAsync(localTrackUri, bytes, mime, ct);
+                    }
+                }
+                else
+                {
+                    _logger?.LogDebug("EnrichLinkedMusicVideoFromSpotifyAsync: cover download HTTP {Status}", (int)resp.StatusCode);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "EnrichLinkedMusicVideoFromSpotifyAsync: cover download/persist failed");
+        }
+    }
+
+    private static string? PickCoverUrl(Track track)
+    {
+        var images = track.Album?.CoverGroup?.Image;
+        if (images is null || images.Count == 0) return null;
+        var img = images.FirstOrDefault(i => i.Size == ProtoImage.Types.Size.Default)
+                  ?? images.FirstOrDefault();
+        if (img is null || img.FileId.Length == 0) return null;
+        var spotifyImageUri = "spotify:image:" + Convert.ToHexString(img.FileId.ToByteArray()).ToLowerInvariant();
+        return SpotifyImageHelper.ToHttpsUrl(spotifyImageUri);
+    }
 
     public void Dispose()
     {

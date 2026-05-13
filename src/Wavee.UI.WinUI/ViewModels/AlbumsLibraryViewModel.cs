@@ -576,6 +576,8 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
 
     private void ApplyFilter()
     {
+        var selectedId = SelectedAlbum?.Id;
+
         FilteredAlbums.Clear();
 
         var query = SearchQuery?.Trim() ?? "";
@@ -594,6 +596,26 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
                 ? FormatRecentsSubtitle(ts)
                 : null;
             FilteredAlbums.Add(album);
+        }
+
+        PreserveSelectedAlbumAfterFilter(selectedId);
+    }
+
+    private void PreserveSelectedAlbumAfterFilter(string? selectedId)
+    {
+        if (string.IsNullOrEmpty(selectedId))
+            return;
+
+        var selected = FilteredAlbums.FirstOrDefault(a =>
+            string.Equals(a.Id, selectedId, StringComparison.OrdinalIgnoreCase));
+
+        if (selected != null && !ReferenceEquals(SelectedAlbum, selected))
+        {
+            SelectedAlbum = selected;
+        }
+        else if (selected == null && string.Equals(SelectedAlbum?.Id, selectedId, StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedAlbum = null;
         }
     }
 

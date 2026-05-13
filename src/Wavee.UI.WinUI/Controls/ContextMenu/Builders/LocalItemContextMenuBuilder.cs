@@ -52,6 +52,28 @@ public static class LocalItemContextMenuBuilder
             });
         }
 
+        if (ctx.Kind == LocalContentKind.MusicVideo)
+        {
+            items.Add(new ContextMenuItemModel
+            {
+                Text = string.IsNullOrWhiteSpace(ctx.LinkedSpotifyTrackUri)
+                    ? "Link Spotify track..."
+                    : "Change Spotify track link...",
+                Glyph = FluentGlyphs.Video,
+                Invoke = () => ctx.OnLinkSpotifyTrack?.Invoke(),
+            });
+
+            if (!string.IsNullOrWhiteSpace(ctx.LinkedSpotifyTrackUri))
+            {
+                items.Add(new ContextMenuItemModel
+                {
+                    Text = "Remove Spotify track link",
+                    Glyph = FluentGlyphs.Remove,
+                    Invoke = () => ctx.OnUnlinkSpotifyTrack?.Invoke(),
+                });
+            }
+        }
+
         items.Add(ContextMenuItemModel.Separator);
 
         // Set kind submenu
@@ -102,7 +124,7 @@ public static class LocalItemContextMenuBuilder
             items.Add(new ContextMenuItemModel
             {
                 Text = "Subtitles",
-                Glyph = "ED1E",
+                Glyph = FluentGlyphs.ClosedCaption,
                 LoadSubMenuAsync = async () =>
                 {
                     var subs = ctx.Facade is not null
@@ -111,7 +133,7 @@ public static class LocalItemContextMenuBuilder
                     var subItems = subs.Select(s => new ContextMenuItemModel
                     {
                         Text = $"{s.Language ?? "Unknown"}{(s.Forced ? " (forced)" : "")}{(s.Embedded ? " · embedded" : "")}",
-                        Glyph = "ED1E",
+                        Glyph = FluentGlyphs.ClosedCaption,
                         Invoke = () => ctx.OnSelectSubtitle?.Invoke(s),
                     }).ToList();
                     subItems.Add(ContextMenuItemModel.Separator);
@@ -128,7 +150,7 @@ public static class LocalItemContextMenuBuilder
             items.Add(new ContextMenuItemModel
             {
                 Text = "Audio",
-                Glyph = "E767",
+                Glyph = FluentGlyphs.AudioTrack,
                 LoadSubMenuAsync = async () =>
                 {
                     var audios = ctx.Facade is not null
@@ -137,7 +159,7 @@ public static class LocalItemContextMenuBuilder
                     return audios.Select(a => new ContextMenuItemModel
                     {
                         Text = $"{a.Language ?? "Unknown"}{(string.IsNullOrEmpty(a.Codec) ? "" : " · " + a.Codec)}{(a.IsDefault ? " · default" : "")}",
-                        Glyph = "E767",
+                        Glyph = FluentGlyphs.AudioTrack,
                         Invoke = () => ctx.OnSelectAudioTrack?.Invoke(a),
                     }).ToList();
                 },
@@ -155,7 +177,7 @@ public static class LocalItemContextMenuBuilder
         items.Add(new ContextMenuItemModel
         {
             Text = "Refresh metadata",
-            Glyph = "E72C",
+            Glyph = FluentGlyphs.Refresh,
             Invoke = () => ctx.OnRefreshMetadata?.Invoke(),
         });
         items.Add(new ContextMenuItemModel
@@ -188,7 +210,7 @@ public static class LocalItemContextMenuBuilder
         new()
         {
             Text = label,
-            Glyph = ctx.Kind == kind ? "E915" : null,
+            Glyph = ctx.Kind == kind ? FluentGlyphs.CheckMark : null,
             Invoke = () => ctx.OnSetKind?.Invoke(kind),
         };
 }
@@ -206,12 +228,15 @@ public sealed class LocalItemMenuContext
     public long LastPositionMs { get; init; }
     public long? WatchedAt { get; init; }
     public bool IsLiked { get; init; }
+    public string? LinkedSpotifyTrackUri { get; init; }
     public ILocalLibraryFacade? Facade { get; init; }
 
     // Callbacks — page code-behind wires these to specific behaviour.
     public Action? OnPlay { get; init; }
     public Action? OnToggleWatched { get; init; }
     public Action? OnToggleLike { get; init; }
+    public Action? OnLinkSpotifyTrack { get; init; }
+    public Action? OnUnlinkSpotifyTrack { get; init; }
     public Action<LocalContentKind>? OnSetKind { get; init; }
     public Action<string>? OnAddToCollection { get; init; }
     public Action? OnNewCollection { get; init; }

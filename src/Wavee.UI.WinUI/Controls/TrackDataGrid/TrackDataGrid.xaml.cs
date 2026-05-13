@@ -35,6 +35,7 @@ namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 /// </summary>
 public sealed partial class TrackDataGrid : UserControl, IDisposable
 {
+    private static readonly int[] LoadingRowPlaceholders = Enumerable.Range(0, 10).ToArray();
     private readonly ObservableCollection<ITrackItem> _visibleRows = new();
     private readonly ObservableCollection<TrackDataGridGroup> _visibleGroups = new();
     private readonly CollectionViewSource _groupedRowsViewSource = new() { IsSourceGrouped = true };
@@ -43,6 +44,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private ISettingsService? _settingsService;
     private string _filterText = string.Empty;
     private bool _disposed;
+    private bool _restoringSelection;
     private readonly HashSet<Track.TrackItem> _itemsViewRows = new();
     // Centralized LazyTrackItem.PropertyChanged subscription book-keeping. One
     // shared handler (_lazyItemHandler) is attached at most once per source
@@ -69,6 +71,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         ApplyGroupHeaderTemplate();
         RowsList.ItemsSource = _visibleRows;
         RowsItemsView.ItemsSource = _visibleRows;
+        LoadingRowsRepeater.ItemsSource = LoadingRowPlaceholders;
         // Centralized subscription bus (see field comment).
         _lazyItemHandler = OnAnyLazyItemPropertyChanged;
         _visibleRows.CollectionChanged += OnVisibleRowsCollectionChanged;
@@ -391,6 +394,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             return;
 
         _itemsViewRows.Add(row);
+        row.TrackChanged -= RowsItemsViewTrackItem_TrackChanged;
+        row.TrackChanged += RowsItemsViewTrackItem_TrackChanged;
         var sourceItem = row.Track;
         var index = sourceItem is null ? -1 : _visibleRows.IndexOf(sourceItem);
         ConfigureItemsViewRow(row, sourceItem, index);
@@ -405,7 +410,21 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             return;
 
         _itemsViewRows.Remove(row);
+        row.TrackChanged -= RowsItemsViewTrackItem_TrackChanged;
         UnregisterRow(row);
+    }
+
+    private void RowsItemsViewTrackItem_TrackChanged(object? sender, EventArgs e)
+    {
+        if (sender is not Track.TrackItem row || !_itemsViewRows.Contains(row))
+            return;
+
+        var sourceItem = row.Track;
+        var index = sourceItem is null ? -1 : _visibleRows.IndexOf(sourceItem);
+        ConfigureItemsViewRow(row, sourceItem, index);
+        RegisterRowForLazyItem(row, sourceItem as LazyTrackItem);
+        ApplyItemsViewContainerDensity(row);
+        row.IsSelected = sourceItem is not null && RowsItemsView.SelectedItems.Contains(sourceItem);
     }
 
     private void ConfigureItemsViewRow(Track.TrackItem row, object? sourceItem, int itemIndex)
@@ -806,6 +825,22 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         set => SetValue(ItemsSourceProperty, value);
     }
 
+    public static readonly DependencyProperty IsLoadingProperty =
+        DependencyProperty.Register(nameof(IsLoading), typeof(bool), typeof(TrackDataGrid),
+            new PropertyMetadata(false, OnIsLoadingChanged));
+
+    public bool IsLoading
+    {
+        get => (bool)GetValue(IsLoadingProperty);
+        set => SetValue(IsLoadingProperty, value);
+    }
+
+    private static void OnIsLoadingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackDataGrid grid)
+            grid.ApplyLoadingRowsVisibility();
+    }
+
     public static readonly DependencyProperty IsGroupedProperty =
         DependencyProperty.Register(nameof(IsGrouped), typeof(bool), typeof(TrackDataGrid),
             new PropertyMetadata(false, OnGroupingChanged));
@@ -969,10 +1004,10 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private static bool IsAlternateRow(object? row, int itemIndex)
     {
-        if (row is ITrackItem { OriginalIndex: > 0 } track)
-            return track.OriginalIndex % 2 == 0;
+        if (itemIndex >= 0)
+            return itemIndex % 2 != 0;
 
-        return itemIndex >= 0 && itemIndex % 2 != 0;
+        return row is ITrackItem { OriginalIndex: > 0 } track && track.OriginalIndex % 2 == 0;
     }
 
     public static readonly DependencyProperty AddedByVisibleProperty =
@@ -1498,6 +1533,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void ReprojectRows()
     {
+        var selectedKeys = CaptureSelectedTrackKeys();
         var source = _sourceSnapshot;
         if (source.Count == 0)
         {
@@ -1506,6 +1542,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             if (_visibleGroups.Count > 0)
                 _visibleGroups.Clear();
             ApplyRowsItemsSource();
+            ApplyLoadingRowsVisibility();
             return;
         }
 
@@ -1531,6 +1568,18 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         _visibleRows.ReplaceWith(rows);
         RebuildGroups(rows);
         ApplyRowsItemsSource();
+        RestoreSelectionByKeys(selectedKeys);
+        ApplyLoadingRowsVisibility();
+    }
+
+    private void ApplyLoadingRowsVisibility()
+    {
+        if (LoadingRowsRepeater is null)
+            return;
+
+        LoadingRowsRepeater.Visibility = IsLoading && _sourceSnapshot.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void ApplyRowsItemsSource()
@@ -1755,6 +1804,9 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private void RowsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         SyncListViewRowSelectionState();
+        if (_restoringSelection)
+            return;
+
         var selected = SelectedRowItem();
         if (selected is ITrackItem track)
             RowSelected?.Invoke(this, track);
@@ -1766,6 +1818,9 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private void RowsItemsView_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs args)
     {
         SyncItemsViewRowSelectionState();
+        if (_restoringSelection)
+            return;
+
         var selected = SelectedRowItem();
         if (selected is ITrackItem track)
             RowSelected?.Invoke(this, track);
@@ -1776,6 +1831,64 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private object? SelectedRowItem()
         => UseItemsViewRows ? RowsItemsView.SelectedItem : RowsList.SelectedItem;
+
+    private HashSet<string> CaptureSelectedTrackKeys()
+    {
+        var selected = UseItemsViewRows
+            ? RowsItemsView.SelectedItems.Cast<object>()
+            : RowsList.SelectedItems.Cast<object>();
+
+        return selected
+            .OfType<ITrackItem>()
+            .Select(TrackSelectionKey)
+            .OfType<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private void RestoreSelectionByKeys(IReadOnlySet<string> selectedKeys)
+    {
+        if (selectedKeys.Count == 0 || _visibleRows.Count == 0)
+            return;
+
+        _restoringSelection = true;
+        try
+        {
+            if (UseItemsViewRows)
+            {
+                RowsItemsView.DeselectAll();
+                for (var i = 0; i < _visibleRows.Count; i++)
+                {
+                    var key = TrackSelectionKey(_visibleRows[i]);
+                    if (!string.IsNullOrEmpty(key) && selectedKeys.Contains(key))
+                        RowsItemsView.Select(i);
+                }
+            }
+            else
+            {
+                RowsList.SelectedItems.Clear();
+                foreach (var row in _visibleRows)
+                {
+                    var key = TrackSelectionKey(row);
+                    if (!string.IsNullOrEmpty(key) && selectedKeys.Contains(key))
+                        RowsList.SelectedItems.Add(row);
+                }
+            }
+        }
+        finally
+        {
+            _restoringSelection = false;
+        }
+
+        SyncItemsViewRowSelectionState();
+        SyncListViewRowSelectionState();
+    }
+
+    private static string? TrackSelectionKey(ITrackItem item)
+        => !string.IsNullOrWhiteSpace(item.Uri)
+            ? item.Uri
+            : !string.IsNullOrWhiteSpace(item.Id)
+                ? item.Id
+                : null;
 
     private void SyncItemsViewRowSelectionState()
     {
@@ -1906,6 +2019,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         RowsList.ItemsSource = null;
         RowsItemsView.DeselectAll();
         RowsItemsView.ItemsSource = null;
+        LoadingRowsRepeater.ItemsSource = null;
         _visibleRows.Clear();
         _sourceSnapshot = Array.Empty<ITrackItem>();
         _pressedWhileSelected = null;

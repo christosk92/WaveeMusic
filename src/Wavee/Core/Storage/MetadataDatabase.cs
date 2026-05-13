@@ -2505,6 +2505,32 @@ public sealed class MetadataDatabase : IMetadataDatabase
         }
     }
 
+    public async Task RemoveFromSpotifyLibraryAsync(
+        string itemUri,
+        SpotifyLibraryItemType itemType,
+        CancellationToken cancellationToken = default)
+    {
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM spotify_library WHERE item_uri = $item_uri AND item_type = $item_type;";
+            cmd.Parameters.AddWithValue("$item_uri", itemUri);
+            cmd.Parameters.AddWithValue("$item_type", (int)itemType);
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            _logger?.LogTrace("Removed {Uri} (type {Type}) from Spotify library", itemUri, itemType);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
     /// <summary>
     /// Checks if an item is in the Spotify library.
     /// </summary>

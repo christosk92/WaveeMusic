@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.ComponentModel;
+using System.Linq;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -14,7 +15,7 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class ArtistsLibraryView : UserControl, IDisposable
 {
-    private const double NarrowLayoutBreakpoint = 800;
+    private const double NarrowLayoutBreakpoint = 680;
     private bool _hasInitializedLayoutMode;
     private bool _disposed;
 
@@ -171,6 +172,22 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable
 
     private void ArtistsView_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs args)
     {
+        if (sender.SelectedItem is null && ViewModel.SelectedArtist is { } current)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_disposed)
+                    return;
+
+                if (ReferenceEquals(ViewModel.SelectedArtist, current)
+                    && ViewModel.FilteredArtists.Any(a => string.Equals(a.Id, current.Id, StringComparison.OrdinalIgnoreCase)))
+                {
+                    SyncSelectionToItemsView();
+                }
+            });
+            return;
+        }
+
         if (sender.SelectedItem != ViewModel.SelectedArtist)
         {
             ViewModel.SelectedArtist = sender.SelectedItem as Data.DTOs.LibraryArtistDto;

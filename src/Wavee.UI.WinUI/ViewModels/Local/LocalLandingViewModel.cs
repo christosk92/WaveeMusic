@@ -72,7 +72,7 @@ public sealed partial class LocalLandingViewModel : ObservableObject, IDisposabl
 
         if (_facade is not null)
         {
-            _changesSub = _facade.Changes.Subscribe(__change => _dispatcher.TryEnqueue(() => _ = LoadAsync()));
+            _changesSub = _facade.Changes.Subscribe(OnLibraryChange);
             _enrichmentSub = _facade.EnrichmentProgress.Subscribe(p =>
                 _dispatcher.TryEnqueue(() =>
                 {
@@ -96,6 +96,25 @@ public sealed partial class LocalLandingViewModel : ObservableObject, IDisposabl
                 _dispatcher.TryEnqueue(RecomputeShowTmdbCta));
         }
         RecomputeShowTmdbCta();
+    }
+
+    private void OnLibraryChange(LocalLibraryChange change)
+    {
+        switch (change.Kind)
+        {
+            case LocalLibraryChangeKind.LikeChanged:
+            case LocalLibraryChangeKind.WatchedStateChanged:
+            case LocalLibraryChangeKind.EnrichmentResult:
+                return;
+
+            case LocalLibraryChangeKind.MusicVideoAssociationChanged:
+                _dispatcher.TryEnqueue(() => _ = RefreshMusicVideosAsync());
+                return;
+
+            default:
+                _dispatcher.TryEnqueue(() => _ = LoadAsync());
+                return;
+        }
     }
 
     private void RecomputeShowTmdbCta()
@@ -141,15 +160,15 @@ public sealed partial class LocalLandingViewModel : ObservableObject, IDisposabl
 
             _dispatcher.TryEnqueue(() =>
             {
-                ReplaceAll(Continue, t1.Result);
-                ReplaceAll(Shows, t2.Result);
-                ReplaceAll(Movies, t3.Result);
-                ReplaceAll(MusicVideos, t4.Result);
-                ReplaceAll(Others, t5.Result);
-                ReplaceAll(RecentlyAdded, t6.Result);
-                ReplaceAll(RecentlyPlayed, t7.Result);
-                ReplaceAll(LikedTracks, t8.Result);
-                ReplaceAll(Collections, t9.Result);
+                ReconcileByKey(Continue, t1.Result, item => item.TrackUri);
+                ReconcileByKey(Shows, t2.Result, item => item.Id);
+                ReconcileByKey(Movies, t3.Result, item => item.TrackUri);
+                ReconcileByKey(MusicVideos, t4.Result, item => item.TrackUri);
+                ReconcileByKey(Others, t5.Result, item => item.TrackUri);
+                ReconcileByKey(RecentlyAdded, t6.Result, item => item.TrackUri);
+                ReconcileByKey(RecentlyPlayed, t7.Result, item => item.TrackUri);
+                ReconcileByKey(LikedTracks, t8.Result, item => item.TrackUri);
+                ReconcileByKey(Collections, t9.Result, item => item.Id);
 
                 ShowCount       = Shows.Count;
                 MovieCount      = Movies.Count;
@@ -178,10 +197,76 @@ public sealed partial class LocalLandingViewModel : ObservableObject, IDisposabl
         }
     }
 
-    private static void ReplaceAll<T>(ObservableCollection<T> target, IReadOnlyList<T> source)
+    private async Task RefreshMusicVideosAsync(CancellationToken ct = default)
     {
-        target.Clear();
-        foreach (var x in source) target.Add(x);
+        if (_facade is null) return;
+
+        try
+        {
+            var musicVideos = await _facade.GetMusicVideosAsync(ct);
+            _dispatcher.TryEnqueue(() =>
+            {
+                ReconcileByKey(MusicVideos, musicVideos, item => item.TrackUri);
+                MusicVideoCount = MusicVideos.Count;
+                HasMusicVideos = MusicVideos.Count > 0;
+                IsEmpty = ShowCount == 0 && MovieCount == 0 && MusicVideoCount == 0
+                          && MusicCount == 0 && OtherCount == 0 && Continue.Count == 0;
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "LocalLanding music-video refresh failed");
+        }
+    }
+
+    private static void ReconcileByKey<T>(
+        ObservableCollection<T> target,
+        IReadOnlyList<T> source,
+        Func<T, string?> keySelector)
+    {
+        for (var i = 0; i < source.Count; i++)
+        {
+            var item = source[i];
+            var key = keySelector(item);
+
+            if (i < target.Count && string.Equals(keySelector(target[i]), key, StringComparison.Ordinal))
+            {
+                if (!Equals(target[i], item))
+                    target[i] = item;
+                continue;
+            }
+
+            var existingIndex = -1;
+            if (!string.IsNullOrEmpty(key))
+            {
+                for (var j = i + 1; j < target.Count; j++)
+                {
+                    if (!string.Equals(keySelector(target[j]), key, StringComparison.Ordinal))
+                        continue;
+
+                    existingIndex = j;
+                    break;
+                }
+            }
+
+            if (existingIndex >= 0)
+            {
+                target.Move(existingIndex, i);
+                if (!Equals(target[i], item))
+                    target[i] = item;
+            }
+            else if (i < target.Count)
+            {
+                target.Insert(i, item);
+            }
+            else
+            {
+                target.Add(item);
+            }
+        }
+
+        while (target.Count > source.Count)
+            target.RemoveAt(target.Count - 1);
     }
 
     public void Dispose()
