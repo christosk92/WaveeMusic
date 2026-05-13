@@ -20,6 +20,9 @@ Read the relevant guide before changing that area:
   shows / pins / listen-later), playlist cache, dealer-driven incremental
   updates, save / pin / follow write paths, library and pinned UI surfaces.
   `.agents/guides/library-and-sync.md`
+- **Playback runtime** — orchestrator, queue + context, track resolution,
+  AudioHost IPC, decode / decrypt / DSP / EQ, prefetch, local-file playback,
+  video playback, UI playback service. `.agents/guides/playback.md`
 
 ## How To Add A New Component Guide
 
