@@ -118,7 +118,13 @@ public sealed class ArtistService : IArtistService
             Followers = artist.Stats?.Followers ?? 0,
             WorldRank = artist.Stats?.WorldRank is > 0 ? artist.Stats.WorldRank : null,
             Biography = artist.Profile?.Biography?.Text,
-            IsVerified = artist.Profile?.Verified ?? false,
+            // Prefer the newer onPlatformReputationTrait — it carries both
+            // verified + registered flags. Fall back to legacy profile.verified
+            // for older response shapes.
+            IsVerified = artist.OnPlatformReputationTrait?.Verification?.IsVerified
+                         ?? artist.Profile?.Verified
+                         ?? false,
+            IsRegistered = artist.OnPlatformReputationTrait?.Verification?.IsRegistered ?? false,
 
             LatestRelease = latest == null ? null : new ArtistLatestReleaseResult
             {
@@ -139,6 +145,12 @@ public sealed class ArtistService : IArtistService
             AlbumsTotalCount = artist.Discography?.Albums?.TotalCount ?? 0,
             SinglesTotalCount = artist.Discography?.Singles?.TotalCount ?? 0,
             CompilationsTotalCount = artist.Discography?.Compilations?.TotalCount ?? 0,
+
+            PopularReleases = MapPopularReleases(artist.Discography?.PopularReleasesAlbums),
+            AppearsOn = MapReleaseGroup(artist.RelatedContent?.AppearsOn, "APPEARS_ON"),
+            Playlists = MapPlaylists(artist.Profile?.PlaylistsV2, artist.RelatedContent?.FeaturingV2, artist.RelatedContent?.DiscoveredOnV2),
+            MusicVideos = MapMusicVideos(artist.RelatedMusicVideos),
+            Merch = MapMerch(artist.Goods?.Merch),
 
             PinnedItem = artist.Profile?.PinnedItem != null ? MapPinnedItem(artist.Profile.PinnedItem) : null,
 
@@ -507,6 +519,139 @@ public sealed class ArtistService : IArtistService
         return results;
     }
 
+    private static List<ArtistReleaseResult> MapPopularReleases(ArtistPopularReleases? popular)
+    {
+        if (popular?.Items == null) return [];
+
+        var results = new List<ArtistReleaseResult>();
+        foreach (var release in popular.Items)
+        {
+            if (release?.Id == null) continue;
+
+            results.Add(new ArtistReleaseResult
+            {
+                Id = release.Id,
+                Uri = release.Uri,
+                Name = release.Name,
+                Type = release.Type ?? "ALBUM",
+                ImageUrl = release.CoverArt?.Sources?.LastOrDefault()?.Url,
+                ReleaseDate = ParseReleaseDate(release.Date),
+                TrackCount = release.Tracks?.TotalCount ?? 0,
+                Label = release.Label,
+                Year = release.Date?.Year ?? 0
+            });
+        }
+        return results;
+    }
+
+    private static List<ArtistMusicVideoResult> MapMusicVideos(ArtistMusicVideosPage? videos)
+    {
+        if (videos?.Items == null) return [];
+
+        var results = new List<ArtistMusicVideoResult>();
+        foreach (var item in videos.Items)
+        {
+            var data = item.Data;
+            // Video items are surfaced as track entities (the audio-track URI is
+            // the linked target; the cover-art URI is `_uri` on the wrapper).
+            if (data?.Uri == null) continue;
+
+            results.Add(new ArtistMusicVideoResult
+            {
+                TrackUri = data.Uri,
+                Title = data.Name,
+                ThumbnailUrl = data.AlbumOfTrack?.CoverArt?.Sources?.LastOrDefault()?.Url,
+                AlbumUri = data.AlbumOfTrack?.Uri,
+                Duration = data.Duration?.TotalMilliseconds is > 0
+                    ? TimeSpan.FromMilliseconds(data.Duration.TotalMilliseconds)
+                    : TimeSpan.Zero,
+                IsExplicit = string.Equals(data.ContentRating?.Label, "EXPLICIT", StringComparison.OrdinalIgnoreCase)
+            });
+        }
+        return results;
+    }
+
+    /// <summary>Merges playlistsV2 (official artist playlists), featuringV2
+    /// (Spotify-curated playlists featuring the artist), and discoveredOnV2
+    /// (user / algorithmic playlists where the artist was discovered) into a
+    /// single source-tagged list. <c>GenericError</c> rows from the payload
+    /// are silently dropped (per V4A spec).</summary>
+    private static List<ArtistPlaylistResult> MapPlaylists(
+        ArtistPlaylistCollection? official,
+        ArtistPlaylistCollection? featuring,
+        ArtistPlaylistCollection? discoveredOn)
+    {
+        var results = new List<ArtistPlaylistResult>();
+        AppendPlaylists(official, "Spotify · official", results);
+        AppendPlaylists(featuring, "Spotify · featured", results);
+        AppendPlaylists(discoveredOn, null, results, isDiscoveredOn: true);
+        return results;
+    }
+
+    private static void AppendPlaylists(
+        ArtistPlaylistCollection? collection,
+        string? fixedSubtitle,
+        List<ArtistPlaylistResult> sink,
+        bool isDiscoveredOn = false)
+    {
+        if (collection?.Items == null) return;
+        foreach (var item in collection.Items)
+        {
+            if (string.Equals(item.Typename, "GenericError", StringComparison.Ordinal))
+                continue;
+            var data = item.Data;
+            if (data == null || string.IsNullOrEmpty(data.Uri)) continue;
+            if (string.Equals(data.Typename, "GenericError", StringComparison.Ordinal))
+                continue;
+
+            var imageUrl = data.Images?.Items?.FirstOrDefault()?.Sources
+                ?.OrderByDescending(s => s.Width ?? 0).FirstOrDefault()?.Url;
+
+            string? subtitle;
+            if (isDiscoveredOn)
+            {
+                var owner = data.OwnerV2?.Data?.Name;
+                subtitle = !string.IsNullOrEmpty(owner)
+                    ? $"{owner} · discovered on"
+                    : "Discovered on";
+            }
+            else
+            {
+                subtitle = fixedSubtitle;
+            }
+
+            sink.Add(new ArtistPlaylistResult
+            {
+                Uri = data.Uri!,
+                Name = data.Name,
+                ImageUrl = imageUrl,
+                Subtitle = subtitle
+            });
+        }
+    }
+
+    private static List<ArtistMerchResult> MapMerch(ArtistMerch? merch)
+    {
+        if (merch?.Items == null) return [];
+
+        var results = new List<ArtistMerchResult>();
+        foreach (var item in merch.Items)
+        {
+            if (string.IsNullOrWhiteSpace(item.NameV2) && string.IsNullOrWhiteSpace(item.Url)) continue;
+
+            results.Add(new ArtistMerchResult
+            {
+                Name = item.NameV2,
+                Price = item.Price,
+                Description = item.Description,
+                ImageUrl = item.Image?.Sources?.LastOrDefault()?.Url,
+                Uri = item.Uri,
+                ShopUrl = item.Url
+            });
+        }
+        return results;
+    }
+
     private static List<RelatedArtistResult> MapRelatedArtists(ArtistRelatedArtists? related)
     {
         if (related?.Items == null) return [];
@@ -584,6 +729,7 @@ public sealed class ArtistService : IArtistService
             WorldRank = null,
             Biography = null,
             IsVerified = false,
+            IsRegistered = false,
             LatestRelease = null,
             TopTracks = topTracks,
             Albums = albums,

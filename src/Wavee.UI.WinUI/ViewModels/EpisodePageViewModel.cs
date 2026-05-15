@@ -817,6 +817,8 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
             AlbumArt = _episode?.CoverArtUrl ?? _parentShowImageUrl,
             DurationMs = _episode?.DurationMs ?? 0,
             IsUserQueued = false,
+            AlbumName = _parentShowTitle,
+            AlbumUri = string.IsNullOrEmpty(_parentShowUri) ? null : _parentShowUri,
         };
 
         var context = new PlaybackContextInfo

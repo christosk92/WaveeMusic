@@ -15,15 +15,33 @@ public static class ShyHeaderPinOffset
     /// Pin once the user has scrolled past <c>hero.ActualHeight - margin</c>.
     /// Default 120 px matches ArtistPage / detail pages; library banners
     /// pass <c>margin: 90</c> because their banner is shorter.
+    ///
+    /// Returns <see cref="double.PositiveInfinity"/> when the hero hasn't
+    /// been measured yet (<c>ActualHeight &lt;= 0</c>) so the controller can
+    /// never decide <c>shouldPin = true</c> against an unmeasured hero —
+    /// otherwise <c>Max(0, 0 - 120) = 0</c> would mean every scroll offset
+    /// (including the post-nav offset=0 case) qualifies as pinned, and the
+    /// controller would morph the shy pill in over the still-loading hero.
     /// </summary>
     public static Func<double> Below(FrameworkElement hero, double margin = 120)
-        => () => Math.Max(0, hero.ActualHeight - margin);
+        => () =>
+        {
+            var h = hero.ActualHeight;
+            if (h <= 0) return double.PositiveInfinity;
+            return Math.Max(0, h - margin);
+        };
 
     /// <summary>
     /// ProfilePage style — pin once the user has scrolled past an arbitrary
     /// element (the identity card) plus a small lead so the shy pill
-    /// appears just as the card crosses the top of the page.
+    /// appears just as the card crosses the top of the page. Same
+    /// unmeasured-element guard as <see cref="Below"/>.
     /// </summary>
     public static Func<double> BelowElement(FrameworkElement element, double lead = 32)
-        => () => Math.Max(0, element.ActualHeight + lead);
+        => () =>
+        {
+            var h = element.ActualHeight;
+            if (h <= 0) return double.PositiveInfinity;
+            return Math.Max(0, h + lead);
+        };
 }

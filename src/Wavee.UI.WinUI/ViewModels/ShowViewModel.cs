@@ -1133,6 +1133,8 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
             AlbumArt = e.CoverArtUrl ?? CoverArtUrl,
             DurationMs = e.DurationMs,
             IsUserQueued = false,
+            AlbumName = ShowName,
+            AlbumUri = string.IsNullOrEmpty(ShowUri) ? null : ShowUri,
         }).ToList();
 
         var context = new PlaybackContextInfo

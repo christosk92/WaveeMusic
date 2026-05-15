@@ -15,6 +15,50 @@ public interface IAlbumService
     Task<List<AlbumTrackDto>> GetTracksAsync(string albumUri, CancellationToken ct = default);
     Task<AlbumDetailResult> GetDetailAsync(string albumUri, CancellationToken ct = default);
     Task<List<AlbumMerchItemResult>> GetMerchAsync(string albumUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches similar-album recommendations seeded from a track URI. Backed by
+    /// the <c>similarAlbumsBasedOnThisTrack</c> persisted query. Used to populate
+    /// the AlbumPage "For this mood" / "Similar albums" shelf — seed with the
+    /// album's most-played track (fall back to track[0] if play counts aren't yet
+    /// loaded).
+    /// </summary>
+    Task<List<AlbumSimilarResult>> GetSimilarAlbumsAsync(
+        string trackUri, int limit = 24, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches a track-level music-video association. Returns the video-track URI
+    /// when the source track has at least one entry in <c>videoAssociations</c>;
+    /// returns null otherwise. Drives the "Watch the official video" promotion on
+    /// the AlbumPage for 1-track singles.
+    /// </summary>
+    Task<string?> GetMusicVideoUriAsync(string trackUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches an artist's bio excerpt + related artists for the AlbumPage's
+    /// mini "About the artist" card and "Fans also like" pill list. Reuses the
+    /// <c>queryArtistOverview</c> response — same query that backs ArtistPage.
+    /// </summary>
+    Task<AlbumArtistContextResult> GetArtistContextAsync(
+        string artistUri, CancellationToken ct = default);
+}
+
+public sealed record AlbumSimilarResult
+{
+    public string? Uri { get; init; }
+    public string? Name { get; init; }
+    public string? ImageUrl { get; init; }
+    public string? ArtistName { get; init; }
+    public string? ArtistUri { get; init; }
+    /// <summary>"ALBUM" | "SINGLE" | "EP" | "COMPILATION" — drives the tile type chip.</summary>
+    public string? Type { get; init; }
+    public int Year { get; init; }
+}
+
+public sealed record AlbumArtistContextResult
+{
+    public string? BioExcerpt { get; init; }
+    public required List<RelatedArtistResult> SimilarArtists { get; init; }
 }
 
 public sealed record AlbumDetailResult

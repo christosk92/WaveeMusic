@@ -48,6 +48,9 @@ public sealed class GetTrackUnion
     [JsonPropertyName("albumOfTrack")]
     public GetTrackAlbum? AlbumOfTrack { get; init; }
 
+    [JsonPropertyName("associationsV3")]
+    public GetTrackAssociations? AssociationsV3 { get; init; }
+
     [JsonPropertyName("firstArtist")]
     public GetTrackFirstArtist? FirstArtist { get; init; }
 }
@@ -74,6 +77,18 @@ public sealed class GetTrackAlbum
 
     [JsonPropertyName("coverArt")]
     public GetTrackCoverArt? CoverArt { get; init; }
+}
+
+public sealed class GetTrackAssociations
+{
+    [JsonPropertyName("videoAssociations")]
+    public GetTrackVideoAssociations? VideoAssociations { get; init; }
+}
+
+public sealed class GetTrackVideoAssociations
+{
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
 }
 
 public sealed class GetTrackCoverArt

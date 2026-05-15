@@ -258,6 +258,16 @@ public sealed record LocalPlaybackState
     public string? TrackAlbum { get; init; }
 
     /// <summary>
+    /// Spotify normalization track gain parsed from the audio file header, in dB.
+    /// </summary>
+    public float? NormalizationGainDb { get; init; }
+
+    /// <summary>
+    /// Spotify normalization track peak parsed from the audio file header.
+    /// </summary>
+    public float? NormalizationPeak { get; init; }
+
+    /// <summary>
     /// Small album art image URL (format: "spotify:image:{id}").
     /// </summary>
     public string? ImageSmallUrl { get; init; }

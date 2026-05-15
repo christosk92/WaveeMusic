@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Reactive.Linq;
 using System.Threading;
@@ -82,6 +83,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     private CancellationTokenSource? _seekConfirmationCts;
     private const double SeekConfirmedToleranceMs = 2000;
     private const int SeekConfirmationTimeoutMs = 3000;
+    private CancellationTokenSource? _bufferingTimeoutCts;
+    private const int BufferingIndicatorTimeoutMs = 8000;
 
     // ── State properties ──
 
@@ -93,6 +96,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     [ObservableProperty] private string? _currentAlbumArtLarge;
     [ObservableProperty] private string? _currentArtistId;
     [ObservableProperty] private string? _currentAlbumId;
+    [ObservableProperty] private float? _currentTrackNormalizationGainDb;
+    [ObservableProperty] private float? _currentTrackNormalizationPeak;
     [ObservableProperty] private string? _currentTrackManifestId;
     [ObservableProperty] private bool _currentTrackHasMusicVideo;
     [ObservableProperty] private bool _currentTrackIsVideo;
@@ -258,8 +263,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         ActiveDeviceName = null;
         ActiveDeviceType = DeviceType.Computer;
         AvailableConnectDevices = [];
-        IsBuffering = false;
-        BufferingTrackId = null;
+        ClearBufferingCore();
 
         _queue = [];
         _prevQueue = [];
@@ -392,8 +396,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
                     if (IsBuffering && state.Status is PlaybackStatus.Playing or PlaybackStatus.Stopped)
                     {
-                        IsBuffering = false;
-                        BufferingTrackId = null;
+                        ClearBufferingCore();
                     }
 
                     if (IsPlaying)
@@ -410,8 +413,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                     // Clear buffering on position change (seek completed) or track change
                     if (IsBuffering && (state.Changes.HasFlag(StateChanges.Position) || state.Changes.HasFlag(StateChanges.Track)))
                     {
-                        IsBuffering = false;
-                        BufferingTrackId = null;
+                        ClearBufferingCore();
                     }
 
                     // Cluster state timestamps are in Spotify's server clock domain.
@@ -672,6 +674,8 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         CurrentArtistName = artistName;
         CurrentArtistId = artistUri;
         CurrentAlbumId = connectState.Track?.AlbumUri;
+        CurrentTrackNormalizationGainDb = TryGetMetadataFloat(metadata, "wavee.normalization_gain_db");
+        CurrentTrackNormalizationPeak = TryGetMetadataFloat(metadata, "wavee.normalization_peak");
         CurrentArtists = !string.IsNullOrWhiteSpace(artistName)
             ? [new ArtistCredit(artistName!, artistUri)]
             : null;
@@ -767,6 +771,14 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
 
     private static string? TryGetMetadataValue(IReadOnlyDictionary<string, string>? metadata, string key)
         => metadata != null && metadata.TryGetValue(key, out var value) ? value : null;
+
+    private static float? TryGetMetadataFloat(IReadOnlyDictionary<string, string>? metadata, string key)
+    {
+        var value = TryGetMetadataValue(metadata, key);
+        return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+    }
 
     private static string? FirstNonWhiteSpace(params string?[] values)
     {
@@ -1851,7 +1863,11 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             trackUris.Count, startIndex, context.ContextUri);
         _ = _playbackService.PlayTracksAsync(trackUris, startIndex, context, items).ContinueWith(t =>
         {
-            if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] LoadQueue FAILED: {Count} tracks", trackUris.Count);
+            if (t.IsFaulted)
+            {
+                _logger?.LogError(t.Exception, "[Cmd] LoadQueue FAILED: {Count} tracks", trackUris.Count);
+                ClearBuffering();
+            }
             else _logger?.LogDebug("[Cmd] LoadQueue accepted: {Count} tracks", trackUris.Count);
         });
     }
@@ -1868,6 +1884,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         {
             BufferingTrackId = trackId;
             IsBuffering = true;
+            StartBufferingTimeout(trackId);
         }
         else
         {
@@ -1875,6 +1892,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             {
                 BufferingTrackId = trackId;
                 IsBuffering = true;
+                StartBufferingTimeout(trackId);
             });
         }
     }
@@ -1882,11 +1900,67 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
     public void ClearBuffering()
     {
         _logger?.LogDebug("[UI] ClearBuffering");
+        if (_dispatcherQueue.HasThreadAccess)
+        {
+            ClearBufferingCore();
+        }
+        else
+        {
+            _dispatcherQueue.TryEnqueue(ClearBufferingCore);
+        }
+    }
+
+    private void ClearBufferingCore()
+    {
+        CancelBufferingTimeout();
+        IsBuffering = false;
+        BufferingTrackId = null;
+    }
+
+    private void StartBufferingTimeout(string? trackId)
+    {
+        CancelBufferingTimeout();
+        var cts = new CancellationTokenSource();
+        _bufferingTimeoutCts = cts;
+        _ = ClearBufferingAfterTimeoutAsync(trackId, cts.Token);
+    }
+
+    private async Task ClearBufferingAfterTimeoutAsync(string? trackId, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(BufferingIndicatorTimeoutMs, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
         _dispatcherQueue.TryEnqueue(() =>
         {
-            IsBuffering = false;
-            BufferingTrackId = null;
+            if (ct.IsCancellationRequested ||
+                !IsBuffering ||
+                !string.Equals(BufferingTrackId, trackId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _logger?.LogWarning(
+                "[UI] Buffering indicator timed out after {Ms}ms for trackId={TrackId}; clearing stale visual state",
+                BufferingIndicatorTimeoutMs,
+                trackId ?? "<context>");
+            ClearBufferingCore();
         });
+    }
+
+    private void CancelBufferingTimeout()
+    {
+        var cts = Interlocked.Exchange(ref _bufferingTimeoutCts, null);
+        if (cts is null) return;
+
+        try { cts.Cancel(); }
+        catch (ObjectDisposedException) { }
+        cts.Dispose();
     }
 
     public void Dispose()
@@ -1895,6 +1969,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         _seekConfirmationCts?.Cancel();
         _seekConfirmationCts?.Dispose();
         _seekConfirmationCts = null;
+        CancelBufferingTimeout();
         _colorCts?.Cancel();
         _colorCts?.Dispose();
         _colorCts = null;

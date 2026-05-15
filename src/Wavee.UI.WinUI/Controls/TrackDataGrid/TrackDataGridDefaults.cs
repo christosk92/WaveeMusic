@@ -48,9 +48,9 @@ public static class TrackDataGridDefaults
     [
         Index(),
         Like(),
-        Title(),
+        Title(maxWidth: null),
         PlayCount(),
-        Duration(),
+        Duration(width: 76, minWidth: 72),
     ];
 
     // Index + Like must lead the column set: TrackItem (Row mode) ALWAYS renders
@@ -111,18 +111,18 @@ public static class TrackDataGridDefaults
         MaxLength = new GridLength(42),
     };
 
-    private static TrackDataGridColumn Title() => new()
+    private static TrackDataGridColumn Title(double? maxWidth = 640) => new()
     {
         Key = "Track",
         HeaderResourceKey = "TrackGrid_Column_Track",
         SortKey = "title",
         Length = new GridLength(1, GridUnitType.Star),
         MinLength = new GridLength(120),
-        // Cap Title width so the column stays consistent across playlists and
-        // doesn't stretch to fill the whole window on wide layouts. Spotify-
-        // style: Title gets ~half the available space, trailing columns stay
-        // aligned against the right edge.
-        MaxLength = new GridLength(640),
+        // Playlist-style grids cap Title width so the name column stays
+        // scannable with album/date metadata. Album pages pass null so Plays
+        // and Duration can pin to the right edge instead of bunching after
+        // a capped title column.
+        MaxLength = maxWidth is { } value ? new GridLength(value) : GridLength.Auto,
         IsLocked = true,
         // Match TrackItem's RowTitle StackPanel Margin="12,0,8,0" so header text
         // aligns with title text.
@@ -171,13 +171,13 @@ public static class TrackDataGridDefaults
         HorizontalAlignment = HorizontalAlignment.Right,
     };
 
-    private static TrackDataGridColumn Duration() => new()
+    private static TrackDataGridColumn Duration(double width = 60, double minWidth = 56) => new()
     {
         Key = "Duration",
         HeaderResourceKey = "TrackGrid_Column_Duration",
         SortKey = "duration",
-        Length = new GridLength(60),
-        MinLength = new GridLength(56),
+        Length = new GridLength(width),
+        MinLength = new GridLength(minWidth),
         MaxLength = new GridLength(120),
         HorizontalAlignment = HorizontalAlignment.Right,
         SupportsResize = true,

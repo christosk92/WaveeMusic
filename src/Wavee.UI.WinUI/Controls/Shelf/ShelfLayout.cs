@@ -21,6 +21,8 @@ namespace Wavee.UI.WinUI.Controls.Shelf;
 /// </remarks>
 public sealed class ShelfLayout : VirtualizingLayout
 {
+    private double _arrangeItemWidth = 160.0;
+
     public static readonly DependencyProperty ItemWidthProperty =
         DependencyProperty.Register(nameof(ItemWidth), typeof(double), typeof(ShelfLayout),
             new PropertyMetadata(160.0, OnPropertyChanged));
@@ -55,13 +57,15 @@ public sealed class ShelfLayout : VirtualizingLayout
             if (count == 0 || ItemWidth <= 0)
                 return new Size(0, 0);
 
-            var step = ItemWidth + Spacing;
-            var totalWidth = count * ItemWidth + Math.Max(0, count - 1) * Spacing;
+            var itemWidth = ResolveItemWidth(availableSize.Width);
+            _arrangeItemWidth = itemWidth;
+            var step = itemWidth + Spacing;
+            var totalWidth = count * itemWidth + Math.Max(0, count - 1) * Spacing;
 
             var (first, last) = GetVisibleRange(context, count, step);
 
             var measureHeight = double.IsInfinity(availableSize.Height) ? 10000 : availableSize.Height;
-            var childMeasureSize = new Size(ItemWidth, measureHeight);
+            var childMeasureSize = new Size(itemWidth, measureHeight);
 
             double maxHeight = 0;
             for (int i = first; i <= last; i++)
@@ -89,13 +93,14 @@ public sealed class ShelfLayout : VirtualizingLayout
             var count = context.ItemCount;
             if (count == 0) return finalSize;
 
-            var step = ItemWidth + Spacing;
+            var itemWidth = _arrangeItemWidth > 0 ? _arrangeItemWidth : ResolveItemWidth(finalSize.Width);
+            var step = itemWidth + Spacing;
             var (first, last) = GetVisibleRange(context, count, step);
 
             for (int i = first; i <= last; i++)
             {
                 var child = context.GetOrCreateElementAt(i);
-                child.Arrange(new Rect(i * step, 0, ItemWidth, finalSize.Height));
+                child.Arrange(new Rect(i * step, 0, itemWidth, finalSize.Height));
             }
         }
         catch (ArgumentException)
@@ -104,6 +109,17 @@ public sealed class ShelfLayout : VirtualizingLayout
         }
 
         return finalSize;
+    }
+
+    private double ResolveItemWidth(double availableWidth)
+    {
+        if (double.IsInfinity(availableWidth) || availableWidth <= 0)
+            return ItemWidth;
+
+        // On compact pages the shelf viewport can be narrower than the desktop
+        // card width. Clamp to the viewport so a single card uses the available
+        // lane instead of leaving a large apparent right gutter.
+        return Math.Max(96, Math.Min(ItemWidth, availableWidth));
     }
 
     /// <summary>

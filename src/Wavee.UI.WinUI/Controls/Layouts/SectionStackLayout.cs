@@ -80,6 +80,16 @@ public sealed class SectionStackLayout : VirtualizingLayout
     private int _lastItemCount = -1;
     private double _lastAvailableWidth = double.NaN;
 
+    public void ResetCache()
+    {
+        _heights.Clear();
+        _offsets.Clear();
+        _identities.Clear();
+        _lastItemCount = -1;
+        _lastAvailableWidth = double.NaN;
+        InvalidateMeasure();
+    }
+
     protected override Size MeasureOverride(VirtualizingLayoutContext context, Size availableSize)
     {
         try

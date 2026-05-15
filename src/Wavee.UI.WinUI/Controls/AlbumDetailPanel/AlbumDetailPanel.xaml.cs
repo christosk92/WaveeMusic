@@ -36,7 +36,7 @@ public sealed partial class AlbumDetailPanel : UserControl
     private const byte PaletteTintAlpha = 60;
 
     public static readonly DependencyProperty AlbumProperty =
-        DependencyProperty.Register(nameof(Album), typeof(ArtistReleaseVm), typeof(AlbumDetailPanel),
+        DependencyProperty.Register(nameof(Album), typeof(Wavee.UI.WinUI.ViewModels.ArtistReleaseVm), typeof(AlbumDetailPanel),
             new PropertyMetadata(null, OnAlbumChanged));
 
     public static readonly DependencyProperty TracksProperty =
@@ -55,9 +55,9 @@ public sealed partial class AlbumDetailPanel : UserControl
         DependencyProperty.Register(nameof(NotchOffsetX), typeof(double), typeof(AlbumDetailPanel),
             new PropertyMetadata(0.0, OnNotchOffsetXChanged));
 
-    public ArtistReleaseVm? Album
+    public Wavee.UI.WinUI.ViewModels.ArtistReleaseVm? Album
     {
-        get => (ArtistReleaseVm?)GetValue(AlbumProperty);
+        get => (Wavee.UI.WinUI.ViewModels.ArtistReleaseVm?)GetValue(AlbumProperty);
         set => SetValue(AlbumProperty, value);
     }
 
@@ -227,7 +227,7 @@ public sealed partial class AlbumDetailPanel : UserControl
     private static void OnAlbumChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var panel = (AlbumDetailPanel)d;
-        var album = e.NewValue as ArtistReleaseVm;
+        var album = e.NewValue as Wavee.UI.WinUI.ViewModels.ArtistReleaseVm;
 
         if (album != null)
         {

@@ -17,24 +17,38 @@ A **Spotify Premium** account is required, and the app is intended for personal 
 ## Features
 
 ### Desktop app
-- **Home, Search, Library** — liked songs, saved artists, saved albums, playlists.
-- **Artist, Album, Playlist pages** — full discography, top tracks, biography, related, color extraction from art.
-- **Browser-style tabs** with pin / drag-and-drop / context menus, plus a sidebar for navigation and an expandable now‑playing pane.
-- **Music videos** — Spotify videos play with PlayReady DRM via WebView2; local videos play through the platform media player.
+- **Home, Browse, Search, Library** — personalized shelves, browse categories, liked songs, saved artists, saved albums, playlists, shows, and episodes.
+- **Artist, Album, Playlist, Show, Episode pages** — discography, top tracks, biography, related content, credits, queue actions, and color extraction from art.
+- **Browser-style tabs** with pin / drag-and-drop / context menus, a sidebar with rich navigation, and an omnibar for search, suggestions, and fast navigation.
+- **Music videos** — Spotify music videos play through WebView2 EME with selectable quality and dedicated video controls.
 - **Lyrics** — synced lyrics with shader effects, multi‑language detection, and CJK romanization (pinyin / kana).
-- **Local file library** — index audio and video files from disk, browse them alongside Spotify content.
-- **Friends feed**, **profile**, **concerts**, in‑app **settings** (theme, audio device, EQ, language, diagnostics).
+- **Now-playing surfaces** — compact player bar, expandable right-panel player, mini video player, full video page, and floating player window share the same playback surface.
+- **Friends feed**, **profile**, **concerts**, in‑app **settings** (theme, audio device, EQ, language, storage/network, diagnostics).
 - **On-device AI on Copilot+ PCs** (opt-in) — explain a lyric line or summarize a song's themes with Phi Silica running locally on the NPU. Nothing leaves the machine; off by default.
+
+### Coming soon after the initial beta release
+- **Local media library** — index audio, music videos, movies, TV shows, episodes, subtitles, and embedded tracks from disk; browse them alongside Spotify content.
+- **Local metadata enrichment** — TMDB for movies / TV, MusicBrainz + Cover Art Archive for music, local artwork caching, thumbnails, watched state, resume position, custom collections, and local likes.
+- **Spotify linking for local media** — link local music videos to Spotify tracks so playback, metadata, queue state, and now-playing identity stay connected.
+- This code is present behind the `WAVEE_ENABLE_LOCAL_FILES` feature flag for internal testing, but it is disabled in the initial beta release.
 
 ### Spotify Connect
 - Full Dealer WebSocket implementation, real‑time cluster state synchronization.
 - Device picker for transferring playback between devices.
-- Volume sync, queue updates, remote command handling — works as both controller and target.
+- Volume sync, queue updates, queue edits, remote command handling — works as both controller and target.
+- This-device playback state is mirrored back into Connect so Spotify queue, device state, Recently Played, and UI surfaces stay in sync.
 
 ### Audio
 - Audio runs in a separate process (`Wavee.AudioHost`) over named‑pipe IPC, so audio engine crashes don't take the UI down.
-- BASS for decode + DSP, NVorbis for Ogg Vorbis decryption, PortAudio for cross‑arch output.
-- 10‑band equalizer, normalization (loudness), and crossfade between tracks.
+- BASS for decode + DSP, NVorbis for Ogg Vorbis, and PortAudio for cross‑arch output.
+- Fast seek with byte-position bisection, predictive range prefetch, and decoder recreation fallback.
+- Lazy progressive CDN streaming, head-file caching, audio key resolution, queue prefetch, and gapless / crossfade preparation.
+- 10‑band equalizer, normalization (loudness), compressor / limiter stages, volume control, and crossfade between tracks.
+
+### Diagnostics and tooling
+- Debug page for IPC health, audio process state, Connect-state capture, in-memory logs, memory pressure, and UI operation timing.
+- Settings sections for diagnostics logging, Connect updates, cache/storage, network behavior, playback, audio output, and on-device AI readiness.
+- Component agent guides in `.agents/guides/` for playback, Connect state, library sync, and track / episode UI maintenance.
 
 ### Authentication
 - OAuth 2.0 — both **Authorization Code with PKCE** (browser flow) and **Device Code** flow.
@@ -90,32 +104,35 @@ dotnet run --project src/Wavee.Console
 
 ```
 WaveeMusic/
-├── Wavee/                          # Core protocol library (auth, Connect, audio orchestration, metadata)
-├── Wavee.UI/                       # Framework-neutral UI service layer (no XAML)
-├── Wavee.UI.WinUI/                 # WinUI 3 desktop app (the headline client)
-├── Wavee.Controls.Lyrics/          # Lyrics rendering library (D2D shaders, language detect, romanization)
-├── Wavee.AudioHost/                # Out-of-process audio runtime (BASS + NVorbis + PortAudio, x64-only)
-├── Wavee.Playback.Contracts/       # Shared IPC contracts between WinUI app and AudioHost
-├── Wavee.Console/                  # AOT-compiled CLI client (Spectre.Console + Docker-friendly)
-├── Wavee.Tests/                    # Tests for the core library
-├── Wavee.UI.Tests/                 # Tests for the UI service layer
-├── Wavee.PlayPlay.Tests/           # PlayPlay decryption tests
-├── Lyricify.Lyrics.Helper/         # Vendored: multi-provider lyrics search (QQ, Kugou, Netease)
-├── NVorbis/                        # Vendored: managed Ogg Vorbis decoder
+├── src/Wavee/                      # Core protocol library (auth, Connect, audio orchestration, metadata)
+├── src/Wavee.UI/                   # Framework-neutral UI service layer (no XAML)
+├── src/Wavee.UI.WinUI/             # WinUI 3 desktop app (the headline client)
+├── src/Wavee.Local/                # Local media library (scan, classify, enrich, query, playback helpers)
+├── src/Wavee.Controls.Lyrics/      # Lyrics rendering library (D2D shaders, language detect, romanization)
+├── src/Wavee.AudioHost/            # Out-of-process audio runtime (BASS + NVorbis + PortAudio, x64-only)
+├── src/Wavee.Playback.Contracts/   # Shared IPC contracts between WinUI app and AudioHost
+├── src/Wavee.Console/              # AOT-compiled CLI client (Spectre.Console + Docker-friendly)
+├── test/Wavee.Tests/               # Tests for the core library
+├── test/Wavee.UI.Tests/            # Tests for the UI service layer
+├── test/Wavee.Local.Tests/         # Tests for local media classification / URI / subtitles
+├── test/Wavee.PlayPlay.Tests/      # PlayPlay decryption tests
+├── vendor/Lyricify.Lyrics.Helper/  # Vendored: multi-provider lyrics search (QQ, Kugou, Netease)
+├── vendor/NVorbis/                 # Vendored: managed Ogg Vorbis decoder
 └── Wavee.slnx                       # Solution
 ```
 
 Each first‑party project has its own README with developer-facing details:
-[Wavee](Wavee/README.md) ·
-[Wavee.UI](Wavee.UI/README.md) ·
-[Wavee.UI.WinUI](Wavee.UI.WinUI/README.md) ·
-[Wavee.Controls.Lyrics](Wavee.Controls.Lyrics/README.md) ·
-[Wavee.AudioHost](Wavee.AudioHost/README.md) ·
-[Wavee.Playback.Contracts](Wavee.Playback.Contracts/README.md) ·
-[Wavee.Console](Wavee.Console/README.md) ·
-[Wavee.Tests](Wavee.Tests/README.md) ·
-[Wavee.UI.Tests](Wavee.UI.Tests/README.md) ·
-[Wavee.PlayPlay.Tests](Wavee.PlayPlay.Tests/README.md).
+[Wavee](src/Wavee/README.md) ·
+[Wavee.UI](src/Wavee.UI/README.md) ·
+[Wavee.UI.WinUI](src/Wavee.UI.WinUI/README.md) ·
+[Wavee.Local](src/Wavee.Local/README.md) ·
+[Wavee.Controls.Lyrics](src/Wavee.Controls.Lyrics/README.md) ·
+[Wavee.AudioHost](src/Wavee.AudioHost/README.md) ·
+[Wavee.Playback.Contracts](src/Wavee.Playback.Contracts/README.md) ·
+[Wavee.Console](src/Wavee.Console/README.md) ·
+[Wavee.Tests](test/Wavee.Tests/README.md) ·
+[Wavee.UI.Tests](test/Wavee.UI.Tests/README.md) ·
+[Wavee.PlayPlay.Tests](test/Wavee.PlayPlay.Tests/README.md).
 
 ## Building
 
@@ -130,7 +147,7 @@ dotnet build -c Release
 dotnet test
 ```
 
-`Wavee.UI.WinUI` builds `Wavee.AudioHost` automatically as an x64 subprocess (via the `BuildAudioHost` MSBuild target). This is normal even on ARM64 Windows — the audio host loads `Spotify.dll` (x86_64) for PlayPlay key derivation, and the OS runs it under built-in x64 emulation. See [Wavee.AudioHost/README.md](Wavee.AudioHost/README.md) for the why.
+`Wavee.UI.WinUI` builds `Wavee.AudioHost` automatically as an x64 subprocess (via the `BuildAudioHost` MSBuild target). This is normal even on ARM64 Windows — the audio host loads `Spotify.dll` (x86_64) for PlayPlay key derivation, and the OS runs it under built-in x64 emulation. See [Wavee.AudioHost/README.md](src/Wavee.AudioHost/README.md) for the why.
 
 ## Technology stack
 
@@ -139,6 +156,7 @@ dotnet test
 | **Framework**   | .NET 10, C# preview                                                        |
 | **UI**          | WinUI 3, Windows App SDK 2.0, CommunityToolkit, ReactiveUI                 |
 | **Audio**       | BASS (DSP), NVorbis (Ogg), PortAudio (output) — out-of-process             |
+| **Video**       | WebView2 EME, Windows Media Playback, Media Foundation                     |
 | **Protocols**   | Protocol Buffers (Google.Protobuf), WebSocket, Mercury, ZStandard, Shannon |
 | **Reactive**    | System.Reactive (Rx.NET)                                                   |
 | **MVVM / DI**   | CommunityToolkit.Mvvm, Microsoft.Extensions.DependencyInjection / Hosting  |
@@ -197,9 +215,9 @@ Three Spotify-property files are deliberately excluded from the public source tr
 | `src/Wavee/Core/Audio/PlayPlayConstants.cs` | Spotify-specific constants used to derive PlayPlay AES keys directly from `Spotify.dll`, used as a fallback when the AP audio-key channel returns a permanent error. | `PlayPlayConstants.Stub.cs` ships in its place; the runtime feature stays disabled. `AudioKeyManager` falls back to AP-only key resolution. |
 | `src/Wavee.AudioHost/PlayPlay/PlayPlayKeyEmulator.cs` | The actual emulator that loads `Spotify.dll` (x86_64) in-process and exercises PlayPlay. | `PlayPlayKeyEmulator.Stub.cs` ships in its place. `Wavee.PlayPlay.Tests` runs against the stub and skips the real test vectors. |
 
-**Why excluded:** these files reproduce Spotify's DRM (the AES decryption stream) and proprietary key-derivation data (PlayPlay constants embedded in `Spotify.dll`). Both are part of Spotify's intellectual property; we're not in a position to redistribute them. The connection-protocol layer (handshake, Shannon cipher, packet framing) is fully open and included — see [Wavee/Core/Crypto/README.md](Wavee/Core/Crypto/README.md) for the legal note.
+**Why excluded:** these files reproduce Spotify's DRM (the AES decryption stream) and proprietary key-derivation data (PlayPlay constants embedded in `Spotify.dll`). Both are part of Spotify's intellectual property; we're not in a position to redistribute them. The connection-protocol layer (handshake, Shannon cipher, packet framing) is fully open and included — see [Wavee/Core/Crypto/README.md](src/Wavee/Core/Crypto/README.md) for the legal note.
 
-**What still works without them:** authentication, session management, Spotify Connect (full controller + target), all metadata APIs (SpClient + Pathfinder), the WinUI app's UI, library sync, search, lyrics, music videos via PlayReady, Connect command issuance, telemetry — everything except the actual decryption of Spotify-encrypted audio files. If you need to play encrypted streams, you'll need to implement audio decryption yourself or obtain proper licensing.
+**What still works without them:** authentication, session management, Spotify Connect (full controller + target), all metadata APIs (SpClient + Pathfinder), the WinUI app's UI, Spotify library sync, search, lyrics, Spotify music videos, Connect command issuance, telemetry, and the feature-flagged local media code paths when enabled — everything except the actual decryption of Spotify-encrypted audio files. If you need to play encrypted streams, you'll need to implement audio decryption yourself or obtain proper licensing.
 
 ## License
 

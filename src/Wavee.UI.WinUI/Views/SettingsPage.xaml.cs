@@ -23,43 +23,56 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
     /// the omnibar's Settings section. Keep this list in sync with the actual settings
     /// UI; the omnibar uses <see cref="SettingsSearchEntry.Matches"/> to filter.
     /// </summary>
-    internal static readonly IReadOnlyList<SettingsSearchEntry> SettingsSearchEntries =
-    [
-        new("General", "App", "general", "appearance", "appearance language display theme zoom locale metadata"),
-        new("Theme", "General", "general", "appearance", "light dark system appearance"),
-        new("App language", "General", "general", "language", "language locale english korean system"),
-        new("Spotify metadata language", "General", "general", "language", "metadata locale language catalog names"),
-        new("Display density", "General", "general", "display", "zoom compact spacious scaling"),
+    internal static readonly IReadOnlyList<SettingsSearchEntry> SettingsSearchEntries = BuildSettingsSearchEntries();
 
-        new("On-device AI", "App", "ai", "availability", "local ai language model summarize explain lyrics"),
-        new("AI availability", "On-device AI", "ai", "availability", "model hardware region install status"),
+    private static IReadOnlyList<SettingsSearchEntry> BuildSettingsSearchEntries()
+    {
+        var entries = new List<SettingsSearchEntry>
+        {
+            new("General", "App", "general", "appearance", "appearance language display theme zoom locale metadata"),
+            new("Theme", "General", "general", "appearance", "light dark system appearance"),
+            new("App language", "General", "general", "language", "language locale english korean system"),
+            new("Spotify metadata language", "General", "general", "language", "metadata locale language catalog names"),
+            new("Display density", "General", "general", "display", "zoom compact spacious scaling"),
 
-        new("Playback & audio", "App", "playback-audio", "queue", "queue autoplay quality normalization lyrics player equalizer eq"),
-        new("Track click behavior", "Playback & audio", "playback-audio", "interaction", "single tap double tap track click"),
-        new("Default play action", "Playback & audio", "playback-audio", "queue", "play clear queue play next play later"),
-        new("Ask before playing", "Playback & audio", "playback-audio", "queue", "prompt replace queue confirm"),
-        new("Autoplay", "Playback & audio", "playback-audio", "queue", "similar songs end playlist album artist"),
-        new("Docked player", "Playback & audio", "playback-audio", "player", "bottom player sidebar floating popup visible"),
-        new("Streaming quality", "Playback & audio", "playback-audio", "audio", "normal high very high 96 160 320 kbps bitrate"),
-        new("Normalize volume", "Playback & audio", "playback-audio", "audio", "normalization loudness volume"),
-        new("Lyrics sources", "Playback & audio", "playback-audio", "lyrics", "lyrics provider source reorder"),
-        new("Equalizer preset", "Playback & audio", "playback-audio", "equalizer", "flat bass boost treble boost vocal radio eq proof"),
-        new("Manual equalizer", "Playback & audio", "playback-audio", "equalizer", "bands gains curve reset"),
+            new("On-device AI", "App", "ai", "availability", "local ai language model summarize explain lyrics"),
+            new("AI availability", "On-device AI", "ai", "availability", "model hardware region install status"),
 
-        new("Storage & local files", "App", "storage", "audio-cache", "cache local files network connection folders"),
-        new("Caching profile", "Storage & local files", "storage", "memory", "memory cache browsing speed"),
-        new("Audio cache", "Storage & local files", "storage", "audio-cache", "enable cache size limit location clear"),
-        new("Clear collection revisions", "Storage & local files", "storage", "audio-cache", "refresh library liked songs albums artists shows resync"),
-        new("Local files", "Storage & local files", "storage", "local-files", "watched folders rescan add folder remove files home shelf"),
-        new("Connection", "Storage & local files", "storage", "connection", "auto reconnect timeout network"),
+            new("Playback & audio", "App", "playback-audio", "queue", "queue autoplay quality normalization lyrics player equalizer eq"),
+            new("Track click behavior", "Playback & audio", "playback-audio", "interaction", "single tap double tap track click"),
+            new("Default play action", "Playback & audio", "playback-audio", "queue", "play clear queue play next play later"),
+            new("Ask before playing", "Playback & audio", "playback-audio", "queue", "prompt replace queue confirm"),
+            new("Autoplay", "Playback & audio", "playback-audio", "queue", "similar songs end playlist album artist"),
+            new("Docked player", "Playback & audio", "playback-audio", "player", "bottom player sidebar floating popup visible"),
+            new("Streaming quality", "Playback & audio", "playback-audio", "audio", "normal high very high 96 160 320 kbps bitrate"),
+            new("Normalize volume", "Playback & audio", "playback-audio", "audio", "normalization loudness volume"),
+            new("Lyrics sources", "Playback & audio", "playback-audio", "lyrics", "lyrics provider source reorder"),
+            new("Equalizer preset", "Playback & audio", "playback-audio", "equalizer", "flat bass boost treble boost vocal radio eq proof"),
+            new("Manual equalizer", "Playback & audio", "playback-audio", "equalizer", "bands gains curve reset"),
 
-        new("Diagnostics", "App", "diagnostics", "health", "configuration logs clock sync audio health troubleshooting"),
-        new("Clock sync", "Diagnostics", "diagnostics", "clock", "server time sync interval"),
-        new("Logs", "Diagnostics", "diagnostics", "logs", "logging verbose new logs past logs filter copy export"),
-        new("Verbose logging", "Diagnostics", "diagnostics", "logs", "logging diagnostic output bug reports audio engine restart"),
-        new("Spotify Connect events", "Diagnostics", "diagnostics", "connect-events", "connect updates devices remote state local device cluster dealer put state"),
-        new("About", "App", "about", "updates", "version update app information")
-    ];
+            new("Storage & local files", "App", "storage", "audio-cache", "cache local files network connection folders"),
+            new("Caching profile", "Storage & local files", "storage", "memory", "memory cache browsing speed"),
+            new("Audio cache", "Storage & local files", "storage", "audio-cache", "enable cache size limit location clear"),
+            new("Clear collection revisions", "Storage & local files", "storage", "audio-cache", "refresh library liked songs albums artists shows resync"),
+            new("Local files", "Storage & local files", "storage", "local-files", "watched folders rescan add folder remove files home shelf"),
+            new("Connection", "Storage & local files", "storage", "connection", "auto reconnect timeout network"),
+        };
+
+        if (AppFeatureFlags.DiagnosticsEnabled)
+        {
+            entries.AddRange(
+            [
+                new("Diagnostics", "App", "diagnostics", "health", "configuration logs clock sync audio health troubleshooting"),
+                new("Clock sync", "Diagnostics", "diagnostics", "clock", "server time sync interval"),
+                new("Logs", "Diagnostics", "diagnostics", "logs", "logging verbose new logs past logs filter copy export"),
+                new("Verbose logging", "Diagnostics", "diagnostics", "logs", "logging diagnostic output bug reports audio engine restart"),
+                new("Spotify Connect events", "Diagnostics", "diagnostics", "connect-events", "connect updates devices remote state local device cluster dealer put state"),
+            ]);
+        }
+
+        entries.Add(new("About", "App", "about", "updates", "version update app information"));
+        return entries.AsReadOnly();
+    }
 
     public SettingsViewModel ViewModel { get; }
 
@@ -88,6 +101,9 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
 
         // EQ settings are sent to AudioHost via IPC through IAudioPipelineControl.
         ViewModel.InitializeEqualizer(Ioc.Default.GetService<IAudioPipelineControl>());
+
+        if (!AppFeatureFlags.DiagnosticsEnabled)
+            DiagnosticsItem.Visibility = Visibility.Collapsed;
 
         SettingsNavigation.SelectedItem = GeneralItem;
         ShowSection("general");
@@ -215,12 +231,18 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
         ShowSection(normalizedTag);
     }
 
-    private static string NormalizeTag(string tag) => tag switch
+    private static string NormalizeTag(string tag)
     {
-        "playback" or "audio" => "playback-audio",
-        "connect" => "diagnostics",
-        _ => tag
-    };
+        if (!AppFeatureFlags.DiagnosticsEnabled && tag is "diagnostics" or "connect")
+            return "general";
+
+        return tag switch
+        {
+            "playback" or "audio" => "playback-audio",
+            "connect" => "diagnostics",
+            _ => tag
+        };
+    }
 
     private void ViewAllSettingsGroups_Click(object sender, RoutedEventArgs e)
     {
@@ -267,7 +289,7 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
             "ai" => AiItem,
             "playback" or "audio" or "playback-audio" => PlaybackAudioItem,
             "storage" => StorageItem,
-            "diagnostics" or "connect" => DiagnosticsItem,
+            "diagnostics" or "connect" when AppFeatureFlags.DiagnosticsEnabled => DiagnosticsItem,
             "about" => AboutItem,
             _ => GeneralItem
         };
@@ -305,7 +327,7 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
                     Ioc.Default.GetService<AiNotificationService>())),
             "playback-audio" => _playbackAudioSection ??= new PlaybackAudioSettingsSection(ViewModel),
             "storage" => _storageSection ??= new StorageNetworkSettingsSection(ViewModel),
-            "diagnostics" => _diagnosticsSection ??= new DiagnosticsSettingsSection(ViewModel),
+            "diagnostics" when AppFeatureFlags.DiagnosticsEnabled => _diagnosticsSection ??= new DiagnosticsSettingsSection(ViewModel),
             "about" => _aboutSection ??= new AboutSettingsSection(ViewModel),
             _ => _generalSection ??= new GeneralSettingsSection(ViewModel)
         };
@@ -325,7 +347,7 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
             filter.ApplySearchFilter(groupKey);
         }
 
-        if (tag == "diagnostics" && _activeSectionTag != "diagnostics")
+        if (AppFeatureFlags.DiagnosticsEnabled && tag == "diagnostics" && _activeSectionTag != "diagnostics")
             ViewModel.StartAudioDiagnostics();
 
         _activeSectionTag = tag;

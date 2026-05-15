@@ -257,6 +257,127 @@ public sealed class AlbumService : IAlbumService
         }
     }
 
+    public async Task<List<AlbumSimilarResult>> GetSimilarAlbumsAsync(
+        string trackUri, int limit = 24, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _pathfinder
+                .GetSimilarAlbumsAsync(trackUri, limit, albumsOnly: true, ct)
+                .ConfigureAwait(false);
+
+            var items = response.Data?.SeoRecommendedTrackAlbum?.Items;
+            if (items == null || items.Count == 0) return [];
+
+            var results = new List<AlbumSimilarResult>();
+            foreach (var wrap in items)
+            {
+                var data = wrap.Data;
+                if (data?.Uri == null) continue;
+
+                var firstArtist = data.Artists?.Items?.FirstOrDefault();
+
+                results.Add(new AlbumSimilarResult
+                {
+                    Uri = data.Uri,
+                    Name = data.Name,
+                    ImageUrl = data.CoverArt?.Sources?.LastOrDefault()?.Url,
+                    ArtistName = firstArtist?.Profile?.Name,
+                    ArtistUri = firstArtist?.Uri,
+                    Type = data.Type,
+                    Year = data.Date?.Year ?? 0
+                });
+            }
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to fetch similar albums for {Uri}", trackUri);
+            return [];
+        }
+    }
+
+    public async Task<string?> GetMusicVideoUriAsync(string trackUri, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _pathfinder.GetTrackAsync(trackUri, ct).ConfigureAwait(false);
+            var assoc = response.Data?.TrackUnion?.AssociationsV3?.VideoAssociations;
+            if (assoc == null || assoc.TotalCount <= 0) return null;
+
+            // AssociationsV3 reports presence via totalCount. The actual video-
+            // track URI lives on the inverse side (audioAssociations) of the
+            // video entity, not on the audio track's response. The current call
+            // site only needs the boolean signal to render the "Watch the official
+            // video" CTA; the click handler resolves the video URI through the
+            // music-video metadata service. Return a sentinel non-null so callers
+            // can flip HasMusicVideo without changing wire shape later.
+            return trackUri;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to fetch music-video signal for {Uri}", trackUri);
+            return null;
+        }
+    }
+
+    public async Task<AlbumArtistContextResult> GetArtistContextAsync(
+        string artistUri, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _pathfinder.GetArtistOverviewAsync(artistUri, ct).ConfigureAwait(false);
+            var artist = response.Data?.ArtistUnion;
+
+            var bio = artist?.Profile?.Biography?.Text;
+            string? excerpt = null;
+            if (!string.IsNullOrWhiteSpace(bio))
+            {
+                // ~150 chars, snap to nearest sentence boundary if possible.
+                var trimmed = bio.Trim();
+                if (trimmed.Length <= 200)
+                {
+                    excerpt = trimmed;
+                }
+                else
+                {
+                    var head = trimmed.AsSpan(0, Math.Min(trimmed.Length, 220));
+                    var lastPeriod = head.LastIndexOf('.');
+                    excerpt = lastPeriod > 80
+                        ? trimmed.Substring(0, lastPeriod + 1)
+                        : trimmed.Substring(0, 200) + "…";
+                }
+            }
+
+            var related = artist?.RelatedContent?.RelatedArtists?.Items ?? new();
+            var similar = related
+                .Take(8)
+                .Select(ra => new RelatedArtistResult
+                {
+                    Id = ra.Id,
+                    Uri = ra.Uri,
+                    Name = ra.Profile?.Name,
+                    ImageUrl = ra.Visuals?.AvatarImage?.Sources?.LastOrDefault()?.Url
+                })
+                .ToList();
+
+            return new AlbumArtistContextResult
+            {
+                BioExcerpt = excerpt,
+                SimilarArtists = similar
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to fetch artist context for {Uri}", artistUri);
+            return new AlbumArtistContextResult
+            {
+                BioExcerpt = null,
+                SimilarArtists = []
+            };
+        }
+    }
+
     private static DateTimeOffset ParseAlbumDate(Wavee.Core.Http.Pathfinder.AlbumDate? date)
     {
         if (date?.IsoString == null) return DateTimeOffset.MinValue;

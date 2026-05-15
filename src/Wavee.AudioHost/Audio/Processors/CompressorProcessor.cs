@@ -24,7 +24,7 @@ public sealed class CompressorProcessor : IAudioProcessor
     private float _makeupGainLinear;
 
     public string ProcessorName => "Compressor";
-    public bool IsEnabled { get; set; } = true;
+    public bool IsEnabled { get; set; }
 
     public Task InitializeAsync(AudioFormat format, CancellationToken cancellationToken = default)
     {

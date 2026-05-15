@@ -236,6 +236,15 @@ public interface IPathfinderClient
         string trackUri, int limit = 20, CancellationToken ct = default);
 
     /// <summary>
+    /// Fetches similar albums seeded from a track URI. Backed by the
+    /// <c>similarAlbumsBasedOnThisTrack</c> persisted query. Drives the
+    /// AlbumPage "For this mood" / "Similar albums" shelf — seed with the
+    /// album's most-played track (fall back to <c>Tracks[0]</c>).
+    /// </summary>
+    Task<SimilarAlbumsBasedOnThisTrackResponse> GetSimilarAlbumsAsync(
+        string trackUri, int limit = 24, bool albumsOnly = true, CancellationToken ct = default);
+
+    /// <summary>
     /// Full track payload — playcount, duration, content rating, album, and
     /// the first artist's discography. Backed by the <c>getTrack</c> persisted
     /// query. Used by the Now Playing video page hero to surface

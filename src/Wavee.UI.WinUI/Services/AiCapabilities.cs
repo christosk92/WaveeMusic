@@ -132,6 +132,15 @@ public sealed class AiCapabilities
         IsAiAvailableAndEnabled && _settings.Settings.AiLyricsSummarizeEnabled;
 
     /// <summary>
+    /// Per-feature gate: artist-page "About this artist" excerpt synthesised on-device
+    /// when Spotify's ArtistOverview returns no biography. The artist page hides the
+    /// excerpt entirely when this gate is closed (so the surface is honest about why
+    /// it can't summarise — no half-rendered placeholder).
+    /// </summary>
+    public bool IsArtistBioSummarizeEnabled =>
+        IsAiAvailableAndEnabled && _settings.Settings.AiBioSummarizeEnabled;
+
+    /// <summary>
     /// Triggers the Phi Silica model download/init if not already ready. Called
     /// on the first opt-in click. Returns true if the model is ready to serve
     /// requests; false if the user is on incompatible hardware or the install
@@ -209,6 +218,7 @@ public sealed class AiCapabilities
     public string DescribeDiagnosticState()
         => $"hardware={LanguageModelHardwareAvailable}, regionAllowed={_regionAllowed}, userOptedIn={UserOptedIn}, " +
            $"lyricsExplain={_settings.Settings.AiLyricsExplainEnabled}, lyricsMeaning={_settings.Settings.AiLyricsSummarizeEnabled}, " +
+           $"artistBio={_settings.Settings.AiBioSummarizeEnabled}, " +
            $"laf={_lafUnlockStatusLabel ?? "<not probed>"}, " +
            $"status=\"{DescribeStatus()}\"";
 

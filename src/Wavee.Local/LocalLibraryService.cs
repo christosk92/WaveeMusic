@@ -1,9 +1,14 @@
 using System.Reactive.Subjects;
+using System.Text.Json.Serialization;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Wavee.Local.Classification;
+using Wavee.Local.Models;
 
 namespace Wavee.Local;
+
+[JsonSerializable(typeof(MetadataPatch))]
+internal partial class LocalLibraryJsonContext : JsonSerializerContext { }
 
 /// <summary>
 /// Watched-folder management + read API for the local file library. Indexing
@@ -1066,7 +1071,7 @@ public sealed class LocalLibraryService : ILocalLibraryService, IDisposable
         if (string.IsNullOrWhiteSpace(json)) return null;
         try
         {
-            return System.Text.Json.JsonSerializer.Deserialize<Models.MetadataPatch>(json);
+            return System.Text.Json.JsonSerializer.Deserialize(json, LocalLibraryJsonContext.Default.MetadataPatch);
         }
         catch
         {

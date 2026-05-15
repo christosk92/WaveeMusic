@@ -18,17 +18,7 @@ namespace Wavee.UI.WinUI.Services;
 /// </summary>
 public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
 {
-    // Lowered from 1.5 GB → 800 MB after the 2026-05-08 native-heap diagnosis.
-    // VMMap shows ~440 MB lives in the OS COMPATABILITY heap (BitmapImage decode,
-    // WinRT marshalling, page composition retention) and ~580 MB in the .NET
-    // runtime's reserved private region. The earlier 800 MB threshold caused
-    // recurring stutter only because a separate x:Bind/VM-sub leak held the
-    // process at 838 MB indefinitely; with that leak fixed and pages now nulling
-    // their image Sources on Unloaded, steady-state should sit ~500-600 MB and
-    // 800 MB cleanly catches genuine growth without firing on healthy sessions.
-    // The TrimWorkingSet path no longer GC.Collects so escalation cost is just
-    // a syscall, not a UI-thread freeze.
-    public const long DefaultBudgetBytes = 800L * 1024 * 1024;
+    public const long DefaultBudgetBytes = 800L * 1024 * 1024 * 2;
 
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan NormalCooldown = TimeSpan.FromSeconds(30);

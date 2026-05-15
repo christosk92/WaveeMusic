@@ -439,6 +439,7 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
                 var cached = await _cacheService.GetTracksAsync(trackOnlyUris, ct);
                 var uncached = trackOnlyUris.Where(u =>
                     !cached.TryGetValue(u, out var entry) || string.IsNullOrEmpty(entry.ImageUrl)).ToList();
+                var fetchedImages = new Dictionary<string, string?>(StringComparer.Ordinal);
 
                 if (uncached.Count > 0)
                 {
@@ -446,20 +447,29 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
                     {
                         var batch = uncached
                             .Select(uri => (uri, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.TrackV4 }));
-                        await _metadataClient.GetBatchedExtensionsAsync(batch, ct);
+                        var response = await _metadataClient.GetBatchedExtensionsAsync(batch, ct);
+                        foreach (var uri in uncached)
+                        {
+                            var imageUrl = GetTrackImageUrl(response, uri);
+                            if (!string.IsNullOrEmpty(imageUrl))
+                                fetchedImages[uri] = imageUrl;
+                        }
                     }
                     catch (Exception ex)
                     {
                         _logger?.LogWarning(ex, "Track-image enrichment failed for {Count} URIs", uncached.Count);
                     }
 
-                    var newCached = await _cacheService.GetTracksAsync(uncached, ct);
+                    var remaining = uncached.Where(uri => !fetchedImages.ContainsKey(uri)).ToList();
+                    var newCached = await _cacheService.GetTracksAsync(remaining, ct);
                     foreach (var (uri, entry) in newCached)
                         cached[uri] = entry;
                 }
 
                 foreach (var uri in trackOnlyUris)
-                    result[uri] = cached.TryGetValue(uri, out var entry) ? entry.ImageUrl : null;
+                    result[uri] = fetchedImages.TryGetValue(uri, out var imageUrl)
+                        ? imageUrl
+                        : cached.TryGetValue(uri, out var entry) ? entry.ImageUrl : null;
             }
 
             // Episodes go through the EpisodeV4 batched extension. This matches
@@ -507,6 +517,25 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
     }
 
     // ── Helpers ──
+
+    private static string? GetTrackImageUrl(BatchedExtensionResponse response, string uri)
+    {
+        var extData = response.GetExtensionData(uri, ExtensionKind.TrackV4);
+        var track = extData?.UnpackAs<Track>();
+        var images = track?.Album?.CoverGroup?.Image;
+        if (images is not { Count: > 0 })
+            return null;
+
+        var image = images
+            .OrderByDescending(i => i.Size == Image.Types.Size.Default ? 2 :
+                                    i.Size == Image.Types.Size.Large ? 1 : 0)
+            .FirstOrDefault();
+        if (image?.FileId is null || image.FileId.Length == 0)
+            return null;
+
+        var imageId = Convert.ToHexString(image.FileId.ToByteArray()).ToLowerInvariant();
+        return $"https://i.scdn.co/image/{imageId}";
+    }
 
     private static bool IsSpotifyTrackUri(string? uri)
         => uri?.StartsWith("spotify:track:", StringComparison.Ordinal) == true;

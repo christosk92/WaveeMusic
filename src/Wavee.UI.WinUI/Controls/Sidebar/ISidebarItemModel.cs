@@ -47,6 +47,11 @@ public interface ISidebarItemModel : INotifyPropertyChanged
     object ToolTip { get; }
 
     /// <summary>
+    /// Whether the sidebar row can be invoked.
+    /// </summary>
+    bool IsEnabled { get => true; }
+
+    /// <summary>
     /// Indicates whether the children should have an indentation or not.
     /// </summary>
     bool PaddedItem { get; }

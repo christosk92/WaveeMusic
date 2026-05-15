@@ -40,14 +40,25 @@ public sealed class ShyHeaderController : IDisposable
     private bool _isRunning;
     private bool _recheckPending;
     private bool _disposed;
+    private bool _suppressed;
 
     /// <summary>
     /// When true, the controller short-circuits its scroll handler and
     /// <see cref="EvaluateAsync"/>. Set this around content-reset flows
-    /// (e.g. ArtistPage's <c>LoadNewContent</c>) so the shy pill doesn't
+    /// (e.g. ArtistPage's <c>OnNavigatedTo</c>) so the shy pill doesn't
     /// flash while the page swaps to a new entity.
     /// </summary>
-    public bool Suppressed { get; set; }
+    public bool Suppressed
+    {
+        get => _suppressed;
+        set
+        {
+            if (_suppressed == value) return;
+            _suppressed = value;
+            _logger?.LogDebug("[shy] suppressed.set val={Val} pinned={Pinned} running={Running}",
+                value, _isPinned, _isRunning);
+        }
+    }
 
     /// <param name="scrollView">ScrollView driving the fade + pin check.</param>
     /// <param name="hero">Element whose <c>ActualHeight</c> defines the hero
@@ -120,13 +131,16 @@ public sealed class ShyHeaderController : IDisposable
     /// </summary>
     public void Reset()
     {
+        var wasPinned = _isPinned;
         _isPinned = false;
         _isRunning = false;
         _recheckPending = false;
         if (_source is not null) _source.Visibility = Visibility.Visible;
         if (_target is not null) _target.Visibility = Visibility.Collapsed;
         try { _transition.Reset(toInitialState: true); }
-        catch (Exception ex) { _logger?.LogDebug(ex, "Shy header reset failed."); }
+        catch (Exception ex) { _logger?.LogDebug(ex, "[shy] reset.transition.failed"); }
+        _logger?.LogDebug("[shy] reset wasPinned={WasPinned} suppressed={Suppressed}",
+            wasPinned, _suppressed);
     }
 
     /// <summary>
@@ -137,7 +151,8 @@ public sealed class ShyHeaderController : IDisposable
     public void Stop()
     {
         try { _transition.Stop(); }
-        catch (Exception ex) { _logger?.LogDebug(ex, "Shy header stop failed."); }
+        catch (Exception ex) { _logger?.LogDebug(ex, "[shy] stop.failed"); }
+        _logger?.LogDebug("[shy] stop pinned={Pinned} running={Running}", _isPinned, _isRunning);
     }
 
     /// <summary>
@@ -194,11 +209,16 @@ public sealed class ShyHeaderController : IDisposable
             if (!_canEvaluate()) return;
             if (!_hero.IsLoaded || !_target.IsLoaded) return;
 
-            bool shouldPin = _scrollView.VerticalOffset >= _pinOffset();
+            var offset = _scrollView.VerticalOffset;
+            var pin = _pinOffset();
+            bool shouldPin = offset >= pin;
             if (shouldPin == _isPinned) return;
 
             _isRunning = true;
             _recheckPending = false;
+            _logger?.LogDebug(
+                "[shy] eval.transition direction={Direction} offset={Offset:F0} pin={Pin:F0} heroH={HeroH:F0}",
+                shouldPin ? "forward" : "reverse", offset, pin, _hero.ActualHeight);
             try
             {
                 if (shouldPin) await _transition.StartAsync();
@@ -207,7 +227,7 @@ public sealed class ShyHeaderController : IDisposable
             }
             catch (Exception ex)
             {
-                _logger?.LogDebug(ex, "Shy header transition skipped.");
+                _logger?.LogDebug(ex, "[shy] eval.transition.failed");
                 return;
             }
             finally

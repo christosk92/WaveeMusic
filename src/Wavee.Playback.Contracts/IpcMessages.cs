@@ -289,6 +289,12 @@ public sealed class PlaybackStateSnapshot
     [JsonPropertyName("trackAlbum")]
     public string? TrackAlbum { get; init; }
 
+    [JsonPropertyName("normalizationGainDb")]
+    public float? NormalizationGainDb { get; init; }
+
+    [JsonPropertyName("normalizationPeak")]
+    public float? NormalizationPeak { get; init; }
+
     [JsonPropertyName("albumUri")]
     public string? AlbumUri { get; init; }
 
@@ -573,6 +579,9 @@ public sealed class AudioHostConfig
 
     [JsonPropertyName("normalizationEnabled")]
     public bool NormalizationEnabled { get; init; }
+
+    [JsonPropertyName("audioPreset")]
+    public string? AudioPreset { get; init; }
 
     [JsonPropertyName("equalizerEnabled")]
     public bool EqualizerEnabled { get; init; }

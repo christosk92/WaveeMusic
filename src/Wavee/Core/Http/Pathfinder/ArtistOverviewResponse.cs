@@ -62,6 +62,24 @@ public sealed class ArtistUnion
 
     [JsonPropertyName("goods")]
     public ArtistGoods? Goods { get; init; }
+
+    [JsonPropertyName("onPlatformReputationTrait")]
+    public OnPlatformReputationTrait? OnPlatformReputationTrait { get; init; }
+}
+
+public sealed class OnPlatformReputationTrait
+{
+    [JsonPropertyName("verification")]
+    public ArtistVerificationTrait? Verification { get; init; }
+}
+
+public sealed class ArtistVerificationTrait
+{
+    [JsonPropertyName("isVerified")]
+    public bool IsVerified { get; init; }
+
+    [JsonPropertyName("isRegistered")]
+    public bool IsRegistered { get; init; }
 }
 
 // ── Profile ──
@@ -82,6 +100,10 @@ public sealed class AoArtistProfile
 
     [JsonPropertyName("pinnedItem")]
     public ArtistPinnedItem? PinnedItem { get; init; }
+
+    /// <summary>Artist-owned official playlists.</summary>
+    [JsonPropertyName("playlistsV2")]
+    public ArtistPlaylistCollection? PlaylistsV2 { get; init; }
 }
 
 public sealed class ArtistBiography
@@ -566,6 +588,88 @@ public sealed class ArtistRelatedContent
 {
     [JsonPropertyName("relatedArtists")]
     public ArtistRelatedArtists? RelatedArtists { get; init; }
+
+    /// <summary>Compilations / soundtracks the artist appears on but doesn't own.
+    /// Surfaced as the "Appears On" discography shelf in V4A.</summary>
+    [JsonPropertyName("appearsOn")]
+    public ArtistReleaseGroup? AppearsOn { get; init; }
+
+    /// <summary>Editorial / Spotify-curated playlists the artist is featured on.</summary>
+    [JsonPropertyName("featuringV2")]
+    public ArtistPlaylistCollection? FeaturingV2 { get; init; }
+
+    /// <summary>User-curated playlists where the artist was "discovered on" —
+    /// algorithmic listener-driven discovery surface.</summary>
+    [JsonPropertyName("discoveredOnV2")]
+    public ArtistPlaylistCollection? DiscoveredOnV2 { get; init; }
+}
+
+// ── Playlist collections (PlaylistsV2 / FeaturingV2 / DiscoveredOnV2) ──
+
+public sealed class ArtistPlaylistCollection
+{
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
+
+    [JsonPropertyName("items")]
+    public List<ArtistPlaylistItem>? Items { get; init; }
+}
+
+public sealed class ArtistPlaylistItem
+{
+    /// <summary>Spotify uses "GenericError" on rows whose data couldn't be
+    /// resolved (taken-down playlists, region-locked, etc.). Filter at the
+    /// mapper boundary so the UI never sees them.</summary>
+    [JsonPropertyName("__typename")]
+    public string? Typename { get; init; }
+
+    [JsonPropertyName("data")]
+    public ArtistPlaylistItemData? Data { get; init; }
+}
+
+public sealed class ArtistPlaylistItemData
+{
+    [JsonPropertyName("__typename")]
+    public string? Typename { get; init; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; init; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; init; }
+
+    [JsonPropertyName("images")]
+    public ArtistPlaylistImages? Images { get; init; }
+
+    [JsonPropertyName("ownerV2")]
+    public ArtistPlaylistOwnerWrapper? OwnerV2 { get; init; }
+}
+
+public sealed class ArtistPlaylistImages
+{
+    [JsonPropertyName("items")]
+    public List<ArtistPlaylistImage>? Items { get; init; }
+}
+
+public sealed class ArtistPlaylistImage
+{
+    [JsonPropertyName("sources")]
+    public List<ArtistImageSource>? Sources { get; init; }
+}
+
+public sealed class ArtistPlaylistOwnerWrapper
+{
+    [JsonPropertyName("data")]
+    public ArtistPlaylistOwner? Data { get; init; }
+}
+
+public sealed class ArtistPlaylistOwner
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
 }
 
 public sealed class ArtistRelatedArtists
@@ -701,6 +805,9 @@ public sealed class ArtistGoods
 {
     [JsonPropertyName("concerts")]
     public ArtistConcerts? Concerts { get; init; }
+
+    [JsonPropertyName("merch")]
+    public ArtistMerch? Merch { get; init; }
 }
 
 public sealed class ArtistConcerts
@@ -745,11 +852,55 @@ public sealed class ArtistConcertLocation
     public string? Name { get; init; }
 }
 
+public sealed class ArtistMerch
+{
+    [JsonPropertyName("items")]
+    public List<ArtistMerchItem>? Items { get; init; }
+
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
+}
+
+public sealed class ArtistMerchItem
+{
+    /// <summary>Display name of the merch item (Spotify ships it under <c>nameV2</c>).</summary>
+    [JsonPropertyName("nameV2")]
+    public string? NameV2 { get; init; }
+
+    /// <summary>Pre-formatted price string, e.g. "US$29.99".</summary>
+    [JsonPropertyName("price")]
+    public string? Price { get; init; }
+
+    /// <summary>Long-form product copy.</summary>
+    [JsonPropertyName("description")]
+    public string? Description { get; init; }
+
+    [JsonPropertyName("image")]
+    public ArtistMerchImage? Image { get; init; }
+
+    /// <summary>Spotify URI (e.g. <c>spotify:merch:…</c>).</summary>
+    [JsonPropertyName("uri")]
+    public string? Uri { get; init; }
+
+    /// <summary>External Spotify Shop URL; opened in browser via WebPagePopupNavigator.</summary>
+    [JsonPropertyName("url")]
+    public string? Url { get; init; }
+}
+
+public sealed class ArtistMerchImage
+{
+    /// <summary>Reuses <see cref="ArtistImageSource"/> — same url/width/height shape.</summary>
+    [JsonPropertyName("sources")]
+    public List<ArtistImageSource>? Sources { get; init; }
+}
+
 // ── JSON Source Generation ──
 
 [JsonSerializable(typeof(ArtistOverviewResponse))]
 [JsonSerializable(typeof(ArtistOverviewData))]
 [JsonSerializable(typeof(ArtistUnion))]
+[JsonSerializable(typeof(OnPlatformReputationTrait))]
+[JsonSerializable(typeof(ArtistVerificationTrait))]
 [JsonSerializable(typeof(AoArtistProfile))]
 [JsonSerializable(typeof(AoArtistVisuals))]
 [JsonSerializable(typeof(ArtistHeaderImage))]
@@ -776,6 +927,17 @@ public sealed class ArtistConcertLocation
 [JsonSerializable(typeof(ArtistConcerts))]
 [JsonSerializable(typeof(ArtistConcertItem))]
 [JsonSerializable(typeof(ArtistConcertData))]
+[JsonSerializable(typeof(ArtistConcertLocation))]
+[JsonSerializable(typeof(ArtistMerch))]
+[JsonSerializable(typeof(ArtistMerchItem))]
+[JsonSerializable(typeof(ArtistMerchImage))]
+[JsonSerializable(typeof(ArtistPlaylistCollection))]
+[JsonSerializable(typeof(ArtistPlaylistItem))]
+[JsonSerializable(typeof(ArtistPlaylistItemData))]
+[JsonSerializable(typeof(ArtistPlaylistImages))]
+[JsonSerializable(typeof(ArtistPlaylistImage))]
+[JsonSerializable(typeof(ArtistPlaylistOwnerWrapper))]
+[JsonSerializable(typeof(ArtistPlaylistOwner))]
 [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
 internal partial class ArtistOverviewJsonContext : JsonSerializerContext
 {

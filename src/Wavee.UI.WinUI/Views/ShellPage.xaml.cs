@@ -714,18 +714,23 @@ public sealed partial class ShellPage : Page
                     NavigationHelpers.OpenPodcastBrowse(openInNewTab);
                     break;
                 case "LocalFiles":
+                    if (!AppFeatureFlags.LocalFilesEnabled) break;
                     NavigationHelpers.OpenLocalLibrary(openInNewTab);
                     break;
                 case "LocalShows":
+                    if (!AppFeatureFlags.LocalFilesEnabled) break;
                     NavigationHelpers.OpenLocalShows(openInNewTab);
                     break;
                 case "LocalMovies":
+                    if (!AppFeatureFlags.LocalFilesEnabled) break;
                     NavigationHelpers.OpenLocalMovies(openInNewTab);
                     break;
                 case "LocalMusic":
+                    if (!AppFeatureFlags.LocalFilesEnabled) break;
                     NavigationHelpers.OpenLocalMusic(openInNewTab);
                     break;
                 case "LocalMusicVideos":
+                    if (!AppFeatureFlags.LocalFilesEnabled) break;
                     NavigationHelpers.OpenLocalMusicVideos(openInNewTab);
                     break;
                 default:

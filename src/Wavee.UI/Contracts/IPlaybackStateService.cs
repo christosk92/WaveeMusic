@@ -34,6 +34,8 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     string? CurrentAlbumArtLarge { get; }
     string? CurrentArtistId { get; }
     string? CurrentAlbumId { get; }
+    float? CurrentTrackNormalizationGainDb { get; }
+    float? CurrentTrackNormalizationPeak { get; }
     IReadOnlyList<ArtistCredit>? CurrentArtists { get; }
 
     string? CurrentOriginalTrackId { get; }

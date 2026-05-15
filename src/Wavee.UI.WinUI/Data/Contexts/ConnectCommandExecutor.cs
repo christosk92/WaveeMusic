@@ -511,15 +511,41 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
                 ["uri"] = uri,
                 ["uid"] = uid
             };
+
+            // Inline per-track Spotify identity under wavee.* metadata keys so the
+            // orchestrator can hydrate QueueTrack.AlbumUri / ArtistUri / Album /
+            // Title / IsExplicit even when the linked-local-video path short-circuits
+            // Pathfinder metadata resolution. Without these keys the player bar's
+            // artist / title clicks for a Spotify track playing through a local
+            // video file would carry the local-file's "Unknown" URIs.
+            Dictionary<string, string>? mergedMd = null;
             if (metadata is { Count: > 0 })
             {
-                var md = new Dictionary<string, object>(metadata.Count);
-                foreach (var kv in metadata) md[kv.Key] = kv.Value ?? string.Empty;
-                wireTrack["metadata"] = md;
+                mergedMd = new Dictionary<string, string>(metadata.Count);
+                foreach (var kv in metadata) mergedMd[kv.Key] = kv.Value ?? string.Empty;
             }
+            if (useRichTracks)
+            {
+                var rt = richTracks![i];
+                if (!string.IsNullOrEmpty(rt.AlbumName)) { mergedMd ??= new(); mergedMd["wavee.album_name"]  = rt.AlbumName!;  }
+                if (!string.IsNullOrEmpty(rt.AlbumUri))  { mergedMd ??= new(); mergedMd["wavee.album_uri"]   = rt.AlbumUri!;   }
+                if (!string.IsNullOrEmpty(rt.ArtistUri)) { mergedMd ??= new(); mergedMd["wavee.artist_uri"]  = rt.ArtistUri!;  }
+                if (!string.IsNullOrEmpty(rt.ArtistName)){ mergedMd ??= new(); mergedMd["wavee.artist_name"] = rt.ArtistName;  }
+                if (!string.IsNullOrEmpty(rt.Title))     { mergedMd ??= new(); mergedMd["wavee.title"]       = rt.Title;       }
+                if (rt.IsExplicit)                        { mergedMd ??= new(); mergedMd["wavee.is_explicit"] = "true";        }
+                if (rt.DurationMs > 0)                    { mergedMd ??= new(); mergedMd["wavee.duration_ms"] = ((long)rt.DurationMs).ToString(System.Globalization.CultureInfo.InvariantCulture); }
+                if (!string.IsNullOrEmpty(rt.AlbumArt))   { mergedMd ??= new(); mergedMd["wavee.image_url"]   = rt.AlbumArt!;   }
+            }
+            if (mergedMd is { Count: > 0 })
+            {
+                var wireMd = new Dictionary<string, object>(mergedMd.Count);
+                foreach (var kv in mergedMd) wireMd[kv.Key] = kv.Value;
+                wireTrack["metadata"] = wireMd;
+            }
+
             tracks.Add(wireTrack);
 
-            pageTracks.Add(new Wavee.Connect.Commands.PageTrack(uri, uid) { Metadata = metadata });
+            pageTracks.Add(new Wavee.Connect.Commands.PageTrack(uri, uid) { Metadata = mergedMd });
         }
 
         var contextUri = context?.ContextUri ?? "spotify:internal:queue";

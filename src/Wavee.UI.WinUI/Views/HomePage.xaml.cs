@@ -15,6 +15,7 @@ using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Controls.Layouts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -43,6 +44,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     private const int ScrollRestoreRetryDelayMs = 16;
     private bool _isRestoringScroll;
     private int _scrollRestoreGeneration;
+    private int _layoutRecoveryGeneration;
 
     // HeroCarousel.CurrentAccent registration token — set in HomePage_Loaded,
     // cleared in HomePage_Unloaded. The carousel publishes a per-frame RGB-lerped
@@ -305,16 +307,17 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
                 Bindings?.Update();
             }
 
-            if (_trimmedForNavigationCache)
+            var restoredFromTrim = _trimmedForNavigationCache;
+            if (restoredFromTrim)
             {
                 RestoreFromNavigationCache();
-                return;
             }
 
             // Rehydrate rebuilds Sections + Chips from the cached home-feed
             // response — paired with HibernateForNavigation on OnNavigatedFrom.
             // Cheap (no network); avoids holding the parsed tree while away.
-            ViewModel.ResumeFromNavigationCache();
+            if (!restoredFromTrim)
+                ViewModel.ResumeFromNavigationCache();
         }
         await ViewModel.RefreshLocalSectionAsync();
     }
@@ -395,10 +398,13 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
             return;
 
         _trimmedForNavigationCache = false;
+        _isNavigatedAway = false;
         BeginScrollRestoreIfNeeded();
+        ResetRegionsLayoutCache();
         AttachSectionsRepeater();
         ViewModel.ResumeFromNavigationCache();
         TryApplyPendingSleepState();
+        QueueRestoredLayoutRefresh();
     }
 
     public void Dispose()
@@ -443,6 +449,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
             return;
 
         RegionsRepeater.ItemsSource = null;
+        ResetRegionsLayoutCache();
         _sectionsDetachedForNavigationCache = true;
     }
 
@@ -451,8 +458,36 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         if (!_sectionsDetachedForNavigationCache || RegionsRepeater == null)
             return;
 
+        ResetRegionsLayoutCache();
         RegionsRepeater.ItemsSource = ViewModel.HeroAdapter.Regions;
         _sectionsDetachedForNavigationCache = false;
+        QueueRestoredLayoutRefresh();
+    }
+
+    private void ResetRegionsLayoutCache()
+    {
+        if (RegionsRepeater?.Layout is SectionStackLayout layout)
+            layout.ResetCache();
+
+        RegionsRepeater?.InvalidateMeasure();
+        ContentContainer?.InvalidateMeasure();
+    }
+
+    private void QueueRestoredLayoutRefresh()
+    {
+        if (_isDisposed)
+            return;
+
+        var generation = ++_layoutRecoveryGeneration;
+        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            if (_isDisposed || _isNavigatedAway || generation != _layoutRecoveryGeneration)
+                return;
+
+            ResetRegionsLayoutCache();
+            RegionsRepeater?.UpdateLayout();
+            ContentContainer?.UpdateLayout();
+        });
     }
 
     private void TryApplyPendingSleepState()
@@ -511,6 +546,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
 
             var target = Math.Clamp(offset, 0, maxOffset);
             ContentContainer.ScrollToImmediate(0, target);
+            QueueRestoredLayoutRefresh();
             await Task.Yield();
             await Task.Delay(ScrollRestoreRetryDelayMs);
             EndScrollRestore(generation);

@@ -7,11 +7,11 @@ using System.Reactive.Disposables;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
-using ReactiveUI;
 using Windows.UI;
 using Wavee.Core.Data;
 using Wavee.UI.Contracts;
@@ -46,7 +46,7 @@ public sealed record DiscGroupHeader(int Number, string TitleText, string Durati
 /// ViewModel for the Album detail page.
 /// Album tracks are static after load — no reactive pipeline needed.
 /// </summary>
-public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel, ITabBarItemContent, IDisposable
+public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewModel, ITabBarItemContent, IDisposable
 {
     private readonly IAlbumService _albumService;
     private readonly AlbumStore _albumStore;
@@ -64,22 +64,11 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private HashSet<string> _popularTrackIds = new(StringComparer.Ordinal);
 
     private string _albumId = "";
-    private string _albumName = "";
-    private string? _albumImageUrl;
-    private string? _colorHex;
-    private string _artistId = "";
-    private string _artistName = "";
-    private string? _artistImageUrl;
-    private int _year;
-    private string? _albumType;
     private bool _isSaved;
     private bool _isLoading;
     private bool _isLoadingTracks;
     private bool _hasError;
     private string? _errorMessage;
-    private string? _label;
-    private string? _releaseDateFormatted;
-    private string? _copyrightsText;
 
     private string _searchQuery = "";
     private AlbumSortColumn _currentSortColumn = AlbumSortColumn.TrackNumber;
@@ -95,199 +84,196 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     private readonly ObservableCollection<AlbumRelatedResult> _moreByArtist = [];
     private readonly ObservableCollection<AlbumMerchItemResult> _merchItems = [];
 
-    // Multi-artist surfaces (header AvatarStack + flyout). _artists is the
-    // album-billed list (drives the avatars), _allDistinctArtists is billed
-    // followed by track-only artists deduped by URI (drives the flyout).
-    private IReadOnlyList<AlbumArtistResult> _artists = [];
-    private IReadOnlyList<AlbumArtistResult> _allDistinctArtists = [];
-    private IReadOnlyList<AvatarStackItem> _artistAvatarItems = [];
-    private IReadOnlyList<HeaderArtistLink> _headerArtistLinks = [];
-    private int _overflowArtistCount;
+    /// <summary>"Similar albums" (For this mood) — track-seeded recommendations.</summary>
+    private readonly ObservableCollection<AlbumSimilarResult> _similarAlbums = [];
+
+    /// <summary>"Fans also like" — related artists for the primary album artist.</summary>
+    private readonly ObservableCollection<RelatedArtistResult> _similarArtists = [];
 
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
 
     /// <summary>
-    /// The album ID.
+    /// The album ID used for navigation, store lookup, and playback context.
     /// </summary>
     public string AlbumId
     {
         get => _albumId;
-        private set => this.RaiseAndSetIfChanged(ref _albumId, value);
+        private set => SetProperty(ref _albumId, value);
     }
+
+    private AlbumView? _album;
+
+    public AlbumView? Album
+    {
+        get => _album;
+        private set
+        {
+            if (EqualityComparer<AlbumView?>.Default.Equals(_album, value))
+                return;
+
+            var old = _album;
+            _album = value;
+            var paletteChanged = !Equals(old?.Palette, value?.Palette);
+            var shareChanged = !string.Equals(old?.ShareUrl, value?.ShareUrl, StringComparison.Ordinal);
+
+            if (paletteChanged)
+                ApplyTheme(_isDarkTheme);
+
+            OnPropertyChanged(nameof(Album));
+            RaiseAlbumEnvelopeDependents();
+
+            if (!string.Equals(old?.Name, value?.Name, StringComparison.Ordinal))
+                UpdateTabTitle();
+
+            if (shareChanged)
+                ShareCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private static readonly string[] AlbumEnvelopeDependentProperties =
+    [
+        nameof(AlbumName), nameof(AlbumImageUrl), nameof(ColorHex), nameof(ArtistId), nameof(ArtistName),
+        nameof(ArtistImageUrl), nameof(Artists), nameof(AllDistinctArtists), nameof(HasMultipleArtists),
+        nameof(ArtistAvatarItems), nameof(OverflowArtistCount), nameof(HeaderArtistLinks), nameof(Year),
+        nameof(AlbumType), nameof(AlbumTypeUpper), nameof(Label), nameof(ReleaseDateFormatted),
+        nameof(CopyrightsText), nameof(IsPreRelease), nameof(PreReleaseEndDateTime),
+        nameof(PreReleaseFormatted), nameof(PreReleaseRelative), nameof(ShareUrl), nameof(CanShare),
+        nameof(MetaInlineLine), nameof(Palette)
+    ];
+
+    private void RaiseAlbumEnvelopeDependents()
+    {
+        foreach (var propertyName in AlbumEnvelopeDependentProperties)
+            OnPropertyChanged(propertyName);
+    }
+
+    private AlbumView EmptyAlbumEnvelope()
+        => new(
+            Id: AlbumId,
+            Name: string.Empty,
+            ImageUrl: null,
+            ColorHex: null,
+            ArtistId: string.Empty,
+            ArtistName: string.Empty,
+            ArtistImageUrl: null,
+            Artists: [],
+            AllDistinctArtists: [],
+            ArtistAvatarItems: [],
+            HeaderArtistLinks: [],
+            OverflowArtistCount: 0,
+            Year: 0,
+            Type: null,
+            Label: null,
+            ReleaseDateFormatted: null,
+            CopyrightsText: null,
+            IsPreRelease: false,
+            PreReleaseEndDateTime: null,
+            PreReleaseFormatted: null,
+            PreReleaseRelative: null,
+            ShareUrl: null,
+            MetaInlineLine: null,
+            Palette: null);
 
     /// <summary>
     /// The album name.
     /// </summary>
-    public string AlbumName
-    {
-        get => _albumName;
-        private set
-        {
-            this.RaiseAndSetIfChanged(ref _albumName, value);
-            UpdateTabTitle();
-        }
-    }
+    public string AlbumName => Album?.Name ?? string.Empty;
 
     /// <summary>
     /// The album cover image URL.
     /// </summary>
-    public string? AlbumImageUrl
-    {
-        get => _albumImageUrl;
-        private set => this.RaiseAndSetIfChanged(ref _albumImageUrl, value);
-    }
+    public string? AlbumImageUrl => Album?.ImageUrl;
 
     /// <summary>
     /// Extracted dark color from the album cover art, as a hex string.
     /// Used as a tint for track placeholder backgrounds while album art loads.
     /// </summary>
-    public string? ColorHex
-    {
-        get => _colorHex;
-        private set => this.RaiseAndSetIfChanged(ref _colorHex, value);
-    }
+    public string? ColorHex => Album?.ColorHex;
 
     /// <summary>
     /// The primary artist ID.
     /// </summary>
-    public string ArtistId
-    {
-        get => _artistId;
-        private set => this.RaiseAndSetIfChanged(ref _artistId, value);
-    }
+    public string ArtistId => Album?.ArtistId ?? string.Empty;
 
     /// <summary>
     /// The primary artist name.
     /// </summary>
-    public string ArtistName
-    {
-        get => _artistName;
-        private set => this.RaiseAndSetIfChanged(ref _artistName, value);
-    }
+    public string ArtistName => Album?.ArtistName ?? string.Empty;
 
     /// <summary>
     /// The primary artist's avatar image URL, surfaced from the album's
     /// <c>artists.items[0].visuals.avatarImage</c> so the page can render a small
     /// circular thumbnail next to the artist name without a second fetch.
     /// </summary>
-    public string? ArtistImageUrl
-    {
-        get => _artistImageUrl;
-        private set => this.RaiseAndSetIfChanged(ref _artistImageUrl, value);
-    }
+    public string? ArtistImageUrl => Album?.ArtistImageUrl;
 
     /// <summary>
     /// Album-billed artists (from <c>albumUnion.artists.items</c>). Drives the
     /// stacked-avatar strip in the header and the inline names line below it.
     /// </summary>
-    public IReadOnlyList<AlbumArtistResult> Artists
-    {
-        get => _artists;
-        private set => this.RaiseAndSetIfChanged(ref _artists, value);
-    }
+    public IReadOnlyList<AlbumArtistResult> Artists => Album?.Artists ?? [];
 
     /// <summary>
     /// Every distinct artist on the album: billed artists first, then track-only
     /// contributors deduped by URI. Drives the artists Flyout opened from the
     /// avatar stack so users can navigate to featured guests not in the billing.
     /// </summary>
-    public IReadOnlyList<AlbumArtistResult> AllDistinctArtists
-    {
-        get => _allDistinctArtists;
-        private set
-        {
-            this.RaiseAndSetIfChanged(ref _allDistinctArtists, value);
-            this.RaisePropertyChanged(nameof(HasMultipleArtists));
-        }
-    }
+    public IReadOnlyList<AlbumArtistResult> AllDistinctArtists => Album?.AllDistinctArtists ?? [];
 
     /// <summary>
     /// Avatar items for the header <c>AvatarStack</c>, projected from
     /// <see cref="Artists"/>. Pre-projected here so the XAML can bind directly
     /// without a converter per page.
     /// </summary>
-    public IReadOnlyList<AvatarStackItem> ArtistAvatarItems
-    {
-        get => _artistAvatarItems;
-        private set => this.RaiseAndSetIfChanged(ref _artistAvatarItems, value);
-    }
+    public IReadOnlyList<AvatarStackItem> ArtistAvatarItems => Album?.ArtistAvatarItems ?? [];
 
     /// <summary>
     /// Number of additional distinct artists beyond <see cref="Artists"/>.
-    /// Drives the trailing <c>+N</c> badge on the avatar stack — non-zero when
+    /// Drives the trailing <c>+N</c> badge on the avatar stack - non-zero when
     /// the album has track-only contributors that aren't in the billing.
     /// </summary>
-    public int OverflowArtistCount
-    {
-        get => _overflowArtistCount;
-        private set => this.RaiseAndSetIfChanged(ref _overflowArtistCount, value);
-    }
+    public int OverflowArtistCount => Album?.OverflowArtistCount ?? 0;
 
     /// <summary>
     /// Per-name link projections for the header artists line. Each entry
     /// carries <c>IsFirst</c> so the comma separator preceding the entry can
     /// hide on item 0 without page-side index logic.
     /// </summary>
-    public IReadOnlyList<HeaderArtistLink> HeaderArtistLinks
-    {
-        get => _headerArtistLinks;
-        private set => this.RaiseAndSetIfChanged(ref _headerArtistLinks, value);
-    }
+    public IReadOnlyList<HeaderArtistLink> HeaderArtistLinks => Album?.HeaderArtistLinks ?? [];
 
     /// <summary>
     /// True when the album has more than one distinct artist anywhere
     /// (billed + per-track unioned). Soundtracks, compilations, and any
     /// album with featured guests are detected here. Drives the per-row
-    /// artist column on the album track grid — the default suppresses it on
+    /// artist column on the album track grid - the default suppresses it on
     /// album pages because most albums are single-artist, but for collabs
     /// the artist names are essential context.
     /// </summary>
-    public bool HasMultipleArtists => _allDistinctArtists.Count > 1;
+    public bool HasMultipleArtists => AllDistinctArtists.Count > 1;
 
     /// <summary>
     /// Release year.
     /// </summary>
-    public int Year
-    {
-        get => _year;
-        private set => this.RaiseAndSetIfChanged(ref _year, value);
-    }
+    public int Year => Album?.Year ?? 0;
 
     /// <summary>
     /// Album type (Album, Single, EP, etc.).
     /// </summary>
-    public string? AlbumType
-    {
-        get => _albumType;
-        private set => this.RaiseAndSetIfChanged(ref _albumType, value);
-    }
+    public string? AlbumType => Album?.Type;
 
-    public string? Label
-    {
-        get => _label;
-        private set => this.RaiseAndSetIfChanged(ref _label, value);
-    }
+    public string? Label => Album?.Label;
 
-    public string? ReleaseDateFormatted
-    {
-        get => _releaseDateFormatted;
-        private set => this.RaiseAndSetIfChanged(ref _releaseDateFormatted, value);
-    }
+    public string? ReleaseDateFormatted => Album?.ReleaseDateFormatted;
 
-    public string? CopyrightsText
-    {
-        get => _copyrightsText;
-        private set => this.RaiseAndSetIfChanged(ref _copyrightsText, value);
-    }
-
+    public string? CopyrightsText => Album?.CopyrightsText;
     /// <summary>
     /// Whether the album is saved to the user's library.
     /// </summary>
     public bool IsSaved
     {
         get => _isSaved;
-        set => this.RaiseAndSetIfChanged(ref _isSaved, value);
+        set => SetProperty(ref _isSaved, value);
     }
 
     /// <summary>
@@ -302,7 +288,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             _logger?.LogDebug(
                 "[xfade][album-vm:{Id}] propset.isLoading old={Old} new={New} changed={Changed}",
                 XfadeLog.Tag(_albumId), _isLoading, value, changed);
-            this.RaiseAndSetIfChanged(ref _isLoading, value);
+            SetProperty(ref _isLoading, value);
         }
     }
 
@@ -312,7 +298,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public bool IsLoadingTracks
     {
         get => _isLoadingTracks;
-        set => this.RaiseAndSetIfChanged(ref _isLoadingTracks, value);
+        set => SetProperty(ref _isLoadingTracks, value);
     }
 
     /// <summary>
@@ -321,7 +307,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public bool HasError
     {
         get => _hasError;
-        set => this.RaiseAndSetIfChanged(ref _hasError, value);
+        set => SetProperty(ref _hasError, value);
     }
 
     /// <summary>
@@ -330,7 +316,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public string? ErrorMessage
     {
         get => _errorMessage;
-        set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
+        set => SetProperty(ref _errorMessage, value);
     }
 
     /// <summary>
@@ -342,7 +328,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         set
         {
             var old = _searchQuery;
-            this.RaiseAndSetIfChanged(ref _searchQuery, value);
+            SetProperty(ref _searchQuery, value);
             if (old != value && _allTracks.Count > 0)
                 ApplyFilterAndSort();
         }
@@ -357,11 +343,11 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         set
         {
             var old = _currentSortColumn;
-            this.RaiseAndSetIfChanged(ref _currentSortColumn, value);
+            SetProperty(ref _currentSortColumn, value);
             if (old != value)
             {
-                this.RaisePropertyChanged(nameof(IsSortingByTitle));
-                this.RaisePropertyChanged(nameof(IsSortingByArtist));
+                OnPropertyChanged(nameof(IsSortingByTitle));
+                OnPropertyChanged(nameof(IsSortingByArtist));
             }
         }
     }
@@ -375,10 +361,10 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         set
         {
             var old = _isSortDescending;
-            this.RaiseAndSetIfChanged(ref _isSortDescending, value);
+            SetProperty(ref _isSortDescending, value);
             if (old != value)
             {
-                this.RaisePropertyChanged(nameof(SortChevronGlyph));
+                OnPropertyChanged(nameof(SortChevronGlyph));
             }
         }
     }
@@ -389,7 +375,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public int TotalTracks
     {
         get => _totalTracks;
-        private set => this.RaiseAndSetIfChanged(ref _totalTracks, value);
+        private set => SetProperty(ref _totalTracks, value);
     }
 
     /// <summary>
@@ -398,7 +384,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public string TotalDuration
     {
         get => _totalDuration;
-        private set => this.RaiseAndSetIfChanged(ref _totalDuration, value);
+        private set => SetProperty(ref _totalDuration, value);
     }
 
     /// <summary>
@@ -409,10 +395,10 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         get => _selectedItems;
         set
         {
-            this.RaiseAndSetIfChanged(ref _selectedItems, value);
-            this.RaisePropertyChanged(nameof(SelectedCount));
-            this.RaisePropertyChanged(nameof(HasSelection));
-            this.RaisePropertyChanged(nameof(SelectionHeaderText));
+            SetProperty(ref _selectedItems, value);
+            OnPropertyChanged(nameof(SelectedCount));
+            OnPropertyChanged(nameof(HasSelection));
+            OnPropertyChanged(nameof(SelectionHeaderText));
             PlaySelectedCommand.NotifyCanExecuteChanged();
             PlayAfterCommand.NotifyCanExecuteChanged();
             AddSelectedToQueueCommand.NotifyCanExecuteChanged();
@@ -451,14 +437,14 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public bool HasMoreByArtist
     {
         get => _hasMoreByArtist;
-        private set => this.RaiseAndSetIfChanged(ref _hasMoreByArtist, value);
+        private set => SetProperty(ref _hasMoreByArtist, value);
     }
 
     private bool _hasNoRelatedAlbums;
     public bool HasNoRelatedAlbums
     {
         get => _hasNoRelatedAlbums;
-        private set => this.RaiseAndSetIfChanged(ref _hasNoRelatedAlbums, value);
+        private set => SetProperty(ref _hasNoRelatedAlbums, value);
     }
 
     /// <summary>
@@ -467,6 +453,58 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public IReadOnlyList<AlbumMerchItemResult> MerchItems => _merchItems;
 
     public bool HasMerch => MerchItems.Count > 0;
+
+    /// <summary>Similar albums (track-seeded) — drives the AlbumPage "For this mood" shelf.</summary>
+    public IReadOnlyList<AlbumSimilarResult> SimilarAlbums => _similarAlbums;
+
+    private bool _hasSimilarAlbums;
+    public bool HasSimilarAlbums
+    {
+        get => _hasSimilarAlbums;
+        private set => SetProperty(ref _hasSimilarAlbums, value);
+    }
+
+    /// <summary>Related artists for the album's primary artist — Fans also like.</summary>
+    public IReadOnlyList<RelatedArtistResult> SimilarArtists => _similarArtists;
+
+    private bool _hasSimilarArtists;
+    public bool HasSimilarArtists
+    {
+        get => _hasSimilarArtists;
+        private set => SetProperty(ref _hasSimilarArtists, value);
+    }
+
+    /// <summary>~150 char excerpt of the primary artist's biography — mini About card.</summary>
+    private string? _artistBioExcerpt;
+    public string? ArtistBioExcerpt
+    {
+        get => _artistBioExcerpt;
+        private set
+        {
+            SetProperty(ref _artistBioExcerpt, value);
+            OnPropertyChanged(nameof(HasArtistBioExcerpt));
+        }
+    }
+
+    public bool HasArtistBioExcerpt => !string.IsNullOrWhiteSpace(_artistBioExcerpt);
+
+    /// <summary>True when the album's lead track has at least one music-video association.
+    /// Used to gate the "Watch the official video" CTA on single-track releases.</summary>
+    private bool _hasMusicVideo;
+    public bool HasMusicVideo
+    {
+        get => _hasMusicVideo;
+        private set => SetProperty(ref _hasMusicVideo, value);
+    }
+
+    /// <summary>Source-track URI for the music-video promotion strip. The video
+    /// track itself is resolved at click time through the music-video metadata service.</summary>
+    private string? _musicVideoUri;
+    public string? MusicVideoUri
+    {
+        get => _musicVideoUri;
+        private set => SetProperty(ref _musicVideoUri, value);
+    }
 
     // ── Alternate releases (deluxe / remaster / anniversary editions of THIS album) ──
 
@@ -477,59 +515,30 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public bool HasAlternateReleases
     {
         get => _hasAlternateReleases;
-        private set => this.RaiseAndSetIfChanged(ref _hasAlternateReleases, value);
+        private set => SetProperty(ref _hasAlternateReleases, value);
     }
 
     // ── Pre-release ──
 
-    private bool _isPreRelease;
-    public bool IsPreRelease
-    {
-        get => _isPreRelease;
-        private set => this.RaiseAndSetIfChanged(ref _isPreRelease, value);
-    }
+    public bool IsPreRelease => Album?.IsPreRelease == true;
 
-    private DateTimeOffset? _preReleaseEndDateTime;
-    public DateTimeOffset? PreReleaseEndDateTime
-    {
-        get => _preReleaseEndDateTime;
-        private set => this.RaiseAndSetIfChanged(ref _preReleaseEndDateTime, value);
-    }
+    public DateTimeOffset? PreReleaseEndDateTime => Album?.PreReleaseEndDateTime;
 
     /// <summary>"Coming Friday, May 2 at 22:00" — formatted local time. Null when not pre-release.</summary>
-    private string? _preReleaseFormatted;
-    public string? PreReleaseFormatted
-    {
-        get => _preReleaseFormatted;
-        private set => this.RaiseAndSetIfChanged(ref _preReleaseFormatted, value);
-    }
+    public string? PreReleaseFormatted => Album?.PreReleaseFormatted;
 
     /// <summary>"in 3 days" / "in 4 hours" — caption on the right of the banner.</summary>
-    private string? _preReleaseRelative;
-    public string? PreReleaseRelative
-    {
-        get => _preReleaseRelative;
-        private set => this.RaiseAndSetIfChanged(ref _preReleaseRelative, value);
-    }
+    public string? PreReleaseRelative => Album?.PreReleaseRelative;
 
     // ── Share ──
 
-    private string? _shareUrl;
-    public string? ShareUrl
-    {
-        get => _shareUrl;
-        private set
-        {
-            this.RaiseAndSetIfChanged(ref _shareUrl, value);
-            this.RaisePropertyChanged(nameof(CanShare));
-        }
-    }
+    public string? ShareUrl => Album?.ShareUrl;
 
     public bool CanShare => !string.IsNullOrEmpty(ShareUrl);
 
     // ── Theme-aware palette (from the album cover) ──
 
-    private AlbumPalette? _albumPalette;
+    public AlbumPalette? Palette => Album?.Palette;
     private bool _isDarkTheme;
 
     /// <summary>Subtle page-wash brush tinted toward the album's color. Null when no palette.</summary>
@@ -537,7 +546,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public Brush? PaletteBackdropBrush
     {
         get => _paletteBackdropBrush;
-        private set => this.RaiseAndSetIfChanged(ref _paletteBackdropBrush, value);
+        private set => SetProperty(ref _paletteBackdropBrush, value);
     }
 
     /// <summary>Gradient brush used on the hero ink overlay (palette-tinted, theme-aware).</summary>
@@ -545,7 +554,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public Brush? PaletteHeroGradientBrush
     {
         get => _paletteHeroGradientBrush;
-        private set => this.RaiseAndSetIfChanged(ref _paletteHeroGradientBrush, value);
+        private set => SetProperty(ref _paletteHeroGradientBrush, value);
     }
 
     /// <summary>Accent pill background brush (album type pill in the hero). Null falls back to system accent.</summary>
@@ -553,24 +562,19 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public Brush? PaletteAccentPillBrush
     {
         get => _paletteAccentPillBrush;
-        private set => this.RaiseAndSetIfChanged(ref _paletteAccentPillBrush, value);
+        private set => SetProperty(ref _paletteAccentPillBrush, value);
     }
 
     private Brush? _paletteAccentPillForegroundBrush;
     public Brush? PaletteAccentPillForegroundBrush
     {
         get => _paletteAccentPillForegroundBrush;
-        private set => this.RaiseAndSetIfChanged(ref _paletteAccentPillForegroundBrush, value);
+        private set => SetProperty(ref _paletteAccentPillForegroundBrush, value);
     }
 
     // ── Hero meta line ("12 songs · 38 min · 1980") ──
 
-    private string? _metaInlineLine;
-    public string? MetaInlineLine
-    {
-        get => _metaInlineLine;
-        private set => this.RaiseAndSetIfChanged(ref _metaInlineLine, value);
-    }
+    public string? MetaInlineLine => Album?.MetaInlineLine;
 
     /// <summary>"ALBUM" / "SINGLE" / "EP" / "COMPILATION", upper-cased for the hero pill.</summary>
     public string AlbumTypeUpper => AlbumType?.ToUpperInvariant() ?? "ALBUM";
@@ -596,7 +600,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     public bool IsMultiDisc
     {
         get => _isMultiDisc;
-        private set => this.RaiseAndSetIfChanged(ref _isMultiDisc, value);
+        private set => SetProperty(ref _isMultiDisc, value);
     }
 
     /// <summary>
@@ -706,56 +710,63 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         if (AlbumId != albumId)
         {
             _appliedDetailFor = null;
-            // Clear per-album state that ApplyDetailAsync only overwrites when the
-            // new value is non-empty — otherwise a cached page swap leaves last
-            // album's artist avatar / cover / palette / pills visible until the
-            // new detail lands. PrefillFrom, called immediately after Activate, then
-            // re-fills the parts the navigation parameter knows about (title, cover,
-            // artist name); the AlbumStore push fills the rest.
-            ArtistImageUrl = null;
-            ArtistId = "";
-            if (!preserveHeaderPrefill)
-            {
-                ArtistName = "";
-                AlbumImageUrl = null;
-                AlbumName = "";
-            }
-            Year = 0;
-            AlbumType = null;
-            Label = null;
-            ReleaseDateFormatted = null;
-            CopyrightsText = null;
-            ShareUrl = null;
-            IsPreRelease = false;
-            PreReleaseFormatted = null;
-            PreReleaseRelative = null;
-            MetaInlineLine = null;
-            // Defer the rare/below-the-fold shelves to a low-priority
-            // dispatch — these are all x:Load-gated in AlbumPage.xaml so
-            // their reset doesn't affect first paint. Cuts the
-            // PropertyChanged storm before the hero/track-list shimmer
-            // commits.
-            _dispatcherQueue.TryEnqueue(
-                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                () =>
+            // Clear per-album scalar detail as one envelope replacement so the
+            // cached page cannot paint the previous album's hero metadata while
+            // the new store value is replaying. PrefillFrom, called immediately
+            // after Activate, re-fills title/cover/artist when the navigation
+            // parameter already knows them.
+            var previousAlbum = Album;
+            Album = preserveHeaderPrefill && previousAlbum is not null
+                ? previousAlbum with
                 {
-                    // A HotCache hit causes ApplyDetailAsync to run at normal priority
-                    // before this low-priority dispatch fires. If that already happened,
-                    // skip the clear — the shelf is correctly populated and won't be
-                    // re-emitted by the store.
-                    if (_appliedDetailFor == albumId) return;
-
-                    HasAlternateReleases = false;
-                    _alternateReleases.Clear();
-                    HasMoreByArtist = false;
-                    _moreByArtist.Clear();
-                    _merchItems.Clear();
-                    this.RaisePropertyChanged(nameof(HasMerch));
-                });
-            this.RaisePropertyChanged(nameof(AlbumTypeUpper));
-            _albumPalette = null;
-            ApplyTheme(_isDarkTheme);
-
+                    Id = albumId,
+                    ColorHex = null,
+                    ArtistImageUrl = null,
+                    ArtistId = string.Empty,
+                    Artists = [],
+                    AllDistinctArtists = [],
+                    ArtistAvatarItems = [],
+                    HeaderArtistLinks = [],
+                    OverflowArtistCount = 0,
+                    Year = 0,
+                    Type = null,
+                    Label = null,
+                    ReleaseDateFormatted = null,
+                    CopyrightsText = null,
+                    ShareUrl = null,
+                    IsPreRelease = false,
+                    PreReleaseEndDateTime = null,
+                    PreReleaseFormatted = null,
+                    PreReleaseRelative = null,
+                    MetaInlineLine = null,
+                    Palette = null
+                }
+                : new AlbumView(
+                    Id: albumId,
+                    Name: string.Empty,
+                    ImageUrl: null,
+                    ColorHex: null,
+                    ArtistId: string.Empty,
+                    ArtistName: string.Empty,
+                    ArtistImageUrl: null,
+                    Artists: [],
+                    AllDistinctArtists: [],
+                    ArtistAvatarItems: [],
+                    HeaderArtistLinks: [],
+                    OverflowArtistCount: 0,
+                    Year: 0,
+                    Type: null,
+                    Label: null,
+                    ReleaseDateFormatted: null,
+                    CopyrightsText: null,
+                    IsPreRelease: false,
+                    PreReleaseEndDateTime: null,
+                    PreReleaseFormatted: null,
+                    PreReleaseRelative: null,
+                    ShareUrl: null,
+                    MetaInlineLine: null,
+                    Palette: null);
+            ClearSecondaryAlbumSections();
             // Force the page + grid back into the loading/skeleton states so the
             // cached page doesn't paint old tracks under the new header during the
             // gap between Activate and the AlbumStore's first push.
@@ -823,12 +834,31 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         _allTracks = [];
         RebuildDiscMetadata();
         _popularTrackIds.Clear();
+        ClearSecondaryAlbumSections();
+    }
+
+    private void ClearSecondaryAlbumSections()
+    {
         _alternateReleases.Clear();
+        OnPropertyChanged(nameof(AlternateReleases));
         HasAlternateReleases = false;
+
         _moreByArtist.Clear();
         HasMoreByArtist = false;
+        HasNoRelatedAlbums = false;
+
         _merchItems.Clear();
-        this.RaisePropertyChanged(nameof(HasMerch));
+        OnPropertyChanged(nameof(HasMerch));
+
+        _similarAlbums.Clear();
+        HasSimilarAlbums = false;
+
+        _similarArtists.Clear();
+        HasSimilarArtists = false;
+        ArtistBioExcerpt = null;
+
+        HasMusicVideo = false;
+        MusicVideoUri = null;
     }
 
     private void ApplyDetailState(EntityState<AlbumDetailResult> state, string expectedAlbumId)
@@ -1030,11 +1060,11 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     {
         _isDarkTheme = isDark;
 
-        var tier = _albumPalette is null
+        var tier = Palette is null
             ? null
             : (isDark
-                ? (_albumPalette.HigherContrast ?? _albumPalette.HighContrast)
-                : (_albumPalette.HighContrast ?? _albumPalette.HigherContrast));
+                ? (Palette.HigherContrast ?? Palette.HighContrast)
+                : (Palette.HighContrast ?? Palette.HigherContrast));
 
         if (tier == null)
         {
@@ -1104,14 +1134,20 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
     public void PrefillFrom(Data.Parameters.ContentNavigationParameter nav, bool clearMissing = false)
     {
-        if (!string.IsNullOrEmpty(nav.Title)) AlbumName = nav.Title;
-        else if (clearMissing) AlbumName = "";
-
-        if (!string.IsNullOrEmpty(nav.ImageUrl)) AlbumImageUrl = nav.ImageUrl;
-        else if (clearMissing) AlbumImageUrl = null;
-
-        if (!string.IsNullOrEmpty(nav.Subtitle)) ArtistName = nav.Subtitle;
-        else if (clearMissing) ArtistName = "";
+        var current = Album ?? EmptyAlbumEnvelope();
+        Album = current with
+        {
+            Id = !string.IsNullOrEmpty(nav.Uri) ? nav.Uri : current.Id,
+            Name = !string.IsNullOrEmpty(nav.Title)
+                ? nav.Title
+                : clearMissing ? string.Empty : current.Name,
+            ImageUrl = !string.IsNullOrEmpty(nav.ImageUrl)
+                ? nav.ImageUrl
+                : clearMissing ? null : current.ImageUrl,
+            ArtistName = !string.IsNullOrEmpty(nav.Subtitle)
+                ? nav.Subtitle
+                : clearMissing ? string.Empty : current.ArtistName
+        };
     }
 
     /// <summary>
@@ -1119,9 +1155,9 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
     /// ApplyDetailState once the store emits Ready; drives tracklist build,
     /// related-albums, and the non-blocking merch fetch.
     /// </summary>
-    private async Task ApplyDetailAsync(AlbumDetailResult detail, string albumId)
+    private Task ApplyDetailAsync(AlbumDetailResult detail, string albumId)
     {
-        if (_disposed || AlbumId != albumId) return;
+        if (_disposed || AlbumId != albumId) return Task.CompletedTask;
         _appliedDetailFor = albumId;
         HasError = false;
         ErrorMessage = null;
@@ -1131,30 +1167,26 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             // Rootlist for "Add to playlist" — fire-and-forget so it doesn't block detail render.
             _ = LoadRootlistAsync();
 
-            // Map metadata (respect prefilled values from navigation)
-            if (!string.IsNullOrEmpty(detail.Name))
-                AlbumName = detail.Name;
-            if (!string.IsNullOrEmpty(detail.CoverArtUrl) && string.IsNullOrEmpty(AlbumImageUrl))
-                AlbumImageUrl = detail.CoverArtUrl;
-            ColorHex = detail.ColorDarkHex;
-            var firstArtist = detail.Artists.FirstOrDefault();
-            if (firstArtist != null)
-            {
-                if (!string.IsNullOrEmpty(firstArtist.Uri)) ArtistId = firstArtist.Uri;
-                if (!string.IsNullOrEmpty(firstArtist.Name)) ArtistName = firstArtist.Name;
-                if (!string.IsNullOrEmpty(firstArtist.ImageUrl)) ArtistImageUrl = firstArtist.ImageUrl;
-            }
+            // Build real track list first so the envelope can include the final
+            // hero meta line in the same atomic assignment as the scalar metadata.
+            _allTracks = detail.Tracks
+                .Select((t, i) => LazyTrackItem.Loaded(t.Id, i + 1, t))
+                .ToList();
+            RebuildDiscMetadata();
+            _popularTrackIds = BuildPopularTrackIdSet(detail.Tracks);
 
-            // Header multi-artist surfaces. Billed artists drive the avatar
-            // strip; the flyout lists the union of billed + per-track
-            // contributors deduped by URI so featured guests on individual
-            // tracks become reachable from the header.
+            TotalTracks = _allTracks.Count;
+            var totalSeconds = _allTracks.Sum(t => t.Duration.TotalSeconds);
+            TotalDuration = FormatDuration(totalSeconds);
+            IsLoadingTracks = false;
+
+            var current = Album ?? EmptyAlbumEnvelope();
+            var firstArtist = detail.Artists.FirstOrDefault();
             var billed = detail.Artists ?? [];
-            Artists = billed;
-            ArtistAvatarItems = billed
+            var avatarItems = billed
                 .Select(a => new AvatarStackItem(a.Name ?? "", a.ImageUrl))
                 .ToList();
-            HeaderArtistLinks = billed
+            var headerArtistLinks = billed
                 .Select((a, idx) => new HeaderArtistLink
                 {
                     Name = a.Name ?? "",
@@ -1178,41 +1210,56 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
                     ImageUrl = null
                 })
                 .ToList();
-            AllDistinctArtists = billed.Concat(trackExtras).ToList();
-            OverflowArtistCount = trackExtras.Count;
-            if (detail.ReleaseDate.Year > 0)
-                Year = detail.ReleaseDate.Year;
-            if (!string.IsNullOrEmpty(detail.Type))
-                AlbumType = detail.Type;
-            IsSaved = detail.IsSaved;
-            Label = detail.Label;
-            if (detail.ReleaseDate != default)
-                ReleaseDateFormatted = detail.ReleaseDate.ToString("MMMM d, yyyy");
-            if (detail.Copyrights?.Count > 0)
-                CopyrightsText = string.Join("\n", detail.Copyrights.Select(c =>
+            var allDistinctArtists = billed.Concat(trackExtras).ToList();
+            var year = detail.ReleaseDate.Year > 0 ? detail.ReleaseDate.Year : current.Year;
+            var releaseDateFormatted = detail.ReleaseDate != default
+                ? detail.ReleaseDate.ToString("MMMM d, yyyy")
+                : current.ReleaseDateFormatted;
+            var copyrightsText = detail.Copyrights?.Count > 0
+                ? string.Join("\n", detail.Copyrights.Select(c =>
                 {
                     var prefix = c.Type == "P" ? "\u2117" : "\u00A9";
                     var text = c.Text?.TrimStart() ?? "";
                     if (text.StartsWith("\u00A9") || text.StartsWith("\u2117"))
                         return text;
                     return $"{prefix} {text}";
-                }));
+                }))
+                : current.CopyrightsText;
+            var (preReleaseFormatted, preReleaseRelative) = FormatPreRelease(detail.IsPreRelease, detail.PreReleaseEndDateTime);
 
+            Album = current with
+            {
+                Id = albumId,
+                Name = !string.IsNullOrEmpty(detail.Name) ? detail.Name : current.Name,
+                ImageUrl = !string.IsNullOrEmpty(detail.CoverArtUrl) && string.IsNullOrEmpty(current.ImageUrl)
+                    ? detail.CoverArtUrl
+                    : current.ImageUrl,
+                ColorHex = detail.ColorDarkHex,
+                ArtistId = !string.IsNullOrEmpty(firstArtist?.Uri) ? firstArtist!.Uri! : current.ArtistId,
+                ArtistName = !string.IsNullOrEmpty(firstArtist?.Name) ? firstArtist!.Name! : current.ArtistName,
+                ArtistImageUrl = !string.IsNullOrEmpty(firstArtist?.ImageUrl) ? firstArtist!.ImageUrl : current.ArtistImageUrl,
+                Artists = billed,
+                ArtistAvatarItems = avatarItems,
+                HeaderArtistLinks = headerArtistLinks,
+                AllDistinctArtists = allDistinctArtists,
+                OverflowArtistCount = trackExtras.Count,
+                Year = year,
+                Type = !string.IsNullOrEmpty(detail.Type) ? detail.Type : current.Type,
+                Label = detail.Label,
+                ReleaseDateFormatted = releaseDateFormatted,
+                CopyrightsText = copyrightsText,
+                IsPreRelease = detail.IsPreRelease,
+                PreReleaseEndDateTime = detail.PreReleaseEndDateTime,
+                PreReleaseFormatted = preReleaseFormatted,
+                PreReleaseRelative = preReleaseRelative,
+                ShareUrl = detail.ShareUrl,
+                MetaInlineLine = BuildMetaInlineLine(TotalTracks, totalSeconds, year),
+                Palette = detail.Palette
+            };
+
+            IsSaved = detail.IsSaved;
             RefreshSaveState();
-
             IsLoading = false;
-
-            // Build real track list
-            _allTracks = detail.Tracks
-                .Select((t, i) => LazyTrackItem.Loaded(t.Id, i + 1, t))
-                .ToList();
-            RebuildDiscMetadata();
-            _popularTrackIds = BuildPopularTrackIdSet(detail.Tracks);
-
-            TotalTracks = _allTracks.Count;
-            TotalDuration = FormatDuration(_allTracks.Sum(t => t.Duration.TotalSeconds));
-            IsLoadingTracks = false;
-
             // Light the music-video badge on rows whose Spotify track is linked
             // to a local music-video file. Fire-and-forget; the DTO's
             // HasLinkedLocalVideo setter raises PropertyChanged so TrackItem
@@ -1237,27 +1284,20 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
 
             // Alternate releases (deluxe / remaster / anniversary editions of THIS album)
             _alternateReleases.ReplaceWith(detail.AlternateReleases);
+            OnPropertyChanged(nameof(AlternateReleases));
             HasAlternateReleases = AlternateReleases.Count > 0;
-
-            // Pre-release banner
-            IsPreRelease = detail.IsPreRelease;
-            PreReleaseEndDateTime = detail.PreReleaseEndDateTime;
-            (PreReleaseFormatted, PreReleaseRelative) = FormatPreRelease(detail.IsPreRelease, detail.PreReleaseEndDateTime);
-
-            // Share URL (drives Share button enable + clipboard payload)
-            ShareUrl = detail.ShareUrl;
-
-            // Hero meta line: "12 songs · 38 min · 1980"
-            MetaInlineLine = BuildMetaInlineLine(TotalTracks, _allTracks.Sum(t => t.Duration.TotalSeconds), Year);
-
-            // Adopt the album's palette (if any) and rebuild the theme-aware brushes.
-            _albumPalette = detail.Palette;
-            ApplyTheme(_isDarkTheme);
-
-            this.RaisePropertyChanged(nameof(AlbumTypeUpper));
 
             // Merch (non-blocking, loaded after main content)
             _ = LoadMerchAsync(albumId);
+
+            // Similar albums + artist context + music-video signal — non-blocking,
+            // run after main detail render so the track table paints first.
+            _ = LoadSimilarAlbumsAsync(albumId);
+            var primaryArtistUri = detail.Artists.FirstOrDefault()?.Uri;
+            if (!string.IsNullOrEmpty(primaryArtistUri))
+                _ = LoadArtistContextAsync(albumId, primaryArtistUri);
+            if (_allTracks.Count == 1)
+                _ = LoadMusicVideoSignalAsync(albumId, _allTracks[0]);
         }
         catch (Exception ex)
         {
@@ -1269,6 +1309,8 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         {
             IsLoading = false;
         }
+
+        return Task.CompletedTask;
     }
 
     [RelayCommand]
@@ -1389,7 +1431,11 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
             ArtistName = t.ArtistName,
             AlbumArt = t.ImageUrl ?? AlbumImageUrl,
             DurationMs = t.Duration.TotalMilliseconds,
-            IsUserQueued = false
+            IsUserQueued = false,
+            AlbumName = AlbumName,
+            AlbumUri = AlbumId,
+            ArtistUri = string.IsNullOrEmpty(t.ArtistId) ? null : t.ArtistId,
+            IsExplicit = t.IsExplicit,
         }).ToList();
 
         if (shuffle)
@@ -1463,11 +1509,71 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         {
             var items = await Task.Run(async () => await _albumService.GetMerchAsync(albumUri));
             _merchItems.ReplaceWith(items);
-            this.RaisePropertyChanged(nameof(HasMerch));
+            OnPropertyChanged(nameof(HasMerch));
         }
         catch (Exception ex)
         {
             _logger?.LogDebug(ex, "Failed to load merch for {AlbumId}", albumUri);
+        }
+    }
+
+    private async Task LoadSimilarAlbumsAsync(string albumId)
+    {
+        // Seed with the most-played track on the album; fall back to first track.
+        var seedTrack = _allTracks
+            .Where(t => t.IsLoaded && t.Data is AlbumTrackDto)
+            .Select(t => (AlbumTrackDto)t.Data!)
+            .OrderByDescending(t => t.PlayCount)
+            .FirstOrDefault();
+
+        if (seedTrack == null || string.IsNullOrEmpty(seedTrack.Uri)) return;
+
+        try
+        {
+            var results = await Task.Run(async () =>
+                await _albumService.GetSimilarAlbumsAsync(seedTrack.Uri));
+            if (AlbumId != albumId) return; // stale
+            _similarAlbums.ReplaceWith(results);
+            HasSimilarAlbums = _similarAlbums.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to load similar albums for {AlbumId}", albumId);
+        }
+    }
+
+    private async Task LoadArtistContextAsync(string albumId, string artistUri)
+    {
+        try
+        {
+            var context = await Task.Run(async () =>
+                await _albumService.GetArtistContextAsync(artistUri));
+            if (AlbumId != albumId) return; // stale
+            ArtistBioExcerpt = context.BioExcerpt;
+            _similarArtists.ReplaceWith(context.SimilarArtists);
+            HasSimilarArtists = _similarArtists.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to load artist context for {ArtistUri}", artistUri);
+        }
+    }
+
+    private async Task LoadMusicVideoSignalAsync(string albumId, LazyTrackItem track)
+    {
+        if (track?.Data is not AlbumTrackDto dto || string.IsNullOrEmpty(dto.Uri)) return;
+
+        try
+        {
+            var videoUri = await Task.Run(async () =>
+                await _albumService.GetMusicVideoUriAsync(dto.Uri));
+            if (AlbumId != albumId) return; // stale
+            MusicVideoUri = videoUri;
+            HasMusicVideo = !string.IsNullOrEmpty(videoUri);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to fetch music-video signal for {TrackUri}", dto.Uri);
         }
     }
 
@@ -1521,5 +1627,7 @@ public sealed partial class AlbumViewModel : ReactiveObject, ITrackListViewModel
         _moreByArtist.Clear();
         _merchItems.Clear();
         _playlists.Clear();
+        _similarAlbums.Clear();
+        _similarArtists.Clear();
     }
 }

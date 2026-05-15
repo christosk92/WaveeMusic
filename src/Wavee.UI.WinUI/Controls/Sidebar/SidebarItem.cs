@@ -260,6 +260,9 @@ public sealed partial class SidebarItem : Control
 
 	internal void Select()
 	{
+		if (!IsItemEnabled)
+			return;
+
 		if (Owner is not null)
 			Owner.SelectedItem = Item!;
 	}
@@ -279,7 +282,7 @@ public sealed partial class SidebarItem : Control
 			border.DragLeave += ItemBorder_DragLeave;
 			border.DragOver += ItemBorder_DragOver;
 			border.Drop += ItemBorder_Drop;
-			border.AllowDrop = true;
+			border.AllowDrop = IsItemEnabled;
 			border.IsTabStop = false;
 		}
 
@@ -329,6 +332,7 @@ public sealed partial class SidebarItem : Control
 		ReapplyCurrentDisplayModeState(useAnimations: false);
 		UpdateCompactSectionSeparator();
 		UpdatePinButton();
+		UpdateEnabledState();
 	}
 
 	/// <summary>
@@ -546,6 +550,12 @@ public sealed partial class SidebarItem : Control
 
 	private void SidebarItem_DragStarting(UIElement sender, DragStartingEventArgs args)
 	{
+		if (!IsItemEnabled)
+		{
+			args.Cancel = true;
+			return;
+		}
+
 		args.Data.SetData(StandardDataFormats.Text, Item!.Text.ToString());
 	}
 
@@ -612,6 +622,10 @@ public sealed partial class SidebarItem : Control
 		else if (args.PropertyName == nameof(SidebarItemModel.ShowCompactSeparatorBefore))
 		{
 			UpdateCompactSectionSeparator();
+		}
+		else if (args.PropertyName == nameof(SidebarItemModel.IsEnabled))
+		{
+			UpdateEnabledState();
 		}
 	}
 
@@ -683,6 +697,9 @@ public sealed partial class SidebarItem : Control
 
 	internal void Clicked(PointerUpdateKind pointerUpdateKind)
 	{
+		if (!IsItemEnabled)
+			return;
+
 		if (IsGroupHeader)
 		{
 			if (CollapseEnabled)
@@ -910,6 +927,12 @@ public sealed partial class SidebarItem : Control
 
 	private void UpdatePointerState(bool isPointerDown = false)
 	{
+		if (!IsItemEnabled)
+		{
+			VisualStateManager.GoToState(this, "Normal", true);
+			return;
+		}
+
 		var useSelectedState = ShouldShowSelectionIndicator();
 		if (isPointerDown)
 		{
@@ -1004,8 +1027,30 @@ public sealed partial class SidebarItem : Control
 		UpdateSelectionState();
 	}
 
+	private bool IsItemEnabled => Item is not SidebarItemModel model || model.IsEnabled;
+
+	private void UpdateEnabledState()
+	{
+		if (_elementBorder is not null)
+		{
+			_elementBorder.Opacity = IsItemEnabled ? 1.0 : 0.55;
+			_elementBorder.AllowDrop = IsItemEnabled;
+		}
+
+		if (!IsItemEnabled)
+		{
+			isPointerOver = false;
+			isClicking = false;
+		}
+
+		UpdatePointerState();
+	}
+
 	private void ItemBorder_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
 	{
+		if (!IsItemEnabled)
+			return;
+
 		isPointerOver = true;
 		UpdatePointerState();
 	}
@@ -1025,6 +1070,9 @@ public sealed partial class SidebarItem : Control
 
 	private void ItemBorder_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
 	{
+		if (!IsItemEnabled)
+			return;
+
 		isClicking = true;
 		UpdatePointerState(true);
 		VisualStateManager.GoToState(this, IsExpanded ? "ExpandedIconPressed" : "CollapsedIconPressed", true);
@@ -1032,6 +1080,9 @@ public sealed partial class SidebarItem : Control
 
 	private void Item_PointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
 	{
+		if (!IsItemEnabled)
+			return;
+
 		if (!isClicking)
 			return;
 
@@ -1050,6 +1101,9 @@ public sealed partial class SidebarItem : Control
 
 	private async void ItemBorder_DragOver(object sender, DragEventArgs e)
 	{
+		if (!IsItemEnabled)
+			return;
+
 		// Accept drops only when CanDrop allows it
 		if (e.DataView.Contains("WaveeTrackIds")
 			&& Item is ISidebarItemModel model
@@ -1086,6 +1140,12 @@ public sealed partial class SidebarItem : Control
 
 	private void ItemBorder_ContextRequested(UIElement sender, Microsoft.UI.Xaml.Input.ContextRequestedEventArgs args)
 	{
+		if (!IsItemEnabled)
+		{
+			args.Handled = true;
+			return;
+		}
+
 		// Capture position in SidebarView coordinates (the Owner). The shell
 		// targets the SidebarView when opening the flyout, so the position has
 		// to be in the same coordinate space — using `this` (the SidebarItem)
@@ -1109,6 +1169,9 @@ public sealed partial class SidebarItem : Control
 
 	private void ItemBorder_Drop(object sender, DragEventArgs e)
 	{
+		if (!IsItemEnabled)
+			return;
+
 		UpdatePointerState();
 		Owner?.RaiseItemDropped(this, DetermineDropTargetPosition(e), e);
 	}
@@ -1118,6 +1181,12 @@ public sealed partial class SidebarItem : Control
 		DispatcherQueue.TryEnqueue(() =>
 		{
 			var payload = _dragStateService?.CurrentPayload;
+			if (!IsItemEnabled)
+			{
+				UpdateEnabledState();
+				return;
+			}
+
 			if (isDragging && payload != null)
 			{
 				if (Item is ISidebarItemModel model && model.CanDrop(payload))
@@ -1127,9 +1196,7 @@ public sealed partial class SidebarItem : Control
 			}
 			else
 			{
-				if (_elementBorder != null)
-					_elementBorder.Opacity = 1.0;
-				UpdatePointerState();
+				UpdateEnabledState();
 			}
 		});
 	}

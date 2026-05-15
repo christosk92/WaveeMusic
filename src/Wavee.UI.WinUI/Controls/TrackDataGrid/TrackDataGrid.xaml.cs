@@ -598,9 +598,17 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         return col.Length.IsAbsolute ? col.Length.Value : fallback;
     }
 
+    private double MaxWidthOf(string key, double fallback)
+    {
+        var col = Columns?.FirstOrDefault(c => c.Key == key);
+        if (col is null || !col.IsVisible) return fallback;
+        return col.MaxLength.IsAuto ? double.PositiveInfinity : col.MaxLength.Value;
+    }
+
     /// <summary>Push current column widths from <see cref="Columns"/> onto a single row.</summary>
     private void PushWidthsToRow(Track.TrackItem item)
     {
+        item.TitleColumnMaxWidth = MaxWidthOf("Track", 640);
         item.AlbumColumnWidth     = WidthOf("Album", 180);
         item.AddedByColumnWidth   = WidthOf("AddedBy", 140);
         item.DateAddedColumnWidth = WidthOf("DateAdded", 120);

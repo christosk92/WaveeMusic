@@ -43,7 +43,7 @@ public enum PlaylistSortColumn { Custom, Title, Artist, Album, AddedAt }
 /// playlists with a <c>header_image_url_desktop</c>); <see cref="Cover"/>
 /// = classic square cover in the left column + tracks on the right
 /// (user-created playlists). See PlaylistViewModel.LayoutMode for the
-/// detection chain (cache peek → URI heuristic → ApplyDetail authoritative).
+/// detection chain (cache peek → ApplyDetail authoritative).
 /// </summary>
 public enum PlaylistLayoutMode { Banner, Cover }
 
@@ -78,118 +78,158 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     [ObservableProperty]
     private string _playlistId = "";
 
-    [ObservableProperty]
-    private string _playlistName = "";
+    private PlaylistView? _playlist;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsDescriptionViewerCardVisible))]
-    private string? _playlistDescription;
+    public PlaylistView? Playlist
+    {
+        get => _playlist;
+        private set
+        {
+            if (EqualityComparer<PlaylistView?>.Default.Equals(_playlist, value))
+                return;
 
-    // Notify the same computed when CanEditDescription flips.
-    partial void OnCanEditDescriptionChanged(bool value)
-        => OnPropertyChanged(nameof(IsDescriptionViewerCardVisible));
+            var old = _playlist;
+            _playlist = value;
+            OnPropertyChanged(nameof(Playlist));
 
-    [ObservableProperty]
-    private string? _playlistImageUrl;
+            var paletteChanged = !Equals(old?.Palette, value?.Palette);
+            RaisePlaylistEnvelopeDependents();
 
-    // Preserved playlist-level format attributes (editorial chrome +
-    // recommender context). Populated when PlaylistDetailDto is received
-    // and forwarded into the play command so PlayerState.context_metadata
-    // reproduces what Spotify Connect clients expect to see.
-    private IReadOnlyDictionary<string, string>? _playlistFormatAttributes;
+            if (!string.Equals(old?.Name, value?.Name, StringComparison.Ordinal))
+                LogPlaylistNameChanged(value?.Name ?? string.Empty);
 
-    /// <summary>True when the current playlist's <c>format</c> attribute is
-    /// <c>"chart"</c> (Top 50 / Viral 50 / Podcast Charts / etc.). Drives
-    /// the chart sub-stat line in the header and per-row status badges.</summary>
-    [ObservableProperty]
-    private bool _isChart;
+            if (old?.IsCollaborative != value?.IsCollaborative)
+                RebuildCollaboratorsFromContext();
 
-    /// <summary>Single dot-separated chart-context line shown beneath
-    /// <see cref="MetaInlineLine"/> on chart playlists, e.g.
-    /// <c>"Updated May 1 · 8 new entries"</c>. Empty for non-chart
-    /// playlists; <see cref="IsChart"/> drives visibility.</summary>
-    [ObservableProperty]
-    private string _chartHeaderLine = string.Empty;
+            if (paletteChanged)
+                ApplyTheme(_isDarkTheme);
+        }
+    }
 
-    // Current 24-byte playlist revision. Needed when POSTing to the
-    // session-control signals endpoint.
-    private byte[]? _currentRevision;
+    private static readonly string[] PlaylistEnvelopeDependentProperties =
+    [
+        nameof(PlaylistName), nameof(PlaylistDescription), nameof(IsDescriptionViewerCardVisible),
+        nameof(PlaylistImageUrl), nameof(HeaderImageUrl), nameof(HasHeaderImage),
+        nameof(OwnerName), nameof(OwnerId), nameof(OwnerAvatarUrl), nameof(IsOwner),
+        nameof(IsPublic), nameof(IsCollaborative), nameof(BasePermission),
+        nameof(CanEditItems), nameof(CanAdministratePermissions), nameof(CanCancelMembership),
+        nameof(CanAbuseReport), nameof(CanEditMetadata), nameof(CanEditName),
+        nameof(CanEditDescription), nameof(CanEditPicture), nameof(CanEditCollaborative),
+        nameof(CanDelete), nameof(HasOverflowItems), nameof(CanRemove),
+        nameof(PlaylistFormatAttributes), nameof(IsChart), nameof(ChartHeaderLine),
+        nameof(CurrentRevision), nameof(SessionControlGroupId), nameof(Palette)
+    ];
 
-    // Base62 group id for the session-control-display chip row. Joined
-    // into the signal key as "session_control_display$<id>$<option>".
-    private string? _sessionControlGroupId;
+    private void RaisePlaylistEnvelopeDependents()
+    {
+        foreach (var propertyName in PlaylistEnvelopeDependentProperties)
+            OnPropertyChanged(propertyName);
 
-    // Set to true while BuildSessionControlChips is replacing the chips
-    // collection so the OnSelectedSessionControlChipChanged handler doesn't
-    // fire a signal for the server-seeded default selection.
-    private bool _suppressSessionSignal;
+        NotifyPlaylistCapabilityCommandsChanged();
+    }
 
-    // Cancellation scope for the in-flight session-control signal POST.
-    // Clicking a second chip while the first is still running cancels the
-    // prior request and supersedes it.
-    private CancellationTokenSource? _sessionSignalCts;
+    private PlaylistView EmptyPlaylistEnvelope()
+        => new(
+            Id: PlaylistId,
+            Name: string.Empty,
+            Description: null,
+            ImageUrl: null,
+            HeaderImageUrl: null,
+            OwnerName: string.Empty,
+            OwnerId: null,
+            OwnerAvatarUrl: null,
+            FormatAttributes: null,
+            Revision: null,
+            SessionControlGroupId: null,
+            IsOwner: false,
+            IsPublic: false,
+            IsCollaborative: false,
+            BasePermission: PlaylistBasePermission.Viewer,
+            CanEditItems: false,
+            CanAdministratePermissions: false,
+            CanCancelMembership: false,
+            CanAbuseReport: false,
+            CanEditMetadata: false,
+            CanEditName: false,
+            CanEditDescription: false,
+            CanEditPicture: false,
+            CanEditCollaborative: false,
+            CanDelete: false,
+            Palette: null);
 
-    // Chip whose IsLoading flag is currently lit. Set when a click kicks off
-    // the POST; cleared from LoadTracksAsync once the new track list has been
-    // applied (or determined unchanged) — that's the visible boundary for
-    // "the click is done", and it's what the user expects the chase-border
-    // beam to track.
-    private SessionControlChipViewModel? _pendingSignalChip;
+    private void UpdatePlaylist(Func<PlaylistView, PlaylistView> update)
+    {
+        Playlist = update(Playlist ?? EmptyPlaylistEnvelope());
+    }
 
-    /// <summary>
-    /// Wide hero image populated from the playlist's <c>header_image_url_desktop</c>
-    /// format attribute. Only editorial / radio playlists carry one; for user-created
-    /// playlists this stays null and the page falls back to the square cover.
-    /// </summary>
-    [ObservableProperty]
-    private string? _headerImageUrl;
+    public string PlaylistName
+    {
+        get => Playlist?.Name ?? string.Empty;
+        private set => UpdatePlaylist(p => p with { Name = value ?? string.Empty });
+    }
 
-    [ObservableProperty]
-    private string _ownerName = "";
+    public string? PlaylistDescription
+    {
+        get => Playlist?.Description;
+        private set => UpdatePlaylist(p => p with { Description = value });
+    }
 
-    [ObservableProperty]
-    private bool _isOwner;
+    public string? PlaylistImageUrl
+    {
+        get => Playlist?.ImageUrl;
+        private set => UpdatePlaylist(p => p with { ImageUrl = value });
+    }
 
-    [ObservableProperty]
-    private bool _isPublic;
+    public IReadOnlyDictionary<string, string>? PlaylistFormatAttributes => Playlist?.FormatAttributes;
+    public bool IsChart => ChartPlaylistInfo.From(PlaylistFormatAttributes) is not null;
+    public string ChartHeaderLine => BuildChartHeaderLine(PlaylistFormatAttributes);
+    public byte[]? CurrentRevision => Playlist?.Revision;
+    public string? SessionControlGroupId => Playlist?.SessionControlGroupId;
 
-    /// <summary>True when the playlist is open for contribution by other users.
-    /// Drives the "Make collaborative" toggle in the owner overflow menu.</summary>
-    [ObservableProperty]
-    private bool _isCollaborative;
+    public string? HeaderImageUrl
+    {
+        get => Playlist?.HeaderImageUrl;
+        set => UpdatePlaylist(p => p with { HeaderImageUrl = value });
+    }
 
-    /// <summary>Server-reported base role on this playlist (Viewer/Contributor/Owner).</summary>
-    [ObservableProperty]
-    private PlaylistBasePermission _basePermission = PlaylistBasePermission.Viewer;
+    public string OwnerName
+    {
+        get => Playlist?.OwnerName ?? string.Empty;
+        private set => UpdatePlaylist(p => p with { OwnerName = value ?? string.Empty });
+    }
 
-    /// <summary>Whether the current user can add/remove/reorder tracks. Drives edit CTAs.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanRemove))]
-    private bool _canEditItems;
+    public bool IsOwner => Playlist?.IsOwner == true;
+    public bool IsPublic => Playlist?.IsPublic == true;
 
-    /// <summary>Whether the current user can change collaborators / sharing.</summary>
-    [ObservableProperty]
-    private bool _canAdministratePermissions;
+    public bool IsCollaborative
+    {
+        get => Playlist?.IsCollaborative == true;
+        private set => UpdatePlaylist(p => p with { IsCollaborative = value });
+    }
 
-    /// <summary>Whether the current user can leave the playlist (collaborators only).</summary>
-    [ObservableProperty]
-    private bool _canCancelMembership;
+    public PlaylistBasePermission BasePermission => Playlist?.BasePermission ?? PlaylistBasePermission.Viewer;
+    public bool CanEditItems => Playlist?.CanEditItems == true;
+    public bool CanAdministratePermissions => Playlist?.CanAdministratePermissions == true;
+    public bool CanCancelMembership => Playlist?.CanCancelMembership == true;
+    public bool CanAbuseReport => Playlist?.CanAbuseReport == true;
+    public bool CanEditMetadata => Playlist?.CanEditMetadata == true;
+    public bool CanEditName => Playlist?.CanEditName == true;
+    public bool CanEditDescription => Playlist?.CanEditDescription == true;
+    public bool CanEditPicture => Playlist?.CanEditPicture == true;
+    public bool CanEditCollaborative => Playlist?.CanEditCollaborative == true;
+    public bool CanDelete => Playlist?.CanDelete == true;
 
-    /// <summary>Whether the current user can submit an abuse report.</summary>
-    [ObservableProperty]
-    private bool _canAbuseReport;
+    public string? OwnerId
+    {
+        get => Playlist?.OwnerId;
+        private set => UpdatePlaylist(p => p with { OwnerId = value });
+    }
 
-    // Granular metadata gates surfaced from PlaylistCapabilitiesDto. Today they
-    // all derive from CanEditMetadata in the DTO; when the cache layer starts
-    // surfacing per-attribute flags, only the DTO derivation changes — these
-    // observable properties stay 1:1 with the new values.
-    [ObservableProperty] private bool _canEditMetadata;
-    [ObservableProperty] private bool _canEditName;
-    [ObservableProperty] private bool _canEditDescription;
-    [ObservableProperty] private bool _canEditPicture;
-    [ObservableProperty] private bool _canEditCollaborative;
-    [ObservableProperty] private bool _canDelete;
-
+    public string? OwnerAvatarUrl
+    {
+        get => Playlist?.OwnerAvatarUrl;
+        private set => UpdatePlaylist(p => p with { OwnerAvatarUrl = value });
+    }
     /// <summary>Resolved collaborator list. Populated by
     /// <see cref="RebuildCollaboratorsFromContext"/> from the playlist's owner +
     /// the unique <c>AddedBy</c> users discovered in the track list. The
@@ -209,18 +249,6 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
     [ObservableProperty]
     private bool _hasCollaborators;
-
-    /// <summary>Bare owner user id (no <c>spotify:user:</c> prefix). Captured
-    /// from the playlist detail; used to identify which addedBy user is the
-    /// owner so we don't double-list them in the collaborator stack.</summary>
-    [ObservableProperty]
-    private string? _ownerId;
-
-    /// <summary>Owner's profile image URL, resolved alongside the display name
-    /// in <see cref="ResolveOwnerDisplayNameAsync"/>. Drives the first avatar
-    /// in the collaborator stack.</summary>
-    [ObservableProperty]
-    private string? _ownerAvatarUrl;
 
     /// <summary>Most recently generated invite link for "Invite collaborators…".
     /// Cleared on playlist swap.</summary>
@@ -280,20 +308,6 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         }
     }
 
-    partial void OnIsCollaborativeChanged(bool value)
-    {
-        // Toggling "open for collab" should reveal/hide the avatar stack even
-        // when the contributor list itself didn't change. The AddedBy column
-        // gate no longer depends on this flag — it reads directly from track
-        // addedBy values — so no PropertyChanged needed for it here.
-        RebuildCollaboratorsFromContext();
-    }
-
-    partial void OnCanDeleteChanged(bool value) => OnPropertyChanged(nameof(HasOverflowItems));
-    partial void OnCanEditCollaborativeChanged(bool value) => OnPropertyChanged(nameof(HasOverflowItems));
-    partial void OnCanCancelMembershipChanged(bool value) => OnPropertyChanged(nameof(HasOverflowItems));
-    partial void OnCanAdministratePermissionsChanged(bool value) => OnPropertyChanged(nameof(HasOverflowItems));
-
     [ObservableProperty]
     private int _followerCount;
 
@@ -311,7 +325,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     // ActualThemeChanged. Same brush set as the album page so the two
     // surfaces feel like siblings.
 
-    private AlbumPalette? _albumPalette;
+    public AlbumPalette? Palette => Playlist?.Palette;
     private bool _isDarkTheme;
 
     /// <summary>Subtle page-wash brush tinted toward the playlist's color. Null when no palette.</summary>
@@ -357,11 +371,6 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     /// bind both sides via BoolToVisibilityConverter without a custom converter.</summary>
     public bool HasHeaderImage => !string.IsNullOrEmpty(HeaderImageUrl);
 
-    partial void OnHeaderImageUrlChanged(string? value)
-    {
-        OnPropertyChanged(nameof(HasHeaderImage));
-    }
-
     /// <summary>
     /// Drives the page-level layout fork: editorial / radio playlists with a
     /// header image render the banner-style hero (full-width image at top,
@@ -369,16 +378,13 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     /// render the classic cover-in-left-column layout.
     /// </summary>
     /// <remarks>
-    /// Set in three phases (see <see cref="Activate"/> and <see cref="ApplyDetail"/>):
+    /// Set in two phases (see <see cref="Activate"/> and <see cref="ApplyDetail"/>):
     ///   1. Cache peek (<see cref="EntityStore{TKey,TValue}.PeekCached"/>)
     ///      gives a definitive answer when the playlist was visited before
     ///      in this session.
-    ///   2. URI-prefix heuristic (<see cref="IsLikelyEditorialPlaylist"/>)
-    ///      predicts based on the <c>spotify:playlist:37i9dQZ*</c> convention
-    ///      Spotify uses for curated and algorithmic playlists.
-    ///   3. After <see cref="ApplyDetail"/> the actual <see cref="HeaderImageUrl"/>
+    ///   2. After <see cref="ApplyDetail"/> the actual <see cref="HeaderImageUrl"/>
     ///      is authoritative; PlaylistPage code-behind handles the fade-in
-    ///      crossfade if the prediction was wrong.
+    ///      crossfade if the cached/default mode was wrong.
     /// Default value <c>Cover</c> is the safer cold-start fallback (most
     /// playlists are user-created).
     /// </remarks>
@@ -386,26 +392,11 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     private PlaylistLayoutMode _layoutMode = PlaylistLayoutMode.Cover;
 
     /// <summary>
-    /// Spotify's curated and algorithmic playlists all share the
-    /// <c>spotify:playlist:37i9dQZ*</c> URI prefix:
-    ///   • <c>37i9dQZF1*</c> — editorial (Today's Top Hits, RapCaviar, etc.)
-    ///   • <c>37i9dQZEVXc*</c> / <c>37i9dQZF1E*</c> — personalised algorithmic
-    ///     (Discover Weekly, Daily Mix, etc.).
-    /// Both carry <c>header_image_url_desktop</c>, so a single prefix check
-    /// covers both. ~95% accurate; the remaining mismatches are corrected
-    /// authoritatively by ApplyDetail.
-    /// </summary>
-    private static bool IsLikelyEditorialPlaylist(string? playlistUri)
-    {
-        return !string.IsNullOrEmpty(playlistUri)
-            && playlistUri.StartsWith("spotify:playlist:37i9dQZ", StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
     /// Pick the initial layout mode for a navigation. Tries the cache first
-    /// (definitive when present), falls back to the URI heuristic.
+    /// (definitive when present), otherwise keeps the safe cover fallback until
+    /// playlist detail supplies an actual header image URL.
     /// </summary>
-    private PlaylistLayoutMode PredictLayoutMode(string playlistId)
+    private PlaylistLayoutMode ResolveInitialLayoutMode(string playlistId)
     {
         var cached = _playlistStore.PeekCached(playlistId);
         if (cached is not null)
@@ -415,9 +406,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 : PlaylistLayoutMode.Banner;
         }
 
-        return IsLikelyEditorialPlaylist(playlistId)
-            ? PlaylistLayoutMode.Banner
-            : PlaylistLayoutMode.Cover;
+        return PlaylistLayoutMode.Cover;
     }
 
     [ObservableProperty]
@@ -505,6 +494,16 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     [ObservableProperty]
     private SessionControlChipViewModel? _selectedSessionControlChip;
 
+    // Set while rebuilding the chip row so the SelectedSessionControlChip
+    // generated setter does not POST a signal for the server-seeded value.
+    private bool _suppressSessionSignal;
+
+    // Cancellation scope for the in-flight session-control signal POST.
+    private CancellationTokenSource? _sessionSignalCts;
+
+    // Chip whose loading beam is lit until the signal-driven refresh resolves.
+    private SessionControlChipViewModel? _pendingSignalChip;
+
     /// <summary>
     /// Formatted follower count.
     /// </summary>
@@ -545,20 +544,21 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         && !HasError;
 
     /// <summary>
-    /// Recomputes <see cref="IsChart"/> and <see cref="ChartHeaderLine"/>
-    /// from the current <c>_playlistFormatAttributes</c>. Called whenever
-    /// the playlist detail changes — non-chart playlists land with
-    /// <see cref="IsChart"/> false and the chart line empty.
+    /// Recomputes the chart header projections from the playlist envelope's
+    /// format attributes.
     /// </summary>
     private void RecomputeChartHeader()
     {
-        var info = ChartPlaylistInfo.From(_playlistFormatAttributes);
-        IsChart = info is not null;
+        OnPropertyChanged(nameof(IsChart));
+        OnPropertyChanged(nameof(ChartHeaderLine));
+    }
+
+    private static string BuildChartHeaderLine(IReadOnlyDictionary<string, string>? formatAttributes)
+    {
+        var info = ChartPlaylistInfo.From(formatAttributes);
         if (info is null)
-        {
-            ChartHeaderLine = string.Empty;
-            return;
-        }
+            return string.Empty;
+
         var parts = new List<string>(2);
         if (info.LastUpdated is { } when)
             parts.Add(AppLocalization.Format(
@@ -567,7 +567,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             parts.Add(n == 1
                 ? AppLocalization.GetString("Playlist_Chart_NewEntriesOne")
                 : AppLocalization.Format("Playlist_Chart_NewEntriesMany", n));
-        ChartHeaderLine = string.Join(" · ", parts);
+        return string.Join(" · ", parts);
     }
 
     /// <summary>True if the current user follows this playlist (heart filled).
@@ -692,7 +692,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         OnPropertyChanged(nameof(ShowFollowerCountText));
     }
 
-    partial void OnPlaylistNameChanged(string value)
+    private void LogPlaylistNameChanged(string value)
     {
         // First two stack frames are this method + the property setter; the third is the caller.
         var stack = new System.Diagnostics.StackTrace(skipFrames: 1, fNeedFileInfo: false);
@@ -744,13 +744,16 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     // Detail refresh now arrives via the store's push/invalidate stream
     // subscribed in Activate() — no manual DataChanged wire needed.
 
-    // OnIsOwnerChanged consolidated above (line ~192) — also raises
-    // ShouldShowAddedByColumn so the AddedBy column gates correctly.
-
-    partial void OnCanEditItemsChanged(bool value)
+    private void NotifyPlaylistCapabilityCommandsChanged()
     {
         FindRecommendedTracksCommand.NotifyCanExecuteChanged();
         RemoveSelectedCommand.NotifyCanExecuteChanged();
+        RenameCommand.NotifyCanExecuteChanged();
+        UpdateDescriptionCommand.NotifyCanExecuteChanged();
+        ChangeCoverCommand.NotifyCanExecuteChanged();
+        RemoveCoverCommand.NotifyCanExecuteChanged();
+        DeletePlaylistCommand.NotifyCanExecuteChanged();
+        ToggleCollaborativeCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnSelectedItemsChanged(IReadOnlyList<object> value)
@@ -933,60 +936,55 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             // null-guards and ApplyDetail's empty-string guards would leave stale
             // values visible whenever the new playlist is missing a field (e.g.
             // editorial playlists with no description).
-            if (!preserveHeaderPrefill)
-                PlaylistName = string.Empty;
-            PlaylistDescription = null;
-            if (!preserveHeaderPrefill)
-                PlaylistImageUrl = null;
-            HeaderImageUrl = null;
-            if (!preserveHeaderPrefill)
-                OwnerName = string.Empty;
-            OwnerId = null;
-            OwnerAvatarUrl = null;
+            var previousEnvelope = Playlist;
+            Playlist = preserveHeaderPrefill && previousEnvelope is not null
+                ? previousEnvelope with
+                {
+                    Description = null,
+                    HeaderImageUrl = null,
+                    OwnerId = null,
+                    OwnerAvatarUrl = null,
+                    FormatAttributes = null,
+                    Revision = null,
+                    SessionControlGroupId = null,
+                    IsOwner = false,
+                    IsPublic = false,
+                    IsCollaborative = false,
+                    BasePermission = PlaylistBasePermission.Viewer,
+                    CanEditItems = false,
+                    CanAdministratePermissions = false,
+                    CanCancelMembership = false,
+                    CanAbuseReport = false,
+                    CanEditMetadata = false,
+                    CanEditName = false,
+                    CanEditDescription = false,
+                    CanEditPicture = false,
+                    CanEditCollaborative = false,
+                    CanDelete = false,
+                    Palette = null
+                }
+                : null;
             Collaborators.Clear();
             HasCollaborators = false;
             // Reset the track snapshot so ApplyDetail's RebuildCollaboratorsFromContext
             // doesn't compute the AddedBy gate against the previous playlist's tracks
             // (which produced wrong stale-true gate values during the brief window
-            // between Activate and LoadTracksAsync — those would latch into
+            // between Activate and LoadTracksAsync - those would latch into
             // already-materializing ListView containers).
             _allTracks = new List<PlaylistTrackDto>();
             OnPropertyChanged(nameof(ShouldShowAddedByColumn));
             _tracksLoadedFor = null;
             ShowOnlyVideoTracks = false;
             NotifyVideoFilterProperties();
-            _albumPalette = null;
             PaletteBackdropBrush = null;
             PaletteHeroGradientBrush = null;
             PaletteAccentPillBrush = null;
             PaletteAccentPillForegroundBrush = null;
-            IsOwner = false;
-            IsPublic = false;
-            IsCollaborative = false;
             FollowerCount = 0;
             TotalTracks = 0;
-            _playlistFormatAttributes = null;
-            RecomputeChartHeader();
-            _currentRevision = null;
-            _sessionControlGroupId = null;
             TotalDuration = string.Empty;
             HasAnyAddedAt = false;
             _pendingFallbackMosaicPlaylistId = null;
-
-            // Reset granular capability gates synchronously. Earlier this lived
-            // on a Low-priority dispatch ("don't add to the PropertyChanged
-            // storm before first paint"), but Low priority fires AFTER
-            // ApplyDetail when the playlist is cache-hot — and ApplyDetail
-            // setting these gates to true was getting stomped back to false
-            // by the delayed Reset. Hero owner affordances (pencil hint,
-            // cover Edit badge, etc.) then never appeared.
-            CanEditMetadata = false;
-            CanEditName = false;
-            CanEditDescription = false;
-            CanEditPicture = false;
-            CanEditCollaborative = false;
-            CanDelete = false;
-
             // Drop the previous playlist's collaborator state. (The earlier
             // Collaborators.Clear() above already covered the collection.)
             LatestInviteLink = null;
@@ -1020,12 +1018,11 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             IsLoading = true;
         }
 
-        // Predict layout mode BEFORE the subscription fires its first emission
-        // so the shimmer skeleton renders the right shape from the first frame.
-        // ApplyDetail will set the authoritative value once the network/cache
-        // fetch resolves (mismatches between prediction and authoritative are
-        // handled by the page-level fade-in crossfade).
-        LayoutMode = PredictLayoutMode(playlistId);
+        // Seed layout mode before the subscription fires its first emission.
+        // Only cached playlist detail is trusted here; URI prefixes are not
+        // reliable enough to choose the header-image layout. ApplyDetail sets
+        // the authoritative value once real detail arrives.
+        LayoutMode = ResolveInitialLayoutMode(playlistId);
 
         var streamSubscription = _playlistStore.Observe(playlistId)
             .Subscribe(
@@ -1142,27 +1139,35 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             "Detail received: Name='{Name}', OwnerName='{OwnerName}', ImageUrl='{ImageUrl}', HeaderImageUrl='{HeaderImageUrl}', IsOwner={IsOwner}, FollowerCount={FollowerCount}",
             detail.Name, detail.OwnerName, detail.ImageUrl, detail.HeaderImageUrl, detail.IsOwner, detail.FollowerCount);
 
+        var current = Playlist ?? EmptyPlaylistEnvelope();
+        var nextName = current.Name;
+        var nextDescription = current.Description;
+        var nextImageUrl = current.ImageUrl;
+        var nextOwnerName = current.OwnerName;
+
         // Guard against the generic 'Playlist' fallback the data layer returns
         // for editorial mixes whose name lookup isn't implemented.
         if (!string.IsNullOrEmpty(detail.Name)
-            && !detail.Name.StartsWith("Unknown")
+            && !detail.Name.StartsWith("Unknown", StringComparison.Ordinal)
             && !string.Equals(detail.Name, "Playlist", StringComparison.OrdinalIgnoreCase))
         {
-            PlaylistName = detail.Name;
+            nextName = detail.Name;
         }
+
         if (!string.IsNullOrEmpty(detail.Description))
-            PlaylistDescription = detail.Description;
+            nextDescription = detail.Description;
+
         // Hero image resolution:
-        //  - Direct HTTPS URL → use verbatim.
-        //  - spotify:mosaic:... → delegate to PlaylistMosaicService for a real
+        //  - Direct HTTPS URL -> use verbatim.
+        //  - spotify:mosaic:... -> delegate to PlaylistMosaicService for a real
         //    composed PNG (reuses the sidebar's disk-cache + inflight dedup).
-        //  - null / empty → still try the mosaic service with a null hint;
+        //  - null / empty -> still try the mosaic service with a null hint;
         //    it falls back to picking 4 unique album covers from the
         //    playlist's tracks. Only place the placeholder 3-line icon when
         //    the service returns null (truly empty playlist or fetch failure).
         if (!string.IsNullOrEmpty(detail.ImageUrl) && !Helpers.SpotifyImageHelper.IsMosaicUri(detail.ImageUrl))
         {
-            PlaylistImageUrl = detail.ImageUrl;
+            nextImageUrl = detail.ImageUrl;
         }
         else if (_mosaicService is not null && !string.IsNullOrEmpty(PlaylistId))
         {
@@ -1189,38 +1194,60 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         else
         {
             _logger?.LogWarning(
-                "ApplyDetail: no hero path taken — ImageUrl='{Img}', mosaicService null? {MosaicNull}, PlaylistId='{PlaylistId}'",
+                "ApplyDetail: no hero path taken - ImageUrl='{Img}', mosaicService null? {MosaicNull}, PlaylistId='{PlaylistId}'",
                 detail.ImageUrl ?? "null", _mosaicService is null, PlaylistId);
         }
-        HeaderImageUrl = string.IsNullOrWhiteSpace(detail.HeaderImageUrl) ? null : detail.HeaderImageUrl;
+
+        if (!string.IsNullOrEmpty(detail.OwnerName) && detail.OwnerName != "Unknown")
+            nextOwnerName = detail.OwnerName;
+
+        var nextOwnerId = string.IsNullOrWhiteSpace(detail.OwnerId)
+            ? detail.OwnerName
+            : detail.OwnerId;
+
+        Playlist = current with
+        {
+            Id = detail.Id,
+            Name = nextName,
+            Description = nextDescription,
+            ImageUrl = nextImageUrl,
+            HeaderImageUrl = string.IsNullOrWhiteSpace(detail.HeaderImageUrl) ? null : detail.HeaderImageUrl,
+            OwnerName = nextOwnerName,
+            OwnerId = nextOwnerId,
+            FormatAttributes = detail.FormatAttributes,
+            Revision = detail.Revision,
+            SessionControlGroupId = detail.SessionControlGroupId,
+            IsOwner = detail.IsOwner,
+            IsPublic = detail.IsPublic,
+            IsCollaborative = detail.IsCollaborative,
+            BasePermission = detail.BasePermission,
+            CanEditItems = detail.Capabilities.CanEditItems,
+            CanAdministratePermissions = detail.Capabilities.CanAdministratePermissions,
+            CanCancelMembership = detail.Capabilities.CanCancelMembership,
+            CanAbuseReport = detail.Capabilities.CanAbuseReport,
+            CanEditMetadata = detail.Capabilities.CanEditMetadata,
+            CanEditName = detail.Capabilities.CanEditName,
+            CanEditDescription = detail.Capabilities.CanEditDescription,
+            CanEditPicture = detail.Capabilities.CanEditPicture,
+            CanEditCollaborative = detail.Capabilities.CanEditCollaborative,
+            CanDelete = detail.Capabilities.CanDelete
+        };
 
         // Authoritative layout decision now that the actual HeaderImageUrl is
-        // known. Common case: matches the prediction made in Activate, no
-        // visible change. Mismatch case (URI heuristic was wrong): the page-
-        // level PropertyChanged hook on LayoutMode triggers a fade-in on the
-        // newly-visible container.
+        // known. Common case: matches the cached/default mode from Activate,
+        // no visible change. Header-image playlists discovered on cold load
+        // flip here and the page-level PropertyChanged hook on LayoutMode
+        // fades in the newly-visible container.
         LayoutMode = string.IsNullOrEmpty(HeaderImageUrl)
             ? PlaylistLayoutMode.Cover
             : PlaylistLayoutMode.Banner;
 
-        _playlistFormatAttributes = detail.FormatAttributes;
-        RecomputeChartHeader();
-        _currentRevision = detail.Revision;
-        _sessionControlGroupId = detail.SessionControlGroupId;
         BuildSessionControlChips(detail.SessionControlOptions);
-        if (!string.IsNullOrEmpty(detail.OwnerName) && detail.OwnerName != "Unknown")
-            OwnerName = detail.OwnerName;
-        // Stash the owner id (bare or full URI tolerated, both flow through the
-        // resolver) so RebuildCollaboratorsFromContext can dedupe against the
-        // unique addedBy set below.
-        OwnerId = string.IsNullOrWhiteSpace(detail.OwnerId)
-            ? detail.OwnerName
-            : detail.OwnerId;
 
         // The data layer sometimes hands us the raw `spotify:user:{id}` URI or bare id
         // in OwnerName (editorial / legacy accounts where the display-name lookup hasn't
         // been persisted). Detect that and resolve to a friendly name via the extended-
-        // metadata UserProfile extension — cheap for repeat visits because the resolver
+        // metadata UserProfile extension - cheap for repeat visits because the resolver
         // caches both hits and misses.
         if (_userProfileResolver is not null)
         {
@@ -1239,16 +1266,13 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         else
         {
             _logger?.LogWarning(
-                "ApplyDetail: _userProfileResolver is null — cannot resolve owner '{OwnerName}' / '{OwnerId}'",
+                "ApplyDetail: _userProfileResolver is null - cannot resolve owner '{OwnerName}' / '{OwnerId}'",
                 detail.OwnerName ?? "null", detail.OwnerId ?? "null");
         }
 
-        IsOwner = detail.IsOwner;
-        IsPublic = detail.IsPublic;
-        IsCollaborative = detail.IsCollaborative;
         FollowerCount = detail.FollowerCount;
 
-        // Popcount runs out-of-band — the data layer holds FollowerCount at 0
+        // Popcount runs out-of-band - the data layer holds FollowerCount at 0
         // so the detail load doesn't block on a stat-only round trip. Kick off
         // the dedicated fetch here and let the chip shimmer until it resolves.
         // Same idea for the palette: Pathfinder fetchPlaylist is fired in
@@ -1259,36 +1283,12 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             _ = LoadPaletteAsync(PlaylistId);
         }
 
-        BasePermission = detail.BasePermission;
-        CanEditItems = detail.Capabilities.CanEditItems;
-        CanAdministratePermissions = detail.Capabilities.CanAdministratePermissions;
-        CanCancelMembership = detail.Capabilities.CanCancelMembership;
-        CanAbuseReport = detail.Capabilities.CanAbuseReport;
-
-        // Granular metadata gates — drive RenameAsync / UpdateDescriptionAsync /
-        // ChangeCoverAsync / DeletePlaylistAsync / ToggleCollaborativeAsync via
-        // their respective CanExecute predicates instead of the coarse IsOwner.
-        CanEditMetadata = detail.Capabilities.CanEditMetadata;
-        CanEditName = detail.Capabilities.CanEditName;
-        CanEditDescription = detail.Capabilities.CanEditDescription;
-        CanEditPicture = detail.Capabilities.CanEditPicture;
-        CanEditCollaborative = detail.Capabilities.CanEditCollaborative;
-        CanDelete = detail.Capabilities.CanDelete;
-
         _logger?.LogInformation(
             "[caps] VM ApplyDetail '{Id}': IsOwner={IsOwner} BasePerm={Base} | dto.Caps=[EditItems={EI},EditMeta={EM},Delete={DD},Admin={AD}] | VM gates=[CanEditName={CEN},CanEditDescription={CED},CanEditPicture={CEP},CanEditCollab={CEC},CanDelete={CD}]",
             PlaylistId, IsOwner, BasePermission,
             detail.Capabilities.CanEditItems, detail.Capabilities.CanEditMetadata,
             detail.Capabilities.CanDelete, detail.Capabilities.CanAdministratePermissions,
             CanEditName, CanEditDescription, CanEditPicture, CanEditCollaborative, CanDelete);
-
-        // Re-evaluate command CanExecute now that gates have refreshed.
-        RenameCommand.NotifyCanExecuteChanged();
-        UpdateDescriptionCommand.NotifyCanExecuteChanged();
-        ChangeCoverCommand.NotifyCanExecuteChanged();
-        RemoveCoverCommand.NotifyCanExecuteChanged();
-        DeletePlaylistCommand.NotifyCanExecuteChanged();
-        ToggleCollaborativeCommand.NotifyCanExecuteChanged();
 
         // Seed the chip strip with whatever's on screen right now (owner +
         // anyone present via track AddedBy fields) so the first paint isn't
@@ -1306,7 +1306,6 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         HasError = false;
         ErrorMessage = null;
     }
-
     // Rebuild the session-control chip row from the DTO's pre-parsed options.
     // Preserves the previously-selected option across refreshes (e.g. a Mercury
     // push that bumps the revision but doesn't change the chip set) so the
@@ -1363,8 +1362,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             // so on first load we use it to seed the selection, and across
             // refreshes a user-driven selection still takes priority.
             string? serverSelectedIdentifier = null;
-            if (_playlistFormatAttributes is not null &&
-                _playlistFormatAttributes.TryGetValue("session_control.selected_signals", out var raw) &&
+            if (PlaylistFormatAttributes is not null &&
+                PlaylistFormatAttributes.TryGetValue("session_control.selected_signals", out var raw) &&
                 !string.IsNullOrWhiteSpace(raw))
             {
                 // The key is plural in case Spotify ever ships a comma-list.
@@ -1448,7 +1447,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             _suppressSessionSignal = false;
             return;
         }
-        if (_currentRevision is null || _currentRevision.Length == 0)
+        if (CurrentRevision is null || CurrentRevision.Length == 0)
         {
             _logger?.LogWarning("Session control chip selected but no revision available; ignoring");
             return;
@@ -1501,7 +1500,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         CancellationToken ct)
     {
         var playlistId = PlaylistId;
-        var revision = _currentRevision;
+        var revision = CurrentRevision;
         var requestId = Guid.NewGuid().ToString();
         // Use the server-advertised identifier verbatim — no client-side
         // derivation. Each chip has its own unique group id embedded; the
@@ -1817,8 +1816,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             {
                 if (_disposed || !string.Equals(PlaylistId, playlistId, StringComparison.Ordinal))
                     return;
-                _albumPalette = palette;
-                ApplyTheme(_isDarkTheme);
+                UpdatePlaylist(p => p with { Palette = palette });
             });
         }
         catch (OperationCanceledException)
@@ -1843,11 +1841,11 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     {
         _isDarkTheme = isDark;
 
-        var tier = _albumPalette is null
+        var tier = Palette is null
             ? null
             : (isDark
-                ? (_albumPalette.HigherContrast ?? _albumPalette.HighContrast)
-                : (_albumPalette.HighContrast ?? _albumPalette.HigherContrast));
+                ? (Palette.HigherContrast ?? Palette.HighContrast)
+                : (Palette.HighContrast ?? Palette.HigherContrast));
 
         if (tier == null)
         {
@@ -2302,7 +2300,11 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             // Published as ProvidedTrack.uid and ProvidedTrack.metadata so remote
             // clients see the same per-track decorations Spotify desktop emits.
             Uid = t.Uid,
-            Metadata = t.FormatAttributes
+            Metadata = t.FormatAttributes,
+            AlbumName = t is PlaylistTrackDto p1 ? p1.AlbumName : null,
+            AlbumUri = t is PlaylistTrackDto p2 && !string.IsNullOrEmpty(p2.AlbumId) ? p2.AlbumId : null,
+            ArtistUri = string.IsNullOrEmpty(t.ArtistId) ? null : t.ArtistId,
+            IsExplicit = t.IsExplicit,
         }).ToList();
 
         if (shuffle)
@@ -2320,7 +2322,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             // Playlist-level format attributes from the API — forwarded verbatim
             // into PlayerState.context_metadata (format, request_id, tag,
             // source-loader, image_url, session_control_display.displayName.*, …).
-            FormatAttributes = _playlistFormatAttributes
+            FormatAttributes = PlaylistFormatAttributes
         };
 
         _playbackStateService.LoadQueue(queueItems, context, startIndex);

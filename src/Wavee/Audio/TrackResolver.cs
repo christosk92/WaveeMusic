@@ -5,6 +5,7 @@ using Wavee.Core.Audio;
 using Wavee.Core.Http;
 using Wavee.Core.Session;
 using Wavee.Core.Storage;
+using Wavee.Core.Video;
 using Wavee.Playback.Contracts;
 using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Storage;
@@ -29,6 +30,7 @@ public sealed class TrackResolver
     private readonly HeadFileClient _headFileClient;
     private readonly IExtendedMetadataClient? _extendedMetadataClient;
     private readonly ICacheService? _cacheService;
+    private readonly IVideoManifestCache? _videoManifestCache;
     private readonly HttpClient _httpClient;
     private AudioQuality _preferredQuality;
     private readonly ILogger? _logger;
@@ -49,7 +51,8 @@ public sealed class TrackResolver
         IExtendedMetadataClient? extendedMetadataClient = null,
         ICacheService? cacheService = null,
         ILogger? logger = null,
-        string? audioCacheDirectory = null)
+        string? audioCacheDirectory = null,
+        IVideoManifestCache? videoManifestCache = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _spClient = spClient ?? throw new ArgumentNullException(nameof(spClient));
@@ -58,6 +61,7 @@ public sealed class TrackResolver
         _preferredQuality = preferredQuality;
         _extendedMetadataClient = extendedMetadataClient;
         _cacheService = cacheService;
+        _videoManifestCache = videoManifestCache;
         _logger = logger;
         _audioCacheDirectory = audioCacheDirectory;
     }
@@ -228,7 +232,27 @@ public sealed class TrackResolver
             var manifestId = await ResolveVideoManifestIdAsync(uri, ct).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(manifestId)) return;
 
-            await _spClient.GetVideoManifestAsync(manifestId, ct).ConfigureAwait(false);
+            // Cache hit — nothing to do; the parsed manifest is already warm.
+            if (_videoManifestCache is not null && _videoManifestCache.TryGet(manifestId, out _))
+            {
+                _logger?.LogDebug("Video manifest prefetch cache HIT manifest={Manifest}", manifestId);
+                return;
+            }
+
+            var json = await _spClient.GetVideoManifestAsync(manifestId, ct).ConfigureAwait(false);
+            if (_videoManifestCache is not null && !string.IsNullOrEmpty(json))
+            {
+                try
+                {
+                    var parsed = SpotifyWebEmeVideoManifest.FromJson(json);
+                    _videoManifestCache.Store(manifestId, json, parsed);
+                }
+                catch (Exception parseEx)
+                {
+                    _logger?.LogDebug(parseEx, "Video manifest prefetch parse failed manifest={Manifest}", manifestId);
+                }
+            }
+
             _logger?.LogInformation("Prefetched next music video: {Uri} (manifest={Manifest})", uri, manifestId);
         }
         catch (OperationCanceledException)
@@ -307,14 +331,59 @@ public sealed class TrackResolver
         if (string.IsNullOrWhiteSpace(manifestId))
             return null;
 
+        var videoMetadata = BuildMetadataDto(videoUri, videoTrack, NormalizationData.Default);
+        var originalMetadata = BuildMetadataDto(audioUri, audioTrack, NormalizationData.Default);
+
+        // Poster URL for the UI crossfade. v1 uses the existing album art —
+        // visually indistinguishable once we apply a 24 px blur, and avoids an
+        // extra Pathfinder roundtrip on the hot path. A follow-up can swap in
+        // visualIdentity.sixteenByNineCoverImage when it's available cheaply.
+        var posterUrl = videoMetadata.ImageLargeUrl
+            ?? videoMetadata.ImageUrl
+            ?? originalMetadata.ImageLargeUrl
+            ?? originalMetadata.ImageUrl;
+
         return new SpotifyVideoPlaybackTarget(
             AudioTrackUri: audioUri,
             VideoTrackUri: videoUri,
             ManifestId: manifestId,
-            Metadata: BuildMetadataDto(videoUri, videoTrack, NormalizationData.Default),
+            Metadata: videoMetadata,
             DurationMs: videoTrack.Duration,
-            OriginalMetadata: BuildMetadataDto(audioUri, audioTrack, NormalizationData.Default),
-            OriginalDurationMs: audioTrack.Duration);
+            OriginalMetadata: originalMetadata,
+            OriginalDurationMs: audioTrack.Duration)
+        {
+            PosterUrl = posterUrl,
+        };
+    }
+
+    /// <summary>
+    /// Fetches a video manifest JSON, consulting the prefetch cache when
+    /// available. Returns the parsed model and the raw JSON for the engine.
+    /// </summary>
+    internal async Task<(string Json, SpotifyWebEmeVideoManifest Parsed)?> GetVideoManifestAsync(
+        string manifestId,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(manifestId)) return null;
+
+        if (_videoManifestCache is not null && _videoManifestCache.TryGet(manifestId, out var cached))
+            return (cached.RawJson, cached.Parsed);
+
+        var json = await _spClient.GetVideoManifestAsync(manifestId, ct).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(json)) return null;
+
+        SpotifyWebEmeVideoManifest parsed;
+        try
+        {
+            parsed = SpotifyWebEmeVideoManifest.FromJson(json);
+        }
+        catch
+        {
+            return (json, null!);
+        }
+
+        _videoManifestCache?.Store(manifestId, json, parsed);
+        return (json, parsed);
     }
 
     /// <summary>

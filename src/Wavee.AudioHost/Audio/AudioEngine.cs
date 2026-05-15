@@ -349,6 +349,8 @@ public sealed class AudioEngine : IAsyncDisposable
                 Title = cmd.Metadata?.Title,
                 Artist = cmd.Metadata?.Artist,
                 Album = cmd.Metadata?.Album,
+                NormalizationGainDb = cmd.NormalizationGain,
+                NormalizationPeak = cmd.NormalizationPeak,
                 AlbumUri = cmd.Metadata?.AlbumUri,
                 ArtistUri = cmd.Metadata?.ArtistUri,
                 ImageUrl = cmd.Metadata?.ImageUrl,
@@ -732,6 +734,8 @@ public sealed class AudioEngine : IAsyncDisposable
                 Title = cmd.Metadata?.Title,
                 Artist = cmd.Metadata?.Artist,
                 Album = cmd.Metadata?.Album,
+                NormalizationGainDb = cmd.Normalization?.TrackGainDb,
+                NormalizationPeak = cmd.Normalization?.TrackPeak,
                 AlbumUri = cmd.Metadata?.AlbumUri,
                 ArtistUri = cmd.Metadata?.ArtistUri,
                 ImageUrl = cmd.Metadata?.ImageUrl,
@@ -891,6 +895,8 @@ public sealed class AudioEngine : IAsyncDisposable
                 Title = cmd.Metadata?.Title,
                 Artist = cmd.Metadata?.Artist,
                 Album = cmd.Metadata?.Album,
+                NormalizationGainDb = cmd.NormalizationGain,
+                NormalizationPeak = cmd.NormalizationPeak,
                 AlbumUri = cmd.Metadata?.AlbumUri,
                 ArtistUri = cmd.Metadata?.ArtistUri,
                 ImageUrl = cmd.Metadata?.ImageUrl,
@@ -1143,6 +1149,8 @@ public sealed record EngineState
     public string? Title { get; init; }
     public string? Artist { get; init; }
     public string? Album { get; init; }
+    public float? NormalizationGainDb { get; init; }
+    public float? NormalizationPeak { get; init; }
     public string? AlbumUri { get; init; }
     public string? ArtistUri { get; init; }
     public string? ImageUrl { get; init; }

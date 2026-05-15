@@ -48,7 +48,18 @@ public sealed record ArtistOverviewResult
     public long Followers { get; init; }
     public int? WorldRank { get; init; }
     public string? Biography { get; init; }
+
+    /// <summary>True when the artist owns a verified, blue-check Spotify Artist
+    /// account. Pulled from <c>onPlatformReputationTrait.verification.isVerified</c>
+    /// when available, otherwise falls back to the legacy <c>profile.verified</c>
+    /// field.</summary>
     public bool IsVerified { get; init; }
+
+    /// <summary>True when the artist has claimed but not yet verified their
+    /// Spotify Artist profile. Drives the "Artist Profile" eyebrow variant when
+    /// <see cref="IsVerified"/> is false. From
+    /// <c>onPlatformReputationTrait.verification.isRegistered</c>.</summary>
+    public bool IsRegistered { get; init; }
 
     // Latest release
     public ArtistLatestReleaseResult? LatestRelease { get; init; }
@@ -64,6 +75,29 @@ public sealed record ArtistOverviewResult
     public int AlbumsTotalCount { get; init; }
     public int SinglesTotalCount { get; init; }
     public int CompilationsTotalCount { get; init; }
+
+    // Popular releases — top-played releases for the artist. Same shape as
+    // Albums/Singles/Compilations; surfaced separately so the AlbumPage hero
+    // pairing renders "Top tracks" + "Popular releases" as a dual column.
+    public List<ArtistReleaseResult> PopularReleases { get; init; } = new();
+
+    // Appears On — compilations / soundtracks the artist appears on but
+    // doesn't own. From relatedContent.appearsOn (V4A shelf next to Albums /
+    // Singles / Compilations).
+    public List<ArtistReleaseResult> AppearsOn { get; init; } = new();
+
+    // Playlists & discovery — merged playlistsV2 + featuringV2 + discoveredOnV2
+    // with GenericError rows filtered out. Each entry already carries its
+    // source-derived Subtitle.
+    public List<ArtistPlaylistResult> Playlists { get; init; } = new();
+
+    // Music videos — 16:9 thumbnails for the artist's catalog. Sourced from
+    // ArtistOverviewResponse.discography.relatedMusicVideos.
+    public List<ArtistMusicVideoResult> MusicVideos { get; init; } = new();
+
+    // Merchandise — Spotify-Shop items linked to the artist. Empty when the
+    // artist has no merch listings on goods.merch.
+    public List<ArtistMerchResult> Merch { get; init; } = new();
 
     // Pinned item + Watch feed
     public ArtistPinnedItemResult? PinnedItem { get; init; }
@@ -89,6 +123,32 @@ public sealed record ArtistMusicVideoMappingResult
 {
     public required string AudioTrackUri { get; init; }
     public required string VideoTrackUri { get; init; }
+}
+
+public sealed record ArtistMusicVideoResult
+{
+    public required string TrackUri { get; init; }
+    public string? Title { get; init; }
+    public string? ThumbnailUrl { get; init; }
+    public string? AlbumUri { get; init; }
+    public System.TimeSpan Duration { get; init; }
+    public bool IsExplicit { get; init; }
+}
+
+public sealed record ArtistMerchResult
+{
+    /// <summary>Display name (Spotify ships under <c>nameV2</c>).</summary>
+    public string? Name { get; init; }
+    /// <summary>Pre-formatted price string, e.g. "US$29.99".</summary>
+    public string? Price { get; init; }
+    /// <summary>Long-form product copy.</summary>
+    public string? Description { get; init; }
+    /// <summary>Product photo URL (largest source variant).</summary>
+    public string? ImageUrl { get; init; }
+    /// <summary>Spotify URI (<c>spotify:merch:…</c>).</summary>
+    public string? Uri { get; init; }
+    /// <summary>External Spotify Shop URL — open in browser via WebPagePopupNavigator.</summary>
+    public string? ShopUrl { get; init; }
 }
 
 public sealed record ArtistSocialLinkResult
@@ -169,6 +229,15 @@ public sealed record RelatedArtistResult
     public string? Uri { get; init; }
     public string? Name { get; init; }
     public string? ImageUrl { get; init; }
+}
+
+public sealed record ArtistPlaylistResult
+{
+    public required string Uri { get; init; }
+    public string? Name { get; init; }
+    public string? ImageUrl { get; init; }
+    /// <summary>Source-derived label e.g. "Spotify · featured", "Aria Maelstrom · discovered on".</summary>
+    public string? Subtitle { get; init; }
 }
 
 public sealed record ArtistPinnedItemResult

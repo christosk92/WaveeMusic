@@ -37,6 +37,7 @@ public class SidebarItemModel : ISidebarItemModel
     private bool _showUnpinButton;
     private bool _showPinToggleButton;
     private bool _isPinned;
+    private bool _isEnabled = true;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -76,6 +77,13 @@ public class SidebarItemModel : ISidebarItemModel
     {
         get => _toolTip;
         set => SetProperty(ref _toolTip, value);
+    }
+
+    /// <inheritdoc />
+    public bool IsEnabled
+    {
+        get => _isEnabled;
+        set => SetProperty(ref _isEnabled, value);
     }
 
     /// <inheritdoc />

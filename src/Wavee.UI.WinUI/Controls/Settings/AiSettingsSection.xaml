@@ -142,6 +142,23 @@
                               OnContent="" OffContent="" />
             </controls:SettingsCard>
 
+            <!-- ── Artist ── -->
+            <TextBlock Text="Artist"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       Margin="0,24,0,8"
+                       Tag="artist" />
+
+            <controls:SettingsCard Header="About this artist"
+                                   Description="On the artist page, generate a short on-device summary when Spotify has no biography for the artist."
+                                   IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}"
+                                   Tag="artist">
+                <controls:SettingsCard.HeaderIcon>
+                    <ic:SymbolIcon Symbol="Sparkle" IconVariant="Filled" />
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.AiBioSummarizeEnabled, Mode=TwoWay}"
+                              OnContent="" OffContent="" />
+            </controls:SettingsCard>
+
         </StackPanel>
     </ScrollView>
 </UserControl>

@@ -142,18 +142,21 @@ public partial class App : Application
         // Local file library: point the image pipeline at the cache directory
         // and kick off the indexer (initial scan + watcher + periodic loop).
         // The migration above guaranteed the v15 tables exist.
-        try
+        if (Services.AppFeatureFlags.LocalFilesEnabled)
         {
-            var cacheOpts = Ioc.Default.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>();
-            Wavee.UI.WinUI.Helpers.SpotifyImageHelper.LocalArtworkRoot = cacheOpts.LocalArtworkDirectory;
+            try
+            {
+                var cacheOpts = Ioc.Default.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>();
+                Wavee.UI.WinUI.Helpers.SpotifyImageHelper.LocalArtworkRoot = cacheOpts.LocalArtworkDirectory;
 
-            var indexer = Ioc.Default.GetRequiredService<Wavee.Local.LocalIndexerHostedService>();
-            _ = indexer.StartAsync();
-        }
-        catch (Exception ex)
-        {
-            // Local library is best-effort — never block app launch on it.
-            LogUnhandledException("LocalIndexerStart", ex);
+                var indexer = Ioc.Default.GetRequiredService<Wavee.Local.LocalIndexerHostedService>();
+                _ = indexer.StartAsync();
+            }
+            catch (Exception ex)
+            {
+                // Local library is best-effort — never block app launch on it.
+                LogUnhandledException("LocalIndexerStart", ex);
+            }
         }
 
         // Auto-navigate to the video player when a video track becomes active.
@@ -161,46 +164,50 @@ public partial class App : Application
         // surfaces those plays in a dedicated page so the user actually sees
         // the frames. Idempotent: tracks that share a single playback session
         // (e.g. seeking, pausing) don't re-navigate.
-        try
+        if (Services.AppFeatureFlags.LocalFilesEnabled)
         {
-            var videoEngine = Ioc.Default.GetService<Wavee.Audio.ILocalMediaPlayer>();
-            if (videoEngine is not null)
+            try
             {
-                string? lastNavigatedUri = null;
-                videoEngine.StateChanges.Subscribe(state =>
+                var videoEngine = Ioc.Default.GetService<Wavee.Audio.ILocalMediaPlayer>();
+                if (videoEngine is not null)
                 {
-                    var uri = state.TrackUri;
-                    if (string.IsNullOrEmpty(uri)) { lastNavigatedUri = null; return; }
-                    if (uri == lastNavigatedUri) return;
-                    lastNavigatedUri = uri;
-                    if (VideoAutoNavigationSuppressor.TryConsume(uri))
-                        return;
-
-                    var dispatcher = MainWindow.Instance?.DispatcherQueue;
-                    dispatcher?.TryEnqueue(() =>
+                    string? lastNavigatedUri = null;
+                    videoEngine.StateChanges.Subscribe(state =>
                     {
-                        try
+                        var uri = state.TrackUri;
+                        if (string.IsNullOrEmpty(uri)) { lastNavigatedUri = null; return; }
+                        if (uri == lastNavigatedUri) return;
+                        lastNavigatedUri = uri;
+                        if (VideoAutoNavigationSuppressor.TryConsume(uri))
+                            return;
+
+                        var dispatcher = MainWindow.Instance?.DispatcherQueue;
+                        dispatcher?.TryEnqueue(() =>
                         {
-                            Wavee.UI.WinUI.Helpers.Navigation.NavigationHelpers.OpenVideoPlayer();
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUnhandledException("VideoAutoNav", ex);
-                        }
+                            try
+                            {
+                                Wavee.UI.WinUI.Helpers.Navigation.NavigationHelpers.OpenVideoPlayer();
+                            }
+                            catch (Exception ex)
+                            {
+                                LogUnhandledException("VideoAutoNav", ex);
+                            }
+                        });
                     });
-                });
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            LogUnhandledException("VideoAutoNavSetup", ex);
+            catch (Exception ex)
+            {
+                LogUnhandledException("VideoAutoNavSetup", ex);
+            }
         }
 
         // Resume the memory-diagnostics periodic logger if it was enabled in a prior session.
         // Cheap when off (single bool check); when on it samples every 30s and appends to
         // %AppData%\Wavee\diag\memory-{date}.csv so leak hunts persist across the panel
         // being open or closed.
-        if (Ioc.Default.GetService<Wavee.UI.WinUI.Data.Contracts.ISettingsService>()?.Settings.MemoryDiagnosticsEnabled == true)
+        if (Services.AppFeatureFlags.DiagnosticsEnabled
+            && Ioc.Default.GetService<Wavee.UI.WinUI.Data.Contracts.ISettingsService>()?.Settings.MemoryDiagnosticsEnabled == true)
         {
             AppLifecycleHelper.SetMemoryDiagnostics(true);
         }

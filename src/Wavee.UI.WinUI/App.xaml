@@ -16,6 +16,7 @@
                 <ResourceDictionary Source="ms-appx:///Styles/TextBlockStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/TabBarStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/ListViewStyles.xaml" />
+                <ResourceDictionary Source="ms-appx:///Styles/CardStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///Styles/TabbedCommandBarStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/Sidebar/SidebarStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///Controls/Omnibar/Omnibar.xaml" />

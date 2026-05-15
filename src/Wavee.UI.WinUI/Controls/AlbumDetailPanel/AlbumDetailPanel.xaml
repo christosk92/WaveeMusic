@@ -12,12 +12,12 @@
 
     <!-- Implicit show/hide animations -->
     <animations:Implicit.ShowAnimations>
-        <animations:OpacityAnimation From="0" To="1" Duration="0:0:0.35"/>
-        <animations:TranslationAnimation From="0,20,0" To="0" Duration="0:0:0.4"/>
+        <animations:OpacityAnimation From="0" To="1" Duration="0:0:0.18"/>
+        <animations:TranslationAnimation From="0,12,0" To="0" Duration="0:0:0.20"/>
     </animations:Implicit.ShowAnimations>
     <animations:Implicit.HideAnimations>
-        <animations:OpacityAnimation To="0" Duration="0:0:0.2"/>
-        <animations:TranslationAnimation To="0,-10,0" Duration="0:0:0.2"/>
+        <animations:OpacityAnimation To="0" Duration="0:0:0.11"/>
+        <animations:TranslationAnimation To="0,-6,0" Duration="0:0:0.12"/>
     </animations:Implicit.HideAnimations>
 
     <Grid>

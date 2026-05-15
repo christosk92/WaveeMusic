@@ -55,6 +55,9 @@ public sealed class InMemorySink : ILogEventSink
 
     public void Emit(LogEvent logEvent)
     {
+        if (!AppFeatureFlags.DiagnosticsEnabled)
+            return;
+
         var entry = new LogEntry
         {
             Timestamp = logEvent.Timestamp,

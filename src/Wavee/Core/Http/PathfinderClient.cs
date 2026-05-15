@@ -627,6 +627,22 @@ public sealed class PathfinderClient : IPathfinderClient
     }
 
     /// <inheritdoc />
+    public async Task<SimilarAlbumsBasedOnThisTrackResponse> GetSimilarAlbumsAsync(
+        string trackUri, int limit = 24, bool albumsOnly = true, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(trackUri);
+
+        var variables = new SimilarAlbumsBasedOnThisTrackVariables(trackUri, limit, albumsOnly);
+
+        return await QueryAsync(
+            variables,
+            PathfinderOperations.SimilarAlbumsBasedOnThisTrack,
+            PathfinderOperations.SimilarAlbumsBasedOnThisTrackHash,
+            SimilarAlbumsBasedOnThisTrackJsonContext.Default.SimilarAlbumsBasedOnThisTrackResponse,
+            ct);
+    }
+
+    /// <inheritdoc />
     public async Task<GetTrackResponse> GetTrackAsync(
         string trackUri, CancellationToken ct = default)
     {
@@ -1110,6 +1126,10 @@ public sealed class PathfinderClient : IPathfinderClient
         else if (variables is SeoRecommendedTracksVariables srtv)
         {
             json = JsonSerializer.SerializeToUtf8Bytes(srtv, SeoRecommendedTracksVariablesJsonContext.Default.SeoRecommendedTracksVariables);
+        }
+        else if (variables is SimilarAlbumsBasedOnThisTrackVariables sabtv)
+        {
+            json = JsonSerializer.SerializeToUtf8Bytes(sabtv, SimilarAlbumsBasedOnThisTrackVariablesJsonContext.Default.SimilarAlbumsBasedOnThisTrackVariables);
         }
         else if (variables is GetTrackVariables gtv)
         {

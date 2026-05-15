@@ -3,6 +3,7 @@ using System.Reactive.Subjects;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect;
 using Wavee.Core.Http;
+using Wavee.Core.Playlists;
 using Wavee.Core.Session;
 using Wavee.Core.Storage;
 using Wavee.Core.Storage.Abstractions;
@@ -39,6 +40,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
     private readonly ISession _session;
     private readonly LibraryChangeManager? _libraryChangeManager;
     private readonly IExtendedMetadataClient? _metadataClient;
+    private readonly IPlaylistCacheService? _playlistCache;
     private readonly ILogger? _logger;
     private readonly Subject<SyncProgress> _progressSubject = new();
     private readonly Subject<LibraryChangeEvent> _libraryChanged = new();
@@ -60,6 +62,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
         ISession session,
         LibraryChangeManager? libraryChangeManager = null,
         IExtendedMetadataClient? metadataClient = null,
+        IPlaylistCacheService? playlistCache = null,
         ILogger? logger = null)
     {
         _database = database ?? throw new ArgumentNullException(nameof(database));
@@ -67,6 +70,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _libraryChangeManager = libraryChangeManager;
         _metadataClient = metadataClient;
+        _playlistCache = playlistCache;
         _logger = logger;
 
         // Subscribe to real-time library changes for all collection types
@@ -311,136 +315,277 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
     public async Task SyncPlaylistsAsync(CancellationToken ct = default)
     {
         var username = GetUsername();
-        var rootlistUri = $"spotify:user:{username}:rootlist";
-
-        _logger?.LogInformation("Starting playlist sync for {Username}", username);
+        var storedSyncState = await _database.GetSyncStateAsync("playlists", ct);
+        var storedRev = storedSyncState?.Revision ?? "<none>";
+        _logger?.LogInformation(
+            "[rootlist] SyncPlaylistsAsync START username={Username} storedRev={Stored}",
+            username, storedRev);
         _progressSubject.OnNext(new SyncProgress("playlists", 0, 0, "Fetching rootlist..."));
 
         try
         {
-            // 1. Fetch rootlist (contains all playlists)
-            var rootlist = await _spClient.GetPlaylistAsync(
-                rootlistUri,
-                decorate: new[] { "revision", "attributes", "length" },
-                cancellationToken: ct);
-
-            // 2. Parse folder structure and extract playlist URIs
-            // Folder markers: "spotify:start-group:<id>:<name>" and "spotify:end-group:<id>"
-            var playlistsWithFolders = new List<(string Uri, string? FolderPath)>();
-            var folderStack = new Stack<string>(); // Stack of folder names for current path
-
-            foreach (var item in rootlist.Contents?.Items ?? Enumerable.Empty<Protocol.Playlist.Item>())
+            if (_playlistCache != null)
             {
-                var uri = item.Uri;
-
-                if (uri.StartsWith("spotify:start-group:", StringComparison.Ordinal))
-                {
-                    // Format: spotify:start-group:<id>:<folder_name>
-                    var parts = uri.Split(':', 4);
-                    var folderName = parts.Length >= 4 ? parts[3] : "Folder";
-                    folderStack.Push(folderName);
-                }
-                else if (uri.StartsWith("spotify:end-group:", StringComparison.Ordinal))
-                {
-                    if (folderStack.Count > 0)
-                        folderStack.Pop();
-                }
-                else if (uri.StartsWith("spotify:playlist:", StringComparison.Ordinal))
-                {
-                    // Build current folder path
-                    var folderPath = folderStack.Count > 0
-                        ? string.Join("/", folderStack.Reverse())
-                        : null;
-                    playlistsWithFolders.Add((uri, folderPath));
-                }
+                // Single source of truth: PlaylistCacheService owns the rootlist
+                // fetch (will use /diff when there's a prior revision, full GET
+                // otherwise). The snapshot's Decorations carry Name/Owner/
+                // ImageUrl/Length per playlist, so no per-playlist round-trips
+                // are needed — the rootlist response already has the metadata.
+                var snapshot = await _playlistCache.GetRootlistAsync(forceRefresh: true, ct);
+                await ApplyRootlistSnapshotAsync(username, snapshot, storedRev, ct);
             }
-
-            _logger?.LogDebug("Found {Count} playlists in rootlist", playlistsWithFolders.Count);
-            _progressSubject.OnNext(new SyncProgress("playlists", 0, playlistsWithFolders.Count,
-                $"Found {playlistsWithFolders.Count} playlists..."));
-
-            // 3. Fetch metadata for each playlist and store
-            var processed = 0;
-            foreach (var (uri, folderPath) in playlistsWithFolders)
+            else
             {
-                ct.ThrowIfCancellationRequested();
-
-                try
-                {
-                    var playlist = await _spClient.GetPlaylistAsync(
-                        uri,
-                        decorate: new[] { "revision", "attributes", "length", "owner" },
-                        cancellationToken: ct);
-
-                    // Extract image URL from picture sizes if available
-                    string? imageUrl = null;
-                    if (playlist.Attributes?.PictureSize.Count > 0)
-                    {
-                        imageUrl = playlist.Attributes.PictureSize
-                            .FirstOrDefault(p => p.TargetName == "default")?.Url
-                            ?? playlist.Attributes.PictureSize.FirstOrDefault()?.Url;
-                    }
-
-                    var spotifyPlaylist = SpotifyPlaylist.Create(
-                        uri: uri,
-                        name: playlist.Attributes?.Name ?? "Unknown",
-                        ownerId: playlist.OwnerUsername,
-                        description: playlist.Attributes?.Description,
-                        imageUrl: imageUrl,
-                        trackCount: playlist.Length,
-                        isPublic: true, // Default - no visibility info in response
-                        isCollaborative: playlist.Attributes?.Collaborative ?? false,
-                        isOwned: playlist.OwnerUsername == username,
-                        revision: playlist.Revision?.Length > 0
-                            ? Convert.ToBase64String(playlist.Revision.ToByteArray())
-                            : null,
-                        folderPath: folderPath
-                    );
-
-                    await _database.UpsertPlaylistAsync(spotifyPlaylist, ct);
-                    processed++;
-
-                    if (processed % 10 == 0 || processed == playlistsWithFolders.Count)
-                    {
-                        _progressSubject.OnNext(new SyncProgress("playlists", processed, playlistsWithFolders.Count,
-                            $"Syncing playlists... ({processed}/{playlistsWithFolders.Count})"));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogWarning(ex, "Failed to sync playlist {Uri}, continuing...", uri);
-                }
+                // Standalone path: Wavee.Console doesn't register IPlaylistCacheService
+                // yet, so it falls through to the original N+1 fetch implementation
+                // here. When the console gains its own IPlaylistCacheService
+                // registration, this branch can be deleted.
+                await SyncPlaylistsStandaloneAsync(username, storedRev, ct);
             }
-
-            // 4. Remove playlists no longer in rootlist
-            var existing = await _database.GetAllPlaylistsAsync(ct);
-            var playlistUriSet = playlistsWithFolders.Select(p => p.Uri).ToHashSet();
-            var toRemove = existing.Where(p => !playlistUriSet.Contains(p.Uri)).ToList();
-
-            foreach (var p in toRemove)
-            {
-                await _database.DeletePlaylistAsync(p.Uri, ct);
-                _logger?.LogDebug("Removed stale playlist: {Uri}", p.Uri);
-            }
-
-            // 5. Update sync state
-            await _database.SetSyncStateAsync(
-                "playlists",
-                rootlist.Revision?.Length > 0 ? Convert.ToBase64String(rootlist.Revision.ToByteArray()) : null,
-                playlistsWithFolders.Count,
-                ct);
-
-            _progressSubject.OnNext(new SyncProgress("playlists", playlistsWithFolders.Count, playlistsWithFolders.Count,
-                $"Sync complete: {playlistsWithFolders.Count} playlists"));
-
-            _logger?.LogInformation("Playlist sync completed: {Count} playlists", playlistsWithFolders.Count);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Playlist sync failed");
+            _logger?.LogError(ex, "[rootlist] SyncPlaylistsAsync FAILED");
             _progressSubject.OnNext(new SyncProgress("playlists", 0, 0, $"Sync failed: {ex.Message}"));
             throw;
         }
+    }
+
+    private async Task ApplyRootlistSnapshotAsync(
+        string username,
+        RootlistSnapshot snapshot,
+        string storedRev,
+        CancellationToken ct)
+    {
+        var responseRev = snapshot.Revision.Length > 0
+            ? Convert.ToBase64String(snapshot.Revision)
+            : "<none>";
+        _logger?.LogInformation(
+            "[rootlist] snapshot received responseRev={Rev} items={Items}",
+            responseRev, snapshot.Items.Count);
+
+        // Walk snapshot.Items reconstructing folder paths from
+        // RootlistFolderStart / RootlistFolderEnd. Same logic as the standalone
+        // path used to do against raw protobuf — just on the typed snapshot now.
+        var playlistsWithFolders = new List<(string Uri, string? FolderPath)>();
+        var folderStack = new Stack<string>();
+
+        foreach (var entry in snapshot.Items)
+        {
+            switch (entry)
+            {
+                case RootlistFolderStart start:
+                    folderStack.Push(start.Name);
+                    break;
+                case RootlistFolderEnd:
+                    if (folderStack.Count > 0) folderStack.Pop();
+                    break;
+                case RootlistPlaylist playlist:
+                    var folderPath = folderStack.Count > 0
+                        ? string.Join("/", folderStack.Reverse())
+                        : null;
+                    playlistsWithFolders.Add((playlist.Uri, folderPath));
+                    break;
+            }
+        }
+
+        var folderMarkerCount = snapshot.Items.Count - playlistsWithFolders.Count;
+        _logger?.LogInformation(
+            "[rootlist] discoveredPlaylists={N} folderMarkers={F}",
+            playlistsWithFolders.Count, folderMarkerCount);
+        _progressSubject.OnNext(new SyncProgress("playlists", 0, playlistsWithFolders.Count,
+            $"Found {playlistsWithFolders.Count} playlists..."));
+
+        // Upsert each playlist using decorations from the rootlist response —
+        // zero additional network round-trips.
+        var processed = 0;
+        foreach (var (uri, folderPath) in playlistsWithFolders)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            snapshot.Decorations.TryGetValue(uri, out var decoration);
+
+            var revB64 = decoration?.Revision.Length > 0
+                ? Convert.ToBase64String(decoration.Revision)
+                : null;
+
+            var spotifyPlaylist = SpotifyPlaylist.Create(
+                uri: uri,
+                name: decoration?.Name ?? "Unknown",
+                ownerId: decoration?.OwnerUsername ?? string.Empty,
+                description: decoration?.Description,
+                imageUrl: decoration?.ImageUrl,
+                trackCount: decoration?.Length ?? 0,
+                isPublic: decoration?.IsPublic ?? true,
+                isCollaborative: decoration?.IsCollaborative ?? false,
+                isOwned: decoration?.OwnerUsername == username,
+                revision: revB64,
+                folderPath: folderPath
+            );
+
+            await _database.UpsertPlaylistAsync(spotifyPlaylist, ct);
+            _logger?.LogInformation(
+                "[rootlist] db.UpsertPlaylist {Uri} title=\"{Title}\"",
+                uri, decoration?.Name ?? "<unknown>");
+            processed++;
+
+            if (processed % 10 == 0 || processed == playlistsWithFolders.Count)
+            {
+                _progressSubject.OnNext(new SyncProgress("playlists", processed, playlistsWithFolders.Count,
+                    $"Syncing playlists... ({processed}/{playlistsWithFolders.Count})"));
+            }
+        }
+
+        // Remove playlists no longer in rootlist.
+        var existing = await _database.GetAllPlaylistsAsync(ct);
+        var playlistUriSet = playlistsWithFolders.Select(p => p.Uri).ToHashSet();
+        var toRemove = existing.Where(p => !playlistUriSet.Contains(p.Uri)).ToList();
+
+        foreach (var p in toRemove)
+        {
+            await _database.DeletePlaylistAsync(p.Uri, ct);
+            _logger?.LogDebug("Removed stale playlist: {Uri}", p.Uri);
+        }
+
+        // Update sync state.
+        await _database.SetSyncStateAsync(
+            "playlists",
+            responseRev == "<none>" ? null : responseRev,
+            playlistsWithFolders.Count,
+            ct);
+        _logger?.LogInformation(
+            "[rootlist] sync_state['playlists'] {Old} -> {New} count={Count} removed={Removed}",
+            storedRev, responseRev, playlistsWithFolders.Count, toRemove.Count);
+
+        _progressSubject.OnNext(new SyncProgress("playlists", playlistsWithFolders.Count, playlistsWithFolders.Count,
+            $"Sync complete: {playlistsWithFolders.Count} playlists"));
+
+        _logger?.LogInformation("[rootlist] SyncPlaylistsAsync DONE count={Count}", playlistsWithFolders.Count);
+    }
+
+    // Standalone N+1 implementation kept for the Wavee.Console scenario where
+    // IPlaylistCacheService isn't registered. Deletable once console DI adds it.
+    private async Task SyncPlaylistsStandaloneAsync(string username, string storedRev, CancellationToken ct)
+    {
+        var rootlistUri = $"spotify:user:{username}:rootlist";
+
+        var rootlist = await _spClient.GetPlaylistAsync(
+            rootlistUri,
+            decorate: new[] { "revision", "attributes", "length" },
+            cancellationToken: ct);
+
+        var responseRev = rootlist.Revision?.Length > 0
+            ? Convert.ToBase64String(rootlist.Revision.ToByteArray())
+            : "<none>";
+        _logger?.LogInformation(
+            "[rootlist] (standalone) rootlist GET ok responseRev={Rev} contentItems={Items} length={Length}",
+            responseRev, rootlist.Contents?.Items?.Count ?? 0, rootlist.Length);
+
+        var playlistsWithFolders = new List<(string Uri, string? FolderPath)>();
+        var folderStack = new Stack<string>();
+
+        foreach (var item in rootlist.Contents?.Items ?? Enumerable.Empty<Protocol.Playlist.Item>())
+        {
+            var uri = item.Uri;
+
+            if (uri.StartsWith("spotify:start-group:", StringComparison.Ordinal))
+            {
+                var parts = uri.Split(':', 4);
+                var folderName = parts.Length >= 4 ? parts[3] : "Folder";
+                folderStack.Push(folderName);
+            }
+            else if (uri.StartsWith("spotify:end-group:", StringComparison.Ordinal))
+            {
+                if (folderStack.Count > 0)
+                    folderStack.Pop();
+            }
+            else if (uri.StartsWith("spotify:playlist:", StringComparison.Ordinal))
+            {
+                var folderPath = folderStack.Count > 0
+                    ? string.Join("/", folderStack.Reverse())
+                    : null;
+                playlistsWithFolders.Add((uri, folderPath));
+            }
+        }
+
+        _progressSubject.OnNext(new SyncProgress("playlists", 0, playlistsWithFolders.Count,
+            $"Found {playlistsWithFolders.Count} playlists..."));
+
+        var processed = 0;
+        foreach (var (uri, folderPath) in playlistsWithFolders)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                var playlist = await _spClient.GetPlaylistAsync(
+                    uri,
+                    decorate: new[] { "revision", "attributes", "length", "owner" },
+                    cancellationToken: ct);
+
+                string? imageUrl = null;
+                if (playlist.Attributes?.PictureSize.Count > 0)
+                {
+                    imageUrl = playlist.Attributes.PictureSize
+                        .FirstOrDefault(p => p.TargetName == "default")?.Url
+                        ?? playlist.Attributes.PictureSize.FirstOrDefault()?.Url;
+                }
+
+                var spotifyPlaylist = SpotifyPlaylist.Create(
+                    uri: uri,
+                    name: playlist.Attributes?.Name ?? "Unknown",
+                    ownerId: playlist.OwnerUsername,
+                    description: playlist.Attributes?.Description,
+                    imageUrl: imageUrl,
+                    trackCount: playlist.Length,
+                    isPublic: true,
+                    isCollaborative: playlist.Attributes?.Collaborative ?? false,
+                    isOwned: playlist.OwnerUsername == username,
+                    revision: playlist.Revision?.Length > 0
+                        ? Convert.ToBase64String(playlist.Revision.ToByteArray())
+                        : null,
+                    folderPath: folderPath
+                );
+
+                await _database.UpsertPlaylistAsync(spotifyPlaylist, ct);
+                processed++;
+
+                if (processed % 10 == 0 || processed == playlistsWithFolders.Count)
+                {
+                    _progressSubject.OnNext(new SyncProgress("playlists", processed, playlistsWithFolders.Count,
+                        $"Syncing playlists... ({processed}/{playlistsWithFolders.Count})"));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to sync playlist {Uri}, continuing...", uri);
+            }
+        }
+
+        var existing = await _database.GetAllPlaylistsAsync(ct);
+        var playlistUriSet = playlistsWithFolders.Select(p => p.Uri).ToHashSet();
+        var toRemove = existing.Where(p => !playlistUriSet.Contains(p.Uri)).ToList();
+
+        foreach (var p in toRemove)
+        {
+            await _database.DeletePlaylistAsync(p.Uri, ct);
+            _logger?.LogDebug("Removed stale playlist: {Uri}", p.Uri);
+        }
+
+        var newRev = rootlist.Revision?.Length > 0 ? Convert.ToBase64String(rootlist.Revision.ToByteArray()) : null;
+        await _database.SetSyncStateAsync(
+            "playlists",
+            newRev,
+            playlistsWithFolders.Count,
+            ct);
+        _logger?.LogInformation(
+            "[rootlist] (standalone) sync_state['playlists'] {Old} -> {New} count={Count} removed={Removed}",
+            storedRev, newRev ?? "<none>", playlistsWithFolders.Count, toRemove.Count);
+
+        _progressSubject.OnNext(new SyncProgress("playlists", playlistsWithFolders.Count, playlistsWithFolders.Count,
+            $"Sync complete: {playlistsWithFolders.Count} playlists"));
+
+        _logger?.LogInformation("[rootlist] (standalone) SyncPlaylistsAsync DONE count={Count}", playlistsWithFolders.Count);
     }
 
     private async Task SyncCollectionAsync(string set, SpotifyLibraryItemType itemType, string displayName, string? uriFilter, CancellationToken ct)
@@ -1207,8 +1352,13 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
     {
         try
         {
-            _logger?.LogDebug("Processing library change: {Set}, {ItemCount} items",
-                changeEvent.Set, changeEvent.Items.Count);
+            var newRevB64 = changeEvent.NewRevision is { Length: > 0 } nr
+                ? Convert.ToBase64String(nr)
+                : "<none>";
+            _logger?.LogInformation(
+                "[rootlist] OnLibraryChange set={Set} isRootlist={Root} playlistUri={Pu} items={N} newRev={Rev}",
+                changeEvent.Set, changeEvent.IsRootlist, changeEvent.PlaylistUri ?? "<none>",
+                changeEvent.Items.Count, newRevB64);
 
             // Forward the event
             _libraryChanged.OnNext(changeEvent);
@@ -1265,12 +1415,21 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
     {
         try
         {
-            _logger?.LogDebug("Real-time playlist update: {Uri}", changeEvent.PlaylistUri);
+            _logger?.LogInformation(
+                "[playlist-diff] OnPlaylistChangedAsync {Uri} reason=dealer-push",
+                changeEvent.PlaylistUri);
 
             // Refetch playlist metadata from Spotify
             var playlist = await _spClient.GetPlaylistAsync(
                 changeEvent.PlaylistUri!,
                 decorate: new[] { "revision", "attributes", "length", "owner" });
+
+            var refetchedRevB64 = playlist.Revision?.Length > 0
+                ? Convert.ToBase64String(playlist.Revision.ToByteArray())
+                : "<none>";
+            _logger?.LogInformation(
+                "[playlist-diff] OnPlaylistChangedAsync re-fetched {Uri} rev={Rev} length={Length}",
+                changeEvent.PlaylistUri, refetchedRevB64, playlist.Length);
 
             var username = GetUsername();
 
@@ -1300,12 +1459,13 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
 
             await _database.UpsertPlaylistAsync(spotifyPlaylist);
 
-            _logger?.LogInformation("Playlist updated via real-time sync: {Name} ({TrackCount} tracks)",
-                spotifyPlaylist.Name, spotifyPlaylist.TrackCount);
+            _logger?.LogInformation(
+                "[playlist-diff] OnPlaylistChangedAsync db.UpsertPlaylist {Uri} name=\"{Name}\" tracks={TrackCount}",
+                changeEvent.PlaylistUri, spotifyPlaylist.Name, spotifyPlaylist.TrackCount);
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Failed to sync playlist {Uri} in real-time", changeEvent.PlaylistUri);
+            _logger?.LogWarning(ex, "[playlist-diff] OnPlaylistChangedAsync FAILED {Uri}", changeEvent.PlaylistUri);
         }
     }
 

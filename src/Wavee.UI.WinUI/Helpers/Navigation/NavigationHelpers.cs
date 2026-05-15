@@ -82,6 +82,8 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenLocalLibrary(bool openInNewTab = false)
     {
+        if (!AppFeatureFlags.LocalFilesEnabled) return;
+
         Navigate(typeof(LocalLibraryPage), null, "Local files",
             CreateIconSource(typeof(LocalLibraryPage), null), openInNewTab);
     }
@@ -89,6 +91,8 @@ public static class NavigationHelpers
     /// <summary>Sidebar "Local media → TV shows" entry point.</summary>
     public static void OpenLocalShows(bool openInNewTab = false)
     {
+        if (!AppFeatureFlags.LocalFilesEnabled) return;
+
         Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalShowsPage), null, "TV shows",
             CreateIconSource(typeof(Wavee.UI.WinUI.Views.Local.LocalShowsPage), null), openInNewTab);
     }
@@ -96,6 +100,8 @@ public static class NavigationHelpers
     /// <summary>Sidebar "Local media → Movies" entry point.</summary>
     public static void OpenLocalMovies(bool openInNewTab = false)
     {
+        if (!AppFeatureFlags.LocalFilesEnabled) return;
+
         Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalMoviesPage), null, "Movies",
             CreateIconSource(typeof(Wavee.UI.WinUI.Views.Local.LocalMoviesPage), null), openInNewTab);
     }
@@ -103,6 +109,8 @@ public static class NavigationHelpers
     /// <summary>Sidebar "Local media → Music" entry point.</summary>
     public static void OpenLocalMusic(bool openInNewTab = false)
     {
+        if (!AppFeatureFlags.LocalFilesEnabled) return;
+
         Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalMusicPage), null, "Local music",
             CreateIconSource(typeof(Wavee.UI.WinUI.Views.Local.LocalMusicPage), null), openInNewTab);
     }
@@ -110,6 +118,8 @@ public static class NavigationHelpers
     /// <summary>Sidebar "Local media → Music videos" entry point.</summary>
     public static void OpenLocalMusicVideos(bool openInNewTab = false)
     {
+        if (!AppFeatureFlags.LocalFilesEnabled) return;
+
         Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalMusicVideosPage), null, "Music videos",
             CreateIconSource(typeof(Wavee.UI.WinUI.Views.Local.LocalMusicVideosPage), null), openInNewTab);
     }
@@ -121,6 +131,8 @@ public static class NavigationHelpers
     /// </summary>
     public static void OpenLocalPersonDetail(int tmdbPersonId, string? seedName = null, string? seedImageUri = null, bool openInNewTab = false)
     {
+        if (!AppFeatureFlags.LocalFilesEnabled) return;
+
         var header = string.IsNullOrWhiteSpace(seedName) ? "Cast" : seedName!;
         var parameter = new Wavee.UI.WinUI.Views.Local.LocalPersonNavigationParameter(tmdbPersonId, seedName, seedImageUri);
         Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalPersonDetailPage), parameter, header,

@@ -250,6 +250,9 @@ internal sealed class AudioHostService : IAsyncDisposable
     {
         var chain = new AudioProcessingChain();
 
+        var audioPreset = NormalizeAudioPreset(config?.AudioPreset);
+        var radioProcessingEnabled = string.Equals(audioPreset, "Radio", StringComparison.OrdinalIgnoreCase);
+
         // Normalization
         var normalization = new NormalizationProcessor();
         normalization.IsEnabled = config?.NormalizationEnabled ?? true;
@@ -267,9 +270,19 @@ internal sealed class AudioHostService : IAsyncDisposable
         }
         chain.AddProcessor(eq);
 
-        // Compressor + Limiter for safety
-        chain.AddProcessor(new CompressorProcessor());
-        chain.AddProcessor(new LimiterProcessor());
+        // Dynamics are the Radio preset, not part of flat playback.
+        var compressor = new CompressorProcessor { IsEnabled = radioProcessingEnabled };
+        var limiter = new LimiterProcessor { IsEnabled = radioProcessingEnabled };
+        chain.AddProcessor(compressor);
+        chain.AddProcessor(limiter);
+
+        _logger.LogInformation(
+            "Audio processing chain configured: preset={Preset}, normalization={Normalization}, eq={Eq}, compressor={Compressor}, limiter={Limiter}",
+            audioPreset,
+            normalization.IsEnabled,
+            eq.IsEnabled,
+            compressor.IsEnabled,
+            limiter.IsEnabled);
 
         // Non-realtime sinks still need user volume in the normal buffered chain.
         if (includeBufferedVolume)
@@ -277,6 +290,9 @@ internal sealed class AudioHostService : IAsyncDisposable
 
         return chain;
     }
+
+    private static string NormalizeAudioPreset(string? preset)
+        => string.Equals(preset, "Radio", StringComparison.OrdinalIgnoreCase) ? "Radio" : "None";
 
     private void SubscribeToEngineEvents(CancellationToken ct)
     {
@@ -784,6 +800,8 @@ internal sealed class AudioHostService : IAsyncDisposable
             TrackTitle = state.Title,
             TrackArtist = state.Artist,
             TrackAlbum = state.Album,
+            NormalizationGainDb = state.NormalizationGainDb,
+            NormalizationPeak = state.NormalizationPeak,
             AlbumUri = state.AlbumUri,
             ArtistUri = state.ArtistUri,
             ImageUrl = state.ImageUrl,

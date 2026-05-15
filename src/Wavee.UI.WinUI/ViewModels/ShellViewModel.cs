@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Windows.UI;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -392,7 +393,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _dispatcher = dispatcher;
         _logger = logger;
         _mosaicService = mosaicService;
-        _localLibrary = localLibrary;
+        _localLibrary = AppFeatureFlags.LocalFilesEnabled ? localLibrary : null;
         _linkPreviewService = linkPreviewService;
 
         // Initialize from AppModel (one-time read)
@@ -747,7 +748,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                         Text = AppLocalization.GetString("Shell_SidebarLocalFiles"),
                         IconSource = new FontIconSource { Glyph = FluentGlyphs.Folder },
                         Tag = "LocalFiles",
-                        BadgeCount = 0
+                        BadgeCount = null,
+                        IsEnabled = AppFeatureFlags.LocalFilesEnabled,
+                        ToolTip = AppFeatureFlags.LocalFilesEnabled
+                            ? AppLocalization.GetString("Shell_SidebarLocalFiles")
+                            : "Coming soon after the initial beta release",
+                        ItemDecorator = AppFeatureFlags.LocalFilesEnabled ? null : CreateComingSoonBadge()
                     }
                 }
             },
@@ -880,6 +886,31 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             };
 
         _shellSession.UpdateSidebarGroupExpansion(group.Tag!, group.IsExpanded);
+    }
+
+    private static Microsoft.UI.Xaml.FrameworkElement CreateComingSoonBadge()
+    {
+        static Brush ResourceBrush(string key, Color fallback)
+        {
+            return Application.Current?.Resources.TryGetValue(key, out var value) == true
+                   && value is Brush brush
+                ? brush
+                : new SolidColorBrush(fallback);
+        }
+
+        return new Border
+        {
+            Padding = new Thickness(8, 2, 8, 3),
+            CornerRadius = new CornerRadius(10),
+            Background = ResourceBrush("SubtleFillColorSecondaryBrush", Microsoft.UI.ColorHelper.FromArgb(0x22, 0x7F, 0x7F, 0x7F)),
+            Child = new TextBlock
+            {
+                Text = "Soon",
+                FontSize = 10,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = ResourceBrush("TextFillColorSecondaryBrush", Microsoft.UI.Colors.Gray)
+            }
+        };
     }
 
     private Microsoft.UI.Xaml.FrameworkElement CreatePlaylistsAddButton()

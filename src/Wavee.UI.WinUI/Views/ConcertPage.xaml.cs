@@ -131,7 +131,7 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
                 .Start(ContentContainer);
 
             _ = Task.Delay(160).ContinueWith(_ =>
-                DispatcherQueue.TryEnqueue(() => ShimmerContainer.Visibility = Visibility.Collapsed));
+                DispatcherQueue.TryEnqueue(() => ShimmerContainer?.Visibility = Visibility.Collapsed));
         }
     }
 

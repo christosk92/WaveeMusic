@@ -209,8 +209,13 @@ public sealed class LibraryDataService : ILibraryDataService
         if (string.IsNullOrWhiteSpace(_session.GetUserData()?.Username))
             return Array.Empty<PlaylistSummaryDto>();
 
+        _logger?.LogInformation("[rootlist] GetUserPlaylistsAsync read (sidebar refresh trigger)");
         var snapshot = await _playlistCache.GetRootlistAsync(ct: ct);
-        return await BuildPlaylistSummariesAsync(snapshot, ct);
+        var summaries = await BuildPlaylistSummariesAsync(snapshot, ct);
+        _logger?.LogInformation(
+            "[rootlist] GetUserPlaylistsAsync returned {Count} playlists",
+            summaries.Count);
+        return summaries;
     }
 
     public async Task<IReadOnlyList<PlaylistSummaryDto>?> TryGetUserPlaylistsFromCacheAsync(CancellationToken ct = default)
@@ -220,9 +225,16 @@ public sealed class LibraryDataService : ILibraryDataService
 
         var snapshot = await _playlistCache.TryGetRootlistFromCacheAsync(ct);
         if (snapshot is null)
+        {
+            _logger?.LogInformation("[rootlist] TryGetUserPlaylistsFromCacheAsync source=cache MISS");
             return null;
+        }
 
-        return await BuildPlaylistSummariesAsync(snapshot, ct);
+        var summaries = await BuildPlaylistSummariesAsync(snapshot, ct);
+        _logger?.LogInformation(
+            "[rootlist] TryGetUserPlaylistsFromCacheAsync source=cache HIT returned {Count} playlists",
+            summaries.Count);
+        return summaries;
     }
 
     private async Task<IReadOnlyList<PlaylistSummaryDto>> BuildPlaylistSummariesAsync(

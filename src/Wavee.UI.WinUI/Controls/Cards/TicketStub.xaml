@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Cards.TicketStub"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--  Single concert row in the V4A "Upcoming concerts" panel. Tear-off
+          date block + venue/city block + Buy hyperlink. The accent stripe on
+          the left of the date block picks up the artist palette so each row
+          reads as a real ticket stub. -->
+    <Button x:Name="CardButton"
+            HorizontalContentAlignment="Stretch"
+            HorizontalAlignment="Stretch"
+            Background="Transparent"
+            BorderThickness="0"
+            Padding="0"
+            Click="CardButton_Click">
+        <Grid Padding="0,10"
+              ColumnSpacing="14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Date block with accent left stripe -->
+            <Grid Grid.Column="0"
+                  Width="56"
+                  Background="{ThemeResource SubtleFillColorTransparentBrush}">
+                <Border x:Name="DateStripe"
+                        Width="3"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Stretch"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                        CornerRadius="2"/>
+                <StackPanel HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="-2">
+                    <TextBlock x:Name="MonthText"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               FontWeight="Bold"
+                               CharacterSpacing="120"
+                               HorizontalAlignment="Center"
+                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                    <TextBlock x:Name="DayText"
+                               FontSize="24"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Venue + city -->
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                <TextBlock x:Name="VenueText"
+                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                           TextTrimming="CharacterEllipsis"
+                           MaxLines="1"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock x:Name="CityText"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               MaxLines="1"/>
+                    <Border x:Name="NearYouChip"
+                            Visibility="Collapsed"
+                            CornerRadius="6"
+                            Padding="6,1"
+                            Background="{ThemeResource AccentFillColorTertiaryBrush}">
+                        <TextBlock Text="NEAR YOU"
+                                   FontSize="9"
+                                   FontWeight="Bold"
+                                   CharacterSpacing="120"
+                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Buy -->
+            <HyperlinkButton Grid.Column="2"
+                             x:Name="BuyLink"
+                             Content="Buy ›"
+                             VerticalAlignment="Center"
+                             FontWeight="SemiBold"
+                             Click="BuyLink_Click"/>
+        </Grid>
+    </Button>
+</UserControl>

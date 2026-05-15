@@ -234,6 +234,9 @@ signing/metadata.json
 
 # Local signed-MSIX output staging — large per-build artifacts (100MB+).
 .signed-msix/
+# Same story for the unsigned MSIX dropped under artifacts/msix/ by the
+# Visual Studio package target — 100MB+ binary per build, build output not source.
+artifacts/
 
 # Protocol-capture binaries / Spotify reverse-engineering scratch.
 # Anything in bodies/ is research material, not source.

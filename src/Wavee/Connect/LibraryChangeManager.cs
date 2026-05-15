@@ -123,11 +123,18 @@ public sealed class LibraryChangeManager : IAsyncDisposable
 
     private LibraryChangeEvent? TryParseRootlistModInfo(DealerMessage message)
     {
+        _logger?.LogInformation(
+            "[rootlist] dealer rx uri={Uri} payloadBytes={Bytes}",
+            message.Uri, message.Payload.Length);
         try
         {
             var info = RootlistModificationInfo.Parser.ParseFrom(message.Payload);
-            _logger?.LogDebug("Parsed rootlist modification: {Uri}, {OpCount} ops",
-                message.Uri, info.Ops.Count);
+            var newRevBase64 = info.NewRevision is { Length: > 0 } nr
+                ? Convert.ToBase64String(nr.ToByteArray())
+                : "<none>";
+            _logger?.LogInformation(
+                "[rootlist] parsed newRev={Rev} ops={OpCount}",
+                newRevBase64, info.Ops.Count);
             return new LibraryChangeEvent
             {
                 Uri = message.Uri,
@@ -139,7 +146,7 @@ public sealed class LibraryChangeManager : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger?.LogDebug(ex, "Failed to parse RootlistModificationInfo for {Uri}", message.Uri);
+            _logger?.LogWarning(ex, "[rootlist] parse FAILED uri={Uri}", message.Uri);
             return null;
         }
     }
@@ -153,8 +160,15 @@ public sealed class LibraryChangeManager : IAsyncDisposable
                 ? modInfo.Uri.ToStringUtf8()
                 : ExtractPlaylistUriFromDealerUri(message.Uri);
 
-            _logger?.LogDebug("Parsed playlist modification: {Uri}, {OpCount} ops",
-                playlistUri, modInfo.Ops.Count);
+            var fromRevB64 = modInfo.ParentRevision is { Length: > 0 } pr
+                ? Convert.ToBase64String(pr.ToByteArray())
+                : "<none>";
+            var newRevB64 = modInfo.NewRevision is { Length: > 0 } nr
+                ? Convert.ToBase64String(nr.ToByteArray())
+                : "<none>";
+            _logger?.LogInformation(
+                "[playlist-diff] dealer rx uri={Uri} playlistUri={PlaylistUri} fromRev={From} newRev={New} ops={Ops}",
+                message.Uri, playlistUri, fromRevB64, newRevB64, modInfo.Ops.Count);
 
             return new LibraryChangeEvent
             {

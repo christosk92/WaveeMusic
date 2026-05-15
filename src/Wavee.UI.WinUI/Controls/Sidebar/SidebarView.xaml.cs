@@ -50,6 +50,7 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 	{
 		// Only leaves can be selected
 		if (item.Item is null || item.IsGroupHeader) return;
+		if (item.Item is SidebarItemModel { IsEnabled: false }) return;
 
 		SelectedItem = item.Item;
 		ItemInvoked?.Invoke(item, new(pointerUpdateKind));

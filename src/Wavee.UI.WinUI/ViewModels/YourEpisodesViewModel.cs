@@ -1403,7 +1403,10 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
             ArtistName = e.ArtistName,
             AlbumArt = e.ImageUrl,
             DurationMs = e.Duration.TotalMilliseconds,
-            IsUserQueued = false
+            IsUserQueued = false,
+            AlbumName = e.AlbumName,
+            AlbumUri = string.IsNullOrEmpty(e.AlbumId) ? null : e.AlbumId,
+            IsExplicit = e.IsExplicit,
         }).ToList();
 
         if (shuffle)

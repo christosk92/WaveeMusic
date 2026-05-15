@@ -58,6 +58,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
     private byte[]? _storedCredential;
     private string? _deviceId;
     private int _initialVolumePercent;
+    private string? _audioPreset;
     private string? _audioCacheDirectory;
     private long? _audioCacheMaxBytes;
 
@@ -233,6 +234,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
     public async Task<AudioPipelineProxy> StartAsync(
         string username, byte[] storedCredential, string deviceId,
         int initialVolumePercent = 0,
+        string? audioPreset = null,
         string? audioCacheDirectory = null,
         long? audioCacheMaxBytes = null,
         CancellationToken ct = default)
@@ -242,6 +244,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
         _storedCredential = storedCredential;
         _deviceId = deviceId;
         _initialVolumePercent = initialVolumePercent;
+        _audioPreset = audioPreset;
         _audioCacheDirectory = audioCacheDirectory;
         _audioCacheMaxBytes = audioCacheMaxBytes;
         _restartCount = 0;
@@ -338,6 +341,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
 
         // Handshake
         var success = await _proxy.ConfigureAsync(_deviceId!, normalizationEnabled: true,
+            audioPreset: _audioPreset,
             initialVolumePercent: _initialVolumePercent,
             audioCacheDirectory: _audioCacheDirectory,
             audioCacheMaxBytes: _audioCacheMaxBytes,

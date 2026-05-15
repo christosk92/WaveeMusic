@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Wavee — video crossfade timing prototype</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0a0a0a;
+    --fg: #e8e8e8;
+    --fg-dim: #8a8a8a;
+    --accent: #1db954;
+    --panel: #141414;
+    --border: rgba(255,255,255,0.08);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+    min-height: 100vh;
+  }
+  header {
+    padding: 24px 32px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  header p  { font-size: 13px; color: var(--fg-dim); margin: 0; }
+  main {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 32px;
+    padding: 24px 32px;
+  }
+  .controls {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    height: fit-content;
+    position: sticky;
+    top: 24px;
+  }
+  .controls h2 { font-size: 13px; font-weight: 600; margin: 0 0 12px; letter-spacing: 0.02em; color: var(--fg-dim); text-transform: uppercase; }
+  .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+  .field label { font-size: 12px; color: var(--fg-dim); }
+  .field select, .field input[type="number"] {
+    background: #1c1c1c;
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font: inherit;
+  }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .row input[type="range"] { flex: 1; }
+  .row .val { font-variant-numeric: tabular-nums; color: var(--fg-dim); min-width: 52px; text-align: right; }
+  .actions { display: flex; gap: 8px; margin-top: 8px; }
+  button {
+    background: var(--accent);
+    color: #000;
+    border: 0;
+    border-radius: 999px;
+    padding: 8px 16px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.secondary {
+    background: transparent;
+    color: var(--fg);
+    border: 1px solid var(--border);
+  }
+
+  .stage { display: flex; flex-direction: column; gap: 24px; }
+  .frame-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 720px;
+    aspect-ratio: 16 / 9;
+    border-radius: 16px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  }
+  .layer { position: absolute; inset: 0; opacity: 0; }
+  .layer.art {
+    background:
+      radial-gradient(at 30% 30%, #5b3aa8 0%, transparent 60%),
+      radial-gradient(at 70% 70%, #c14a82 0%, transparent 50%),
+      linear-gradient(135deg, #1a1240 0%, #2b0e3a 100%);
+  }
+  .layer.poster {
+    background:
+      radial-gradient(at 60% 20%, #f0a86a 0%, transparent 60%),
+      radial-gradient(at 30% 80%, #2068a8 0%, transparent 50%),
+      linear-gradient(120deg, #0b2030 0%, #2d3a55 100%);
+    filter: blur(24px) saturate(1.2);
+    transform: scale(1.1);
+  }
+  .layer.video {
+    background:
+      radial-gradient(at 50% 35%, rgba(255,255,255,0.18) 0%, transparent 45%),
+      linear-gradient(170deg, #0e1d2c 0%, #1b3550 40%, #2b5170 70%, #3a6c8a 100%);
+  }
+  .layer.video::after {
+    /* a subtle moving highlight to feel "videoy" without dominating the crossfade */
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.06) 50%, transparent 70%);
+    background-size: 200% 100%;
+    animation: shimmer 6s ease-in-out infinite;
+  }
+  @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+  .layer-tag {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #fff;
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+
+  /* layer visibility states */
+  .frame-wrap[data-state="audio"]   .art    { opacity: 1; }
+  .frame-wrap[data-state="loading"] .art    { opacity: 0; }
+  .frame-wrap[data-state="loading"] .poster { opacity: 1; }
+  .frame-wrap[data-state="loading"] .video  { opacity: 0; }
+  .frame-wrap[data-state="playing"] .art    { opacity: 0; }
+  .frame-wrap[data-state="playing"] .poster { opacity: 0; }
+  .frame-wrap[data-state="playing"] .video  { opacity: 1; }
+
+  .label-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--fg-dim);
+  }
+  .label-row .chip {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .timeline {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+  }
+  .timeline button { background: var(--fg); color: #000; }
+  .stage h3 { font-size: 14px; margin: 0 0 4px; }
+  .stage .desc { color: var(--fg-dim); font-size: 13px; margin: 0; max-width: 560px; }
+
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .presets button { background: #1c1c1c; color: var(--fg); border: 1px solid var(--border); padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+  .presets button.active { background: var(--accent); color: #000; border-color: transparent; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Video crossfade timing prototype</h1>
+  <p>Three stacked layers: album art → blurred poster → video frame. Tune duration + easing, then play the sequence to feel it.</p>
+</header>
+
+<main>
+  <aside class="controls">
+    <h2>Presets</h2>
+    <div class="presets" id="presets"></div>
+
+    <h2 style="margin-top:18px">Art → Poster</h2>
+    <div class="field">
+      <label>Duration</label>
+      <div class="row">
+        <input type="range" id="d1" min="60" max="400" step="10" value="180" />
+        <span class="val"><span id="d1v">180</span> ms</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Easing</label>
+      <select id="e1">
+        <option value="ease-out">ease-out</option>
+        <option value="cubic-bezier(0.16, 1, 0.3, 1)" selected>cubic-bezier(0.16, 1, 0.3, 1) — softer</option>
+        <option value="cubic-bezier(0.22, 1, 0.36, 1)">cubic-bezier(0.22, 1, 0.36, 1)</option>
+        <option value="ease-in-out">ease-in-out</option>
+        <option value="linear">linear</option>
+      </select>
+    </div>
+
+    <h2 style="margin-top:18px">Poster → Video</h2>
+    <div class="field">
+      <label>Duration</label>
+      <div class="row">
+        <input type="range" id="d2" min="60" max="600" step="10" value="220" />
+        <span class="val"><span id="d2v">220</span> ms</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Easing</label>
+      <select id="e2">
+        <option value="ease-out">ease-out</option>
+        <option value="cubic-bezier(0.16, 1, 0.3, 1)" selected>cubic-bezier(0.16, 1, 0.3, 1) — softer</option>
+        <option value="cubic-bezier(0.22, 1, 0.36, 1)">cubic-bezier(0.22, 1, 0.36, 1)</option>
+        <option value="ease-in-out">ease-in-out</option>
+        <option value="linear">linear</option>
+      </select>
+    </div>
+
+    <h2 style="margin-top:18px">Sequence timing</h2>
+    <div class="field">
+      <label>Hold on audio (pre-roll)</label>
+      <div class="row">
+        <input type="range" id="pre" min="0" max="2000" step="50" value="800" />
+        <span class="val"><span id="prev">800</span> ms</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Simulated load time (poster shown)</label>
+      <div class="row">
+        <input type="range" id="gap" min="0" max="2500" step="50" value="600" />
+        <span class="val"><span id="gapv">600</span> ms</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="play">Play sequence</button>
+      <button class="secondary" id="loop">Loop</button>
+      <button class="secondary" id="reset">Reset</button>
+    </div>
+  </aside>
+
+  <section class="stage">
+    <div>
+      <h3>Preview</h3>
+      <p class="desc">Audio is playing (album art shown). Click <strong>Play sequence</strong> to simulate the user switching to video — blurred poster fades in, then crossfades to the first video frame.</p>
+    </div>
+    <div class="frame-wrap" id="frame" data-state="audio">
+      <div class="layer art"><span class="layer-tag">album art</span></div>
+      <div class="layer poster"><span class="layer-tag">blurred poster</span></div>
+      <div class="layer video"><span class="layer-tag">video frame</span></div>
+    </div>
+    <div class="label-row">
+      <span class="chip" id="chipState">state: audio</span>
+      <span class="chip" id="chipTimings">durations 180 / 220 ms · gap 400 ms</span>
+    </div>
+    <div>
+      <h3 style="margin-top:8px">What you're tuning</h3>
+      <p class="desc">
+        Pick the combination that feels closest to <em>"YouTube fast"</em> — quick enough to feel responsive, soft enough not to flicker. The user-selected curve is what we'll apply in WinUI Composition.
+      </p>
+    </div>
+  </section>
+</main>
+
+<script>
+  const frame = document.getElementById("frame");
+  const d1 = document.getElementById("d1"), d1v = document.getElementById("d1v");
+  const d2 = document.getElementById("d2"), d2v = document.getElementById("d2v");
+  const gap = document.getElementById("gap"), gapv = document.getElementById("gapv");
+  const pre = document.getElementById("pre"), prev = document.getElementById("prev");
+  const e1 = document.getElementById("e1"), e2 = document.getElementById("e2");
+  const playBtn = document.getElementById("play"), loopBtn = document.getElementById("loop"), resetBtn = document.getElementById("reset");
+  const chipState = document.getElementById("chipState"), chipTimings = document.getElementById("chipTimings");
+
+  const presets = [
+    { name: "Soft (recommended)", d1: 180, e1: "cubic-bezier(0.16, 1, 0.3, 1)", d2: 220, e2: "cubic-bezier(0.16, 1, 0.3, 1)" },
+    { name: "Snappy",             d1: 120, e1: "ease-out",                       d2: 160, e2: "ease-out" },
+    { name: "Smooth",             d1: 220, e1: "cubic-bezier(0.22, 1, 0.36, 1)", d2: 280, e2: "cubic-bezier(0.22, 1, 0.36, 1)" },
+    { name: "Linear (debug)",     d1: 200, e1: "linear",                         d2: 200, e2: "linear" },
+  ];
+
+  const presetsEl = document.getElementById("presets");
+  presets.forEach((p, i) => {
+    const b = document.createElement("button");
+    b.textContent = p.name;
+    if (i === 0) b.classList.add("active");
+    b.addEventListener("click", () => {
+      presetsEl.querySelectorAll("button").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      d1.value = p.d1; d1v.textContent = p.d1;
+      d2.value = p.d2; d2v.textContent = p.d2;
+      e1.value = p.e1; e2.value = p.e2;
+      applyTransitions(); updateChip();
+    });
+    presetsEl.appendChild(b);
+  });
+
+  function applyTransitions() {
+    const art    = frame.querySelector(".art");
+    const poster = frame.querySelector(".poster");
+    const video  = frame.querySelector(".video");
+    art.style.transition    = `opacity ${d1.value}ms ${e1.value}`;
+    poster.style.transition = `opacity ${Math.max(+d1.value, +d2.value)}ms ${e2.value}`;
+    video.style.transition  = `opacity ${d2.value}ms ${e2.value}`;
+  }
+  function updateChip() {
+    chipTimings.textContent = `art→poster ${d1.value} ms · poster→video ${d2.value} ms · load ${gap.value} ms`;
+  }
+  function setState(s) {
+    frame.dataset.state = s;
+    chipState.textContent = `state: ${s}`;
+  }
+
+  [d1, d2, gap, pre].forEach(el => el.addEventListener("input", () => {
+    d1v.textContent = d1.value; d2v.textContent = d2.value; gapv.textContent = gap.value; prev.textContent = pre.value;
+    applyTransitions(); updateChip();
+  }));
+  [e1, e2].forEach(el => el.addEventListener("change", applyTransitions));
+
+  let loopHandle = null;
+  function stopLoop() {
+    if (loopHandle) { clearTimeout(loopHandle); loopHandle = null; loopBtn.textContent = "Loop"; }
+  }
+  async function playOnce() {
+    setState("audio");
+    await new Promise(r => setTimeout(r, +pre.value));
+    setState("loading");
+    await new Promise(r => setTimeout(r, +gap.value));
+    setState("playing");
+  }
+  playBtn.addEventListener("click", () => { stopLoop(); playOnce(); });
+  loopBtn.addEventListener("click", async () => {
+    if (loopHandle) { stopLoop(); return; }
+    loopBtn.textContent = "Stop loop";
+    const run = async () => {
+      if (!loopHandle) return;
+      await playOnce();
+      // hold on video for 1.2s, then restart so you can watch the curve repeatedly
+      loopHandle = setTimeout(run, 1200);
+    };
+    loopHandle = setTimeout(run, 0);
+  });
+  resetBtn.addEventListener("click", () => { stopLoop(); setState("audio"); });
+
+  applyTransitions();
+  updateChip();
+</script>
+</body>
+</html>

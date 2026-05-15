@@ -43,6 +43,7 @@ public sealed class SpotifyVideoProvider
     private const string PlayReadyContainerGuid = "{9A04F079-9840-4286-AB92-E65BE0885F95}";
 
     private readonly ISpClient _spClient;
+    private readonly IVideoManifestCache? _videoManifestCache;
     private readonly ILogger? _logger;
     private readonly DispatcherQueue _dispatcher;
 
@@ -85,9 +86,13 @@ public sealed class SpotifyVideoProvider
     // Held as a field so it isn't GC'd while the player is alive.
     private MediaProtectionManager? _mpm;
 
-    public SpotifyVideoProvider(ISpClient spClient, ILogger<SpotifyVideoProvider>? logger = null)
+    public SpotifyVideoProvider(
+        ISpClient spClient,
+        IVideoManifestCache? videoManifestCache = null,
+        ILogger<SpotifyVideoProvider>? logger = null)
     {
         _spClient = spClient ?? throw new ArgumentNullException(nameof(spClient));
+        _videoManifestCache = videoManifestCache;
         _logger = logger;
         _dispatcher = DispatcherQueue.GetForCurrentThread()
                       ?? throw new InvalidOperationException(
@@ -152,8 +157,31 @@ public sealed class SpotifyVideoProvider
 
         try
         {
-            var webManifestJson = await _spClient.GetVideoManifestAsync(manifestId, ct);
-            await StartWebEmePlaybackAsync(webManifestJson, durationMs, startPositionMs, ct);
+            string webManifestJson;
+            SpotifyWebEmeVideoManifest? cachedParsed = null;
+            if (_videoManifestCache is not null && _videoManifestCache.TryGet(manifestId, out var cached))
+            {
+                webManifestJson = cached.RawJson;
+                cachedParsed = cached.Parsed;
+                _logger?.LogDebug("SpotifyVideoProvider: manifest cache HIT manifest={Manifest}", manifestId);
+            }
+            else
+            {
+                webManifestJson = await _spClient.GetVideoManifestAsync(manifestId, ct);
+                if (!string.IsNullOrEmpty(webManifestJson) && _videoManifestCache is not null)
+                {
+                    try
+                    {
+                        cachedParsed = SpotifyWebEmeVideoManifest.FromJson(webManifestJson);
+                        _videoManifestCache.Store(manifestId, webManifestJson, cachedParsed);
+                    }
+                    catch (Exception parseEx)
+                    {
+                        _logger?.LogDebug(parseEx, "SpotifyVideoProvider: cache store parse failed manifest={Manifest}", manifestId);
+                    }
+                }
+            }
+            await StartWebEmePlaybackAsync(webManifestJson, durationMs, startPositionMs, ct, cachedParsed);
             return;
 
             // 1. Fetch and parse the DASH manifest
@@ -241,6 +269,93 @@ public sealed class SpotifyVideoProvider
                 $"Spotify video failed: {ex.Message}", ex));
             await CleanupAsync();
         }
+    }
+
+    // ── Prefetch / commit path ──────────────────────────────────────────────
+    //
+    // v1: PrepareAsync warms the manifest cache only — no WebView2 lifecycle
+    // before commit. The audio-stop + video-start parallelism in Phase 2 is
+    // what hides the remaining cold-start cost. PlayAsync(prepared) consults
+    // the cache so manifest fetch + parse are free on cache hits.
+
+    public async Task<IPreparedVideoSession?> PrepareAsync(
+        SpotifyVideoPlaybackTarget target,
+        CancellationToken ct = default)
+    {
+        if (_disposed) return null;
+        if (target is null) throw new ArgumentNullException(nameof(target));
+        if (string.IsNullOrEmpty(target.ManifestId)) return null;
+
+        if (_videoManifestCache is not null && _videoManifestCache.TryGet(target.ManifestId, out _))
+        {
+            _logger?.LogDebug("SpotifyVideoProvider.PrepareAsync: cache HIT manifest={Manifest}", target.ManifestId);
+            return new PreparedSpotifyVideoSession(target);
+        }
+
+        string json;
+        try
+        {
+            json = await _spClient.GetVideoManifestAsync(target.ManifestId, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { return null; }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "SpotifyVideoProvider.PrepareAsync: manifest fetch failed manifest={Manifest}", target.ManifestId);
+            return null;
+        }
+
+        if (string.IsNullOrEmpty(json)) return null;
+
+        try
+        {
+            var parsed = SpotifyWebEmeVideoManifest.FromJson(json);
+            _videoManifestCache?.Store(target.ManifestId, json, parsed);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "SpotifyVideoProvider.PrepareAsync: manifest parse failed manifest={Manifest}", target.ManifestId);
+            return null;
+        }
+
+        _logger?.LogInformation("SpotifyVideoProvider.PrepareAsync: manifest warmed manifest={Manifest} uri={Uri}",
+            target.ManifestId, target.VideoTrackUri);
+        return new PreparedSpotifyVideoSession(target);
+    }
+
+    public Task PlayAsync(
+        IPreparedVideoSession prepared,
+        double startPositionMs,
+        CancellationToken ct = default)
+    {
+        if (prepared is null) throw new ArgumentNullException(nameof(prepared));
+        if (prepared is not PreparedSpotifyVideoSession sess)
+            throw new ArgumentException(
+                "Prepared session was not produced by SpotifyVideoProvider",
+                nameof(prepared));
+
+        var t = sess.Target;
+        return PlayAsync(
+            t.ManifestId,
+            t.VideoTrackUri,
+            t.Metadata,
+            t.DurationMs,
+            startPositionMs,
+            ct);
+    }
+
+    private sealed class PreparedSpotifyVideoSession : IPreparedVideoSession
+    {
+        public PreparedSpotifyVideoSession(SpotifyVideoPlaybackTarget target)
+        {
+            Target = target;
+            PreparedAt = DateTimeOffset.UtcNow;
+        }
+
+        public string VideoTrackUri => Target.VideoTrackUri;
+        public DateTimeOffset PreparedAt { get; }
+        internal SpotifyVideoPlaybackTarget Target { get; }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     public Task PauseAsync(CancellationToken ct = default)
@@ -534,20 +649,28 @@ public sealed class SpotifyVideoProvider
         string manifestJson,
         long durationMs,
         double startPositionMs,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SpotifyWebEmeVideoManifest? preParsed = null)
     {
         SpotifyWebEmeVideoManifest config;
-        try
+        if (preParsed is not null)
         {
-            config = SpotifyWebEmeVideoManifest.FromJson(manifestJson);
+            config = preParsed;
         }
-        catch (Exception ex)
+        else
         {
-            _logger?.LogError(
-                ex,
-                "SpotifyVideoProvider: WebView2 EME manifest parse failed. diagnostics={Diagnostics}",
-                SpotifyWebEmeVideoManifest.DescribeManifestForLog(manifestJson));
-            throw;
+            try
+            {
+                config = SpotifyWebEmeVideoManifest.FromJson(manifestJson);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(
+                    ex,
+                    "SpotifyVideoProvider: WebView2 EME manifest parse failed. diagnostics={Diagnostics}",
+                    SpotifyWebEmeVideoManifest.DescribeManifestForLog(manifestJson));
+                throw;
+            }
         }
 
         _currentDurationMs = durationMs > 0 ? durationMs : config.DurationMs;

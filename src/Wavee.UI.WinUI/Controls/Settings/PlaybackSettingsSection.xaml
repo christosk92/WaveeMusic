@@ -97,7 +97,7 @@
                 </ComboBox>
             </controls:SettingsCard>
             <controls:SettingsCard x:Uid="Controls_Settings_PlaybackSettingsSection__SettingsCard_16" Header="Normalize volume"
-                                   Description="Adjust volume levels so all tracks play at a similar loudness"
+                                   Description="{x:Bind ViewModel.NormalizationDescription, Mode=OneWay}"
                                    Tag="audio">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE767;"/>

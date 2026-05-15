@@ -20,7 +20,7 @@ public sealed class LimiterProcessor : IAudioProcessor
     private float _ceilingLinear;
 
     public string ProcessorName => "Limiter";
-    public bool IsEnabled { get; set; } = true;
+    public bool IsEnabled { get; set; }
 
     public Task InitializeAsync(AudioFormat format, CancellationToken cancellationToken = default)
     {

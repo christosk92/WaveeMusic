@@ -14,4 +14,13 @@ public sealed record SpotifyVideoPlaybackTarget(
     TrackMetadataDto Metadata,
     long DurationMs,
     TrackMetadataDto OriginalMetadata,
-    long OriginalDurationMs);
+    long OriginalDurationMs)
+{
+    /// <summary>
+    /// Optional URL the UI can crossfade in as a blurred poster while the
+    /// first video frame is decoding. Sourced today from the existing track
+    /// album art (<see cref="TrackMetadataDto.ImageLargeUrl"/>); future work
+    /// can swap in the 16:9 image from Pathfinder once threaded through.
+    /// </summary>
+    public string? PosterUrl { get; init; }
+}

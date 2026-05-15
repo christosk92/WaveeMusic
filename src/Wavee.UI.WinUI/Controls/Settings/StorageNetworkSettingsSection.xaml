@@ -129,6 +129,9 @@
             </controls:SettingsCard>
 
             <!-- ── Local Files ─────────────────────────────────────────────── -->
+            <StackPanel x:Load="{x:Bind ViewModel.IsLocalFilesFeatureEnabled, Mode=OneWay}"
+                        x:Name="localFileSection"
+                        Spacing="6">
             <settings:SettingsGroupHeader Title="Local files"
                                           Description="Choose watched folders and how local music appears in the app."
                                           IconGlyph="&#xE8B7;"
@@ -298,6 +301,8 @@
                 </controls:SettingsCard.HeaderIcon>
                 <Button Content="Clear" Click="ClearCachedLookups_Click"/>
             </controls:SettingsCard>
+
+            </StackPanel>
 
             <settings:SettingsGroupHeader Title="Connection"
                                           Description="Configure reconnect behavior and network timeouts."

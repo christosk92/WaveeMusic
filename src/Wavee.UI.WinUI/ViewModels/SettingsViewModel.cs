@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Threading;
 using System.IO;
@@ -24,6 +25,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.Core.Session;
 using Wavee.Core.Time;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Application;
@@ -54,6 +56,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly IThemeService _themeService;
     private readonly InMemorySink _inMemorySink;
     private readonly ISession? _session;
+    private readonly IPlaybackStateService? _playbackStateService;
     private readonly IUpdateService? _updateService;
     private readonly IMetadataDatabase? _metadataDatabase;
     private readonly IMessenger? _messenger;
@@ -117,9 +120,11 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     public LocalFilesViewModel? LocalFiles { get; }
+    public bool IsLocalFilesFeatureEnabled => AppFeatureFlags.LocalFilesEnabled;
 
     public SettingsViewModel(ISettingsService settingsService, IThemeService themeService, InMemorySink inMemorySink,
         IAudioPipelineControl? pipelineControl = null,
+        IPlaybackStateService? playbackStateService = null,
         ISession? session = null,
         IUpdateService? updateService = null,
         IMetadataDatabase? metadataDatabase = null,
@@ -133,6 +138,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _themeService = themeService;
         _inMemorySink = inMemorySink;
         _pipelineControl = pipelineControl;
+        _playbackStateService = playbackStateService;
         _session = session;
         _updateService = updateService;
         _metadataDatabase = metadataDatabase;
@@ -229,23 +235,54 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             _updateService.PropertyChanged += OnUpdateServicePropertyChanged;
         }
 
+        if (_playbackStateService != null)
+        {
+            _playbackStateService.PropertyChanged += OnPlaybackStatePropertyChanged;
+        }
+
         // Initialize clock sync display + start live countdown timer
         UpdateClockDisplay();
         StartClockTimer();
 
-        // Subscribe to log entry changes to maintain filtered view
-        LogEntries.CollectionChanged += OnLogEntriesCollectionChanged;
+        if (AppFeatureFlags.DiagnosticsEnabled)
+        {
+            // Subscribe to log entry changes to maintain filtered view.
+            LogEntries.CollectionChanged += OnLogEntriesCollectionChanged;
+            RefreshFilteredLogs();
+            RefreshPastLogs();
+        }
 
-        // Initial populate
-        RefreshFilteredLogs();
-        RefreshPastLogs();
         UpdatePendingRestartState();
     }
 
-    private void OnUpdateServicePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void OnUpdateServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(Services.UpdateStatus) || e.PropertyName == "Status")
             OnPropertyChanged(nameof(HasUpdateError));
+    }
+
+    private void OnPlaybackStatePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(e.PropertyName) ||
+            e.PropertyName is nameof(IPlaybackStateService.CurrentTrackNormalizationGainDb)
+                or nameof(IPlaybackStateService.CurrentTrackNormalizationPeak)
+                or nameof(IPlaybackStateService.CurrentTrackId))
+        {
+            RaiseNormalizationDescriptionChanged();
+        }
+    }
+
+    private void RaiseNormalizationDescriptionChanged()
+    {
+        var dispatcher = _dispatcherQueue;
+        if (dispatcher is null || dispatcher.HasThreadAccess)
+        {
+            OnPropertyChanged(nameof(NormalizationDescription));
+        }
+        else
+        {
+            dispatcher.TryEnqueue(() => OnPropertyChanged(nameof(NormalizationDescription)));
+        }
     }
 
     private void OnLogEntriesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -553,6 +590,18 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _normalizationEnabled;
 
+    public string NormalizationDescription
+    {
+        get
+        {
+            var gain = _playbackStateService?.CurrentTrackNormalizationGainDb;
+            var peak = _playbackStateService?.CurrentTrackNormalizationPeak;
+            return gain.HasValue && peak.HasValue
+                ? $"Parsed from current stream: gain {gain.Value:+0.00;-0.00;0.00} dB, peak {peak.Value:0.0000}"
+                : "Parsed gain and peak will appear while a Spotify stream is loaded";
+        }
+    }
+
     partial void OnNormalizationEnabledChanged(bool value)
     {
         _settingsService.Update(s => s.NormalizationEnabled = value);
@@ -599,9 +648,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool VerboseLoggingEnabled
     {
-        get => _settingsService.Settings.VerboseLoggingEnabled;
+        get => AppFeatureFlags.DiagnosticsEnabled && _settingsService.Settings.VerboseLoggingEnabled;
         set
         {
+            if (!AppFeatureFlags.DiagnosticsEnabled) return;
             if (_settingsService.Settings.VerboseLoggingEnabled == value) return;
             _settingsService.Update(s => s.VerboseLoggingEnabled = value);
             AppLifecycleHelper.SetVerboseLogging(value);
@@ -616,9 +666,15 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool MemoryDiagnosticsEnabled
     {
-        get => _settingsService.Settings.MemoryDiagnosticsEnabled;
+        get => AppFeatureFlags.DiagnosticsEnabled && _settingsService.Settings.MemoryDiagnosticsEnabled;
         set
         {
+            if (!AppFeatureFlags.DiagnosticsEnabled)
+            {
+                AppLifecycleHelper.SetMemoryDiagnostics(false);
+                return;
+            }
+
             if (_settingsService.Settings.MemoryDiagnosticsEnabled == value) return;
             _settingsService.Update(s => s.MemoryDiagnosticsEnabled = value);
             AppLifecycleHelper.SetMemoryDiagnostics(value);
@@ -1064,6 +1120,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public void StartAudioDiagnostics()
     {
+        if (!AppFeatureFlags.DiagnosticsEnabled)
+            return;
+
         AudioPipelineMode = AppLocalization.GetString("AudioPipeline_InProcess");
         AudioPipelineStatus = AppLocalization.GetString("State_Unknown");
         AudioGcStats = AppLocalization.GetString("State_EmDash");
@@ -1538,6 +1597,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         if (_updateService != null)
             _updateService.PropertyChanged -= OnUpdateServicePropertyChanged;
+
+        if (_playbackStateService != null)
+            _playbackStateService.PropertyChanged -= OnPlaybackStatePropertyChanged;
 
         LogEntries.CollectionChanged -= OnLogEntriesCollectionChanged;
 

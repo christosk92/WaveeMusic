@@ -89,6 +89,16 @@ public sealed partial class TrackItem : UserControl
         DependencyProperty.Register(nameof(ShowAlbumArt), typeof(bool), typeof(TrackItem),
             new PropertyMetadata(true, OnColumnVisibilityChanged));
 
+    public static readonly DependencyProperty PreserveImageOnUnloadProperty =
+        DependencyProperty.Register(nameof(PreserveImageOnUnload), typeof(bool), typeof(TrackItem),
+            new PropertyMetadata(false));
+
+    public bool PreserveImageOnUnload
+    {
+        get => (bool)GetValue(PreserveImageOnUnloadProperty);
+        set => SetValue(PreserveImageOnUnloadProperty, value);
+    }
+
     public static readonly DependencyProperty ShowArtistColumnProperty =
         DependencyProperty.Register(nameof(ShowArtistColumn), typeof(bool), typeof(TrackItem),
             new PropertyMetadata(true, OnColumnVisibilityChanged));
@@ -96,6 +106,16 @@ public sealed partial class TrackItem : UserControl
     public static readonly DependencyProperty ShowAlbumColumnProperty =
         DependencyProperty.Register(nameof(ShowAlbumColumn), typeof(bool), typeof(TrackItem),
             new PropertyMetadata(true, OnColumnVisibilityChanged));
+
+    public static readonly DependencyProperty TitleColumnMaxWidthProperty =
+        DependencyProperty.Register(nameof(TitleColumnMaxWidth), typeof(double), typeof(TrackItem),
+            new PropertyMetadata(640d, OnRowColumnWidthChanged));
+
+    public double TitleColumnMaxWidth
+    {
+        get => (double)GetValue(TitleColumnMaxWidthProperty);
+        set => SetValue(TitleColumnMaxWidthProperty, value);
+    }
 
     public static readonly DependencyProperty AlbumColumnWidthProperty =
         DependencyProperty.Register(nameof(AlbumColumnWidth), typeof(double), typeof(TrackItem),
@@ -191,7 +211,7 @@ public sealed partial class TrackItem : UserControl
 
     public static readonly DependencyProperty ShowPlayCountProperty =
         DependencyProperty.Register(nameof(ShowPlayCount), typeof(bool), typeof(TrackItem),
-            new PropertyMetadata(false, OnColumnVisibilityChanged));
+            new PropertyMetadata(false, OnShowPlayCountChanged));
 
     public static readonly DependencyProperty PlayCountTextProperty =
         DependencyProperty.Register(nameof(PlayCountText), typeof(string), typeof(TrackItem),
@@ -224,6 +244,15 @@ public sealed partial class TrackItem : UserControl
     public static readonly DependencyProperty RowDensityProperty =
         DependencyProperty.Register(nameof(RowDensity), typeof(int), typeof(TrackItem),
             new PropertyMetadata(2, OnRowDensityChanged));
+
+    // Opt-in hover-tint for Row mode. When set, ApplyRowBackground paints this
+    // brush on hover (instead of leaving the row transparent). Used by raw
+    // ItemsRepeater hosts (ArtistPage top-tracks) that don't get the
+    // TrackDataGrid alternating/card striping but still want a hover
+    // affordance to match playlist track rows.
+    public static readonly DependencyProperty RowHoverBackgroundBrushProperty =
+        DependencyProperty.Register(nameof(RowHoverBackgroundBrush), typeof(Brush), typeof(TrackItem),
+            new PropertyMetadata(null, OnRowHoverBackgroundBrushChanged));
 
     // XS → XL. Paddings shrink at XS so the row can actually hit its 32-px target;
     // default (M) matches the original Padding="8,8" from XAML so unchanged rows are
@@ -398,6 +427,17 @@ public sealed partial class TrackItem : UserControl
         set => SetValue(RowDensityProperty, value);
     }
 
+    public Brush? RowHoverBackgroundBrush
+    {
+        get => (Brush?)GetValue(RowHoverBackgroundBrushProperty);
+        set => SetValue(RowHoverBackgroundBrushProperty, value);
+    }
+
+    private static void OnRowHoverBackgroundBrushChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackItem item) item.ApplyRowBackground();
+    }
+
     public string? PlaceholderColorHex
     {
         get => (string?)GetValue(PlaceholderColorHexProperty);
@@ -569,7 +609,6 @@ public sealed partial class TrackItem : UserControl
         if (track != null)
         {
             CompactTitle.Text = track.Title ?? "";
-            CompactSubtitle.Text = track.ArtistName ?? "";
             CompactDuration.Text = track.DurationFormatted ?? "";
             CompactLocalBadge.Visibility = track.IsLocal ? Visibility.Visible : Visibility.Collapsed;
 
@@ -577,17 +616,41 @@ public sealed partial class TrackItem : UserControl
             CompactHeartButton.IsLiked = GetTrackLikedState(track);
             CompactHeartButton.Visibility = Visibility.Visible;
             ApplyCompactAlbumArt(track.ImageSmallUrl ?? track.ImageUrl);
+            UpdateCompactSubtitleText();
         }
         else
         {
             CompactTitle.Text = "";
-            CompactSubtitle.Text = "";
             CompactDuration.Text = "";
             CompactLocalBadge.Visibility = Visibility.Collapsed;
             CompactHeartButton.Visibility = Visibility.Collapsed;
             UpdateBadgePlacement();
-            ApplyCompactAlbumArt(null);
+            if (!PreserveImageOnUnload)
+                ApplyCompactAlbumArt(null);
+            UpdateCompactSubtitleText();
         }
+    }
+
+    private void UpdateCompactSubtitleText()
+    {
+        if (CompactSubtitle == null)
+            return;
+
+        var artist = Track?.ArtistName ?? "";
+        var playCount = ShowPlayCount ? PlayCountText : null;
+
+        if (string.IsNullOrWhiteSpace(playCount))
+        {
+            CompactSubtitle.Text = artist;
+            return;
+        }
+
+        var playCountText = playCount.Contains("play", StringComparison.OrdinalIgnoreCase)
+            ? playCount
+            : $"{playCount} plays";
+        CompactSubtitle.Text = string.IsNullOrWhiteSpace(artist)
+            ? playCountText
+            : $"{artist} · {playCountText}";
     }
 
     private void BindRowData(ITrackItem? track)
@@ -631,7 +694,8 @@ public sealed partial class TrackItem : UserControl
             RowAlbumLink.Content = "";
             ApplyRowProgress(null);
             UpdateBadgePlacement();
-            ApplyRowAlbumArt(null);
+            if (!PreserveImageOnUnload)
+                ApplyRowAlbumArt(null);
             ApplyChartStatus(null);
         }
     }
@@ -760,7 +824,9 @@ public sealed partial class TrackItem : UserControl
         // Idempotent: same URL and the Image still has a Source → don't churn.
         // Without this, recycled containers, OnLoaded rebinds, and shimmer→loaded
         // transitions all force WinUI to drop its decoded bitmap and re-decode.
-        if (imageUrl == _boundCompactImageUrl && CompactAlbumArt.Source != null)
+        if (imageUrl == _boundCompactImageUrl &&
+            CompactAlbumArt.Source != null &&
+            CompactAlbumArt.Visibility == Visibility.Visible)
         {
             CompactAlbumArt.Visibility = Visibility.Visible;
             CompactAlbumArt.Opacity = 1;
@@ -797,7 +863,9 @@ public sealed partial class TrackItem : UserControl
 
     private void ApplyRowAlbumArt(string? imageUrl)
     {
-        if (imageUrl == _boundRowImageUrl && RowAlbumArt.Source != null)
+        if (imageUrl == _boundRowImageUrl &&
+            RowAlbumArt.Source != null &&
+            RowAlbumArt.Visibility == Visibility.Visible)
         {
             RowAlbumArt.Visibility = Visibility.Visible;
             RowAlbumArt.Opacity = 1;
@@ -838,7 +906,8 @@ public sealed partial class TrackItem : UserControl
     private void OnCompactAlbumArtFailed(object sender, ExceptionRoutedEventArgs e)
     {
         var url = _pinnedCompactUrl;
-        if (string.IsNullOrEmpty(url) || url == _retriedCompactUrl) return;
+        if (string.IsNullOrEmpty(url)) return;
+        var alreadyRetried = url == _retriedCompactUrl;
         _retriedCompactUrl = url;
 
         // Drop the poisoned BitmapImage so the next GetOrCreate creates a fresh one
@@ -848,19 +917,28 @@ public sealed partial class TrackItem : UserControl
         _cachedImageCache?.Unpin(url, 48);
         _pinnedCompactUrl = null;
         CompactAlbumArt.Source = null;
+        CompactAlbumArt.Visibility = Visibility.Visible;
+        CompactAlbumArt.Opacity = 1;
+        if (alreadyRetried) return;
+
         DispatcherQueue?.TryEnqueue(() => ApplyCompactAlbumArt(_boundCompactImageUrl));
     }
 
     private void OnRowAlbumArtFailed(object sender, ExceptionRoutedEventArgs e)
     {
         var url = _pinnedRowUrl;
-        if (string.IsNullOrEmpty(url) || url == _retriedRowUrl) return;
+        if (string.IsNullOrEmpty(url)) return;
+        var alreadyRetried = url == _retriedRowUrl;
         _retriedRowUrl = url;
 
         _cachedImageCache?.Invalidate(url, 48);
         _cachedImageCache?.Unpin(url, 48);
         _pinnedRowUrl = null;
         RowAlbumArt.Source = null;
+        RowAlbumArt.Visibility = Visibility.Visible;
+        RowAlbumArt.Opacity = 1;
+        if (alreadyRetried) return;
+
         DispatcherQueue?.TryEnqueue(() => ApplyRowAlbumArt(_boundRowImageUrl));
     }
 
@@ -1011,6 +1089,14 @@ public sealed partial class TrackItem : UserControl
             item.ApplyRowColumnVisibility();
     }
 
+    private static void OnShowPlayCountChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var item = (TrackItem)d;
+        if (item.Mode == TrackItemDisplayMode.Row && item._batchUpdateDepth == 0)
+            item.ApplyRowColumnVisibility();
+        item.UpdateCompactSubtitleText();
+    }
+
     private static void OnDateAddedTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
@@ -1021,6 +1107,7 @@ public sealed partial class TrackItem : UserControl
     {
         var item = (TrackItem)d;
         item.RowPlayCount.Text = (string?)e.NewValue ?? "";
+        item.UpdateCompactSubtitleText();
     }
 
     private static void OnShowPopularityBadgeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -1151,6 +1238,7 @@ public sealed partial class TrackItem : UserControl
         var effectiveShowArt = ShowAlbumArt && artSize > 0;
 
         RowArtColDef.Width        = effectiveShowArt   ? new GridLength(artSize + 8)         : new GridLength(0);
+        RowTitleColDef.MaxWidth   = ResolveColumnMaxWidth(TitleColumnMaxWidth, RowTitleColDef.MinWidth);
         RowAlbumColDef.Width      = ShowAlbumColumn    ? new GridLength(AlbumColumnWidth)     : new GridLength(0);
         RowAddedByColDef.Width    = ShowAddedByColumn  ? new GridLength(AddedByColumnWidth)   : new GridLength(0);
         RowDateColDef.Width       = ShowDateAdded      ? new GridLength(DateAddedColumnWidth) : new GridLength(0);
@@ -1180,6 +1268,7 @@ public sealed partial class TrackItem : UserControl
         // Keep the shimmer overlay's columns in sync so loading rows align with the
         // real row layout (and with the column headers above).
         ShimArtColDef.Width       = RowArtColDef.Width;
+        ShimTitleColDef.MaxWidth  = RowTitleColDef.MaxWidth;
         ShimAlbumColDef.Width     = RowAlbumColDef.Width;
         ShimAddedByColDef.Width   = RowAddedByColDef.Width;
         ShimDateColDef.Width      = RowDateColDef.Width;
@@ -1190,6 +1279,11 @@ public sealed partial class TrackItem : UserControl
         // explicit/video badges should sit on the subline or inline beside the title.
         UpdateBadgePlacement();
     }
+
+    private static double ResolveColumnMaxWidth(double value, double minWidth)
+        => double.IsNaN(value) || double.IsInfinity(value)
+            ? double.PositiveInfinity
+            : Math.Max(minWidth, value);
 
     private void ApplyRowDensityPadding()
     {
@@ -1308,9 +1402,9 @@ public sealed partial class TrackItem : UserControl
         }
         else
         {
-            CompactBorder.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            CompactBorder.BorderBrush = null;
-            CompactBorder.BorderThickness = new Thickness(0);
+            CompactBorder.Background = TransparentBrush;
+            CompactBorder.BorderBrush = TransparentBrush;
+            CompactBorder.BorderThickness = new Thickness(1);
         }
     }
 
@@ -1319,6 +1413,16 @@ public sealed partial class TrackItem : UserControl
         if (RowRoot == null) return;
 
         bool nativePillShowing = IsSelected || _isHovered;
+
+        // Opt-in hover-tint: paint the configured hover brush and short-circuit.
+        // Border collapses to invisible so the hover slab reads as a single block.
+        if (_isHovered && !IsSelected && RowHoverBackgroundBrush is not null)
+        {
+            RowRoot.Background = RowHoverBackgroundBrush;
+            RowRoot.BorderThickness = new Thickness(1);
+            RowRoot.BorderBrush = TransparentBrush;
+            return;
+        }
 
         if (!nativePillShowing && (_useCardRow || _isAlternateRow))
         {
@@ -1383,9 +1487,14 @@ public sealed partial class TrackItem : UserControl
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         ObserveTrack(Track);
-        RebindAlbumArtIfNeeded();
-        RefreshPlaybackState();
-        UpdateOverlayState();
+        // Virtualized/recycled rows can be unloaded while LazyTrackItem.Data is
+        // patched with late metadata such as artist top-track cover art. Since
+        // we stop observing on Unloaded, force a full bind from the current
+        // Track on Loaded instead of only restoring the previously-bound image
+        // URL. This keeps recycled rows from staying on placeholders until a
+        // resize or layout refresh prepares them again.
+        RebindObservedTrack();
+        RepinVisibleAlbumArt();
         UpdateBadgePlacement();
         RefreshLikedState();
 
@@ -1555,11 +1664,9 @@ public sealed partial class TrackItem : UserControl
     {
         if (_isBuffering)
         {
-            if (CompactPlayButton.Visibility == Visibility.Visible)
-            {
-                CompactPlayButton.Opacity = 0;
-                CompactPlayButton.Visibility = Visibility.Collapsed;
-            }
+            CompactPlayButton.Opacity = 0;
+            CompactPlayButton.Visibility = Visibility.Collapsed;
+            CompactPlayButton.IsHitTestVisible = false;
 
             CompactNowPlaying.Visibility = Visibility.Collapsed;
             SetCompactEqualizer(false, false);
@@ -1575,24 +1682,29 @@ public sealed partial class TrackItem : UserControl
             if (CompactPlayContent != null)
                 CompactPlayContent.IsPlaying = _isThisTrackPlaying;
 
-            if (CompactPlayButton.Visibility == Visibility.Collapsed)
+            CompactPlayButton.Visibility = Visibility.Visible;
+            CompactPlayButton.IsHitTestVisible = true;
+            if (CompactPlayButton.Opacity < 0.99)
             {
-                CompactPlayButton.Opacity = 0;
-                CompactPlayButton.Visibility = Visibility.Visible;
-                CompactPlayButton.UpdateLayout();
                 AnimationBuilder.Create()
-                    .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(150))
+                    .Opacity(to: 1, duration: TimeSpan.FromMilliseconds(100))
                     .Start(CompactPlayButton);
             }
         }
         else
         {
-            if (CompactPlayButton.Visibility == Visibility.Visible)
+            CompactPlayButton.IsHitTestVisible = false;
+            if (CompactPlayButton.Visibility == Visibility.Visible && CompactPlayButton.Opacity > 0.01)
             {
                 AnimationBuilder.Create()
-                    .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(100))
+                    .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(85))
                     .Start(CompactPlayButton);
-                _ = CollapseAfterDelay(CompactPlayButton, 120);
+                _ = CollapseCompactPlayButtonAfterDelayAsync(90);
+            }
+            else
+            {
+                CompactPlayButton.Opacity = 0;
+                CompactPlayButton.Visibility = Visibility.Collapsed;
             }
 
             if (_isThisTrackPlaying)
@@ -1618,6 +1730,17 @@ public sealed partial class TrackItem : UserControl
                 CompactBufferingRing.Visibility = Visibility.Collapsed;
                 CompactNowPlaying.Visibility = Visibility.Collapsed;
             }
+        }
+    }
+
+    private async Task CollapseCompactPlayButtonAfterDelayAsync(int delayMs)
+    {
+        await Task.Delay(delayMs);
+        if (!_isHovered && !_isBuffering && CompactPlayButton.Opacity <= 0.05)
+        {
+            CompactPlayButton.Opacity = 0;
+            CompactPlayButton.Visibility = Visibility.Collapsed;
+            CompactPlayButton.IsHitTestVisible = false;
         }
     }
 
@@ -1705,13 +1828,6 @@ public sealed partial class TrackItem : UserControl
     private void StopPendingBeam()
     {
         PlaybackPendingBeam?.Stop();
-    }
-
-    private static async Task CollapseAfterDelay(UIElement element, int ms)
-    {
-        await Task.Delay(ms);
-        if (element.Opacity <= 0.01)
-            element.Visibility = Visibility.Collapsed;
     }
 
     #endregion
@@ -1831,6 +1947,9 @@ public sealed partial class TrackItem : UserControl
             _pinnedRowUrl = null;
         }
 
+        if (PreserveImageOnUnload)
+            return;
+
         // Null the Image.Source on Unloaded — without this, the WinUI compositor
         // visual keeps the native decoded surface alive even after the BitmapImage
         // managed wrapper is unreferenced. With ItemsRepeater recycling thousands
@@ -1839,6 +1958,34 @@ public sealed partial class TrackItem : UserControl
         // ImageCacheService, which is decode-bucketed so the next render is cheap.
         if (RowAlbumArt != null) RowAlbumArt.Source = null;
         if (CompactAlbumArt != null) CompactAlbumArt.Source = null;
+    }
+
+    private void RepinVisibleAlbumArt()
+    {
+        _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
+
+        if (Mode == TrackItemDisplayMode.Compact &&
+            CompactAlbumArt?.Source != null &&
+            _pinnedCompactUrl is null)
+        {
+            var httpsUrl = SpotifyImageHelper.ToHttpsUrl(Track?.ImageSmallUrl ?? Track?.ImageUrl);
+            if (!string.IsNullOrEmpty(httpsUrl))
+            {
+                _cachedImageCache?.Pin(httpsUrl, 48);
+                _pinnedCompactUrl = httpsUrl;
+            }
+        }
+        else if (Mode == TrackItemDisplayMode.Row &&
+                 RowAlbumArt?.Source != null &&
+                 _pinnedRowUrl is null)
+        {
+            var httpsUrl = SpotifyImageHelper.ToHttpsUrl(Track?.ImageSmallUrl ?? Track?.ImageUrl);
+            if (!string.IsNullOrEmpty(httpsUrl))
+            {
+                _cachedImageCache?.Pin(httpsUrl, 48);
+                _pinnedRowUrl = httpsUrl;
+            }
+        }
     }
 
     private void ObserveTrack(ITrackItem? track)

@@ -531,6 +531,65 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         var rootlistUri = GetRootlistUri();
         var previous = _hotRootlist;
 
+        // When we have a previous revision, try /diff first — Spotify returns
+        // upToDate=true (a few hundred bytes) when nothing has changed, vs. the
+        // full rootlist payload (KBs per playlist) on every sign-in. Mirrors
+        // the per-playlist /diff path in FetchPlaylistFromNetworkAsync. The
+        // SpClient.GetPlaylistDiffAsync URL builder is URI-shape agnostic, so
+        // passing the rootlist URI hits /playlist/v2/user/{u}/rootlist/diff.
+        if (previous is { Revision.Length: > 0 })
+        {
+            try
+            {
+                var diff = await _session.SpClient.GetPlaylistDiffAsync(
+                    rootlistUri, previous.Revision, ct);
+
+                if (diff.UpToDate || RevisionsEqual(
+                    previous.Revision, diff.Revision?.ToByteArray() ?? []))
+                {
+                    var refreshed = previous with { FetchedAt = DateTimeOffset.UtcNow };
+                    await PersistRootlistAsync(rootlistUri, refreshed, ct);
+                    _hotRootlist = refreshed;
+                    _logger?.LogInformation(
+                        "[rootlist] /diff up-to-date — no rebuild needed");
+                    return refreshed;
+                }
+
+                // Spotify's rootlist /diff response includes a full Contents
+                // block when the diff would be expensive to express as ops
+                // (cross-folder moves, large adds). Map it like a full fetch —
+                // same code path.
+                if (diff.Contents != null)
+                {
+                    var diffSnapshot = SelectedListContentMapper.MapRootlist(diff, DateTimeOffset.UtcNow);
+                    await PersistRootlistAsync(rootlistUri, diffSnapshot, ct);
+                    _hotRootlist = diffSnapshot;
+                    if (emitChange && !RevisionsEqual(previous.Revision, diffSnapshot.Revision))
+                    {
+                        _changes.OnNext(new PlaylistChangeEvent
+                        {
+                            Uri = PlaylistCacheUris.Rootlist,
+                            Kind = PlaylistChangeKind.Replaced
+                        });
+                    }
+                    _logger?.LogInformation(
+                        "[rootlist] /diff returned fresh contents — snapshot rebuilt ({Count} items)",
+                        diffSnapshot.Items.Count);
+                    return diffSnapshot;
+                }
+
+                // Ops-only rootlist diffs — RootlistEntry has no DiffApplier
+                // equivalent yet. Fall through to the full GET below.
+                _logger?.LogInformation(
+                    "[rootlist] /diff returned ops without Contents — falling back to full GET");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogInformation(
+                    "[rootlist] /diff failed, falling back to full GET: {Reason}", ex.Message);
+            }
+        }
+
         var response = await _session.SpClient.GetPlaylistAsync(
             rootlistUri,
             decorate: RootlistDecorations,
@@ -550,7 +609,7 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
         }
 
         _logger?.LogInformation(
-            "PlaylistCache rootlist fetched ({Count} items)",
+            "[rootlist] full GET fetched ({Count} items)",
             snapshot.Items.Count);
 
         return snapshot;
@@ -597,11 +656,20 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
 
         if (existing is { HasContentsSnapshot: true } && existing.Revision.Length > 0)
         {
+            var cachedRevB64 = existing.Revision.Length > 0
+                ? Convert.ToBase64String(existing.Revision)
+                : "<none>";
+            _logger?.LogInformation(
+                "[playlist-diff] cache miss-or-stale, attempting diff for {Uri} cachedRev={Rev}",
+                playlistUri, cachedRevB64);
             try
             {
                 var diff = await _session.SpClient.GetPlaylistDiffAsync(playlistUri, existing.Revision, ct);
                 if (diff.UpToDate || RevisionsEqual(existing.Revision, diff.Revision?.ToByteArray() ?? []))
                 {
+                    _logger?.LogInformation(
+                        "[playlist-diff] up-to-date {Uri} (no ops applied)",
+                        playlistUri);
                     var refreshed = existing with
                     {
                         FetchedAt = DateTimeOffset.UtcNow,
@@ -669,6 +737,13 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                         await PersistPlaylistAsync(mergedFromOps, ct);
                         _hotCache.Set(playlistUri, mergedFromOps);
 
+                        var appliedRevB64 = mergedFromOps.Revision.Length > 0
+                            ? Convert.ToBase64String(mergedFromOps.Revision)
+                            : "<none>";
+                        _logger?.LogInformation(
+                            "[playlist-diff] applied {N} ops for {Uri} -> newRev={Rev} items={Count}",
+                            deltaDiff.Ops.Count, playlistUri, appliedRevB64, mergedFromOps.Items.Count);
+
                         if (emitChange && !RevisionsEqual(existing.Revision, mergedFromOps.Revision))
                         {
                             _changes.OnNext(new PlaylistChangeEvent
@@ -714,7 +789,10 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
             }
             catch (Exception ex)
             {
-                _logger?.LogDebug(ex, "Playlist diff fetch failed for {Uri}, falling back to full fetch", playlistUri);
+                _logger?.LogInformation(
+                    "[playlist-diff] FALLBACK to full GetPlaylist for {Uri} (diff failed or ops did not apply): {Reason}",
+                    playlistUri, ex.Message);
+                _logger?.LogWarning(ex, "Playlist diff fetch failed for {Uri}, falling back to full fetch", playlistUri);
             }
         }
 
@@ -1146,9 +1224,25 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 };
             }
             else if (existing is null || !existing.HasContentsSnapshot)
+            {
+                _logger?.LogInformation(
+                    "[playlist-diff] Mercury ops no cached baseline for {Uri} — will fall back to /diff",
+                    playlistUri);
                 return false; // No baseline AND not a brand-new playlist — caller falls back to fetch.
+            }
             else if (!RevisionsEqual(existing.Revision, fromRevision))
+            {
+                var cachedRevB64 = existing.Revision.Length > 0
+                    ? Convert.ToBase64String(existing.Revision)
+                    : "<none>";
+                var fromRevB64 = fromRevision.Length > 0
+                    ? Convert.ToBase64String(fromRevision)
+                    : "<none>";
+                _logger?.LogInformation(
+                    "[playlist-diff] Mercury ops revision mismatch {Uri} cached={Cached} fromRev={From} — will fall back to /diff",
+                    playlistUri, cachedRevB64, fromRevB64);
                 return false; // We missed an intermediate revision — fall back to fetch.
+            }
 
             var applied = PlaylistDiffApplier.Apply(existing.Items, ops);
             var resolvedNewRevision = newRevision is { Length: > 0 }
@@ -1185,8 +1279,8 @@ public sealed class PlaylistCacheService : IPlaylistCacheService, IDisposable
                 });
             }
 
-            _logger?.LogDebug(
-                "Applied Mercury ops directly for {Uri}: {OpCount} ops, no /diff round-trip",
+            _logger?.LogInformation(
+                "[playlist-diff] applied Mercury ops directly {Uri} ops={N} (no /diff round-trip)",
                 playlistUri, ops.Count);
             return true;
         }

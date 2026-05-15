@@ -105,6 +105,12 @@ internal static class PathfinderOperations
     public const string InternalLinkRecommenderTrack = "internalLinkRecommenderTrack";
     public const string InternalLinkRecommenderTrackHash = "c77098ee9d6ee8ad3eb844938722db60570d040b49f41f5ec6e7be9160a7c86b";
 
+    // Similar albums seeded from a track URI — drives AlbumPage's
+    // "For this mood" / "Similar albums" shelf. Track-seeded: pass the
+    // album's most-played track URI (fall back to Tracks[0]).
+    public const string SimilarAlbumsBasedOnThisTrack = "similarAlbumsBasedOnThisTrack";
+    public const string SimilarAlbumsBasedOnThisTrackHash = "1d1f93a737498adca2c892c73af87fc0b052afe4e1a33c989540c32413dfae17";
+
     // Full track payload — playcount, full album, firstArtist + discography.
     // Used by the video page hero to render plays count next to the title.
     // Track protobuf and npvArtist response don't carry playcount, so this

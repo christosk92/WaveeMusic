@@ -52,6 +52,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
         _aiFeaturesEnabled = _settings.Settings.AiFeaturesEnabled;
         _aiLyricsExplainEnabled = _settings.Settings.AiLyricsExplainEnabled;
         _aiLyricsSummarizeEnabled = _settings.Settings.AiLyricsSummarizeEnabled;
+        _aiBioSummarizeEnabled = _settings.Settings.AiBioSummarizeEnabled;
 
         // If the user already opted in on a previous session, reflect the
         // current model state in the bound status without kicking off a fresh
@@ -111,6 +112,14 @@ public sealed partial class AiSettingsViewModel : ObservableObject
     partial void OnAiLyricsSummarizeEnabledChanged(bool value)
     {
         _settings.Update(s => s.AiLyricsSummarizeEnabled = value);
+    }
+
+    [ObservableProperty]
+    private bool _aiBioSummarizeEnabled;
+
+    partial void OnAiBioSummarizeEnabledChanged(bool value)
+    {
+        _settings.Update(s => s.AiBioSummarizeEnabled = value);
     }
 
     // ── Model preparation state ──────────────────────────────────────────

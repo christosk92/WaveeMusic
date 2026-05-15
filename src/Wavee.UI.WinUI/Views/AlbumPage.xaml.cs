@@ -29,6 +29,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
     private bool _isDisposed;
     private bool _trimmedForNavigationCache;
     private string? _lastRestoredAlbumId;
+    private int _layoutSettlingGeneration;
 
     public AlbumViewModel ViewModel { get; }
 
@@ -94,7 +95,12 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(AlbumViewModel.IsLoading))
-            PageController.OnIsLoadingChanged();
+        {
+            if (ViewModel.IsLoading)
+                PageController.OnIsLoadingChanged();
+            else
+                _ = ShowContentAfterAlbumLayoutSettlesAsync();
+        }
         else if (e.PropertyName == nameof(AlbumViewModel.AlternateReleases))
             RebuildOtherVersionsFlyout();
         else if (e.PropertyName == nameof(AlbumViewModel.HeaderArtistLinks))
@@ -352,9 +358,38 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         if (connectedAnimationNav is not null)
             ViewModel.Activate(connectedAnimationNav.Uri, preserveHeaderPrefill: true);
 
+        if (await SettleAlbumLayoutAsync())
+            PageController.TryShowContentNow();
+    }
+
+    // ── Transition settling ──────────────────────────────────────────────────
+
+    private async Task ShowContentAfterAlbumLayoutSettlesAsync()
+    {
+        if (await SettleAlbumLayoutAsync())
+            PageController.TryShowContentNow();
+    }
+
+    private async Task<bool> SettleAlbumLayoutAsync()
+    {
+        var generation = ++_layoutSettlingGeneration;
         await Task.Yield();
-        if (PageController.IsNavigatingAway) return;
-        PageController.TryShowContentNow();
+        if (_isDisposed ||
+            PageController.IsNavigatingAway ||
+            generation != _layoutSettlingGeneration)
+        {
+            return false;
+        }
+
+        ShimmerContainer?.UpdateLayout();
+        AlbumArtContainer?.UpdateLayout();
+        TrackGrid?.UpdateLayout();
+        ContentContainer?.UpdateLayout();
+
+        await Task.Yield();
+        return !_isDisposed &&
+               !PageController.IsNavigatingAway &&
+               generation == _layoutSettlingGeneration;
     }
 
     // ── Left-panel sizing ────────────────────────────────────────────────────
@@ -370,6 +405,9 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
         width = Math.Clamp(width, 200, 500);
         LeftPanelColumn.Width = new GridLength(width, GridUnitType.Pixel);
+        // Shimmer cover height is wired via AlbumArtShimmerContainer_SizeChanged
+        // (mirrors AlbumArtContainer's Height = ActualWidth so the square stays
+        // in sync with the splitter — no manual width-24 fudge needed here).
     }
 
     private void AlbumSplitter_ResizeCompleted(object? sender, GridSplitterResizeCompletedEventArgs e)
@@ -390,6 +428,20 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         // during the loading→content transition.
         if (Math.Abs(border.Height - target) < 0.5) return;
         border.Height = target;
+    }
+
+    // Same square-as-it-grows treatment for the shimmer cover so the loading
+    // silhouette matches the real cover 1:1 even when the splitter is dragged
+    // mid-load. Without this, dragging the splitter while the shimmer is on
+    // screen leaves the shimmer rectangle at its first-paint height while the
+    // real cover behind it tracks the new width, and the crossfade reveals a
+    // height jump.
+    private void AlbumArtShimmerContainer_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is not FrameworkElement element || e.NewSize.Width <= 0) return;
+        var target = e.NewSize.Width;
+        if (Math.Abs(element.Height - target) < 0.5) return;
+        element.Height = target;
     }
 
     // ── Other versions flyout ───────────────────────────────────────────────

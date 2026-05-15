@@ -1587,6 +1587,16 @@ public sealed class SpClient : ISpClient
         _logger?.LogDebug("Playlist fetched: {Uri}, length={Length}, revision={HasRevision}",
             playlistUri, content.Length, content.Revision?.Length > 0);
 
+        if (playlistUri.Contains("rootlist", StringComparison.OrdinalIgnoreCase))
+        {
+            var revB64 = content.Revision?.Length > 0
+                ? Convert.ToBase64String(content.Revision.ToByteArray())
+                : "<none>";
+            _logger?.LogInformation(
+                "[rootlist] SpClient.GetPlaylistAsync(rootlist) ok url={Url} responseRev={Rev} length={Length} contentItems={Items}",
+                url, revB64, content.Length, content.Contents?.Items?.Count ?? 0);
+        }
+
         return content;
     }
 
@@ -1628,6 +1638,9 @@ public sealed class SpClient : ISpClient
         request.Headers.UserAgent.ParseAdd($"Wavee/{GetType().Assembly.GetName().Version}");
 
         _logger?.LogDebug("Fetching playlist diff: {Uri}, revision={Revision}", playlistUri, revisionStr);
+        _logger?.LogInformation(
+            "[playlist-diff] GET {Url} sentRev={Rev}",
+            url, revisionStr);
 
         var response = await SendWithRetryAsync(request, cancellationToken);
 
@@ -1670,7 +1683,19 @@ public sealed class SpClient : ISpClient
         response.EnsureSuccessStatusCode();
 
         var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        return Protocol.Playlist.SelectedListContent.Parser.ParseFrom(responseBytes);
+        var diffContent = Protocol.Playlist.SelectedListContent.Parser.ParseFrom(responseBytes);
+
+        var diffNewRevB64 = diffContent.Revision?.Length > 0
+            ? Convert.ToBase64String(diffContent.Revision.ToByteArray())
+            : "<none>";
+        var diffOpsCount = diffContent.Diff?.Ops?.Count ?? 0;
+        var diffContentsItems = diffContent.Contents?.Items?.Count ?? 0;
+        _logger?.LogInformation(
+            "[playlist-diff] response status={Code} bytes={Bytes} upToDate={UpToDate} newRev={New} ops={Ops} contents.items={CI} length={Length}",
+            (int)response.StatusCode, responseBytes.Length, diffContent.UpToDate,
+            diffNewRevB64, diffOpsCount, diffContentsItems, diffContent.Length);
+
+        return diffContent;
     }
 
     /// <summary>

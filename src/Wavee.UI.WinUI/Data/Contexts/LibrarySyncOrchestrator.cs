@@ -141,6 +141,11 @@ public sealed class LibrarySyncOrchestrator : IDisposable
                     ("shows",         ct => _libraryService.SyncShowsAsync(ct)),
                     ("listen-later",  ct => _libraryService.SyncListenLaterAsync(ct)),
                     ("ylpin",         ct => _libraryService.SyncYlPinsAsync(ct)),
+                    // playlists runs LAST so the Pinned sidebar section's playlist URIs
+                    // have placeholder entity rows already seated by SyncYlPinsAsync —
+                    // avoids a window where the Pinned section renders titles for a
+                    // few hundred ms before playlists are resolved.
+                    ("playlists",     ct => _libraryService.SyncPlaylistsAsync(ct)),
                 };
                 for (int i = 0; i < collections.Length; i++)
                 {
@@ -286,12 +291,41 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             _dealerSubscription = concrete.LibraryChanged.Subscribe(evt =>
             {
                 _logger?.LogDebug("Dealer library change: set={Set}, items={Count}", evt.Set, evt.Items.Count);
+                _logger?.LogInformation(
+                    "[rootlist] orchestrator dealer rx set={Set} items={N} isRootlist={Root} playlistUri={Pu}",
+                    evt.Set, evt.Items.Count, evt.IsRootlist, evt.PlaylistUri ?? "<none>");
                 _messenger.Send(new LibraryDataChangedMessage());
                 var isPlaylists = string.Equals(evt.Set, "playlists", StringComparison.OrdinalIgnoreCase);
                 var isYlpin = string.Equals(evt.Set, "ylpin", StringComparison.OrdinalIgnoreCase);
 
                 if (isPlaylists)
+                {
+                    _logger?.LogInformation(
+                        "[rootlist] orchestrator -> SyncPlaylistsAsync re-run triggered (dealer-driven rootlist refresh)");
                     _messenger.Send(new PlaylistsChangedMessage());
+
+                    // Rootlist dealer pushes carry only a revision bump — no item
+                    // list — so the immediate PlaylistsChangedMessage above only
+                    // causes the sidebar to re-read the still-stale DB. Run
+                    // SyncPlaylistsAsync in the background to fetch the new
+                    // rootlist and upsert any added/removed playlists, then
+                    // re-emit so the sidebar reads the freshly-synced rows.
+                    // LibraryDataService's 150ms coalesce absorbs the overlap
+                    // when the sync is fast. Mirrors the ylpin pattern below.
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await svc.SyncPlaylistsAsync().ConfigureAwait(false);
+                            _messenger.Send(new LibraryDataChangedMessage());
+                            _messenger.Send(new PlaylistsChangedMessage());
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogWarning(ex, "Dealer-driven playlist sync failed");
+                        }
+                    });
+                }
 
                 // ylpin pushes don't carry an item payload (LibraryChangeManager
                 // has no parser for the hm://collection/ylpin/<user> shape), so
@@ -303,6 +337,8 @@ public sealed class LibrarySyncOrchestrator : IDisposable
                 // when the sync is fast.
                 if (isYlpin)
                 {
+                    _logger?.LogInformation(
+                        "[rootlist] ylpin re-sync triggered (dealer-driven Pinned section refresh)");
                     _ = Task.Run(async () =>
                     {
                         try

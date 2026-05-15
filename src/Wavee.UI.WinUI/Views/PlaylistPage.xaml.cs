@@ -48,6 +48,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     private bool _isDisposed;
     private bool _trimmedForNavigationCache;
     private string? _lastRestoredPlaylistId;
+    private int _visualSettlingGeneration;
 
     // Composition resources for the full-width hero banner image. Surface is
     // (re)loaded whenever HeaderImageUrl changes; null when no header image.
@@ -194,7 +195,11 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         if (ev.PropertyName == nameof(PlaylistViewModel.HasAnyAddedAt))
             ApplyDateAddedColumnVisibility();
         else if (ev.PropertyName == nameof(PlaylistViewModel.HeaderImageUrl))
+        {
             ApplyHeaderBackground();
+            if (!string.IsNullOrEmpty(ViewModel.HeaderImageUrl))
+                QueueVisualSettlingPass();
+        }
         else if (ev.PropertyName == nameof(PlaylistViewModel.LayoutMode))
             OnLayoutModeChanged();
         else if (ev.PropertyName == nameof(PlaylistViewModel.PlaylistImageUrl))
@@ -705,7 +710,44 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         // cannot leave the square artwork block transparent while its Image has
         // successfully loaded.
         if (!_isDisposed)
+        {
             target.Opacity = 1;
+            QueueVisualSettlingPass();
+        }
+    }
+
+    private void QueueVisualSettlingPass()
+    {
+        if (_isDisposed || DispatcherQueue is null)
+            return;
+
+        var generation = ++_visualSettlingGeneration;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, async () =>
+        {
+            await Task.Yield();
+            if (_isDisposed ||
+                PageController.IsNavigatingAway ||
+                generation != _visualSettlingGeneration)
+            {
+                return;
+            }
+
+            HeroBannerRow?.UpdateLayout();
+            HeaderBackgroundHost?.UpdateLayout();
+            CoverHeroBlock?.UpdateLayout();
+            TwoColumnGrid?.UpdateLayout();
+            WidePlaylistScroller?.UpdateLayout();
+
+            await Task.Yield();
+            if (_isDisposed ||
+                PageController.IsNavigatingAway ||
+                generation != _visualSettlingGeneration)
+            {
+                return;
+            }
+
+            PageController.TryShowContentNow();
+        });
     }
 
     private void HeaderBackgroundHost_Loaded(object sender, RoutedEventArgs e)

@@ -6,11 +6,17 @@
 
     <Button x:Name="InternalButton"
             Click="OnClick"
-            Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
-            Padding="12,6" CornerRadius="20">
-        <StackPanel Orientation="Horizontal" Spacing="6">
-            <FontIcon x:Name="FollowIcon" Glyph="&#xEB51;" FontSize="14"/>
-            <TextBlock x:Uid="Controls_FollowButton__TextBlock_1" x:Name="FollowText" Text="Follow"/>
+            Height="44"
+            Padding="18,0"
+            CornerRadius="22"
+            HorizontalAlignment="Stretch">
+        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <FontIcon x:Name="FollowIcon" Glyph="&#xEB51;" FontSize="13"/>
+            <TextBlock x:Uid="Controls_FollowButton__TextBlock_1"
+                       x:Name="FollowText"
+                       Text="Follow"
+                       FontSize="13"
+                       FontWeight="SemiBold"/>
         </StackPanel>
     </Button>
 </UserControl>

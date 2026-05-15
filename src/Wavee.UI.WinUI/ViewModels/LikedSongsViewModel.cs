@@ -539,7 +539,11 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
             ArtistName = t.ArtistName,
             AlbumArt = t.ImageUrl,
             DurationMs = t.Duration.TotalMilliseconds,
-            IsUserQueued = false
+            IsUserQueued = false,
+            AlbumName = t is LikedSongDto l1 ? l1.AlbumName : null,
+            AlbumUri = t is LikedSongDto l2 && !string.IsNullOrEmpty(l2.AlbumId) ? l2.AlbumId : null,
+            ArtistUri = string.IsNullOrEmpty(t.ArtistId) ? null : t.ArtistId,
+            IsExplicit = t.IsExplicit,
         }).ToList();
 
         if (shuffle)

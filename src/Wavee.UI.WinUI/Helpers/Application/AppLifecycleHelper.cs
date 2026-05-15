@@ -57,6 +57,26 @@ public static class AppLifecycleHelper
     private static Action<Wavee.AudioIpc.AudioProcessState, string>? _audioStateChangedHandler;
     private static Action<Wavee.AudioIpc.AudioPipelineProxy>? _audioProxyRestartedHandler;
 
+    private static Wavee.Local.ILocalLibraryService? GetLocalLibraryService(IServiceProvider services)
+        => AppFeatureFlags.LocalFilesEnabled
+            ? services.GetService<Wavee.Local.ILocalLibraryService>()
+            : null;
+
+    private static Wavee.UI.Library.Local.ILocalLibraryFacade? GetLocalLibraryFacade(IServiceProvider services)
+        => AppFeatureFlags.LocalFilesEnabled
+            ? services.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()
+            : null;
+
+    private static Wavee.Local.ILocalLibraryService? GetLocalLibraryService()
+        => AppFeatureFlags.LocalFilesEnabled
+            ? Ioc.Default.GetService<Wavee.Local.ILocalLibraryService>()
+            : null;
+
+    private static Wavee.Audio.ILocalMediaPlayer? GetLocalMediaPlayer()
+        => AppFeatureFlags.LocalFilesEnabled
+            ? Ioc.Default.GetService<Wavee.Audio.ILocalMediaPlayer>()
+            : null;
+
     /// <summary>
     /// The active audio process manager (null if using in-process audio).
     /// Exposed for diagnostics UI.
@@ -70,6 +90,19 @@ public static class AppLifecycleHelper
     /// </summary>
     public static LoggingLevelSwitch LogLevelSwitch { get; } = new(Serilog.Events.LogEventLevel.Information);
 
+    private static IServiceCollection AddRemoteStateRecorderIfDiagnosticsEnabled(IServiceCollection services)
+    {
+        if (!AppFeatureFlags.DiagnosticsEnabled)
+            return services;
+
+        return services
+            .AddSingleton<Wavee.Connect.Diagnostics.IRemoteStateRecorder>(sp =>
+                new Wavee.UI.WinUI.Services.RemoteStateRecorder(
+                    Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()))
+            .AddSingleton<Wavee.UI.WinUI.Services.RemoteStateRecorder>(sp =>
+                (Wavee.UI.WinUI.Services.RemoteStateRecorder)sp.GetRequiredService<Wavee.Connect.Diagnostics.IRemoteStateRecorder>());
+    }
+
     private const string DrmLogChannel = "DRM";
 
     /// <summary>
@@ -79,6 +112,9 @@ public static class AppLifecycleHelper
     /// </summary>
     public static void SetVerboseLogging(bool enabled)
     {
+        if (!AppFeatureFlags.DiagnosticsEnabled)
+            enabled = false;
+
         LogLevelSwitch.MinimumLevel = enabled
             ? Serilog.Events.LogEventLevel.Verbose
             : Serilog.Events.LogEventLevel.Information;
@@ -154,6 +190,9 @@ public static class AppLifecycleHelper
 
     public static void SetMemoryDiagnostics(bool enabled)
     {
+        if (!AppFeatureFlags.DiagnosticsEnabled)
+            enabled = false;
+
         if (enabled)
         {
             if (_memoryDiagTask != null) return;
@@ -208,7 +247,7 @@ public static class AppLifecycleHelper
 
         // Initial switch level: Verbose if user opted in (or DEBUG build), otherwise Information.
         // The switch is mutable at runtime — see SetVerboseLogging.
-        var verboseEnabled = SettingsService.PeekVerboseLogging();
+        var verboseEnabled = AppFeatureFlags.DiagnosticsEnabled && SettingsService.PeekVerboseLogging();
 #if DEBUG
         LogLevelSwitch.MinimumLevel = Serilog.Events.LogEventLevel.Debug;
 #else
@@ -266,19 +305,23 @@ public static class AppLifecycleHelper
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Verbose()
-            .WriteTo.Logger(main => main
-                .Filter.ByIncludingOnly(logEvent => IsMainLogEvent(logEvent, noisyOverride))
-                .WriteTo.Debug()
-                .WriteTo.File(
-                    path: AppPaths.RollingLogFilePath,
-                    rollingInterval: RollingInterval.Day,
-                    retainedFileCountLimit: 14,
-                    rollOnFileSizeLimit: true,
-                    fileSizeLimitBytes: 10 * 1024 * 1024,
-                    shared: true,
-                    flushToDiskInterval: TimeSpan.FromSeconds(1),
-                    outputTemplate: fileOutputTemplate)
-                .WriteTo.Sink(inMemorySink))
+            .WriteTo.Logger(main =>
+            {
+                var mainLog = main.Filter.ByIncludingOnly(logEvent => IsMainLogEvent(logEvent, noisyOverride))
+                    .WriteTo.Debug()
+                    .WriteTo.File(
+                        path: AppPaths.RollingLogFilePath,
+                        rollingInterval: RollingInterval.Day,
+                        retainedFileCountLimit: 14,
+                        rollOnFileSizeLimit: true,
+                        fileSizeLimitBytes: 10 * 1024 * 1024,
+                        shared: true,
+                        flushToDiskInterval: TimeSpan.FromSeconds(1),
+                        outputTemplate: fileOutputTemplate);
+
+                if (AppFeatureFlags.DiagnosticsEnabled)
+                    mainLog.WriteTo.Sink(inMemorySink);
+            })
             .WriteTo.Logger(drm => drm
                 .Filter.ByIncludingOnly(IsDrmLogEvent)
                 .Filter.ByIncludingOnly(logEvent => logEvent.Level >= LogEventLevel.Debug)
@@ -316,7 +359,7 @@ public static class AppLifecycleHelper
                 .ClearProviders()
                 .AddSerilog(Log.Logger, dispose: false)
                 .SetMinimumLevel(hostMinimumLogLevel))
-            .ConfigureServices(services => services
+            .ConfigureServices(services => AddRemoteStateRecorderIfDiagnosticsEnabled(services
                 // Wavee Core services — capacities driven by the caching profile
                 .AddWaveeCache(opts =>
                 {
@@ -388,7 +431,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
                         sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
                         sp.GetRequiredService<Services.IMusicVideoCatalogCache>(),
-                        sp.GetService<Wavee.Local.ILocalLibraryService>(),
+                        GetLocalLibraryService(sp),
                         sp.GetService<ILogger<Services.MusicVideoMetadataService>>()))
                 // Music-video discovery for the linked-URI catalog pattern
                 // (audio URI ≠ video URI; e.g. drunk text). Invoked directly
@@ -428,12 +471,18 @@ public static class AppLifecycleHelper
                 .AddSingleton<Services.LocalEpisodeChapterScanner>()
                 .AddSingleton<Services.IVideoSurfaceProvider>(sp =>
                     sp.GetRequiredService<Services.LocalMediaPlayer>())
+                // Shared video manifest cache — prefetch (TrackResolver) writes,
+                // play path (SpotifyVideoProvider) reads. Eliminates the manifest
+                // HTTP roundtrip on prefetch hits.
+                .AddSingleton<Wavee.Core.Video.IVideoManifestCache>(_ =>
+                    new Wavee.Core.Video.InMemoryVideoManifestCache())
                 // Spotify music-video engine — registered as a concrete singleton
                 // then forwarded to ISpotifyVideoPlayback (for the orchestrator)
                 // and as a second IVideoSurfaceProvider (for the surface service).
                 .AddSingleton<Services.SpotifyVideoProvider>(sp =>
                     new Services.SpotifyVideoProvider(
                         sp.GetRequiredService<ISession>().SpClient,
+                        sp.GetService<Wavee.Core.Video.IVideoManifestCache>(),
                         sp.GetService<ILogger<Services.SpotifyVideoProvider>>()))
                 .AddSingleton<Wavee.Audio.ISpotifyVideoPlayback>(sp =>
                     sp.GetRequiredService<Services.SpotifyVideoProvider>())
@@ -507,6 +556,10 @@ public static class AppLifecycleHelper
                     new LyricsAiService(
                         sp.GetRequiredService<AiCapabilities>(),
                         sp.GetService<ILogger<LyricsAiService>>()))
+                .AddSingleton<ArtistBioSummarizer>(sp =>
+                    new ArtistBioSummarizer(
+                        sp.GetRequiredService<AiCapabilities>(),
+                        sp.GetService<ILogger<ArtistBioSummarizer>>()))
                 .AddSingleton<AiNotificationService>(sp =>
                     new AiNotificationService(
                         sp.GetService<ILogger<AiNotificationService>>()))
@@ -567,12 +620,7 @@ public static class AppLifecycleHelper
                     Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance = diag;
                     return diag;
                 })
-                .AddSingleton(inMemorySink)
-                .AddSingleton<Wavee.Connect.Diagnostics.IRemoteStateRecorder>(sp =>
-                    new Wavee.UI.WinUI.Services.RemoteStateRecorder(
-                        Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()))
-                .AddSingleton<Wavee.UI.WinUI.Services.RemoteStateRecorder>(sp =>
-                    (Wavee.UI.WinUI.Services.RemoteStateRecorder)sp.GetRequiredService<Wavee.Connect.Diagnostics.IRemoteStateRecorder>())
+                .AddSingleton(inMemorySink))
                 .AddSingleton<Wavee.Core.Http.IColorService>(sp =>
                     new Wavee.Core.Http.ExtractedColorService(
                         sp.GetRequiredService<Wavee.Core.Session.ISession>().Pathfinder,
@@ -639,6 +687,7 @@ public static class AppLifecycleHelper
                         (Wavee.Core.Http.SpClient)session.SpClient,
                         session,
                         metadataClient: sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
+                        playlistCache: sp.GetService<Wavee.Core.Playlists.IPlaylistCacheService>(),
                         logger: sp.GetService<ILogger<Wavee.Core.Library.Spotify.SpotifyLibraryService>>());
                 })
 
@@ -696,7 +745,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Wavee.Core.Http.IColorService>(),
                         sp.GetRequiredService<ILocationService>(),
                         sp.GetRequiredService<IMessenger>(),
-                        sp.GetService<Wavee.Local.ILocalLibraryService>(),
+                        GetLocalLibraryService(sp),
                         sp.GetService<ILogger<Data.Contexts.ArtistService>>()))
                 .AddSingleton(sp =>
                     new Data.Stores.ArtistStore(
@@ -716,7 +765,7 @@ public static class AppLifecycleHelper
                     new Data.Contexts.AlbumService(
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
-                        sp.GetService<Wavee.Local.ILocalLibraryService>(),
+                        GetLocalLibraryService(sp),
                         sp.GetService<ILogger<Data.Contexts.AlbumService>>(),
                         cacheCapacities.AlbumTracksHotCacheCapacity))
                 .AddSingleton<IPodcastService>(sp =>
@@ -795,7 +844,7 @@ public static class AppLifecycleHelper
                         sp.GetService<HomeResponseParserFactory>(),
                         sp.GetService<IAuthState>(),
                         sp.GetService<ILogger<HomeViewModel>>(),
-                        sp.GetService<Wavee.Local.ILocalLibraryService>()))
+                        GetLocalLibraryService(sp)))
                 .AddTransient<ArtistViewModel>()
                 .AddTransient<AlbumViewModel>()
                 .AddTransient<ShowViewModel>()
@@ -829,7 +878,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<IPlaybackStateService>(),
                         sp.GetService<ILogger<SearchViewModel>>(),
-                        sp.GetService<Wavee.Local.ILocalLibraryService>(),
+                        GetLocalLibraryService(sp),
                         sp.GetService<Wavee.UI.WinUI.Data.Contracts.ISearchService>()))
                 .AddTransient<DebugViewModel>()
                 .AddTransient<FeedbackViewModel>(sp =>
@@ -851,20 +900,21 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IThemeService>(),
                         sp.GetRequiredService<InMemorySink>(),
                         sp.GetService<IAudioPipelineControl>(),
+                        sp.GetService<IPlaybackStateService>(),
                         sp.GetService<ISession>(),
                         sp.GetRequiredService<IUpdateService>(),
                         sp.GetService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
                         sp.GetService<CommunityToolkit.Mvvm.Messaging.IMessenger>(),
                         sp.GetService<INotificationService>(),
                         sp.GetService<ILogger<SettingsViewModel>>(),
-                        sp.GetService<LocalFilesViewModel>()))
+                        AppFeatureFlags.LocalFilesEnabled ? sp.GetService<LocalFilesViewModel>() : null))
                 .AddTransient<LocalFilesViewModel>(sp =>
                     new LocalFilesViewModel(
                         sp.GetRequiredService<Wavee.Local.ILocalLibraryService>(),
                         sp.GetService<ILogger<LocalFilesViewModel>>()))
                 .AddTransient<LocalLibraryViewModel>(sp =>
                     new LocalLibraryViewModel(
-                        sp.GetService<Wavee.Local.ILocalLibraryService>(),
+                        GetLocalLibraryService(sp),
                         sp.GetService<ILogger<LocalLibraryViewModel>>()))
 
                 // Wavee.Local supporting services + UI facade (v17 redesign)
@@ -922,31 +972,31 @@ public static class AppLifecycleHelper
                 // v17 redesign ViewModels — Local/ family
                 .AddTransient<ViewModels.Local.LocalLandingViewModel>(sp =>
                     new ViewModels.Local.LocalLandingViewModel(
-                        sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>(),
+                        GetLocalLibraryFacade(sp),
                         sp.GetService<ILogger<ViewModels.Local.LocalLandingViewModel>>()))
                 .AddTransient<ViewModels.Local.LocalShowsViewModel>(sp =>
-                    new ViewModels.Local.LocalShowsViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                    new ViewModels.Local.LocalShowsViewModel(GetLocalLibraryFacade(sp)))
                 .AddTransient<ViewModels.Local.LocalShowDetailViewModel>(sp =>
-                    new ViewModels.Local.LocalShowDetailViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                    new ViewModels.Local.LocalShowDetailViewModel(GetLocalLibraryFacade(sp)))
                 .AddTransient<ViewModels.Local.LocalMoviesViewModel>(sp =>
-                    new ViewModels.Local.LocalMoviesViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                    new ViewModels.Local.LocalMoviesViewModel(GetLocalLibraryFacade(sp)))
                 .AddTransient<ViewModels.Local.LocalMovieDetailViewModel>(sp =>
-                    new ViewModels.Local.LocalMovieDetailViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                    new ViewModels.Local.LocalMovieDetailViewModel(GetLocalLibraryFacade(sp)))
                 .AddTransient<ViewModels.Local.LocalPersonDetailViewModel>(sp =>
-                    new ViewModels.Local.LocalPersonDetailViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                    new ViewModels.Local.LocalPersonDetailViewModel(GetLocalLibraryFacade(sp)))
                 .AddTransient<ViewModels.Local.LocalMusicViewModel>(sp =>
-                    new ViewModels.Local.LocalMusicViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                    new ViewModels.Local.LocalMusicViewModel(GetLocalLibraryFacade(sp)))
                 .AddTransient<ViewModels.Local.LocalMusicVideosViewModel>(sp =>
-                    new ViewModels.Local.LocalMusicVideosViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                    new ViewModels.Local.LocalMusicVideosViewModel(GetLocalLibraryFacade(sp)))
                 .AddTransient<ViewModels.Local.LocalOtherViewModel>(sp =>
-                    new ViewModels.Local.LocalOtherViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                    new ViewModels.Local.LocalOtherViewModel(GetLocalLibraryFacade(sp)))
                 .AddTransient<ViewModels.Local.LocalLikedSongsViewModel>(sp =>
-                    new ViewModels.Local.LocalLikedSongsViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                    new ViewModels.Local.LocalLikedSongsViewModel(GetLocalLibraryFacade(sp)))
                 .AddTransient<ViewModels.Local.LocalCollectionDetailViewModel>(sp =>
-                    new ViewModels.Local.LocalCollectionDetailViewModel(sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>()))
+                    new ViewModels.Local.LocalCollectionDetailViewModel(GetLocalLibraryFacade(sp)))
                 .AddTransient<ViewModels.Local.LocalItemDetailFlyoutViewModel>(sp =>
                     new ViewModels.Local.LocalItemDetailFlyoutViewModel(
-                        sp.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>(),
+                        GetLocalLibraryFacade(sp),
                         sp.GetService<ILogger<ViewModels.Local.LocalItemDetailFlyoutViewModel>>()))
 
                 // Drag & drop
@@ -1137,6 +1187,7 @@ public static class AppLifecycleHelper
                 creds.AuthData,
                 session.Config.DeviceId,
                 initialVolumePercent: clusterVol,
+                audioPreset: audioCacheSettings?.AudioPreset,
                 audioCacheDirectory: audioCacheDirectory,
                 audioCacheMaxBytes: audioCacheMaxBytes,
                 CancellationToken.None);
@@ -1210,7 +1261,8 @@ public static class AppLifecycleHelper
                 session, spClient, headFileClient, httpClient,
                 preferredAudioQuality,
                 extMetadataClient, cacheService, logger,
-                audioCacheDirectory: audioCacheDirectory);
+                audioCacheDirectory: audioCacheDirectory,
+                videoManifestCache: Ioc.Default.GetService<Wavee.Core.Video.IVideoManifestCache>());
 
             Wavee.Audio.ContextResolver? contextResolver = null;
             if (metadataDb != null && extMetadataClient != null && cacheService != null)
@@ -1224,8 +1276,8 @@ public static class AppLifecycleHelper
                 proxy, trackResolver, contextResolver!, session.CommandHandler, logger,
                 events: session.Events,
                 localDeviceId: session.Config.DeviceId,
-                localLibrary: Ioc.Default.GetService<Wavee.Local.ILocalLibraryService>(),
-                localMediaPlayer: Ioc.Default.GetService<Wavee.Audio.ILocalMediaPlayer>(),
+                localLibrary: GetLocalLibraryService(),
+                localMediaPlayer: GetLocalMediaPlayer(),
                 spotifyVideoPlayback: Ioc.Default.GetService<Wavee.Audio.ISpotifyVideoPlayback>(),
                 localSpotifyPlaybackEnabled: session.Config.LocalSpotifyPlaybackEnabled);
 
@@ -1244,7 +1296,8 @@ public static class AppLifecycleHelper
             // Force-resolve LocalPlaybackProgressTracker so it subscribes to the
             // media-player state stream. Without this the singleton stays unbuilt
             // and resume position / watched_at never get persisted.
-            _ = Ioc.Default.GetService<Services.LocalPlaybackProgressTracker>();
+            if (AppFeatureFlags.LocalFilesEnabled)
+                _ = Ioc.Default.GetService<Services.LocalPlaybackProgressTracker>();
 
             // Bidirectional mode uses orchestrator's queue-enriched state stream
             session.PlaybackState?.EnableBidirectionalMode(
@@ -1396,8 +1449,8 @@ public static class AppLifecycleHelper
                         newProxy, trackResolver, contextResolver!, session.CommandHandler, logger,
                         events: session.Events,
                         localDeviceId: session.Config.DeviceId,
-                        localLibrary: Ioc.Default.GetService<Wavee.Local.ILocalLibraryService>(),
-                        localMediaPlayer: Ioc.Default.GetService<Wavee.Audio.ILocalMediaPlayer>(),
+                        localLibrary: GetLocalLibraryService(),
+                        localMediaPlayer: GetLocalMediaPlayer(),
                         spotifyVideoPlayback: Ioc.Default.GetService<Wavee.Audio.ISpotifyVideoPlayback>(),
                         localSpotifyPlaybackEnabled: session.Config.LocalSpotifyPlaybackEnabled);
                     if (settingsForAutoplay is not null)

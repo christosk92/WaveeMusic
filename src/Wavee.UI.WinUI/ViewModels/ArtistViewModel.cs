@@ -23,9 +23,21 @@ using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Data.Stores;
 using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Helpers;
+using Wavee.UI.WinUI.Services;
 using Windows.UI;
 
 namespace Wavee.UI.WinUI.ViewModels;
+
+/// <summary>Which kind of content the hero spotlight card is showing. The
+/// SpotlightReleaseCard control consumes this to toggle Save/Share button
+/// visibility and pulse-dot animation; latest releases pulse to read as
+/// "fresh", pinned items / popular releases sit still.</summary>
+public enum SpotlightMode
+{
+    Pinned,
+    LatestRelease,
+    PopularRelease,
+}
 
 public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
@@ -42,6 +54,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private readonly IColorService _colorService;
     private readonly ITrackLikeService? _likeService;
     private readonly ISettingsService? _settingsService;
+    private readonly Wavee.UI.WinUI.Services.ArtistBioSummarizer? _bioSummarizer;
+    private CancellationTokenSource? _bioSummaryCts;
     private readonly ILogger? _logger;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue;
     private CancellationTokenSource? _discoCts;
@@ -49,10 +63,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private int _loadGeneration;
     private bool _disposed;
 
-    // ── Backing data ──
+    // -- Backing data --
     private readonly List<LazyReleaseItem> _allReleases = [];
 
-    // ── UI-bound collections ──
+    // -- UI-bound collections --
     // Bound collections kept as stable instances and mutated in place. Assigning
     // a new reference forces ItemsRepeater/ListView to recycle every realized
     // container; mutating the same instance lets the binding stay subscribed
@@ -78,6 +92,111 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private readonly ObservableCollection<ConcertVm> _concerts = [];
     public IReadOnlyList<ConcertVm> Concerts => _concerts;
 
+    /// <summary>Top-played releases for the artist — drives the "Popular releases"
+    /// shelf paired with Top Tracks in the V4A composition.</summary>
+    private readonly ObservableCollection<LazyReleaseItem> _popularReleases = [];
+    public IReadOnlyList<LazyReleaseItem> PopularReleases => _popularReleases;
+    public bool HasPopularReleases => _popularReleases.Count > 0;
+
+    /// <summary>First 10 top tracks — Spotify's ArtistOverview returns 10 by
+    /// default (extendable up to 50), and the V4A magazine page pairs that
+    /// dense list next to the popular-releases column. Static slice; raised
+    /// manually after every TopTracks rebuild in <see cref="ApplyOverviewState"/>.</summary>
+    public IEnumerable<LazyTrackItem> TopTracksFirst10 =>
+        _topTracks.Count == 0
+            ? System.Array.Empty<LazyTrackItem>()
+            : _topTracks.Take(10);
+
+    /// <summary>The Popular Releases column shown in the V4A magazine layout
+    /// — 3 rows total, balanced against the 3-row top-tracks grid on its left.
+    ///
+    /// Three modes mirror <see cref="SpotlightCardMode"/>:
+    ///   • Pinned mode: latest release as featured row + 2 popular releases.
+    ///   • LatestRelease mode: top 3 popular releases (latest already lives
+    ///     in the hero spotlight card).
+    ///   • PopularRelease mode: skip the FIRST popular release because the
+    ///     hero spotlight is showing it — otherwise the same cover appears
+    ///     in the hero AND as the featured row of this column.</summary>
+    public IEnumerable<LazyReleaseItem> PopularReleasesDisplayed
+    {
+        get
+        {
+            if (_popularReleases.Count == 0)
+                return System.Array.Empty<LazyReleaseItem>();
+
+            if (HasPinnedItem && HasLatestRelease)
+            {
+                var virtualLatest = BuildVirtualLatestReleaseItem();
+                if (virtualLatest is not null)
+                {
+                    var list = new List<LazyReleaseItem>(3) { virtualLatest };
+                    list.AddRange(_popularReleases.Take(2));
+                    return list;
+                }
+            }
+
+            // Skip the first popular release when it's already in the hero
+            // spotlight (i.e. neither pinned item nor latest release exists,
+            // so the spotlight falls back to first popular).
+            if (!HasPinnedItem && !HasLatestRelease)
+                return _popularReleases.Skip(1).Take(3);
+
+            return _popularReleases.Take(3);
+        }
+    }
+
+    /// <summary>Build a synthetic <see cref="LazyReleaseItem"/> that renders
+    /// the latest-release scalars (<see cref="LatestReleaseName"/> et al.)
+    /// through the same <see cref="PopularReleaseRow"/> template the popular
+    /// releases use. Used when the pinned item displaces the latest release
+    /// from the hero card and we want it to appear in the column instead.</summary>
+    private LazyReleaseItem? BuildVirtualLatestReleaseItem()
+    {
+        if (string.IsNullOrEmpty(LatestReleaseUri) || string.IsNullOrEmpty(LatestReleaseName))
+            return null;
+        int year = 0;
+        if (!string.IsNullOrEmpty(LatestReleaseDate))
+        {
+            // FormattedDate may be "May 1, 2026" or "2026"; pull the last 4-digit token.
+            var m = System.Text.RegularExpressions.Regex.Match(LatestReleaseDate!, @"\b(\d{4})\b");
+            if (m.Success) int.TryParse(m.Groups[1].Value, out year);
+        }
+        var vm = new Wavee.UI.WinUI.ViewModels.ArtistReleaseVm
+        {
+            Id = LatestReleaseUri!,
+            Uri = LatestReleaseUri,
+            Name = LatestReleaseName,
+            ImageUrl = LatestReleaseImageUrl,
+            Type = LatestReleaseType ?? string.Empty,
+            TrackCount = LatestReleaseTrackCount,
+            Year = year,
+        };
+        return LazyReleaseItem.Loaded(LatestReleaseUri!, index: 0, data: vm);
+    }
+
+    /// <summary>Music videos surfaced from <c>relatedMusicVideos</c>.</summary>
+    private readonly ObservableCollection<MusicVideoVm> _musicVideos = [];
+    public IReadOnlyList<MusicVideoVm> MusicVideos => _musicVideos;
+    public bool HasMusicVideos => _musicVideos.Count > 0;
+
+    /// <summary>Merch products from <c>goods.merch</c> — Spotify Shop integration.</summary>
+    private readonly ObservableCollection<MerchItemVm> _merch = [];
+    public IReadOnlyList<MerchItemVm> Merch => _merch;
+    public bool HasMerch => _merch.Count > 0;
+
+    /// <summary>Appears-On compilations / soundtracks from
+    /// <c>relatedContent.appearsOn</c> — V4A discography shelf next to
+    /// Albums / Singles / Compilations.</summary>
+    private readonly ObservableCollection<LazyReleaseItem> _appearsOn = [];
+    public IReadOnlyList<LazyReleaseItem> AppearsOn => _appearsOn;
+    public bool HasAppearsOn => _appearsOn.Count > 0;
+
+    /// <summary>Combined Playlists &amp; discovery (playlistsV2 + featuringV2 +
+    /// discoveredOnV2) with per-item source subtitles.</summary>
+    private readonly ObservableCollection<ArtistPlaylistVm> _playlists = [];
+    public IReadOnlyList<ArtistPlaylistVm> Playlists => _playlists;
+    public bool HasPlaylists => _playlists.Count > 0;
+
     [ObservableProperty]
     private ObservableCollection<LocationSearchResultVm> _locationSuggestions = [];
 
@@ -101,59 +220,32 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [ObservableProperty]
     private string? _userLocationName;
 
-    // ── Scalar properties ──
+    // -- Scalar properties --
 
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _hasData;
     [ObservableProperty] private bool _hasError;
     [ObservableProperty] private string? _errorMessage;
     [ObservableProperty] private string? _artistId;
-    [ObservableProperty] private string? _artistName;
-    [ObservableProperty] private string? _artistImageUrl;
-    [ObservableProperty] private string? _headerImageUrl;
-    [ObservableProperty] private string? _headerHeroColorHex;
 
-    /// <summary>
-    /// Spotify-extracted visual identity palette for the artist hero (3 contrast
-    /// tiers). Code-behind picks a tier based on ActualTheme and uses BackgroundTinted
-    /// as the page-wash colour, which reads richer than the single-hex HeroColorHex.
-    /// Null when the API didn't return a visualIdentity block (older artists, etc.).
-    /// </summary>
-    [ObservableProperty] private ArtistPalette? _palette;
+    [ObservableProperty]
+    private ArtistView? _artist;
 
-    // ── Palette-derived brushes ─────────────────────────────────────────
-    // Built in ApplyTheme(isDark) from the active Palette tier (HigherContrast
-    // for dark, HighContrast for light). Mirrors PlaylistViewModel/AlbumViewModel
-    // patterns so all detail pages use the same alpha cadence + tier policy.
-    // Null when no palette is available — bound XAML elements simply render
-    // without tint.
+    public string? ArtistName => Artist?.Name;
+    public string? ArtistImageUrl => Artist?.ArtistImageUrl;
+    public string? HeaderImageUrl => Artist?.HeaderImageUrl;
+    public string? HeaderHeroColorHex => Artist?.HeaderHeroColorHex;
+    public ArtistPalette? Palette => Artist?.Palette;
 
-    /// <summary>3 px vertical bar tint for section headers — matches the Home
-    /// section accent treatment so Artist + Home read as one app.</summary>
     [ObservableProperty] private Brush? _sectionAccentBrush;
-
-    /// <summary>4-stop horizontal gradient for the hero scrim. Tier
-    /// BackgroundTinted top → Background bottom, fading right.</summary>
     [ObservableProperty] private Brush? _paletteHeroGradientBrush;
-
-    /// <summary>Solid tier-accent brush for the primary Play button.</summary>
     [ObservableProperty] private Brush? _paletteAccentPillBrush;
-
-    /// <summary>Luma-based contrast color (black/white) for text on the
-    /// PaletteAccentPillBrush. Auto-picked so the Play label stays legible.</summary>
     [ObservableProperty] private Brush? _paletteAccentPillForegroundBrush;
 
     private bool _isDarkTheme = true;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MonthlyListenersDescription))]
-    private string? _monthlyListeners;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasWorldRank))]
-    [NotifyPropertyChangedFor(nameof(WorldRankNumberText))]
-    private int? _worldRank;
-
+    public string? MonthlyListeners => Artist?.MonthlyListeners;
+    public int? WorldRank => Artist?.WorldRank;
     public bool HasWorldRank => WorldRank is > 0;
 
     public string? WorldRankNumberText
@@ -165,17 +257,101 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         }
     }
 
-    /// <summary>Description-line variant for the About SettingsExpander header.</summary>
     public string MonthlyListenersDescription =>
         string.IsNullOrEmpty(MonthlyListeners)
             ? string.Empty
             : $"{MonthlyListeners} monthly listeners";
-    [ObservableProperty] private long _followers;
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasBiography))]
-    private string? _biography;
+
+    public long Followers => Artist?.Followers ?? 0;
+    public string FollowersFormatted => Followers > 0 ? Followers.ToString("N0") : string.Empty;
+    public bool HasFollowers => Followers > 0;
+
+    public string? Biography => Artist?.Biography;
     public bool HasBiography => !string.IsNullOrWhiteSpace(Biography);
-    [ObservableProperty] private bool _isVerified;
+
+    public string? BioPeekLine
+    {
+        get
+        {
+            var bio = Biography;
+            if (string.IsNullOrWhiteSpace(bio)) return null;
+
+            var firstSentenceEnd = bio.IndexOf(". ", StringComparison.Ordinal);
+            var sentence = firstSentenceEnd > 0
+                ? bio.Substring(0, firstSentenceEnd + 1)
+                : bio;
+
+            return sentence.Length > 140
+                ? sentence.Substring(0, 139).TrimEnd() + "..."
+                : sentence;
+        }
+    }
+
+    public bool HasBioPeekLine => !string.IsNullOrEmpty(BioPeekLine);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasBioSummary))]
+    [NotifyPropertyChangedFor(nameof(HasAboutExcerpt))]
+    [NotifyPropertyChangedFor(nameof(IsBioFromAi))]
+    [NotifyPropertyChangedFor(nameof(BioExcerptText))]
+    [NotifyPropertyChangedFor(nameof(HeroBioLine))]
+    [NotifyPropertyChangedFor(nameof(HasHeroBioLine))]
+    private string? _bioSummaryText;
+
+    [ObservableProperty] private bool _isBioSummaryLoading;
+
+    public bool HasBioSummary => !string.IsNullOrWhiteSpace(BioSummaryText);
+    public bool HasAboutExcerpt => HasBioSummary;
+    public bool IsBioFromAi => HasBioSummary && !HasBiography;
+
+    public string BioExcerptText => HasBioPeekLine
+        ? BioPeekLine!
+        : (BioSummaryText ?? string.Empty);
+
+    public string HeroBioLine => BuildHeroBioLine(Biography, BioSummaryText, ArtistName);
+    public bool HasHeroBioLine => !string.IsNullOrWhiteSpace(HeroBioLine);
+
+    public bool IsVerified => Artist?.IsVerified == true;
+    public bool IsRegistered => Artist?.IsRegistered == true;
+    public bool HasArtistTrait => IsVerified || IsRegistered;
+    public bool IsRegisteredOnly => !IsVerified && IsRegistered;
+    public string ArtistTraitLabel =>
+        IsVerified ? "VERIFIED ARTIST" :
+        IsRegistered ? "ARTIST PROFILE" :
+        string.Empty;
+
+    partial void OnArtistChanged(ArtistView? value)
+    {
+        ApplyTheme(_isDarkTheme);
+        RaiseArtistEnvelopeDependents();
+        UpdateTabTitle(value?.Name);
+    }
+
+    private void RaiseArtistEnvelopeDependents()
+    {
+        foreach (var propertyName in ArtistEnvelopeDependentProperties)
+            OnPropertyChanged(propertyName);
+    }
+
+    private static readonly string[] ArtistEnvelopeDependentProperties =
+    [
+        nameof(ArtistName), nameof(ArtistImageUrl), nameof(HeaderImageUrl), nameof(HeaderHeroColorHex), nameof(Palette),
+        nameof(MonthlyListeners), nameof(MonthlyListenersDescription), nameof(WorldRank), nameof(HasWorldRank), nameof(WorldRankNumberText),
+        nameof(Followers), nameof(FollowersFormatted), nameof(HasFollowers), nameof(Biography), nameof(HasBiography),
+        nameof(BioPeekLine), nameof(HasBioPeekLine), nameof(HasAboutExcerpt), nameof(IsBioFromAi), nameof(BioExcerptText),
+        nameof(HeroBioLine), nameof(HasHeroBioLine), nameof(IsVerified), nameof(IsRegistered), nameof(HasArtistTrait),
+        nameof(IsRegisteredOnly), nameof(ArtistTraitLabel), nameof(LatestRelease), nameof(LatestReleaseName), nameof(LatestReleaseImageUrl),
+        nameof(LatestReleaseUri), nameof(LatestReleaseDate), nameof(LatestReleaseTrackCount), nameof(LatestReleaseType),
+        nameof(HasLatestRelease), nameof(LatestReleaseSubtitle), nameof(HasSpotlightRelease), nameof(SpotlightCardMode),
+        nameof(SpotlightReleaseName), nameof(SpotlightReleaseImageUrl), nameof(SpotlightReleaseUri), nameof(SpotlightReleaseSubtitle),
+        nameof(SpotlightReleaseTagText), nameof(SpotlightReleaseEyebrowText), nameof(SpotlightCommentText), nameof(HasSpotlightComment),
+        nameof(AlbumsTotalCount), nameof(HasAlbums), nameof(SinglesTotalCount), nameof(HasSingles),
+        nameof(CompilationsTotalCount), nameof(HasCompilations), nameof(PinnedItem), nameof(HasPinnedItem), nameof(HasPinnedComment),
+        nameof(PinnedBackdropImageUrl), nameof(PinnedColumnWidth), nameof(PinnedItemTitle), nameof(PinnedItemComment),
+        nameof(PinnedItemThumbnailUrl), nameof(PinnedItemSubtitle), nameof(PinnedItemUri), nameof(WatchFeed), nameof(HasWatchFeed),
+        nameof(PopularReleasesDisplayed), nameof(TourBannerHeadline), nameof(TourBannerSubline)
+    ];
+
     [ObservableProperty] private bool _isFollowing;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ArtistPlayButtonText))]
@@ -191,32 +367,17 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     public string ArtistPlayButtonText => IsArtistContextPlaying ? "Pause" : "Play";
 
-    // Latest release
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasLatestRelease))]
-    [NotifyPropertyChangedFor(nameof(LatestReleaseSubtitle))]
-    private string? _latestReleaseName;
-    [ObservableProperty] private string? _latestReleaseImageUrl;
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasLatestRelease))]
-    private string? _latestReleaseUri;
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LatestReleaseSubtitle))]
-    private string? _latestReleaseDate;
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LatestReleaseSubtitle))]
-    private int _latestReleaseTrackCount;
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LatestReleaseSubtitle))]
-    private string? _latestReleaseType;
+    public ArtistLatestReleaseResult? LatestRelease => Artist?.LatestRelease;
+    public string? LatestReleaseName => LatestRelease?.Name;
+    public string? LatestReleaseImageUrl => LatestRelease?.ImageUrl;
+    public string? LatestReleaseUri => LatestRelease?.Uri;
+    public string? LatestReleaseDate => LatestRelease?.FormattedDate;
+    public int LatestReleaseTrackCount => LatestRelease?.TrackCount ?? 0;
+    public string? LatestReleaseType => LatestRelease?.Type;
 
-    /// <summary>True when the artist has a latest release with valid metadata
-    /// — drives Visibility on the rich card above the Albums grid.</summary>
     public bool HasLatestRelease =>
         !string.IsNullOrEmpty(LatestReleaseName) && !string.IsNullOrEmpty(LatestReleaseUri);
 
-    /// <summary>Composite subtitle for the latest-release card:
-    /// "{Type} · {Date} · {TrackCount} tracks". Skips empty parts.</summary>
     public string LatestReleaseSubtitle
     {
         get
@@ -226,48 +387,76 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             if (!string.IsNullOrEmpty(LatestReleaseDate)) parts.Add(LatestReleaseDate!);
             if (LatestReleaseTrackCount > 0)
                 parts.Add(LatestReleaseTrackCount == 1 ? "1 track" : $"{LatestReleaseTrackCount} tracks");
-            return string.Join(" · ", parts);
+            return string.Join(" - ", parts);
         }
     }
 
-    // Per-group total counts. Drive `Has*` flags so the Albums/Singles/Compilations
-    // subtrees in ArtistPage.xaml can be x:Load-deferred — sparse artists (no
-    // singles, no compilations) never instantiate those StackPanels at all.
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasAlbums))]
-    private int _albumsTotalCount;
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasSingles))]
-    private int _singlesTotalCount;
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasCompilations))]
-    private int _compilationsTotalCount;
+    public bool HasSpotlightRelease =>
+        !string.IsNullOrEmpty(SpotlightReleaseName) && !string.IsNullOrEmpty(SpotlightReleaseUri);
+
+    public SpotlightMode SpotlightCardMode =>
+        HasPinnedItem ? SpotlightMode.Pinned :
+        HasLatestRelease ? SpotlightMode.LatestRelease :
+        SpotlightMode.PopularRelease;
+
+    public string? SpotlightReleaseName =>
+        HasPinnedItem ? PinnedItem?.Title :
+        HasLatestRelease ? LatestReleaseName :
+        FirstPopularRelease?.Name;
+
+    public string? SpotlightReleaseImageUrl =>
+        HasPinnedItem ? PinnedItem?.ImageUrl :
+        HasLatestRelease ? LatestReleaseImageUrl :
+        FirstPopularRelease?.ImageUrl;
+
+    public string? SpotlightReleaseUri =>
+        HasPinnedItem ? PinnedItem?.Uri :
+        HasLatestRelease ? LatestReleaseUri :
+        FirstPopularRelease?.Uri;
+
+    public string SpotlightReleaseSubtitle =>
+        HasPinnedItem ? (PinnedItem?.Subtitle ?? string.Empty) :
+        HasLatestRelease ? LatestReleaseSubtitle :
+        FormatReleaseSubtitle(FirstPopularRelease);
+
+    public string SpotlightReleaseTagText =>
+        HasPinnedItem ? "Pinned" :
+        HasLatestRelease ? "Latest release" :
+        "Popular now";
+
+    public string SpotlightReleaseEyebrowText =>
+        HasPinnedItem ? "Pinned" :
+        HasLatestRelease ? "Latest release" :
+        "Popular release";
+
+    public string? SpotlightCommentText =>
+        HasPinnedItem ? PinnedItem?.Comment : null;
+
+    public bool HasSpotlightComment =>
+        HasPinnedItem && HasPinnedComment;
+
+    private Wavee.UI.WinUI.ViewModels.ArtistReleaseVm? FirstPopularRelease =>
+        _popularReleases.FirstOrDefault(r => r.IsLoaded && r.Data is not null)?.Data;
+
+    public int AlbumsTotalCount => Artist?.AlbumsTotalCount ?? 0;
+    public int SinglesTotalCount => Artist?.SinglesTotalCount ?? 0;
+    public int CompilationsTotalCount => Artist?.CompilationsTotalCount ?? 0;
 
     public bool HasAlbums => AlbumsTotalCount > 0;
     public bool HasSingles => SinglesTotalCount > 0;
     public bool HasCompilations => CompilationsTotalCount > 0;
 
-    // Per-group view mode (Grid vs List)
     [ObservableProperty] private bool _albumsGridView = true;
     [ObservableProperty] private bool _singlesGridView = true;
     [ObservableProperty] private bool _compilationsGridView = true;
-
-    /// <summary>
-    /// Slider-driven scale for the Albums + Singles `UniformGridLayout` cell size.
-    /// Multiplies a base of 160 × 220 px through `GridScaleToSizeConverter`.
-    /// Persisted to <c>AppSettings.ArtistDiscographyGridScale</c>; mirror of the
-    /// Library album scale slider (range 0.7–1.6).
-    /// </summary>
     [ObservableProperty] private double _discographyGridScale = 1.0;
 
-    // Per-group error state (background pagination failures)
     [ObservableProperty] private bool _hasAlbumsError;
     [ObservableProperty] private bool _hasSinglesError;
     [ObservableProperty] private bool _hasCompilationsError;
 
-    // Top tracks pagination (Apple Music style)
-    private const int RowsPerPage = 3;
-    [ObservableProperty] private int _columnCount = 4;
+    private const int RowsPerPage = 4;
+    [ObservableProperty] private int _columnCount = 1;
     [ObservableProperty] private int _currentPage;
 
     private int TracksPerPage => RowsPerPage * ColumnCount;
@@ -277,7 +466,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private List<LazyTrackItem>? _pagedTopTracksCache;
     public IEnumerable<LazyTrackItem> PagedTopTracks => _pagedTopTracksCache ??= BuildPagedTopTracks();
 
-    // Top tracks selection
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasTopTracksSelection))]
     [NotifyPropertyChangedFor(nameof(SelectedTopTracksCount))]
@@ -306,45 +494,85 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         return result;
     }
 
-    // ── Expanded album detail ──
     [ObservableProperty] private LazyReleaseItem? _expandedAlbum;
     [ObservableProperty] private ObservableCollection<LazyTrackItem> _expandedAlbumTracks = [];
     [ObservableProperty] private bool _isLoadingExpandedTracks;
 
-    // Pinned item + Watch feed
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPinnedItem))]
-    [NotifyPropertyChangedFor(nameof(HasPinnedComment))]
-    [NotifyPropertyChangedFor(nameof(PinnedBackdropImageUrl))]
-    [NotifyPropertyChangedFor(nameof(PinnedColumnWidth))]
-    private ArtistPinnedItemResult? _pinnedItem;
-    [ObservableProperty] private ArtistWatchFeedResult? _watchFeed;
+    public ArtistPinnedItemResult? PinnedItem => Artist?.PinnedItem;
+    public ArtistWatchFeedResult? WatchFeed => Artist?.WatchFeed;
     public bool HasPinnedItem => PinnedItem != null;
-
-    // Bound to the pinned-card column on ArtistPage so the column is sized BEFORE
-    // ContentContainer flips Collapsed→Visible at the start of the crossfade. An
-    // x:Load realization on Auto-width column expanded 0→280 mid-fade, sliding
-    // top tracks sideways. Resolving column width via binding keeps layout stable.
     public GridLength PinnedColumnWidth => HasPinnedItem ? new GridLength(280) : new GridLength(0);
     public bool HasWatchFeed => WatchFeed != null;
-
-    /// <summary>True when the pinned item has a non-empty artist note
-    /// (Pathfinder's <c>comment</c> field). Drives Visibility on the
-    /// italic quote line in the pinned card.</summary>
     public bool HasPinnedComment => !string.IsNullOrWhiteSpace(PinnedItem?.Comment);
 
-    /// <summary>Best image URL to use as the pinned card's backdrop —
-    /// Spotify's editorial <c>backgroundImageV2</c> when present, else
-    /// falls back to the cover/playlist image. Both forms shipped from
-    /// Pathfinder; using whichever is set keeps the card visually rich
-    /// even when there's no dedicated backdrop.</summary>
     public string? PinnedBackdropImageUrl =>
         !string.IsNullOrWhiteSpace(PinnedItem?.BackgroundImageUrl)
             ? PinnedItem!.BackgroundImageUrl
             : PinnedItem?.ImageUrl;
+
+    public string? PinnedItemTitle => PinnedItem?.Title;
+    public string? PinnedItemComment => PinnedItem?.Comment;
+    public string? PinnedItemThumbnailUrl => PinnedItem?.ImageUrl;
+    public string? PinnedItemSubtitle => PinnedItem?.Subtitle;
+    public string? PinnedItemUri => PinnedItem?.Uri;
     public bool HasConcerts => Concerts.Count > 0;
 
-    // ── Location operations (delegated to ILocationService) ──
+    /// <summary>Count of upcoming concerts. Used by the V4A rhythm-break banner
+    /// ("On Tour Now") to assemble its headline. Raised by hand whenever
+    /// <c>_concerts</c> mutates, alongside <see cref="HasConcerts"/>.</summary>
+    public int ConcertCount => _concerts.Count;
+
+    /// <summary>Date of the closest upcoming concert for the rhythm-break sub
+    /// line. Null when no concerts are scheduled.</summary>
+    public string? FirstConcertDateFormatted =>
+        _concerts.Count == 0 ? null : _concerts[0].DateFormatted;
+
+    /// <summary>Venue of the closest upcoming concert.</summary>
+    public string? FirstConcertVenue =>
+        _concerts.Count == 0 ? null : _concerts[0].Venue;
+
+    /// <summary>City of the closest upcoming concert.</summary>
+    public string? FirstConcertCity =>
+        _concerts.Count == 0 ? null : _concerts[0].City;
+
+    /// <summary>Tour banner headline used by the rhythm-break — uses the tour
+    /// title when distinct from the artist name, else falls back to a generic
+    /// phrasing keyed off the upcoming-date count.</summary>
+    public string TourBannerHeadline
+    {
+        get
+        {
+            if (_concerts.Count == 0) return string.Empty;
+            var titled = _concerts.Select(c => c.Title).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
+            if (!string.IsNullOrWhiteSpace(titled) && !string.Equals(titled, ArtistName, StringComparison.OrdinalIgnoreCase))
+                return titled!;
+            return _concerts.Count == 1
+                ? $"{ArtistName} live"
+                : $"{ArtistName} — on tour";
+        }
+    }
+
+    public string TourBannerSubline
+    {
+        get
+        {
+            if (_concerts.Count == 0) return string.Empty;
+            var first = _concerts[0];
+            var parts = new List<string>(3);
+            if (!string.IsNullOrWhiteSpace(first.DateFormatted)) parts.Add($"Next: {first.DateFormatted}");
+            if (!string.IsNullOrWhiteSpace(first.Venue)) parts.Add(first.Venue!);
+            if (!string.IsNullOrWhiteSpace(first.City)) parts.Add(first.City!);
+            if (_concerts.Count > 1) parts.Add($"{_concerts.Count} dates total");
+            return string.Join(" · ", parts);
+        }
+    }
+
+    /// <summary>True only when <c>?debug</c> was passed via the navigation
+    /// parameter — gates the small "source-chip" pills on each V4A section
+    /// header that name the GraphQL fragments backing it.</summary>
+    [ObservableProperty] private bool _isDebugMode;
+
+    // -- Location operations (delegated to ILocationService) --
 
     public async Task<List<LocationSearchResult>> SearchLocationsAsync(string query, CancellationToken ct = default)
         => await _locationService.SearchAsync(query, ct);
@@ -381,11 +609,11 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             c.IsNearUser = _locationService.IsNearUser(c.City);
     }
 
-    // ── Tab management ──
+    // -- Tab management --
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
 
-    // ── Constructor ──
+    // -- Constructor --
 
     public ArtistViewModel(
         IArtistService artistService,
@@ -397,6 +625,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         IColorService colorService,
         ITrackLikeService? likeService = null,
         ISettingsService? settingsService = null,
+        Wavee.UI.WinUI.Services.ArtistBioSummarizer? bioSummarizer = null,
         ILogger<ArtistViewModel>? logger = null)
     {
         _artistService = artistService;
@@ -408,6 +637,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         _colorService = colorService;
         _likeService = likeService;
         _settingsService = settingsService;
+        _bioSummarizer = bioSummarizer;
         _logger = logger;
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
 
@@ -439,19 +669,19 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         _settingsService?.Update(s => s.ArtistDiscographyGridScale = clamped);
     }
 
-    // ── Initialization ──
+    // -- Initialization --
 
     public void Initialize(string artistId)
     {
         AttachLongLivedServices();
 
-        // Reset on any artist-id change, including null→firstId. The earlier
+        // Reset on any artist-id change, including null?firstId. The earlier
         // guard `ArtistId != null && ArtistId != artistId` was defensive
         // against a redundant clear on the very first nav (everything's empty
         // anyway), but on a Required-cache reused page the same VM serves
         // many artists and the prior null-guard occasionally let stale state
         // through (TopTracks, ArtistName, MonthlyListeners) when navigating
-        // X→Y in the same tab. Clearing on every change is harmless on first
+        // X?Y in the same tab. Clearing on every change is harmless on first
         // nav and correct on every subsequent nav.
         if (ArtistId != artistId)
         {
@@ -539,25 +769,22 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     {
         Deactivate();
 
-        // Drop transient UI-only state (selection / expanded-album drawer).
         SelectedTopTracks.Clear();
         ExpandedAlbumTracks.Clear();
-
-        // Cancel any in-flight discography paging — populated lists stay.
         CancelAndDisposeDiscographyCts();
 
-        // Null hero/avatar/pinned/latest-release image URL bindings so the
-        // bound Image controls drop their BitmapImage references. WinUI
-        // auto-releases the DirectX texture after the next frame in the live
-        // tree (per docs/optimize-animations-and-media). On revisit,
-        // EnsureHeroUrls reads from the cached BehaviorSubject value and
-        // restores the URLs — single dispatcher tick, no LoadAsync re-run.
-        ArtistImageUrl = null;
-        HeaderImageUrl = null;
-        LatestReleaseImageUrl = null;
-        PinnedItem = null;
-        OnPropertyChanged(nameof(HasPinnedItem));
-        OnPropertyChanged(nameof(PinnedColumnWidth));
+        if (Artist is { } artist)
+        {
+            Artist = artist with
+            {
+                ArtistImageUrl = null,
+                HeaderImageUrl = null,
+                LatestRelease = artist.LatestRelease is null
+                    ? null
+                    : artist.LatestRelease with { ImageUrl = null },
+                PinnedItem = null
+            };
+        }
     }
 
     private void ApplyOverviewState(EntityState<ArtistOverviewResult> state, string expectedArtistId)
@@ -643,43 +870,73 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         }
     }
 
+    private ArtistView BuildArtistView(
+        ArtistOverviewResult overview,
+        string? fallbackName = null,
+        string? fallbackImageUrl = null)
+    {
+        return new ArtistView(
+            Name: overview.Name ?? fallbackName,
+            ArtistImageUrl: overview.ImageUrl ?? fallbackImageUrl,
+            HeaderImageUrl: overview.HeaderImageUrl,
+            HeaderHeroColorHex: overview.HeroColorHex,
+            Palette: overview.Palette,
+            MonthlyListeners: overview.MonthlyListeners > 0
+                ? overview.MonthlyListeners.ToString("N0")
+                : null,
+            WorldRank: overview.WorldRank,
+            Followers: overview.Followers,
+            Biography: overview.Biography,
+            IsVerified: overview.IsVerified,
+            IsRegistered: overview.IsRegistered,
+            LatestRelease: overview.LatestRelease,
+            AlbumsTotalCount: overview.AlbumsTotalCount,
+            SinglesTotalCount: overview.SinglesTotalCount,
+            CompilationsTotalCount: overview.CompilationsTotalCount,
+            PinnedItem: overview.PinnedItem,
+            WatchFeed: overview.WatchFeed);
+    }
+
     private void EnsureHeroUrls(ArtistOverviewResult overview)
     {
-        if (string.IsNullOrEmpty(ArtistImageUrl))
-            ArtistImageUrl = overview.ImageUrl;
-        if (string.IsNullOrEmpty(HeaderImageUrl))
-            HeaderImageUrl = overview.HeaderImageUrl;
-        if (overview.LatestRelease != null && string.IsNullOrEmpty(LatestReleaseImageUrl))
-            LatestReleaseImageUrl = overview.LatestRelease.ImageUrl;
-        if (PinnedItem == null && overview.PinnedItem != null)
+        if (Artist is null)
         {
-            PinnedItem = overview.PinnedItem;
-            OnPropertyChanged(nameof(HasPinnedItem));
-            OnPropertyChanged(nameof(PinnedColumnWidth));
+            Artist = BuildArtistView(overview);
+            return;
         }
+
+        var latest = Artist.LatestRelease;
+        if (overview.LatestRelease is not null && string.IsNullOrEmpty(latest?.ImageUrl))
+        {
+            latest = (latest ?? overview.LatestRelease) with
+            {
+                ImageUrl = overview.LatestRelease.ImageUrl
+            };
+        }
+
+        var next = Artist with
+        {
+            ArtistImageUrl = string.IsNullOrEmpty(Artist.ArtistImageUrl)
+                ? overview.ImageUrl
+                : Artist.ArtistImageUrl,
+            HeaderImageUrl = string.IsNullOrEmpty(Artist.HeaderImageUrl)
+                ? overview.HeaderImageUrl
+                : Artist.HeaderImageUrl,
+            LatestRelease = latest,
+            PinnedItem = Artist.PinnedItem ?? overview.PinnedItem
+        };
+
+        if (!Equals(next, Artist))
+            Artist = next;
     }
 
     private void ResetForNewArtist()
     {
-        ArtistName = null;
-        ArtistImageUrl = null;
-        HeaderImageUrl = null;
-        HeaderHeroColorHex = null;
-        Palette = null;
-        MonthlyListeners = null;
-        WorldRank = null;
-        Followers = 0;
-        Biography = null;
-        IsVerified = false;
+        Artist = null;
+        BioSummaryText = null;
+        IsBioSummaryLoading = false;
+        _bioSummaryCts?.Cancel();
         IsFollowing = false;
-        LatestReleaseName = null;
-        LatestReleaseImageUrl = null;
-        LatestReleaseUri = null;
-        LatestReleaseDate = null;
-        LatestReleaseTrackCount = 0;
-        LatestReleaseType = null;
-        PinnedItem = null;
-        WatchFeed = null;
         HasData = false;
         CurrentPage = 0;
         ExpandedAlbum = null;
@@ -693,33 +950,42 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         _albums.Clear();
         _singles.Clear();
         _compilations.Clear();
-        AlbumsTotalCount = 0;
-        SinglesTotalCount = 0;
-        CompilationsTotalCount = 0;
         HasAlbumsError = false;
         HasSinglesError = false;
         HasCompilationsError = false;
-        // These five collections are all x:Load-gated in ArtistPage.xaml
-        // (RelatedArtists / Concerts / ExternalLinks / TopCities / Gallery
-        // sections). Their reset doesn't gate first paint — defer to a
-        // low-priority dispatch so we don't pile PropertyChanged events
-        // onto the synchronous reset before the hero / top tracks paint.
-        _dispatcherQueue?.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () =>
-            {
-                _relatedArtists.Clear();
-                _concerts.Clear();
-                _externalLinks.Clear();
-                _topCities.Clear();
-                _galleryPhotos.Clear();
-                OnPropertyChanged(nameof(HasRelatedArtists));
-                OnPropertyChanged(nameof(HasConcerts));
-                OnPropertyChanged(nameof(HasExternalLinks));
-                OnPropertyChanged(nameof(HasTopCities));
-                OnPropertyChanged(nameof(HasConnectSection));
-                OnPropertyChanged(nameof(HasGallery));
-            });
+
+        // Clear below-the-fold sections synchronously during the artist swap.
+        // A previous low-priority clear could run after a warm-cache Ready path
+        // had already repopulated these collections, leaving discovery, videos,
+        // concerts, merch, and popular/spotlight sections collapsed until the
+        // next navigation.
+        _relatedArtists.Clear();
+        _concerts.Clear();
+        _externalLinks.Clear();
+        _topCities.Clear();
+        _galleryPhotos.Clear();
+        _popularReleases.Clear();
+        _musicVideos.Clear();
+        _merch.Clear();
+        _appearsOn.Clear();
+        _playlists.Clear();
+        NotifySecondarySectionsChanged();
+    }
+
+    private void NotifySecondarySectionsChanged()
+    {
+        OnPropertyChanged(nameof(HasRelatedArtists));
+        OnPropertyChanged(nameof(HasConcerts));
+        OnPropertyChanged(nameof(HasExternalLinks));
+        OnPropertyChanged(nameof(HasTopCities));
+        OnPropertyChanged(nameof(HasConnectSection));
+        OnPropertyChanged(nameof(HasGallery));
+        OnPropertyChanged(nameof(HasPopularReleases));
+        NotifySpotlightReleaseChanged();
+        OnPropertyChanged(nameof(HasMusicVideos));
+        OnPropertyChanged(nameof(HasMerch));
+        OnPropertyChanged(nameof(HasAppearsOn));
+        OnPropertyChanged(nameof(HasPlaylists));
     }
 
     private CancellationToken CreateFreshDiscographyToken()
@@ -741,9 +1007,38 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     public void PrefillFrom(ContentNavigationParameter nav)
     {
-        if (!string.IsNullOrEmpty(nav.Title)) ArtistName = nav.Title;
-        if (!string.IsNullOrEmpty(nav.ImageUrl)) ArtistImageUrl = nav.ImageUrl;
+        if (string.IsNullOrEmpty(nav.Title) && string.IsNullOrEmpty(nav.ImageUrl))
+            return;
+
+        var current = Artist ?? new ArtistView(
+            Name: null,
+            ArtistImageUrl: null,
+            HeaderImageUrl: null,
+            HeaderHeroColorHex: null,
+            Palette: null,
+            MonthlyListeners: null,
+            WorldRank: null,
+            Followers: 0,
+            Biography: null,
+            IsVerified: false,
+            IsRegistered: false,
+            LatestRelease: null,
+            AlbumsTotalCount: 0,
+            SinglesTotalCount: 0,
+            CompilationsTotalCount: 0,
+            PinnedItem: null,
+            WatchFeed: null);
+
+        Artist = current with
+        {
+            Name = !string.IsNullOrEmpty(nav.Title) ? nav.Title : current.Name,
+            ArtistImageUrl = !string.IsNullOrEmpty(nav.ImageUrl) ? nav.ImageUrl : current.ArtistImageUrl
+        };
     }
+
+    /// <summary>
+    /// Distributes _allReleases into Albums, Singles, Compilations collections.
+    /// </summary>
 
     /// <summary>
     /// Distributes _allReleases into Albums, Singles, Compilations collections.
@@ -784,7 +1079,139 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         return "ALBUM";
     }
 
-    // ── Load data from real Pathfinder API ──
+    private static string BuildHeroBioLine(string? biography, string? summary, string? artistName)
+    {
+        var source = FirstSentenceOrText(biography) ?? FirstSentenceOrText(summary);
+        if (string.IsNullOrWhiteSpace(source)) return string.Empty;
+
+        // Strip HTML tags + decode entities so &#39;, &#34;, etc. render as real characters
+        // and any <em>/<a> markup from Spotify HTML doesn't leak as visible text.
+        var stripped = System.Text.RegularExpressions.Regex.Replace(source, @"<[^>]+>", " ");
+        var line = System.Net.WebUtility.HtmlDecode(stripped).Replace('\r', ' ').Replace('\n', ' ').Trim();
+        if (!string.IsNullOrWhiteSpace(artistName))
+            line = StripLeadingArtistSubject(line, artistName!);
+
+        line = StripLeadingArticle(line);
+        line = CompressJypProgramOrigin(line);
+
+        var mentionsNineMembers =
+            MentionsNineMembers(biography) ||
+            string.Equals(artistName, "TWICE", StringComparison.OrdinalIgnoreCase);
+        if (mentionsNineMembers && line.StartsWith("K-Pop girl group", StringComparison.OrdinalIgnoreCase))
+            line = "Nine-member " + line;
+
+        line = EnsureSentenceCasing(line);
+        if (line.Length > 150)
+            line = line.Substring(0, 147).TrimEnd() + "...";
+        return line;
+    }
+
+    private static string? FirstSentenceOrText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+
+        var normalized = text.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        var end = normalized.IndexOf(". ", StringComparison.Ordinal);
+        return end > 0 ? normalized.Substring(0, end + 1) : normalized;
+    }
+
+    private static string StripLeadingArtistSubject(string line, string artistName)
+    {
+        var prefixes = new[]
+        {
+            $"{artistName} is ",
+            $"{artistName} are ",
+            $"{artistName} was ",
+            $"{artistName} were "
+        };
+
+        foreach (var prefix in prefixes)
+        {
+            if (line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return line.Substring(prefix.Length).TrimStart();
+        }
+
+        return line;
+    }
+
+    private static string StripLeadingArticle(string line)
+    {
+        if (line.StartsWith("a ", StringComparison.OrdinalIgnoreCase))
+            return line[2..].TrimStart();
+        if (line.StartsWith("an ", StringComparison.OrdinalIgnoreCase))
+            return line[3..].TrimStart();
+        if (line.StartsWith("the ", StringComparison.OrdinalIgnoreCase))
+            return line[4..].TrimStart();
+        return line;
+    }
+
+    private static string CompressJypProgramOrigin(string line)
+    {
+        const string marker = "produced by JYP Entertainment through the reality program";
+        var idx = line.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return line;
+
+        var prefix = line[..idx].TrimEnd();
+        return string.IsNullOrEmpty(prefix)
+            ? "From JYP Entertainment."
+            : $"{prefix} from JYP Entertainment.";
+    }
+
+    private static bool MentionsNineMembers(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        return text.IndexOf("9 members", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               text.IndexOf("nine members", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               text.IndexOf("nine-member", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static string EnsureSentenceCasing(string line)
+    {
+        line = line.Trim();
+        if (line.Length == 0) return string.Empty;
+
+        line = char.ToUpperInvariant(line[0]) + line[1..];
+        return line.EndsWith(".", StringComparison.Ordinal) ||
+               line.EndsWith("!", StringComparison.Ordinal) ||
+               line.EndsWith("?", StringComparison.Ordinal)
+            ? line
+            : line + ".";
+    }
+
+    private static string FormatReleaseSubtitle(Wavee.UI.WinUI.ViewModels.ArtistReleaseVm? release)
+    {
+        if (release is null) return string.Empty;
+
+        var parts = new List<string>(3);
+        if (!string.IsNullOrWhiteSpace(release.Type)) parts.Add(ToTitleCaseInvariant(release.Type));
+        if (release.Year > 0) parts.Add(release.Year.ToString());
+        if (release.TrackCount > 0)
+            parts.Add(release.TrackCount == 1 ? "1 track" : $"{release.TrackCount} tracks");
+
+        return string.Join(" - ", parts);
+    }
+
+    private static string ToTitleCaseInvariant(string value)
+        => string.IsNullOrEmpty(value)
+            ? value
+            : char.ToUpperInvariant(value[0]) + value[1..].ToLowerInvariant();
+
+    private void NotifySpotlightReleaseChanged()
+    {
+        OnPropertyChanged(nameof(HasSpotlightRelease));
+        OnPropertyChanged(nameof(SpotlightCardMode));
+        OnPropertyChanged(nameof(SpotlightReleaseName));
+        OnPropertyChanged(nameof(SpotlightReleaseSubtitle));
+        OnPropertyChanged(nameof(SpotlightReleaseImageUrl));
+        OnPropertyChanged(nameof(SpotlightReleaseUri));
+        OnPropertyChanged(nameof(SpotlightReleaseTagText));
+        OnPropertyChanged(nameof(SpotlightReleaseEyebrowText));
+        OnPropertyChanged(nameof(SpotlightCommentText));
+        OnPropertyChanged(nameof(HasSpotlightComment));
+        OnPropertyChanged(nameof(PopularReleasesDisplayed));
+    }
+
+    // -- Load data from real Pathfinder API --
 
     /// <summary>
     /// Apply a freshly-fetched ArtistOverviewResult from the ArtistStore and
@@ -808,36 +1235,11 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         try
         {
 
-            // ── Map scalar properties ──
-            ArtistName = overview.Name ?? ArtistName;
-            if (string.IsNullOrEmpty(ArtistImageUrl))
-                ArtistImageUrl = overview.ImageUrl ?? ArtistImageUrl;
-            HeaderImageUrl = overview.HeaderImageUrl;
-            HeaderHeroColorHex = overview.HeroColorHex;
-            Palette = overview.Palette;
-            MonthlyListeners = overview.MonthlyListeners > 0
-                ? overview.MonthlyListeners.ToString("N0")
-                : null;
-            WorldRank = overview.WorldRank;
-            Followers = overview.Followers;
-            Biography = overview.Biography;
-            IsVerified = overview.IsVerified;
+            var fallbackName = ArtistName;
+            var fallbackImageUrl = ArtistImageUrl;
+            Artist = BuildArtistView(overview, fallbackName, fallbackImageUrl);
 
-            // ── Latest release ──
-            // Always overwrite — the BehaviorSubject can emit multiple times
-            // for the same artist (cached stale → fresh) and a previous emit
-            // may have populated these fields with a release that the latest
-            // emit no longer has. Without explicit null-out the card stays
-            // stuck on the prior emit's release. Same when navigating to an
-            // artist with no LatestRelease at all.
-            LatestReleaseName = overview.LatestRelease?.Name;
-            LatestReleaseImageUrl = overview.LatestRelease?.ImageUrl;
-            LatestReleaseUri = overview.LatestRelease?.Uri;
-            LatestReleaseType = overview.LatestRelease?.Type;
-            LatestReleaseTrackCount = overview.LatestRelease?.TrackCount ?? 0;
-            LatestReleaseDate = overview.LatestRelease?.FormattedDate;
-
-            // ── Top tracks (batch to avoid N+1 CollectionChanged events) ──
+            // -- Top tracks (batch to avoid N+1 CollectionChanged events) --
             var newTracks = new ObservableCollection<LazyTrackItem>();
             // Populate the music-video catalog cache as we map top tracks.
             // Avoids a redundant NPV roundtrip when the user clicks a track
@@ -869,7 +1271,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 if (videoMetadata is not null && !string.IsNullOrEmpty(track.Uri))
                 {
                     videoMetadata.NoteHasVideo(track.Uri, track.HasVideo);
-                    _logger?.LogDebug("[VideoCache]   {Uri} → hasVideo={HasVideo}", track.Uri, track.HasVideo);
+                    _logger?.LogDebug("[VideoCache]   {Uri} ? hasVideo={HasVideo}", track.Uri, track.HasVideo);
                 }
                 idx++;
             }
@@ -913,28 +1315,26 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             }
             _topTracks.ReplaceWith(newTracks);
             NotifyPaginationChanged();
+            OnPropertyChanged(nameof(TopTracksFirst10));
 
-            // ── Backfill missing cover art (background, parallel) ──
+            // -- Backfill missing cover art (background, parallel) --
             // Spotify's getArtistOverview GraphQL response is inconsistent: many
             // tracks come back without albumOfTrack.coverArt populated. Resolve
             // them via the extended-metadata pipeline and patch the VMs.
 
-            // ── Extended top tracks (background, parallel) ──
+            // -- Extended top tracks (background, parallel) --
 
-            // ── Releases ──
+            // -- Releases --
             _allReleases.Clear();
             AddReleasesToList(overview.Albums, "ALBUM", "album-ph", overview.AlbumsTotalCount);
             AddReleasesToList(overview.Singles, "SINGLE", "single-ph", overview.SinglesTotalCount);
             AddReleasesToList(overview.Compilations, "COMPILATION", "comp-ph", overview.CompilationsTotalCount);
             DispatchReleases();
 
-            AlbumsTotalCount = overview.AlbumsTotalCount;
-            SinglesTotalCount = overview.SinglesTotalCount;
-            CompilationsTotalCount = overview.CompilationsTotalCount;
 
-            // ── Background discography pagination ──
+            // -- Background discography pagination --
 
-            // ── Related artists (batch swap) ──
+            // -- Related artists (batch swap) --
             _relatedArtists.ReplaceWith(overview.RelatedArtists.Select(ra => new RelatedArtistVm
             {
                 Id = ra.Id,
@@ -944,7 +1344,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             }));
             OnPropertyChanged(nameof(HasRelatedArtists));
 
-            // ── Concerts (batch swap) ──
+            // -- Concerts (batch swap) --
             _concerts.ReplaceWith(overview.Concerts.Select(c => new ConcertVm
             {
                 Title = c.Title,
@@ -962,16 +1362,17 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 Uri = c.Uri
             }));
             OnPropertyChanged(nameof(HasConcerts));
+            OnPropertyChanged(nameof(ConcertCount));
+            OnPropertyChanged(nameof(FirstConcertDateFormatted));
+            OnPropertyChanged(nameof(FirstConcertVenue));
+            OnPropertyChanged(nameof(FirstConcertCity));
+            OnPropertyChanged(nameof(TourBannerHeadline));
+            OnPropertyChanged(nameof(TourBannerSubline));
 
             UserLocationName = _locationService.CurrentCity;
 
-            PinnedItem = overview.PinnedItem;
-            WatchFeed = overview.WatchFeed;
-            OnPropertyChanged(nameof(HasPinnedItem));
-            OnPropertyChanged(nameof(PinnedColumnWidth));
-            OnPropertyChanged(nameof(HasWatchFeed));
 
-            // ── Connect & Markets + Gallery (batch swap) ──
+            // -- Connect & Markets + Gallery (batch swap) --
             _externalLinks.ReplaceWith(overview.ExternalLinks.Select(l => new ArtistSocialLinkVm
             {
                 Name = l.Name,
@@ -1000,9 +1401,91 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             _galleryPhotos.ReplaceWith(overview.GalleryPhotos);
             OnPropertyChanged(nameof(HasGallery));
 
+            // -- Popular releases (batch swap) — same shape as Albums but
+            // ranked by play count rather than newest-first. Drives the
+            // V4A "Popular releases" sidebar pairing.
+            int popIdx = 0;
+            _popularReleases.ReplaceWith(overview.PopularReleases.Select(r =>
+                LazyReleaseItem.Loaded(r.Id, popIdx++, new Wavee.UI.WinUI.ViewModels.ArtistReleaseVm
+                {
+                    Id = r.Id,
+                    Uri = r.Uri,
+                    Name = r.Name,
+                    Type = r.Type,
+                    ImageUrl = r.ImageUrl,
+                    ReleaseDate = r.ReleaseDate,
+                    TrackCount = r.TrackCount,
+                    Label = r.Label,
+                    Year = r.Year
+                })));
+            OnPropertyChanged(nameof(HasPopularReleases));
+            OnPropertyChanged(nameof(PopularReleasesDisplayed));
+            NotifySpotlightReleaseChanged();
+
+            // -- Appears On (batch swap) — same shape as Compilations.
+            int appearsIdx = 0;
+            _appearsOn.ReplaceWith(overview.AppearsOn.Select(r =>
+                LazyReleaseItem.Loaded(r.Id, appearsIdx++, new Wavee.UI.WinUI.ViewModels.ArtistReleaseVm
+                {
+                    Id = r.Id,
+                    Uri = r.Uri,
+                    Name = r.Name,
+                    Type = r.Type,
+                    ImageUrl = r.ImageUrl,
+                    ReleaseDate = r.ReleaseDate,
+                    TrackCount = r.TrackCount,
+                    Label = r.Label,
+                    Year = r.Year
+                })));
+            OnPropertyChanged(nameof(HasAppearsOn));
+
+            // -- Playlists & discovery (batch swap) — playlistsV2 + featuringV2
+            // + discoveredOnV2 already merged with per-item subtitles in ArtistService.
+            _playlists.ReplaceWith(overview.Playlists.Select(p => new ArtistPlaylistVm
+            {
+                Uri = p.Uri,
+                Name = p.Name,
+                ImageUrl = p.ImageUrl,
+                Subtitle = p.Subtitle
+            }));
+            OnPropertyChanged(nameof(HasPlaylists));
+
+            // -- Music videos (batch swap) --
+            _musicVideos.ReplaceWith(overview.MusicVideos.Select(v => new MusicVideoVm
+            {
+                TrackUri = v.TrackUri,
+                Title = v.Title,
+                ThumbnailUrl = v.ThumbnailUrl,
+                AlbumUri = v.AlbumUri,
+                Duration = v.Duration,
+                IsExplicit = v.IsExplicit
+            }));
+            OnPropertyChanged(nameof(HasMusicVideos));
+
+            // -- Merch (batch swap) --
+            _merch.ReplaceWith(overview.Merch.Select(m => new MerchItemVm
+            {
+                Name = m.Name,
+                Price = m.Price,
+                Description = m.Description,
+                ImageUrl = m.ImageUrl,
+                Uri = m.Uri,
+                ShopUrl = m.ShopUrl
+            }));
+            OnPropertyChanged(nameof(HasMerch));
+
             CurrentPage = 0;
             NotifyPaginationChanged();
             _ = StartDeferredArtistWorkAsync(artistId, generation, overview);
+
+            // V4A: kick off the on-device "about this artist" excerpt when
+            // Spotify's ArtistOverview has no biography. Gated through
+            // AiCapabilities.IsArtistBioSummarizeEnabled inside the summarizer
+            // so a thin artist on a non-Copilot+ PC or with AI disabled is a
+            // cheap no-op. Fire-and-forget — the result lands on a bound
+            // observable property, the page reveals it via implicit animation.
+            if (_bioSummarizer is not null && string.IsNullOrWhiteSpace(overview.Biography))
+                _ = LoadBioSummaryAsync(artistId);
         }
         catch (SessionException)
         {
@@ -1021,7 +1504,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         }
     }
 
-    // ── Mapping helpers ──
+    // -- Mapping helpers --
 
     private async Task StartDeferredArtistWorkAsync(
         string artistId,
@@ -1065,7 +1548,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         int count = 0;
         foreach (var r in releases)
         {
-            var vm = new ArtistReleaseVm
+            var vm = new Wavee.UI.WinUI.ViewModels.ArtistReleaseVm
             {
                 Id = r.Id,
                 Uri = r.Uri,
@@ -1089,9 +1572,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private async Task PrefetchReleaseColorsAsync(
         string artistId,
         int generation,
-        IEnumerable<ArtistReleaseVm> releases)
+        IEnumerable<Wavee.UI.WinUI.ViewModels.ArtistReleaseVm> releases)
     {
-        var releasesByUrl = new Dictionary<string, List<ArtistReleaseVm>>(StringComparer.Ordinal);
+        var releasesByUrl = new Dictionary<string, List<Wavee.UI.WinUI.ViewModels.ArtistReleaseVm>>(StringComparer.Ordinal);
 
         foreach (var release in releases)
         {
@@ -1154,7 +1637,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         }
     }
 
-    // ── Background discography pagination ──
+    // -- Background discography pagination --
 
     private async Task FetchRemainingDiscographyAsync(
         string artistUri,
@@ -1182,7 +1665,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             await Task.WhenAll(tasks);
     }
 
-    // ── Album expand/collapse ──
+    // -- Album expand/collapse --
 
     [RelayCommand]
     private async Task ExpandAlbum(LazyReleaseItem? album)
@@ -1241,7 +1724,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         IsLoadingExpandedTracks = false;
     }
 
-    // ── Background discography pagination ──
+    // -- Background discography pagination --
 
     private async Task FetchDiscographyGroupAsync(
         string artistUri,
@@ -1271,7 +1754,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             if (ct.IsCancellationRequested || !IsCurrentLoad(artistUri, generation))
                 return;
 
-            var createdReleaseVms = new List<ArtistReleaseVm>();
+            var createdReleaseVms = new List<Wavee.UI.WinUI.ViewModels.ArtistReleaseVm>();
             var tcs = new TaskCompletionSource();
             _dispatcherQueue.TryEnqueue(() =>
             {
@@ -1288,7 +1771,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                         int i = pageOffset;
                         foreach (var r in releases)
                         {
-                            var vm = new ArtistReleaseVm
+                            var vm = new Wavee.UI.WinUI.ViewModels.ArtistReleaseVm
                             {
                                 Id = r.Id,
                                 Uri = r.Uri,
@@ -1356,7 +1839,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         }
     }
 
-    // ── Commands ──
+    // -- Commands --
 
     [RelayCommand]
     private void Retry()
@@ -1566,6 +2049,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 // specific instance for skip-to-uid.
                 Uid = $"toptrack{item.Id}",
                 Metadata = metadata,
+                AlbumName = !string.IsNullOrEmpty(item.AlbumName) ? item.AlbumName : null,
+                AlbumUri = !string.IsNullOrEmpty(item.AlbumId) ? $"spotify:album:{item.AlbumId}" : null,
+                ArtistUri = !string.IsNullOrEmpty(item.ArtistId) ? $"spotify:artist:{item.ArtistId}" : null,
+                IsExplicit = item.IsExplicit,
             });
         }
 
@@ -1598,6 +2085,74 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         await Task.CompletedTask;
     }
 
+    /// <summary>Kicks the IPlaybackStateService radio endpoint with the current
+    /// artist URI. Mirrors the Artist context-menu "Artist radio" affordance
+    /// (<c>ArtistContextMenuBuilder</c>) so the V4A hero's pill button reuses
+    /// the same code path. No-op when the artist hasn't loaded yet.</summary>
+    [RelayCommand]
+    private async Task PlayArtistRadioAsync()
+    {
+        if (string.IsNullOrEmpty(ArtistId)) return;
+        var name = ArtistName is { Length: > 0 } n ? $"{n} Radio" : "Artist Radio";
+        await _playbackStateService.StartRadioAsync(ArtistId, name);
+    }
+
+    /// <summary>Generates an on-device biography excerpt via Phi Silica. Called
+    /// from <see cref="ApplyOverviewState"/> when the ArtistOverview returned
+    /// no biography. Guarded against double-runs by an internal CTS — switching
+    /// to a different artist cancels the prior generation. Result lands on
+    /// <see cref="BioSummaryText"/>; failures collapse the About excerpt to
+    /// empty (no error chrome — the section just doesn't render).</summary>
+    public async Task LoadBioSummaryAsync(string artistId)
+    {
+        if (_bioSummarizer is null) return;
+        if (string.IsNullOrEmpty(artistId)) return;
+        if (string.IsNullOrEmpty(ArtistName)) return;
+
+        _bioSummaryCts?.Cancel();
+        var cts = _bioSummaryCts = new CancellationTokenSource();
+
+        try
+        {
+            IsBioSummaryLoading = true;
+            BioSummaryText = null;
+
+            var topTrackNames = _topTracks
+                .Where(t => t.IsLoaded && t.Data is { } d && !string.IsNullOrEmpty(d.Title))
+                .Select(t => ((Data.Contracts.ITrackItem)t.Data!).Title!)
+                .Where(s => !string.IsNullOrEmpty(s))
+                .Take(5)
+                .ToList();
+
+            var monthlyDisplay = string.IsNullOrEmpty(MonthlyListeners)
+                ? null
+                : $"{MonthlyListeners} monthly listeners";
+
+            var result = await _bioSummarizer.SummarizeBioAsync(
+                artistId,
+                ArtistName!,
+                genres: null, // Not on overview today; passed when available
+                monthlyListenersDisplay: monthlyDisplay,
+                topTrackNames: topTrackNames,
+                deltaProgress: null,
+                ct: cts.Token);
+
+            if (cts.IsCancellationRequested) return;
+            if (result.Kind == LyricsAiResultKind.Ok)
+                BioSummaryText = result.Text;
+        }
+        catch (OperationCanceledException) { /* artist switched */ }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "LoadBioSummaryAsync failed for {ArtistId}", artistId);
+        }
+        finally
+        {
+            if (!cts.IsCancellationRequested)
+                IsBioSummaryLoading = false;
+        }
+    }
+
     [RelayCommand]
     private void ToggleAlbumsView() => AlbumsGridView = !AlbumsGridView;
 
@@ -1621,7 +2176,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             CurrentPage--;
     }
 
-    // ── Pagination notifications ──
+    // -- Pagination notifications --
 
     private void NotifyPaginationChanged()
     {
@@ -1644,7 +2199,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         NotifyPaginationChanged();
     }
 
-    partial void OnArtistNameChanged(string? value)
+    private void UpdateTabTitle(string? value)
     {
         if (TabItemParameter != null && !string.IsNullOrEmpty(value))
         {
@@ -1653,7 +2208,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         }
     }
 
-    // ── Extended top tracks ──
+    // -- Extended top tracks --
 
     /// <summary>
     /// Backfills <see cref="ArtistTopTrackVm.AlbumImageUrl"/> for any
@@ -1699,7 +2254,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                     if (!entry.IsLoaded || entry.Data is not ArtistTopTrackVm vm) continue;
                     if (vm.Uri is not { Length: > 0 } uri) continue;
                     if (!string.IsNullOrEmpty(vm.AlbumImageUrl)) continue;
-                    if (!images.TryGetValue(uri, out var imageUrl) || string.IsNullOrEmpty(imageUrl)) continue;
+                    if (!TryGetTrackImage(images, uri, out var imageUrl) || string.IsNullOrEmpty(imageUrl)) continue;
 
                     var patched = new ArtistTopTrackVm
                     {
@@ -1727,12 +2282,38 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                     _pagedTopTracksCache = null;
                     OnPropertyChanged(nameof(PagedTopTracks));
                 }
+
+                _logger?.LogInformation(
+                    "Top-track image enrichment for {Artist}: requested={RequestedCount}, resolved={ResolvedCount}, patched={Patched}",
+                    artistId,
+                    missing.Count,
+                    images.Count(kvp => !string.IsNullOrEmpty(kvp.Value)),
+                    anyPatched);
             });
         }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "Failed to enrich missing top-track images");
         }
+    }
+
+    private static bool TryGetTrackImage(
+        IReadOnlyDictionary<string, string?> images,
+        string uri,
+        out string? imageUrl)
+    {
+        if (images.TryGetValue(uri, out imageUrl))
+            return true;
+
+        const string trackPrefix = "spotify:track:";
+        var bareId = uri.StartsWith(trackPrefix, StringComparison.Ordinal)
+            ? uri[trackPrefix.Length..]
+            : uri;
+
+        if (images.TryGetValue(bareId, out imageUrl))
+            return true;
+
+        return images.TryGetValue($"{trackPrefix}{bareId}", out imageUrl);
     }
 
     private async Task LoadExtendedTopTracksAsync(string artistUri, int generation)
@@ -1837,7 +2418,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     /// <summary>
     /// Theme-aware palette refresh. Page calls this on init + on
     /// ActualThemeChanged + after Palette lands. Mirrors PlaylistViewModel
-    /// and AlbumViewModel: dark theme → HigherContrast (deepest), light →
+    /// and AlbumViewModel: dark theme ? HigherContrast (deepest), light ?
     /// HighContrast (saturated but a step brighter). MinContrast is skipped —
     /// too pastel for white-on-tint text. When no palette is available the
     /// brushes are nulled so bound elements render untinted.
@@ -1902,7 +2483,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             accentLuma > 160 ? Color.FromArgb(255, 0, 0, 0) : Color.FromArgb(255, 255, 255, 255));
     }
 
-    partial void OnPaletteChanged(ArtistPalette? value) => ApplyTheme(_isDarkTheme);
 
     private static Brush? ResolveSystemBrush(string resourceKey)
     {
@@ -1943,7 +2523,7 @@ public sealed record ArtistTopCityVm
     public double RelativeWidth { get; init; }
 }
 
-// ── View Models (UI-layer records) ──
+// -- View Models (UI-layer records) --
 
 public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
 {
@@ -1981,11 +2561,13 @@ public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
 
     public bool HasVideo => HasCanvasVideo || _hasLinkedLocalVideo;
 
-    // ── ITrackItem implementation ──
+    // -- ITrackItem implementation --
     string Data.Contracts.ITrackItem.Uri => Uri ?? $"spotify:track:{Id}";
     string Data.Contracts.ITrackItem.Title => Title ?? "";
-    string Data.Contracts.ITrackItem.ArtistName =>
-        PlayCountRaw > 0 ? PlayCountFormatted : (ArtistNames ?? "");
+    // ArtistName feeds the artist column in TrackItem. Play count is shown
+    // in its own column via the explicit PlayCountText binding, so this no
+    // longer hijacks the field to spell out the play count.
+    string Data.Contracts.ITrackItem.ArtistName => ArtistNames ?? "";
     string Data.Contracts.ITrackItem.ArtistId => "";
     string Data.Contracts.ITrackItem.AlbumName => AlbumName ?? "";
     string Data.Contracts.ITrackItem.AlbumId => AlbumUri ?? "";
@@ -1997,7 +2579,7 @@ public sealed class ArtistTopTrackVm : Data.Contracts.ITrackItem
     bool Data.Contracts.ITrackItem.IsLoaded => true;
     bool Data.Contracts.ITrackItem.HasVideo => HasVideo;
 
-    // ── Public properties ──
+    // -- Public properties --
     public string? Title { get; init; }
     public string? AlbumName { get; init; }
     public string? ArtistNames { get; init; }
@@ -2046,6 +2628,32 @@ public sealed partial class ArtistReleaseVm : ObservableObject
     public string? Label { get; init; }
     public int Year { get; init; }
 
+    /// <summary>
+    /// Discography-card subtitle: "Oct 10, 2025 · 10 tracks" — full release
+    /// date plus track count, matching the prototype. Falls back to year-only
+    /// when the date hasn't been resolved (e.g. legacy releases with only a
+    /// year), and to track count alone if even the year is missing.
+    /// </summary>
+    public string SubtitleDetail
+    {
+        get
+        {
+            var datePart = ReleaseDate.Year > 1
+                ? ReleaseDate.ToString("MMM d, yyyy", System.Globalization.CultureInfo.CurrentCulture)
+                : (Year > 0 ? Year.ToString(System.Globalization.CultureInfo.CurrentCulture) : null);
+            var tracksPart = TrackCount > 0
+                ? $"{TrackCount} track{(TrackCount == 1 ? "" : "s")}"
+                : null;
+            return (datePart, tracksPart) switch
+            {
+                ({ } d, { } t) => $"{d} · {t}",
+                ({ } d, null) => d,
+                (null, { } t) => t,
+                _ => string.Empty,
+            };
+        }
+    }
+
     [ObservableProperty]
     private string? _colorHex;
 }
@@ -2090,4 +2698,41 @@ public sealed class LocationSearchResultVm
     public string? CityName { get; init; }
     public string? CountryName { get; init; }
     public string DisplayName => $"{CityName}, {CountryName}";
+}
+
+public sealed class MusicVideoVm
+{
+    public required string TrackUri { get; init; }
+    public string? Title { get; init; }
+    public string? ThumbnailUrl { get; init; }
+    public string? AlbumUri { get; init; }
+    public TimeSpan Duration { get; init; }
+    public bool IsExplicit { get; init; }
+
+    public string DurationFormatted => Duration.TotalSeconds <= 0
+        ? string.Empty
+        : Duration.TotalHours >= 1
+            ? Duration.ToString(@"h\:mm\:ss")
+            : Duration.ToString(@"m\:ss");
+}
+
+public sealed class MerchItemVm
+{
+    public string? Name { get; init; }
+    public string? Price { get; init; }
+    public string? Description { get; init; }
+    public string? ImageUrl { get; init; }
+    public string? Uri { get; init; }
+    public string? ShopUrl { get; init; }
+}
+
+/// <summary>Card VM for the V4A "Playlists and discovery" shelf. <see cref="Subtitle"/>
+/// is source-derived in <c>ArtistService.MapPlaylists</c> (e.g. "Spotify · official",
+/// "Aria Maelstrom · discovered on").</summary>
+public sealed class ArtistPlaylistVm
+{
+    public required string Uri { get; init; }
+    public string? Name { get; init; }
+    public string? ImageUrl { get; init; }
+    public string? Subtitle { get; init; }
 }

@@ -1,90 +1,101 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI;
 using CommunityToolkit.WinUI.Animations;
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.Extensions.Logging;
-using Microsoft.UI.Dispatching;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
-using Wavee.Core.Http;
-using Wavee.UI.Contracts;
-using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 using Wavee.UI.WinUI.Controls.Cards;
-using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.HeroHeader;
-using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Controls.Track;
+using Wavee.UI.Contracts;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
-using Wavee.UI.WinUI.Helpers.UI;
 using Wavee.UI.WinUI.ViewModels;
+using Windows.UI;
+using Wavee.Core.Http;
 using ColorAnimation = Microsoft.UI.Xaml.Media.Animation.ColorAnimation;
 
 namespace Wavee.UI.WinUI.Views;
 
+/// <summary>
+/// Canonical V4A "Magazine Hero" artist detail page, routed through
+/// <see cref="NavigationHelpers.OpenArtist"/>.
+/// Reuses <see cref="ArtistViewModel"/> and renders a two-column magazine hero,
+/// paired Top Tracks / Popular
+/// Releases band, on-tour rhythm-break banner, tour+merch + about+stats
+/// two-column sections, gallery, related artists, plus the on-device Phi Silica
+/// fallback excerpt for artists without a Spotify biography.
+///
+/// The page leans on Composition for the polish that makes it feel native:
+///   * scroll-driven parallax on hero photo + copy column + page tint
+///   * one-shot Composition reveal that cascades sections into view
+///   * one-shot pulse on the Large Play button on first realization
+///   * the existing <see cref="ShyHeaderController"/> / <see cref="TransitionHelper"/>
+///     pattern to morph the hero into a pinned compact card on scroll
+/// </summary>
 public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable
 {
-    private const int ShimmerCollapseDelayMs = 250;
-    private const int ResizeDebounceDelayMs = 150;
-    private const int ScrollRestoreMaxAttempts = 12;
-    private const int ScrollRestoreRetryDelayMs = 16;
-    private const int NavigationCacheTrimDelaySeconds = 45;
-    private static readonly TimeSpan PageTintTransitionDuration = TimeSpan.FromMilliseconds(420);
-
-    // Avatar collapse — when the artist has a header image but no watch-feed
-    // video, the 120px circular avatar is redundant with the hero and collapses
-    // to reclaim horizontal space for the name/stats block.
-    private const double AvatarExpandedWidth = 136; // 120 avatar + 16 gap
-    private const double AvatarCollapseDurationMs = 320;
-    private bool _avatarCollapsed;
-    private int _avatarAnimGen;
+    private const int ReleasePanelResizeDebounceMs = 75;
+    private const int ReleasePanelExitMs = 110;
+    private const double ReleasePanelExitOffset = -8;
 
     private readonly ILogger? _logger;
-    private readonly ISettingsService _settings;
-    private bool _showingContent;
-    private bool _isNavigatingAway;
+    private readonly IColorService _colorService;
+    private ShyHeaderController? _shyHeader;
     private LinearGradientBrush? _pageTintBrush;
-    private GradientStop? _pageTintStartStop;
     private GradientStop? _pageTintHeroStop;
     private GradientStop? _pageTintFadeStop;
-    private GradientStop? _pageTintEndStop;
-    // Cached storyboard + animation per stop. Reused across palette/theme changes
-    // (stop + retarget + begin) instead of allocating a fresh Storyboard +
-    // ColorAnimation each call — palette + theme changes can fire 4× per
-    // event, and ApplyTheme cascades on every Palette change.
-    private readonly System.Collections.Generic.Dictionary<GradientStop, (Storyboard Sb, ColorAnimation Anim)> _pageTintAnims = new();
-    private ShyHeaderController? _shyHeader;
-    private bool _suppressContentReveal;
-    private bool _heroRevealed;
-    private bool _crossfadeScheduled;
+    private bool _parallaxAttached;
+    private bool _heroSizeHandlersAttached;
     private bool _isDisposed;
-    private bool _trimmedForNavigationCache;
-    private string? _lastRestoredArtistId;
-    private bool _discographyRepeatersDetached;
-    private double? _pendingNavigationScrollOffset;
-    private string? _pendingNavigationScrollArtistId;
-    private int _scrollRestoreGeneration;
-    private DispatcherQueueTimer? _navigationTrimTimer;
+    private bool _isNavigatingAway;
+    private bool _heroPulseFired;
+    /// <summary>True once <see cref="ShimmerGate.RunCrossfadeAsync"/> has been
+    /// triggered for the current load. Guards the crossfade's continuation
+    /// against re-entrant navigation that fires <see cref="ShimmerGate.Reset"/>
+    /// while a prior crossfade is still in its 250 ms delay window — without
+    /// this, the stale crossfade's `Visibility=Collapsed` finalisation could
+    /// hide the freshly-realised shimmer skeleton mid-load.</summary>
+    private bool _showingContent;
+
+    /// <summary>Shared by the unified body shimmer skeleton (x:Load) and the
+    /// real BodyContent (Opacity crossfade). Owned by the page; legacy
+    /// ArtistPage uses the same instance pattern.</summary>
+    public Wavee.UI.WinUI.Helpers.ShimmerLoadGate ShimmerGate { get; } = new();
+
+    private bool _crossfadeScheduled;
+    private int _navigationRevision;
+    private int _heroArrangeRefreshRevision;
+    private AlbumDetailPanel? _activeDetailPanel;
+    private EventHandler? _closeRequestedHandler;
+    private ItemsRepeater? _splitRepeaterAfter;
+    private StackPanel? _splitParent;
+    private ItemsRepeater? _originalRepeater;
+    private object? _originalItemsSource;
+    private LazyReleaseItem? _expandedItem;
+    private int _expandedItemIndex = -1;
+    private CancellationTokenSource? _resizeDebounceCts;
+    private int _releaseExpansionRevision;
 
     public ArtistViewModel ViewModel { get; }
-
-    public ShimmerLoadGate ShimmerGate { get; } = new();
 
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
 
@@ -94,60 +105,126 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     public ArtistPage()
     {
-        _topTrackTappedHandler = TopTrackItem_Tapped;
         ViewModel = Ioc.Default.GetRequiredService<ArtistViewModel>();
         _logger = Ioc.Default.GetService<ILogger<ArtistPage>>();
-        _settings = Ioc.Default.GetRequiredService<ISettingsService>();
+        _colorService = Ioc.Default.GetRequiredService<IColorService>();
         InitializeComponent();
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
-        // Subscribe to IsLoading transitions in the ctor (not Loaded) so we don't
-        // miss a fast load that completes before the page is added to the visual
-        // tree — that race left the shimmer on forever after a tab restore.
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
-        // Refresh the palette-driven page tint + VM brushes when the user
-        // toggles app theme; tier selection (HighContrast vs HigherContrast)
-        // depends on it.
-        ActualThemeChanged += (_, _) =>
-        {
-            ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
-            UpdatePageTint();
-        };
-        ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
+        ApplyPageTint();
 
-        // Start hero overlay + content invisible at composition level so they
-        // can be faded in independently as their data arrives — prevents the
-        // hard pop where the avatar/name/buttons render blank, then suddenly
-        // fill while shimmer is still on screen below.
-        SetHeroOverlayOpacity(0);
-        ElementCompositionPreview.GetElementVisual(ContentContainer).Opacity = 0;
-        ContentContainer.Visibility = Visibility.Collapsed;
-
-        Unloaded += ArtistPage_Unloaded;
-        Loaded += ArtistPage_Loaded;
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+        SizeChanged += OnPageSizeChanged;
+        ActualThemeChanged += (_, _) => ApplyPageTint();
+        UpdateResponsivePageChrome();
     }
 
-    private void ArtistPage_Loaded(object sender, RoutedEventArgs e)
+    // ─────────────────────────────────────────────────────────────────────
+    // Navigation
+    // ─────────────────────────────────────────────────────────────────────
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        Loaded -= ArtistPage_Loaded;
+        base.OnNavigatedTo(e);
+        _isNavigatingAway = false;
 
-        SizeChanged += OnSizeChanged;
-        HeroGrid.SizeChanged += HeroGrid_SizeChanged;
+        // Suppress the shy-header evaluator through the entire navigation
+        // reset. Without this, ScrollView.ViewChanged events queued by the
+        // ScrollTo(0) below can fire while _isPinned still reads true from
+        // the previous artist's deep scroll — the controller then calls
+        // _transition.ReverseAsync() to morph the pill back to the hero
+        // overlay, the matched-IDs interpolate scale 1→hero scale over the
+        // 300 ms reverse duration, and the user sees the shy pill visibly
+        // inflate to fill the hero band before snapping out. We unsuppress
+        // on a dispatcher tick after Stop+Reset have landed.
+        if (_shyHeader is not null) _shyHeader.Suppressed = true;
+        // Belt-and-braces: even if the TransitionHelper's internal Reset is
+        // laggy, the pill is forced invisible from frame one of the new nav.
+        if (ShyHeaderCard is not null) ShyHeaderCard.Visibility = Visibility.Collapsed;
 
-        HeroGrid.RightTapped += (_, e) =>
+        var navigationRevision = ++_navigationRevision;
+
+        _showingContent = false;
+        _crossfadeScheduled = false;
+        ShimmerGate.Reset(() => ShimmerContainer, () => BodyContent);
+
+        var nav = e.Parameter as ContentNavigationParameter;
+        var uri = nav?.Uri ?? (e.Parameter as string);
+
+        if (!string.IsNullOrEmpty(uri))
         {
-            if (string.IsNullOrEmpty(ViewModel.ArtistId)) return;
-            var items = ArtistContextMenuBuilder.Build(new ArtistMenuContext
+            var queryIdx = uri.IndexOf('?', StringComparison.Ordinal);
+            if (queryIdx >= 0)
             {
-                ArtistId = ViewModel.ArtistId!,
-                ArtistName = ViewModel.ArtistName ?? string.Empty,
-                IsFollowing = ViewModel.IsFollowing,
-                PlayCommand = ViewModel.PlayTopTracksCommand,
-                ToggleFollowCommand = ViewModel.ToggleFollowCommand
-            });
-            ContextMenuHost.Show(HeroGrid, items, e.GetPosition(HeroGrid));
-            e.Handled = true;
-        };
+                ViewModel.IsDebugMode = uri[(queryIdx + 1)..].Contains("debug", StringComparison.OrdinalIgnoreCase);
+                uri = uri[..queryIdx];
+            }
+            else
+            {
+                ViewModel.IsDebugMode = false;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(uri))
+            ViewModel.Initialize(uri);
+
+        ApplyPopularReleasesColumnWidth();
+        UpdateResponsivePageChrome();
+        AttachHeroSizeHandlers();
+        AttachScrollParallax();
+        ForceHeroVisualsVisible();
+        ScheduleHeroArrangeRefresh();
+
+        try
+        {
+            PageScrollView?.ScrollTo(
+                0, 0,
+                new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "ArtistPage scroll-to-top on navigation failed.");
+        }
+
+        _shyHeader?.Stop();
+        _shyHeader?.Reset();
+        ForceHeroVisualsVisible();
+        ScheduleHeroArrangeRefresh();
+
+        // Drain the dispatcher so any ViewChanged events queued by the
+        // ScrollTo above fire (and short-circuit on Suppressed=true) before
+        // we re-enable evaluation. Re-Reset defensively in case anything
+        // touched the visual state during the queued events.
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            if (_isDisposed || _isNavigatingAway) return;
+            _shyHeader?.Reset();
+            if (_shyHeader is not null) _shyHeader.Suppressed = false;
+        });
+
+        ProbeWarmCacheReveal(navigationRevision, uri);
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        _isNavigatingAway = true;
+        CancelResizeDebounce();
+        CollapseExpandedAlbumCore();
+        base.OnNavigatedFrom(e);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Loaded / Unloaded
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= OnLoaded;
+
+        if (BodyContent is not null) BodyContent.Opacity = 0;
+
         _shyHeader = new ShyHeaderController(
             PageScrollView, HeroGrid, HeroOverlayPanel, ShyHeaderCard,
             (TransitionHelper)Resources["ArtistShyHeaderTransition"],
@@ -157,673 +234,942 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             logger: _logger);
         _shyHeader.Attach();
         _shyHeader.Reset();
+        ForceHeroVisualsVisible();
 
-        // PointerWheelChanged via AddHandler with handledEventsToo=true so we
-        // still see horizontal-pan events even when a child TrackItem (or any
-        // other inner element) marks the wheel event handled before bubbling.
-        TopTracksSection.AddHandler(
-            UIElement.PointerWheelChangedEvent,
-            new PointerEventHandler(TopTracksSection_PointerWheelChanged),
-            handledEventsToo: true);
+        AttachScrollParallax();
+        AttachSectionRevealAnimations();
+        FireHeroPlayPulseOnce();
+        RebuildBioRuns();
+        AttachHeroSizeHandlers();
+        ApplyResponsiveHeroName();
+        UpdateResponsivePageChrome();
+        ScheduleHeroArrangeRefresh();
+        ApplyPopularReleasesColumnWidth();
+        TryShowContentNow();
+    }
 
-        // If data already arrived before we attached, the IsLoading transition
-        // already fired and our handler missed it. Force the crossfade now.
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        DetachScrollParallax();
+        CancelResizeDebounce();
+        CollapseExpandedAlbumCore();
+        DetachHeroSizeHandlers();
+    }
+
+    private void AttachHeroSizeHandlers()
+    {
+        if (_heroSizeHandlersAttached) return;
+        HeroPhotoBorder.SizeChanged += OnHeroPhotoBorderSizeChanged;
+        _heroSizeHandlersAttached = true;
+    }
+
+    private void DetachHeroSizeHandlers()
+    {
+        if (!_heroSizeHandlersAttached) return;
+        HeroPhotoBorder.SizeChanged -= OnHeroPhotoBorderSizeChanged;
+        _heroSizeHandlersAttached = false;
+    }
+
+    private void OnPageSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateResponsivePageChrome(e.NewSize.Width);
+
+        if (_activeDetailPanel is null || _expandedItem is null)
+            return;
+
+        CancelResizeDebounce();
+        _resizeDebounceCts = new CancellationTokenSource();
+        _ = RecomputeExpandedPanelAsync(_resizeDebounceCts.Token);
+    }
+
+    private async Task RecomputeExpandedPanelAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(ReleasePanelResizeDebounceMs, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (_activeDetailPanel is null
+            || _expandedItem is null
+            || _originalRepeater is null
+            || _splitParent is null
+            || _originalItemsSource is null)
+        {
+            return;
+        }
+
+        ApplySplitLayout();
+    }
+
+    private void CancelResizeDebounce()
+    {
+        var cts = Interlocked.Exchange(ref _resizeDebounceCts, null);
+        if (cts is null) return;
+
+        try { cts.Cancel(); }
+        catch (ObjectDisposedException) { }
+        cts.Dispose();
+    }
+
+    private void OnHeroPhotoBorderSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyResponsiveHeroName();
+    }
+
+    private void ApplyResponsiveHeroName()
+    {
+        if (HeroNameText is null) return;
+        var w = HeroPhotoBorder.ActualWidth;
+        if (w <= 0) return;
+
+        // Target size scales ≈ 7 % of hero width, capped 56–200 px.
+        var maxSize = Math.Clamp(w * 0.07, 56.0, 200.0);
+        var minSize = Math.Max(32.0, maxSize * 0.32);
+        var size = maxSize;
+
+        // Available text-column width: hero width minus left padding (32),
+        // minus spotlight card reserve on the right when visible (~480 card
+        // + 32 padding + 24 column gap + 32 right edge). Below 960 px the
+        // VisualState collapses the card.
+        var heroWidth = HeroOverlayPanel?.ActualWidth > 0 ? HeroOverlayPanel.ActualWidth : w;
+        var spotlightVisible = SpotlightCard is { Visibility: Visibility.Visible, ActualWidth: > 0 };
+        var spotlightReserve = spotlightVisible ? SpotlightCard.ActualWidth + 32 : 0;
+        var layoutWidth = Math.Max(160, heroWidth - 64 - spotlightReserve);
+
+        var copyWidth = HeroCopyPanel.ActualWidth;
+        if (copyWidth <= 0 && !double.IsInfinity(HeroCopyPanel.MaxWidth))
+            copyWidth = HeroCopyPanel.MaxWidth;
+        if (copyWidth <= 0)
+            copyWidth = layoutWidth;
+
+        double availableWidth = Math.Max(160, Math.Min(layoutWidth, copyWidth));
+
+        // Step 1: keep it on ONE line. Measure with NoWrap and shrink the
+        // font size in 8 % steps until the natural width fits the available
+        // text-column width or we hit the min-size floor.
+        HeroNameText.TextWrapping = TextWrapping.NoWrap;
+        HeroNameText.TextTrimming = TextTrimming.None;
+        HeroNameText.MaxLines = 1;
+        for (int i = 0; i < 24; i++)
+        {
+            HeroNameText.FontSize = size;
+            HeroNameText.LineHeight = size * 0.84;
+            HeroNameText.InvalidateMeasure();
+            HeroNameText.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (HeroNameText.DesiredSize.Width <= availableWidth + 1) return;
+            if (size <= minSize) break;
+            size = Math.Max(minSize, size * 0.94);
+        }
+
+        // Step 2: even at min size the name overflows one line (rare — long
+        // multi-word names on narrow viewports). Last resort: enable wrap so
+        // a second line can absorb the overflow.
+        HeroNameText.TextWrapping = TextWrapping.WrapWholeWords;
+        HeroNameText.TextTrimming = TextTrimming.None;
+        HeroNameText.MaxLines = 2;
+        HeroNameText.FontSize = size;
+        HeroNameText.LineHeight = size * 0.88;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // ViewModel change tracking
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
+        => ContentChanged?.Invoke(this, e);
+
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(ArtistViewModel.Artist):
+                ApplyPageTint();
+                FireHeroPlayPulseOnce();
+                ApplyResponsiveHeroName();
+                ScheduleHeroArrangeRefresh();
+                RebuildBioRuns();
+                ApplyPopularReleasesColumnWidth();
+                TryShowContentNow();
+                break;
+            case nameof(ArtistViewModel.BioSummaryText):
+                RebuildBioRuns();
+                break;
+            case nameof(ArtistViewModel.HasPopularReleases):
+                ApplyPopularReleasesColumnWidth();
+                TryShowContentNow();
+                break;
+            case nameof(ArtistViewModel.IsLoading):
+                TryShowContentNow();
+                break;
+        }
+    }
+
+    private async void ProbeWarmCacheReveal(int navigationRevision, string? expectedArtistId)
+    {
+        await Task.Yield();
+
+        if (_isNavigatingAway || navigationRevision != _navigationRevision)
+            return;
+
+        if (!string.IsNullOrEmpty(expectedArtistId)
+            && !string.Equals(ViewModel.ArtistId, expectedArtistId, StringComparison.Ordinal))
+            return;
+
         TryShowContentNow();
     }
 
     private void TryShowContentNow()
     {
-        if (_suppressContentReveal
-            || _showingContent
+        if (_showingContent
             || _crossfadeScheduled
             || ViewModel.IsLoading
-            || string.IsNullOrEmpty(ViewModel.ArtistName))
+            || string.IsNullOrEmpty(ViewModel.ArtistName)
+            || BodyContent is null)
             return;
-        // Reveal the hero immediately if we already have a name (data was
-        // pre-fetched / cache-served before the page attached).
-        RevealHeroIfReady();
+
         ScheduleCrossfade();
     }
-
-    // ── Scheduled crossfade ──
-    // Yield twice so XAML has time to: (1) propagate the data bindings,
-    // (2) measure ItemsRepeaters, (3) realize their cards. Without this,
-    // content height grows by hundreds of pixels mid-fade and the page
-    // visibly jumps. Mirrors ProfilePage.ScheduleCrossfade.
 
     private async void ScheduleCrossfade()
     {
         _crossfadeScheduled = true;
         await Task.Yield();
         await Task.Delay(16);
-        if (_isNavigatingAway || _showingContent) return;
-        CrossfadeToContent();
-    }
 
-    // Debounce timer that coalesces hero-resize ticks (window drags fire
-    // dozens per second; UpdatePageTint re-targets gradient brushes which
-    // is non-trivial on every tick).
-    private Microsoft.UI.Xaml.DispatcherTimer? _heroResizeDebounce;
-
-    private void HeroGrid_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        // Window-driven hero resize: keep the page tint aligned so the fade
-        // always starts at the hero's bottom edge. Coalesce the high-frequency
-        // ticks of a window drag through a 50 ms debounce — UpdatePageTint and
-        // the shy-header evaluation only need to settle once the resize stops.
-        if (_heroResizeDebounce is null)
+        if (_isNavigatingAway || _showingContent || ViewModel.IsLoading)
         {
-            _heroResizeDebounce = new Microsoft.UI.Xaml.DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(50),
-            };
-            _heroResizeDebounce.Tick += OnHeroResizeDebounceTick;
-        }
-        _heroResizeDebounce.Stop();
-        _heroResizeDebounce.Start();
-    }
-
-    private void OnHeroResizeDebounceTick(object? sender, object e)
-    {
-        _heroResizeDebounce?.Stop();
-        UpdatePageTint();
-        _ = _shyHeader?.EvaluateAsync();
-    }
-
-    private void SuppressShyHeaderForContentReset()
-    {
-        if (_shyHeader is null) return;
-        _shyHeader.Suppressed = true;
-        _shyHeader.Stop();
-        _shyHeader.Reset();
-        if (HeroGrid != null)
-            HeroGrid.ScrollFadeProgress = 0;
-    }
-
-    private void ResumeShyHeaderAfterContentReset()
-    {
-        if (_shyHeader is null) return;
-        _shyHeader.Suppressed = false;
-        _shyHeader.Reset();
-        _shyHeader.UpdateHeroFade();
-    }
-
-    private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
-        => ContentChanged?.Invoke(this, e);
-
-    private Windows.Media.Playback.MediaPlayer? _watchFeedMediaPlayer;
-    private Microsoft.UI.Xaml.Controls.MediaPlayerElement? _watchFeedElement;
-
-    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName is nameof(ArtistViewModel.IsLoading))
-        {
-            if (!ViewModel.IsLoading
-                && !_showingContent
-                && !_crossfadeScheduled
-                && !_suppressContentReveal
-                && !string.IsNullOrEmpty(ViewModel.ArtistName))
-            {
-                ScheduleCrossfade();
-            }
-        }
-        else if (e.PropertyName is nameof(ArtistViewModel.ArtistName))
-        {
-            Bindings?.Update();
-            if (!_suppressContentReveal)
-            {
-                TryShowContentNow();
-            }
-        }
-        else if (e.PropertyName is nameof(ArtistViewModel.ArtistImageUrl)
-                              or nameof(ArtistViewModel.HeaderImageUrl)
-                              or nameof(ArtistViewModel.MonthlyListeners)
-                              or nameof(ArtistViewModel.WorldRank)
-                              or nameof(ArtistViewModel.HasWorldRank)
-                              or nameof(ArtistViewModel.WorldRankNumberText)
-                              or nameof(ArtistViewModel.IsVerified)
-                              or nameof(ArtistViewModel.IsFollowing)
-                              or nameof(ArtistViewModel.IsPlayPending)
-                              or nameof(ArtistViewModel.IsArtistContextPlaying)
-                              or nameof(ArtistViewModel.IsArtistContextPaused)
-                              or nameof(ArtistViewModel.ArtistPlayButtonText)
-                              or nameof(ArtistViewModel.PaletteAccentPillBrush)
-                              or nameof(ArtistViewModel.PaletteAccentPillForegroundBrush))
-        {
-            Bindings?.Update();
-
-            if (e.PropertyName is nameof(ArtistViewModel.HeaderImageUrl) && _showingContent)
-                UpdateAvatarLayout(animate: true);
-        }
-        else if (e.PropertyName is nameof(ArtistViewModel.WatchFeed))
-        {
-            // Re-evaluate avatar collapse state after the initial crossfade.
-            // SetupWatchFeedVideo is called from CrossfadeToContent — no need here.
-            if (_showingContent)
-                UpdateAvatarLayout(animate: true);
-        }
-        else if (e.PropertyName is nameof(ArtistViewModel.HeaderHeroColorHex)
-                                 or nameof(ArtistViewModel.Palette))
-        {
-            Bindings?.Update();
-            UpdatePageTint();
-        }
-        else if (e.PropertyName is nameof(ArtistViewModel.CurrentPage))
-        {
-            AnimateTopTracksPageChange();
-        }
-        else if (e.PropertyName is nameof(ArtistViewModel.LatestReleaseName)
-                              or nameof(ArtistViewModel.LatestReleaseImageUrl)
-                              or nameof(ArtistViewModel.LatestReleaseUri)
-                              or nameof(ArtistViewModel.LatestReleaseDate)
-                              or nameof(ArtistViewModel.LatestReleaseTrackCount)
-                              or nameof(ArtistViewModel.LatestReleaseType)
-                              or nameof(ArtistViewModel.HasLatestRelease)
-                              or nameof(ArtistViewModel.LatestReleaseSubtitle))
-        {
-            // The latest-release card is nested inside a section that can be
-            // collapsed during artist swaps. WinUI occasionally misses child
-            // x:Bind updates in that path, leaving subtitle current but
-            // image/title stale. A full page binding refresh is cheap here and
-            // keeps the card coherent.
-            Bindings?.Update();
-        }
-        else if (e.PropertyName is nameof(ArtistViewModel.AlbumsGridView)
-                              or nameof(ArtistViewModel.SinglesGridView)
-                              or nameof(ArtistViewModel.CompilationsGridView)
-                              or nameof(ArtistViewModel.Albums)
-                              or nameof(ArtistViewModel.Singles)
-                              or nameof(ArtistViewModel.Compilations)
-                              or nameof(ArtistViewModel.AlbumsTotalCount)
-                              or nameof(ArtistViewModel.SinglesTotalCount)
-                              or nameof(ArtistViewModel.CompilationsTotalCount))
-        {
-            UpdateDiscographyRepeaterBindings();
-        }
-    }
-
-    private void RevealHeroIfReady()
-    {
-        if (_heroRevealed || string.IsNullOrEmpty(ViewModel.ArtistName)) return;
-        _heroRevealed = true;
-        ForceHeroHeaderSourceState();
-
-        // Composition-side fade-in. The earlier XAML AnimationBuilder path
-        // intermittently left HeroOverlayPanel.Opacity stuck at 0 — needing a
-        // 1-px scroll to force a re-paint — when the storyboard scheduled
-        // inside a binding-refresh dispatch tick failed to commit. Composition
-        // animations run on the composition thread and don't share that
-        // failure mode.
-        HeroOverlayPanel.Opacity = 1; // settle XAML so it doesn't push 0 back into composition
-        var visual = ElementCompositionPreview.GetElementVisual(HeroOverlayPanel);
-        visual.StopAnimation("Opacity");
-        var compositor = visual.Compositor;
-        var anim = compositor.CreateScalarKeyFrameAnimation();
-        anim.InsertKeyFrame(0f, 0f);
-        anim.InsertKeyFrame(1f, 1f, compositor.CreateCubicBezierEasingFunction(
-            new System.Numerics.Vector2(0.1f, 0.9f), new System.Numerics.Vector2(0.2f, 1f)));
-        anim.Duration = TimeSpan.FromMilliseconds(280);
-        visual.StartAnimation("Opacity", anim);
-    }
-
-    private void ForceHeroHeaderSourceState()
-    {
-        if (HeroOverlayPanel is not null)
-            HeroOverlayPanel.Visibility = Visibility.Visible;
-
-        if (ShyHeaderCard is not null)
-            ShyHeaderCard.Visibility = Visibility.Collapsed;
-    }
-
-    private void SetHeroOverlayOpacity(float opacity)
-    {
-        if (HeroOverlayPanel == null)
-            return;
-
-        HeroOverlayPanel.Visibility = Visibility.Visible;
-        // Stop any in-flight RevealHeroIfReady composition animation so this
-        // reset is the authoritative final value — otherwise the running
-        // animation keeps driving Opacity toward 1 and overrides our 0.
-        var visual = ElementCompositionPreview.GetElementVisual(HeroOverlayPanel);
-        visual.StopAnimation("Opacity");
-        HeroOverlayPanel.Opacity = opacity;
-        visual.Opacity = opacity;
-    }
-
-    // Pixels of tint spill past the hero's bottom edge before the wash fully fades.
-    private const double PageTintSpillPx = 320;
-
-    private void UpdatePageTint()
-    {
-        if (PageTintFill == null) return;
-
-        EnsurePageTintBrush();
-
-        // Size the rectangle to the current hero height plus a fixed spill tail.
-        // This keeps the fade anchored to the hero's bottom edge as the window resizes.
-        double heroH = HeroGrid.ActualHeight > 0 ? HeroGrid.ActualHeight : HeroRow.MinHeight;
-        double totalH = heroH + PageTintSpillPx;
-        PageTintFill.Height = totalH;
-
-        // Relative offsets: full tint through the hero region (hidden behind image),
-        // start fading right at the hero's bottom edge, fully transparent at the tail.
-        double heroBottomOffset = heroH / totalH;
-        double fadeOffset = Math.Min(1.0, heroBottomOffset + (1.0 - heroBottomOffset) * 0.7);
-
-        if (_pageTintStartStop != null) _pageTintStartStop.Offset = 0.0;
-        if (_pageTintHeroStop != null) _pageTintHeroStop.Offset = heroBottomOffset;
-        if (_pageTintFadeStop != null) _pageTintFadeStop.Offset = fadeOffset;
-        if (_pageTintEndStop != null) _pageTintEndStop.Offset = 1.0;
-
-        // Prefer the visualIdentity palette (richer, two-tone — BackgroundTinted
-        // top → Background bottom — and theme-aware) over the single-hex
-        // HeaderHeroColorHex. Same tier policy as ConcertViewModel and
-        // SearchResultHeroCard: dark theme → HigherContrast; light → HighContrast.
-        // MinContrast is intentionally skipped; too pastel for white-on-tint text.
-        // Monochromatic alpha fade — only the lighter BackgroundTinted shade is
-        // used across all four stops. Mixing BackgroundTinted with the more
-        // saturated Background mid-gradient produced a visible hue seam.
-        var (tintTop, _) = ResolveTintColors();
-        if (tintTop is null)
-        {
-            AnimatePageTintColor(_pageTintStartStop, Windows.UI.Color.FromArgb(0, 0, 0, 0));
-            AnimatePageTintColor(_pageTintHeroStop, Windows.UI.Color.FromArgb(0, 0, 0, 0));
-            AnimatePageTintColor(_pageTintFadeStop, Windows.UI.Color.FromArgb(0, 0, 0, 0));
-            AnimatePageTintColor(_pageTintEndStop, Windows.UI.Color.FromArgb(0, 0, 0, 0));
+            _crossfadeScheduled = false;
             return;
         }
 
-        var top = tintTop.Value;
-        AnimatePageTintColor(_pageTintStartStop, Windows.UI.Color.FromArgb(110, top.R, top.G, top.B));
-        AnimatePageTintColor(_pageTintHeroStop,  Windows.UI.Color.FromArgb(70,  top.R, top.G, top.B));
-        AnimatePageTintColor(_pageTintFadeStop,  Windows.UI.Color.FromArgb(20,  top.R, top.G, top.B));
-        AnimatePageTintColor(_pageTintEndStop,   Windows.UI.Color.FromArgb(0,   top.R, top.G, top.B));
+        _showingContent = true;
+        _crossfadeScheduled = false;
+        BodyContent.Opacity = 0;
+
+        _ = ShimmerGate.RunCrossfadeAsync(
+            ShimmerContainer,
+            BodyContent,
+            CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml,
+            () => _showingContent);
+    }
+
+    /// <summary>Collapse the right column to 0 when there are no popular
+    /// releases AND we're not loading. During the initial load we keep the
+    /// column open at 1* width so its shimmer can render alongside the
+    /// top-tracks grid — collapsing it during load would leave a one-sided
+    /// skeleton that doesn't predict the final layout.</summary>
+    private void ApplyPopularReleasesColumnWidth()
+    {
+        if (PopularReleasesColumn is null) return;
+        bool keepOpen = ViewModel.HasPopularReleases || ViewModel.IsLoading;
+        var compact = GetResponsiveWidth() < 900;
+
+        if (PopularReleasesBorder is not null)
+        {
+            Grid.SetRow(PopularReleasesBorder, compact ? 1 : 0);
+            Grid.SetColumn(PopularReleasesBorder, compact ? 0 : 1);
+        }
+
+        if (TopTracksBandGrid is not null)
+            TopTracksBandGrid.ColumnSpacing = compact ? 0 : 24;
+
+        PopularReleasesColumn.Width = keepOpen && !compact
+            ? new GridLength(1, GridUnitType.Star)
+            : new GridLength(0);
+    }
+
+    private double GetResponsiveWidth()
+    {
+        if (PageScrollView?.ActualWidth > 0) return PageScrollView.ActualWidth;
+        if (ActualWidth > 0) return ActualWidth;
+        if (ContentRoot?.ActualWidth > 0) return ContentRoot.ActualWidth;
+        return 1200;
+    }
+
+    private void UpdateResponsivePageChrome(double? widthOverride = null)
+    {
+        var width = widthOverride is > 0 ? widthOverride.Value : GetResponsiveWidth();
+
+        if (ContentRoot is not null && width > 0)
+            ContentRoot.Width = width;
+
+        var horizontal = width switch
+        {
+            < 360 => 8,
+            < 520 => 12,
+            < 720 => 16,
+            < 1024 => 24,
+            _ => 32
+        };
+
+        var bodyTop = width < 520 ? 28 : 40;
+        var bodyBottom = width < 520 ? 32 : 40;
+        if (BodyContent is not null)
+        {
+            BodyContent.Padding = new Thickness(horizontal, bodyTop, horizontal, bodyBottom);
+            BodyContent.Spacing = width < 520 ? 28 : 40;
+        }
+
+        if (HeroOverlayContentGrid is not null)
+        {
+            var heroHorizontal = width < 520 ? 20 : 32;
+            HeroOverlayContentGrid.Padding = new Thickness(heroHorizontal, 34, heroHorizontal, 30);
+            HeroOverlayContentGrid.ColumnSpacing = width < 900 ? 0 : 24;
+        }
+
+        ApplyPopularReleasesColumnWidth();
+    }
+
+    /// <summary>x:Bind helper for the popular-releases Border visibility —
+    /// visible while loading (so the shimmer renders) and once loaded only
+    /// when the artist actually has popular releases.</summary>
+    public static Visibility ShowPopularColumnArea(bool hasPopularReleases, bool isLoading)
+        => (hasPopularReleases || isLoading) ? Visibility.Visible : Visibility.Collapsed;
+
+    // ─────────────────────────────────────────────────────────────────────
+    // About-this-artist bio — heuristic em-styling
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Rebuilds <see cref="BioExcerptTextBlock"/>'s inline runs, emphasising
+    /// the artist's own name + the names of the top 5 top tracks against the
+    /// bio text. Spotify ships biographies as plain text, so we infer "what
+    /// would be styled" by matching known proper nouns we already have on
+    /// the VM. The accent foreground + SemiBold weight is applied to matches;
+    /// the rest of the text renders plain.
+    /// </summary>
+    private void RebuildBioRuns()
+    {
+        if (BioExcerptTextBlock is null) return;
+        BioExcerptTextBlock.Inlines.Clear();
+
+        // The About-excerpt card is gated on the on-device AI summary
+        // (HasAboutExcerpt => HasBioSummary), so feed that here exclusively.
+        // The full biography lives in the dedicated Biography card below.
+        var bio = FlattenBioForExcerpt(ViewModel.BioSummaryText);
+        if (string.IsNullOrEmpty(bio)) return;
+
+        var emphasize = new System.Collections.Generic.List<string>(8);
+        if (!string.IsNullOrWhiteSpace(ViewModel.ArtistName))
+            emphasize.Add(ViewModel.ArtistName!);
+
+        foreach (var track in ViewModel.TopTracks)
+        {
+            if (track is { IsLoaded: true, Data: Wavee.UI.WinUI.Data.Contracts.ITrackItem item }
+                && !string.IsNullOrWhiteSpace(item.Title))
+            {
+                emphasize.Add(item.Title!);
+                if (emphasize.Count >= 6) break;
+            }
+        }
+
+        // Longest-first so multi-word matches like "Strategy 2.0" win over "Strategy".
+        emphasize.Sort((a, b) => b.Length.CompareTo(a.Length));
+
+        AppendBioRuns(BioExcerptTextBlock, bio, emphasize);
     }
 
     /// <summary>
-    /// Resolves the top + bottom colours of the page tint gradient. Prefers the
-    /// theme-appropriate ArtistPalette tier (BackgroundTinted top, Background
-    /// bottom). Falls back to the single-hex HeaderHeroColorHex when no palette
-    /// exists (older artists with no visualIdentity block).
+    /// Strip HTML tags, decode entities, and collapse whitespace — produces a
+    /// single flowing paragraph suitable for the about-excerpt TextBlock's
+    /// run-tokenizer. Mirrors the primitives <see cref="Wavee.UI.WinUI.Controls.HtmlTextBlock"/>
+    /// uses internally so the excerpt and the full-biography card stay in sync.
     /// </summary>
-    private (Windows.UI.Color? Top, Windows.UI.Color? Bottom) ResolveTintColors()
+    private static string FlattenBioForExcerpt(string? html)
     {
-        var palette = ViewModel.Palette;
-        if (palette != null)
-        {
-            var tier = ActualTheme == ElementTheme.Dark
-                ? (palette.HigherContrast ?? palette.HighContrast)
-                : (palette.HighContrast ?? palette.HigherContrast);
+        if (string.IsNullOrEmpty(html)) return string.Empty;
+        var stripped = System.Text.RegularExpressions.Regex.Replace(html, @"<[^>]+>", " ");
+        var decoded = System.Net.WebUtility.HtmlDecode(stripped);
+        return System.Text.RegularExpressions.Regex.Replace(decoded, @"\s+", " ").Trim();
+    }
 
-            if (tier != null)
+    private static void AppendBioRuns(TextBlock target, string text, System.Collections.Generic.IReadOnlyList<string> emphasize)
+    {
+        var i = 0;
+        while (i < text.Length)
+        {
+            // Find the next earliest emphasize-match starting at i or later.
+            var matchStart = -1;
+            string? matchValue = null;
+            foreach (var token in emphasize)
             {
-                var top = Windows.UI.Color.FromArgb(255,
-                    tier.BackgroundTintedR, tier.BackgroundTintedG, tier.BackgroundTintedB);
-                var bottom = Windows.UI.Color.FromArgb(255,
-                    tier.BackgroundR, tier.BackgroundG, tier.BackgroundB);
-                return (top, bottom);
+                if (token.Length == 0) continue;
+                var idx = text.IndexOf(token, i, StringComparison.OrdinalIgnoreCase);
+                if (idx >= 0 && (matchStart < 0 || idx < matchStart))
+                {
+                    matchStart = idx;
+                    matchValue = token;
+                }
             }
-        }
 
-        if (TintColorHelper.TryParseHex(ViewModel.HeaderHeroColorHex, out var parsed))
-            return (parsed, parsed);
-
-        return (null, null);
-    }
-
-    private void EnsurePageTintBrush()
-    {
-        if (_pageTintBrush != null)
-        {
-            if (!ReferenceEquals(PageTintFill.Fill, _pageTintBrush))
-                PageTintFill.Fill = _pageTintBrush;
-            return;
-        }
-
-        _pageTintBrush = new LinearGradientBrush
-        {
-            StartPoint = new Windows.Foundation.Point(0, 0),
-            EndPoint = new Windows.Foundation.Point(0, 1)
-        };
-        _pageTintStartStop = new GradientStop { Offset = 0.0, Color = Windows.UI.Color.FromArgb(0, 0, 0, 0) };
-        _pageTintHeroStop = new GradientStop { Offset = 0.5, Color = Windows.UI.Color.FromArgb(0, 0, 0, 0) };
-        _pageTintFadeStop = new GradientStop { Offset = 0.85, Color = Windows.UI.Color.FromArgb(0, 0, 0, 0) };
-        _pageTintEndStop = new GradientStop { Offset = 1.0, Color = Windows.UI.Color.FromArgb(0, 0, 0, 0) };
-
-        _pageTintBrush.GradientStops.Add(_pageTintStartStop);
-        _pageTintBrush.GradientStops.Add(_pageTintHeroStop);
-        _pageTintBrush.GradientStops.Add(_pageTintFadeStop);
-        _pageTintBrush.GradientStops.Add(_pageTintEndStop);
-        PageTintFill.Fill = _pageTintBrush;
-    }
-
-    private void AnimatePageTintColor(GradientStop? stop, Windows.UI.Color targetColor)
-    {
-        if (stop == null)
-            return;
-
-        if (stop.Color == targetColor)
-            return;
-
-        if (!_pageTintAnims.TryGetValue(stop, out var entry))
-        {
-            var anim = new ColorAnimation
+            if (matchStart < 0 || matchValue is null)
             {
-                Duration = new Duration(PageTintTransitionDuration),
-                EnableDependentAnimation = true
+                if (i < text.Length)
+                    target.Inlines.Add(new Run { Text = text[i..] });
+                break;
+            }
+
+            if (matchStart > i)
+                target.Inlines.Add(new Run { Text = text[i..matchStart] });
+
+            var accentRun = new Run
+            {
+                Text = text.Substring(matchStart, matchValue.Length),
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentTextFillColorPrimaryBrush"],
             };
-            var sb = new Storyboard();
-            Storyboard.SetTarget(anim, stop);
-            Storyboard.SetTargetProperty(anim, nameof(GradientStop.Color));
-            sb.Children.Add(anim);
-            entry = (sb, anim);
-            _pageTintAnims[stop] = entry;
+            target.Inlines.Add(accentRun);
+            i = matchStart + matchValue.Length;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PageTintFill — palette-driven gradient backdrop
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void ApplyPageTint()
+    {
+        var hex = ViewModel.HeaderHeroColorHex;
+        var color = ResolveTintColor(hex);
+
+        if (_pageTintBrush is null)
+        {
+            _pageTintBrush = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(0, 1),
+            };
+            _pageTintHeroStop = new GradientStop { Color = color, Offset = 0.0 };
+            _pageTintFadeStop = new GradientStop { Color = Color.FromArgb(0, color.R, color.G, color.B), Offset = 1.0 };
+            _pageTintBrush.GradientStops.Add(_pageTintHeroStop);
+            _pageTintBrush.GradientStops.Add(_pageTintFadeStop);
+            PageTintFill.Fill = _pageTintBrush;
         }
         else
         {
-            // Stop the previous run before retargeting so the in-flight
-            // animation releases its hold on the property and the new To
-            // animates from the current value.
-            entry.Sb.Stop();
+            AnimateTintStop(_pageTintHeroStop!, color);
+            AnimateTintStop(_pageTintFadeStop!, Color.FromArgb(0, color.R, color.G, color.B));
+        }
+    }
+
+    private static void AnimateTintStop(GradientStop stop, Color target)
+    {
+        var sb = new Storyboard();
+        var anim = new ColorAnimation
+        {
+            From = stop.Color,
+            To = target,
+            Duration = new Duration(TimeSpan.FromMilliseconds(420)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut },
+        };
+        Storyboard.SetTarget(anim, stop);
+        Storyboard.SetTargetProperty(anim, nameof(GradientStop.Color));
+        sb.Children.Add(anim);
+        sb.Begin();
+    }
+
+    private Color ResolveTintColor(string? hex)
+    {
+        // Honour the artist palette when available — the BackgroundTinted tier
+        // is the same one the production hero scrim uses. Fall back to the
+        // HeaderHeroColorHex when palette is null, then to a near-bg neutral
+        // when both are missing.
+        var palette = ViewModel.Palette;
+        if (palette is not null)
+        {
+            var tier = ActualTheme == ElementTheme.Dark
+                ? palette.HigherContrast
+                : palette.HighContrast;
+            if (tier is not null)
+                return Color.FromArgb(0xA0, tier.BackgroundTintedR, tier.BackgroundTintedG, tier.BackgroundTintedB);
         }
 
-        entry.Anim.To = targetColor;
-        entry.Sb.Begin();
-    }
-
-    /// <summary>
-    /// Keeps the circular avatar fixed at the expanded width. The avatar is
-    /// always visible — the hero header image is a banner, the avatar is the
-    /// artist portrait, and they serve different purposes. Watch-feed videos
-    /// fade in over the avatar circle when available.
-    /// </summary>
-    private void UpdateAvatarLayout(bool animate)
-    {
-        if (AvatarWrapper == null || ArtistImageContainer == null) return;
-
-        const bool shouldCollapse = false;
-
-        if (shouldCollapse == _avatarCollapsed) return;
-        _avatarCollapsed = shouldCollapse;
-
-        double targetWidth = shouldCollapse ? 0 : AvatarExpandedWidth;
-        double targetOpacity = shouldCollapse ? 0 : 1;
-        float targetScale = shouldCollapse ? 0.6f : 1f;
-
-        // Anchor composition transforms around the avatar center
-        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(ArtistImageContainer);
-        visual.CenterPoint = new System.Numerics.Vector3(60, 60, 0);
-
-        if (!animate)
+        if (!string.IsNullOrEmpty(hex) && hex!.StartsWith('#') && hex.Length == 7)
         {
-            AvatarWrapper.Width = targetWidth;
-            ArtistImageContainer.Opacity = targetOpacity;
-            visual.Scale = new System.Numerics.Vector3(targetScale, targetScale, 1f);
-            _avatarAnimGen++; // cancel any in-flight width interpolation
-            return;
+            try
+            {
+                var r = Convert.ToByte(hex[1..3], 16);
+                var g = Convert.ToByte(hex[3..5], 16);
+                var b = Convert.ToByte(hex[5..7], 16);
+                return Color.FromArgb(0xA0, r, g, b);
+            }
+            catch { /* fall through */ }
         }
 
-        // Composition-driven fade + scale (runs off the UI thread for buttery smoothness)
-        CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
-            .Opacity(to: targetOpacity,
-                     duration: TimeSpan.FromMilliseconds(220),
-                     easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut)
-            .Scale(to: new System.Numerics.Vector3(targetScale, targetScale, 1f),
-                   duration: TimeSpan.FromMilliseconds(AvatarCollapseDurationMs),
-                   easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut)
-            .Start(ArtistImageContainer);
-
-        // Layout-affecting Width interpolation via CompositionTarget.Rendering
-        // (DoubleAnimation on Width is a dependent animation and looks janky;
-        //  per-frame manual interpolation gives a proper 60fps layout re-flow).
-        double startWidth = double.IsNaN(AvatarWrapper.Width) ? AvatarExpandedWidth : AvatarWrapper.Width;
-        var startTime = DateTime.UtcNow;
-        var duration = TimeSpan.FromMilliseconds(AvatarCollapseDurationMs);
-        var myGen = ++_avatarAnimGen;
-
-        EventHandler<object>? tick = null;
-        tick = (_, _) =>
-        {
-            if (myGen != _avatarAnimGen || _isNavigatingAway)
-            {
-                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= tick;
-                return;
-            }
-
-            var elapsed = DateTime.UtcNow - startTime;
-            double t = Math.Clamp(elapsed.TotalMilliseconds / duration.TotalMilliseconds, 0, 1);
-            // Cubic ease-out — snappy start, soft landing
-            double eased = 1 - Math.Pow(1 - t, 3);
-            AvatarWrapper.Width = startWidth + (targetWidth - startWidth) * eased;
-
-            if (t >= 1)
-            {
-                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= tick;
-            }
-        };
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += tick;
+        return ActualTheme == ElementTheme.Dark
+            ? Color.FromArgb(0x55, 0x18, 0x18, 0x1F)
+            : Color.FromArgb(0x55, 0xE6, 0xE6, 0xEE);
     }
 
-    private void SetupWatchFeedVideo()
+    // ─────────────────────────────────────────────────────────────────────
+    // Scroll-driven parallax
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>Defensive reset of MagazineHero + HeroOverlayPanel composition
+    /// state. The section-reveal animation and shy-header morph both manipulate
+    /// these visuals' Opacity/Offset; if a prior morph or a re-entrant cache nav
+    /// leaves either Visual mid-animation, the new artist's hero can land at
+    /// Opacity ≈ 0 with only the page-tint visible behind it. Stop any in-flight
+    /// Composition animations and snap properties back to defaults so the hero
+    /// is always visible from frame one.</summary>
+    private void ForceHeroVisualsVisible()
     {
-        if (_isNavigatingAway || !IsLoaded)
+        TryForceVisible(MagazineHero);
+        TryForceVisible(HeroOverlayPanel);
+        TryForceVisible(HeroOverlayContentGrid);
+        TryForceVisible(HeroCopyPanel);
+        TryForceVisible(HeroBadgePanel);
+        TryForceVisible(HeroNameText);
+        TryForceVisible(HeroBioText);
+        TryForceVisible(HeroMetaPanel);
+        TryForceVisible(HeroPlayButton);
+        TryForceVisible(HeroFollowButton);
+        TryForceVisible(SpotlightCard);
+    }
+
+    private void ScheduleHeroArrangeRefresh()
+    {
+        var revision = ++_heroArrangeRefreshRevision;
+        _ = RefreshHeroArrangeAsync(revision);
+    }
+
+    private async Task RefreshHeroArrangeAsync(int revision)
+    {
+        await Task.Yield();
+
+        if (_isDisposed || _isNavigatingAway || revision != _heroArrangeRefreshRevision)
             return;
 
-        if (ViewModel.WatchFeed?.VideoUrl == null) return;
+        InvalidateHeroArrange();
+        HeroPhotoLayer?.UpdateLayout();
+        HeroOverlayPanel?.UpdateLayout();
+        HeroOverlayContentGrid?.UpdateLayout();
 
-        // Clean up previous
-        TeardownWatchFeed();
+        await Task.Yield();
 
-        // Create MediaPlayer
-        _watchFeedMediaPlayer = new Windows.Media.Playback.MediaPlayer
-        {
-            IsLoopingEnabled = true,
-            IsMuted = true,
-            AutoPlay = true
-        };
-        _watchFeedMediaPlayer.Source = Windows.Media.Core.MediaSource.CreateFromUri(
-            new Uri(ViewModel.WatchFeed.VideoUrl));
+        if (_isDisposed || _isNavigatingAway || revision != _heroArrangeRefreshRevision)
+            return;
 
-        // Create MediaPlayerElement programmatically (never in XAML — WinUI teardown bug)
-        _watchFeedElement = new Microsoft.UI.Xaml.Controls.MediaPlayerElement
-        {
-            Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill,
-            AreTransportControlsEnabled = false,
-            AutoPlay = true
-        };
-        _watchFeedElement.SetMediaPlayer(_watchFeedMediaPlayer);
-
-        WatchFeedGrid.Children.Insert(0, _watchFeedElement);
-
-        // Constrain the MediaPlayerElement so the swap chain doesn't overflow
-        _watchFeedElement.Width = 120;
-        _watchFeedElement.Height = 120;
-
-        // Clip the avatar host and media element; swap chains can ignore ancestor clips.
-        ApplyWatchFeedCircleClip();
-
-        // Crossfade: wait for video to start rendering, then fade in over the static image
-        _watchFeedMediaPlayer.VideoFrameAvailable += OnFirstVideoFrame;
-        _watchFeedMediaPlayer.IsVideoFrameServerEnabled = true;
+        ApplyResponsiveHeroName();
+        ForceHeroVisualsVisible();
     }
 
-    private void ApplyWatchFeedCircleClip()
+    private void InvalidateHeroArrange()
     {
-        ApplyCompositionCircleClip(ArtistImageContainer);
-        ApplyCompositionCircleClip(WatchFeedGrid);
-        if (_watchFeedElement != null)
-            ApplyCompositionCircleClip(_watchFeedElement);
+        HeroPhotoLayer?.InvalidateMeasure();
+        HeroPhotoLayer?.InvalidateArrange();
+        HeroOverlayPanel?.InvalidateMeasure();
+        HeroOverlayPanel?.InvalidateArrange();
+        HeroOverlayContentGrid?.InvalidateMeasure();
+        HeroOverlayContentGrid?.InvalidateArrange();
+        HeroCopyPanel?.InvalidateMeasure();
+        HeroCopyPanel?.InvalidateArrange();
+        SpotlightCard?.InvalidateMeasure();
+        SpotlightCard?.InvalidateArrange();
     }
 
-    private static void ApplyCompositionCircleClip(UIElement element)
+    private static void TryForceVisible(UIElement? element)
+    {
+        if (element is null) return;
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(element);
+            visual.StopAnimation("Opacity");
+            visual.StopAnimation("Offset");
+            visual.StopAnimation("Scale");
+            visual.Opacity = 1f;
+            visual.Scale = System.Numerics.Vector3.One;
+            element.Opacity = 1;
+            element.Translation = System.Numerics.Vector3.Zero;
+            element.Scale = System.Numerics.Vector3.One;
+        }
+        catch
+        {
+            // Visual may not be realised yet on early nav — safe to ignore.
+        }
+    }
+
+    private void AttachScrollParallax()
+    {
+        if (_parallaxAttached) return;
+        _parallaxAttached = true;
+        PageScrollView.ViewChanged += OnScrollViewChanged;
+    }
+
+    private void DetachScrollParallax()
+    {
+        if (!_parallaxAttached) return;
+        PageScrollView.ViewChanged -= OnScrollViewChanged;
+        _parallaxAttached = false;
+    }
+
+    private void OnScrollViewChanged(ScrollView sender, object args)
+    {
+        var offset = sender.VerticalOffset;
+
+        // PageTintFill fades out as the user scrolls past the hero region.
+        // Denominator tracks the hero's MinHeight (420) so the tint persists
+        // across the full hero region.
+        if (PageTintFill is { } tint)
+        {
+            var fade = Math.Clamp(1.0 - (offset / 360.0), 0.0, 1.0);
+            tint.Opacity = fade;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Section reveal (Composition keyframes, staggered)
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void AttachSectionRevealAnimations()
+    {
+        // Hero is the first thing to fade up; remaining sections stagger after it.
+        AttachRevealAnimation(MagazineHero, 0);
+        var i = 1;
+        foreach (var child in BodyContent.Children)
+        {
+            if (child is not UIElement uie) continue;
+            AttachRevealAnimation(uie, i++);
+        }
+    }
+
+    private static void AttachRevealAnimation(UIElement element, int index)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
         var compositor = visual.Compositor;
-        var ellipse = compositor.CreateEllipseGeometry();
-        ellipse.Center = new Vector2(60, 60);
-        ellipse.Radius = new Vector2(60, 60);
-        visual.Clip = compositor.CreateGeometricClip(ellipse);
+
+        var delay = TimeSpan.FromMilliseconds(Math.Min(index * 35, 200));
+        var easing = compositor.CreateCubicBezierEasingFunction(
+            new Vector2(0.16f, 1.0f), new Vector2(0.3f, 1.0f));
+
+        var offset = compositor.CreateVector3KeyFrameAnimation();
+        offset.InsertKeyFrame(0f, new Vector3(0, 18, 0));
+        offset.InsertKeyFrame(1f, Vector3.Zero, easing);
+        offset.Duration = TimeSpan.FromMilliseconds(340);
+        offset.DelayBehavior = AnimationDelayBehavior.SetInitialValueBeforeDelay;
+        offset.DelayTime = delay;
+
+        var opacity = compositor.CreateScalarKeyFrameAnimation();
+        opacity.InsertKeyFrame(0f, 0f);
+        opacity.InsertKeyFrame(1f, 1f, easing);
+        opacity.Duration = TimeSpan.FromMilliseconds(320);
+        opacity.DelayBehavior = AnimationDelayBehavior.SetInitialValueBeforeDelay;
+        opacity.DelayTime = delay;
+
+        visual.StartAnimation("Offset", offset);
+        visual.StartAnimation("Opacity", opacity);
     }
 
-    private void OnFirstVideoFrame(Windows.Media.Playback.MediaPlayer sender, object args)
+    // ─────────────────────────────────────────────────────────────────────
+    // Hero Play one-shot pulse
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void FireHeroPlayPulseOnce()
     {
-        // Only need the first frame — unsubscribe immediately
-        sender.VideoFrameAvailable -= OnFirstVideoFrame;
-        sender.IsVideoFrameServerEnabled = false;
+        if (_heroPulseFired) return;
+        if (HeroPlayButton is null) return;
+        if (string.IsNullOrEmpty(ViewModel.ArtistName)) return;
+        _heroPulseFired = true;
 
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            if (_isNavigatingAway || _watchFeedMediaPlayer != sender || _watchFeedElement == null || WatchFeedGrid.XamlRoot == null)
-                return;
+        var visual = ElementCompositionPreview.GetElementVisual(HeroPlayButton);
+        visual.CenterPoint = new Vector3((float)HeroPlayButton.ActualWidth / 2f, (float)HeroPlayButton.ActualHeight / 2f, 0f);
 
-            // Fade video in over the static image
-            try
-            {
-                AnimationBuilder.Create()
-                    .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(600),
-                             easingMode: Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut)
-                    .Start(WatchFeedGrid);
-
-                // Show hover overlay
-                WatchFeedHoverOverlay.Visibility = Visibility.Visible;
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogDebug(ex, "Watch feed first-frame transition skipped during navigation teardown");
-            }
-        });
+        var compositor = visual.Compositor;
+        var pulse = compositor.CreateVector3KeyFrameAnimation();
+        pulse.InsertKeyFrame(0f, new Vector3(1f, 1f, 0f));
+        pulse.InsertKeyFrame(0.5f, new Vector3(1.06f, 1.06f, 0f));
+        pulse.InsertKeyFrame(1f, new Vector3(1f, 1f, 0f));
+        pulse.Duration = TimeSpan.FromMilliseconds(800);
+        visual.StartAnimation("Scale", pulse);
     }
 
-    private void TeardownWatchFeed()
+    // ─────────────────────────────────────────────────────────────────────
+    // ElementPrepared handlers — bind cards that don't use plain x:Bind
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>The grid layout reports column-count changes whenever its
+    /// width crosses a MinItemWidth threshold. Mirroring the legacy page,
+    /// we feed that count to the ViewModel so TracksPerPage =
+    /// RowsPerPage × ColumnCount stays correct as the viewport resizes.</summary>
+    private void TopTracksLayout_ColumnCountChanged(object? sender, int columns)
     {
-        if (_watchFeedElement != null)
-        {
-            _watchFeedElement.SetMediaPlayer(null);
-            WatchFeedGrid.Children.Remove(_watchFeedElement);
-            _watchFeedElement = null;
-        }
-        if (_watchFeedMediaPlayer != null)
-        {
-            _watchFeedMediaPlayer.VideoFrameAvailable -= OnFirstVideoFrame;
-            try { _watchFeedMediaPlayer.Pause(); } catch { }
-            try { _watchFeedMediaPlayer.Dispose(); } catch { }
-            _watchFeedMediaPlayer = null;
-        }
+        ViewModel.ColumnCount = columns;
     }
 
-    private async void CrossfadeToContent()
+    private void TopTracksRepeater_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
-        if (_showingContent) return;
-        _showingContent = true;
-        ResumeShyHeaderAfterContentReset();
-        RevealHeroIfReady();
-        ContentContainer.Visibility = Visibility.Visible;
-        ContentContainer.Opacity = 0;
-        UpdateDiscographyRepeaterBindings();
+        if (args.Element is not TrackItem row) return;
 
-        // 200 ms shimmer-out + 300 ms content-in @ +100 ms delay (Xaml layer
-        // because the shimmer subtree drives layout that composition-only
-        // opacity won't capture). Animation + finalization centralised in
-        // ShimmerGate; sets IsLoaded=false at the end so x:Load unrealizes
-        // the skeleton subtree.
-        await ShimmerGate.RunCrossfadeAsync(ShimmerContainer, ContentContainer,
-            CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml,
-            () => _showingContent);
+        // RowIndex is bound via x:Bind to LazyTrackItem.Index (absolute), so
+        // page 2 of extended tracks shows ranks 9..16 instead of resetting to
+        // 1..8 — don't override here.
+        // No popularity badge — the rank number is enough and the star clashes
+        // with the selection pill on row 1. No pre-selection either; let the
+        // user pick.
+        row.ShowPopularityBadge = false;
 
-        // Set up watch feed video after the first content frame; MediaPlayer
-        // creation owns a swap chain and should not compete with first paint.
-        if (!_isNavigatingAway)
-            SetupWatchFeedVideo();
-
-        // Decide whether to collapse the redundant circular avatar now that
-        // we know the final HeaderImageUrl + WatchFeed state.
-        UpdateAvatarLayout(animate: true);
-
-        if (_shyHeader is not null) await _shyHeader.EvaluateAsync();
+        // Alternating row striping (matches TrackDataGrid in playlists) plus a
+        // hover tint so the row reads as interactive — the raw ItemsRepeater
+        // host here doesn't get either by default.
+        row.SetAlternatingBorder(args.Index % 2 != 0, useCardRow: false);
+        row.RowHoverBackgroundBrush =
+            (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
     }
 
-    private void ArtistPage_Unloaded(object sender, RoutedEventArgs e)
+    private void PopularReleasesRepeater_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
-        // Under NavigationCacheMode=Required, the Page is reused across N
-        // navigations and the (singleton-via-cache) ViewModel lives with it,
-        // so the constructor's `ViewModel.PropertyChanged += ...` registration
-        // is correct for the page's lifetime — do NOT unhook here. Earlier
-        // we mirrored AlbumPage_Unloaded's unhook to break a leak chain that
-        // assumed Disabled cache (one VM per nav); under Required cache that
-        // unhook ran on X→Y nav and ArtistPage_Loaded (self-removed after the
-        // first Loaded) never re-attached on back-to-X, leaving the page deaf
-        // to IsLoading=false transitions and stuck on shimmer for cold cache.
-        _isNavigatingAway = true;
-        CancelResizeDebounce();
-        CollapseExpandedAlbum();
-        TeardownWatchFeed();
+        if (args.Element is not PopularReleaseRow row) return;
+        if (row.DataContext is not LazyReleaseItem lri || lri.Data is not Wavee.UI.WinUI.ViewModels.ArtistReleaseVm vm) return;
+
+        row.Title = vm.Name ?? string.Empty;
+        row.CoverImageUrl = vm.ImageUrl;
+        row.Rank = args.Index + 1;
+        // Push the artist palette through before flipping IsFeatured — the
+        // featured-row tint derives directly from AccentBrush, so setting it
+        // first means the highlight reads as the artist's palette colour
+        // rather than the hardcoded teal default for one frame.
+        row.AccentBrush = ViewModel.SectionAccentBrush;
+        row.AccentForegroundBrush = ViewModel.PaletteAccentPillForegroundBrush;
+        row.IsFeatured = args.Index == 0;
+        row.Tag = vm.Uri;
+
+        var meta = new System.Collections.Generic.List<string>(3);
+        if (vm.Year > 0) meta.Add(vm.Year.ToString());
+        if (!string.IsNullOrEmpty(vm.Type)) meta.Add(ToTitleCase(vm.Type));
+        if (vm.TrackCount > 0) meta.Add($"{vm.TrackCount} tracks");
+        row.Meta = string.Join(" · ", meta);
+
+        Wavee.UI.WinUI.Behaviors.CardHoverScaleBehavior.SetEnable(row, true);
     }
 
-    private void CancelResizeDebounce()
+    private void ConcertsRepeater_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
-        if (_resizeDebounceCts == null)
+        if (args.Element is not TicketStub stub) return;
+        if (stub.DataContext is not ConcertVm vm) return;
+
+        // DateFormatted comes in as "MMM d" upper-cased ("MAY 16"). Split it.
+        var parts = (vm.DateFormatted ?? string.Empty).Split(' ', 2);
+        stub.Month = parts.Length > 0 ? parts[0] : string.Empty;
+        stub.Day = parts.Length > 1 ? parts[1] : string.Empty;
+        stub.Venue = vm.Venue ?? string.Empty;
+        stub.City = vm.City ?? string.Empty;
+        stub.IsNearUser = vm.IsNearUser;
+        stub.Tag = vm.Uri;
+
+        Wavee.UI.WinUI.Behaviors.CardHoverScaleBehavior.SetEnable(stub, true);
+    }
+
+    private static string ToTitleCase(string s)
+        => string.IsNullOrEmpty(s)
+            ? s
+            : char.ToUpperInvariant(s[0]) + s[1..].ToLowerInvariant();
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Click handlers
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void SpotlightCard_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SpotlightReleaseUri is { Length: > 0 } uri)
+            NavigationHelpers.OpenAlbum(uri, ViewModel.SpotlightReleaseName ?? string.Empty);
+    }
+
+    private async void SpotlightPlay_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SpotlightReleaseUri is not { Length: > 0 } uri) return;
+
+        var playback = Ioc.Default.GetService<IPlaybackService>();
+        if (playback is null) return;
+
+        var result = await playback.PlayContextAsync(
+            uri,
+            new PlayContextOptions { PlayOriginFeature = "artist_page" });
+
+        if (!result.IsSuccess)
+            _logger?.LogWarning("Spotlight release play failed: {Error}", result.ErrorMessage);
+    }
+
+    private void SpotlightSave_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SpotlightReleaseUri is not { Length: > 0 } uri) return;
+
+        var likeService = Ioc.Default.GetService<ITrackLikeService>();
+        if (likeService is null) return;
+
+        var isSaved = likeService.IsSaved(SavedItemType.Album, uri);
+        likeService.ToggleSave(SavedItemType.Album, uri, isSaved);
+    }
+
+    private void SpotlightShare_Click(object sender, RoutedEventArgs e)
+    {
+        var shareUrl = ToOpenSpotifyUrl(ViewModel.SpotlightReleaseUri);
+        if (string.IsNullOrEmpty(shareUrl)) return;
+
+        var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        dp.SetText(shareUrl);
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
+    }
+
+    private void PopularReleaseRow_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is PopularReleaseRow row && row.Tag is string uri && !string.IsNullOrEmpty(uri))
+            NavigationHelpers.OpenAlbum(uri, row.Title);
+    }
+
+    private void ReleaseNavigateCard_Click(object? sender, EventArgs e)
+    {
+        if (sender is ContentCard card && card.Tag is string uri && !string.IsNullOrEmpty(uri))
+            NavigationHelpers.OpenAlbum(uri, card.Title ?? string.Empty);
+    }
+
+    private async void AlbumCard_Click(object? sender, EventArgs e)
+    {
+        if (sender is not FrameworkElement source) return;
+        var expansionRevision = ++_releaseExpansionRevision;
+
+        var repeater = FindParent<ItemsRepeater>(source);
+        if (repeater is null || repeater == AppearsOnRepeater)
             return;
 
-        try { _resizeDebounceCts.Cancel(); } catch (ObjectDisposedException) { }
-        _resizeDebounceCts.Dispose();
-        _resizeDebounceCts = null;
-    }
-
-    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        // Hero height = 45% of page height (min 200).
-        if (HeroRow != null)
-            HeroRow.Height = new GridLength(Math.Max(200, e.NewSize.Height * 0.45), GridUnitType.Pixel);
-
-        // Debounced recompute of expanded panel position
-        if (_activeDetailPanel != null && _expandedItem != null)
-        {
-            CancelResizeDebounce();
-            _resizeDebounceCts = new CancellationTokenSource();
-            var token = _resizeDebounceCts.Token;
-            _ = RecomputeExpandedPanelAsync(token);
-        }
-    }
-
-    private async Task RecomputeExpandedPanelAsync(CancellationToken ct)
-    {
-        try { await Task.Delay(ResizeDebounceDelayMs, ct); }
-        catch (OperationCanceledException) { return; }
-
-        if (_activeDetailPanel == null || _expandedItem == null ||
-            _originalRepeater == null || _splitParent == null || _originalItemsSource == null)
+        var item = ResolveReleaseItemFromRepeaterClick(source, repeater, out var trueRepeater, out var itemIndex);
+        if (item?.IsLoaded != true || item.Data is null)
             return;
 
+        if (ViewModel.ExpandedAlbum?.Id == item.Id)
+        {
+            // User clicked the already-expanded album → animate the close.
+            await CollapseExpandedAlbumAsync(animate: true);
+            return;
+        }
+
+        // Switching to a different album: tear the previous expansion down
+        // synchronously so the new one appears in the same frame. Awaiting an
+        // exit animation here just stacked latency on top of the enter delay.
+        if (HasActiveReleaseExpansion())
+            CollapseExpandedAlbumCore();
+
+        if (expansionRevision != _releaseExpansionRevision || _isNavigatingAway || XamlRoot is null)
+            return;
+
+        if (trueRepeater.Parent is not StackPanel parentPanel)
+            return;
+
+        var repeaterIndex = parentPanel.Children.IndexOf(trueRepeater);
+        if (repeaterIndex < 0)
+            return;
+
+        _originalRepeater = trueRepeater;
+        _originalItemsSource = trueRepeater.ItemsSource;
+        _splitParent = parentPanel;
+        _expandedItem = item;
+        _expandedItemIndex = itemIndex;
+
+        _activeDetailPanel = new AlbumDetailPanel
+        {
+            Album = item.Data,
+            Tracks = ViewModel.ExpandedAlbumTracks
+        };
+        _closeRequestedHandler = async (_, _) => await CollapseExpandedAlbumAsync(animate: true);
+        _activeDetailPanel.CloseRequested += _closeRequestedHandler;
+
+        parentPanel.Children.Insert(repeaterIndex + 1, _activeDetailPanel);
         ApplySplitLayout();
+
+        // Single motion source: scroll the inserted panel into view. Adding a
+        // Y-translate enter animation alongside this fought the scroll and
+        // produced the "down then up again" stutter; opacity-prep made the
+        // panel invisible for the first ~180 ms and read as click latency.
+        _activeDetailPanel.StartBringIntoView(new BringIntoViewOptions
+        {
+            AnimationDesired = true,
+            VerticalAlignmentRatio = 0.5,
+            VerticalOffset = -200
+        });
+
+        _ = FetchAlbumColorAsync(item.Data, _activeDetailPanel);
+        ViewModel.ExpandAlbumCommand.Execute(item);
     }
 
-    /// <summary>
-    /// Shared logic: computes columns from available width, splits items before/after
-    /// the expanded item's row, updates both repeaters, and positions the notch.
-    /// Called on initial expand and on debounced resize.
-    /// </summary>
+    private LazyReleaseItem? ResolveReleaseItemFromRepeaterClick(
+        FrameworkElement source,
+        ItemsRepeater repeater,
+        out ItemsRepeater trueRepeater,
+        out int itemIndex)
+    {
+        var isSplitRepeaterAfter = _splitRepeaterAfter is not null && ReferenceEquals(repeater, _splitRepeaterAfter);
+        var isOriginalSplitRepeater = _originalRepeater is not null && ReferenceEquals(repeater, _originalRepeater);
+
+        trueRepeater = isSplitRepeaterAfter
+            ? _originalRepeater ?? repeater
+            : repeater;
+        itemIndex = -1;
+
+        var templateRoot = FindRepeaterTemplateRoot(source, repeater);
+        if (templateRoot is null)
+            return null;
+
+        var visibleIndex = repeater.GetElementIndex(templateRoot);
+        if (visibleIndex < 0 || repeater.ItemsSource is not IList visibleItems || visibleIndex >= visibleItems.Count)
+            return null;
+
+        var item = visibleItems[visibleIndex] as LazyReleaseItem;
+        if (item is null)
+            return null;
+
+        var fullItems = (isSplitRepeaterAfter || isOriginalSplitRepeater
+            ? _originalItemsSource
+            : trueRepeater.ItemsSource) as IList;
+        itemIndex = fullItems?.IndexOf(item) ?? visibleIndex;
+        if (itemIndex < 0)
+            itemIndex = visibleIndex;
+
+        return item;
+    }
+
+    private static UIElement? FindRepeaterTemplateRoot(DependencyObject source, ItemsRepeater repeater)
+    {
+        DependencyObject? current = source;
+        var parent = VisualTreeHelper.GetParent(current);
+        while (parent is not null && parent != repeater)
+        {
+            current = parent;
+            parent = VisualTreeHelper.GetParent(current);
+        }
+
+        return parent == repeater ? current as UIElement : null;
+    }
+
     private void ApplySplitLayout()
     {
-        if (_originalRepeater == null || _splitParent == null || _originalItemsSource == null ||
-            _activeDetailPanel == null)
+        if (_originalRepeater is null
+            || _splitParent is null
+            || _originalItemsSource is not IList allItems
+            || _activeDetailPanel is null
+            || _expandedItemIndex < 0)
+        {
             return;
+        }
 
         var layout = _originalRepeater.Layout as UniformGridLayout;
-        var allItems = _originalItemsSource as System.Collections.IList;
-        if (allItems == null) return;
+        var availableWidth = Math.Max(_splitParent.ActualWidth, _originalRepeater.ActualWidth);
+        if (availableWidth <= 0)
+            availableWidth = BodyContent?.ActualWidth ?? 0;
+        if (availableWidth <= 0)
+            return;
 
-        var availableWidth = _splitParent.ActualWidth;
         var minWidth = layout?.MinItemWidth ?? 160;
-        var spacing = layout?.MinColumnSpacing ?? 12;
+        var spacing = layout?.MinColumnSpacing ?? 16;
         var columns = Math.Max(1, (int)Math.Floor((availableWidth + spacing) / (minWidth + spacing)));
-
-        // Split point: end of the expanded item's row
         var rowOfItem = _expandedItemIndex / columns;
         var splitAfterIndex = Math.Min((rowOfItem + 1) * columns, allItems.Count);
 
         var itemsBefore = new System.Collections.Generic.List<object>();
         var itemsAfter = new System.Collections.Generic.List<object>();
-        for (int i = 0; i < allItems.Count; i++)
+        for (var i = 0; i < allItems.Count; i++)
         {
             if (i < splitAfterIndex)
                 itemsBefore.Add(allItems[i]!);
@@ -831,14 +1177,14 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
                 itemsAfter.Add(allItems[i]!);
         }
 
-        // Update the first repeater
         _originalRepeater.ItemsSource = itemsBefore;
 
-        // Update or create/remove the second repeater
-        if (_splitRepeaterAfter != null)
+        if (_splitRepeaterAfter is not null)
         {
             if (itemsAfter.Count > 0)
+            {
                 _splitRepeaterAfter.ItemsSource = itemsAfter;
+            }
             else
             {
                 _splitRepeaterAfter.ElementClearing -= DiscographyRepeater_ElementClearing;
@@ -854,536 +1200,133 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
                 Layout = new UniformGridLayout
                 {
                     MinItemWidth = minWidth,
-                    MinItemHeight = layout?.MinItemHeight ?? 240,
-                    MinRowSpacing = layout?.MinRowSpacing ?? 12,
+                    MinItemHeight = layout?.MinItemHeight ?? 220,
+                    MinRowSpacing = layout?.MinRowSpacing ?? 20,
                     MinColumnSpacing = spacing,
-                    ItemsStretch = Microsoft.UI.Xaml.Controls.UniformGridLayoutItemsStretch.Uniform
+                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
                 },
                 ItemTemplate = _originalRepeater.ItemTemplate,
                 ItemsSource = itemsAfter
             };
             _splitRepeaterAfter.ElementClearing += DiscographyRepeater_ElementClearing;
+
             var panelIndex = _splitParent.Children.IndexOf(_activeDetailPanel);
             if (panelIndex >= 0)
                 _splitParent.Children.Insert(panelIndex + 1, _splitRepeaterAfter);
         }
 
-        // Position notch at the expanded item's center
         var columnIndex = _expandedItemIndex % columns;
         var cellWidth = (availableWidth - (columns - 1) * spacing) / columns;
         _activeDetailPanel.NotchOffsetX = columnIndex * (cellWidth + spacing) + cellWidth / 2;
     }
 
-    private void TopTracksLayout_ColumnCountChanged(object? sender, int columns)
+    private bool HasActiveReleaseExpansion()
+        => _activeDetailPanel is not null
+           || _splitRepeaterAfter is not null
+           || _originalRepeater is not null
+           || ViewModel.ExpandedAlbum is not null;
+
+    private async Task CollapseExpandedAlbumAsync(bool animate)
     {
-        ViewModel.ColumnCount = columns;
+        var panel = _activeDetailPanel;
+        if (animate && panel is not null)
+            await AnimateReleasePanelOutAsync(panel);
+
+        CollapseExpandedAlbumCore();
     }
 
-    // ── Top tracks page transition animation ──
-    // Slide+fade carousel feel. _prevTopTracksPage starts at -1 so the very
-    // first render skips the out-tween; cancellation token bumps on each call
-    // so a rapid pip click aborts the in-flight phase 1 instead of stacking.
-    private int _prevTopTracksPage = -1;
-    private long _topTracksAnimGen;
-    private bool _topTracksTranslationEnabled;
-    private const float TopTracksSlideOffsetPx = 40f;
-    private static readonly TimeSpan TopTracksOutDuration = TimeSpan.FromMilliseconds(80);
-    private static readonly TimeSpan TopTracksInDuration = TimeSpan.FromMilliseconds(120);
-
-    private async void AnimateTopTracksPageChange()
-    {
-        if (ViewModel == null || TopTracksRepeater == null) return;
-
-        int newPage = ViewModel.CurrentPage;
-        int prevPage = _prevTopTracksPage;
-        _prevTopTracksPage = newPage;
-
-        // First render — no animation.
-        if (prevPage < 0) return;
-
-        int dir = Math.Sign(newPage - prevPage);
-        if (dir == 0) return;
-
-        if (!_topTracksTranslationEnabled)
-        {
-            ElementCompositionPreview.SetIsTranslationEnabled(TopTracksRepeater, true);
-            _topTracksTranslationEnabled = true;
-        }
-
-        long gen = System.Threading.Interlocked.Increment(ref _topTracksAnimGen);
-
-        var visual = ElementCompositionPreview.GetElementVisual(TopTracksRepeater);
-        var compositor = visual.Compositor;
-        var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.33f, 1f), new Vector2(0.68f, 1f));
-
-        // Phase 1 — slide out + fade.
-        var outBatch = compositor.CreateScopedBatch(Microsoft.UI.Composition.CompositionBatchTypes.Animation);
-        var outOffset = compositor.CreateVector3KeyFrameAnimation();
-        outOffset.InsertKeyFrame(1f, new Vector3(-TopTracksSlideOffsetPx * dir, 0f, 0f), easing);
-        outOffset.Duration = TopTracksOutDuration;
-        var outOpacity = compositor.CreateScalarKeyFrameAnimation();
-        outOpacity.InsertKeyFrame(1f, 0f, easing);
-        outOpacity.Duration = TopTracksOutDuration;
-        visual.StartAnimation("Translation", outOffset);
-        visual.StartAnimation("Opacity", outOpacity);
-        outBatch.End();
-
-        var tcs = new TaskCompletionSource();
-        outBatch.Completed += (_, _) => tcs.TrySetResult();
-        await tcs.Task;
-
-        // Newer page change superseded us — abandon.
-        if (gen != System.Threading.Interlocked.Read(ref _topTracksAnimGen)) return;
-
-        // Let the binding rebuild PagedTopTracks before phase 2 starts.
-        await DispatcherQueue.EnqueueAsync(() => { });
-
-        if (gen != System.Threading.Interlocked.Read(ref _topTracksAnimGen)) return;
-
-        // Phase 2 — snap to opposite side, slide back in + fade.
-        visual.Properties.InsertVector3("Translation", new Vector3(TopTracksSlideOffsetPx * dir, 0f, 0f));
-        visual.Opacity = 0f;
-        var inOffset = compositor.CreateVector3KeyFrameAnimation();
-        inOffset.InsertKeyFrame(1f, Vector3.Zero, easing);
-        inOffset.Duration = TopTracksInDuration;
-        var inOpacity = compositor.CreateScalarKeyFrameAnimation();
-        inOpacity.InsertKeyFrame(1f, 1f, easing);
-        inOpacity.Duration = TopTracksInDuration;
-        visual.StartAnimation("Translation", inOffset);
-        visual.StartAnimation("Opacity", inOpacity);
-    }
-
-    // ── Trackpad two-finger horizontal swipe → paginate top tracks ──
-    // Precision touchpad horizontal pans surface as PointerWheelChanged with
-    // IsHorizontalMouseWheel=true. Vertical-only wheel events are left
-    // unhandled so the parent ScrollViewer keeps scrolling the page.
-    private double _wheelAccumulator;
-    private DateTimeOffset _wheelCooldownUntil = DateTimeOffset.MinValue;
-    private const double WheelPageThreshold = 80.0;
-    private static readonly TimeSpan WheelCooldown = TimeSpan.FromMilliseconds(250);
-
-    private void TopTracksSection_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
-    {
-        if (ViewModel == null || sender is not UIElement panel) return;
-
-        var props = e.GetCurrentPoint(panel).Properties;
-        if (!props.IsHorizontalMouseWheel) return;
-
-        if (DateTimeOffset.UtcNow < _wheelCooldownUntil)
-        {
-            e.Handled = true;
-            return;
-        }
-
-        _wheelAccumulator += props.MouseWheelDelta;
-
-        if (_wheelAccumulator >= WheelPageThreshold)
-        {
-            if (ViewModel.CurrentPage < ViewModel.TotalPages - 1)
-                ViewModel.NextPageCommand.Execute(null);
-            _wheelAccumulator = 0;
-            _wheelCooldownUntil = DateTimeOffset.UtcNow + WheelCooldown;
-            e.Handled = true;
-        }
-        else if (_wheelAccumulator <= -WheelPageThreshold)
-        {
-            if (ViewModel.CurrentPage > 0)
-                ViewModel.PreviousPageCommand.Execute(null);
-            _wheelAccumulator = 0;
-            _wheelCooldownUntil = DateTimeOffset.UtcNow + WheelCooldown;
-            e.Handled = true;
-        }
-    }
-
-    private int? _topTrackSelectionAnchor;
-    private readonly TappedEventHandler _topTrackTappedHandler;
-
-    private void TopTracksRepeater_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
-    {
-        if (args.Element is Controls.Track.TrackItem trackItem)
-        {
-            trackItem.PlayCommand = ViewModel.PlayTrackCommand;
-
-            var lazy = ViewModel?.PagedTopTracks.ElementAtOrDefault(args.Index);
-            trackItem.Tag = lazy;
-
-            // handledEventsToo=true: TrackItem may consume Tapped for single-tap play.
-            // Selection still needs to run on the same gesture.
-            trackItem.RemoveHandler(UIElement.TappedEvent, _topTrackTappedHandler);
-            trackItem.AddHandler(UIElement.TappedEvent, _topTrackTappedHandler, true);
-
-            trackItem.DataContextChanged -= TopTrackItem_DataContextChanged;
-            trackItem.DataContextChanged += TopTrackItem_DataContextChanged;
-
-            if (lazy is ViewModels.LazyTrackItem preparedLazy && ViewModel != null)
-            {
-                preparedLazy.IsSelected = ViewModel.IsTopTrackSelected(preparedLazy);
-                trackItem.IsSelected = preparedLazy.IsSelected;
-            }
-        }
-    }
-
-    private void TopTrackItem_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
-    {
-        if (sender is Controls.Track.TrackItem ti &&
-            args.NewValue is ViewModels.LazyTrackItem lazy &&
-            ViewModel != null)
-        {
-            lazy.IsSelected = ViewModel.IsTopTrackSelected(lazy);
-            ti.IsSelected = lazy.IsSelected;
-        }
-    }
-
-    private void TopTrackItem_Tapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (sender is not Controls.Track.TrackItem ti ||
-            ti.Tag is not ViewModels.LazyTrackItem lazy ||
-            ViewModel == null)
-            return;
-
-        var (ctrl, shift) = GetCtrlShiftState();
-
-        var paged = ViewModel.PagedTopTracks.ToList();
-        int index = paged.IndexOf(lazy);
-        if (index < 0) return;
-
-        if (shift && _topTrackSelectionAnchor.HasValue)
-        {
-            int start = Math.Min(_topTrackSelectionAnchor.Value, index);
-            int end = Math.Max(_topTrackSelectionAnchor.Value, index);
-            ViewModel.SelectedTopTracks.Clear();
-            for (int i = start; i <= end; i++)
-                ViewModel.SelectedTopTracks.Add(paged[i]);
-        }
-        else if (ctrl)
-        {
-            if (ViewModel.SelectedTopTracks.Contains(lazy))
-                ViewModel.SelectedTopTracks.Remove(lazy);
-            else
-                ViewModel.SelectedTopTracks.Add(lazy);
-            _topTrackSelectionAnchor = index;
-        }
-        else
-        {
-            // Plain click toggles: re-clicking an already-selected item deselects it.
-            if (ViewModel.SelectedTopTracks.Contains(lazy))
-            {
-                ViewModel.SelectedTopTracks.Remove(lazy);
-                if (ViewModel.SelectedTopTracks.Count == 0)
-                    _topTrackSelectionAnchor = null;
-            }
-            else
-            {
-                ViewModel.SelectedTopTracks.Clear();
-                ViewModel.SelectedTopTracks.Add(lazy);
-                _topTrackSelectionAnchor = index;
-            }
-        }
-
-        RefreshTopTrackSelectionVisuals();
-    }
-
-    private void TopTracksSection_KeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (e.Key != Windows.System.VirtualKey.A || !GetCtrlShiftState().ctrl)
-            return;
-
-        SelectAllVisibleTopTracks();
-        e.Handled = true;
-    }
-
-    private void TopTracksSelectAllAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-    {
-        SelectAllVisibleTopTracks();
-        args.Handled = true;
-    }
-
-    private void SelectAllVisibleTopTracks()
-    {
-        if (ViewModel == null) return;
-
-        var paged = ViewModel.PagedTopTracks.ToList();
-        ViewModel.SelectedTopTracks.Clear();
-        foreach (var item in paged)
-            ViewModel.SelectedTopTracks.Add(item);
-
-        _topTrackSelectionAnchor = paged.Count > 0 ? 0 : null;
-        RefreshTopTrackSelectionVisuals();
-    }
-
-    private static (bool ctrl, bool shift) GetCtrlShiftState()
+    private async Task AnimateReleasePanelOutAsync(FrameworkElement panel)
     {
         try
         {
-            var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control);
-            var shiftState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift);
-            return (
-                (ctrlState & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down,
-                (shiftState & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down);
+            await AnimationBuilder.Create()
+                .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(ReleasePanelExitMs))
+                .Translation(
+                    Axis.Y,
+                    to: ReleasePanelExitOffset,
+                    duration: TimeSpan.FromMilliseconds(ReleasePanelExitMs),
+                    easingType: EasingType.Sine,
+                    easingMode: EasingMode.EaseIn)
+                .StartAsync(panel);
         }
-        catch
+        catch (Exception ex)
         {
-            return (false, false);
+            _logger?.LogDebug(ex, "ArtistPage release panel collapse animation failed.");
         }
     }
 
-    private void RefreshTopTrackSelectionVisuals()
+    private void CollapseExpandedAlbumCore()
     {
-        if (ViewModel == null) return;
-        var paged = ViewModel.PagedTopTracks.ToList();
-        for (int i = 0; i < paged.Count; i++)
-        {
-            paged[i].IsSelected = ViewModel.IsTopTrackSelected(paged[i]);
-            if (TopTracksRepeater.TryGetElement(i) is Controls.Track.TrackItem ti)
-                ti.IsSelected = paged[i].IsSelected;
-        }
-    }
+        var hadExpansion = _activeDetailPanel is not null
+            || _splitRepeaterAfter is not null
+            || _originalRepeater is not null
+            || ViewModel.ExpandedAlbum is not null;
 
-    private void TopTracksSection_Tapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (ViewModel == null) return;
-        if (IsWithinTrackItem(e.OriginalSource as DependencyObject)) return;
-
-        ViewModel.ClearTopTracksSelection();
-        _topTrackSelectionAnchor = null;
-        RefreshTopTrackSelectionVisuals();
-    }
-
-    private static bool IsWithinTrackItem(DependencyObject? element)
-    {
-        while (element != null)
-        {
-            if (element is Controls.Track.TrackItem) return true;
-            element = VisualTreeHelper.GetParent(element);
-        }
-        return false;
-    }
-
-    public void RefreshWithParameter(object? parameter)
-    {
-        CancelNavigationCacheTrim();
-        _isNavigatingAway = false;
-        LoadNewContent(parameter);
-    }
-
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
-    {
-        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.onNavigatedFrom");
-        base.OnNavigatedFrom(e);
-        TrimForNavigationCache();
-    }
-
-    public void TrimForNavigationCache()
-    {
-        ScheduleNavigationCacheTrim();
-    }
-
-    private void TrimForNavigationCacheNow()
-    {
-        if (_trimmedForNavigationCache)
-            return;
-
-        CaptureNavigationScrollPosition();
-        _trimmedForNavigationCache = true;
-        _lastRestoredArtistId = ViewModel.ArtistId;
-        _isNavigatingAway = true;
         CancelResizeDebounce();
-        CollapseExpandedAlbum();
-        TeardownWatchFeed();
-        _shyHeader?.Stop();
 
-        // Hibernate releases the store subscription and heavy bound collections
-        // before the page is hidden. Revisit speed comes from warm data caches.
-        ViewModel.Hibernate();
-        ReleaseNavigationCachedImages();
-        HeroGrid?.ReleaseSurface();
-        // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
-        // sibling is no longer rooted by the (singleton-store-subscribed) VM —
-        // without this the entire page tree is pinned across navigations.
-        Bindings?.StopTracking();
-    }
+        if (_activeDetailPanel is not null && _closeRequestedHandler is not null)
+            _activeDetailPanel.CloseRequested -= _closeRequestedHandler;
+        _closeRequestedHandler = null;
 
-    private void ScheduleNavigationCacheTrim()
-    {
-        if (_isDisposed || _trimmedForNavigationCache)
-            return;
-
-        var timer = _navigationTrimTimer;
-        if (timer is null)
+        if (_activeDetailPanel is not null)
         {
-            timer = DispatcherQueue.CreateTimer();
-            timer.IsRepeating = false;
-            timer.Tick += NavigationTrimTimer_Tick;
-            _navigationTrimTimer = timer;
+            ReleaseImagesInSubtree(_activeDetailPanel);
+            _activeDetailPanel.Tracks = null;
+            _splitParent?.Children.Remove(_activeDetailPanel);
         }
 
-        timer.Stop();
-        timer.Interval = TimeSpan.FromSeconds(NavigationCacheTrimDelaySeconds);
-        timer.Start();
-    }
-
-    private void CancelNavigationCacheTrim()
-    {
-        _navigationTrimTimer?.Stop();
-    }
-
-    private void NavigationTrimTimer_Tick(DispatcherQueueTimer sender, object args)
-    {
-        sender.Stop();
-        if (_isDisposed || _trimmedForNavigationCache)
-            return;
-
-        TrimForNavigationCacheNow();
-    }
-
-    public void RestoreFromNavigationCache()
-    {
-        CancelNavigationCacheTrim();
-        if (!_trimmedForNavigationCache)
-            return;
-
-        _trimmedForNavigationCache = false;
-        _isNavigatingAway = false;
-        if (_shyHeader is not null) _shyHeader.Suppressed = false;
-        _suppressContentReveal = false;
-        _shyHeader?.Reset();
-        // Defer the hero-surface rehydration to a low-priority dispatch
-        // (same rationale as OnNavigatedTo above).
-        DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () => HeroGrid?.RestoreSurface());
-        // Always re-attach via Bindings.Update on restore. The earlier
-        // sameArtist skip assumed the binding graph hadn't changed across the
-        // trim, but Hibernate explicitly null-outs ArtistImageUrl /
-        // HeaderImageUrl / LatestReleaseImageUrl / PinnedItem (texture
-        // release). After StopTracking, the EnsureHeroUrls writes that follow
-        // Initialize fire PropertyChanged into a detached binding graph and
-        // never reach the UI — leaving the avatar + header blank on revisit.
-        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.artist.bindingsUpdate"))
+        if (_splitRepeaterAfter is not null)
         {
-            Bindings?.Update();
+            _splitRepeaterAfter.ElementClearing -= DiscographyRepeater_ElementClearing;
+            ReleaseImagesInSubtree(_splitRepeaterAfter);
+            _splitParent?.Children.Remove(_splitRepeaterAfter);
         }
-        // Initialize + RestoreDiscographyRepeaters + SetupWatchFeedVideo +
-        // TryShowContentNow + TryRestorePendingNavigationScroll used to run here
-        // too — but OnNavigatedTo fires next on the same dispatch and its
-        // same-artist branch (or LoadNewContent for a different artist) runs the
-        // exact same chain. Running both caused two ApplyOverview dispatches
-        // against ArtistStore and two discography rebuilds per navigation.
+
+        if (_originalRepeater is not null)
+            _originalRepeater.ItemsSource = _originalItemsSource;
+
+        _activeDetailPanel = null;
+        _splitRepeaterAfter = null;
+        _splitParent = null;
+        _originalRepeater = null;
+        _originalItemsSource = null;
+        _expandedItem = null;
+        _expandedItemIndex = -1;
+
+        if (hadExpansion)
+            ViewModel.CollapseAlbumCommand.Execute(null);
     }
 
-    private void CaptureNavigationScrollPosition()
+    private async Task FetchAlbumColorAsync(Wavee.UI.WinUI.ViewModels.ArtistReleaseVm album, AlbumDetailPanel panel)
     {
-        _pendingNavigationScrollArtistId = ViewModel.ArtistId;
-        _pendingNavigationScrollOffset = PageScrollView?.VerticalOffset ?? 0;
-        _scrollRestoreGeneration++;
-    }
-
-    private void ClearPendingNavigationScrollPosition()
-    {
-        _pendingNavigationScrollArtistId = null;
-        _pendingNavigationScrollOffset = null;
-        _scrollRestoreGeneration++;
-    }
-
-    private void TryRestorePendingNavigationScroll()
-    {
-        if (_pendingNavigationScrollOffset is not { } offset
-            || string.IsNullOrEmpty(_pendingNavigationScrollArtistId)
-            || !string.Equals(_pendingNavigationScrollArtistId, ViewModel.ArtistId, StringComparison.Ordinal))
+        if (!string.IsNullOrEmpty(album.ColorHex))
         {
+            panel.ColorHex = album.ColorHex;
             return;
         }
 
-        var generation = _scrollRestoreGeneration;
-        _ = RestorePendingNavigationScrollAsync(offset, generation);
-    }
-
-    private async Task RestorePendingNavigationScrollAsync(double offset, int generation)
-    {
-        if (offset <= 0 || PageScrollView is null)
-        {
-            ClearPendingNavigationScrollPosition();
+        var imageUrl = SpotifyImageHelper.ToHttpsUrl(album.ImageUrl);
+        if (string.IsNullOrEmpty(imageUrl))
             return;
-        }
 
-        for (var attempt = 0; attempt < ScrollRestoreMaxAttempts; attempt++)
+        try
         {
-            await Task.Yield();
-            if (attempt > 0)
-                await Task.Delay(ScrollRestoreRetryDelayMs);
-
-            if (_isDisposed || _isNavigatingAway || generation != _scrollRestoreGeneration || PageScrollView is null)
+            var color = await _colorService.GetColorAsync(imageUrl);
+            if (color is null || panel.XamlRoot is null)
                 return;
 
-            var maxOffset = Math.Max(0, PageScrollView.ExtentHeight - PageScrollView.ViewportHeight);
-            if (maxOffset <= 0 && attempt + 1 < ScrollRestoreMaxAttempts)
-                continue;
+            var isDark = ActualTheme == ElementTheme.Dark;
+            var hex = isDark
+                ? color.DarkHex ?? color.RawHex
+                : color.LightHex ?? color.RawHex;
 
-            var target = Math.Clamp(offset, 0, maxOffset);
-            PageScrollView.ScrollToImmediate(0, target);
-            _shyHeader?.UpdateHeroFade();
-            _ = _shyHeader?.EvaluateAsync();
-            ClearPendingNavigationScrollPosition();
-            return;
+            if (!string.IsNullOrEmpty(hex))
+                panel.ColorHex = hex;
         }
-    }
-
-    private void ReleaseNavigationCachedImages()
-    {
-        DetachDiscographyRepeaters();
-        ReleaseImagesInSubtree(ArtistImageContainer);
-        ReleaseImagesInSubtree(PinnedTopTracksCard);
-        ReleaseImagesInSubtree(LatestReleaseCard);
-        ReleaseImagesInSubtree(ShyHeaderHost);
-    }
-
-    private void DetachDiscographyRepeaters()
-    {
-        if (_discographyRepeatersDetached)
-            return;
-
-        ReleaseImagesInSubtree(AlbumsSection);
-        ReleaseImagesInSubtree(SinglesSection);
-        ReleaseImagesInSubtree(CompilationsSection);
-
-        if (AlbumsGridRepeater is not null) AlbumsGridRepeater.ItemsSource = null;
-        if (AlbumsListRepeater is not null) AlbumsListRepeater.ItemsSource = null;
-        if (SinglesGridRepeater is not null) SinglesGridRepeater.ItemsSource = null;
-        if (SinglesListRepeater is not null) SinglesListRepeater.ItemsSource = null;
-        if (CompilationsShelf is not null) CompilationsShelf.ItemsSource = null;
-
-        _discographyRepeatersDetached = true;
-    }
-
-    private void RestoreDiscographyRepeaters()
-    {
-        if (!_discographyRepeatersDetached)
+        catch (Exception ex)
         {
-            UpdateDiscographyRepeaterBindings();
-            return;
+            _logger?.LogWarning(ex, "Failed to fetch artist release color");
         }
-
-        _discographyRepeatersDetached = false;
-        UpdateDiscographyRepeaterBindings();
-    }
-
-    private void UpdateDiscographyRepeaterBindings()
-    {
-        if (_discographyRepeatersDetached)
-            return;
-
-        if (AlbumsGridRepeater is not null)
-            AlbumsGridRepeater.ItemsSource = ViewModel.AlbumsGridView ? ViewModel.Albums : null;
-        if (AlbumsListRepeater is not null)
-            AlbumsListRepeater.ItemsSource = ViewModel.AlbumsGridView ? null : ViewModel.Albums;
-
-        if (SinglesGridRepeater is not null)
-            SinglesGridRepeater.ItemsSource = ViewModel.SinglesGridView ? ViewModel.Singles : null;
-        if (SinglesListRepeater is not null)
-            SinglesListRepeater.ItemsSource = ViewModel.SinglesGridView ? null : ViewModel.Singles;
-
-        if (CompilationsShelf is not null)
-            CompilationsShelf.ItemsSource = ViewModel.Compilations;
     }
 
     private void DiscographyRepeater_ElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
@@ -1417,640 +1360,172 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             ReleaseImagesInSubtree(VisualTreeHelper.GetChild(root, i));
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
-    {
-        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.onNavigatedTo");
-        base.OnNavigatedTo(e);
-        CancelNavigationCacheTrim();
-        // Re-attach compiled x:Bind to VM.PropertyChanged BEFORE LoadNewContent /
-        // ViewModel.Initialize fires PropertyChanged events for the new artist.
-        // Earlier the flow was: TabBarItem.TrimActive → Bindings.StopTracking →
-        // OnNavigatedTo set `_trimmedForNavigationCache = false` (preempting
-        // RestoreFromNavigationCache from running its Bindings.Update) → LoadNewContent
-        // pushed ResetForNewArtist + LoadAsync's scalar writes into deaf bindings →
-        // ContentFrame_Navigated fired RestoreFromNavigationCache, which early-returned
-        // because the flag was already cleared. Bindings stayed stopped, the VM's
-        // Adam-Lambert data was correct underneath, but the page's scalar TextBlocks
-        // (ArtistName, MonthlyListeners) and OneWay-bound collections (TopTracks)
-        // kept showing the previous artist's values. Calling Update() here, before
-        // the flag reset, fixes that — Update() is idempotent and re-attaches the
-        // PropertyChanged listeners stopped by an earlier StopTracking.
-        Bindings?.Update();
-        _trimmedForNavigationCache = false;
-        _isNavigatingAway = false;
-        if (_shyHeader is not null) _shyHeader.Suppressed = false;
-        _suppressContentReveal = false;
-        _shyHeader?.Reset();
-
-        // Rehydrate the hero surface if it was released on prior navigate-away.
-        // No-op on first visit (LoadImage's URL-equality guard short-circuits).
-        // Deferred to a low-priority dispatch so it runs AFTER first paint —
-        // the palette gradient already paints behind it, so the user sees the
-        // hero land via fade-in once the surface is ready (5-8 ms saved off
-        // OnNavigatedTo synchronous cost).
-        DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () => HeroGrid?.RestoreSurface());
-
-        // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
-        // ConnectedAnimationHelper.TryStartAnimation(ConnectedAnimationHelper.ArtistImage, ArtistImageContainer);
-
-        // Extract the incoming artist URI
-        var incomingUri = e.Parameter is ContentNavigationParameter nav ? nav.Uri
-                        : e.Parameter as string;
-
-        // Re-entering the same artist (Back or Forward): re-subscribe to the
-        // ArtistStore so the warm BehaviorSubject re-emits the cached overview
-        // and re-populates the collections that Hibernate cleared on the prior
-        // OnNavigatedFrom. No network re-fetch — Initialize is idempotent for
-        // the same artistId and the store value is in memory.
-        //
-        // Key off incomingUri only — `e.NavigationMode == Back` previously
-        // forced this branch even when Back returned to a *different* artist
-        // (A → B → back-to-A leaves VM.ArtistId == B), which then re-init'd
-        // the wrong artist and stranded the page on stale data.
-        if (incomingUri != null && incomingUri == ViewModel.ArtistId)
-        {
-            ViewModel.Initialize(ViewModel.ArtistId);
-            RestoreDiscographyRepeaters();
-            SetupWatchFeedVideo();
-            TryShowContentNow();
-            TryRestorePendingNavigationScroll();
-            return;
-        }
-
-        LoadNewContent(e.Parameter);
-    }
-
-    private async void LoadNewContent(object? parameter)
-    {
-        _trimmedForNavigationCache = false;
-        CollapseExpandedAlbum();
-        TeardownWatchFeed();
-        ClearPendingNavigationScrollPosition();
-
-        // Hide the reused page before jumping from the previous artist's scroll
-        // position. Otherwise the old bottom-state page crosses the shy-header
-        // threshold during navigation and flashes the floating header.
-        SuppressShyHeaderForContentReset();
-        _suppressContentReveal = true;
-        _showingContent = false;
-        _crossfadeScheduled = false;
-        _heroRevealed = false;
-        ContentContainer.Opacity = 0;
-        ContentContainer.Visibility = Visibility.Collapsed;
-        // Hero overlay also resets to invisible so the new artist's chrome
-        // fades in on its own beat instead of inheriting the previous one.
-        SetHeroOverlayOpacity(0);
-        ShimmerGate.Reset(() => ShimmerContainer, () => ContentContainer);
-        PageScrollView.ScrollToImmediate(0, 0);
-        _shyHeader?.UpdateHeroFade();
-        RestoreDiscographyRepeaters();
-
-        if (parameter is ContentNavigationParameter navParam)
-        {
-            ViewModel.Initialize(navParam.Uri);
-            ViewModel.PrefillFrom(navParam);
-        }
-        else if (parameter is string artistIxd)
-        {
-            ViewModel.Initialize(artistIxd);
-        }
-
-        // Initialize() above already subscribed to the ArtistStore — the store
-        // emits Ready once the overview lands and the VM drives its cascade from
-        // there. No explicit load command needed.
-        // SetupWatchFeedVideo is called from CrossfadeToContent after data loads.
-
-        // Warm-cache trigger. ArtistStore is a BehaviorSubject — Initialize's
-        // subscribe queues ApplyOverviewState via the dispatcher, which runs
-        // after this method returns. After one yield it has landed (ArtistName
-        // populated, IsLoading stayed false), so TryShowContentNow can fire
-        // ScheduleCrossfade for the warm-cache case where the IsLoading=false
-        // write was a no-op (PropertyChanged didn't fire). Without this, with
-        // NavigationCacheMode=Required the same VM is reused across nav and the
-        // shimmer stays stuck on cache hits. Mirrors AlbumPage / PlaylistPage.
-        await Task.Yield();
-        _suppressContentReveal = false;
-        if (_isNavigatingAway) return;
-        TryShowContentNow();
-    }
-
-    private void Release_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement fe && fe.DataContext is ArtistReleaseVm release)
-        {
-            var param = new ContentNavigationParameter
-            {
-                Uri = release.Uri ?? release.Id,
-                Title = release.Name,
-                ImageUrl = release.ImageUrl
-            };
-            NavigationHelpers.OpenAlbum(param, release.Name ?? "Album", NavigationHelpers.IsCtrlPressed());
-        }
-    }
-
-    // ── Inline album expand (DOM-style visual tree manipulation) ──
-
-    private AlbumDetailPanel? _activeDetailPanel;
-    private EventHandler? _closeRequestedHandler;
-    private ItemsRepeater? _splitRepeaterAfter;
-    private StackPanel? _splitParent;
-    private int _splitInsertIndex;
-    private ItemsRepeater? _originalRepeater;
-    private object? _originalItemsSource;
-
-    // State needed to recompute split on resize
-    private LazyReleaseItem? _expandedItem;
-    private int _expandedItemIndex;
-    private CancellationTokenSource? _resizeDebounceCts;
-
-    private readonly IColorService _colorService = Ioc.Default.GetRequiredService<IColorService>();
-
-    private void AlbumCard_Click(object sender, EventArgs e)
-    {
-        if (sender is not FrameworkElement fe) return;
-
-        var repeater = FindParent<ItemsRepeater>(fe);
-        if (repeater == null) return;
-
-        // Walk up to find the direct child of the repeater (the template root)
-        DependencyObject? current = fe;
-        DependencyObject? parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
-        while (parent != null && parent != repeater)
-        {
-            current = parent;
-            parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
-        }
-        if (current is not UIElement templateRoot) return;
-
-        var index = repeater.GetElementIndex(templateRoot);
-        if (index < 0) return;
-
-        var items = repeater.ItemsSource as System.Collections.IList;
-        if (items == null || index >= items.Count) return;
-
-        var item = items[index] as LazyReleaseItem;
-        if (item == null || !item.IsLoaded || item.Data == null) return;
-
-        // If clicking the same album that was expanded, just collapse (toggle)
-        if (ViewModel.ExpandedAlbum?.Id == item.Id)
-        {
-            CollapseExpandedAlbum();
-            return;
-        }
-
-        // Capture the true original repeater/items before collapsing
-        // (clicking in _splitRepeaterAfter means the real repeater is _originalRepeater)
-        var trueRepeater = _originalRepeater ?? repeater;
-        var trueItemsSource = (_originalItemsSource ?? repeater.ItemsSource) as System.Collections.IList;
-
-        // Collapse any existing expansion first (restores original state)
-        CollapseExpandedAlbum();
-
-        // Now trueRepeater has its full ItemsSource restored
-        if (trueItemsSource == null) return;
-
-        var itemIndex = trueItemsSource.IndexOf(item);
-        if (itemIndex < 0) return;
-
-        // Find the parent StackPanel and the repeater's index in it
-        var parentPanel = trueRepeater.Parent as StackPanel;
-        if (parentPanel == null) return;
-
-        var repeaterIndex = parentPanel.Children.IndexOf(trueRepeater);
-        if (repeaterIndex < 0) return;
-
-        // Save original state for restore + resize recompute
-        _originalRepeater = trueRepeater;
-        _originalItemsSource = trueItemsSource;
-        _splitParent = parentPanel;
-        _expandedItem = item;
-        _expandedItemIndex = itemIndex;
-
-        // Create the detail panel
-        _activeDetailPanel = new AlbumDetailPanel();
-        _activeDetailPanel.Album = item.Data;
-        _activeDetailPanel.Tracks = ViewModel.ExpandedAlbumTracks;
-        _closeRequestedHandler = (_, _) => CollapseExpandedAlbum();
-        _activeDetailPanel.CloseRequested += _closeRequestedHandler;
-
-        // Fetch extracted color for album art gradient (uses cache if available)
-        _ = FetchAlbumColorAsync(item.Data, _activeDetailPanel);
-
-        // Insert detail panel after the repeater
-        _splitInsertIndex = repeaterIndex + 1;
-        parentPanel.Children.Insert(_splitInsertIndex, _activeDetailPanel);
-
-        // Compute split, notch, and second repeater
-        ApplySplitLayout();
-
-        // Auto-scroll so the clicked album card row is visible at the top,
-        // with the detail panel below it
-        _activeDetailPanel.StartBringIntoView(new BringIntoViewOptions
-        {
-            AnimationDesired = true,
-            VerticalAlignmentRatio = 0.5, // center the panel, which puts the card row above it
-            VerticalOffset = -200          // nudge up so the card row is also visible
-        });
-
-        // Update ViewModel state
-        ViewModel.ExpandAlbumCommand.Execute(item);
-    }
-
-    private void CollapseExpandedAlbum()
-    {
-        if (_splitParent == null || _originalRepeater == null) return;
-
-        // Unsubscribe event handler to prevent memory leak
-        if (_activeDetailPanel != null && _closeRequestedHandler != null)
-            _activeDetailPanel.CloseRequested -= _closeRequestedHandler;
-        _closeRequestedHandler = null;
-
-        // Detach tracks BEFORE removing from visual tree to prevent COMException
-        // (ItemsRepeater can't process CollectionChanged while disconnected)
-        if (_activeDetailPanel != null)
-        {
-            ReleaseImagesInSubtree(_activeDetailPanel);
-            _activeDetailPanel.Tracks = null;
-            _splitParent.Children.Remove(_activeDetailPanel);
-        }
-        if (_splitRepeaterAfter != null)
-        {
-            _splitRepeaterAfter.ElementClearing -= DiscographyRepeater_ElementClearing;
-            ReleaseImagesInSubtree(_splitRepeaterAfter);
-            _splitParent.Children.Remove(_splitRepeaterAfter);
-        }
-
-        // Restore original items source
-        _originalRepeater.ItemsSource = _originalItemsSource;
-
-        // Clean up
-        _activeDetailPanel = null;
-        _splitRepeaterAfter = null;
-        _splitParent = null;
-        _originalRepeater = null;
-        _originalItemsSource = null;
-        _expandedItem = null;
-        _expandedItemIndex = -1;
-
-        ViewModel.CollapseAlbumCommand.Execute(null);
-    }
-
-    private static T? FindParent<T>(DependencyObject child, DependencyObject? stopAt = null) where T : DependencyObject
+    private static T? FindParent<T>(DependencyObject child, DependencyObject? stopAt = null)
+        where T : DependencyObject
     {
         var current = child;
-        var parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
-        while (parent != null && parent != stopAt)
+        var parent = VisualTreeHelper.GetParent(current);
+        while (parent is not null && parent != stopAt)
         {
-            if (parent is T found) return found;
+            if (parent is T found)
+                return found;
+
             current = parent;
-            parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
+            parent = VisualTreeHelper.GetParent(current);
         }
-        // If we stopped at stopAt, return the last child before it
-        if (stopAt != null && parent == stopAt)
-            return current as T;
-        return null;
+
+        return stopAt is not null && parent == stopAt
+            ? current as T
+            : null;
+    }
+
+    private void MusicVideoCard_Click(object? sender, EventArgs e)
+    {
+        if (sender is ContentCard { Tag: string trackUri } && !string.IsNullOrEmpty(trackUri))
+            _logger?.LogDebug("MusicVideoCard clicked: {Uri}", trackUri);
+    }
+
+    private void PlaylistCard_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MediaCard card && card.Tag is string uri && !string.IsNullOrEmpty(uri))
+        {
+            var navParam = new ContentNavigationParameter { Uri = uri, Title = card.Title };
+            this.Frame?.Navigate(typeof(PlaylistPage), navParam);
+        }
+    }
+
+    private void ConcertStub_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is TicketStub { Tag: string uri } && !string.IsNullOrEmpty(uri))
+            _logger?.LogDebug("ConcertStub clicked: {Uri}", uri);
+    }
+
+    private void ConcertStub_BuyClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is TicketStub { Tag: string uri } && !string.IsNullOrEmpty(uri)
+            && Uri.TryCreate(uri, UriKind.Absolute, out var u))
+            _ = Windows.System.Launcher.LaunchUriAsync(u);
+    }
+
+    private void MerchCard_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MerchCard { Tag: string url } && !string.IsNullOrEmpty(url)
+            && Uri.TryCreate(url, UriKind.Absolute, out var u))
+            _ = Windows.System.Launcher.LaunchUriAsync(u);
+    }
+
+    private void MerchCard_BuyClick(object sender, RoutedEventArgs e) => MerchCard_Click(sender, e);
+
+    private void GalleryCard_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string url })
+            _logger?.LogDebug("GalleryCard clicked: {Url}", url);
     }
 
     private void RelatedArtist_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement fe && fe.DataContext is RelatedArtistVm artist)
+        if (sender is ArtistCircleCard card && card.Tag is string uri && !string.IsNullOrEmpty(uri))
+            NavigationHelpers.OpenArtist(uri, card.DisplayName ?? string.Empty);
+    }
+
+    private void TourBanner_Click(object sender, RoutedEventArgs e)
+    {
+        // Round 4 split the old TourMerchSection grid into two independent
+        // rows; scroll to Concerts when it's present, otherwise Merch.
+        FrameworkElement? target =
+            ConcertsSection is { Visibility: Visibility.Visible } ? ConcertsSection :
+            MerchSection is { Visibility: Visibility.Visible } ? MerchSection :
+            null;
+        if (target is null) return;
+        try
         {
-            var param = new ContentNavigationParameter
-            {
-                Uri = artist.Uri ?? artist.Id ?? "",
-                Title = artist.Name,
-                ImageUrl = artist.ImageUrl
-            };
-            NavigationHelpers.OpenArtist(param, artist.Name ?? "Artist", NavigationHelpers.IsCtrlPressed());
+            var transform = target.TransformToVisual(ContentRoot);
+            var offsetY = transform.TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+            PageScrollView.ScrollTo(0, Math.Max(0, offsetY - 16), new ScrollingScrollOptions(ScrollingAnimationMode.Enabled));
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "TourBanner scroll-into-view failed.");
         }
     }
 
-    /// <summary>
-    /// Detach the MediaPlayer from the visual tree BEFORE the page is removed.
-    /// This prevents COM E_ABORT when WinUI tears down the MediaPlayerElement.
-    /// </summary>
-    protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)
+    private void ReadFullBioLink_Click(object sender, RoutedEventArgs e)
     {
-        base.OnNavigatingFrom(e);
-        _isNavigatingAway = true;
-        CancelResizeDebounce();
-        CollapseExpandedAlbum();
-        TeardownWatchFeed();
-        _shyHeader?.Stop();
+        if (AboutLinksSection is null) return;
+        try
+        {
+            var transform = AboutLinksSection.TransformToVisual(ContentRoot);
+            var offsetY = transform.TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+            PageScrollView.ScrollTo(0, Math.Max(0, offsetY - 16), new ScrollingScrollOptions(ScrollingAnimationMode.Enabled));
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "ReadFullBio scroll-into-view failed.");
+        }
     }
+
+    private void ShareArtist_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(ViewModel.ArtistId)) return;
+        var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        dp.SetText($"https://open.spotify.com/artist/{ViewModel.ArtistId.Replace("spotify:artist:", "", StringComparison.Ordinal)}");
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
+    }
+
+    private void CopyArtistLink_Click(object sender, RoutedEventArgs e) => ShareArtist_Click(sender, e);
+
+    private void OpenInSpotify_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(ViewModel.ArtistId)) return;
+        var id = ViewModel.ArtistId.Replace("spotify:artist:", "", StringComparison.Ordinal);
+        _ = Windows.System.Launcher.LaunchUriAsync(new Uri($"https://open.spotify.com/artist/{id}"));
+    }
+
+    private static string? ToOpenSpotifyUrl(string? uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri)) return null;
+        if (uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return uri;
+        }
+
+        var parts = uri.Split(':', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 3 && parts[0].Equals("spotify", StringComparison.OrdinalIgnoreCase))
+            return $"https://open.spotify.com/{parts[1]}/{parts[2]}";
+
+        return null;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // INavigationCacheMemoryParticipant
+    // ─────────────────────────────────────────────────────────────────────
+
+    public void TrimForNavigationCache() => HeroGrid?.ReleaseSurface();
+
+    public void RestoreFromNavigationCache() => HeroGrid?.RestoreSurface();
+
+    // ─────────────────────────────────────────────────────────────────────
+    // IDisposable
+    // ─────────────────────────────────────────────────────────────────────
 
     public void Dispose()
     {
         if (_isDisposed) return;
         _isDisposed = true;
 
-        Loaded -= ArtistPage_Loaded;
-        Unloaded -= ArtistPage_Unloaded;
-        SizeChanged -= OnSizeChanged;
-        if (HeroGrid != null)
-            HeroGrid.SizeChanged -= HeroGrid_SizeChanged;
-        _shyHeader?.Dispose();
+        SizeChanged -= OnPageSizeChanged;
+        DetachScrollParallax();
+        DetachHeroSizeHandlers();
+        CancelResizeDebounce();
+        CollapseExpandedAlbumCore();
+        _shyHeader?.Detach();
         _shyHeader = null;
+
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-        if (_navigationTrimTimer is not null)
-        {
-            _navigationTrimTimer.Stop();
-            _navigationTrimTimer.Tick -= NavigationTrimTimer_Tick;
-            _navigationTrimTimer = null;
-        }
-        CancelResizeDebounce();
-        CollapseExpandedAlbum();
-        TeardownWatchFeed();
-        ReleaseNavigationCachedImages();
-        (ViewModel as IDisposable)?.Dispose();
-    }
 
-
-    private void WatchFeedOverlay_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
-    {
-        AnimationBuilder.Create()
-            .Opacity(to: 1, duration: TimeSpan.FromMilliseconds(150))
-            .Start(WatchFeedHoverOverlay);
-    }
-
-    private void WatchFeedOverlay_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
-    {
-        AnimationBuilder.Create()
-            .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(150))
-            .Start(WatchFeedHoverOverlay);
-    }
-
-    private void WatchFeedOverlay_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
-    {
-        // Toggle mute on tap
-        if (_watchFeedMediaPlayer != null)
-            _watchFeedMediaPlayer.IsMuted = !_watchFeedMediaPlayer.IsMuted;
-    }
-
-    private void PinnedItem_Click(object sender, RoutedEventArgs e)
-    {
-        if (ViewModel.PinnedItem?.Uri == null) return;
-
-        var type = ViewModel.PinnedItem.Type?.ToUpperInvariant();
-
-        // TRACK type: play the track in the artist context
-        if (type == "TRACK")
-        {
-            var playback = Ioc.Default.GetService<IPlaybackService>();
-            if (playback != null && !string.IsNullOrEmpty(ViewModel.ArtistId))
-                _ = playback.PlayTrackInContextAsync(ViewModel.PinnedItem.Uri, ViewModel.ArtistId);
-            return;
-        }
-
-        // CONNECTED-ANIM (disabled): nothing to cancel once nothing is being prepared
-        // ConnectedAnimationHelper.CancelPending();
-
-        var param = new ContentNavigationParameter
-        {
-            Uri = ViewModel.PinnedItem.Uri,
-            Title = ViewModel.PinnedItem.Title,
-            ImageUrl = ViewModel.PinnedItem.ImageUrl
-        };
-
-        if (type is "ALBUM" or "SINGLE" or "EP")
-            NavigationHelpers.OpenAlbum(param, ViewModel.PinnedItem.Title ?? "Album", NavigationHelpers.IsCtrlPressed());
-        else
-            NavigationHelpers.OpenAlbum(param, ViewModel.PinnedItem.Title ?? "Release", NavigationHelpers.IsCtrlPressed());
-    }
-
-    private async Task FetchAlbumColorAsync(ArtistReleaseVm album, AlbumDetailPanel panel)
-    {
-        if (!string.IsNullOrEmpty(album.ColorHex))
-        {
-            panel.ColorHex = album.ColorHex;
-            return;
-        }
-
-        if (string.IsNullOrEmpty(album.ImageUrl)) return;
-
-        var imageUrl = SpotifyImageHelper.ToHttpsUrl(album.ImageUrl);
-        if (string.IsNullOrEmpty(imageUrl)) return;
-
-        try
-        {
-            var color = await _colorService.GetColorAsync(imageUrl);
-            if (color == null) return;
-
-            // Use Spotify's pre-computed theme-appropriate color
-            var isDark = ActualTheme == ElementTheme.Dark;
-            var hex = isDark
-                ? color.DarkHex ?? color.RawHex
-                : color.LightHex ?? color.RawHex;
-
-            if (!string.IsNullOrEmpty(hex))
-                panel.ColorHex = hex;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Failed to fetch album color");
-        }
-    }
-
-    private void AlbumCard_Hover(object sender, EventArgs e)
-    {
-        if (sender is not FrameworkElement fe) return;
-
-        var repeater = FindParent<ItemsRepeater>(fe);
-        if (repeater == null) return;
-
-        DependencyObject? current = fe;
-        DependencyObject? parentObj = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
-        while (parentObj != null && parentObj != repeater)
-        {
-            current = parentObj;
-            parentObj = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
-        }
-        if (current is not UIElement templateRoot) return;
-
-        var index = repeater.GetElementIndex(templateRoot);
-        if (index < 0) return;
-
-        var items = repeater.ItemsSource as System.Collections.IList;
-        if (items == null || index >= items.Count) return;
-
-        var item = items[index] as LazyReleaseItem;
-        if (item?.Data == null || !string.IsNullOrEmpty(item.Data.ColorHex) || item.Data.ImageUrl == null) return;
-
-        var imageUrl = SpotifyImageHelper.ToHttpsUrl(item.Data.ImageUrl);
-        if (string.IsNullOrEmpty(imageUrl)) return;
-
-        // Fire-and-forget prefetch via service (hot + SQLite + API)
-        _ = _colorService.GetColorAsync(imageUrl);
-    }
-
-    private void LocationButton_LocationChanged(object? sender, string city)
-    {
-        ViewModel.UserLocationName = city;
-        ViewModel.RefreshNearUserFlags();
-    }
-
-    private void ConcertCard_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button btn && btn.Tag is string uri && !string.IsNullOrEmpty(uri))
-        {
-            var title = (btn.DataContext as ConcertVm)?.Title;
-            var param = new ContentNavigationParameter
-            {
-                Uri = uri,
-                Title = title
-            };
-            NavigationHelpers.OpenConcert(param, title ?? "Concert", NavigationHelpers.IsCtrlPressed());
-        }
-    }
-
-    // ── Hero share / open menu ──────────────────────────────────────────
-    // ShareArtist + CopyArtistLink put the open.spotify.com URL on the
-    // clipboard; OpenInSpotify launches the spotify: URI which the OS
-    // routes to the desktop app if installed (else web fallback).
-
-    private void ShareArtist_Click(object sender, RoutedEventArgs e)
-        => CopyArtistShareUrlToClipboard();
-
-    private void CopyArtistLink_Click(object sender, RoutedEventArgs e)
-        => CopyArtistShareUrlToClipboard();
-
-    private void CopyArtistShareUrlToClipboard()
-    {
-        var artistId = ViewModel.ArtistId;
-        if (string.IsNullOrEmpty(artistId)) return;
-
-        var url = $"https://open.spotify.com/artist/{artistId}";
-        var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
-        package.SetText(url);
-        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-    }
-
-    // ── About bio expand/collapse ───────────────────────────────────────
-
-    private bool _biographyExpanded;
-
-    private void BiographyShowMore_Click(object sender, RoutedEventArgs e)
-    {
-        _biographyExpanded = !_biographyExpanded;
-        // MaxLines=0 on HtmlTextBlock means "no limit" — same convention TextBlock uses.
-        BiographyBlock.MaxLines = _biographyExpanded ? 0 : 4;
-        BiographyShowMoreButton.Content = _biographyExpanded ? "Show less" : "Show more";
-    }
-
-    // ── Connect & Markets / Gallery handlers ────────────────────────────
-
-    private async void SocialLink_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button btn && btn.Tag is string url && Uri.TryCreate(url, UriKind.Absolute, out var uri))
-        {
-            try { await Windows.System.Launcher.LaunchUriAsync(uri); }
-            catch { }
-        }
-    }
-
-    // ── Gallery wrapping grid + lightbox ────────────────────────────────
-    // Tile invoke → cache the originating element for focus-restore on close,
-    // jump the FlipView to the right index, open the Popup. Close paths:
-    // explicit X button, click on the dim scrim (filter by OriginalSource),
-    // Escape KeyboardAccelerator on the lightbox root.
-
-    private Control? _galleryReturnFocus;
-
-    private void Gallery_ItemInvoked(ItemsView sender, ItemsViewItemInvokedEventArgs args)
-    {
-        if (args.InvokedItem is not string url) return;
-
-        // Restore-focus target on close — falls back to the ItemsView itself,
-        // which brings keyboard focus back into the gallery section so the
-        // user can keep arrow-navigating without a jarring focus jump.
-        _galleryReturnFocus = sender;
-
-        var idx = ViewModel.GalleryPhotos is IList<string> photos
-            ? photos.IndexOf(url)
-            : ViewModel.GalleryPhotos.ToList().IndexOf(url);
-        GalleryFlipView.SelectedIndex = Math.Max(0, idx);
-        UpdateGalleryCounterText();
-
-        GalleryLightbox.IsOpen = true;
-        // Defer focus until the popup has actually opened so it sticks.
-        DispatcherQueue.TryEnqueue(() => GalleryLightboxCloseButton.Focus(FocusState.Programmatic));
-    }
-
-    private void GalleryLightboxClose_Click(object sender, RoutedEventArgs e)
-        => CloseGalleryLightbox();
-
-    private void GalleryLightboxScrim_PointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        // Only close on clicks that actually land on the scrim itself —
-        // bubbled events from the FlipView, image, buttons must not dismiss.
-        if (ReferenceEquals(e.OriginalSource, GalleryLightboxRoot))
-            CloseGalleryLightbox();
-    }
-
-    private void GalleryLightboxEscape_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-    {
-        CloseGalleryLightbox();
-        args.Handled = true;
-    }
-
-    private void CloseGalleryLightbox()
-    {
-        GalleryLightbox.IsOpen = false;
-        _galleryReturnFocus?.Focus(FocusState.Programmatic);
-        _galleryReturnFocus = null;
-    }
-
-    private void GalleryFlipView_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        => UpdateGalleryCounterText();
-
-    private void UpdateGalleryCounterText()
-    {
-        if (GalleryCounterText == null) return;
-        var total = ViewModel.GalleryPhotos.Count;
-        var idx = Math.Max(0, GalleryFlipView.SelectedIndex);
-        GalleryCounterText.Text = total > 0 ? $"{idx + 1} / {total}" : string.Empty;
-    }
-
-    // ── Latest release card ─────────────────────────────────────────────
-
-    private void LatestRelease_Click(object sender, RoutedEventArgs e)
-    {
-        var uri = ViewModel.LatestReleaseUri;
-        var name = ViewModel.LatestReleaseName;
-        if (string.IsNullOrEmpty(uri)) return;
-
-        var param = new ContentNavigationParameter
-        {
-            Uri = uri,
-            Title = name,
-            ImageUrl = ViewModel.LatestReleaseImageUrl
-        };
-        NavigationHelpers.OpenAlbum(param, name ?? "Album", NavigationHelpers.IsCtrlPressed());
-    }
-
-    private void PlayLatestRelease_Click(object sender, RoutedEventArgs e)
-    {
-        // Same navigation for now — playback context-resolves on the album page.
-        // Could be replaced with a direct play command on the VM if/when one exists.
-        LatestRelease_Click(sender, e);
-    }
-
-    private async void OpenInSpotify_Click(object sender, RoutedEventArgs e)
-    {
-        var artistId = ViewModel.ArtistId;
-        if (string.IsNullOrEmpty(artistId)) return;
-
-        try
-        {
-            var uri = new Uri($"spotify:artist:{artistId}");
-            await Windows.System.Launcher.LaunchUriAsync(uri);
-        }
-        catch
-        {
-            // Best-effort — silently fail rather than throw on a user-initiated launch.
-        }
+        if (ViewModel is IDisposable d)
+            d.Dispose();
     }
 }

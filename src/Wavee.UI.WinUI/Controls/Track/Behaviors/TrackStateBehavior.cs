@@ -242,6 +242,8 @@ public static class TrackStateBehavior
 
         _currentTrackId = service.CurrentTrackId;
         _isPlaying = service.IsPlaying;
+        _isBuffering = service.IsBuffering;
+        _bufferingTrackId = service.BufferingTrackId;
 
         service.PropertyChanged += OnPlaybackServiceChanged;
         _subscribedToPlayback = true;

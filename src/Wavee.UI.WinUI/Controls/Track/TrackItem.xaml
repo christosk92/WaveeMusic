@@ -15,6 +15,25 @@
     mc:Ignorable="d">
 
     <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="CompactPlayOverlayScrimBrush" Color="#33000000"/>
+                    <SolidColorBrush x:Key="CompactPlayOverlayGlyphBrush" Color="White"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="CompactPlayOverlayScrimBrush" Color="#66000000"/>
+                    <SolidColorBrush x:Key="CompactPlayOverlayGlyphBrush" Color="White"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="CompactPlayOverlayScrimBrush"
+                                     Color="{ThemeResource SystemColorWindowColor}"
+                                     Opacity="0.65"/>
+                    <SolidColorBrush x:Key="CompactPlayOverlayGlyphBrush"
+                                     Color="{ThemeResource SystemColorButtonTextColor}"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
         <!-- Inline metadata glyphs: a flat camera icon, no Border/box. The previous
              box-frame look made the badge feel like a clickable button on rows
              without album art (album page); a standalone glyph reads as metadata. -->
@@ -46,12 +65,16 @@
             <Setter Property="HorizontalAlignment" Value="Center"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
 
     <Grid>
         <!-- ═══════════════ COMPACT MODE (grid cells: artist top tracks, search) ═══════════════ -->
         <Border x:Name="CompactBorder" Visibility="Visible"
-                CornerRadius="6" BorderThickness="0" Background="Transparent">
+                CornerRadius="6"
+                BorderThickness="1"
+                BorderBrush="Transparent"
+                Background="Transparent">
         <Grid>
         <Grid x:Name="CompactRoot"
               Padding="8,4" ColumnSpacing="12" Height="56">
@@ -94,13 +117,24 @@
                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
                 <Button x:Name="CompactPlayButton"
-                        Visibility="Collapsed" Opacity="0"
+                        Visibility="Collapsed"
+                        Opacity="0"
+                        IsHitTestVisible="False"
                         Width="48" Height="48" CornerRadius="4"
-                        Padding="0" Background="#CC000000" BorderThickness="0"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                    <playback:PlaybackActionContent x:Name="CompactPlayContent"
-                                                   IconSize="20"
-                                                   ActionForeground="White"/>
+                    <Grid>
+                        <Border CornerRadius="4"
+                                Background="{ThemeResource CompactPlayOverlayScrimBrush}"/>
+                        <playback:PlaybackActionContent x:Name="CompactPlayContent"
+                                                       IconSize="22"
+                                                       SpinnerSize="20"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       ActionForeground="{ThemeResource CompactPlayOverlayGlyphBrush}"/>
+                    </Grid>
                 </Button>
 
                 <controls1:Shimmer x:Name="CompactArtShimmer" Width="48" Height="48"
@@ -197,7 +231,7 @@
                         <ColumnDefinition x:Name="RowIndexColDef" Width="52"/>
                         <ColumnDefinition x:Name="RowHeartColDef" Width="32"/>
                         <ColumnDefinition x:Name="RowArtColDef" Width="42"/>
-                        <ColumnDefinition Width="*" MinWidth="120" MaxWidth="640"/>
+                        <ColumnDefinition x:Name="RowTitleColDef" Width="*" MinWidth="120" MaxWidth="640"/>
                         <ColumnDefinition x:Name="RowAlbumColDef" Width="180"/>
                         <ColumnDefinition x:Name="RowAddedByColDef" Width="0"/>
                         <ColumnDefinition x:Name="RowDateColDef" Width="120"/>
@@ -495,7 +529,7 @@
                         <ColumnDefinition Width="40"/>
                         <ColumnDefinition x:Name="ShimHeartColDef" Width="32"/>
                         <ColumnDefinition x:Name="ShimArtColDef" Width="42"/>
-                        <ColumnDefinition Width="*" MinWidth="120" MaxWidth="640"/>
+                        <ColumnDefinition x:Name="ShimTitleColDef" Width="*" MinWidth="120" MaxWidth="640"/>
                         <ColumnDefinition x:Name="ShimAlbumColDef" Width="180"/>
                         <ColumnDefinition x:Name="ShimAddedByColDef" Width="0"/>
                         <ColumnDefinition x:Name="ShimDateColDef" Width="120"/>

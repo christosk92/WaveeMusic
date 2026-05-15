@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.MiniVideoPlayer.VideoSurfaceHost"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+        Three-layer crossfade host for the music-video surface. Bottom-up:
+        AlbumArtLayer (visible during audio + load), PosterBlurHost (blurred
+        poster mounted as a composition visual), VideoSlot (the actual
+        MediaPlayerElement / WebView2). Opacity is driven by implicit
+        composition animations in code-behind so transitions are framework-
+        cheap and don't churn Storyboards.
+
+        Background = Black so any pixel not covered by an active layer reads
+        as a clean letterbox rather than the parent's chrome leaking through.
+    -->
+    <Border x:Name="OuterFrame"
+            Background="Black">
+
+        <Grid x:Name="LayersGrid">
+            <!-- L0: album art — always present once we have an audio context.
+                 UniformToFill so it bleeds to all four edges of a 16:9
+                 letterbox; the user never sees the underlying black. -->
+            <Image x:Name="AlbumArtLayer"
+                   Stretch="UniformToFill"
+                   IsHitTestVisible="False"
+                   Opacity="1" />
+
+            <!-- L1: blurred poster — sits above the album art. The
+                 actual blur is applied in code-behind via a composition
+                 effect brush parented to this Border (so visual children
+                 render through the effect). Initial Opacity=0; flipped
+                 to 1 when the video starts loading. -->
+            <Border x:Name="PosterBlurHost"
+                    Opacity="0"
+                    IsHitTestVisible="False" />
+
+            <!-- L2: live video slot. Code-behind inserts the MediaPlayerElement
+                 or WebView2 here. Starts at Opacity=0 so the album art /
+                 poster show through until the first frame is decoded. -->
+            <Grid x:Name="VideoSlot"
+                  Opacity="0"
+                  IsHitTestVisible="False" />
+        </Grid>
+    </Border>
+</UserControl>

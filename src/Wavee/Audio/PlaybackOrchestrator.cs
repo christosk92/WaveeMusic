@@ -97,6 +97,11 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     private bool _lastPrefetchWasVideo;
     private CancellationTokenSource? _prefetchCts;
 
+    // Pre-warmed video session for the next queued music video. Disposed on
+    // queue change or after commit. Capped at one in flight at a time.
+    private IPreparedVideoSession? _preparedNextVideoSession;
+    private static readonly TimeSpan PreparedVideoMaxAge = TimeSpan.FromMinutes(4);
+
     // Trigger thresholds. Librespot prefetches when "≈30 s remaining OR past 50 %".
     // We use the same shape: the earlier of the two fires.
     private const long PrefetchRemainingMsThreshold = 20_000;
@@ -271,7 +276,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
                 // UI-initiated play with a known context. Use the provided tracks
                 // (caller may have filtered/shuffled) but publish the real context URI.
                 var tracks = command.PageTracks!
-                    .Select(t => new QueueTrack(t.Uri, t.Uid) { Metadata = t.Metadata })
+                    .Select(BuildQueueTrackFromPageTrack)
                     .ToList();
                 _queue.Clear();
                 _queue.SetContext(command.ContextUri!, isInfinite: false, totalTracks: tracks.Count);
@@ -374,7 +379,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             {
                 // True internal queue — no originating context.
                 var tracks = command.PageTracks!
-                    .Select(t => new QueueTrack(t.Uri, t.Uid) { Metadata = t.Metadata })
+                    .Select(BuildQueueTrackFromPageTrack)
                     .ToList();
                 _queue.Clear();
                 _queue.SetContext("spotify:internal:queue", false);
@@ -933,16 +938,8 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         if (!_isSpotifyVideoActive && _currentMetrics is not null)
             DispatchTrackTransition(Wavee.Connect.Events.PlaybackReason.EndPlay, positionMs);
 
-        try { await _proxy.StopAsync(ct); }
-        catch (Exception ex) { _logger?.LogDebug(ex, "Stopping AudioHost for Spotify video"); }
-
-        if (_localMediaPlayer?.IsActive == true)
-            try { await _localMediaPlayer.StopAsync(ct); }
-            catch (Exception ex) { _logger?.LogDebug(ex, "Stopping local video for Spotify video"); }
-
-        _videoEngineActive = false;
-        _isSpotifyVideoActive = false;
-
+        // Flip the active-engine flags BEFORE awaiting any teardown / startup
+        // so state updates emitted during the handoff are routed correctly.
         _videoEngineActive = true;
         _isSpotifyVideoActive = true;
         _currentVideoManifestId = target.ManifestId;
@@ -953,13 +950,71 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
 
         _logger?.LogInformation("Spotify video playback: audio={AudioUri} video={VideoUri} manifest={Manifest} pos={Pos}ms",
             target.AudioTrackUri, target.VideoTrackUri, target.ManifestId, positionMs);
-        await _spotifyVideoPlayback.PlayAsync(
-            target.ManifestId,
-            target.VideoTrackUri,
-            target.Metadata,
-            target.DurationMs,
-            positionMs,
-            ct);
+
+        // Consume any prefetched/prepared session that matches this target.
+        IPreparedVideoSession? prepared = null;
+        var candidate = Interlocked.Exchange(ref _preparedNextVideoSession, null);
+        if (candidate is not null)
+        {
+            if (string.Equals(candidate.VideoTrackUri, target.VideoTrackUri, StringComparison.Ordinal)
+                && DateTimeOffset.UtcNow - candidate.PreparedAt < PreparedVideoMaxAge)
+            {
+                prepared = candidate;
+                _logger?.LogDebug("Using prepared video session uri={Uri}", target.VideoTrackUri);
+            }
+            else
+            {
+                _ = DisposePreparedVideoSessionAsync(candidate);
+            }
+        }
+
+        // Run audio teardown and video startup IN PARALLEL — they touch
+        // different processes (AudioHost vs WebView2) and have no ordering
+        // dependency. This saves the AudioHost stop latency from the
+        // perceived "time to first frame".
+        Task stopAudioTask;
+        try { stopAudioTask = _proxy.StopAsync(ct); }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Stopping AudioHost for Spotify video");
+            stopAudioTask = Task.CompletedTask;
+        }
+
+        Task stopLocalVideoTask = Task.CompletedTask;
+        if (_localMediaPlayer?.IsActive == true)
+        {
+            try { stopLocalVideoTask = _localMediaPlayer.StopAsync(ct); }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Stopping local video for Spotify video");
+            }
+        }
+
+        Task playVideoTask;
+        if (prepared is not null)
+        {
+            playVideoTask = _spotifyVideoPlayback.PlayAsync(prepared, positionMs, ct);
+        }
+        else
+        {
+            playVideoTask = _spotifyVideoPlayback.PlayAsync(
+                target.ManifestId,
+                target.VideoTrackUri,
+                target.Metadata,
+                target.DurationMs,
+                positionMs,
+                ct);
+        }
+
+        try
+        {
+            await Task.WhenAll(stopAudioTask, stopLocalVideoTask, playVideoTask).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Parallel audio-stop / video-play handoff hit an error");
+        }
+
         PublishQueueState();
     }
 
@@ -1916,6 +1971,23 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         engineState = EnrichSpotifyVideoState(engineState);
         engineState = EnrichLinkedLocalVideoState(engineState);
 
+        // Diagnostic for the linked-local-video identity-propagation bug:
+        // surfaces the URIs we're about to publish whenever the linked-video
+        // path is engaged. If trackUri != current.Uri, EnrichLinkedLocalVideoState
+        // was not applied (timing / guard bug) and PutState / gabo will leak the
+        // local-file URI to Spotify.
+        if (_currentLocalVideoAssociationUri is not null)
+        {
+            _logger?.LogInformation(
+                "[linkedvideo] state.publish trackUri={Track} videoActive={Va} assoc={Assoc} current={Cur} albumUri={Au} artistUri={Aru}",
+                engineState.TrackUri,
+                _videoEngineActive,
+                _currentLocalVideoAssociationUri,
+                _queue.Current?.Uri,
+                engineState.AlbumUri,
+                engineState.ArtistUri);
+        }
+
         // Event reporting: track pause/resume edges as PlaybackMetrics interval
         // boundaries so TrackTransitionEvent's ms_played accurately reflects what
         // the user actually heard (excluding paused time).
@@ -2032,6 +2104,49 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         };
     }
 
+    /// <summary>
+    /// Builds a <see cref="QueueTrack"/> from a UI-supplied <see cref="PageTrack"/>,
+    /// hydrating typed fields (Title, Artist, Album, AlbumUri, ArtistUri, ImageUrl,
+    /// DurationMs, IsExplicit) from the <c>wavee.*</c> metadata keys that
+    /// <c>ConnectCommandExecutor</c> attaches per-track. This lets the orchestrator
+    /// carry Spotify identity even on paths that short-circuit Pathfinder metadata
+    /// resolution (e.g. the linked-local-video play).
+    /// </summary>
+    private static QueueTrack BuildQueueTrackFromPageTrack(Wavee.Connect.Commands.PageTrack t)
+    {
+        var md = t.Metadata;
+        if (md is null || md.Count == 0)
+            return new QueueTrack(t.Uri, t.Uid);
+
+        string? Get(string key) =>
+            md.TryGetValue(key, out var v) && !string.IsNullOrEmpty(v) ? v : null;
+
+        int? durationMs = null;
+        if (md.TryGetValue("wavee.duration_ms", out var durStr)
+            && long.TryParse(durStr, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var ms)
+            && ms > 0)
+        {
+            durationMs = (int)System.Math.Min(int.MaxValue, ms);
+        }
+
+        bool isExplicit = md.TryGetValue("wavee.is_explicit", out var ex)
+                          && string.Equals(ex, "true", System.StringComparison.OrdinalIgnoreCase);
+
+        return new QueueTrack(
+            Uri: t.Uri,
+            Uid: t.Uid,
+            Title: Get("wavee.title"),
+            Artist: Get("wavee.artist_name"),
+            Album: Get("wavee.album_name"),
+            AlbumUri: Get("wavee.album_uri"),
+            ArtistUri: Get("wavee.artist_uri"),
+            DurationMs: durationMs,
+            IsExplicit: isExplicit,
+            ImageUrl: Get("wavee.image_url"))
+        { Metadata = md };
+    }
+
     private static IReadOnlyDictionary<string, string> BuildLinkedLocalVideoMetadata(
         QueueTrack current,
         string localVideoUri)
@@ -2135,12 +2250,71 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             try
             {
                 if (prefetchVideo)
+                {
                     await _trackResolver.PrefetchVideoAsync(target.Uri, cts.Token).ConfigureAwait(false);
+                    await TryPrepareVideoPlaybackAsync(target.Uri, cts.Token).ConfigureAwait(false);
+                }
                 else
+                {
                     await _trackResolver.PrefetchAsync(target.Uri, cts.Token).ConfigureAwait(false);
+                }
             }
             catch (Exception ex) { _logger?.LogDebug(ex, "Prefetch task fault (non-fatal)"); }
         }, cts.Token);
+    }
+
+    /// <summary>
+    /// After the manifest is cached, ask the video engine to pre-warm a
+    /// session for this URI. The engine may return <c>null</c> if it can't
+    /// (e.g. no video provider registered). At most one prepared session is
+    /// held; older ones are disposed.
+    /// </summary>
+    private async Task TryPrepareVideoPlaybackAsync(string audioUri, CancellationToken ct)
+    {
+        if (_spotifyVideoPlayback is null) return;
+        if (string.IsNullOrEmpty(audioUri)) return;
+
+        SpotifyVideoPlaybackTarget? prepTarget;
+        try
+        {
+            prepTarget = await _trackResolver
+                .ResolveVideoPlaybackTargetAsync(audioUri, ct: ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Video prepare: target resolve failed for {Uri}", audioUri);
+            return;
+        }
+
+        if (prepTarget is null) return;
+
+        IPreparedVideoSession? prepared;
+        try
+        {
+            prepared = await _spotifyVideoPlayback
+                .PrepareAsync(prepTarget, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Video prepare: PrepareAsync failed for {Uri}", prepTarget.VideoTrackUri);
+            return;
+        }
+
+        if (prepared is null) return;
+
+        // Swap in the new session. Dispose any older one.
+        var prev = Interlocked.Exchange(ref _preparedNextVideoSession, prepared);
+        if (prev is not null)
+        {
+            try { await prev.DisposeAsync().ConfigureAwait(false); } catch { /* best effort */ }
+        }
+
+        _logger?.LogDebug("Video prepared for next playback: uri={Uri} manifest={Manifest}",
+            prepTarget.VideoTrackUri, prepTarget.ManifestId);
     }
 
     /// <summary>
@@ -2158,6 +2332,18 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         {
             try { cts.Cancel(); cts.Dispose(); } catch { /* best effort */ }
         }
+        var prepared = Interlocked.Exchange(ref _preparedNextVideoSession, null);
+        if (prepared is not null)
+        {
+            // Fire-and-forget: caller is on a hot state-update path.
+            _ = DisposePreparedVideoSessionAsync(prepared);
+        }
+    }
+
+    private async Task DisposePreparedVideoSessionAsync(IPreparedVideoSession session)
+    {
+        try { await session.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception ex) { _logger?.LogDebug(ex, "Disposing prepared video session"); }
     }
 
     private void PublishQueueState()

@@ -363,7 +363,7 @@
                         </ItemsView>
 
                         <ItemsRepeater
-                            ItemsSource="{x:Bind NarrowShimmerPlaceholders, Mode=OneWay}"
+                            ItemsSource="{x:Bind NarrowShimmerPlaceholders, Mode=OneTime}"
                             Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                             <ItemsRepeater.Layout>
                                 <UniformGridLayout

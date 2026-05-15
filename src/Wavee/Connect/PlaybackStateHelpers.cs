@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Globalization;
 using Google.Protobuf.Collections;
 using Microsoft.Extensions.Logging;
 using Wavee.Audio.Queue;
@@ -521,6 +522,8 @@ public static class PlaybackStateHelpers
                     ["title"] = localState.TrackTitle ?? "",
                     ["artist_name"] = localState.TrackArtist ?? "",
                     ["album_title"] = localState.TrackAlbum ?? "",
+                    ["wavee.normalization_gain_db"] = FormatNullableFloat(localState.NormalizationGainDb),
+                    ["wavee.normalization_peak"] = FormatNullableFloat(localState.NormalizationPeak),
                 }
             }
             : null;
@@ -641,6 +644,9 @@ public static class PlaybackStateHelpers
         var changes = (localState.UpstreamChanges ?? StateChanges.None) | detected;
         return newState with { Changes = changes };
     }
+
+    private static string FormatNullableFloat(float? value)
+        => value.HasValue ? value.Value.ToString("0.########", CultureInfo.InvariantCulture) : string.Empty;
 
     /// <summary>
     /// Converts PlaybackState domain model to PlayerState protobuf for publishing.

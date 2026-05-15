@@ -329,22 +329,23 @@ internal sealed class SpotifyWebEmePlayer : IDisposable
 
     private void PostWebMessage(object payload)
     {
-        var webView = _webView;
-        if (webView?.CoreWebView2 is null)
-            return;
-
         var json = JsonSerializer.Serialize(payload);
-        _ = RunOnUiAsync(() => webView.CoreWebView2.PostWebMessageAsJson(json));
+        _ = RunOnUiAsync(() =>
+        {
+            var core = _webView?.CoreWebView2;
+            core?.PostWebMessageAsJson(json);
+        });
     }
 
     private Task ExecuteScriptAsync(string script)
-    {
-        var webView = _webView;
-        if (webView?.CoreWebView2 is null)
-            return Task.CompletedTask;
+        => RunOnUiAsync(async () =>
+        {
+            var core = _webView?.CoreWebView2;
+            if (core is null)
+                return;
 
-        return RunOnUiAsync(() => _ = webView.CoreWebView2.ExecuteScriptAsync(script));
-    }
+            await core.ExecuteScriptAsync(script).AsTask();
+        });
 
     private static InMemoryRandomAccessStream CreateWebResourceStream(byte[] bytes)
     {
@@ -412,6 +413,18 @@ internal sealed class SpotifyWebEmePlayer : IDisposable
         if (webView is null)
             return;
 
+        if (!_dispatcher.HasThreadAccess)
+        {
+            if (!_dispatcher.TryEnqueue(() => DisposeWebViewOnUi(webView)))
+                _logger?.LogDebug("SpotifyWebEmePlayer: failed to enqueue WebView2 cleanup on the UI thread");
+            return;
+        }
+
+        DisposeWebViewOnUi(webView);
+    }
+
+    private void DisposeWebViewOnUi(WebView2 webView)
+    {
         try
         {
             if (webView.CoreWebView2 is not null)

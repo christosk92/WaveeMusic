@@ -248,6 +248,15 @@ public sealed class AppSettings
     public bool AiLyricsSummarizeEnabled { get; set; } = true;
 
     /// <summary>
+    /// Per-feature toggle: artist-page "About this artist" excerpt synthesised on-device
+    /// when Spotify's ArtistOverview has no biography for the artist. Only effective
+    /// when <see cref="AiFeaturesEnabled"/> is true. Default true so a user who opts in
+    /// to AI sees the affordance on artists whose data is thin (long tail of indies,
+    /// newer releases, smaller markets).
+    /// </summary>
+    public bool AiBioSummarizeEnabled { get; set; } = true;
+
+    /// <summary>
     /// True once the user dismisses the "Get free posters and metadata" InfoBar
     /// on the Local files landing page. The CTA never appears again. Detail-page
     /// inline banners ignore this flag — they're tied to actual content state and
