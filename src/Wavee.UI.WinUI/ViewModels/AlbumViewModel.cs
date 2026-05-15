@@ -90,6 +90,13 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
     /// <summary>"Fans also like" — related artists for the primary album artist.</summary>
     private readonly ObservableCollection<RelatedArtistResult> _similarArtists = [];
 
+    /// <summary>"Recommended Playlists" — curated editorial playlists tied to
+    /// this album, sourced from RECOMMENDED_PLAYLISTS extended-metadata and
+    /// projected to partial DTOs via batched LIST_METADATA_V2.</summary>
+    private readonly ObservableCollection<PlaylistDetailDto> _recommendedPlaylists = [];
+
+    private readonly Services.IPlaylistMetadataPrefetcher? _playlistMetadataPrefetcher;
+
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
 
@@ -454,6 +461,20 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
 
     public bool HasMerch => MerchItems.Count > 0;
 
+    /// <summary>
+    /// Curated playlists Spotify recommends for this album. Sourced from
+    /// RECOMMENDED_PLAYLISTS extended-metadata; each item is a partial
+    /// PlaylistDetailDto carrying name + cover + (when editorial) header URL.
+    /// </summary>
+    public IReadOnlyList<PlaylistDetailDto> RecommendedPlaylists => _recommendedPlaylists;
+
+    private bool _hasRecommendedPlaylists;
+    public bool HasRecommendedPlaylists
+    {
+        get => _hasRecommendedPlaylists;
+        private set => SetProperty(ref _hasRecommendedPlaylists, value);
+    }
+
     /// <summary>Similar albums (track-seeded) — drives the AlbumPage "For this mood" shelf.</summary>
     public IReadOnlyList<AlbumSimilarResult> SimilarAlbums => _similarAlbums;
 
@@ -640,7 +661,8 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
         IPlaybackStateService playbackStateService,
         ITrackLikeService? likeService = null,
         IMusicVideoMetadataService? musicVideoMetadata = null,
-        ILogger<AlbumViewModel>? logger = null)
+        ILogger<AlbumViewModel>? logger = null,
+        Services.IPlaylistMetadataPrefetcher? playlistMetadataPrefetcher = null)
     {
         _albumService = albumService;
         _albumStore = albumStore;
@@ -648,6 +670,7 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
         _playbackStateService = playbackStateService;
         _likeService = likeService;
         _musicVideoMetadata = musicVideoMetadata;
+        _playlistMetadataPrefetcher = playlistMetadataPrefetcher;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _logger = logger;
 
@@ -740,6 +763,13 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
                     PreReleaseRelative = null,
                     MetaInlineLine = null,
                     Palette = null
+                    // TotalTracks intentionally NOT reset here — when
+                    // preserveHeaderPrefill=true the caller has already run
+                    // PrefillFrom(nav) which seeded the envelope's TotalTracks
+                    // from the navigation source. Wiping it would force the
+                    // skeleton back to its default row count for the brief
+                    // window between Initialize and ApplyDetailAsync, defeating
+                    // the prefill.
                 }
                 : new AlbumView(
                     Id: albumId,
@@ -773,6 +803,12 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
             IsLoading = !preserveHeaderPrefill || string.IsNullOrEmpty(AlbumImageUrl);
             IsLoadingTracks = true;
             _allTracks = [];
+            // Mirror Album.TotalTracks onto the property so TrackDataGrid's
+            // LoadingRowCount binding sees the right value. With prefill the
+            // envelope holds the nav-supplied count; without prefill the freshly
+            // constructed envelope's TotalTracks defaults to 0 (→ skeleton falls
+            // back to DefaultLoadingRowCount).
+            TotalTracks = Album?.TotalTracks ?? 0;
             RebuildDiscMetadata();
             _popularTrackIds.Clear();
             if (_filteredTracks.Count > 0)
@@ -856,6 +892,9 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
         _similarArtists.Clear();
         HasSimilarArtists = false;
         ArtistBioExcerpt = null;
+
+        _recommendedPlaylists.Clear();
+        HasRecommendedPlaylists = false;
 
         HasMusicVideo = false;
         MusicVideoUri = null;
@@ -999,6 +1038,88 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
             .ToHashSet(StringComparer.Ordinal);
     }
 
+    private static string FormatCopyright(AlbumCopyrightResult c)
+    {
+        var prefix = c.Type == "P" ? "℗" : "©";
+        var text = c.Text?.TrimStart() ?? "";
+        if (text.StartsWith("©") || text.StartsWith("℗"))
+            return text;
+        return $"{prefix} {text}";
+    }
+
+    // Pure data-prep for ApplyDetailAsync — runs on a background thread so the
+    // nav frame can paint before the artist-graph LINQ + track materialisation
+    // finishes. No DPs, no ObservableCollections, no logger access in here.
+    private static AlbumDetailPrep BuildDetailPrep(AlbumDetailResult detail)
+    {
+        var tracks = detail.Tracks
+            .Select((t, i) => LazyTrackItem.Loaded(t.Id, i + 1, t))
+            .ToList();
+        var totalSeconds = tracks.Sum(t => t.Duration.TotalSeconds);
+        var popularTrackIds = BuildPopularTrackIdSet(detail.Tracks);
+
+        var billed = detail.Artists ?? [];
+        var avatarItems = billed
+            .Select(a => new AvatarStackItem(a.Name ?? "", a.ImageUrl))
+            .ToList();
+        var headerArtistLinks = billed
+            .Select((a, idx) => new HeaderArtistLink
+            {
+                Name = a.Name ?? "",
+                Uri = a.Uri ?? "",
+                IsFirst = idx == 0
+            })
+            .ToList();
+        var billedUris = new HashSet<string>(
+            billed.Where(a => !string.IsNullOrEmpty(a.Uri)).Select(a => a.Uri!),
+            StringComparer.Ordinal);
+        var trackExtras = (detail.Tracks ?? [])
+            .SelectMany(t => t.Artists ?? (IReadOnlyList<TrackArtistRef>)Array.Empty<TrackArtistRef>())
+            .Where(a => !string.IsNullOrEmpty(a.Uri) && !billedUris.Contains(a.Uri))
+            .GroupBy(a => a.Uri, StringComparer.Ordinal)
+            .Select(g => g.First())
+            .Select(a => new AlbumArtistResult
+            {
+                Id = a.Id,
+                Uri = a.Uri,
+                Name = a.Name,
+                ImageUrl = null
+            })
+            .ToList();
+        var allDistinctArtists = billed.Concat(trackExtras).ToList();
+
+        int? year = detail.ReleaseDate.Year > 0 ? detail.ReleaseDate.Year : null;
+        string? releaseDateFormatted = detail.ReleaseDate != default
+            ? detail.ReleaseDate.ToString("MMMM d, yyyy")
+            : null;
+        string? copyrightsText = detail.Copyrights?.Count > 0
+            ? string.Join("\n", detail.Copyrights.Select(FormatCopyright))
+            : null;
+        var (preReleaseFormatted, preReleaseRelative) =
+            FormatPreRelease(detail.IsPreRelease, detail.PreReleaseEndDateTime);
+
+        return new AlbumDetailPrep(
+            tracks, totalSeconds, popularTrackIds,
+            billed, avatarItems, headerArtistLinks, allDistinctArtists, trackExtras.Count,
+            year, releaseDateFormatted, copyrightsText,
+            preReleaseFormatted, preReleaseRelative);
+    }
+
+    private sealed record AlbumDetailPrep(
+        List<LazyTrackItem> Tracks,
+        double TotalSeconds,
+        HashSet<string> PopularTrackIds,
+        IReadOnlyList<AlbumArtistResult> Billed,
+        IReadOnlyList<AvatarStackItem> AvatarItems,
+        IReadOnlyList<HeaderArtistLink> HeaderArtistLinks,
+        IReadOnlyList<AlbumArtistResult> AllDistinctArtists,
+        int OverflowArtistCount,
+        int? Year,
+        string? ReleaseDateFormatted,
+        string? CopyrightsText,
+        string? PreReleaseFormatted,
+        string? PreReleaseRelative);
+
     private static string FormatDuration(double totalSeconds)
     {
         var ts = TimeSpan.FromSeconds(totalSeconds);
@@ -1135,6 +1256,7 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
     public void PrefillFrom(Data.Parameters.ContentNavigationParameter nav, bool clearMissing = false)
     {
         var current = Album ?? EmptyAlbumEnvelope();
+        var prefillTracks = nav.TotalTracks ?? 0;
         Album = current with
         {
             Id = !string.IsNullOrEmpty(nav.Uri) ? nav.Uri : current.Id,
@@ -1146,43 +1268,35 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
                 : clearMissing ? null : current.ImageUrl,
             ArtistName = !string.IsNullOrEmpty(nav.Subtitle)
                 ? nav.Subtitle
-                : clearMissing ? string.Empty : current.ArtistName
+                : clearMissing ? string.Empty : current.ArtistName,
+            TotalTracks = prefillTracks > 0
+                ? prefillTracks
+                : clearMissing ? 0 : current.TotalTracks
         };
+        if (prefillTracks > 0)
+            TotalTracks = prefillTracks;
+        else if (clearMissing)
+            TotalTracks = 0;
     }
 
     /// <summary>
-    /// Apply a pre-fetched AlbumDetailResult from the AlbumStore. Called by
-    /// ApplyDetailState once the store emits Ready; drives tracklist build,
-    /// related-albums, and the non-blocking merch fetch.
+    /// Apply a viewport-prefetched AlbumV4 partial. Paints the hero (cover /
+    /// title / artists / year / type) and sets <see cref="TotalTracks"/> so
+    /// <c>TrackDataGrid.LoadingRowCount</c> renders the correct-count skeleton.
+    /// Leaves <see cref="IsLoadingTracks"/> at true and skips every secondary
+    /// fetch (rootlist / merch / similar / artist-context / music-video /
+    /// alternate-releases / more-by-artist); those run on the full pass when
+    /// the Pathfinder payload arrives.
     /// </summary>
-    private Task ApplyDetailAsync(AlbumDetailResult detail, string albumId)
+    private Task ApplyPartialDetailAsync(AlbumDetailResult detail, string albumId)
     {
-        if (_disposed || AlbumId != albumId) return Task.CompletedTask;
-        _appliedDetailFor = albumId;
-        HasError = false;
-        ErrorMessage = null;
-
         try
         {
-            // Rootlist for "Add to playlist" — fire-and-forget so it doesn't block detail render.
-            _ = LoadRootlistAsync();
-
-            // Build real track list first so the envelope can include the final
-            // hero meta line in the same atomic assignment as the scalar metadata.
-            _allTracks = detail.Tracks
-                .Select((t, i) => LazyTrackItem.Loaded(t.Id, i + 1, t))
-                .ToList();
-            RebuildDiscMetadata();
-            _popularTrackIds = BuildPopularTrackIdSet(detail.Tracks);
-
-            TotalTracks = _allTracks.Count;
-            var totalSeconds = _allTracks.Sum(t => t.Duration.TotalSeconds);
-            TotalDuration = FormatDuration(totalSeconds);
-            IsLoadingTracks = false;
+            TotalTracks = detail.TotalTracks;
 
             var current = Album ?? EmptyAlbumEnvelope();
-            var firstArtist = detail.Artists.FirstOrDefault();
             var billed = detail.Artists ?? [];
+            var firstArtist = billed.FirstOrDefault();
             var avatarItems = billed
                 .Select(a => new AvatarStackItem(a.Name ?? "", a.ImageUrl))
                 .ToList();
@@ -1194,38 +1308,90 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
                     IsFirst = idx == 0
                 })
                 .ToList();
-            var billedUris = new HashSet<string>(
-                billed.Where(a => !string.IsNullOrEmpty(a.Uri)).Select(a => a.Uri!),
-                StringComparer.Ordinal);
-            var trackExtras = (detail.Tracks ?? [])
-                .SelectMany(t => t.Artists ?? (IReadOnlyList<TrackArtistRef>)Array.Empty<TrackArtistRef>())
-                .Where(a => !string.IsNullOrEmpty(a.Uri) && !billedUris.Contains(a.Uri))
-                .GroupBy(a => a.Uri, StringComparer.Ordinal)
-                .Select(g => g.First())
-                .Select(a => new AlbumArtistResult
-                {
-                    Id = a.Id,
-                    Uri = a.Uri,
-                    Name = a.Name,
-                    ImageUrl = null
-                })
-                .ToList();
-            var allDistinctArtists = billed.Concat(trackExtras).ToList();
             var year = detail.ReleaseDate.Year > 0 ? detail.ReleaseDate.Year : current.Year;
-            var releaseDateFormatted = detail.ReleaseDate != default
-                ? detail.ReleaseDate.ToString("MMMM d, yyyy")
-                : current.ReleaseDateFormatted;
-            var copyrightsText = detail.Copyrights?.Count > 0
-                ? string.Join("\n", detail.Copyrights.Select(c =>
-                {
-                    var prefix = c.Type == "P" ? "\u2117" : "\u00A9";
-                    var text = c.Text?.TrimStart() ?? "";
-                    if (text.StartsWith("\u00A9") || text.StartsWith("\u2117"))
-                        return text;
-                    return $"{prefix} {text}";
-                }))
-                : current.CopyrightsText;
-            var (preReleaseFormatted, preReleaseRelative) = FormatPreRelease(detail.IsPreRelease, detail.PreReleaseEndDateTime);
+
+            Album = current with
+            {
+                Id = albumId,
+                Name = !string.IsNullOrEmpty(detail.Name) ? detail.Name : current.Name,
+                ImageUrl = !string.IsNullOrEmpty(detail.CoverArtUrl) ? detail.CoverArtUrl : current.ImageUrl,
+                ArtistId = !string.IsNullOrEmpty(firstArtist?.Uri) ? firstArtist!.Uri! : current.ArtistId,
+                ArtistName = !string.IsNullOrEmpty(firstArtist?.Name) ? firstArtist!.Name! : current.ArtistName,
+                Artists = billed,
+                ArtistAvatarItems = avatarItems,
+                HeaderArtistLinks = headerArtistLinks,
+                AllDistinctArtists = billed,
+                Year = year,
+                Type = !string.IsNullOrEmpty(detail.Type) ? detail.Type : current.Type,
+                TotalTracks = detail.TotalTracks,
+            };
+
+            IsLoading = false;
+            // IsLoadingTracks intentionally NOT touched — the track grid keeps
+            // showing its skeleton (now sized to exactly TotalTracks rows) until
+            // the full Pathfinder payload lands and the full branch below sets
+            // IsLoadingTracks=false.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "ApplyPartialDetailAsync failed for {AlbumId}", XfadeLog.Tag(albumId));
+        }
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Apply a pre-fetched AlbumDetailResult from the AlbumStore. Called by
+    /// ApplyDetailState once the store emits Ready; drives tracklist build,
+    /// related-albums, and the non-blocking merch fetch.
+    /// </summary>
+    private async Task ApplyDetailAsync(AlbumDetailResult detail, string albumId)
+    {
+        if (_disposed || AlbumId != albumId) return;
+        _appliedDetailFor = albumId;
+        HasError = false;
+        ErrorMessage = null;
+
+        // Viewport-prefetched AlbumV4 partial: paint hero + correct skeleton
+        // row count, but the track list itself + all secondary sections must
+        // wait for the authoritative Pathfinder fetch (already scheduled by
+        // MaterializeAsync because Hint emitted Ready+Stale). When the full
+        // payload arrives, ApplyDetailState re-invokes ApplyDetailAsync with
+        // IsPartial=false and the full branch below runs as today.
+        if (detail.IsPartial)
+        {
+            await ApplyPartialDetailAsync(detail, albumId);
+            return;
+        }
+
+        try
+        {
+            // Rootlist for "Add to playlist" — fire-and-forget so it doesn't block detail render.
+            _ = LoadRootlistAsync();
+
+            // Push the heavy LINQ (track wrapping, artist-graph filter+group,
+            // copyright join, formatted strings) to the threadpool so the nav
+            // frame can paint before this method's UI-thread tail runs.
+            // Mirrors ArtistViewModel.LoadAsync's deferred-hydration pattern;
+            // our caller already invokes us as `_ = ApplyDetailAsync`.
+            var prep = await Task.Run(() => BuildDetailPrep(detail));
+
+            // The user may have navigated to a different album while the prep
+            // ran on the threadpool. Bail before touching observables.
+            if (_disposed || AlbumId != albumId) return;
+
+            _allTracks = prep.Tracks;
+            RebuildDiscMetadata();
+            _popularTrackIds = prep.PopularTrackIds;
+
+            TotalTracks = _allTracks.Count;
+            TotalDuration = FormatDuration(prep.TotalSeconds);
+            IsLoadingTracks = false;
+
+            var current = Album ?? EmptyAlbumEnvelope();
+            var firstArtist = detail.Artists.FirstOrDefault();
+            var year = prep.Year ?? current.Year;
+            var releaseDateFormatted = prep.ReleaseDateFormatted ?? current.ReleaseDateFormatted;
+            var copyrightsText = prep.CopyrightsText ?? current.CopyrightsText;
 
             Album = current with
             {
@@ -1238,11 +1404,11 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
                 ArtistId = !string.IsNullOrEmpty(firstArtist?.Uri) ? firstArtist!.Uri! : current.ArtistId,
                 ArtistName = !string.IsNullOrEmpty(firstArtist?.Name) ? firstArtist!.Name! : current.ArtistName,
                 ArtistImageUrl = !string.IsNullOrEmpty(firstArtist?.ImageUrl) ? firstArtist!.ImageUrl : current.ArtistImageUrl,
-                Artists = billed,
-                ArtistAvatarItems = avatarItems,
-                HeaderArtistLinks = headerArtistLinks,
-                AllDistinctArtists = allDistinctArtists,
-                OverflowArtistCount = trackExtras.Count,
+                Artists = prep.Billed,
+                ArtistAvatarItems = prep.AvatarItems,
+                HeaderArtistLinks = prep.HeaderArtistLinks,
+                AllDistinctArtists = prep.AllDistinctArtists,
+                OverflowArtistCount = prep.OverflowArtistCount,
                 Year = year,
                 Type = !string.IsNullOrEmpty(detail.Type) ? detail.Type : current.Type,
                 Label = detail.Label,
@@ -1250,11 +1416,12 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
                 CopyrightsText = copyrightsText,
                 IsPreRelease = detail.IsPreRelease,
                 PreReleaseEndDateTime = detail.PreReleaseEndDateTime,
-                PreReleaseFormatted = preReleaseFormatted,
-                PreReleaseRelative = preReleaseRelative,
+                PreReleaseFormatted = prep.PreReleaseFormatted,
+                PreReleaseRelative = prep.PreReleaseRelative,
                 ShareUrl = detail.ShareUrl,
-                MetaInlineLine = BuildMetaInlineLine(TotalTracks, totalSeconds, year),
-                Palette = detail.Palette
+                MetaInlineLine = BuildMetaInlineLine(TotalTracks, prep.TotalSeconds, year),
+                Palette = detail.Palette,
+                TotalTracks = TotalTracks
             };
 
             IsSaved = detail.IsSaved;
@@ -1298,6 +1465,11 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
                 _ = LoadArtistContextAsync(albumId, primaryArtistUri);
             if (_allTracks.Count == 1)
                 _ = LoadMusicVideoSignalAsync(albumId, _allTracks[0]);
+
+            // Recommended playlists — RECOMMENDED_PLAYLISTS extended-metadata
+            // for this album, then batched LIST_METADATA_V2 to resolve names +
+            // covers. Also warms PlaylistStore so click-to-open is instant.
+            _ = LoadRecommendedPlaylistsAsync(albumId);
         }
         catch (Exception ex)
         {
@@ -1309,8 +1481,6 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
         {
             IsLoading = false;
         }
-
-        return Task.CompletedTask;
     }
 
     [RelayCommand]
@@ -1514,6 +1684,38 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
         catch (Exception ex)
         {
             _logger?.LogDebug(ex, "Failed to load merch for {AlbumId}", albumUri);
+        }
+    }
+
+    private async Task LoadRecommendedPlaylistsAsync(string albumUri)
+    {
+        try
+        {
+            var items = await Task.Run(() => _albumService.GetRecommendedPlaylistsAsync(albumUri))
+                .ConfigureAwait(true);
+
+            // Staleness guard — the user may have navigated to another album
+            // while the batched extended-metadata POST was in flight.
+            if (AlbumId != albumUri) return;
+
+            _recommendedPlaylists.ReplaceWith(items);
+            HasRecommendedPlaylists = items.Count > 0;
+
+            // Warm PlaylistStore + BitmapImage cache so clicking a recommended
+            // card opens the playlist page with the hero already populated.
+            // The prefetcher's session-wide `_alreadyKicked` guard makes repeat
+            // enqueues free; the underlying ExtendedMetadataStore cache will
+            // also short-circuit because we just fetched LIST_METADATA_V2 for
+            // these same URIs inside GetRecommendedPlaylistsAsync.
+            if (_playlistMetadataPrefetcher is not null)
+            {
+                foreach (var item in items)
+                    _playlistMetadataPrefetcher.EnqueuePlaylistPrefetch(item.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to load recommended playlists for {AlbumId}", albumUri);
         }
     }
 

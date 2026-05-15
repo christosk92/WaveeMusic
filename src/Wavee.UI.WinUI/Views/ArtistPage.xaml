@@ -22,6 +22,7 @@
     xmlns:transitions="using:CommunityToolkit.WinUI"
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     xmlns:views="using:Wavee.UI.WinUI.Views"
+    xmlns:gallery="using:Wavee.UI.WinUI.Controls.Gallery"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">
@@ -37,7 +38,12 @@
                     <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="#66FFFFFF"/>
                     <SolidColorBrush x:Key="WorldRankBadgeBackgroundBrush" Color="#24FFFFFF"/>
                     <SolidColorBrush x:Key="WorldRankBadgeBorderBrush" Color="#45FFFFFF"/>
+                    <SolidColorBrush x:Key="WorldRankBadgeForegroundBrush" Color="#E8FFFFFF"/>
                     <SolidColorBrush x:Key="HeroVignetteBrush" Color="#99000000"/>
+                    <SolidColorBrush x:Key="HeroNameForegroundBrush" Color="White"/>
+                    <SolidColorBrush x:Key="HeroBioForegroundBrush" Color="#A0FFFFFF"/>
+                    <SolidColorBrush x:Key="HeroMetaLabelForegroundBrush" Color="#A8FFFFFF"/>
+                    <SolidColorBrush x:Key="HeroMetaNumberForegroundBrush" Color="White"/>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="PinnedItemNormalBackgroundBrush" Color="#66F4F4F4"/>
@@ -47,7 +53,16 @@
                     <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="#33000000"/>
                     <SolidColorBrush x:Key="WorldRankBadgeBackgroundBrush" Color="#26FFFFFF"/>
                     <SolidColorBrush x:Key="WorldRankBadgeBorderBrush" Color="#4DFFFFFF"/>
-                    <SolidColorBrush x:Key="HeroVignetteBrush" Color="#55000000"/>
+                    <SolidColorBrush x:Key="WorldRankBadgeForegroundBrush" Color="#1A1A1A"/>
+                    <!-- Light mode flips the scrim from darkening (black) to
+                         lightening (white) so dark hero text reads against the
+                         underlying photo regardless of how dim/colourful the
+                         image is. Dark mode keeps the original black scrim. -->
+                    <SolidColorBrush x:Key="HeroVignetteBrush" Color="#80FFFFFF"/>
+                    <SolidColorBrush x:Key="HeroNameForegroundBrush" Color="#1A1A1A"/>
+                    <SolidColorBrush x:Key="HeroBioForegroundBrush" Color="#99333333"/>
+                    <SolidColorBrush x:Key="HeroMetaLabelForegroundBrush" Color="#BB333333"/>
+                    <SolidColorBrush x:Key="HeroMetaNumberForegroundBrush" Color="#1A1A1A"/>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
                     <SolidColorBrush x:Key="PinnedItemNormalBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}"/>
@@ -57,7 +72,12 @@
                     <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
                     <SolidColorBrush x:Key="WorldRankBadgeBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}"/>
                     <SolidColorBrush x:Key="WorldRankBadgeBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
+                    <SolidColorBrush x:Key="WorldRankBadgeForegroundBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
                     <SolidColorBrush x:Key="HeroVignetteBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+                    <SolidColorBrush x:Key="HeroNameForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+                    <SolidColorBrush x:Key="HeroBioForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+                    <SolidColorBrush x:Key="HeroMetaLabelForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+                    <SolidColorBrush x:Key="HeroMetaNumberForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 
@@ -207,8 +227,8 @@
                                                     <Border CornerRadius="13"
                                                             Height="26"
                                                             Padding="12,0"
-                                                            Background="#99000000"
-                                                            BorderBrush="#33FFFFFF"
+                                                            Background="{ThemeResource WorldRankBadgeBackgroundBrush}"
+                                                            BorderBrush="{ThemeResource WorldRankBadgeBorderBrush}"
                                                             BorderThickness="1"
                                                             VerticalAlignment="Center"
                                                             Visibility="{x:Bind ViewModel.HasWorldRank, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -217,7 +237,7 @@
                                                                        FontSize="10"
                                                                        FontWeight="Bold"
                                                                        CharacterSpacing="140"
-                                                                       Foreground="#C8FFFFFF"/>
+                                                                       Foreground="{ThemeResource WorldRankBadgeForegroundBrush}"/>
                                                             <TextBlock Text="{x:Bind ViewModel.WorldRankNumberText, Mode=OneWay}"
                                                                        FontSize="11"
                                                                        FontWeight="Bold"
@@ -233,8 +253,8 @@
                                                     <Border CornerRadius="13"
                                                             Height="26"
                                                             Padding="6,0,12,0"
-                                                            Background="#99000000"
-                                                            BorderBrush="#33FFFFFF"
+                                                            Background="{ThemeResource WorldRankBadgeBackgroundBrush}"
+                                                            BorderBrush="{ThemeResource WorldRankBadgeBorderBrush}"
                                                             BorderThickness="1"
                                                             Visibility="{x:Bind ViewModel.IsVerified, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                                         <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
@@ -250,7 +270,7 @@
                                                                        FontSize="11"
                                                                        FontWeight="Bold"
                                                                        CharacterSpacing="140"
-                                                                       Foreground="White"/>
+                                                                       Foreground="{ThemeResource WorldRankBadgeForegroundBrush}"/>
                                                         </StackPanel>
                                                     </Border>
                                                     <!-- Registered-only variant. Same dark glass treatment; person glyph
@@ -258,20 +278,20 @@
                                                     <Border CornerRadius="13"
                                                             Height="26"
                                                             Padding="10,0,12,0"
-                                                            Background="#99000000"
-                                                            BorderBrush="#33FFFFFF"
+                                                            Background="{ThemeResource WorldRankBadgeBackgroundBrush}"
+                                                            BorderBrush="{ThemeResource WorldRankBadgeBorderBrush}"
                                                             BorderThickness="1"
                                                             Visibility="{x:Bind ViewModel.IsRegisteredOnly, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                                         <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                                             <FontIcon Glyph="&#xE77B;"
                                                                       FontSize="12"
-                                                                      Foreground="White"
+                                                                      Foreground="{ThemeResource WorldRankBadgeForegroundBrush}"
                                                                       VerticalAlignment="Center"/>
                                                             <TextBlock Text="ARTIST PROFILE"
                                                                        FontSize="11"
                                                                        FontWeight="Bold"
                                                                        CharacterSpacing="140"
-                                                                       Foreground="White"/>
+                                                                       Foreground="{ThemeResource WorldRankBadgeForegroundBrush}"/>
                                                         </StackPanel>
                                                     </Border>
                                                 </Grid>
@@ -281,9 +301,15 @@
                                                     <!-- TextLineBounds=Tight removes the giant ascender/descender
                                                          padding huge display fonts otherwise add. LineHeight from
                                                          code-behind + BlockLineHeight strategy keep the baseline
-                                                         stable. A small positive Margin restores readable rhythm
-                                                         between the badge above and the bio below — fully tight
-                                                         looked cramped. -->
+                                                         stable.
+
+                                                         Top margin reserves headroom for the natural ascender
+                                                         overflow: with Tight bounds + LineHeight = size * 0.84-0.88
+                                                         (set in code-behind), the layout box is shorter than the
+                                                         glyph's actual top sidebearing, so tall ascenders ("J", "f",
+                                                         "h" etc.) at display sizes (~96-120 px) bleed roughly
+                                                         size * 0.12-0.16 = ~14-18 px above the box top. Without this
+                                                         margin those glyphs touch / overlap the badge row above. -->
                                                     <!-- TextLineBounds=TrimToCapHeight trims excess ascender space
                                                          (so the name sits close under the badge) but its reserved
                                                          descender box is too tall for this hero layout. Tight bounds
@@ -293,14 +319,14 @@
                                                                Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
                                                                FontWeight="Black"
                                                                CharacterSpacing="-40"
-                                                               Foreground="White"
+                                                               Foreground="{ThemeResource HeroNameForegroundBrush}"
                                                                TextWrapping="WrapWholeWords"
                                                                MaxLines="2"
                                                                TextTrimming="None"
                                                                TextLineBounds="Tight"
                                                                OpticalMarginAlignment="TrimSideBearings"
                                                                LineStackingStrategy="BlockLineHeight"
-                                                               Margin="0,2,0,0"
+                                                               Margin="0,18,0,16"
                                                                transitions:TransitionHelper.Id="artist-name"
                                                                Visibility="{x:Bind ViewModel.ArtistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                                                         <TextBlock.Shadow>
@@ -322,7 +348,7 @@
                                                            FontStyle="Italic"
                                                            MaxWidth="540"
                                                            HorizontalAlignment="Left"
-                                                           Foreground="#A0FFFFFF"
+                                                           Foreground="{ThemeResource HeroBioForegroundBrush}"
                                                            Visibility="{x:Bind ViewModel.HasHeroBioLine, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                                                 <Grid x:Name="HeroMetaPanel"
@@ -331,17 +357,17 @@
                                                          label words + separators stay at the dim hero meta colour so the
                                                          eye lands on the numbers first. -->
                                                     <TextBlock FontSize="13"
-                                                               Foreground="#A8FFFFFF"
+                                                               Foreground="{ThemeResource HeroMetaLabelForegroundBrush}"
                                                                TextTrimming="CharacterEllipsis"
                                                                MaxLines="1"
                                                                Visibility="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                                                        <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}" Foreground="White" FontWeight="SemiBold"/><Run Text=" monthly listeners"/>
+                                                        <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}" Foreground="{ThemeResource HeroMetaNumberForegroundBrush}" FontWeight="SemiBold"/><Run Text=" monthly listeners"/>
                                                         <Run Text="  ·  "/>
-                                                        <Run Text="{x:Bind ViewModel.FollowersFormatted, Mode=OneWay}" Foreground="White" FontWeight="SemiBold"/><Run Text=" followers"/>
+                                                        <Run Text="{x:Bind ViewModel.FollowersFormatted, Mode=OneWay}" Foreground="{ThemeResource HeroMetaNumberForegroundBrush}" FontWeight="SemiBold"/><Run Text=" followers"/>
                                                         <Run Text="  ·  "/>
-                                                        <Run Text="{x:Bind ViewModel.AlbumsTotalCount, Mode=OneWay}" Foreground="White" FontWeight="SemiBold"/><Run Text=" albums"/>
+                                                        <Run Text="{x:Bind ViewModel.AlbumsTotalCount, Mode=OneWay}" Foreground="{ThemeResource HeroMetaNumberForegroundBrush}" FontWeight="SemiBold"/><Run Text=" albums"/>
                                                         <Run Text="  ·  "/>
-                                                        <Run Text="{x:Bind ViewModel.SinglesTotalCount, Mode=OneWay}" Foreground="White" FontWeight="SemiBold"/><Run Text=" singles"/>
+                                                        <Run Text="{x:Bind ViewModel.SinglesTotalCount, Mode=OneWay}" Foreground="{ThemeResource HeroMetaNumberForegroundBrush}" FontWeight="SemiBold"/><Run Text=" singles"/>
                                                     </TextBlock>
                                                     <controls:Shimmer Width="320" Height="14"
                                                                       HorizontalAlignment="Left"
@@ -437,11 +463,12 @@
                                                                         Comment="{x:Bind ViewModel.SpotlightCommentText, Mode=OneWay}"
                                                                         CoverImageUrl="{x:Bind ViewModel.SpotlightReleaseImageUrl, Mode=OneWay}"
                                                                         AccentBrush="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
+                                                                        NavigationUri="{x:Bind ViewModel.SpotlightReleaseUri, Mode=OneWay}"
+                                                                        NavigationTotalTracks="{x:Bind ViewModel.SpotlightReleaseTrackCount, Mode=OneWay}"
                                                                         Visibility="{x:Bind ViewModel.HasSpotlightRelease, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                                                         PlayClick="SpotlightPlay_Click"
                                                                         SaveClick="SpotlightSave_Click"
-                                                                        ShareClick="SpotlightShare_Click"
-                                                                        CardClick="SpotlightCard_Click"/>
+                                                                        ShareClick="SpotlightShare_Click"/>
                                         </Grid>
                                     </Grid>
                         </Grid>
@@ -585,7 +612,8 @@
                                     </ItemsRepeater.Layout>
                                     <ItemsRepeater.ItemTemplate>
                                         <DataTemplate x:DataType="vm:LazyReleaseItem">
-                                            <cards:PopularReleaseRow CardClick="PopularReleaseRow_Click"/>
+                                            <!-- Row self-routes via internal CardButton_Click; data wired imperatively in PopularReleasesRepeater_ElementPrepared. -->
+                                            <cards:PopularReleaseRow/>
                                         </DataTemplate>
                                     </ItemsRepeater.ItemTemplate>
                                 </ItemsRepeater>
@@ -700,6 +728,11 @@
                                         Subtitle="{x:Bind Data.SubtitleDetail, Mode=OneWay, FallbackValue=''}"
                                         Title="{x:Bind Data.Name, Mode=OneWay, FallbackValue=''}"
                                         ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
+                                        NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
+                                        NavigationTotalTracks="{x:Bind Data.TrackCount, Mode=OneWay}"
+                                        AutoNavigateOnTap="False"
+                                        SecondaryActionVisible="True"
+                                        SecondaryActionTooltip="Open album page"
                                         Tag="{x:Bind Data.Uri, Mode=OneWay}"
                                         CardClick="AlbumCard_Click"/>
                                 </DataTemplate>
@@ -740,6 +773,11 @@
                                         Subtitle="{x:Bind Data.SubtitleDetail, Mode=OneWay, FallbackValue=''}"
                                         Title="{x:Bind Data.Name, Mode=OneWay, FallbackValue=''}"
                                         ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
+                                        NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
+                                        NavigationTotalTracks="{x:Bind Data.TrackCount, Mode=OneWay}"
+                                        AutoNavigateOnTap="False"
+                                        SecondaryActionVisible="True"
+                                        SecondaryActionTooltip="Open album page"
                                         Tag="{x:Bind Data.Uri, Mode=OneWay}"
                                         CardClick="AlbumCard_Click"/>
                                 </DataTemplate>
@@ -777,8 +815,8 @@
                                             Subtitle="{x:Bind Data.SubtitleDetail, Mode=OneWay, FallbackValue=''}"
                                             Title="{x:Bind Data.Name, Mode=OneWay, FallbackValue=''}"
                                             ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
-                                            Tag="{x:Bind Data.Uri, Mode=OneWay}"
-                                            CardClick="ReleaseNavigateCard_Click"/>
+                                            NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
+                                            NavigationTotalTracks="{x:Bind Data.TrackCount, Mode=OneWay}"/>
                                     </DataTemplate>
                                 </ItemsRepeater.ItemTemplate>
                             </ItemsRepeater>
@@ -790,8 +828,11 @@
                       [5] RHYTHM BREAK — On Tour Now
                       ════════════════════════════════════════════════════════ -->
                 <waveeControls:RhythmBreakBanner x:Name="TourBanner"
+                                                 Eyebrow="{x:Bind ViewModel.TourBannerEyebrow, Mode=OneWay}"
                                                  Headline="{x:Bind ViewModel.TourBannerHeadline, Mode=OneWay}"
                                                  Subline="{x:Bind ViewModel.TourBannerSubline, Mode=OneWay}"
+                                                 IsLive="{x:Bind ViewModel.TourBannerIsLive, Mode=OneWay}"
+                                                 IconGlyph="{x:Bind ViewModel.TourBannerIconGlyph, Mode=OneWay}"
                                                  AccentBrush="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
                                                  Visibility="{x:Bind ViewModel.HasConcerts, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                                  CardClick="TourBanner_Click"/>
@@ -872,6 +913,7 @@
                                     <DataTemplate x:DataType="vm:ConcertVm">
                                         <cards:TicketStub Width="240"
                                                           CardClick="ConcertStub_Click"
+                                                          ViewClick="ConcertStub_ViewClick"
                                                           BuyClick="ConcertStub_BuyClick"/>
                                     </DataTemplate>
                                 </ItemsRepeater.ItemTemplate>
@@ -1085,32 +1127,18 @@
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
-                    <ItemsRepeater x:Name="GalleryRepeater"
-                                   ItemsSource="{x:Bind ViewModel.GalleryPhotos, Mode=OneWay}">
-                        <ItemsRepeater.Layout>
-                            <UniformGridLayout MinItemWidth="170" MinItemHeight="170"
-                                               MinRowSpacing="10" MinColumnSpacing="10"
-                                               ItemsStretch="Fill"/>
-                        </ItemsRepeater.Layout>
-                        <ItemsRepeater.ItemTemplate>
-                            <DataTemplate x:DataType="x:String">
-                                <Button Padding="0" Background="Transparent" BorderThickness="0"
-                                        HorizontalContentAlignment="Stretch"
-                                        VerticalContentAlignment="Stretch"
-                                        Tag="{x:Bind}"
-                                        Click="GalleryCard_Click">
-                                    <Border Width="170"
-                                            Height="170"
-                                            CornerRadius="10">
-                                        <Border.Background>
-                                            <ImageBrush Stretch="UniformToFill"
-                                                        ImageSource="{x:Bind Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=320}"/>
-                                        </Border.Background>
-                                    </Border>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsRepeater.ItemTemplate>
-                    </ItemsRepeater>
+                    <!-- Compact continuous marquee. Same source as the old hero band
+                         (ViewModel.GalleryPhotos) but rendered as an infinitely
+                         auto-scrolling rail of square tiles. Pauses on hover; tap
+                         on a tile opens the existing FlipView lightbox at the tapped
+                         original-list index via GalleryMarquee_ItemTapped. -->
+                    <gallery:MarqueeGalleryStrip x:Name="GalleryMarquee"
+                                                  Height="172"
+                                                  ItemSize="160"
+                                                  ItemSpacing="12"
+                                                  SpeedPxPerSec="28"
+                                                  EdgeFadeWidth="64"
+                                                  ItemTapped="GalleryMarquee_ItemTapped"/>
                 </StackPanel>
 
                 <!--  ════════════════════════════════════════════════════════
@@ -1315,5 +1343,52 @@
                             PaletteAccentPillForegroundBrush="{x:Bind ViewModel.PaletteAccentPillForegroundBrush, Mode=OneWay}"
                             PlayCommand="{x:Bind ViewModel.PlayTopTracksCommand}"
                             ToggleFollowCommand="{x:Bind ViewModel.ToggleFollowCommand}"/>
+
+        <!--  ════════════════════════════════════════════════════════════════
+              GALLERY LIGHTBOX — full-screen overlay FlipView. Bound to the
+              same GalleryPhotos collection the hero band reads, so SelectedIndex
+              maps 1:1 to the slide that opened it. Esc / close button / a tap
+              on the dimmed backdrop dismiss the overlay (see code-behind
+              GalleryLightbox_BackdropTapped / _KeyDown / GalleryLightboxClose_Click).
+              ════════════════════════════════════════════════════════════════ -->
+        <Grid x:Name="GalleryLightbox"
+              Visibility="Collapsed"
+              Background="#E6000000"
+              Canvas.ZIndex="100"
+              IsTabStop="True"
+              Tapped="GalleryLightbox_BackdropTapped"
+              KeyDown="GalleryLightbox_KeyDown">
+            <FlipView x:Name="GalleryFlip"
+                      ItemsSource="{x:Bind ViewModel.GalleryPhotos, Mode=OneWay}"
+                      Background="Transparent"
+                      Margin="48"
+                      MaxWidth="1800">
+                <FlipView.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <Grid>
+                            <Image Source="{x:Bind Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=2048}"
+                                   Stretch="Uniform"/>
+                        </Grid>
+                    </DataTemplate>
+                </FlipView.ItemTemplate>
+            </FlipView>
+            <Button x:Name="GalleryLightboxClose"
+                    Click="GalleryLightboxClose_Click"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Margin="0,16,16,0"
+                    Width="44" Height="44"
+                    CornerRadius="22"
+                    Padding="0"
+                    Background="#66000000"
+                    BorderBrush="#33FFFFFF"
+                    BorderThickness="1"
+                    ToolTipService.ToolTip="Close (Esc)">
+                <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}"
+                          Glyph="&#xE894;"
+                          FontSize="14"
+                          Foreground="White"/>
+            </Button>
+        </Grid>
     </Grid>
 </Page>

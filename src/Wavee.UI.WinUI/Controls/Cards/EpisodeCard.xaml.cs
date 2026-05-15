@@ -5,10 +5,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers;
-using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
@@ -26,14 +24,12 @@ public sealed partial class EpisodeCard : UserControl
     private const double HoverCoverDurationMs = 200;
     private const int CoverDecodeSize = 200;
 
-    private readonly ImageCacheService? _imageCache;
     private bool _isHovered;
     private HomeSectionItem? _boundItem;
     private string? _currentCoverImageUrl;
 
     public EpisodeCard()
     {
-        _imageCache = Ioc.Default.GetService<ImageCacheService>();
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         Loaded += OnLoaded;
@@ -48,12 +44,10 @@ public sealed partial class EpisodeCard : UserControl
             _boundItem = null;
         }
 
-        // Drop the native decoded surface so the WinUI compositor releases it.
-        // Also restore the placeholder + clear the URL cache so when the card is
-        // recycled (same instance rebound via ItemsRepeater) RenderAll
-        // re-fetches the image instead of hitting the early-out cache-equal
-        // branch and leaving the cover area blank.
-        if (CoverImage != null) CoverImage.Source = null;
+        // Do NOT clear CoverImage.ImageUrl. CompositionImage releases its
+        // own pin on Unloaded; clearing here breaks scroll-back-up since the
+        // RenderAll early-out trips on the unchanged _currentCoverImageUrl.
+        // Reset _currentCoverImageUrl so RenderAll re-applies on re-attach.
         if (CoverPlaceholderIcon != null) CoverPlaceholderIcon.Visibility = Visibility.Visible;
         _currentCoverImageUrl = null;
     }
@@ -63,7 +57,7 @@ public sealed partial class EpisodeCard : UserControl
         // ItemsRepeater can recycle a card back to the same DataContext.
         // OnDataContextChanged doesn't fire in that case, so we re-trigger
         // RenderAll here when the cover was nulled by the previous Unloaded.
-        if (_boundItem != null && CoverImage?.Source == null)
+        if (_boundItem != null && string.IsNullOrEmpty(CoverImage?.ImageUrl))
             RenderAll();
     }
 
@@ -105,37 +99,17 @@ public sealed partial class EpisodeCard : UserControl
         var imageUrl = SpotifyImageHelper.ToHttpsUrl(rawImageUrl) ?? rawImageUrl;
         if (!string.IsNullOrEmpty(imageUrl))
         {
-            if (string.Equals(_currentCoverImageUrl, imageUrl, StringComparison.Ordinal)
-                && CoverImage.Source != null)
-            {
-                CoverPlaceholderIcon.Visibility = Visibility.Collapsed;
-            }
-            else
+            if (!string.Equals(_currentCoverImageUrl, imageUrl, StringComparison.Ordinal))
             {
                 _currentCoverImageUrl = imageUrl;
                 CoverPlaceholderIcon.Visibility = Visibility.Visible;
-
-                try
-                {
-                    CoverImage.Source = _imageCache?.GetOrCreate(imageUrl, CoverDecodeSize)
-                        ?? new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(imageUrl))
-                        {
-                            DecodePixelWidth = CoverDecodeSize,
-                            DecodePixelType = Microsoft.UI.Xaml.Media.Imaging.DecodePixelType.Logical
-                        };
-                }
-                catch
-                {
-                    _currentCoverImageUrl = null;
-                    CoverImage.Source = null;
-                    CoverPlaceholderIcon.Visibility = Visibility.Visible;
-                }
+                CoverImage.ImageUrl = imageUrl;
             }
         }
         else
         {
             _currentCoverImageUrl = null;
-            CoverImage.Source = null;
+            CoverImage.ImageUrl = null;
             CoverPlaceholderIcon.Visibility = Visibility.Visible;
         }
 
@@ -287,7 +261,7 @@ public sealed partial class EpisodeCard : UserControl
         }
     }
 
-    private void CoverImage_ImageOpened(object sender, RoutedEventArgs e)
+    private void CoverImage_ImageOpened(object? sender, EventArgs e)
     {
         CoverPlaceholderIcon.Visibility = Visibility.Collapsed;
     }

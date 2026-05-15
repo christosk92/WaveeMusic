@@ -14,6 +14,7 @@ public sealed partial class TicketStub : UserControl
 {
     public event EventHandler<RoutedEventArgs>? CardClick;
     public event EventHandler<RoutedEventArgs>? BuyClick;
+    public event EventHandler<RoutedEventArgs>? ViewClick;
 
     public static readonly DependencyProperty MonthProperty =
         DependencyProperty.Register(nameof(Month), typeof(string), typeof(TicketStub),
@@ -71,4 +72,5 @@ public sealed partial class TicketStub : UserControl
 
     private void CardButton_Click(object sender, RoutedEventArgs e) => CardClick?.Invoke(this, e);
     private void BuyLink_Click(object sender, RoutedEventArgs e) => BuyClick?.Invoke(this, e);
+    private void ViewLink_Click(object sender, RoutedEventArgs e) => ViewClick?.Invoke(this, e);
 }

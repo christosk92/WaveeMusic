@@ -20,6 +20,12 @@ public partial class App : Application
     private static IHost? _host;
     private static readonly SemaphoreSlim _shutdownGate = new(1, 1);
     private static Task? _shutdownTask;
+    // Owns the long-lived Rx subscription that drains the local-video
+    // suppressor token on state changes. Stored in a field so it can be
+    // disposed on shutdown — without this, the subscription was untracked
+    // and the closure stayed pinned to the orchestrator's StateChanges
+    // observable for the lifetime of the process.
+    private static IDisposable? _localVideoStateSubscription;
 
     public static AppModel AppModel { get; private set; } = null!;
 
@@ -171,22 +177,22 @@ public partial class App : Application
                 var videoEngine = Ioc.Default.GetService<Wavee.Audio.ILocalMediaPlayer>();
                 if (videoEngine is not null)
                 {
-                    string? lastNavigatedUri = null;
                     // Mini-as-default routing: the floating MiniVideoPlayer
                     // in the shell handles surfacing whenever video playback
                     // becomes active. Auto-navigating to the fullscreen page
                     // hijacks whatever the user was browsing — instead the
                     // Mini appears bottom-right and the user clicks it to
-                    // expand via ConnectedAnimation. The subscription is
-                    // kept (no functional behaviour) so any future per-track
-                    // hooks have a single place to land.
-                    videoEngine.StateChanges.Subscribe(state =>
+                    // expand via ConnectedAnimation. We still consume the
+                    // suppressor token so the BaselineHomeCard call-site's
+                    // "didn't auto-nav this URI" semantics stay correct.
+                    //
+                    // Subscription is stored in a field so the orchestrator's
+                    // StateChanges observable doesn't keep an untracked
+                    // closure alive for the lifetime of the process.
+                    _localVideoStateSubscription = videoEngine.StateChanges.Subscribe(state =>
                     {
                         var uri = state.TrackUri;
-                        if (string.IsNullOrEmpty(uri)) { lastNavigatedUri = null; return; }
-                        lastNavigatedUri = uri;
-                        // Consume the suppressor token so callers that rely
-                        // on "didn't auto-nav this URI" semantics stay correct.
+                        if (string.IsNullOrEmpty(uri)) return;
                         VideoAutoNavigationSuppressor.TryConsume(uri);
                     });
                 }
@@ -347,6 +353,11 @@ public partial class App : Application
         await _shutdownGate.WaitAsync();
         try
         {
+            // Dispose the long-lived Rx subscription before the host tears
+            // down. Pairs with the field at the top of the class.
+            try { Interlocked.Exchange(ref _localVideoStateSubscription, null)?.Dispose(); }
+            catch (Exception ex) { LogUnhandledException("LocalVideoSubDispose", ex); }
+
             var host = Interlocked.Exchange(ref _host, null);
             if (host == null)
                 return;

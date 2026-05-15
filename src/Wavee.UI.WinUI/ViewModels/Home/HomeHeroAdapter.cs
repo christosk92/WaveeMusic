@@ -370,9 +370,64 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
                 secondaryCta: "Open"));
         }
 
+        // Transient-empty guard. RebuildHeroSlides fires on every
+        // Sections.CollectionChanged via RequestRebuild's coalesced dispatcher
+        // post. Three paths can race the rebuild past a moment where
+        // _host.Sections is empty:
+        //   • Cold load — PopulateSectionsChunkedAsync calls Sections.Clear()
+        //     before chunking adds back in. Coalescing usually folds the
+        //     rebuild past the clear, but a yield between chunks can let the
+        //     queued rebuild run while Sections is still empty.
+        //   • Nav-back from hibernation — ResumeAndRehydrate→ApplyBackgroundRefresh
+        //     →ApplyDiff mutates Sections one item at a time. Page nav also
+        //     re-fires Bindings.Update() which re-reads HeroSlides for the
+        //     carousel's ItemsSource DP — an empty list reassigned at that
+        //     moment leaves the hero blank for a frame to ~1 sec until the
+        //     next rebuild lands.
+        //   • Background refresh — same Extract→Diff→Restore pattern.
+        // In every case the eventual final rebuild produces correct slides;
+        // it's just the transient empty assignment that flickers. If we have
+        // no source sections to walk AND we already have slides on screen,
+        // keep them. The next rebuild with real data overwrites cleanly.
+        //
+        // Intentional empties (Local-only chip with no local sections, the
+        // user explicitly hiding everything) still apply, because in those
+        // cases Sections is non-empty — every entry just gets filtered out by
+        // the localOnly guard inside the foreach.
+        if (slides.Count == 0 && _host.Sections.Count == 0 && HeroSlides.Count > 0)
+            return;
+
+        // Identity guard. If the new list is structurally equal to the
+        // current (same item URIs in the same order), skip the reassignment
+        // entirely. HeroCarousel.ItemsSource is a DP — reassigning to a
+        // logically-identical list still tears the carousel down and
+        // re-realises every slide, which on a fast Bindings.Update() pass
+        // costs a visible frame of blank carousel.
+        if (SlidesAreEquivalent(HeroSlides, slides))
+            return;
+
         // Reassign so HeroCarousel.ItemsSource DP-change fires RebuildSlides().
         // In-place mutation would not trigger the carousel rebuild.
         HeroSlides = slides;
+    }
+
+    /// <summary>
+    /// Cheap structural-equality check over the two slide lists — same count
+    /// + same Tag URI in the same order. The slides themselves are rebuilt
+    /// fresh on every RebuildHeroSlides call (BuildSlide allocates new
+    /// HeroCarouselItem instances), so ReferenceEquals on items always fails;
+    /// the URI comparison is what tells us the visible content didn't change.
+    /// </summary>
+    private static bool SlidesAreEquivalent(IList<HeroCarouselItem> previous, IList<HeroCarouselItem> next)
+    {
+        if (previous.Count != next.Count) return false;
+        for (var i = 0; i < previous.Count; i++)
+        {
+            var prevUri = (previous[i].Tag as HomeSectionItem)?.Uri;
+            var nextUri = (next[i].Tag as HomeSectionItem)?.Uri;
+            if (!string.Equals(prevUri, nextUri, StringComparison.Ordinal)) return false;
+        }
+        return true;
     }
 
     /// <summary>

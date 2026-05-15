@@ -6,7 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls1="using:CommunityToolkit.WinUI.Controls"
-    xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:media="using:CommunityToolkit.WinUI.Media"
     xmlns:ui="using:CommunityToolkit.WinUI"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
@@ -95,9 +95,10 @@
                                   Glyph="&#xE8D6;" FontSize="18" Opacity="0.55"
                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        <Image x:Name="CompactAlbumArt" Stretch="UniformToFill"
-                               behaviors:ImageFallbackBehavior.HideOnError="True"
-                               behaviors:ImageFallbackBehavior.FadeInOnLoad="True"/>
+                        <imaging:CompositionImage x:Name="CompactAlbumArt"
+                                                  Stretch="UniformToFill"
+                                                  DecodePixelSize="64"
+                                                  CornerRadius="4"/>
                     </Grid>
                 </Border>
 
@@ -318,10 +319,10 @@
                             <FontIcon x:Name="RowArtPlaceholder" Glyph="&#xE8D6;" FontSize="16" Opacity="0.55"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            <Image x:Name="RowAlbumArt" Stretch="UniformToFill"
-                                   behaviors:ImageFallbackBehavior.HideOnError="True"
-                                   behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                   behaviors:ImageFallbackBehavior.DecodePixelWidth="68"/>
+                            <imaging:CompositionImage x:Name="RowAlbumArt"
+                                                      Stretch="UniformToFill"
+                                                      DecodePixelSize="64"
+                                                      CornerRadius="4"/>
                         </Grid>
                     </Border>
 

@@ -1,10 +1,8 @@
 using System;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.Enums;
 using Wavee.UI.WinUI.Data.Enums;
-using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Converters;
 
@@ -142,15 +140,16 @@ public sealed class RepeatModeToSymbolConverter : IValueConverter
 }
 
 /// <summary>
-/// Converts a string URL to an ImageSource for x:Bind compatibility.
-/// Delegates to the shared <see cref="ImageCacheService"/> for LRU caching
-/// and <see cref="BitmapImage.DecodePixelWidth"/> control.
-/// Pass ConverterParameter as an int string to set decode size (default 200px).
+/// Converts a string URL to an <see cref="Microsoft.UI.Xaml.Media.ImageSource"/>
+/// for consumers that need one — <c>PersonPicture.ProfilePicture</c>,
+/// <c>ImageBrush.ImageSource</c>. This is the <em>uncached</em> survival path;
+/// cached image surfaces live in <see cref="Services.ImageCacheService"/>
+/// and render via <see cref="Controls.Imaging.CompositionImage"/>.
+///
+/// <para>Pass ConverterParameter as an int string to set decode size (default 200 px).</para>
 /// </summary>
 public sealed class StringToImageSourceConverter : IValueConverter
 {
-    private static ImageCacheService? _cache;
-
     public object? Convert(object value, Type targetType, object parameter, string language)
     {
         if (value is not string rawUri || string.IsNullOrWhiteSpace(rawUri))
@@ -159,13 +158,11 @@ public sealed class StringToImageSourceConverter : IValueConverter
         var uri = Helpers.SpotifyImageHelper.ToHttpsUrl(rawUri) ?? rawUri;
         var decodeSize = int.TryParse(parameter?.ToString(), out var parsed) ? parsed : 200;
 
-        _cache ??= Ioc.Default.GetService<ImageCacheService>();
-        return _cache?.GetOrCreate(uri, decodeSize)
-               ?? new BitmapImage(new Uri(uri))
-               {
-                   DecodePixelWidth = decodeSize,
-                   DecodePixelType = DecodePixelType.Logical
-               };
+        return new BitmapImage(new Uri(uri))
+        {
+            DecodePixelWidth = decodeSize,
+            DecodePixelType = DecodePixelType.Logical
+        };
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)

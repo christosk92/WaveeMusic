@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -56,6 +57,30 @@ public sealed partial class TrackItem : UserControl
     public static readonly DependencyProperty ModeProperty =
         DependencyProperty.Register(nameof(Mode), typeof(TrackItemDisplayMode), typeof(TrackItem),
             new PropertyMetadata(TrackItemDisplayMode.Compact, OnModeChanged));
+
+    // Read-only mirror DPs that drive x:Load on the inactive mode's
+    // CompositionImage. Synced from OnModeChanged. Default matches Mode's
+    // default (Compact) so CompactAlbumArt loads on first realize, RowAlbumArt
+    // stays deferred for the common case.
+    public static readonly DependencyProperty IsCompactModeProperty =
+        DependencyProperty.Register(nameof(IsCompactMode), typeof(bool), typeof(TrackItem),
+            new PropertyMetadata(true));
+
+    public static readonly DependencyProperty IsRowModeProperty =
+        DependencyProperty.Register(nameof(IsRowMode), typeof(bool), typeof(TrackItem),
+            new PropertyMetadata(false));
+
+    public bool IsCompactMode
+    {
+        get => (bool)GetValue(IsCompactModeProperty);
+        private set => SetValue(IsCompactModeProperty, value);
+    }
+
+    public bool IsRowMode
+    {
+        get => (bool)GetValue(IsRowModeProperty);
+        private set => SetValue(IsRowModeProperty, value);
+    }
 
     public static readonly DependencyProperty PlayCommandProperty =
         DependencyProperty.Register(nameof(PlayCommand), typeof(ICommand), typeof(TrackItem),
@@ -478,16 +503,11 @@ public sealed partial class TrackItem : UserControl
     private readonly IMusicVideoMetadataService? _musicVideoMetadata = Ioc.Default.GetService<IMusicVideoMetadataService>();
     private readonly Wavee.UI.Services.ITrackColorHintService? _colorHintService = Ioc.Default.GetService<Wavee.UI.Services.ITrackColorHintService>();
     private static ISettingsService? _cachedSettingsService;
-    private static ImageCacheService? _cachedImageCache;
     private bool _isThisTrackPlaying;
     private bool _isThisTrackPaused;
     private bool _isBuffering;
     private string? _boundCompactImageUrl;
     private string? _boundRowImageUrl;
-    // URLs we currently hold a pin on in ImageCacheService. May lag _boundCompactImageUrl
-    // briefly during a rebind; always kept in sync before the method returns.
-    private string? _pinnedCompactUrl;
-    private string? _pinnedRowUrl;
     // URL we've already retried once after ImageFailed. Prevents infinite retry loops
     // on a genuinely broken URL. Reset when the URL changes.
     private string? _retriedCompactUrl;
@@ -539,9 +559,41 @@ public sealed partial class TrackItem : UserControl
         // RowAlbumLink stays a single HyperlinkButton.
         RowAlbumLink.Click += OnAlbumLinkClick;
 
-        // Transient CDN/network failures: retry once per URL with a fresh BitmapImage.
-        CompactAlbumArt.ImageFailed += OnCompactAlbumArtFailed;
-        RowAlbumArt.ImageFailed += OnRowAlbumArtFailed;
+        // CompactAlbumArt / RowAlbumArt ImageFailed subscriptions happen
+        // lazily in EnsureCompactAlbumArtRealized / EnsureRowAlbumArtRealized.
+        // Both controls are x:Load-deferred based on Mode, so the named
+        // fields are null until the first time the active mode is shown.
+
+    }
+
+    // ── Lazy realize: inactive-mode CompositionImage subtree ──
+
+    private bool _compactAlbumArtSubscribed;
+    private bool _rowAlbumArtSubscribed;
+
+    private void EnsureCompactAlbumArtRealized()
+    {
+        // x:Load realizes the element when IsCompactMode flips to true.
+        // CompactAlbumArt is guaranteed non-null here because callers only
+        // reach this path when Mode == Compact (which also set IsCompactMode).
+        if (CompactAlbumArt is null)
+            this.FindName("CompactAlbumArt");
+        if (!_compactAlbumArtSubscribed && CompactAlbumArt is not null)
+        {
+            CompactAlbumArt.ImageFailed += OnCompactAlbumArtFailed;
+            _compactAlbumArtSubscribed = true;
+        }
+    }
+
+    private void EnsureRowAlbumArtRealized()
+    {
+        if (RowAlbumArt is null)
+            this.FindName("RowAlbumArt");
+        if (!_rowAlbumArtSubscribed && RowAlbumArt is not null)
+        {
+            RowAlbumArt.ImageFailed += OnRowAlbumArtFailed;
+            _rowAlbumArtSubscribed = true;
+        }
     }
 
     #region Mode Switching
@@ -549,6 +601,12 @@ public sealed partial class TrackItem : UserControl
     private static void OnModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
+        // Drive x:Load on the inactive mode's CompositionImage. Setting these
+        // BEFORE ApplyMode/BindTrackData ensures the right subtree is realized
+        // by the time we try to set its ImageUrl.
+        var compact = item.Mode == TrackItemDisplayMode.Compact;
+        item.IsCompactMode = compact;
+        item.IsRowMode = !compact;
         item.ApplyMode();
         item.ResetHoverVisualState();
         item.SyncLoadingStateFromTrack();
@@ -821,11 +879,23 @@ public sealed partial class TrackItem : UserControl
 
     private void ApplyCompactAlbumArt(string? imageUrl)
     {
-        // Idempotent: same URL and the Image still has a Source → don't churn.
-        // Without this, recycled containers, OnLoaded rebinds, and shimmer→loaded
-        // transitions all force WinUI to drop its decoded bitmap and re-decode.
+        // Diagnostic: trace null-URL invocations on already-loaded rows
+        // (the broken-tile pattern). Filter on "[TrackItem.compactArt]".
+        if (imageUrl is null && !string.IsNullOrEmpty(_boundCompactImageUrl))
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[TrackItem.compactArt] NULL URL passed while previously bound={_boundCompactImageUrl}; "
+                + $"trackId={Track?.Id ?? "(null)"} title={Track?.Title ?? "(null)"} "
+                + $"trackHasImg={Track?.ImageSmallUrl ?? Track?.ImageUrl ?? "(null)"} "
+                + $"stack={new System.Diagnostics.StackTrace(1, false).ToString().Split('\n').FirstOrDefault()?.Trim()}");
+        }
+
+        // Lazy-realize the compact-mode CompositionImage on first use.
+        EnsureCompactAlbumArtRealized();
+        if (CompactAlbumArt is null) return;
+
         if (imageUrl == _boundCompactImageUrl &&
-            CompactAlbumArt.Source != null &&
+            !string.IsNullOrEmpty(CompactAlbumArt.ImageUrl) &&
             CompactAlbumArt.Visibility == Visibility.Visible)
         {
             CompactAlbumArt.Visibility = Visibility.Visible;
@@ -833,38 +903,48 @@ public sealed partial class TrackItem : UserControl
             return;
         }
 
-        // Only clear the retry guard when the URL actually changes. A retry of the
-        // same URL must keep its guard set so we don't loop on a permanently-broken
-        // image.
+        // Null URL on an already-painted row is a TRANSIENT state during
+        // lazy-track-item property updates or x:Bind Update() flushes — the
+        // actual data still has an image. Clearing here drops the cache pin,
+        // the surface can get evicted, and the row stays blank forever even
+        // after a real URL re-arrives (the late re-set would race with another
+        // recycle and could miss). Keep the existing image; the next real URL
+        // overwrites it cleanly.
+        if (string.IsNullOrEmpty(imageUrl) && !string.IsNullOrEmpty(CompactAlbumArt.ImageUrl))
+        {
+            return;
+        }
+
         bool urlChanged = imageUrl != _boundCompactImageUrl;
         _boundCompactImageUrl = imageUrl;
         if (urlChanged) _retriedCompactUrl = null;
         CompactAlbumArt.Visibility = Visibility.Visible;
-        CompactAlbumArt.Source = null;
-
-        if (!string.IsNullOrEmpty(_pinnedCompactUrl))
-        {
-            _cachedImageCache?.Unpin(_pinnedCompactUrl, 48);
-            _pinnedCompactUrl = null;
-        }
 
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
         if (string.IsNullOrEmpty(httpsUrl))
+        {
+            CompactAlbumArt.ImageUrl = null;
             return;
+        }
 
-        _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
-        // Atomic pin-on-insert avoids the self-eviction race where the
-        // just-added entry was the only unpinned candidate when the cache
-        // was full of pinned visible cards.
-        CompactAlbumArt.Source = _cachedImageCache?.GetOrCreate(httpsUrl, 48, pin: true);
+        // CompositionImage handles pin/unpin and the LRU race internally.
+        CompactAlbumArt.ImageUrl = httpsUrl;
         CompactAlbumArt.Opacity = 1;
-        _pinnedCompactUrl = httpsUrl;
     }
 
     private void ApplyRowAlbumArt(string? imageUrl)
     {
+        EnsureRowAlbumArtRealized();
+        if (RowAlbumArt is null) return;
+
+        // Same transient-null protection as ApplyCompactAlbumArt above.
+        if (string.IsNullOrEmpty(imageUrl) && !string.IsNullOrEmpty(RowAlbumArt.ImageUrl))
+        {
+            return;
+        }
+
         if (imageUrl == _boundRowImageUrl &&
-            RowAlbumArt.Source != null &&
+            !string.IsNullOrEmpty(RowAlbumArt.ImageUrl) &&
             RowAlbumArt.Visibility == Visibility.Visible)
         {
             RowAlbumArt.Visibility = Visibility.Visible;
@@ -876,65 +956,49 @@ public sealed partial class TrackItem : UserControl
         bool urlChanged = imageUrl != _boundRowImageUrl;
         _boundRowImageUrl = imageUrl;
         if (urlChanged) _retriedRowUrl = null;
-        RowAlbumArt.Source = null;
-
-        if (!string.IsNullOrEmpty(_pinnedRowUrl))
-        {
-            _cachedImageCache?.Unpin(_pinnedRowUrl, 48);
-            _pinnedRowUrl = null;
-        }
 
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
         if (string.IsNullOrEmpty(httpsUrl))
         {
+            RowAlbumArt.ImageUrl = null;
             RowAlbumArt.Visibility = Visibility.Collapsed;
             RowArtPlaceholder.Visibility = Visibility.Visible;
             return;
         }
 
-        // Placeholder stays visible behind the image; the image fades in on top
-        // (FadeInOnLoad) and fully covers the icon once opaque.
+        // Placeholder stays visible behind the image; CompositionImage fades
+        // its own placeholder out as the surface loads.
         RowArtPlaceholder.Visibility = Visibility.Visible;
-        _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
-        // Atomic pin-on-insert (same race fix as the compact path above).
-        RowAlbumArt.Source = _cachedImageCache?.GetOrCreate(httpsUrl, 48, pin: true);
+        RowAlbumArt.ImageUrl = httpsUrl;
         RowAlbumArt.Opacity = 1;
-        _pinnedRowUrl = httpsUrl;
         RowAlbumArt.Visibility = Visibility.Visible;
     }
 
-    private void OnCompactAlbumArtFailed(object sender, ExceptionRoutedEventArgs e)
+    private void OnCompactAlbumArtFailed(object? sender, EventArgs e)
     {
-        var url = _pinnedCompactUrl;
+        var url = _boundCompactImageUrl;
         if (string.IsNullOrEmpty(url)) return;
         var alreadyRetried = url == _retriedCompactUrl;
         _retriedCompactUrl = url;
 
-        // Drop the poisoned BitmapImage so the next GetOrCreate creates a fresh one
-        // and does a new UriSource decode. Clearing Source trips the idempotent
-        // guard in ApplyCompactAlbumArt so the rebind actually runs.
-        _cachedImageCache?.Invalidate(url, 48);
-        _cachedImageCache?.Unpin(url, 48);
-        _pinnedCompactUrl = null;
-        CompactAlbumArt.Source = null;
+        CompactAlbumArt.ImageUrl = null;
         CompactAlbumArt.Visibility = Visibility.Visible;
         CompactAlbumArt.Opacity = 1;
         if (alreadyRetried) return;
 
+        // CompositionImage already invalidated the cache entry. Re-set the URL
+        // to trigger a fresh GetOrCreate.
         DispatcherQueue?.TryEnqueue(() => ApplyCompactAlbumArt(_boundCompactImageUrl));
     }
 
-    private void OnRowAlbumArtFailed(object sender, ExceptionRoutedEventArgs e)
+    private void OnRowAlbumArtFailed(object? sender, EventArgs e)
     {
-        var url = _pinnedRowUrl;
+        var url = _boundRowImageUrl;
         if (string.IsNullOrEmpty(url)) return;
         var alreadyRetried = url == _retriedRowUrl;
         _retriedRowUrl = url;
 
-        _cachedImageCache?.Invalidate(url, 48);
-        _cachedImageCache?.Unpin(url, 48);
-        _pinnedRowUrl = null;
-        RowAlbumArt.Source = null;
+        RowAlbumArt.ImageUrl = null;
         RowAlbumArt.Visibility = Visibility.Visible;
         RowAlbumArt.Opacity = 1;
         if (alreadyRetried) return;
@@ -1052,12 +1116,12 @@ public sealed partial class TrackItem : UserControl
     {
         if (Mode == TrackItemDisplayMode.Compact)
         {
-            if (!string.IsNullOrEmpty(_boundCompactImageUrl) && CompactAlbumArt.Source == null)
+            if (!string.IsNullOrEmpty(_boundCompactImageUrl) && string.IsNullOrEmpty(CompactAlbumArt?.ImageUrl))
                 ApplyCompactAlbumArt(_boundCompactImageUrl);
         }
         else
         {
-            if (!string.IsNullOrEmpty(_boundRowImageUrl) && RowAlbumArt.Source == null)
+            if (!string.IsNullOrEmpty(_boundRowImageUrl) && string.IsNullOrEmpty(RowAlbumArt?.ImageUrl))
                 ApplyRowAlbumArt(_boundRowImageUrl);
         }
     }
@@ -1324,7 +1388,13 @@ public sealed partial class TrackItem : UserControl
     {
         if (Mode == TrackItemDisplayMode.Compact)
         {
-            CompactAlbumArt.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+            // CompactAlbumArt is x:Load-deferred behind IsCompactMode. When
+            // the LazyTrackItem fires IsLoading before x:Bind has propagated
+            // the realize, the named field can still be null on the very
+            // first state apply. Force-realize, then guard.
+            EnsureCompactAlbumArtRealized();
+            if (CompactAlbumArt != null)
+                CompactAlbumArt.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
             CompactArtShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
             CompactInfoPanel.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
             CompactInfoShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
@@ -1935,57 +2005,21 @@ public sealed partial class TrackItem : UserControl
             _isSaveStateSubscribed = false;
         }
 
-        // Release image cache pins so off-screen containers stop blocking eviction.
-        if (!string.IsNullOrEmpty(_pinnedCompactUrl))
-        {
-            _cachedImageCache?.Unpin(_pinnedCompactUrl, 48);
-            _pinnedCompactUrl = null;
-        }
-        if (!string.IsNullOrEmpty(_pinnedRowUrl))
-        {
-            _cachedImageCache?.Unpin(_pinnedRowUrl, 48);
-            _pinnedRowUrl = null;
-        }
-
         if (PreserveImageOnUnload)
             return;
 
-        // Null the Image.Source on Unloaded — without this, the WinUI compositor
-        // visual keeps the native decoded surface alive even after the BitmapImage
-        // managed wrapper is unreferenced. With ItemsRepeater recycling thousands
-        // of TrackItems across nav, those native surfaces add up to hundreds of
-        // MB. The matching ApplyXxxAlbumArt path in OnLoaded re-fetches via the
-        // ImageCacheService, which is decode-bucketed so the next render is cheap.
-        if (RowAlbumArt != null) RowAlbumArt.Source = null;
-        if (CompactAlbumArt != null) CompactAlbumArt.Source = null;
+        // CompositionImage releases its own pin on Unloaded — don't clear
+        // ImageUrl here. The same-DataContext scroll-back path was the
+        // reason this used to set Source = null in the BitmapImage era;
+        // with surfaces, leaving ImageUrl intact lets the inner Composition
+        // visual repaint immediately on re-attach since the cache still
+        // holds the surface for any URL that was visible recently.
     }
 
     private void RepinVisibleAlbumArt()
     {
-        _cachedImageCache ??= Ioc.Default.GetService<ImageCacheService>();
-
-        if (Mode == TrackItemDisplayMode.Compact &&
-            CompactAlbumArt?.Source != null &&
-            _pinnedCompactUrl is null)
-        {
-            var httpsUrl = SpotifyImageHelper.ToHttpsUrl(Track?.ImageSmallUrl ?? Track?.ImageUrl);
-            if (!string.IsNullOrEmpty(httpsUrl))
-            {
-                _cachedImageCache?.Pin(httpsUrl, 48);
-                _pinnedCompactUrl = httpsUrl;
-            }
-        }
-        else if (Mode == TrackItemDisplayMode.Row &&
-                 RowAlbumArt?.Source != null &&
-                 _pinnedRowUrl is null)
-        {
-            var httpsUrl = SpotifyImageHelper.ToHttpsUrl(Track?.ImageSmallUrl ?? Track?.ImageUrl);
-            if (!string.IsNullOrEmpty(httpsUrl))
-            {
-                _cachedImageCache?.Pin(httpsUrl, 48);
-                _pinnedRowUrl = httpsUrl;
-            }
-        }
+        // CompositionImage manages its own pin lifecycle via OnLoaded/OnUnloaded,
+        // so this method is a no-op in the surface-backed pipeline.
     }
 
     private void ObserveTrack(ITrackItem? track)
@@ -2132,6 +2166,7 @@ public sealed partial class TrackItem : UserControl
         RefreshPlaybackState();
         UpdateOverlayState();
     }
+
 
     private static bool IsTrackContentProperty(string propertyName) => propertyName switch
     {

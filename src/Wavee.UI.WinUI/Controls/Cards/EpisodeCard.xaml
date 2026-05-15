@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -50,9 +51,11 @@
                           HorizontalAlignment="Center"
                           VerticalAlignment="Center"/>
 
-                <Image x:Name="CoverImage"
-                       Stretch="UniformToFill"
-                       ImageOpened="CoverImage_ImageOpened"/>
+                <imaging:CompositionImage x:Name="CoverImage"
+                                          Stretch="UniformToFill"
+                                          DecodePixelSize="200"
+                                          CornerRadius="14"
+                                          ImageOpened="CoverImage_ImageOpened"/>
 
                 <!-- Video chip (always visible when IsVideoPodcast). Bottom-LEFT
                      of the cover so it never collides with the hover play chip

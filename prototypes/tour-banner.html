@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>WaveeMusic — tour banner Fluent redesign</title>
+<style>
+  /* Fluent dark palette, sampled from WinUI 3 default theme. */
+  :root {
+    color-scheme: dark;
+    --shell-bg: #0f0f0f;
+    --card-bg: #1c1c1c;
+    --card-bg-secondary: #202020;
+    --card-stroke: rgba(255, 255, 255, 0.0837);
+    --card-stroke-hover: rgba(255, 255, 255, 0.14);
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.6063);
+    --text-tertiary: rgba(255, 255, 255, 0.4458);
+    --accent: #1db954;        /* app brand green */
+    --accent-text: #4ddb84;   /* lighter for dark theme readability */
+    --shadow: 0 4px 26px rgba(0, 0, 0, 0.22);
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--shell-bg);
+    color: var(--text-primary);
+    font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    padding: 24px 32px 12px;
+    border-bottom: 1px solid var(--card-stroke);
+  }
+  header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  header p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+    max-width: 720px;
+  }
+  main {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .state-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 16px 0 0;
+    padding-left: 4px;
+  }
+
+  /* ─── Banner card ──────────────────────────────────────────────── */
+  .banner {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    column-gap: 14px;
+    padding: 14px 16px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-stroke);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: transform 160ms cubic-bezier(0.2, 0.0, 0.0, 1.0),
+                background 160ms ease,
+                border-color 160ms ease;
+    overflow: hidden;
+  }
+  .banner:hover {
+    transform: scale(1.015);
+    background: var(--card-bg-secondary);
+    border-color: var(--card-stroke-hover);
+  }
+
+  /* Left accent stripe — only present when state="live" */
+  .banner .stripe {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: linear-gradient(to top, var(--accent) 0%, rgba(29, 185, 84, 0.6) 100%);
+    opacity: 0;
+    transition: opacity 200ms ease;
+  }
+  .banner[data-live="true"] .stripe { opacity: 1; }
+
+  /* Icon column — FontIcon stand-in (emoji used in the HTML mock; real
+     XAML uses Segoe Fluent Icons glyph + state-driven IconGlyph DP). */
+  .banner .icon-col {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    margin-left: 4px;            /* room for stripe */
+    color: var(--text-secondary);
+    font-size: 18px;
+  }
+  .banner[data-live="true"] .icon-col { color: var(--accent-text); }
+
+  /* Pulse dot — overlays the icon column when state="live". Two
+     concentric circles + scale+fade animation, matches the existing
+     RhythmBreakBanner code-behind composition behaviour. */
+  .banner .pulse {
+    position: absolute;
+    inset: 0;
+    display: none;
+    place-items: center;
+    pointer-events: none;
+  }
+  .banner[data-live="true"] .pulse { display: grid; }
+  .banner[data-live="true"] .icon-col > .glyph { display: none; }
+  .pulse .ring,
+  .pulse .dot {
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .pulse .ring {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    opacity: 0.55;
+    animation: pulse-ring 1800ms ease-out infinite;
+  }
+  .pulse .dot {
+    width: 8px;
+    height: 8px;
+    animation: pulse-dot 1800ms ease-in-out infinite;
+  }
+  @keyframes pulse-ring {
+    0%   { transform: scale(0.6); opacity: 0.55; }
+    100% { transform: scale(2.1); opacity: 0; }
+  }
+  @keyframes pulse-dot {
+    0%, 100% { transform: scale(1.0); }
+    50%      { transform: scale(1.25); }
+  }
+
+  /* Text stack — eyebrow, headline, subline */
+  .banner .text {
+    min-width: 0;                /* allow text-overflow inside grid */
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .banner .eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-text);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .banner .headline {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .banner .subline {
+    font-size: 12px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Chevron — passive affordance, whole card is the click target */
+  .banner .chevron {
+    color: var(--text-tertiary);
+    font-size: 13px;
+    padding: 0 4px;
+    transition: color 160ms ease, transform 160ms cubic-bezier(0.2, 0.0, 0.0, 1.0);
+  }
+  .banner:hover .chevron {
+    color: var(--text-secondary);
+    transform: translateX(2px);
+  }
+
+  /* For comparison: the OLD banner style (Spotify-y) at the bottom */
+  .old-banner {
+    margin-top: 32px;
+    padding: 18px 28px;
+    background: rgba(58, 58, 58, 0.45);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(29, 185, 84, 0.45);
+    border-radius: 16px;
+    min-height: 118px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+  }
+  .old-banner .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .old-banner .old-pulse {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    position: relative;
+  }
+  .old-banner .old-pulse::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.32;
+    animation: pulse-ring 1800ms ease-out infinite;
+  }
+  .old-banner .old-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    color: var(--accent-text);
+  }
+  .old-banner .old-headline {
+    font-size: 20px;
+    font-weight: 700;
+    margin-top: 4px;
+  }
+  .old-banner .old-subline {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .old-banner .old-cta {
+    position: absolute;
+    right: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--accent-text);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .old-wrap { position: relative; }
+</style>
+</head>
+<body>
+<header>
+  <h1>RhythmBreakBanner — Fluent redesign concept</h1>
+  <p>
+    Same control, same data, redesigned to feel native to Windows 11. Card chrome matches
+    <code>ContentCard</code> / <code>BaselineHomeCard</code>: 8&nbsp;px corners,
+    <code>CardBackgroundFillColorDefaultBrush</code>, 1&nbsp;px <code>CardStrokeColorDefaultBrush</code>,
+    Fluent shadow, subtle hover scale. The live-now signature (accent stripe + pulse) only
+    fires for <em>ON TOUR NOW</em> — calm chrome for every other state. The old Spotify-style
+    version is rendered at the bottom for comparison.
+  </p>
+</header>
+<main>
+
+  <p class="state-label">ON TOUR NOW — accent stripe + live pulse</p>
+  <div class="banner" data-live="true">
+    <div class="stripe"></div>
+    <div class="icon-col">
+      <span class="glyph">📅</span>
+      <div class="pulse"><div class="ring"></div><div class="dot"></div></div>
+    </div>
+    <div class="text">
+      <div class="eyebrow">ON TOUR NOW</div>
+      <div class="headline">The Eras Tour — North America Leg</div>
+      <div class="subline">Next: TOMORROW · MetLife Stadium · East Rutherford · 12 dates total</div>
+    </div>
+    <div class="chevron">›</div>
+  </div>
+
+  <p class="state-label">UPCOMING TOUR — calm chrome, calendar icon</p>
+  <div class="banner" data-live="false">
+    <div class="stripe"></div>
+    <div class="icon-col">
+      <span class="glyph">📅</span>
+      <div class="pulse"><div class="ring"></div><div class="dot"></div></div>
+    </div>
+    <div class="text">
+      <div class="eyebrow">UPCOMING TOUR</div>
+      <div class="headline">Tyler, The Creator — CHROMAKOPIA</div>
+      <div class="subline">Next: FEB 14 · Capital One Arena · Washington, DC · 9 dates total</div>
+    </div>
+    <div class="chevron">›</div>
+  </div>
+
+  <p class="state-label">UPCOMING SHOW — single date, microphone icon</p>
+  <div class="banner" data-live="false">
+    <div class="stripe"></div>
+    <div class="icon-col">
+      <span class="glyph">🎤</span>
+      <div class="pulse"><div class="ring"></div><div class="dot"></div></div>
+    </div>
+    <div class="text">
+      <div class="eyebrow">UPCOMING SHOW</div>
+      <div class="headline">Mitski live</div>
+      <div class="subline">Next: NOV 12 · Brooklyn Steel · Brooklyn</div>
+    </div>
+    <div class="chevron">›</div>
+  </div>
+
+  <p class="state-label">UPCOMING DATES — 2–3 dates, calendar icon</p>
+  <div class="banner" data-live="false">
+    <div class="stripe"></div>
+    <div class="icon-col">
+      <span class="glyph">📅</span>
+      <div class="pulse"><div class="ring"></div><div class="dot"></div></div>
+    </div>
+    <div class="text">
+      <div class="eyebrow">UPCOMING DATES</div>
+      <div class="headline">Phoebe Bridgers — live dates</div>
+      <div class="subline">Next: DEC 03 · Ryman Auditorium · Nashville · 3 dates total</div>
+    </div>
+    <div class="chevron">›</div>
+  </div>
+
+  <p class="state-label">FESTIVAL APPEARANCES — party-popper icon</p>
+  <div class="banner" data-live="false">
+    <div class="stripe"></div>
+    <div class="icon-col">
+      <span class="glyph">🎉</span>
+      <div class="pulse"><div class="ring"></div><div class="dot"></div></div>
+    </div>
+    <div class="text">
+      <div class="eyebrow">FESTIVAL APPEARANCES</div>
+      <div class="headline">Tyler, The Creator · Ravyn Lenae · Rex Orange County · Turnstile · Mariah the …</div>
+      <div class="subline">Next: AUG 28 · Victoria Park · London</div>
+    </div>
+    <div class="chevron">›</div>
+  </div>
+
+  <p class="state-label" style="margin-top: 40px;">Current design (for comparison)</p>
+  <div class="old-wrap">
+    <div class="old-banner">
+      <div class="row">
+        <div class="old-pulse"></div>
+        <div class="old-eyebrow">ON TOUR NOW</div>
+      </div>
+      <div class="old-headline">Tyler, The Creator, Ravyn Lenae, Rex Orange County, Turnstile, Mariah the Scientist…</div>
+      <div class="old-subline">Next: AUG 28 · Victoria Park · London</div>
+      <div class="old-cta">See dates &amp; tickets ›</div>
+    </div>
+  </div>
+
+</main>
+</body>
+</html>

@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
     xmlns:winUi="using:CommunityToolkit.WinUI"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     mc:Ignorable="d"
     Background="Transparent">
 
@@ -99,10 +100,12 @@
                     <Border x:Name="CoverContainer"
                             CornerRadius="12"
                             Background="#22000000">
-                        <Image x:Name="HeroImage"
-                               Stretch="UniformToFill"
-                               HorizontalAlignment="Stretch"
-                               VerticalAlignment="Stretch"/>
+                        <imaging:CompositionImage x:Name="HeroImage"
+                                                  Stretch="UniformToFill"
+                                                  DecodePixelSize="256"
+                                                  CornerRadius="12"
+                                                  HorizontalAlignment="Stretch"
+                                                  VerticalAlignment="Stretch"/>
                     </Border>
                 </Grid>
             </Grid>

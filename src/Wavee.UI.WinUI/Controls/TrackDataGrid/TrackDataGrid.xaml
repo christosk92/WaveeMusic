@@ -393,6 +393,20 @@
                 </ItemsView.ItemTemplate>
             </ItemsView>
 
+            <!--
+                Track-row skeleton. Column widths are bound to the active
+                LoadingRowConfig (built from PageKey + Columns + AddedByVisible +
+                ForceShowArtistColumn in code-behind), so the skeleton row
+                geometry mirrors the real-row geometry slot-for-slot. Columns
+                that aren't in the active page's column set get GridLength(0) —
+                they collapse fully, so the title doesn't shift left when the
+                real content paints. The artist subtitle bar is hidden on
+                single-artist album pages to match the one-line real layout.
+
+                Note: classic {Binding} (not x:Bind) because DataTemplates set
+                their DataContext to the per-item LoadingRowConfig, which is
+                what {Binding Path=…} resolves against.
+            -->
             <ItemsRepeater
                 x:Name="LoadingRowsRepeater"
                 Grid.Row="1"
@@ -403,31 +417,70 @@
                     <StackLayout Orientation="Vertical" Spacing="4"/>
                 </ItemsRepeater.Layout>
                 <ItemsRepeater.ItemTemplate>
-                    <DataTemplate>
+                    <DataTemplate x:DataType="local:LoadingRowConfig">
                         <Border
                             Padding="8,8"
                             CornerRadius="6"
                             Background="Transparent">
                             <Grid ColumnSpacing="0">
                                 <Grid.ColumnDefinitions>
+                                    <!-- Index (always 52) -->
                                     <ColumnDefinition Width="52"/>
+                                    <!-- Like (always 32) -->
                                     <ColumnDefinition Width="32"/>
-                                    <ColumnDefinition Width="42"/>
-                                    <ColumnDefinition Width="*" MinWidth="120" MaxWidth="640"/>
-                                    <ColumnDefinition Width="180"/>
-                                    <ColumnDefinition Width="0"/>
-                                    <ColumnDefinition Width="120"/>
-                                    <ColumnDefinition Width="0"/>
-                                    <ColumnDefinition Width="60"/>
+                                    <!-- TrackArt (42 on playlist/liked/podcast, 0 on album) -->
+                                    <ColumnDefinition Width="{x:Bind ArtColumnWidth, Mode=OneTime}"/>
+                                    <!-- Title (*, MinWidth=120, MaxWidth bound) -->
+                                    <ColumnDefinition Width="*" MinWidth="120" MaxWidth="{x:Bind TitleColumnMaxWidth, Mode=OneTime}"/>
+                                    <!-- Album (180 on playlist, 0 on album) -->
+                                    <ColumnDefinition Width="{x:Bind AlbumColumnWidth, Mode=OneTime}"/>
+                                    <!-- AddedBy (140 on collab playlist, 0 elsewhere) -->
+                                    <ColumnDefinition Width="{x:Bind AddedByColumnWidth, Mode=OneTime}"/>
+                                    <!-- DateAdded (120 on playlist/liked, 0 on album) -->
+                                    <ColumnDefinition Width="{x:Bind DateAddedColumnWidth, Mode=OneTime}"/>
+                                    <!-- PlayCount (100 on album, 0 elsewhere) -->
+                                    <ColumnDefinition Width="{x:Bind PlayCountColumnWidth, Mode=OneTime}"/>
+                                    <!-- Duration (60 or 76 depending on page) -->
+                                    <ColumnDefinition Width="{x:Bind DurationColumnWidth, Mode=OneTime}"/>
                                 </Grid.ColumnDefinitions>
-                                <toolkit:Shimmer Grid.Column="2" Width="34" Height="34" CornerRadius="4" HorizontalAlignment="Left"/>
-                                <StackPanel Grid.Column="3" Spacing="6" VerticalAlignment="Center" Margin="12,0,8,0">
+
+                                <!-- Track art shimmer — only paints when ArtColumnWidth > 0.
+                                     The Width=34 / Height=34 is intrinsic; the column
+                                     either reveals it (42 px column = 4 px margin each
+                                     side) or collapses around it. -->
+                                <toolkit:Shimmer Grid.Column="2" Width="34" Height="34"
+                                                 CornerRadius="4" HorizontalAlignment="Left"/>
+
+                                <!-- Title + (optional) artist subtitle.
+                                     Margin matches TrackItem RowTitle Margin="12,0,8,0". -->
+                                <StackPanel Grid.Column="3" Spacing="6"
+                                            VerticalAlignment="Center"
+                                            Margin="12,0,8,0">
                                     <toolkit:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>
-                                    <toolkit:Shimmer Width="100" Height="10" HorizontalAlignment="Left"/>
+                                    <toolkit:Shimmer Width="100" Height="10" HorizontalAlignment="Left"
+                                                     Visibility="{x:Bind ShowArtistSubtitle, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 </StackPanel>
-                                <toolkit:Shimmer Grid.Column="4" Width="120" Height="12" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                                <toolkit:Shimmer Grid.Column="6" Width="80" Height="12" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                                <toolkit:Shimmer Grid.Column="8" Width="36" Height="12" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                                <!-- Album cell skeleton (playlist / liked). 120×12 bar, left-aligned. -->
+                                <toolkit:Shimmer Grid.Column="4" Width="120" Height="12"
+                                                 HorizontalAlignment="Left" VerticalAlignment="Center"/>
+
+                                <!-- AddedBy cell skeleton (collab playlists). 96×12 bar. -->
+                                <toolkit:Shimmer Grid.Column="5" Width="96" Height="12"
+                                                 HorizontalAlignment="Left" VerticalAlignment="Center"/>
+
+                                <!-- DateAdded cell skeleton. 80×12 bar, left-aligned. -->
+                                <toolkit:Shimmer Grid.Column="6" Width="80" Height="12"
+                                                 HorizontalAlignment="Left" VerticalAlignment="Center"/>
+
+                                <!-- PlayCount cell skeleton (album). 60×12 bar, RIGHT-aligned
+                                     to match TrackItem's PlayCount cell (no margin). -->
+                                <toolkit:Shimmer Grid.Column="7" Width="60" Height="12"
+                                                 HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                                <!-- Duration cell skeleton. 36×12, RIGHT-aligned (no margin). -->
+                                <toolkit:Shimmer Grid.Column="8" Width="36" Height="12"
+                                                 HorizontalAlignment="Right" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
                     </DataTemplate>

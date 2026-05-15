@@ -96,7 +96,7 @@
                             HorizontalAlignment="Right"
                             VerticalAlignment="Top"
                             Margin="0,6,6,0"
-                            Command="{x:Bind ViewModel.CloseCommand}"
+                            Click="CloseButton_Click"
                             ToolTipService.ToolTip="Close">
                         <FontIcon Glyph="&#xE711;"
                                   FontFamily="{ThemeResource SymbolThemeFontFamily}"

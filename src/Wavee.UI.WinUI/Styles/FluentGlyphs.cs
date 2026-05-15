@@ -158,8 +158,22 @@ public static class FluentGlyphs
 
     /// <summary>Devices2 \u2014 remote-device cluster icon (E703).</summary>
     public const string DeviceRemote = "\uE703";
+
+    // \u2500\u2500 Tour / concert banner \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    /// <summary>Calendar \u2014 E787. Used on the artist tour banner for multi-date tour states.</summary>
+    public const string Calendar = "\uE787";
+    /// <summary>Microphone \u2014 E720. Used on the artist tour banner for single-show state.</summary>
+    public const string Microphone = "\uE720";
+    /// <summary>Ribbon \u2014 EB44. Used on the artist tour banner for festival-appearances state.</summary>
+    public const string Ribbon = "\uEB44";
     /// <summary>CheckMark - E73E. Used for the "Played" podcast-episode state.</summary>
     public const string CheckMark = "\uE73E";
+    /// <summary>ErrorBadge - EA39. Severity glyph for error notifications/toasts.</summary>
+    public const string ErrorBadge = "\uEA39";
+    /// <summary>Warning - E7BA. Severity glyph for warning notifications/toasts.</summary>
+    public const string Warning = "\uE7BA";
+    /// <summary>Info - E946. Severity glyph for informational notifications/toasts (semantic alias for <see cref="Credits"/>).</summary>
+    public const string Info = "\uE946";
     /// <summary>Volume / equalizer-ish glyph for the in-progress podcast state (E767).</summary>
     public const string PlayingIndicator = "\uE767";
     /// <summary>Volume — single-speaker glyph used for local audio chips (E767).</summary>

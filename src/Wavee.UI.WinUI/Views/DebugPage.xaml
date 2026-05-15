@@ -6,8 +6,11 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:local="using:Wavee.UI.WinUI.Views"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:debug="using:Wavee.UI.WinUI.ViewModels.DebugTools"
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
-    Background="Transparent">
+    Background="Transparent"
+    waveeHelpers:PageEntranceFade.Fade="True">
 
     <Page.Resources>
         <local:IndexToVisibilityConverter x:Key="IndexToVisibilityConverter"/>
@@ -16,134 +19,299 @@
 
     <Grid Padding="24,20,24,16" RowSpacing="12">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>   <!-- 0: Endpoint family selector -->
+            <RowDefinition Height="Auto"/>   <!-- 1: Family-specific request panel -->
+            <RowDefinition Height="Auto"/>   <!-- 2: Response tabs (Body/Headers) -->
+            <RowDefinition Height="*"/>      <!-- 3: Response content -->
+            <RowDefinition Height="Auto"/>   <!-- 4: Status bar -->
         </Grid.RowDefinitions>
 
-        <!-- Row 0: Base URL + Preset -->
-        <Grid Grid.Row="0" ColumnSpacing="8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+        <!-- ════════════════════════════════════════════════════════════════
+             Row 0: Endpoint family selector — picks which request panel below.
+             ════════════════════════════════════════════════════════════════ -->
+        <RadioButtons Grid.Row="0"
+                      MaxColumns="3"
+                      ItemsSource="{x:Bind ViewModel.EndpointFamilies}"
+                      SelectedIndex="{x:Bind ViewModel.SelectedEndpointFamily, Mode=TwoWay}"/>
 
-            <TextBox Grid.Column="0"
-                     Text="{x:Bind ViewModel.BaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     FontFamily="Cascadia Code, Consolas" FontSize="13"
-                     PlaceholderText="https://spclient.wg.spotify.com"/>
+        <!-- ════════════════════════════════════════════════════════════════
+             Row 1: per-family request panels (mutually exclusive Visibility).
+             Each panel is responsible for its own internal row/column layout
+             and contains its own Send button.
+             ════════════════════════════════════════════════════════════════ -->
 
-            <Button x:Uid="Views_DebugPage__Button_1" Grid.Column="1" Content="&#xE72C;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                    ToolTipService.ToolTip="Reset to session URL"
-                    Command="{x:Bind ViewModel.ResetBaseUrlCommand}"
-                    Padding="10,8"/>
+        <!-- ── SpClient REST family (family index 0) ───────────────────── -->
+        <Grid Grid.Row="1" RowSpacing="12"
+              Visibility="{x:Bind ViewModel.SelectedEndpointFamily, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=0}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>   <!-- BaseUrl + Preset -->
+                <RowDefinition Height="Auto"/>   <!-- Method + Path + Send -->
+                <RowDefinition Height="Auto"/>   <!-- Preset-specific fields / custom body -->
+            </Grid.RowDefinitions>
 
-            <ComboBox x:Uid="Views_DebugPage__ComboBox_2" Grid.Column="2"
-                      ItemsSource="{x:Bind ViewModel.Presets}"
-                      SelectedIndex="{x:Bind ViewModel.SelectedPresetIndex, Mode=TwoWay}"
-                      Width="180" PlaceholderText="Preset"/>
-        </Grid>
+            <!-- BaseUrl + Preset -->
+            <Grid Grid.Row="0" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-        <!-- Row 1: Method + Path + Send -->
-        <Grid Grid.Row="1" ColumnSpacing="0"
-              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-              CornerRadius="8"
-              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-              BorderThickness="1"
-              Padding="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Text="{x:Bind ViewModel.BaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         FontFamily="Cascadia Code, Consolas" FontSize="13"
+                         PlaceholderText="https://spclient.wg.spotify.com"/>
 
-            <ComboBox Grid.Column="0"
-                      ItemsSource="{x:Bind ViewModel.HttpMethods}"
-                      SelectedValue="{x:Bind ViewModel.SelectedMethod, Mode=TwoWay}"
-                      BorderThickness="0"
-                      Background="Transparent"
-                      FontFamily="Cascadia Code, Consolas"
-                      FontWeight="SemiBold"
-                      MinWidth="100"/>
+                <Button Grid.Column="1" Content="&#xE72C;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                        ToolTipService.ToolTip="Reset to session URL"
+                        Command="{x:Bind ViewModel.ResetBaseUrlCommand}"
+                        Padding="10,8"/>
 
-            <TextBox Grid.Column="1"
-                     Text="{x:Bind ViewModel.Path, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     BorderThickness="0"
-                     Background="Transparent"
-                     FontFamily="Cascadia Code, Consolas" FontSize="14"
-                     VerticalAlignment="Center"
-                     PlaceholderText="/collection/v2/paging"/>
+                <ComboBox Grid.Column="2"
+                          ItemsSource="{x:Bind ViewModel.Presets}"
+                          SelectedIndex="{x:Bind ViewModel.SelectedPresetIndex, Mode=TwoWay}"
+                          Width="180" PlaceholderText="Preset"/>
+            </Grid>
 
-            <Button Grid.Column="2"
-                    Style="{StaticResource AccentButtonStyle}"
-                    Command="{x:Bind ViewModel.SendCommand}"
-                    IsEnabled="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolNegationConverter}}"
-                    Padding="20,8" Margin="4,0,0,0">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
-                                  Width="16" Height="16"
-                                  Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
-                                  Foreground="White"/>
-                    <TextBlock x:Uid="Views_DebugPage__TextBlock_3" Text="Send" VerticalAlignment="Center"/>
-                </StackPanel>
-            </Button>
-        </Grid>
-
-        <!-- Preset fields: Collection Page -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10"
-                    Visibility="{x:Bind ViewModel.SelectedPresetIndex, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=1}">
-            <TextBox x:Uid="Views_DebugPage__TextBox_4" Header="Username" Width="220" Text="{x:Bind ViewModel.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-            <TextBox x:Uid="Views_DebugPage__TextBox_5" Header="Set" Width="140" Text="{x:Bind ViewModel.Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="collection"/>
-            <NumberBox x:Uid="Views_DebugPage__NumberBox_6" Header="Limit" Width="100" Value="{x:Bind ViewModel.Limit, Mode=TwoWay}" Minimum="1" Maximum="1000" SpinButtonPlacementMode="Compact"/>
-            <TextBox x:Uid="Views_DebugPage__TextBox_7" Header="Page Token" Width="280" Text="{x:Bind ViewModel.PaginationToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="(empty = first page)"/>
-        </StackPanel>
-
-        <!-- Preset fields: Collection Delta -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10"
-                    Visibility="{x:Bind ViewModel.SelectedPresetIndex, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=2}">
-            <TextBox x:Uid="Views_DebugPage__TextBox_8" Header="Username" Width="220" Text="{x:Bind ViewModel.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-            <TextBox x:Uid="Views_DebugPage__TextBox_9" Header="Set" Width="140" Text="{x:Bind ViewModel.Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="collection"/>
-            <TextBox x:Uid="Views_DebugPage__TextBox_10" Header="Sync Token" Width="400" Text="{x:Bind ViewModel.LastSyncToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="(empty = full sync)"/>
-        </StackPanel>
-
-        <!-- Preset fields: Collection Write -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10"
-                    Visibility="{x:Bind ViewModel.SelectedPresetIndex, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=3}">
-            <TextBox x:Uid="Views_DebugPage__TextBox_11" Header="Username" Width="220" Text="{x:Bind ViewModel.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-            <TextBox x:Uid="Views_DebugPage__TextBox_12" Header="Set" Width="140" Text="{x:Bind ViewModel.Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="collection"/>
-            <TextBox Header="URI" Width="300" Text="{x:Bind ViewModel.ItemUri, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="spotify:track:xxxxx"/>
-            <ToggleSwitch x:Uid="Views_DebugPage__ToggleSwitch_13" Header="Remove" IsOn="{x:Bind ViewModel.IsRemoved, Mode=TwoWay}" Margin="0,6,0,0"/>
-        </StackPanel>
-
-        <!-- Custom body (only when preset = Custom) -->
-        <StackPanel Grid.Row="2" Spacing="6"
-                    Visibility="{x:Bind ViewModel.SelectedPresetIndex, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=0}">
-            <Grid>
+            <!-- Method + Path + Send -->
+            <Grid Grid.Row="1" ColumnSpacing="0"
+                  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                  CornerRadius="8"
+                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                  BorderThickness="1"
+                  Padding="4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock x:Uid="Views_DebugPage__TextBlock_14" Grid.Column="0" Text="Request Body" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"/>
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
-                    <TextBox x:Uid="Views_DebugPage__TextBox_15" Width="200" Text="{x:Bind ViewModel.ContentType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             FontSize="11" Padding="6,4" PlaceholderText="Content-Type"/>
-                    <Button x:Uid="Views_DebugPage__Button_16" Content="Format JSON" Command="{x:Bind ViewModel.FormatBodyCommand}" Padding="8,4" FontSize="11"/>
+
+                <ComboBox Grid.Column="0"
+                          ItemsSource="{x:Bind ViewModel.HttpMethods}"
+                          SelectedValue="{x:Bind ViewModel.SelectedMethod, Mode=TwoWay}"
+                          BorderThickness="0"
+                          Background="Transparent"
+                          FontFamily="Cascadia Code, Consolas"
+                          FontWeight="SemiBold"
+                          MinWidth="100"/>
+
+                <TextBox Grid.Column="1"
+                         Text="{x:Bind ViewModel.Path, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         FontFamily="Cascadia Code, Consolas" FontSize="14"
+                         VerticalAlignment="Center"
+                         PlaceholderText="/collection/v2/paging"/>
+
+                <Button Grid.Column="2"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Command="{x:Bind ViewModel.SendCommand}"
+                        IsEnabled="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolNegationConverter}}"
+                        Padding="20,8" Margin="4,0,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Width="16" Height="16"
+                                      Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Foreground="White"/>
+                        <TextBlock Text="Send" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <!-- Row 2: Preset-specific fields (visibility-toggled) -->
+            <Grid Grid.Row="2">
+                <!-- Collection Page -->
+                <StackPanel Orientation="Horizontal" Spacing="10"
+                            Visibility="{x:Bind ViewModel.SelectedPresetIndex, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=1}">
+                    <TextBox Header="Username" Width="220" Text="{x:Bind ViewModel.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBox Header="Set" Width="140" Text="{x:Bind ViewModel.Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="collection"/>
+                    <NumberBox Header="Limit" Width="100" Value="{x:Bind ViewModel.Limit, Mode=TwoWay}" Minimum="1" Maximum="1000" SpinButtonPlacementMode="Compact"/>
+                    <TextBox Header="Page Token" Width="280" Text="{x:Bind ViewModel.PaginationToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="(empty = first page)"/>
+                </StackPanel>
+
+                <!-- Collection Delta -->
+                <StackPanel Orientation="Horizontal" Spacing="10"
+                            Visibility="{x:Bind ViewModel.SelectedPresetIndex, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=2}">
+                    <TextBox Header="Username" Width="220" Text="{x:Bind ViewModel.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBox Header="Set" Width="140" Text="{x:Bind ViewModel.Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="collection"/>
+                    <TextBox Header="Sync Token" Width="400" Text="{x:Bind ViewModel.LastSyncToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="(empty = full sync)"/>
+                </StackPanel>
+
+                <!-- Collection Write -->
+                <StackPanel Orientation="Horizontal" Spacing="10"
+                            Visibility="{x:Bind ViewModel.SelectedPresetIndex, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=3}">
+                    <TextBox Header="Username" Width="220" Text="{x:Bind ViewModel.Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBox Header="Set" Width="140" Text="{x:Bind ViewModel.Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="collection"/>
+                    <TextBox Header="URI" Width="300" Text="{x:Bind ViewModel.ItemUri, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="spotify:track:xxxxx"/>
+                    <ToggleSwitch Header="Remove" IsOn="{x:Bind ViewModel.IsRemoved, Mode=TwoWay}" Margin="0,6,0,0"/>
+                </StackPanel>
+
+                <!-- Custom body -->
+                <StackPanel Spacing="6"
+                            Visibility="{x:Bind ViewModel.SelectedPresetIndex, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=0}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Request Body" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                            <TextBox Width="200" Text="{x:Bind ViewModel.ContentType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     FontSize="11" Padding="6,4" PlaceholderText="Content-Type"/>
+                            <Button Content="Format JSON" Command="{x:Bind ViewModel.FormatBodyCommand}" Padding="8,4" FontSize="11"/>
+                        </StackPanel>
+                    </Grid>
+                    <TextBox Text="{x:Bind ViewModel.RequestBody, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             AcceptsReturn="True" TextWrapping="Wrap"
+                             MinHeight="60" MaxHeight="160"
+                             FontFamily="Cascadia Code, Consolas" FontSize="12"
+                             PlaceholderText="Request body (leave empty for GET)"/>
                 </StackPanel>
             </Grid>
-            <TextBox x:Uid="Views_DebugPage__TextBox_17" Text="{x:Bind ViewModel.RequestBody, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+        </Grid>
+
+        <!-- ── Extended Metadata family (family index 1) ──────────────── -->
+        <Grid Grid.Row="1" RowSpacing="12"
+              Visibility="{x:Bind ViewModel.SelectedEndpointFamily, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=1}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>   <!-- Kind picker + custom + Send -->
+                <RowDefinition Height="Auto"/>   <!-- Entity URI(s) textbox -->
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="220"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Extension kind" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"/>
+                <ComboBox Grid.Column="1"
+                          ItemsSource="{x:Bind ViewModel.ExtensionKindNames}"
+                          SelectedIndex="{x:Bind ViewModel.SelectedExtensionKindIndex, Mode=TwoWay}"
+                          HorizontalAlignment="Stretch"
+                          FontFamily="Cascadia Code, Consolas"/>
+                <TextBox Grid.Column="2"
+                         Text="{x:Bind ViewModel.CustomExtensionKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         FontFamily="Cascadia Code, Consolas" FontSize="13"
+                         PlaceholderText="UPPER_SNAKE_CASE (only used when '(custom)' is picked)"/>
+                <Button Grid.Column="3"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Command="{x:Bind ViewModel.SendCommand}"
+                        IsEnabled="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolNegationConverter}}"
+                        Padding="20,8">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Width="16" Height="16"
+                                      Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Foreground="White"/>
+                        <TextBlock Text="Send" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <TextBox Grid.Row="1"
+                     Header="Entity URI(s) — comma- or newline-separated"
+                     Text="{x:Bind ViewModel.EntityUris, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      AcceptsReturn="True" TextWrapping="Wrap"
                      MinHeight="60" MaxHeight="160"
                      FontFamily="Cascadia Code, Consolas" FontSize="12"
-                     PlaceholderText="Request body (leave empty for GET)"/>
-        </StackPanel>
+                     PlaceholderText="spotify:track:4cOdK2wGLETKBW3PvgPWqT"/>
+        </Grid>
 
-        <!-- Row 3: Response tabs -->
-        <Pivot Grid.Row="3" SelectedIndex="{x:Bind ViewModel.SelectedResponseTab, Mode=TwoWay}"
+        <!-- ── Pathfinder GraphQL family (family index 2) ─────────────── -->
+        <Grid Grid.Row="1" RowSpacing="12"
+              Visibility="{x:Bind ViewModel.SelectedEndpointFamily, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=2}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>   <!-- BaseUrl override -->
+                <RowDefinition Height="Auto"/>   <!-- Operation picker + name + Send -->
+                <RowDefinition Height="Auto"/>   <!-- Hash + custom hash override -->
+                <RowDefinition Height="Auto"/>   <!-- Variables JSON -->
+            </Grid.RowDefinitions>
+
+            <TextBox Grid.Row="0"
+                     Text="{x:Bind ViewModel.PathfinderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     FontFamily="Cascadia Code, Consolas" FontSize="13"
+                     PlaceholderText="https://api-partner.spotify.com"/>
+
+            <Grid Grid.Row="1" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="320"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Operation" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"/>
+                <ComboBox Grid.Column="1"
+                          ItemsSource="{x:Bind ViewModel.PathfinderOperations}"
+                          SelectedIndex="{x:Bind ViewModel.SelectedPathfinderOperationIndex, Mode=TwoWay}"
+                          DisplayMemberPath="Name"
+                          HorizontalAlignment="Stretch"
+                          FontFamily="Cascadia Code, Consolas"/>
+                <TextBox Grid.Column="2"
+                         Text="{x:Bind ViewModel.PathfinderOperationName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         FontFamily="Cascadia Code, Consolas" FontSize="13"
+                         PlaceholderText="operationName (override picker)"/>
+                <Button Grid.Column="3"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Command="{x:Bind ViewModel.SendCommand}"
+                        IsEnabled="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolNegationConverter}}"
+                        Padding="20,8">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Width="16" Height="16"
+                                      Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Foreground="White"/>
+                        <TextBlock Text="Send" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <Grid Grid.Row="2" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Hash" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"/>
+                <TextBox Grid.Column="1"
+                         IsReadOnly="True"
+                         Text="{x:Bind ViewModel.PathfinderHash, Mode=OneWay}"
+                         FontFamily="Cascadia Code, Consolas" FontSize="11"
+                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                <TextBlock Grid.Column="2" Text="Override" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"/>
+                <TextBox Grid.Column="3"
+                         Text="{x:Bind ViewModel.PathfinderCustomHash, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         FontFamily="Cascadia Code, Consolas" FontSize="11"
+                         PlaceholderText="(empty = use picker hash)"/>
+            </Grid>
+
+            <StackPanel Grid.Row="3" Spacing="6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Variables (JSON)" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"/>
+                    <Button Grid.Column="2" Content="Format JSON"
+                            Command="{x:Bind ViewModel.FormatBodyCommand}"
+                            Padding="8,4" FontSize="11"/>
+                </Grid>
+                <TextBox Text="{x:Bind ViewModel.PathfinderVariables, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True" TextWrapping="Wrap"
+                         MinHeight="120" MaxHeight="240"
+                         FontFamily="Cascadia Code, Consolas" FontSize="12"
+                         PlaceholderText="{}{}"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- ════════════════════════════════════════════════════════════════
+             Row 2: Response tabs (Body / Headers) — shared across families.
+             ════════════════════════════════════════════════════════════════ -->
+        <Pivot Grid.Row="2" SelectedIndex="{x:Bind ViewModel.SelectedResponseTab, Mode=TwoWay}"
                Margin="0,4,0,0" Padding="0">
             <Pivot.HeaderTemplate>
                 <DataTemplate>
@@ -151,27 +319,24 @@
                 </DataTemplate>
             </Pivot.HeaderTemplate>
 
-            <PivotItem x:Uid="Views_DebugPage__PivotItem_18" Header="Body"/>
-            <PivotItem x:Uid="Views_DebugPage__PivotItem_19" Header="Headers"/>
+            <PivotItem Header="Body"/>
+            <PivotItem Header="Headers"/>
         </Pivot>
 
-        <!-- Row 4: Response content -->
-        <ScrollViewer Grid.Row="4"
+        <!-- Row 3: Response content -->
+        <ScrollViewer Grid.Row="3"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Auto"
                       Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                       CornerRadius="6" Padding="16"
                       BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                       BorderThickness="1">
-
-            <!-- Body tab -->
             <controls:JsonRichTextBlock
                        Visibility="{x:Bind ViewModel.SelectedResponseTab, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=0}"
                        Text="{x:Bind ViewModel.ResponseBody, Mode=OneWay}"/>
         </ScrollViewer>
 
-        <!-- Headers overlay (same grid row, swapped by visibility) -->
-        <ScrollViewer Grid.Row="4"
+        <ScrollViewer Grid.Row="3"
                       Visibility="{x:Bind ViewModel.SelectedResponseTab, Mode=OneWay, Converter={StaticResource IndexToVisibilityConverter}, ConverterParameter=1}"
                       VerticalScrollBarVisibility="Auto"
                       Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -185,8 +350,8 @@
                        TextWrapping="Wrap"/>
         </ScrollViewer>
 
-        <!-- Row 5: Status bar -->
-        <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="16" Padding="0,4,0,0">
+        <!-- Row 4: Status bar -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="16" Padding="0,4,0,0">
             <TextBlock Text="{x:Bind ViewModel.StatusCode, Mode=OneWay}"
                        FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
             <TextBlock Text="{x:Bind ViewModel.StatusTime, Mode=OneWay}" FontSize="12"

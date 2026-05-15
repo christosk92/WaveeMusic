@@ -1,23 +1,26 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Media;
+using Windows.Foundation;
 
 namespace Wavee.UI.WinUI.Services;
 
 /// <summary>
-/// O(1) LRU cache for BitmapImage instances. Prevents duplicate downloads
-/// and GC of frequently used images. Thread-safe via ReaderWriterLockSlim.
-///
-/// Each BitmapImage holds a decoded bitmap in unmanaged DirectX memory, so keeping
-/// the capacity modest is a real memory win. Pair this with the periodic
-/// <see cref="CleanupStale"/> call from CacheCleanupService so images sitting
-/// unused for longer than the TTL are dropped even when the cache is not full.
+/// O(1) LRU cache of <see cref="CachedImage"/> instances. Each entry owns a
+/// <see cref="LoadedImageSurface"/> — the decoded pixels live in GPU memory,
+/// not on the managed heap. Prevents duplicate downloads and GC of frequently
+/// used images. Thread-safe via <see cref="ReaderWriterLockSlim"/>.
 /// </summary>
 public sealed class ImageCacheService
 {
     private readonly record struct CacheKey(string Uri, int DecodeSize);
-    private readonly record struct CacheEntry(BitmapImage Image, long LastAccessedTick);
+
+    private sealed class CacheEntry
+    {
+        public required CachedImage Image { get; init; }
+        public long LastAccessedTick { get; set; }
+    }
 
     private readonly LinkedList<KeyValuePair<CacheKey, CacheEntry>> _lruList = new();
     private readonly Dictionary<CacheKey, LinkedListNode<KeyValuePair<CacheKey, CacheEntry>>> _cache = new();
@@ -25,17 +28,9 @@ public sealed class ImageCacheService
     private readonly ReaderWriterLockSlim _rwLock = new();
     private readonly int _maxSize;
 
-    // Cap raised 60 → 200 (2026-05-08). At 60, multi-shelf pages (Home,
-    // Artist) routinely fill the cache with all-pinned visible cards, which
-    // tripped the GetOrCreate-evicts-its-own-just-added-entry race when the
-    // caller pinned AFTER GetOrCreate returned (TrimToCapacity walked
-    // pinned-only entries to .First and evicted the new unpinned one,
-    // leaving an orphaned pin in _pinCounts and a cache that didn't hold
-    // the bitmap). The atomic `pin: true` overload below fixes the race
-    // for new code; the higher cap means the race no longer fires for
-    // typical cards either, since cache rarely hits capacity. Worst-case
-    // unmanaged footprint at 200 × ≤1 MB (512-bucket) ≈ 200 MB; typical
-    // mix of 64/128/256 buckets averages ~50 KB → 10 MB ceiling.
+    // Worst-case footprint: 200 × ≤1 MB (512-bucket) ≈ 200 MB of GPU memory;
+    // typical mix of 64/128/256 buckets averages ~50 KB → 10 MB ceiling. The
+    // GPU number is what matters now — no decoded CPU pixel buffer per entry.
     public ImageCacheService(int maxSize = 200)
     {
         _maxSize = maxSize;
@@ -53,16 +48,13 @@ public sealed class ImageCacheService
 
     /// <summary>
     /// Snaps a requested decode pixel size to the smallest bucket (64 / 128 / 256 / 512)
-    /// that is &gt;= the request. This caps decode-size fragmentation — the codebase
-    /// currently asks for 11 distinct sizes (36, 40, 48, 68, 80, 96, 128, 160, 200,
-    /// 240, 280, 400), which without bucketing would create 11 separate cache entries
-    /// (and trigger 11 decodes) for the same image. Bucketing collapses this to at
-    /// most 4 entries per URL. A 128-bucket bitmap rendered in a 96 px slot looks
-    /// identical because <c>BitmapImage</c> scales at render time; the small extra
-    /// GPU memory cost is dwarfed by the decode-work savings.
+    /// that is &gt;= the request. Without bucketing, requests for 36, 40, 48, 68, 80,
+    /// 96, 128, 160, 200, 240, 280, 400 would each create a separate cache entry and
+    /// trigger 11 decodes for the same image. Bucketing collapses this to at most 4
+    /// entries per URL.
     /// </summary>
     /// <remarks>
-    /// A request of 0 means "do not set DecodePixelSize" (native size). Preserve that
+    /// A request of 0 means "do not constrain decode size" (native). Preserve that
     /// sentinel so callers that don't know the target size aren't force-bucketed.
     /// </remarks>
     private static int SnapToBucket(int requested)
@@ -75,30 +67,25 @@ public sealed class ImageCacheService
     }
 
     /// <summary>
-    /// Gets a cached BitmapImage or creates a new one. The BitmapImage's UriSource
-    /// is set, triggering async download. Returns immediately.
+    /// Gets or creates a cached image surface. The underlying
+    /// <see cref="LoadedImageSurface"/> begins loading immediately and returns
+    /// before the bitmap is decoded; subscribe to
+    /// <see cref="CachedImage.LoadCompleted"/> for completion.
     ///
     /// <para>
     /// Pass <paramref name="pin"/> = <c>true</c> when the caller intends to hold
-    /// the entry (visible Image control). This pins atomically inside the
-    /// write lock BEFORE TrimToCapacity runs — required to prevent the
+    /// the entry (visible control). Pinning happens atomically inside the
+    /// write lock BEFORE the LRU trim runs — required to prevent the
     /// self-eviction race where a freshly-added entry is the only unpinned
-    /// candidate when the cache is otherwise full of pinned entries (which
-    /// produced an orphaned pin: count incremented but cache no longer holds
-    /// the bitmap). Callers that pin must still call <see cref="Unpin"/> on
-    /// teardown.
+    /// candidate when the cache is otherwise full of pinned entries.
     /// </para>
     /// </summary>
-    public BitmapImage? GetOrCreate(string? uri, int decodePixelSize = 0, bool pin = false)
+    public CachedImage? GetOrCreate(string? uri, int decodePixelSize = 0, bool pin = false)
     {
         if (string.IsNullOrEmpty(uri)) return null;
-        // Snap the requested decode size to a fixed bucket before lookup so callers
-        // requesting e.g. 96 and 128 both hit the same cache entry.
         decodePixelSize = SnapToBucket(decodePixelSize);
         var key = new CacheKey(uri, decodePixelSize);
 
-        // Fast path: no LRU list reorder on hit, but refresh LastAccessedTick under
-        // the write lock so CleanupStale does not evict still-in-use hot images.
         _rwLock.EnterUpgradeableReadLock();
         try
         {
@@ -107,66 +94,64 @@ public sealed class ImageCacheService
                 _rwLock.EnterWriteLock();
                 try
                 {
-                    var image = node.Value.Value.Image;
-                    node.Value = new KeyValuePair<CacheKey, CacheEntry>(
-                        key,
-                        new CacheEntry(image, Environment.TickCount64));
+                    node.Value.Value.LastAccessedTick = Environment.TickCount64;
                     if (!ReferenceEquals(_lruList.First, node))
                     {
                         _lruList.Remove(node);
                         _lruList.AddFirst(node);
                     }
                     if (pin) BumpPin(key);
-                    return image;
+                    return node.Value.Value.Image;
                 }
                 finally { _rwLock.ExitWriteLock(); }
             }
         }
         finally { _rwLock.ExitUpgradeableReadLock(); }
 
-        // Cache miss — create BitmapImage outside the lock
-        var bitmap = new BitmapImage();
-        if (decodePixelSize > 0)
+        // Miss — create the surface outside the lock.
+        CachedImage? created = null;
+        try
         {
-            bitmap.DecodePixelWidth = decodePixelSize;
+            var sizeHint = decodePixelSize > 0
+                ? new Size(decodePixelSize, decodePixelSize)
+                : Size.Empty;
+            var surface = decodePixelSize > 0
+                ? LoadedImageSurface.StartLoadFromUri(new Uri(uri), sizeHint)
+                : LoadedImageSurface.StartLoadFromUri(new Uri(uri));
+            created = new CachedImage(surface, uri, decodePixelSize);
         }
-        bitmap.UriSource = new Uri(uri);
+        catch
+        {
+            return null;
+        }
 
-        // Write lock to insert
         _rwLock.EnterWriteLock();
         try
         {
             if (_cache.TryGetValue(key, out var existing))
             {
-                // Another caller won the race. Refresh the tick so the entry is
-                // treated as hot and bump it to the front of the LRU list.
-                var refreshed = new CacheEntry(existing.Value.Value.Image, Environment.TickCount64);
-                existing.Value = new KeyValuePair<CacheKey, CacheEntry>(key, refreshed);
+                // Another caller won the race — dispose the loser, refresh the winner.
+                created.Dispose();
+                existing.Value.Value.LastAccessedTick = Environment.TickCount64;
                 if (!ReferenceEquals(_lruList.First, existing))
                 {
                     _lruList.Remove(existing);
                     _lruList.AddFirst(existing);
                 }
                 if (pin) BumpPin(key);
-                return refreshed.Image;
+                return existing.Value.Value.Image;
             }
 
-            var tick = Environment.TickCount64;
-            var entry = new CacheEntry(bitmap, tick);
+            var entry = new CacheEntry { Image = created, LastAccessedTick = Environment.TickCount64 };
             var newNode = _lruList.AddFirst(new KeyValuePair<CacheKey, CacheEntry>(key, entry));
             _cache[key] = newNode;
 
-            // Pin BEFORE trim so the just-added entry can't be evicted by its own
-            // TrimToCapacity sweep (the historical race). Pinned entries are
-            // skipped during the trim walk.
+            // Pin BEFORE trim so the just-added entry can't be self-evicted.
             if (pin) BumpPin(key);
 
-            // Evict oldest unpinned entries if over capacity. Pinned entries (held by
-            // visible Image controls) are skipped so we don't force WinUI to re-decode
-            // a BitmapImage that's still on screen.
             TrimToCapacityNoLock();
 
-            return bitmap;
+            return created;
         }
         finally { _rwLock.ExitWriteLock(); }
     }
@@ -178,26 +163,42 @@ public sealed class ImageCacheService
     }
 
     /// <summary>
-    /// Pins a cache entry so <see cref="GetOrCreate"/> and <see cref="CleanupStale"/>
-    /// will not evict it. Ref-counted — callers must balance each <see cref="Pin"/>
-    /// with one <see cref="Unpin"/>. Pinning a not-yet-present entry still increments
-    /// the count (protects the entry once it's inserted).
+    /// Peek the cache without creating a new entry or starting a network load.
+    /// Returns the existing <see cref="CachedImage"/> when present, otherwise null.
+    /// Use this from realized controls that want the fast-path "display
+    /// already-cached image" branch without kicking off a cold fetch — e.g.
+    /// <c>CompositionImage</c> bypassing the global image-loading suspension
+    /// gate when the surface is already decoded.
+    /// </summary>
+    public CachedImage? TryGet(string? uri, int decodePixelSize = 0)
+    {
+        if (string.IsNullOrEmpty(uri)) return null;
+        var key = new CacheKey(uri, SnapToBucket(decodePixelSize));
+        _rwLock.EnterReadLock();
+        try
+        {
+            return _cache.TryGetValue(key, out var node) ? node.Value.Value.Image : null;
+        }
+        finally { _rwLock.ExitReadLock(); }
+    }
+
+    /// <summary>
+    /// Pins a cache entry so the LRU trim and stale cleanup will not evict it.
+    /// Ref-counted — each <see cref="Pin"/> must be balanced by one
+    /// <see cref="Unpin"/>. Pinning a not-yet-present entry still increments
+    /// the count, protecting it once inserted.
     /// </summary>
     public void Pin(string? uri, int decodePixelSize = 0)
     {
         if (string.IsNullOrEmpty(uri)) return;
         var key = new CacheKey(uri, SnapToBucket(decodePixelSize));
         _rwLock.EnterWriteLock();
-        try
-        {
-            BumpPin(key);
-        }
+        try { BumpPin(key); }
         finally { _rwLock.ExitWriteLock(); }
     }
 
     /// <summary>
-    /// Decrements the pin count. When it hits zero the entry is removed from the pin
-    /// table and becomes evictable again.
+    /// Decrements the pin count. When it hits zero the entry becomes evictable.
     /// </summary>
     public void Unpin(string? uri, int decodePixelSize = 0)
     {
@@ -231,21 +232,23 @@ public sealed class ImageCacheService
                 {
                     _cache.Remove(candidate.Value.Key);
                     _lruList.Remove(candidate);
+                    candidate.Value.Value.Image.Dispose();
                     removed = true;
                     break;
                 }
                 candidate = prev;
             }
 
-            if (!removed)
-                break;
+            if (!removed) break;
         }
     }
 
     /// <summary>
     /// Forcibly removes an entry from the cache (typically after a decode failure)
-    /// so the next <see cref="GetOrCreate"/> creates a fresh <c>BitmapImage</c>.
-    /// Does not touch pin counts — a poisoned entry can still be retried.
+    /// so the next <see cref="GetOrCreate"/> creates a fresh surface.
+    /// Does not touch pin counts — a poisoned entry can still be retried by an
+    /// already-pinned caller. The disposed surface is detached from any
+    /// <c>CompositionSurfaceBrush</c> it was bound to; consumers re-fetch and rebind.
     /// </summary>
     public void Invalidate(string? uri, int decodePixelSize = 0)
     {
@@ -258,13 +261,16 @@ public sealed class ImageCacheService
             {
                 _cache.Remove(key);
                 _lruList.Remove(node);
+                node.Value.Value.Image.Dispose();
             }
         }
         finally { _rwLock.ExitWriteLock(); }
     }
 
     /// <summary>
-    /// Removes all stale entries older than the given max age.
+    /// Removes all stale entries older than the given max age. Pinned entries
+    /// are skipped (not halted-on — older pinned entries don't block eviction
+    /// of newer-but-still-stale unpinned ones).
     /// </summary>
     public int CleanupStale(TimeSpan maxAge)
     {
@@ -274,9 +280,6 @@ public sealed class ImageCacheService
         _rwLock.EnterWriteLock();
         try
         {
-            // Walk from the tail (oldest) forward. Pinned entries are held by visible
-            // Image controls and must be skipped, not halted-on — an older pinned
-            // entry shouldn't block eviction of a newer-but-still-stale unpinned one.
             var node = _lruList.Last;
             while (node != null && node.Value.Value.LastAccessedTick < cutoffTick)
             {
@@ -285,6 +288,7 @@ public sealed class ImageCacheService
                 {
                     _cache.Remove(node.Value.Key);
                     _lruList.Remove(node);
+                    node.Value.Value.Image.Dispose();
                     removed++;
                 }
                 node = prev;
@@ -296,13 +300,18 @@ public sealed class ImageCacheService
     }
 
     /// <summary>
-    /// Clears the entire cache.
+    /// Hard clear — disposes every entry including pinned ones and wipes the
+    /// pin table. Used by sign-out / user-switch and by the Tier-3 memory
+    /// emergency path in <c>MemoryBudgetService</c>. Visible controls will
+    /// re-pin and re-load on next layout pass.
     /// </summary>
     public void Clear()
     {
         _rwLock.EnterWriteLock();
         try
         {
+            foreach (var node in _lruList)
+                node.Value.Image.Dispose();
             _cache.Clear();
             _lruList.Clear();
             _pinCounts.Clear();
@@ -311,11 +320,9 @@ public sealed class ImageCacheService
     }
 
     /// <summary>
-    /// Soft clear used by memory-pressure escalation. Removes every UNPINNED
+    /// Soft clear used by memory-pressure escalation. Disposes every UNPINNED
     /// LRU entry but keeps pinned entries (and their pin counts) intact, so
-    /// images on currently-visible cards survive a budget overshoot. The
-    /// hard <see cref="Clear"/> still exists for sign-out / user-switch paths
-    /// where we genuinely want to drop everything.
+    /// images on currently-visible cards survive a budget overshoot.
     /// </summary>
     public int ClearUnpinned()
     {
@@ -331,6 +338,7 @@ public sealed class ImageCacheService
                 {
                     _cache.Remove(node.Value.Key);
                     _lruList.Remove(node);
+                    node.Value.Value.Image.Dispose();
                     removed++;
                 }
                 node = prev;

@@ -42,7 +42,6 @@ public sealed partial class SearchResultRowCard : UserControl
     private const double SquareCornerRadius = 18.0;
     private const double CircleCornerRadius = 26.0;
 
-    private ImageCacheService? _imageCache;
     private IPlaybackStateService? _playbackStateService;
     private string? _trackId;
     private bool _isTrack;
@@ -52,6 +51,15 @@ public sealed partial class SearchResultRowCard : UserControl
     private bool _isThisTrackPaused;
     private bool _isBuffering;
     private bool _subscribedToPlayback;
+
+    // Album-metadata viewport prefetch (Pattern A in AlbumPrefetcher). Single-
+    // shot per (realization × item) — reset on Unloaded AND on ApplyItem (so a
+    // recycled row showing a different album fires once for the new URI).
+    private bool _albumPrefetchKicked;
+    private bool _playlistPrefetchKicked;
+    private const double AlbumPrefetchTriggerDistance = 500;
+    private const string AlbumUriPrefix = "spotify:album:";
+    private const string PlaylistUriPrefix = "spotify:playlist:";
 
     public event TypedEventHandler<SearchResultRowCard, RightTappedRoutedEventArgs>? CardRightTapped;
 
@@ -69,6 +77,32 @@ public sealed partial class SearchResultRowCard : UserControl
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         ActualThemeChanged += OnActualThemeChanged;
+        EffectiveViewportChanged += OnEffectiveViewportChanged;
+    }
+
+    private void OnEffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
+    {
+        var item = Item;
+        if (item is null) return;
+        var uri = item.Uri;
+        if (string.IsNullOrEmpty(uri)) return;
+        if (args.BringIntoViewDistanceX > AlbumPrefetchTriggerDistance
+            || args.BringIntoViewDistanceY > AlbumPrefetchTriggerDistance) return;
+
+        if (!_albumPrefetchKicked
+            && item.Type == SearchResultType.Album
+            && uri.StartsWith(AlbumUriPrefix, StringComparison.Ordinal))
+        {
+            _albumPrefetchKicked = true;
+            Ioc.Default.GetService<IAlbumPrefetcher>()?.EnqueueAlbumPrefetch(uri);
+        }
+        else if (!_playlistPrefetchKicked
+            && item.Type == SearchResultType.Playlist
+            && uri.StartsWith(PlaylistUriPrefix, StringComparison.Ordinal))
+        {
+            _playlistPrefetchKicked = true;
+            Ioc.Default.GetService<IPlaylistMetadataPrefetcher>()?.EnqueuePlaylistPrefetch(uri);
+        }
     }
 
     private void OnActualThemeChanged(FrameworkElement sender, object args)
@@ -101,6 +135,11 @@ public sealed partial class SearchResultRowCard : UserControl
 
     private void ApplyItem(SearchResultItem? item)
     {
+        // Container recycle: re-arm the prefetch guards so a row reused for a
+        // different album / playlist fires once for the new URI.
+        _albumPrefetchKicked = false;
+        _playlistPrefetchKicked = false;
+
         if (item == null)
         {
             TitleText.Text = string.Empty;
@@ -163,12 +202,15 @@ public sealed partial class SearchResultRowCard : UserControl
             return;
         }
 
-        _imageCache ??= Ioc.Default.GetService<ImageCacheService>();
-        var source = _imageCache?.GetOrCreate(httpsUrl, 64);
+        var source = new BitmapImage(new Uri(httpsUrl))
+        {
+            DecodePixelWidth = 64,
+            DecodePixelType = DecodePixelType.Logical,
+        };
 
         if (isArtist)
         {
-            ArtistAvatar.ProfilePicture = source as BitmapImage;
+            ArtistAvatar.ProfilePicture = source;
             ThumbnailImage.Visibility = Visibility.Collapsed;
             ThumbnailPlaceholderIcon.Visibility = Visibility.Collapsed;
         }
@@ -215,6 +257,10 @@ public sealed partial class SearchResultRowCard : UserControl
 
         // Drop the native decoded surface so the WinUI compositor releases it.
         if (ThumbnailImage != null) ThumbnailImage.Source = null;
+
+        // Re-arm album / playlist prefetch on re-realization.
+        _albumPrefetchKicked = false;
+        _playlistPrefetchKicked = false;
     }
 
     private void OnPlaybackStateChanged()

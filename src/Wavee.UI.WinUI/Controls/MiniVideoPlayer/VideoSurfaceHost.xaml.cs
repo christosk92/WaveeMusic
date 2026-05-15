@@ -146,7 +146,46 @@ public sealed partial class VideoSurfaceHost : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        // ORDER MATTERS: drop implicit animations BEFORE disposing the
+        // SpriteVisual. Disposing a visual while an implicit animation is
+        // mid-flight can throw.
+        ClearOpacityImplicits(AlbumArtLayer);
+        ClearOpacityImplicits(PosterBlurHost);
+        ClearOpacityImplicits(VideoSlot);
+
+        // Disconnect the SpriteVisual from PosterBlurHost so XAML's hosting
+        // visual no longer pins the GPU resources.
+        try
+        {
+            ElementCompositionPreview.SetElementChildVisual(PosterBlurHost, null);
+        }
+        catch
+        {
+            // Best effort — composition may already be torn down for window close.
+        }
+
+        // Release the Win2D-backed brush + LoadedImageSurface (this already
+        // existed). Sets _posterEffectBrush / _posterSurfaceBrush / _posterSurface to null.
         DisposePosterResources();
+
+        // Finally drop the SpriteVisual itself. Null _compositor so the next
+        // OnLoaded sees a fresh slate (idempotent EnsureComposition will rebuild).
+        try { _posterVisual?.Dispose(); } catch { /* idempotent */ }
+        _posterVisual = null;
+        _compositor = null;
+    }
+
+    private static void ClearOpacityImplicits(UIElement element)
+    {
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(element);
+            visual.ImplicitAnimations = null;
+        }
+        catch
+        {
+            // Window already torn down — nothing to clear.
+        }
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)

@@ -18,9 +18,11 @@
     xmlns:home="using:Wavee.UI.WinUI.ViewModels.Home"
     xmlns:homeViews="using:Wavee.UI.WinUI.Views.Home"
     xmlns:shared="using:Wavee.UI.WinUI.Views.Shared"
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
-    Background="Transparent">
+    Background="Transparent"
+    waveeHelpers:PageEntranceFade.Fade="True">
 
     <Page.Resources>
         <ResourceDictionary>

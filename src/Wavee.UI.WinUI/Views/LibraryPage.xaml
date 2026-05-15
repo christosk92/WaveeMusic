@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="Wavee.UI.WinUI.Views.LibraryPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -6,9 +6,11 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
-    Background="Transparent">
+    Background="Transparent"
+    waveeHelpers:PageEntranceFade.Fade="True">
 
     <Page.Resources>
         <ResourceDictionary>
@@ -37,17 +39,20 @@
             <controls:SegmentedItem x:Name="YourEpisodesItem" Content="Podcasts"/>
         </controls:Segmented>
 
-        <!-- Content area -->
+        <!-- Content area.
+             ContentControl.ContentTransitions intentionally NOT set: the
+             default ContentThemeTransition runs a ~333 ms storyboard on
+             every Content swap, which is the dominant visible cost of
+             switching library tabs. The cached UserControl instances are a
+             reference swap; we want that to be instantaneous. Page-level
+             entrance animation is handled by PageEntranceFade on the Page
+             root (only fires on first navigation TO Library, not on tab
+             switches within Library — same-instance Frame.Navigate doesn't
+             re-fire Loaded). -->
         <Grid x:Name="ContentArea" Grid.Row="1" Canvas.ZIndex="0" Padding="24,8,24,0">
             <ContentControl x:Name="ContentHost"
                             HorizontalContentAlignment="Stretch"
-                            VerticalContentAlignment="Stretch">
-                <ContentControl.ContentTransitions>
-                    <TransitionCollection>
-                        <ContentThemeTransition/>
-                    </TransitionCollection>
-                </ContentControl.ContentTransitions>
-            </ContentControl>
+                            VerticalContentAlignment="Stretch"/>
         </Grid>
     </Grid>
 </Page>

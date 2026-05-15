@@ -193,6 +193,39 @@ public abstract class EntityStore<TKey, TValue> : IDisposable
             slot.Subject.OnNext(new EntityState<TValue>.Ready(value, DateTimeOffset.UtcNow, Freshness.Fresh));
     }
 
+    /// <summary>
+    /// Seed the slot with a partial / speculative value that downstream
+    /// consumers can render while the authoritative payload is fetched.
+    /// Distinct from <see cref="Push"/> in three ways:
+    /// <list type="bullet">
+    /// <item>Does NOT cancel an in-flight fetch (no <see cref="Slot.Cts"/>
+    /// touch), so a Pathfinder fetch racing the hint still completes.</item>
+    /// <item>Does NOT bump <see cref="Slot.StampTicks"/>, so a running
+    /// fetch's stamp guard still admits its result.</item>
+    /// <item>Emits <see cref="Freshness.Stale"/>, which <see cref="MaterializeAsync"/>
+    /// treats as "render this, but schedule a refresh" — so the next
+    /// <see cref="Observe"/> kicks the authoritative fetch automatically.</item>
+    /// </list>
+    /// Idempotent: if the slot already holds a Ready+Fresh value (full
+    /// payload landed), the hint is dropped — we never downgrade.
+    /// </summary>
+    public void Hint(TKey key, TValue value)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var slot = _slots.GetOrAdd(key, _ => new Slot());
+        slot.LastTouchedTicks = Interlocked.Increment(ref _touchSeq);
+        MaybeScheduleEviction();
+
+        if (slot.Subject.Value is EntityState<TValue>.Ready { Freshness: Freshness.Fresh })
+            return;
+
+        try { WriteHot(key, value); }
+        catch (Exception ex) { _logger?.LogDebug(ex, "WriteHot failed on hint for key {Key}", key); }
+
+        slot.Subject.OnNext(new EntityState<TValue>.Ready(value, DateTimeOffset.UtcNow, Freshness.Stale));
+    }
+
     public void Invalidate(TKey key)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

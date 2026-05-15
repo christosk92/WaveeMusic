@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     mc:Ignorable="d">
 
     <!-- Hero-rail spotlight card. Three modes (Pinned, LatestRelease,
@@ -74,7 +75,10 @@
                         Height="96"
                         CornerRadius="6"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                    <Image x:Name="CoverImage" Stretch="UniformToFill"/>
+                    <imaging:CompositionImage x:Name="CoverImage"
+                                              Stretch="UniformToFill"
+                                              DecodePixelSize="192"
+                                              CornerRadius="6"/>
                 </Border>
 
                 <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">

@@ -20,6 +20,6 @@
 
         <hero:HeroCarousel x:Name="Carousel"
                            CornerRadius="14"
-                           VerticalAlignment="Stretch"/>
+                           VerticalAlignment="Stretch" x:FieldModifier="internal" />
     </Grid>
 </UserControl>

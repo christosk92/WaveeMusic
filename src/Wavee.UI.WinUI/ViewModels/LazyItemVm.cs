@@ -86,6 +86,12 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
         {
             _suppressDelegatedDataNotifications = false;
         }
+
+        // Keep virtualized TrackItem rows honest when callers patch Data on an
+        // already-loaded item. The generated Data notification usually causes a
+        // full rebind, but image backfills need a direct art signal too.
+        OnPropertyChanged(nameof(ImageUrl));
+        OnPropertyChanged(nameof(ITrackItem.ImageSmallUrl));
     }
 
     // Most consumers bind LazyTrackItem through TrackItem.Track, so the generated
@@ -105,6 +111,14 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
         OnPropertyChanged(nameof(AlbumName));
         OnPropertyChanged(nameof(AlbumId));
         OnPropertyChanged(nameof(ImageUrl));
+        // Critical for TrackItem.CompactAlbumArt (artist top tracks band):
+        // TrackItem reads `track.ImageSmallUrl ?? track.ImageUrl` and listens
+        // for PropertyChanged on `nameof(ITrackItem.ImageSmallUrl)`. Without
+        // this notification, when `Data` populates via the generated
+        // [ObservableProperty] setter (not via Populate()), the artist's
+        // top-tracks rows never get told to refetch the art and stay on the
+        // placeholder forever even though Data has a real image URL.
+        OnPropertyChanged(nameof(ITrackItem.ImageSmallUrl));
         OnPropertyChanged(nameof(Duration));
         OnPropertyChanged(nameof(IsExplicit));
         OnPropertyChanged(nameof(DurationFormatted));
@@ -127,6 +141,15 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
     public string AlbumName => Data?.AlbumName ?? "";
     public string AlbumId => Data?.AlbumId ?? "";
     public string? ImageUrl => Data?.ImageUrl;
+    // Without this override, the ITrackItem default-interface member
+    // `ImageSmallUrl => null` is inherited and the property is permanently
+    // null regardless of Data. TrackItem's `track.ImageSmallUrl ?? track.ImageUrl`
+    // fallback works on first paint, but the loss of the dedicated
+    // ImageSmallUrl signal made the recovery race fragile — the artist
+    // top-tracks band would stay blank intermittently. Falling back to
+    // Data.ImageUrl matches the consumer's `?? ImageUrl` chain so we never
+    // report a stale null when Data already has a usable large-art URL.
+    public string? ImageSmallUrl => Data?.ImageSmallUrl ?? Data?.ImageUrl;
     public TimeSpan Duration => Data?.Duration ?? TimeSpan.Zero;
     public bool IsExplicit => Data?.IsExplicit ?? false;
     public string DurationFormatted => Data?.DurationFormatted ?? "";

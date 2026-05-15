@@ -10,8 +10,10 @@ using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.Local;
+using Wavee.Protocol.ExtendedMetadata;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
@@ -28,6 +30,7 @@ public sealed class AlbumService : IAlbumService
     private readonly IPathfinderClient _pathfinder;
     private readonly IMetadataDatabase _db;
     private readonly ILocalLibraryService? _localLibrary;
+    private readonly IExtendedMetadataClient? _extendedMetadataClient;
     private readonly ILogger? _logger;
 
     // Bounded LRU of resolved album track lists. Unbounded growth used to leak memory as
@@ -41,11 +44,13 @@ public sealed class AlbumService : IAlbumService
         IMetadataDatabase db,
         ILocalLibraryService? localLibrary = null,
         ILogger? logger = null,
-        int hotCacheCapacity = 50)
+        int hotCacheCapacity = 50,
+        IExtendedMetadataClient? extendedMetadataClient = null)
     {
         _pathfinder = pathfinder;
         _db = db;
         _localLibrary = localLibrary;
+        _extendedMetadataClient = extendedMetadataClient;
         _logger = logger;
         _hot = new AlbumTracksLruCache(hotCacheCapacity);
     }
@@ -615,6 +620,65 @@ public sealed class AlbumService : IAlbumService
         }
 
         return results;
+    }
+
+    public async Task<IReadOnlyList<PlaylistDetailDto>> GetRecommendedPlaylistsAsync(
+        string albumUri, CancellationToken ct = default)
+    {
+        if (_extendedMetadataClient is null) return Array.Empty<PlaylistDetailDto>();
+        if (string.IsNullOrEmpty(albumUri)) return Array.Empty<PlaylistDetailDto>();
+
+        try
+        {
+            // Step 1 — fetch the album's curated playlist refs.
+            var bytes = await _extendedMetadataClient
+                .GetExtensionAsync(albumUri, ExtensionKind.RecommendedPlaylists, ct)
+                .ConfigureAwait(false);
+            if (bytes is null || bytes.Length == 0) return Array.Empty<PlaylistDetailDto>();
+
+            var refs = RecommendedPlaylists.Parser.ParseFrom(bytes);
+            // Filter empties + dedup + cap; the wire payload is small (≤ ~12 entries
+            // typically) but the cap protects against malformed responses.
+            var uris = refs.Recommendation
+                .Select(r => r.Uri)
+                .Where(u => !string.IsNullOrEmpty(u))
+                .Distinct(StringComparer.Ordinal)
+                .Take(12)
+                .ToList();
+            if (uris.Count == 0) return Array.Empty<PlaylistDetailDto>();
+
+            // Step 2 — batch-fetch each playlist's hero metadata in one POST.
+            var requests = uris.Select(u =>
+                (u, (IEnumerable<ExtensionKind>)new[] { ExtensionKind.ListMetadataV2 }));
+            var batch = await _extendedMetadataClient
+                .GetBatchedExtensionsAsync(requests, ct)
+                .ConfigureAwait(false);
+
+            // Step 3 — project per URI in original order. Skip entries that came
+            // back without a payload (server occasionally drops items from the
+            // batch when an upstream lookup times out).
+            var items = new List<PlaylistDetailDto>(uris.Count);
+            foreach (var uri in uris)
+            {
+                var ext = batch.GetExtensionData(uri, ExtensionKind.ListMetadataV2);
+                if (ext?.ExtensionData is null || ext.ExtensionData.Value.IsEmpty) continue;
+                try
+                {
+                    var meta = ListMetadataV2.Parser.ParseFrom(ext.ExtensionData.Value);
+                    items.Add(PlaylistMetadataPrefetcher.PartialFromListMetadataV2(uri, meta));
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Failed to decode LIST_METADATA_V2 for {Uri}", uri);
+                }
+            }
+            return items;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "GetRecommendedPlaylistsAsync failed for {AlbumUri}", albumUri);
+            return Array.Empty<PlaylistDetailDto>();
+        }
     }
 
     /// <summary>

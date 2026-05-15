@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="Wavee.UI.WinUI.Views.ProfilePage"
     x:Name="ProfilePageRoot"
@@ -16,7 +16,8 @@
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
-    Background="Transparent">
+    Background="Transparent"
+    waveeHelpers:PageEntranceFade.Fade="True">
     <Page.Resources>
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>

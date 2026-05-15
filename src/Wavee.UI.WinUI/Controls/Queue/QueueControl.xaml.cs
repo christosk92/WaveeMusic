@@ -76,7 +76,6 @@ public sealed partial class QueueControl : UserControl
     private readonly IPlaybackStateService? _playbackService;
     private readonly ISettingsService? _settingsService;
     private readonly ITrackColorHintService? _colorHintService;
-    private readonly ImageCacheService? _imageCache;
     private readonly ILogger? _logger;
     // Coalesce bursts of PropertyChanged (up to 7 per state batch) into a single
     // Refresh on the UI thread. Each Refresh re-materializes ~80 ItemsRepeater
@@ -90,7 +89,6 @@ public sealed partial class QueueControl : UserControl
         _playbackService  = Ioc.Default.GetService<IPlaybackStateService>();
         _settingsService  = Ioc.Default.GetService<ISettingsService>();
         _colorHintService = Ioc.Default.GetService<ITrackColorHintService>();
-        _imageCache       = Ioc.Default.GetService<ImageCacheService>();
         _logger           = Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger("QueueControl");
 
         if (_playbackService is INotifyPropertyChanged pc)
@@ -153,8 +151,7 @@ public sealed partial class QueueControl : UserControl
 
             var artUrl = SpotifyImageHelper.ToHttpsUrl(_playbackService.CurrentAlbumArt);
             NowPlayingArt.Source = artUrl != null
-                ? _imageCache?.GetOrCreate(artUrl, 48)
-                  ?? new BitmapImage(new System.Uri(artUrl)) { DecodePixelWidth = 48 }
+                ? new BitmapImage(new System.Uri(artUrl)) { DecodePixelWidth = 48, DecodePixelType = DecodePixelType.Logical }
                 : null;
             NowPlayingEqualizer.IsActive = _playbackService.IsPlaying;
         }
@@ -286,8 +283,7 @@ public sealed partial class QueueControl : UserControl
                 _playbackService?.CurrentAlbumArtLarge,
                 _playbackService?.CurrentAlbumArt));
         ContextArt.Source = artUrl != null
-            ? _imageCache?.GetOrCreate(artUrl, 48)
-              ?? new BitmapImage(new System.Uri(artUrl)) { DecodePixelWidth = 48 }
+            ? new BitmapImage(new System.Uri(artUrl)) { DecodePixelWidth = 48, DecodePixelType = DecodePixelType.Logical }
             : null;
     }
 

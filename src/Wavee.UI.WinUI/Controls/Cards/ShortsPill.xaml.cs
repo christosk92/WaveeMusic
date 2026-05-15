@@ -18,7 +18,6 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 
 public sealed partial class ShortsPill : UserControl
 {
-    private static ImageCacheService? _imageCache;
     private bool _isPointerOver;
     private bool _isPlaybackPending;
     private int _playbackPendingVersion;
@@ -94,8 +93,8 @@ public sealed partial class ShortsPill : UserControl
         StopPendingBeam();
         WeakReferenceMessenger.Default.UnregisterAll(this);
 
-        // Drop the native decoded surface so the WinUI compositor releases it.
-        if (PillImage != null) PillImage.Source = null;
+        // CompositionImage handles its own pin release on Unload. Do NOT
+        // clear PillImage.ImageUrl here — it breaks scroll-back-up.
     }
 
     private void OnNowPlayingChanged(object recipient, NowPlayingChangedMessage msg)
@@ -270,29 +269,23 @@ public sealed partial class ShortsPill : UserControl
             if (string.IsNullOrEmpty(httpsUrl))
             {
                 _currentImageUrl = null;
-                PillImage.Source = null;
+                PillImage.ImageUrl = null;
                 PlaceholderIcon.Visibility = Visibility.Visible;
                 return;
             }
 
-            if (string.Equals(_currentImageUrl, httpsUrl, StringComparison.Ordinal)
-                && PillImage.Source != null)
+            if (!string.Equals(_currentImageUrl, httpsUrl, StringComparison.Ordinal))
             {
-                PlaceholderIcon.Visibility = Visibility.Collapsed;
-                ImageContainer.Background = null;
-                return;
+                _currentImageUrl = httpsUrl;
+                PillImage.ImageUrl = httpsUrl;
             }
-
-            _imageCache ??= CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<ImageCacheService>();
-            _currentImageUrl = httpsUrl;
-            PillImage.Source = _imageCache?.GetOrCreate(httpsUrl, 100);
             PlaceholderIcon.Visibility = Visibility.Collapsed;
             ImageContainer.Background = null;
         }
         else
         {
             _currentImageUrl = null;
-            PillImage.Source = null;
+            PillImage.ImageUrl = null;
 
             // Liked Songs: heart icon on purple gradient
             var isCollection = Item?.Uri?.Contains(":collection", StringComparison.OrdinalIgnoreCase) == true;

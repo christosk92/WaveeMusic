@@ -5,71 +5,137 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:CommunityToolkit.WinUI.Media"
+    xmlns:winUi="using:CommunityToolkit.WinUI"
     mc:Ignorable="d">
 
-    <!--  Full-width "On Tour Now" rhythm-break banner used between dense
-          music-data sections on the V4A artist page. Acrylic backdrop +
-          accent gradient sheen overlay + dual-ring pulse dot + CTA. -->
+    <!--  Fluent rhythm-break banner for the artist page tour section.
+          Reworked from the original Spotify-style premium card (16 px corners,
+          Acrylic, accent border) to match the rest of the Fluent card family
+          (ContentCard / BaselineHomeCard / LikedSongsRecentCard):
+            - 8 px corner radius
+            - CardBackgroundFillColorDefaultBrush + 1 px CardStrokeColorDefaultBrush
+            - AttachedCardShadow at the same blur/opacity as BaselineHomeCard
+            - 3-column layout: icon | text stack | chevron
+            - Hover: subtle 1.02 scale (driven from code-behind, matches the
+              BaselineHomeCard composition pattern)
+          The "live-now" signature (left accent stripe + pulse dot) is preserved
+          BUT only renders when IsLive=true (i.e. eyebrow == "ON TOUR NOW"). Every
+          other state ("Upcoming tour", "Upcoming show", "Festival appearances",
+          etc.) shows the calm Fluent chrome only. -->
     <Button x:Name="CardButton"
             HorizontalContentAlignment="Stretch"
             HorizontalAlignment="Stretch"
             Background="Transparent"
             BorderThickness="0"
             Padding="0"
-            CornerRadius="16"
+            CornerRadius="8"
             Click="CardButton_Click">
-        <Border CornerRadius="16"
-                MinHeight="118"
-                Padding="28,18"
-                Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
-                BorderBrush="{ThemeResource AccentControlElevationBorderBrush}"
-                BorderThickness="1">
-            <Grid ColumnSpacing="20">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+        <Grid x:Name="CardRoot"
+              CornerRadius="8"
+              MinHeight="64"
+              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+              BorderThickness="1"
+              Padding="16,14"
+              ColumnSpacing="14">
+            <winUi:Effects.Shadow>
+                <ui:AttachedCardShadow
+                    BlurRadius="26"
+                    CornerRadius="8"
+                    Offset="0,4"
+                    Opacity="0.22"/>
+            </winUi:Effects.Shadow>
 
-                <StackPanel Grid.Column="0" Spacing="4" VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                        <!-- Dual-ring pulse dot -->
-                        <Grid x:Name="PulseDotHost" Width="14" Height="14">
-                            <Ellipse x:Name="PulseRingOuter"
-                                     Width="14" Height="14"
-                                     Fill="{ThemeResource AccentFillColorDefaultBrush}"
-                                     Opacity="0.32"/>
-                            <Ellipse x:Name="PulseDot"
-                                     Width="8" Height="8"
-                                     Fill="{ThemeResource AccentFillColorDefaultBrush}"
-                                     HorizontalAlignment="Center"
-                                     VerticalAlignment="Center"/>
-                        </Grid>
-                        <TextBlock x:Name="EyebrowText"
-                                   Text="ON TOUR NOW"
-                                   FontSize="11"
-                                   FontWeight="Bold"
-                                   CharacterSpacing="160"
-                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
-                    </StackPanel>
-                    <TextBlock x:Name="HeadlineText"
-                               Style="{StaticResource SubtitleTextBlockStyle}"
-                               FontWeight="Bold"
-                               TextTrimming="CharacterEllipsis"
-                               MaxLines="2"/>
-                    <TextBlock x:Name="SublineText"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               TextTrimming="CharacterEllipsis"
-                               MaxLines="1"/>
-                </StackPanel>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
-                <HyperlinkButton Grid.Column="1"
-                                 x:Name="CtaLink"
-                                 Content="See dates &amp; tickets ›"
-                                 VerticalAlignment="Center"
-                                 FontWeight="SemiBold"
-                                 Padding="12,8"/>
+            <!-- Left-edge accent stripe — gradient bottom-to-top, only visible
+                 when IsLive=true. Sits inside the CornerRadius=8 grid so it
+                 clips to the rounded edge automatically. -->
+            <Rectangle x:Name="AccentStripe"
+                       Grid.Column="0"
+                       Grid.ColumnSpan="3"
+                       Width="3"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Stretch"
+                       Margin="-16,-14,0,-14"
+                       Visibility="Collapsed"
+                       IsHitTestVisible="False">
+                <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
+                        <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0"/>
+                        <GradientStop Color="{ThemeResource SystemAccentColorLight1}" Offset="1"/>
+                    </LinearGradientBrush>
+                </Rectangle.Fill>
+            </Rectangle>
+
+            <!-- Icon column. Hosts a state-driven FontIcon AND the pulse dot
+                 overlay; OnIsLiveChanged toggles which is shown. -->
+            <Grid Grid.Column="0"
+                  Width="36"
+                  Height="36"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Margin="4,0,0,0">
+                <FontIcon x:Name="StateIcon"
+                          Glyph="&#xEA1F;"
+                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="18"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+
+                <!-- Dual-ring pulse dot, hidden by default, shown when IsLive. -->
+                <Grid x:Name="PulseDotHost"
+                      Width="14"
+                      Height="14"
+                      Visibility="Collapsed"
+                      IsHitTestVisible="False">
+                    <Ellipse x:Name="PulseRingOuter"
+                             Width="14" Height="14"
+                             Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                             Opacity="0.32"/>
+                    <Ellipse x:Name="PulseDot"
+                             Width="8" Height="8"
+                             Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"/>
+                </Grid>
             </Grid>
-        </Border>
+
+            <!-- Text stack — eyebrow, headline, subline -->
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                <TextBlock x:Name="EyebrowText"
+                           Text="ON TOUR NOW"
+                           FontSize="11"
+                           FontWeight="Bold"
+                           CharacterSpacing="160"
+                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                <TextBlock x:Name="HeadlineText"
+                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                           TextTrimming="CharacterEllipsis"
+                           MaxLines="1"/>
+                <TextBlock x:Name="SublineText"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextTrimming="CharacterEllipsis"
+                           MaxLines="1"/>
+            </StackPanel>
+
+            <!-- ChevronRight affordance. Whole card is the click target
+                 (CardButton.Click); the chevron is passive so it doesn't
+                 compete with the button's hit area. -->
+            <FontIcon x:Name="ChevronAffordance"
+                      Grid.Column="2"
+                      Glyph="&#xE76C;"
+                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                      FontSize="13"
+                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                      VerticalAlignment="Center"
+                      Margin="6,0,2,0"
+                      IsHitTestVisible="False"/>
+        </Grid>
     </Button>
 </UserControl>

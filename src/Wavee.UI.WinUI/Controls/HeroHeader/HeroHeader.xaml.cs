@@ -178,16 +178,29 @@ public sealed partial class HeroHeader : UserControl
 
         if (IntenseScrim)
         {
-            // Intense (banner) scrim — always black, much higher alphas than
-            // the theme-aware default. Designed for pages where overlay text
-            // is forced white regardless of theme (local TV/movie/cast detail).
-            // Mid stop hits ~67% black so the title region reads white-on-black
-            // even when the photo is bright; top stays transparent so the upper
-            // hero still shows the photo cleanly.
-            SetScrimStop(_scrimTopStop,    0, 0, 0, 0,   animate);
-            SetScrimStop(_scrimUpperStop,  0, 0, 0, 60,  animate);
-            SetScrimStop(_scrimMidStop,    0, 0, 0, 170, animate);
-            SetScrimStop(_scrimBottomStop, 0, 0, 0, 235, animate);
+            // Intense (banner) scrim — heavy gradient that fades the photo
+            // toward the page background. Color inverts by theme so overlay
+            // text reads correctly: black scrim with white text in dark mode,
+            // white scrim with dark text in light mode. Top stays transparent
+            // so the upper hero shows the photo cleanly; mid/bottom carry
+            // the bulk of the wash so the title/bio region is legible
+            // regardless of how dark or light the underlying photo is.
+            var intenseIsDark = theme != ElementTheme.Light;
+            byte ir = intenseIsDark ? (byte)0   : (byte)255;
+            byte ig = intenseIsDark ? (byte)0   : (byte)255;
+            byte ib = intenseIsDark ? (byte)0   : (byte)255;
+            // Light mode needs higher alphas than dark for equivalent
+            // perceptual weight (white absorbs photo contrast less aggressively
+            // than black does), so push them up. Dark mode keeps the original
+            // 60/170/235 ramp.
+            byte iUpper  = intenseIsDark ? (byte)60  : (byte)90;
+            byte iMid    = intenseIsDark ? (byte)170 : (byte)210;
+            byte iBottom = intenseIsDark ? (byte)235 : (byte)245;
+
+            SetScrimStop(_scrimTopStop,    ir, ig, ib, 0,       animate);
+            SetScrimStop(_scrimUpperStop,  ir, ig, ib, iUpper,  animate);
+            SetScrimStop(_scrimMidStop,    ir, ig, ib, iMid,    animate);
+            SetScrimStop(_scrimBottomStop, ir, ig, ib, iBottom, animate);
             return;
         }
 

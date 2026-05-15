@@ -1,0 +1,17 @@
+// RECOMMENDED_PLAYLISTS (extension kind 151) — curated playlist refs the
+// Spotify backend recommends alongside an album / artist / show.
+//
+// Field numbers verified by decoding a real album response
+// (spotify:album:2IYQwwgxgOIn7t3iF6ufFD): each entry is a wrapper message
+// holding a single `string uri` field. Six entries in the sample.
+
+syntax = "proto3";
+
+option csharp_namespace = "Wavee.Protocol.ExtendedMetadata";
+
+message RecommendedPlaylists {
+    message Item {
+        string uri = 1;
+    }
+    repeated Item recommendation = 1;
+}

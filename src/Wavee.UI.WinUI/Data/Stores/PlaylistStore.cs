@@ -132,6 +132,23 @@ public sealed class PlaylistStore : EntityStore<string, PlaylistDetailDto>
         return hash.ToHashCode();
     }
 
+    /// <summary>
+    /// Seed a hero-only payload parsed from a <c>LIST_METADATA_V2</c> extended-
+    /// metadata viewport prefetch (see <c>Services.PlaylistPrefetcher</c>).
+    /// Calls <see cref="EntityStore{TKey,TValue}.Hint"/> which emits
+    /// <c>Ready+Stale</c>, so the next <c>Observe(playlistId)</c> subscriber
+    /// (PlaylistPage activation) renders the hero immediately and the
+    /// authoritative Pathfinder fetch is scheduled by <c>MaterializeAsync</c>.
+    /// No-op if the slot already holds a Ready+Fresh full payload — never
+    /// downgrades. Mirrors <c>AlbumStore.HintPartial</c>.
+    /// </summary>
+    public void HintPartial(string playlistId, PlaylistDetailDto partial)
+    {
+        if (!partial.IsPartial)
+            return; // misuse: only partials should be hinted (full payloads go via Push)
+        Hint(playlistId, partial);
+    }
+
     public override void Dispose()
     {
         if (_disposed) return;

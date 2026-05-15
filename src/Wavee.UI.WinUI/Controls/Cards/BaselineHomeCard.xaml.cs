@@ -9,7 +9,6 @@ using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.UI;
 using Microsoft.UI;
 using System.Diagnostics;
@@ -42,7 +41,6 @@ public sealed partial class BaselineHomeCard : UserControl
 
     private static BaselineHomeCard? s_activeCard;
 
-    private readonly ImageCacheService? _imageCache;
     private readonly ICardPreviewPlaybackCoordinator? _previewPlaybackCoordinator;
     private readonly ISharedCardCanvasPreviewService? _sharedCanvasPreviewService;
     private readonly IPlaybackService? _playbackService;
@@ -93,7 +91,6 @@ public sealed partial class BaselineHomeCard : UserControl
     public BaselineHomeCard()
     {
         Unloaded += OnUnloaded;
-        _imageCache = Ioc.Default.GetService<ImageCacheService>();
         _previewPlaybackCoordinator = Ioc.Default.GetService<ICardPreviewPlaybackCoordinator>();
         _sharedCanvasPreviewService = Ioc.Default.GetService<ISharedCardCanvasPreviewService>();
         _playbackService = Ioc.Default.GetService<IPlaybackService>();
@@ -104,11 +101,10 @@ public sealed partial class BaselineHomeCard : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        // Drop the native decoded surfaces so the WinUI compositor releases
-        // them. The Hero / CoverThumb assignment paths re-fetch via
-        // ImageCacheService when the card is recycled.
-        if (HeroImage != null) HeroImage.Source = null;
-        if (CoverThumbImage != null) CoverThumbImage.Source = null;
+        // Do NOT clear HeroImage / CoverThumbImage ImageUrl here.
+        // CompositionImage releases its own pin on Unloaded. Clearing the URL
+        // breaks scroll-back-up: the outer DP doesn't refire if the same
+        // DataContext is restored, and the inner ImageUrl stays null = blank.
     }
 
     [Conditional("DEBUG")]
@@ -277,50 +273,27 @@ public sealed partial class BaselineHomeCard : UserControl
         if (string.IsNullOrWhiteSpace(heroHttpsUrl))
         {
             _currentHeroImageUrl = null;
-            HeroImage.Source = null;
+            HeroImage.ImageUrl = null;
         }
-        else if (string.Equals(_currentHeroImageUrl, heroHttpsUrl, StringComparison.Ordinal)
-                 && HeroImage.Source != null)
-        {
-            // Same realized image; keep it in place to avoid home-card flashes
-            // during section diffing and ItemsRepeater recycle callbacks.
-        }
-        else
+        else if (!string.Equals(_currentHeroImageUrl, heroHttpsUrl, StringComparison.Ordinal))
         {
             _currentHeroImageUrl = heroHttpsUrl;
-            BitmapImage? heroImage = _imageCache?.GetOrCreate(heroHttpsUrl, HeroImageDecodeSize);
-            heroImage ??= new BitmapImage(new Uri(heroHttpsUrl))
-            {
-                // Downsample the cache-miss path too. Without this, each fallback
-                // hero held a full-resolution CDN bitmap (~500×500 RGBA = ~1 MB)
-                // instead of the 240-px card size. ~20 visible Home cards × ~750 KB
-                // = ~15 MB of avoidable working set on every Home load.
-                DecodePixelWidth = HeroImageDecodeSize,
-                DecodePixelType = DecodePixelType.Logical
-            };
-            HeroImage.Source = heroImage;
+            HeroImage.ImageUrl = heroHttpsUrl;
         }
 
         var thumbHttpsUrl = SpotifyImageHelper.ToHttpsUrl(thumbUrl);
         if (string.IsNullOrWhiteSpace(thumbHttpsUrl))
         {
             _currentThumbImageUrl = null;
-            CoverThumbImage.Source = null;
+            CoverThumbImage.ImageUrl = null;
             CoverThumbPlaceholder.Visibility = Visibility.Visible;
             return;
         }
 
-        if (!string.Equals(_currentThumbImageUrl, thumbHttpsUrl, StringComparison.Ordinal)
-            || CoverThumbImage.Source == null)
+        if (!string.Equals(_currentThumbImageUrl, thumbHttpsUrl, StringComparison.Ordinal))
         {
             _currentThumbImageUrl = thumbHttpsUrl;
-            BitmapImage? thumbImage = _imageCache?.GetOrCreate(thumbHttpsUrl, ThumbImageDecodeSize);
-            thumbImage ??= new BitmapImage(new Uri(thumbHttpsUrl))
-            {
-                DecodePixelWidth = ThumbImageDecodeSize,
-                DecodePixelType = DecodePixelType.Logical
-            };
-            CoverThumbImage.Source = thumbImage;
+            CoverThumbImage.ImageUrl = thumbHttpsUrl;
         }
 
         CoverThumbPlaceholder.Visibility = Visibility.Collapsed;
@@ -1607,12 +1580,10 @@ public sealed partial class BaselineHomeCard : UserControl
         StopPreviewVisualization();
         UnregisterPreviewAudio();
 
-        // Mirror ContentCard.ReleaseImage(): null the bitmap sources on Unload
-        // so the cached BitmapImage isn't pinned in the visual tree past this
-        // card's lifetime. Without this, recycle-to-nothing scenarios keep the
-        // last hero/thumb decode resident in the cache.
-        if (HeroImage != null) HeroImage.Source = null;
-        if (CoverThumbImage != null) CoverThumbImage.Source = null;
+        // Don't clear HeroImage / CoverThumbImage ImageUrl — CompositionImage
+        // releases its own pin on Unloaded. Clearing breaks scroll-back-up.
+        // Reset our local cache markers so LoadImages re-applies the URL on
+        // re-attach even when the outer Item DP is unchanged.
         _currentHeroImageUrl = null;
         _currentThumbImageUrl = null;
 

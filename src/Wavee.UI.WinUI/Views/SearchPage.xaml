@@ -12,9 +12,11 @@
     xmlns:pathfinder="using:Wavee.Core.Http.Pathfinder"
     xmlns:search="using:Wavee.UI.WinUI.Controls.Search"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
-    Background="Transparent">
+    Background="Transparent"
+    waveeHelpers:PageEntranceFade.Fade="True">
 
     <ScrollView x:Name="PageScrollView" VerticalScrollBarVisibility="Auto" ContentOrientation="Vertical">
         <StackPanel x:Name="RootPanel" Padding="20,18,20,28" Spacing="0">

@@ -451,6 +451,13 @@ public sealed partial class ShellPage : Page
         if (notificationService != null)
             await notificationService.InvokeActionAsync();
     }
+
+    private void Notification_CloseRequested(object sender, RoutedEventArgs e)
+    {
+        CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<INotificationService>()
+            ?.Dismiss();
+    }
     private  void ShellPage_Loaded(object sender, RoutedEventArgs e)
     {
  
@@ -827,12 +834,6 @@ public sealed partial class ShellPage : Page
         NavigationHelpers.OpenNewTab();
     }
 
-    private void DebugAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-    {
-        NavigationHelpers.OpenDebug(openInNewTab: true);
-        args.Handled = true;
-    }
-
     private void FpsOverlayAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         if (_uiHealthOverlay == null) return;
@@ -1046,6 +1047,14 @@ public sealed partial class ShellPage : Page
 
                 case VirtualKey.S:
                     if (ToggleShuffle()) args.Handled = true;
+                    return;
+
+                // Always-live (no #if DEBUG): pops the Debug page in its own
+                // floating window. Single-instance — second press focuses
+                // the existing window. See Wavee.UI.WinUI.Floating.DebugFloatingWindow.
+                case VirtualKey.D:
+                    Wavee.UI.WinUI.Floating.DebugFloatingWindow.EnsureOpen();
+                    args.Handled = true;
                     return;
             }
         }

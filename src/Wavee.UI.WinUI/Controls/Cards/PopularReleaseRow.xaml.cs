@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Helpers;
+using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
 using Windows.UI;
 
@@ -16,8 +17,6 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 /// </summary>
 public sealed partial class PopularReleaseRow : UserControl
 {
-    private static ImageCacheService? _imageCache;
-
     public event EventHandler<RoutedEventArgs>? CardClick;
 
     public static readonly DependencyProperty CoverImageUrlProperty =
@@ -48,6 +47,24 @@ public sealed partial class PopularReleaseRow : UserControl
         DependencyProperty.Register(nameof(AccentForegroundBrush), typeof(Brush), typeof(PopularReleaseRow),
             new PropertyMetadata(null, OnAccentForegroundBrushChanged));
 
+    // ─── Navigation DPs (added with the artist→album prefetch + connected
+    // animation pass). When NavigationUri is set, the internal click handler
+    // self-routes through AlbumNavigationHelper (prefetch + connected anim +
+    // count prefill) and the CardClick event also fires for any subscriber
+    // that wants to react. Leaving these unset preserves the old event-only
+    // behaviour.
+    public static readonly DependencyProperty NavigationUriProperty =
+        DependencyProperty.Register(nameof(NavigationUri), typeof(string), typeof(PopularReleaseRow),
+            new PropertyMetadata(null));
+
+    public static readonly DependencyProperty NavigationTotalTracksProperty =
+        DependencyProperty.Register(nameof(NavigationTotalTracks), typeof(int), typeof(PopularReleaseRow),
+            new PropertyMetadata(0));
+
+    public static readonly DependencyProperty SubtitleProperty =
+        DependencyProperty.Register(nameof(Subtitle), typeof(string), typeof(PopularReleaseRow),
+            new PropertyMetadata(null));
+
     public string? CoverImageUrl { get => (string?)GetValue(CoverImageUrlProperty); set => SetValue(CoverImageUrlProperty, value); }
     public string Title { get => (string)GetValue(TitleProperty); set => SetValue(TitleProperty, value); }
     public string Meta { get => (string)GetValue(MetaProperty); set => SetValue(MetaProperty, value); }
@@ -56,28 +73,59 @@ public sealed partial class PopularReleaseRow : UserControl
     public Brush? AccentBrush { get => (Brush?)GetValue(AccentBrushProperty); set => SetValue(AccentBrushProperty, value); }
     public Brush? AccentForegroundBrush { get => (Brush?)GetValue(AccentForegroundBrushProperty); set => SetValue(AccentForegroundBrushProperty, value); }
 
+    public string? NavigationUri { get => (string?)GetValue(NavigationUriProperty); set => SetValue(NavigationUriProperty, value); }
+    public int NavigationTotalTracks { get => (int)GetValue(NavigationTotalTracksProperty); set => SetValue(NavigationTotalTracksProperty, value); }
+    public string? Subtitle { get => (string?)GetValue(SubtitleProperty); set => SetValue(SubtitleProperty, value); }
+
+    // Album-metadata viewport prefetch. Single-shot per realization — reset
+    // in OnUnloaded so container recycling re-fires when the row re-enters
+    // the viewport. IAlbumPrefetcher's session-wide dedup keeps duplicate
+    // POSTs out of the network.
+    private bool _albumPrefetchKicked;
+    private bool _playlistPrefetchKicked;
+    private const double AlbumPrefetchTriggerDistance = 500;
+    private const string AlbumUriPrefix = "spotify:album:";
+    private const string PlaylistUriPrefix = "spotify:playlist:";
+
     public PopularReleaseRow()
     {
         InitializeComponent();
         Unloaded += OnUnloaded;
+        EffectiveViewportChanged += OnEffectiveViewportChanged;
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        if (CoverImage != null) CoverImage.Source = null;
+        // CompositionImage releases its own pin on Unloaded.
+        // Don't clear CoverImage.ImageUrl — breaks scroll-back-up.
+        _albumPrefetchKicked = false;
+        _playlistPrefetchKicked = false;
+    }
+
+    private void OnEffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
+    {
+        var uri = NavigationUri;
+        if (string.IsNullOrEmpty(uri)) return;
+        if (args.BringIntoViewDistanceX > AlbumPrefetchTriggerDistance
+            || args.BringIntoViewDistanceY > AlbumPrefetchTriggerDistance) return;
+
+        if (!_albumPrefetchKicked && uri.StartsWith(AlbumUriPrefix, StringComparison.Ordinal))
+        {
+            _albumPrefetchKicked = true;
+            Ioc.Default.GetService<IAlbumPrefetcher>()?.EnqueueAlbumPrefetch(uri);
+        }
+        else if (!_playlistPrefetchKicked && uri.StartsWith(PlaylistUriPrefix, StringComparison.Ordinal))
+        {
+            _playlistPrefetchKicked = true;
+            Ioc.Default.GetService<IPlaylistMetadataPrefetcher>()?.EnqueuePlaylistPrefetch(uri);
+        }
     }
 
     private static void OnCoverImageUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is not PopularReleaseRow row) return;
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(e.NewValue as string);
-        if (string.IsNullOrEmpty(httpsUrl))
-        {
-            row.CoverImage.Source = null;
-            return;
-        }
-        _imageCache ??= Ioc.Default.GetService<ImageCacheService>();
-        row.CoverImage.Source = _imageCache?.GetOrCreate(httpsUrl, 112);
+        row.CoverImage.ImageUrl = string.IsNullOrEmpty(httpsUrl) ? null : httpsUrl;
     }
 
     private static void OnTitleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -104,10 +152,7 @@ public sealed partial class PopularReleaseRow : UserControl
 
     private static void OnAccentBrushChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        // AccentBrush DP is preserved on the control for future flexibility,
-        // but the chip + featured wash now use the system theme accent again
-        // (matching the rest of the app chrome) rather than the artist's
-        // palette. No-op handler.
+        // AccentBrush DP preserved for compatibility; chrome uses theme accent.
     }
 
     private static void OnAccentForegroundBrushChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -115,9 +160,11 @@ public sealed partial class PopularReleaseRow : UserControl
         // AccentForegroundBrush DP kept for compatibility; not consumed.
     }
 
-    /// <summary>Refresh the featured-row chrome (highlight wash + border).
-    /// Uses a fixed accent-tinted teal so every artist's featured row reads
-    /// consistently with the system theme accent.</summary>
+    /// <summary>
+    /// Refresh the featured-row chrome (highlight wash + border). Uses a fixed
+    /// accent-tinted teal so every artist's featured row reads consistently
+    /// with the system theme accent.
+    /// </summary>
     private void ApplyFeaturedVisuals()
     {
         PopularNowChip.Visibility = IsFeatured ? Visibility.Visible : Visibility.Collapsed;
@@ -129,11 +176,29 @@ public sealed partial class PopularReleaseRow : UserControl
             return;
         }
 
-        // Fixed teal wash — matches the rest of the system-accent treatment.
         RootBorder.Background = new SolidColorBrush(Color.FromArgb(0x18, 0x50, 0x90, 0xB8));
         RootBorder.BorderBrush = new SolidColorBrush(Color.FromArgb(0x66, 0x50, 0x90, 0xB8));
         RootBorder.BorderThickness = new Thickness(1);
     }
 
-    private void CardButton_Click(object sender, RoutedEventArgs e) => CardClick?.Invoke(this, e);
+    private void CardButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Self-route when NavigationUri is set — fires connected animation
+        // from the cover Border to AlbumPage's hero, builds a nav-prefill
+        // ContentNavigationParameter with TotalTracks, and respects Ctrl+click
+        // for new-tab. Falls back to the CardClick event for any subscriber
+        // that needs custom handling (e.g. a host page wiring up analytics).
+        var uri = NavigationUri;
+        if (!string.IsNullOrEmpty(uri))
+        {
+            AlbumNavigationHelper.NavigateToAlbum(
+                uri,
+                title: Title,
+                subtitle: Subtitle,
+                imageUrl: CoverImageUrl,
+                totalTracks: NavigationTotalTracks > 0 ? NavigationTotalTracks : null,
+                connectedAnimationSource: CoverContainer);
+        }
+        CardClick?.Invoke(this, e);
+    }
 }

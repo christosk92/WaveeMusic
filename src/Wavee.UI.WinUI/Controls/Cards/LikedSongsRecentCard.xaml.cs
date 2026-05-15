@@ -110,9 +110,11 @@ public sealed partial class LikedSongsRecentCard : UserControl
     private Visual? _heartVisual;
     private readonly List<LoadedImageSurface> _surfaces = new(3);
     private readonly List<SpriteVisual> _sprites = new(3);
+    private readonly List<CompositionBrush> _brushes = new(4);
     private bool _isLoaded;
     private bool _isHovered;
     private float _hostWidth;
+    private int _thumbnailGeneration;
 
     // Per-slot fan layout — back-to-front. Each slot has a rest pose (matches
     // Spotify's tight stack where thumbnails barely peek behind the heart)
@@ -310,14 +312,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
         if (!_isLoaded || _thumbnailContainer == null || _compositor == null)
             return;
 
-        // Clear existing
-        _thumbnailContainer.Children.RemoveAll();
-        foreach (var sprite in _sprites)
-            sprite.Dispose();
-        _sprites.Clear();
-        foreach (var surface in _surfaces)
-            surface.Dispose();
-        _surfaces.Clear();
+        var generation = ResetThumbnailResources();
 
         var urls = new[] { Thumbnail1ImageUrl, Thumbnail2ImageUrl, Thumbnail3ImageUrl };
 
@@ -328,6 +323,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
         if (hostWidth <= 0)
         {
             // Layout hasn't run yet — defer to next pass.
+            ThumbnailHost.SizeChanged -= DeferredHostSized;
             ThumbnailHost.SizeChanged += DeferredHostSized;
             return;
         }
@@ -359,6 +355,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
         // re-runs and draws the slots that now have URLs.
         var placeholderBrush = _compositor.CreateColorBrush(
             Color.FromArgb(255, 0x2C, 0x2C, 0x32));
+        _brushes.Add(placeholderBrush);
 
         var nonEmptyUrlCount = urls.Count(static url => !string.IsNullOrWhiteSpace(url));
         var slotCount = Math.Clamp(
@@ -398,12 +395,18 @@ public sealed partial class LikedSongsRecentCard : UserControl
                     {
                         DispatcherQueue.TryEnqueue(() =>
                         {
-                            if (_compositor == null || spriteRef == null) return;
+                            if (_compositor == null
+                                || generation != _thumbnailGeneration
+                                || !_sprites.Contains(spriteRef))
+                            {
+                                return;
+                            }
                             if (args.Status == LoadedImageSourceLoadStatus.Success)
                             {
                                 var imgBrush = _compositor.CreateSurfaceBrush();
                                 imgBrush.Stretch = CompositionStretch.UniformToFill;
                                 imgBrush.Surface = sender;
+                                _brushes.Add(imgBrush);
                                 spriteRef.Brush = imgBrush;
                             }
                             // On non-Success, leave the placeholder brush in
@@ -448,20 +451,44 @@ public sealed partial class LikedSongsRecentCard : UserControl
         RebuildThumbnails();
     }
 
+    private int ResetThumbnailResources()
+    {
+        _thumbnailGeneration++;
+        _thumbnailContainer?.Children.RemoveAll();
+
+        foreach (var sprite in _sprites)
+        {
+            try { sprite.Brush = null; } catch { }
+            try { sprite.Dispose(); } catch { }
+        }
+        _sprites.Clear();
+
+        foreach (var surface in _surfaces)
+        {
+            try { surface.Dispose(); } catch { }
+        }
+        _surfaces.Clear();
+
+        foreach (var brush in _brushes)
+        {
+            try { brush.Dispose(); } catch { }
+        }
+        _brushes.Clear();
+
+        return _thumbnailGeneration;
+    }
+
     private void DisposeCompositionGraph()
     {
+        ThumbnailHost.SizeChanged -= DeferredHostSized;
+        ResetThumbnailResources();
+
         if (_thumbnailContainer != null)
         {
             ElementCompositionPreview.SetElementChildVisual(ThumbnailHost, null);
-            foreach (var sprite in _sprites)
-                sprite.Dispose();
-            _sprites.Clear();
             _thumbnailContainer.Dispose();
             _thumbnailContainer = null;
         }
-        foreach (var surface in _surfaces)
-            surface.Dispose();
-        _surfaces.Clear();
         _compositor = null;
     }
 

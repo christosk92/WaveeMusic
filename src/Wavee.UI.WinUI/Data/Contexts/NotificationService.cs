@@ -80,16 +80,17 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
         // Also post to the activity bell so it persists in history
         PostToActivityBell(notification);
 
-        // Set up auto-dismiss if requested
-        if (notification.AutoDismissAfter.HasValue)
-        {
-            _autoDismissTimer = new DispatcherTimer
-            {
-                Interval = notification.AutoDismissAfter.Value
-            };
-            _autoDismissTimer.Tick += OnAutoDismissTimerTick;
-            _autoDismissTimer.Start();
-        }
+        // Auto-dismiss is the default for the new floating-toast UX. If the
+        // caller didn't pick a duration, give actionable toasts a longer window
+        // so the user can read + reach the action button before it closes.
+        var dismissAfter = notification.AutoDismissAfter
+            ?? (notification.ActionLabel != null
+                ? TimeSpan.FromSeconds(8)
+                : TimeSpan.FromSeconds(5));
+
+        _autoDismissTimer = new DispatcherTimer { Interval = dismissAfter };
+        _autoDismissTimer.Tick += OnAutoDismissTimerTick;
+        _autoDismissTimer.Start();
     }
 
     private void PostToActivityBell(NotificationInfo notification)
@@ -106,10 +107,10 @@ internal sealed partial class NotificationService : ObservableObject, INotificat
 
         var iconGlyph = notification.Severity switch
         {
-            NotificationSeverity.Error => "\uEA39",
-            NotificationSeverity.Warning => "\uE7BA",
-            NotificationSeverity.Success => "\uE73E",
-            _ => "\uE946"
+            NotificationSeverity.Error => Styles.FluentGlyphs.ErrorBadge,
+            NotificationSeverity.Warning => Styles.FluentGlyphs.Warning,
+            NotificationSeverity.Success => Styles.FluentGlyphs.CheckMark,
+            _ => Styles.FluentGlyphs.Info
         };
 
         if (notification.Action != null && notification.ActionLabel != null)

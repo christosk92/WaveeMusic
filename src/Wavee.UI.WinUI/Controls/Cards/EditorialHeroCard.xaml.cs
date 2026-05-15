@@ -5,7 +5,6 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.WinUI.Effects.Editorial;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
@@ -91,8 +90,8 @@ public sealed partial class EditorialHeroCard : UserControl
         _lastBakedUri = null;
         _lastBakedSize = default;
 
-        // Drop the native decoded surface so the WinUI compositor releases it.
-        if (HeroImage != null) HeroImage.Source = null;
+        // CompositionImage releases its own pin on Unload. Don't clear
+        // HeroImage.ImageUrl — breaks scroll-back-up.
     }
 
     private void BackdropHost_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -115,7 +114,7 @@ public sealed partial class EditorialHeroCard : UserControl
     {
         if (item is null)
         {
-            HeroImage.Source = null;
+            HeroImage.ImageUrl = null;
             TitleText.Text = string.Empty;
             SubtitleText.Text = string.Empty;
             return;
@@ -127,18 +126,16 @@ public sealed partial class EditorialHeroCard : UserControl
         // Floating cover (right column).
         if (string.IsNullOrEmpty(item.ImageUrl))
         {
-            HeroImage.Source = null;
+            HeroImage.ImageUrl = null;
         }
         else
         {
+            // Decode bucketing is handled by ImageCacheService — feed the scaled
+            // request as a hint and the cache snaps to the 512 bucket.
             var scale = XamlRoot?.RasterizationScale ?? 1.0;
             var coverDecode = (int)Math.Round(240 * scale);
-            HeroImage.Source = new BitmapImage
-            {
-                DecodePixelType = DecodePixelType.Logical,
-                DecodePixelWidth = Math.Clamp(coverDecode, 240, 640),
-                UriSource = new Uri(item.ImageUrl),
-            };
+            HeroImage.DecodePixelSize = Math.Clamp(coverDecode, 240, 640);
+            HeroImage.ImageUrl = item.ImageUrl;
         }
 
         // Backdrop bake — needs renderer + non-zero dimensions + a usable image.

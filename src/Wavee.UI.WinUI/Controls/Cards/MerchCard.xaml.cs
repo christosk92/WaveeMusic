@@ -1,10 +1,8 @@
 using System;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.WinUI.Helpers;
-using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
 
@@ -17,8 +15,6 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 /// </summary>
 public sealed partial class MerchCard : UserControl
 {
-    private static ImageCacheService? _imageCache;
-
     public event EventHandler<RoutedEventArgs>? CardClick;
     public event EventHandler<RoutedEventArgs>? BuyClick;
 
@@ -63,8 +59,11 @@ public sealed partial class MerchCard : UserControl
             card.MerchImageBrush.ImageSource = null;
             return;
         }
-        _imageCache ??= Ioc.Default.GetService<ImageCacheService>();
-        card.MerchImageBrush.ImageSource = _imageCache?.GetOrCreate(httpsUrl, 360);
+        card.MerchImageBrush.ImageSource = new BitmapImage(new Uri(httpsUrl))
+        {
+            DecodePixelWidth = 360,
+            DecodePixelType = DecodePixelType.Logical,
+        };
     }
 
     private static void OnPriceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

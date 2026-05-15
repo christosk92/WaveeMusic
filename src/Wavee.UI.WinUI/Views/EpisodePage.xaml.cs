@@ -70,10 +70,11 @@ public sealed partial class EpisodePage : Page, ITabBarItemContent, INavigationC
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.episode.onNavigatedFrom");
         base.OnNavigatedFrom(e);
-        // Cleanup is in TrimForNavigationCache below — TabBarItem invokes that
-        // around Frame.Navigate. Under NavigationCacheMode=Required the page
-        // survives nav-away in Frame's cache pool; do NOT Dispose the VM here
-        // (the cached page would come back bound to a dead VM).
+        // Eager trim on every nav-away so the VM's singleton subscriptions
+        // release immediately. Without this, the cached EpisodePage's VM
+        // stays rooted by PlaybackStateService.PropertyChanged across Frame
+        // evictions and produces creeping 1–2 s click delays over time.
+        TrimForNavigationCache();
     }
 
     private bool _trimmedForNavigationCache;
@@ -82,6 +83,9 @@ public sealed partial class EpisodePage : Page, ITabBarItemContent, INavigationC
     {
         if (_trimmedForNavigationCache) return;
         _trimmedForNavigationCache = true;
+        // Drop the singleton subscriptions that pin this VM across cached-
+        // page evictions. Activate re-attaches on nav-back.
+        ViewModel.Hibernate();
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
         // sibling does not keep the cached page wired up while it sits off-screen.
         Bindings?.StopTracking();

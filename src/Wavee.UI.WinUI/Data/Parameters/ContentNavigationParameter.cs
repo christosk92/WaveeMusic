@@ -10,6 +10,11 @@ public sealed record ContentNavigationParameter
     public string? Title { get; init; }
     public string? Subtitle { get; init; }
     public string? ImageUrl { get; init; }
+
+    // Origin-known track count for albums/playlists. Lets the destination page
+    // render an exact-count skeleton (TrackDataGrid.LoadingRowCount) instead of
+    // a fixed-10 placeholder that visibly collapses or grows when real rows land.
+    public int? TotalTracks { get; init; }
 }
 
 /// <summary>

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.MiniVideoPlayer.VideoGripperView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:mini="using:Wavee.UI.WinUI.Controls.MiniVideoPlayer"
+    mc:Ignorable="d"
+    Width="44"
+    Height="80"
+    Visibility="Collapsed">
+
+    <!--
+        Right-edge "tear-off" tab that surfaces when the user has dismissed
+        the floating MiniVideoPlayer (X) but video is still playing. The
+        WebView2 hosting the live video reparents into this tab via the
+        surface arbiter (OwnerPriority=3, below Mini=5 and Full=10). Click
+        anywhere on the tab to restore the full Mini.
+
+        Visual: rounded-on-the-screen-side / flat-on-the-edge-side so it
+        reads as an attached side handle, not a free-floating button.
+    -->
+    <Border CornerRadius="6,0,0,6"
+            Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
+            BorderThickness="1,1,0,1"
+            BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}">
+
+        <Grid>
+            <!-- The same 3-layer crossfade host the floating Mini uses;
+                 the WebView2 mounts into its VideoMountPoint when this
+                 control acquires the active surface. -->
+            <mini:VideoSurfaceHost x:Name="SurfaceHost"
+                                   AlbumArtUrl="{x:Bind ViewModel.Player.AlbumArtLarge, Mode=OneWay}"
+                                   PosterUrl="{x:Bind ViewModel.Player.AlbumArtLarge, Mode=OneWay}"
+                                   IsFirstFrameReady="{x:Bind ViewModel.HasVideoSurfaceWithFirstFrame, Mode=OneWay}"
+                                   HostCornerRadius="5,0,0,5"
+                                   Margin="2,2,1,6" />
+
+            <!-- Hairline progress at the bottom, same source the Mini's
+                 progress bar uses. 2 px tall so it's still readable at this
+                 width without dominating the tab. -->
+            <ProgressBar Minimum="0"
+                         Maximum="{x:Bind ViewModel.Player.SliderMaximum, Mode=OneWay}"
+                         Value="{x:Bind ViewModel.Player.Position, Mode=OneWay}"
+                         Height="2"
+                         Margin="4,0,4,2"
+                         VerticalAlignment="Bottom"
+                         HorizontalAlignment="Stretch"
+                         IsHitTestVisible="False"
+                         Foreground="{ThemeResource SystemAccentColor}"
+                         Background="#33FFFFFF"
+                         CornerRadius="0" />
+
+            <!-- Whole-tab click target. Sits above the surface + progress
+                 so any tap on the tab restores Mini. -->
+            <Button x:Name="RestoreButton"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Click="RestoreButton_Click"
+                    ToolTipService.ToolTip="Show video player" />
+        </Grid>
+    </Border>
+</UserControl>

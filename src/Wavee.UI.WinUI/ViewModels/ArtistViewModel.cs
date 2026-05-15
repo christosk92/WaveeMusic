@@ -344,12 +344,14 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         nameof(LatestReleaseUri), nameof(LatestReleaseDate), nameof(LatestReleaseTrackCount), nameof(LatestReleaseType),
         nameof(HasLatestRelease), nameof(LatestReleaseSubtitle), nameof(HasSpotlightRelease), nameof(SpotlightCardMode),
         nameof(SpotlightReleaseName), nameof(SpotlightReleaseImageUrl), nameof(SpotlightReleaseUri), nameof(SpotlightReleaseSubtitle),
+        nameof(SpotlightReleaseTrackCount),
         nameof(SpotlightReleaseTagText), nameof(SpotlightReleaseEyebrowText), nameof(SpotlightCommentText), nameof(HasSpotlightComment),
         nameof(AlbumsTotalCount), nameof(HasAlbums), nameof(SinglesTotalCount), nameof(HasSingles),
         nameof(CompilationsTotalCount), nameof(HasCompilations), nameof(PinnedItem), nameof(HasPinnedItem), nameof(HasPinnedComment),
         nameof(PinnedBackdropImageUrl), nameof(PinnedColumnWidth), nameof(PinnedItemTitle), nameof(PinnedItemComment),
         nameof(PinnedItemThumbnailUrl), nameof(PinnedItemSubtitle), nameof(PinnedItemUri), nameof(WatchFeed), nameof(HasWatchFeed),
-        nameof(PopularReleasesDisplayed), nameof(TourBannerHeadline), nameof(TourBannerSubline)
+        nameof(PopularReleasesDisplayed), nameof(TourBannerHeadline), nameof(TourBannerSubline), nameof(TourBannerEyebrow),
+        nameof(TourBannerIsLive), nameof(TourBannerIconGlyph)
     ];
 
     [ObservableProperty] private bool _isFollowing;
@@ -413,6 +415,18 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         HasPinnedItem ? PinnedItem?.Uri :
         HasLatestRelease ? LatestReleaseUri :
         FirstPopularRelease?.Uri;
+
+    /// <summary>
+    /// Origin-known track count for whatever the spotlight currently
+    /// surfaces (pinned / latest / popular). Threaded into the spotlight
+    /// card's <c>NavigationTotalTracks</c> DP so AlbumPage's skeleton row
+    /// count is exact on click. Returns 0 when the count can't be derived
+    /// (e.g. some pinned-item flavours don't carry a track count).
+    /// </summary>
+    public int SpotlightReleaseTrackCount =>
+        HasPinnedItem ? 0 :
+        HasLatestRelease ? LatestReleaseTrackCount :
+        FirstPopularRelease?.TrackCount ?? 0;
 
     public string SpotlightReleaseSubtitle =>
         HasPinnedItem ? (PinnedItem?.Subtitle ?? string.Empty) :
@@ -546,9 +560,90 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             var titled = _concerts.Select(c => c.Title).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
             if (!string.IsNullOrWhiteSpace(titled) && !string.Equals(titled, ArtistName, StringComparison.OrdinalIgnoreCase))
                 return titled!;
-            return _concerts.Count == 1
-                ? $"{ArtistName} live"
-                : $"{ArtistName} — on tour";
+
+            // Fallback copy matched to the eyebrow categorisation so a 1-date
+            // festival appearance doesn't read as "on tour".
+            var allFestivals = _concerts.All(c => c.IsFestival);
+            if (allFestivals) return $"Catch {ArtistName} at festivals";
+            if (_concerts.Count == 1) return $"{ArtistName} live";
+            if (_concerts.Count <= 3) return $"{ArtistName} — live dates";
+            return $"{ArtistName} — on tour";
+        }
+    }
+
+    /// <summary>
+    /// Context-aware eyebrow label for the <c>RhythmBreakBanner</c>. The
+    /// hardcoded "ON TOUR NOW" label was misleading for the common cases
+    /// (single concert / single festival date / many dates months out).
+    /// Decision tree (count + festival flag + first-date proximity):
+    /// <list type="bullet">
+    ///   <item>All festivals → "FESTIVAL APPEARANCES" (regardless of count).</item>
+    ///   <item>1 concert → "UPCOMING SHOW".</item>
+    ///   <item>2–3 concerts → "UPCOMING DATES".</item>
+    ///   <item>≥ 4 concerts, first within 7 days → "ON TOUR NOW".</item>
+    ///   <item>≥ 4 concerts, first &gt; 7 days out → "UPCOMING TOUR".</item>
+    /// </list>
+    /// </summary>
+    /// <summary>
+    /// True when the banner is currently in the "ON TOUR NOW" state — the
+    /// only state that gets the accent left-edge stripe + pulsing dot
+    /// treatment. Computed from <see cref="TourBannerEyebrow"/> so it always
+    /// matches what the eyebrow text says.
+    /// </summary>
+    public bool TourBannerIsLive
+        => string.Equals(TourBannerEyebrow, "ON TOUR NOW", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Segoe Fluent Icons glyph for the banner's icon column. Resolves the
+    /// eyebrow categorisation to a centralised <see cref="Styles.FluentGlyphs"/>
+    /// constant so PUA codepoints stay out of this .cs file (raw PUA chars
+    /// don't survive editor encoding round-trips reliably):
+    /// <list type="bullet">
+    ///   <item>"FESTIVAL APPEARANCES" → <see cref="Styles.FluentGlyphs.Ribbon"/> (EB44).</item>
+    ///   <item>Multi-date tour ("ON TOUR NOW" / "UPCOMING TOUR" / "UPCOMING DATES") → <see cref="Styles.FluentGlyphs.Calendar"/> (E787).</item>
+    ///   <item>Single-show ("UPCOMING SHOW") → <see cref="Styles.FluentGlyphs.Microphone"/> (E720).</item>
+    /// </list>
+    /// </summary>
+    public string TourBannerIconGlyph
+    {
+        get
+        {
+            var e = TourBannerEyebrow;
+            if (e == "FESTIVAL APPEARANCES") return Styles.FluentGlyphs.Ribbon;
+            if (e == "UPCOMING SHOW") return Styles.FluentGlyphs.Microphone;
+            if (e == "ON TOUR NOW" || e == "UPCOMING TOUR" || e == "UPCOMING DATES")
+                return Styles.FluentGlyphs.Calendar;
+            return Styles.FluentGlyphs.Calendar;
+        }
+    }
+
+    public string TourBannerEyebrow
+    {
+        get
+        {
+            var count = _concerts.Count;
+            if (count == 0) return string.Empty;
+
+            var allFestivals = _concerts.All(c => c.IsFestival);
+            if (allFestivals) return "FESTIVAL APPEARANCES";
+
+            if (count == 1) return "UPCOMING SHOW";
+            if (count <= 3) return "UPCOMING DATES";
+
+            // count >= 4 → it's a tour. Differentiate "now" vs "upcoming" by
+            // when the next upcoming date is. We can't reliably tell whether
+            // Pathfinder returns past concerts (it usually only returns
+            // future), so "first concert within 7 days" is the proxy for
+            // "actively touring".
+            var todayLocal = DateTimeOffset.Now.Date;
+            var firstUpcoming = _concerts
+                .Select(c => c.Date)
+                .Where(d => d.Date >= todayLocal)
+                .DefaultIfEmpty(_concerts[0].Date)
+                .Min();
+            var daysUntilFirst = (firstUpcoming.Date - todayLocal).TotalDays;
+
+            return daysUntilFirst <= 7 ? "ON TOUR NOW" : "UPCOMING TOUR";
         }
     }
 
@@ -1350,6 +1445,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 Title = c.Title,
                 Venue = c.Venue,
                 City = c.City,
+                Date = c.Date,
                 DateFormatted = c.Date != default
                     ? c.Date.ToString("MMM d").ToUpperInvariant()
                     : "",
@@ -1368,6 +1464,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             OnPropertyChanged(nameof(FirstConcertCity));
             OnPropertyChanged(nameof(TourBannerHeadline));
             OnPropertyChanged(nameof(TourBannerSubline));
+            OnPropertyChanged(nameof(TourBannerEyebrow));
+            OnPropertyChanged(nameof(TourBannerIsLive));
+            OnPropertyChanged(nameof(TourBannerIconGlyph));
 
             UserLocationName = _locationService.CurrentCity;
 
@@ -2273,7 +2372,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                         HasCanvasVideo = vm.HasCanvasVideo,
                         HasLinkedLocalVideo = vm.HasLinkedLocalVideo,
                     };
-                    entry.Populate(patched);
+                    TopTracks[i] = LazyTrackItem.Loaded(patched.Id, vm.Index, patched);
                     anyPatched = true;
                 }
 
@@ -2281,6 +2380,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 {
                     _pagedTopTracksCache = null;
                     OnPropertyChanged(nameof(PagedTopTracks));
+                    OnPropertyChanged(nameof(TopTracksFirst10));
                 }
 
                 _logger?.LogInformation(
@@ -2676,6 +2776,14 @@ public sealed class ConcertVm : INotifyPropertyChanged
     public string? Year { get; init; }
     public bool IsFestival { get; init; }
     public string? Uri { get; init; }
+
+    /// <summary>
+    /// Raw date/time of the concert. Preserved alongside the formatted strings
+    /// so the artist-page tour banner can categorise "Upcoming show" vs
+    /// "Upcoming tour" vs "On tour now" by counting + first-date proximity,
+    /// without re-parsing <see cref="DateFormatted"/>.
+    /// </summary>
+    public DateTimeOffset Date { get; init; }
 
     private bool _isNearUser;
     public bool IsNearUser

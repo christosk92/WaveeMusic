@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     mc:Ignorable="d">
 
     <Button x:Name="CardButton"
@@ -16,7 +17,10 @@
             <!-- Circular image -->
             <Grid x:Name="ImageContainer"
                   Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                <Image x:Name="CardImage" Stretch="UniformToFill"/>
+                <imaging:CompositionImage x:Name="CardImage"
+                                          Stretch="UniformToFill"
+                                          DecodePixelSize="100"
+                                          IsCircle="True"/>
                 <FontIcon x:Name="PlaceholderIcon" Glyph="&#xE77B;" FontSize="24"
                           HorizontalAlignment="Center" VerticalAlignment="Center"
                           Opacity="0.3"/>

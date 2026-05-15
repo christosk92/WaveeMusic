@@ -354,16 +354,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public bool IsNotificationActionEnabled => !_notificationService.IsActionBusy;
 
     /// <summary>
-    /// Maps notification severity to WinUI's <see cref="InfoBarSeverity"/> for XAML binding.
+    /// Notification severity passed to the floating toast. Returns the
+    /// project's own <see cref="AppNotificationSeverity"/> so the toast
+    /// control stays decoupled from <see cref="InfoBarSeverity"/>.
     /// </summary>
-    public InfoBarSeverity NotificationSeverity => _notificationService.Severity switch
-    {
-        AppNotificationSeverity.Informational => InfoBarSeverity.Informational,
-        AppNotificationSeverity.Success => InfoBarSeverity.Success,
-        AppNotificationSeverity.Warning => InfoBarSeverity.Warning,
-        AppNotificationSeverity.Error => InfoBarSeverity.Error,
-        _ => InfoBarSeverity.Error
-    };
+    public AppNotificationSeverity NotificationSeverity => _notificationService.Severity;
 
     public ShellViewModel(
         ILibraryDataService libraryDataService,

@@ -77,10 +77,12 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.show.onNavigatedFrom");
         base.OnNavigatedFrom(e);
-        // Cleanup is in TrimForNavigationCache below — TabBarItem invokes that
-        // around Frame.Navigate. Under NavigationCacheMode=Required the page
-        // survives nav-away in Frame's cache pool; do NOT Dispose the VM here
-        // (the cached page would come back bound to a dead VM).
+        // Run TrimForNavigationCache eagerly on every nav-away so the VM's
+        // singleton subscriptions release immediately, not only when the
+        // page falls out of the Frame cache pool. Matches the AlbumPage /
+        // PlaylistPage / ArtistPage pattern; needed to keep cross-type
+        // navigations snappy over a long session.
+        TrimForNavigationCache();
     }
 
     private bool _trimmedForNavigationCache;
@@ -89,6 +91,9 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
     {
         if (_trimmedForNavigationCache) return;
         _trimmedForNavigationCache = true;
+        // Drop the singleton subscriptions that pin this VM across cached-
+        // page evictions. Activate re-attaches on nav-back.
+        ViewModel.Hibernate();
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
         // sibling does not keep the cached page wired up while it sits off-screen.
         Bindings?.StopTracking();

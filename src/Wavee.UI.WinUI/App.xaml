@@ -239,6 +239,7 @@
             <!-- Converters -->
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
             <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True" />
+            <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
             <converters:ChipBackgroundConverter x:Key="ChipBackgroundConverter" />
             <converters:ChipForegroundConverter x:Key="ChipForegroundConverter" />
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />

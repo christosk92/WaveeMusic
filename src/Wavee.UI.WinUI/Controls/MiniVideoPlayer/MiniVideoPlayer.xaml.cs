@@ -91,6 +91,11 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
         // + "not on the video page"). When we become visible we acquire the
         // surface; when we hide we release it.
         _surface.ActiveSurfaceChanged += OnActiveVideoSurfaceStateChanged;
+        // Retry hook for the priority race: when Mini's eager AcquireSurface
+        // during back-nav from the fullscreen page got rejected by the
+        // OwnerPriority gate (Full was still the owner at priority 10), this
+        // event fires once Full releases. We then re-attach Mini.
+        _surface.SurfaceOwnershipChanged += OnSurfaceOwnershipChanged;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -124,8 +129,10 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
             // state as a fade-out after hover.
             RestartHideTimer();
             // Replay the reverse morph if VideoPlayerPage just navigated
-            // away. No-op when no animation was prepared.
+            // away, or if the gripper just expanded. Both are safe no-ops
+            // when no animation was prepared.
             Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.TryStartFullToMini(SurfaceHost);
+            Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.TryStartGripperToMini(SurfaceHost);
         }
     }
 
@@ -134,6 +141,7 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
         System.Diagnostics.Debug.WriteLine("[mem] MiniVideoPlayer.OnUnloaded");
         _surface.ReleaseSurface(this);
         _surface.ActiveSurfaceChanged -= OnActiveVideoSurfaceStateChanged;
+        _surface.SurfaceOwnershipChanged -= OnSurfaceOwnershipChanged;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         if (_hideTimer is not null)
         {
@@ -157,6 +165,29 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
 
     }
 
+    /// <summary>
+    /// Fires when ownership of the active video surface moves between UI
+    /// hosts (e.g. <see cref="Views.VideoPlayerPage"/> releases on Esc).
+    /// This is the retry hook for the surface-arbiter priority race: Mini's
+    /// initial <see cref="IActiveVideoSurfaceService.AcquireSurface"/> during
+    /// back-navigation gets rejected (Full still owns at priority 10), then
+    /// Full releases. Without this retry, nothing re-attaches the WebView2
+    /// to Mini and the user sees a black surface.
+    /// </summary>
+    private void OnSurfaceOwnershipChanged(object? sender, EventArgs e)
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(() => OnSurfaceOwnershipChanged(sender, e));
+            return;
+        }
+
+        if (ViewModel.IsVisible && !_surface.IsOwnedBy(this))
+        {
+            _surface.AcquireSurface(this);
+        }
+    }
+
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(MiniVideoPlayerViewModel.IsVisible)) return;
@@ -168,6 +199,10 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
             // user sees the controls instead of a frame-only mini.
             FadeOverlay(visible: true);
             RestartHideTimer();
+            // Replay the morphs if either was just prepared. Both are safe
+            // no-ops when no animation was queued.
+            Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.TryStartFullToMini(SurfaceHost);
+            Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.TryStartGripperToMini(SurfaceHost);
         }
         else
         {
@@ -183,6 +218,15 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
         // instead of a hard nav cut.
         Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.PrepareMiniToFull(SurfaceHost);
         ViewModel.ExpandCommand.Execute(null);
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Capture for the Mini → Gripper morph so the gripper can replay
+        // it as a smooth shrink to the right edge. No-op when the gripper
+        // isn't about to materialize.
+        Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.PrepareMiniToGripper(SurfaceHost);
+        ViewModel.CloseCommand.Execute(null);
     }
 
     // ── IMediaSurfaceConsumer ─────────────────────────────────────────────

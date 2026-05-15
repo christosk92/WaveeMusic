@@ -49,8 +49,55 @@ public sealed partial class MiniVideoPlayerViewModel : ObservableObject, IDispos
                              && !IsSuppressedByFloatingPlayer
                              && !IsDismissedByUser;
 
+    /// <summary>
+    /// Mirror of <see cref="IsVisible"/> but inverted on
+    /// <see cref="IsDismissedByUser"/>. When the user has clicked the X on
+    /// Mini, the floating control hides — but the video keeps playing. The
+    /// <c>VideoGripperView</c> in the shell shows itself in Mini's place so
+    /// the user has a way to bring playback back into view.
+    /// </summary>
+    public bool IsGripperVisible => IsVideoActive
+                                    && HasVideoSurfaceWithFirstFrame
+                                    && !IsOnVideoPage
+                                    && !IsSuppressedBySidebarPlayer
+                                    && !IsSuppressedByFloatingPlayer
+                                    && IsDismissedByUser;
+
     partial void OnHasVideoSurfaceWithFirstFrameChanged(bool value)
-        => OnPropertyChanged(nameof(IsVisible));
+    {
+        OnPropertyChanged(nameof(IsVisible));
+        OnPropertyChanged(nameof(IsGripperVisible));
+    }
+
+    partial void OnIsVideoActiveChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsVisible));
+        OnPropertyChanged(nameof(IsGripperVisible));
+    }
+
+    partial void OnIsOnVideoPageChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsVisible));
+        OnPropertyChanged(nameof(IsGripperVisible));
+    }
+
+    partial void OnIsSuppressedBySidebarPlayerChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsVisible));
+        OnPropertyChanged(nameof(IsGripperVisible));
+    }
+
+    partial void OnIsSuppressedByFloatingPlayerChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsVisible));
+        OnPropertyChanged(nameof(IsGripperVisible));
+    }
+
+    partial void OnIsDismissedByUserChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsVisible));
+        OnPropertyChanged(nameof(IsGripperVisible));
+    }
 
     /// <summary>
     /// Re-uses the singleton <see cref="PlayerBarViewModel"/> for transport
@@ -181,7 +228,17 @@ public sealed partial class MiniVideoPlayerViewModel : ObservableObject, IDispos
         IsVideoActive = _surface.HasActiveSurface;
         HasVideoSurfaceWithFirstFrame = _surface.HasActiveSurface && _surface.HasActiveFirstFrame;
         OnPropertyChanged(nameof(IsVisible));
+        OnPropertyChanged(nameof(IsGripperVisible));
     }
+
+    /// <summary>
+    /// Called by <c>VideoGripperView</c> when the user clicks the
+    /// right-edge tab. Resets <see cref="IsDismissedByUser"/> so the floating
+    /// Mini-player reappears in place. Just an alias for
+    /// <see cref="ShowByUserRequest"/> — kept distinct so the call sites read
+    /// naturally.
+    /// </summary>
+    public void Restore() => ShowByUserRequest();
 
     private void Expand()
     {

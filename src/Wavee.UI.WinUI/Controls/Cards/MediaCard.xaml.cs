@@ -1,17 +1,13 @@
 using System;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Wavee.UI.WinUI.Helpers;
-using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
 
 public sealed partial class MediaCard : UserControl
 {
-    private static ImageCacheService? _imageCache;
-
     public event EventHandler<RoutedEventArgs>? CardClick;
     public event EventHandler<RightTappedRoutedEventArgs>? CardRightTapped;
 
@@ -33,7 +29,7 @@ public sealed partial class MediaCard : UserControl
 
     public static readonly DependencyProperty PlaceholderGlyphProperty =
         DependencyProperty.Register(nameof(PlaceholderGlyph), typeof(string), typeof(MediaCard),
-            new PropertyMetadata("\uE8D6"));
+            new PropertyMetadata(""));
 
     public string? ImageUrl { get => (string?)GetValue(ImageUrlProperty); set => SetValue(ImageUrlProperty, value); }
     public string Title { get => (string)GetValue(TitleProperty); set => SetValue(TitleProperty, value); }
@@ -45,33 +41,21 @@ public sealed partial class MediaCard : UserControl
     {
         InitializeComponent();
         UpdateSize(160);
-        Unloaded += OnUnloaded;
-    }
-
-    private void OnUnloaded(object sender, RoutedEventArgs e)
-    {
-        // Drop the native decoded surface so the WinUI compositor releases it.
-        // OnImageUrlChanged re-fetches via ImageCacheService when the card is
-        // recycled, so dropping the Source here doesn't break re-realization.
-        if (CardImage != null) CardImage.Source = null;
     }
 
     private static void OnImageUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is MediaCard card && e.NewValue is string url)
+        if (d is not MediaCard card) return;
+        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(e.NewValue as string);
+        if (!string.IsNullOrEmpty(httpsUrl))
         {
-            var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url);
-            if (!string.IsNullOrEmpty(httpsUrl))
-            {
-                _imageCache ??= Ioc.Default.GetService<ImageCacheService>();
-                card.CardImage.Source = _imageCache?.GetOrCreate(httpsUrl, 200);
-                card.PlaceholderIcon.Visibility = Visibility.Collapsed;
-            }
-            else
-            {
-                card.CardImage.Source = null;
-                card.PlaceholderIcon.Visibility = Visibility.Visible;
-            }
+            card.CardImage.ImageUrl = httpsUrl;
+            card.PlaceholderIcon.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            card.CardImage.ImageUrl = null;
+            card.PlaceholderIcon.Visibility = Visibility.Visible;
         }
     }
 

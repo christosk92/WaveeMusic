@@ -1,16 +1,16 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using Windows.Foundation;
 using Windows.UI;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Controls.Imaging;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Services;
 
@@ -22,23 +22,19 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 /// </summary>
 public sealed partial class ContentCard : UserControl
 {
-    // ── Dependency Properties ──
+    // â”€â”€ Dependency Properties â”€â”€
 
-    private static bool _isImageLoadingSuspended;
+    /// <summary>
+    /// Back-compat shim. The actual gate lives in
+    /// <see cref="Wavee.UI.WinUI.Services.ImageLoadingSuspension"/> so the new
+    /// <see cref="Wavee.UI.WinUI.Controls.Imaging.CompositionImage"/> control
+    /// can observe it without taking a dependency on this card.
+    /// </summary>
     public static bool IsImageLoadingSuspended
     {
-        get => _isImageLoadingSuspended;
-        set
-        {
-            if (_isImageLoadingSuspended == value)
-                return;
-
-            _isImageLoadingSuspended = value;
-            ImageLoadingSuspensionChanged?.Invoke(value);
-        }
+        get => ImageLoadingSuspension.IsSuspended;
+        set => ImageLoadingSuspension.IsSuspended = value;
     }
-
-    private static event Action<bool>? ImageLoadingSuspensionChanged;
 
     public static readonly DependencyProperty ImageUrlProperty =
         DependencyProperty.Register(nameof(ImageUrl), typeof(string), typeof(ContentCard),
@@ -82,7 +78,7 @@ public sealed partial class ContentCard : UserControl
     /// <see cref="CardAspectMode.Tall"/> is 2:3 portrait (TV/movie posters);
     /// <see cref="CardAspectMode.Wide"/> and <see cref="CardAspectMode.Backdrop"/> are
     /// 16:9 landscape (music videos / continue-watching hero rails).
-    /// Mutually exclusive with <see cref="IsCircularImage"/> — setting both falls back
+    /// Mutually exclusive with <see cref="IsCircularImage"/> â€” setting both falls back
     /// to circular at runtime.
     /// </summary>
     public static readonly DependencyProperty AspectModeProperty =
@@ -162,6 +158,23 @@ public sealed partial class ContentCard : UserControl
         DependencyProperty.Register(nameof(NavigationTitle), typeof(string), typeof(ContentCard),
             new PropertyMetadata(null));
 
+    public static readonly DependencyProperty NavigationTotalTracksProperty =
+        DependencyProperty.Register(nameof(NavigationTotalTracks), typeof(int), typeof(ContentCard),
+            new PropertyMetadata(0));
+
+    /// <summary>
+    /// Origin-known track count for album / playlist cards. Forwarded into the
+    /// <c>ContentNavigationParameter</c> built by <see cref="HandleNavigation"/>
+    /// so the destination page renders an exact-count skeleton via
+    /// <c>TrackDataGrid.LoadingRowCount</c>. Default 0 means "unknown" and the
+    /// destination falls back to its default skeleton row count.
+    /// </summary>
+    public int NavigationTotalTracks
+    {
+        get => (int)GetValue(NavigationTotalTracksProperty);
+        set => SetValue(NavigationTotalTracksProperty, value);
+    }
+
     /// <summary>
     /// Spotify URI to navigate to when clicked (e.g. "spotify:artist:xxx").
     /// When set, the card handles navigation internally (like ShortsPill).
@@ -202,6 +215,69 @@ public sealed partial class ContentCard : UserControl
     {
         get => (bool)GetValue(UseConnectedAnimationProperty);
         set => SetValue(UseConnectedAnimationProperty, value);
+    }
+
+    public static readonly DependencyProperty AutoNavigateOnTapProperty =
+        DependencyProperty.Register(nameof(AutoNavigateOnTap), typeof(bool), typeof(ContentCard),
+            new PropertyMetadata(true));
+
+    /// <summary>
+    /// When true (the default), tapping the card auto-routes through
+    /// <see cref="NavigateToUri"/> if <see cref="NavigationUri"/> is set.
+    /// When false, tapping the card fires <c>CardClick</c> as if
+    /// <see cref="NavigationUri"/> were null â€” but the URI is still used by
+    /// the viewport-prefetch path and by the <see cref="SecondaryActionVisible"/>
+    /// "Open album" button. Use this on cards that want prefetch + the
+    /// secondary affordance but need a custom primary tap (e.g. artist-page
+    /// discography cards that expand inline on tap).
+    /// </summary>
+    public bool AutoNavigateOnTap
+    {
+        get => (bool)GetValue(AutoNavigateOnTapProperty);
+        set => SetValue(AutoNavigateOnTapProperty, value);
+    }
+
+    public static readonly DependencyProperty SecondaryActionVisibleProperty =
+        DependencyProperty.Register(nameof(SecondaryActionVisible), typeof(bool), typeof(ContentCard),
+            new PropertyMetadata(false));
+
+    // OpenInNewWindow (E8A7) - reads as "go to detail page" without looking
+    // like an external-link arrow (NavigateExternalInline). Sourced via
+    // FluentGlyphs to keep PUA literals out of .cs (CLAUDE.md convention).
+    public static readonly DependencyProperty SecondaryActionGlyphProperty =
+        DependencyProperty.Register(nameof(SecondaryActionGlyph), typeof(string), typeof(ContentCard),
+            new PropertyMetadata(Styles.FluentGlyphs.OpenInNewWindow));
+
+    public static readonly DependencyProperty SecondaryActionTooltipProperty =
+        DependencyProperty.Register(nameof(SecondaryActionTooltip), typeof(string), typeof(ContentCard),
+            new PropertyMetadata(null));
+
+    /// <summary>
+    /// Show a small accent-coloured overlay button at top-right of the cover
+    /// image. Click navigates via <see cref="AlbumNavigationHelper.NavigateToAlbum"/>
+    /// (using <see cref="NavigationUri"/> / <see cref="NavigationTotalTracks"/>
+    /// / etc.) and consumes the routed event so a parent's tap handler does
+    /// not also fire. Designed for surfaces whose primary tap does something
+    /// other than navigate (e.g. the discography cards on Artist Page that
+    /// expand a track preview inline) â€” the secondary button gives the user
+    /// a discrete "Open full album page" route.
+    /// </summary>
+    public bool SecondaryActionVisible
+    {
+        get => (bool)GetValue(SecondaryActionVisibleProperty);
+        set => SetValue(SecondaryActionVisibleProperty, value);
+    }
+
+    public string SecondaryActionGlyph
+    {
+        get => (string)GetValue(SecondaryActionGlyphProperty);
+        set => SetValue(SecondaryActionGlyphProperty, value);
+    }
+
+    public string? SecondaryActionTooltip
+    {
+        get => (string?)GetValue(SecondaryActionTooltipProperty);
+        set => SetValue(SecondaryActionTooltipProperty, value);
     }
 
     /// <summary>
@@ -275,7 +351,7 @@ public sealed partial class ContentCard : UserControl
         set => SetValue(IsContextPausedProperty, value);
     }
 
-    // ── Events ──
+    // â”€â”€ Events â”€â”€
 
     public event EventHandler? CardClick;
     public event EventHandler? CardMiddleClick;
@@ -284,7 +360,7 @@ public sealed partial class ContentCard : UserControl
     public event EventHandler? ExternalActionRequested;
     public event TypedEventHandler<ContentCard, RightTappedRoutedEventArgs>? CardRightTapped;
 
-    // ── Constructor ──
+    // â”€â”€ Constructor â”€â”€
 
     private bool _passiveHandlersAdded;
 
@@ -299,28 +375,35 @@ public sealed partial class ContentCard : UserControl
     private bool _circleSizeHandlerAttached;
     private bool _hasEffectiveViewport;
     private bool _isInsideEffectiveViewport = true;
+
+    // Album-metadata viewport prefetch (see Services.IAlbumPrefetcher). Single-
+    // shot per realization â€” reset in OnUnloaded so container recycling re-fires
+    // on the next viewport enter. The AlbumPrefetcher service does its own
+    // dedupe across the whole session, so re-fires are cheap.
+    private bool _albumPrefetchKicked;
+    private bool _playlistPrefetchKicked;
+    private const double AlbumPrefetchTriggerDistance = 500;
+    private const string AlbumUriPrefix = "spotify:album:";
+    private const string PlaylistUriPrefix = "spotify:playlist:";
     private const int CardImageDecodeSize = 200;
     private const double DefaultCardWidth = 160;
     private const double CardHorizontalPadding = 16;
     private const double CircleImageInset = 16;
     private const double MinimumImageSide = 60;
     private string? _currentImageCacheUrl;
-    private string? _pinnedImageCacheUrl;
     private string? _retryImageCacheUrl;
     private int _retryImageLoadCount;
 
-    private readonly ImageCacheService? _imageCache;
     private readonly ThemeColorService? _themeColorService;
     private readonly NowPlayingHighlightService? _highlightService;
 
     public ContentCard()
     {
-        _imageCache = Ioc.Default.GetService<ImageCacheService>();
         _themeColorService = Ioc.Default.GetService<ThemeColorService>();
         _highlightService = Ioc.Default.GetService<NowPlayingHighlightService>();
         InitializeComponent();
         // Cards are always interactive (click navigates or opens). Set the hand cursor
-        // once on construction — the system shows it on hover automatically as long as
+        // once on construction â€” the system shows it on hover automatically as long as
         // the cursor stays assigned, no per-event toggling needed.
         ProtectedCursor = Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand);
         Loaded += OnLoaded;
@@ -331,8 +414,8 @@ public sealed partial class ContentCard : UserControl
         // reused in the same container) the binding does not re-trigger and
         // Loaded may fire before x:Bind has propagated the new DataContext.
         // EffectiveViewportChanged fires whenever this element's viewport in
-        // an ancestor scroller changes — including the first measurement
-        // after re-attach — and lets us reload the cached bitmap on demand.
+        // an ancestor scroller changes â€” including the first measurement
+        // after re-attach â€” and lets us reload the cached bitmap on demand.
         EffectiveViewportChanged += OnEffectiveViewportChanged;
     }
 
@@ -361,7 +444,7 @@ public sealed partial class ContentCard : UserControl
         // Subscribe to the shared NowPlayingHighlightService singleton instead of
         // registering directly with WeakReferenceMessenger. The service listens to
         // NowPlayingChangedMessage once at startup and broadcasts via a plain C# event
-        // — avoiding ~310 per-card messenger Register calls during HomePage realization.
+        // â€” avoiding ~310 per-card messenger Register calls during HomePage realization.
         if (_highlightService != null)
         {
             _highlightService.CurrentChanged += OnHighlightServiceChanged;
@@ -369,7 +452,7 @@ public sealed partial class ContentCard : UserControl
             var (contextUri, albumUri, playing) = _highlightService.Current;
             ApplyHighlight(contextUri, albumUri, playing);
         }
-        ImageLoadingSuspensionChanged += OnImageLoadingSuspensionChanged;
+        ImageLoadingSuspension.Changed += OnImageLoadingSuspensionChanged;
         if (!_hasEffectiveViewport || _isInsideEffectiveViewport)
             LoadImage(ImageUrl);
         SyncInitialPlaybackState();
@@ -380,10 +463,36 @@ public sealed partial class ContentCard : UserControl
         ResetInteractionState(updatePlayingState: false);
         StopPendingBeam();
 
-        // Unsubscribe from the highlight service — strong event, explicit unsubscribe required.
+        // Re-arm album / playlist prefetch on re-realization (ItemsRepeater
+        // recycle). The prefetcher's own dedup HashSet still prevents a
+        // duplicate POST.
+        _albumPrefetchKicked = false;
+        _playlistPrefetchKicked = false;
+
+        // Release the final CompositionRectangleClip on SquareImageContainer.
+        // UpdateSquareImageClip swaps a fresh clip on every image load and
+        // disposes the previous one â€” but the LAST one stays attached for
+        // the card's lifetime. On unload, drop it so the GPU resource is
+        // released promptly rather than waiting for full visual teardown.
+        if (SquareImageContainer is not null)
+        {
+            try
+            {
+                var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(SquareImageContainer);
+                var lingering = visual.Clip;
+                visual.Clip = null;
+                lingering?.Dispose();
+            }
+            catch
+            {
+                // Composition can already be torn down during window close.
+            }
+        }
+
+        // Unsubscribe from the highlight service â€” strong event, explicit unsubscribe required.
         if (_highlightService != null)
             _highlightService.CurrentChanged -= OnHighlightServiceChanged;
-        ImageLoadingSuspensionChanged -= OnImageLoadingSuspensionChanged;
+        ImageLoadingSuspension.Changed -= OnImageLoadingSuspensionChanged;
 
         // Clean up SizeChanged subscription to prevent memory leaks
         if (CircleImageContainer != null && _circleSizeHandlerAttached)
@@ -398,10 +507,8 @@ public sealed partial class ContentCard : UserControl
         // result and skipping reload.
         _hasEffectiveViewport = false;
         _isInsideEffectiveViewport = true;
-        // Do not blank the image for ordinary ItemsRepeater virtualization or
-        // quick navigation-cache detaches. Keeping the source avoids scroll-back
-        // placeholder flashes; explicit page trim paths still call ReleaseImage().
-        UnpinImageCacheUrl();
+        // CompositionImage.OnUnloaded handles its own pin release. No further
+        // teardown needed here â€” the surface stays in the LRU until evicted.
 
         // Remove passive pointer handlers using the SAME instances that were added
         if (_passiveHandlersAdded)
@@ -423,7 +530,7 @@ public sealed partial class ContentCard : UserControl
         }
     }
 
-    // ── Now-playing self-management (via shared NowPlayingHighlightService) ──
+    // â”€â”€ Now-playing self-management (via shared NowPlayingHighlightService) â”€â”€
 
     private void OnHighlightServiceChanged(string? contextUri, string? albumUri, bool playing)
         => ApplyHighlight(contextUri, albumUri, playing);
@@ -432,8 +539,8 @@ public sealed partial class ContentCard : UserControl
     {
         // Do the cheap string comparison BEFORE scheduling a dispatcher callback.
         // This avoids queuing 20-50 TryEnqueue calls when only 0-1 cards actually match.
-        var navUri = NavigationUri; // read once — safe, DependencyProperty reads are thread-safe for strings
-        // Match on context OR album URI — so an album card lights up whenever the
+        var navUri = NavigationUri; // read once â€” safe, DependencyProperty reads are thread-safe for strings
+        // Match on context OR album URI â€” so an album card lights up whenever the
         // currently-playing track belongs to that album, not only when playback
         // was launched from the album itself.
         var isMatch = !string.IsNullOrEmpty(navUri)
@@ -481,7 +588,7 @@ public sealed partial class ContentCard : UserControl
         ApplyHighlight(ps.CurrentContext?.ContextUri, ps.CurrentAlbumId, ps.IsPlaying);
     }
 
-    // ── Property changed callbacks ──
+    // â”€â”€ Property changed callbacks â”€â”€
 
     private static void OnImageUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -578,7 +685,7 @@ public sealed partial class ContentCard : UserControl
         card.SubtitleText.TextAlignment = center ? Microsoft.UI.Xaml.TextAlignment.Center : Microsoft.UI.Xaml.TextAlignment.Left;
     }
 
-    // ── Image loading ──
+    // â”€â”€ Image loading â”€â”€
 
     private void OnImageLoadingSuspensionChanged(bool suspended)
     {
@@ -594,6 +701,33 @@ public sealed partial class ContentCard : UserControl
 
     private void OnEffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
     {
+        // Album metadata prefetch â€” fires once per realization when the card
+        // is within AlbumPrefetchTriggerDistance px of the viewport. The
+        // prefetcher itself dedupes URIs across the whole session, so the
+        // single-shot guard here is just a hot-path optimisation. Runs
+        // independently of the image-loading viewport check below; the
+        // distance threshold is lenient (BringIntoViewDistance â‰¤ 500) so we
+        // catch cards approaching the viewport, not just ones fully visible.
+        if (!_albumPrefetchKicked || !_playlistPrefetchKicked)
+        {
+            var navUri = NavigationUri;
+            if (!string.IsNullOrEmpty(navUri)
+                && args.BringIntoViewDistanceX <= AlbumPrefetchTriggerDistance
+                && args.BringIntoViewDistanceY <= AlbumPrefetchTriggerDistance)
+            {
+                if (!_albumPrefetchKicked && navUri.StartsWith(AlbumUriPrefix, StringComparison.Ordinal))
+                {
+                    _albumPrefetchKicked = true;
+                    Ioc.Default.GetService<IAlbumPrefetcher>()?.EnqueueAlbumPrefetch(navUri);
+                }
+                else if (!_playlistPrefetchKicked && navUri.StartsWith(PlaylistUriPrefix, StringComparison.Ordinal))
+                {
+                    _playlistPrefetchKicked = true;
+                    Ioc.Default.GetService<IPlaylistMetadataPrefetcher>()?.EnqueuePlaylistPrefetch(navUri);
+                }
+            }
+        }
+
         if (!TryGetEffectiveViewportIntersection(sender, args.EffectiveViewport, out var isInsideEffectiveViewport))
         {
             // During page re-attach WinUI can raise this before layout has a
@@ -621,20 +755,19 @@ public sealed partial class ContentCard : UserControl
 
     public void ReleaseImage()
     {
-        UnpinImageCacheUrl();
         _currentImageCacheUrl = null;
 
         if (SquareImage != null)
         {
-            SquareImage.Source = null;
-            // Reset to invisible — fade-in animation snaps from current
-            // opacity, so leaving this at 1 caused a 1 → 0 → 0.85 flash on
+            SquareImage.ImageUrl = null;
+            // Reset to invisible â€” fade-in animation snaps from current
+            // opacity, so leaving this at 1 caused a 1 â†’ 0 â†’ 0.85 flash on
             // the next ImageOpened. The XAML default is 0 too.
             SquareImage.Opacity = 0;
         }
 
-        if (CircleImageBrush != null)
-            CircleImageBrush.ImageSource = null;
+        if (CircleImage != null)
+            CircleImage.ImageUrl = null;
 
         if (SquarePlaceholderIcon != null)
             SquarePlaceholderIcon.Visibility = Visibility.Visible;
@@ -660,8 +793,8 @@ public sealed partial class ContentCard : UserControl
 
     private bool HasImage()
         => IsCircularImage
-            ? CircleImageBrush?.ImageSource != null
-            : SquareImage?.Source != null;
+            ? !string.IsNullOrEmpty(CircleImage?.ImageUrl)
+            : !string.IsNullOrEmpty(SquareImage?.ImageUrl);
 
     private bool HasLoadedImageFor(string? url)
         => HasImage() && IsCurrentImageUrl(url);
@@ -709,23 +842,13 @@ public sealed partial class ContentCard : UserControl
         if (string.Equals(_currentImageCacheUrl, resolvedImageUrl, StringComparison.Ordinal) && HasImage())
         {
             HidePlaceholderForCurrentMode();
-            PinImageCacheUrl(resolvedImageUrl);
             return;
         }
 
-        // Show placeholders — they sit on top of the image via z-order
-        // Image stays Visible (Collapsed causes unload on scroll)
+        // Show placeholders â€” they sit on top of the image via z-order.
         SquarePlaceholderIcon.Visibility = Visibility.Visible;
-        // Only touch circle placeholder if the circle subtree has been realized.
         if (CirclePlaceholderIcon != null)
             CirclePlaceholderIcon.Visibility = Visibility.Visible;
-
-        // Clear any previous bitmap on every load. Without this, a recycled
-        // ItemsRepeater container whose new item has no loadable artwork would
-        // keep showing the previous item's bitmap.
-        SquareImage.Source = null;
-        if (CircleImageBrush != null)
-            CircleImageBrush.ImageSource = null;
 
         var httpsUrl = resolvedImageUrl;
         _currentImageCacheUrl = httpsUrl;
@@ -735,36 +858,31 @@ public sealed partial class ContentCard : UserControl
             _retryImageLoadCount = 0;
         }
 
-        // Use the shared LRU bitmap cache via DI. Unpin the previous URL
-        // first, then GetOrCreate(pin: true) which pins atomically inside
-        // the cache's write lock — without that ordering the just-added
-        // entry can be self-evicted when the cache is full of pinned
-        // visible cards.
-        UnpinImageCacheUrl();
-        _pinnedImageCacheUrl = httpsUrl;
-        var bitmap = _imageCache?.GetOrCreate(httpsUrl, CardImageDecodeSize, pin: true)
-            ?? new BitmapImage(new Uri(httpsUrl)) { DecodePixelWidth = CardImageDecodeSize, DecodePixelType = DecodePixelType.Logical };
-
+        // CompositionImage handles pin/unpin and surface lifetime internally.
+        // Setting ImageUrl kicks off the LoadedImageSurface fetch via the
+        // shared ImageCacheService.
         if (IsCircularImage)
         {
             EnsureCircleRealized();
-            CircleImageBrush!.ImageSource = bitmap;
-            // Hide placeholder — image renders via ImageBrush on the Ellipse
+            CircleImage!.DecodePixelSize = CardImageDecodeSize;
+            CircleImage.ImageUrl = httpsUrl;
+            // Clear the square slot so a virtualized recycle doesn't leave the
+            // last item's surface holding a pin in this card's other layer.
+            SquareImage.ImageUrl = null;
             CirclePlaceholderIcon!.Visibility = Visibility.Collapsed;
         }
         else
         {
-            SquareImage.Source = bitmap;
-            // Cached BitmapImage instances may already be opened, so
-            // ImageOpened will not always fire again when a virtualized
-            // card is recycled. Detect that here and snap straight to the
-            // resting opacity so the card renders immediately instead of
-            // hanging at 0 waiting for an event that won't come.
+            SquareImage.DecodePixelSize = CardImageDecodeSize;
+            SquareImage.ImageUrl = httpsUrl;
+            if (CircleImage != null) CircleImage.ImageUrl = null;
             SquarePlaceholderIcon.Visibility = Visibility.Collapsed;
-            if (bitmap.PixelWidth > 0)
-            {
+            // If the surface is already loaded (cache hit), snap to resting
+            // opacity. CompositionImage's ImageOpened event still fires in
+            // that case, but we'd otherwise pop from 0 â†’ 0.85 on the next
+            // tick which looks like a delayed reveal on a cached hit.
+            if (SquareImage.IsImageLoaded)
                 SquareImage.Opacity = 0.85;
-            }
         }
     }
 
@@ -792,25 +910,6 @@ public sealed partial class ContentCard : UserControl
         return Helpers.SpotifyImageHelper.TryParseMosaicTileUrls(url, out var tileUrls) && tileUrls.Count > 0
             ? tileUrls[0]
             : null;
-    }
-
-    private void PinImageCacheUrl(string httpsUrl)
-    {
-        if (_imageCache == null || string.Equals(_pinnedImageCacheUrl, httpsUrl, StringComparison.Ordinal))
-            return;
-
-        UnpinImageCacheUrl();
-        _imageCache.Pin(httpsUrl, CardImageDecodeSize);
-        _pinnedImageCacheUrl = httpsUrl;
-    }
-
-    private void UnpinImageCacheUrl()
-    {
-        if (_imageCache == null || string.IsNullOrEmpty(_pinnedImageCacheUrl))
-            return;
-
-        _imageCache.Unpin(_pinnedImageCacheUrl, CardImageDecodeSize);
-        _pinnedImageCacheUrl = null;
     }
 
     private void ApplyPlaceholderColor(string? hex)
@@ -885,7 +984,7 @@ public sealed partial class ContentCard : UserControl
 
     /// <summary>
     /// Height multiplier for the current <see cref="AspectMode"/>:
-    /// height = width × ratio. Square = 1, Tall (2:3 portrait) = 1.5,
+    /// height = width Ã— ratio. Square = 1, Tall (2:3 portrait) = 1.5,
     /// Wide / Backdrop (16:9 landscape) = 0.5625.
     /// </summary>
     private double AspectHeightRatio() => AspectMode switch
@@ -897,7 +996,7 @@ public sealed partial class ContentCard : UserControl
 
     /// <summary>
     /// Sets the image-host box height from a measured width, honoring the current
-    /// <see cref="AspectMode"/>. Name kept for back-compat — historically only
+    /// <see cref="AspectMode"/>. Name kept for back-compat â€” historically only
     /// "Square" existed so the parameter was a single side. With aspect modes the
     /// height is derived from the width per ratio.
     /// </summary>
@@ -936,7 +1035,7 @@ public sealed partial class ContentCard : UserControl
         // CompositionRectangleClip set on the outermost visual (GetElementVisual returns the
         // handoff visual for Border but the outermost for Grid/UserControl) clips the image.
         // CreateRectangleClip is used instead of CreateGeometricClip(RoundedRectangleGeometry)
-        // — the latter bleeds at sub-pixel edges (see AnimatedHeroBackground.UpdateClip).
+        // â€” the latter bleeds at sub-pixel edges (see AnimatedHeroBackground.UpdateClip).
         var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(SquareImageContainer);
         var compositor = visual.Compositor;
         var clip = compositor.CreateRectangleClip();
@@ -946,7 +1045,14 @@ public sealed partial class ContentCard : UserControl
         clip.TopRightRadius = new System.Numerics.Vector2(4f);
         clip.BottomLeftRadius = new System.Numerics.Vector2(4f);
         clip.BottomRightRadius = new System.Numerics.Vector2(4f);
+        // Assign the new clip BEFORE disposing the old one â€” disposing
+        // an attached clip mid-composition can flash. WinUI keeps a
+        // ref-count on attached clips, so disposing after the swap drops
+        // the redundant managed wrapper without affecting the visual.
+        var oldClip = visual.Clip;
         visual.Clip = clip;
+        try { oldClip?.Dispose(); }
+        catch { /* idempotent â€” already disposed by composition shutdown */ }
     }
 
     protected override Size MeasureOverride(Size availableSize)
@@ -991,15 +1097,14 @@ public sealed partial class ContentCard : UserControl
         return ImageSize > 0 ? ImageSize + CardHorizontalPadding : DefaultCardWidth;
     }
 
-    private void SquareImage_ImageOpened(object sender, RoutedEventArgs e)
+    private void SquareImage_ImageOpened(object? sender, EventArgs e)
     {
         SquarePlaceholderIcon.Visibility = Visibility.Collapsed;
 
-        // Fade in using XAML framework layer (not composition — avoids layer multiply bugs).
-        // No explicit `from` — let the animation pick up SquareImage's current
-        // opacity (0 from XAML default, or 0.85 if a cached bitmap snapped it
-        // already). End at the resting opacity (0.85), not 1.0 — hover
-        // handlers manage the 0.85 ↔ 1.0 toggle on their own.
+        // Fade in using XAML framework layer (not composition â€” avoids layer multiply bugs).
+        // No explicit `from` â€” let the animation pick up SquareImage's current
+        // opacity. End at resting opacity (0.85), not 1.0 â€” hover handlers
+        // manage the 0.85 â†” 1.0 toggle on their own.
         CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
             .Opacity(to: 0.85,
                      duration: TimeSpan.FromMilliseconds(250),
@@ -1007,15 +1112,12 @@ public sealed partial class ContentCard : UserControl
             .Start(SquareImage);
     }
 
-    private void SquareImage_ImageFailed(object sender, ExceptionRoutedEventArgs e)
+    private void SquareImage_ImageFailed(object? sender, EventArgs e)
     {
+        // CompositionImage already invalidated the cache entry before raising
+        // ImageFailed. Reset our local state and put the placeholder back.
         var failedUrl = _currentImageCacheUrl;
-        if (!string.IsNullOrEmpty(failedUrl))
-            _imageCache?.Invalidate(failedUrl, CardImageDecodeSize);
-        if (string.Equals(_pinnedImageCacheUrl, failedUrl, StringComparison.Ordinal))
-            UnpinImageCacheUrl();
-
-        SquareImage.Source = null;
+        SquareImage.ImageUrl = null;
         SquarePlaceholderIcon.Visibility = Visibility.Visible;
 
         if (string.IsNullOrEmpty(failedUrl)
@@ -1042,14 +1144,14 @@ public sealed partial class ContentCard : UserControl
         });
     }
 
-    // ── Hover handling ──
+    // â”€â”€ Hover handling â”€â”€
 
     private void Card_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         _isPointerOver = true;
         CardHover?.Invoke(this, EventArgs.Empty);
 
-        // Realize the overlay for the current shape before reading the named elements —
+        // Realize the overlay for the current shape before reading the named elements â€”
         // after x:Load="False" on the overlays, the backing fields start null until FindName.
         EnsurePlayOverlayRealized();
         UpdatePlayingState();
@@ -1061,6 +1163,18 @@ public sealed partial class ContentCard : UserControl
             CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
                 .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(150))
                 .Start(overlayBtn);
+        }
+
+        // SecondaryAction "Open album" button — fades in alongside the play
+        // overlay so the discography-card affordance is discoverable only on
+        // hover. Gated on SecondaryActionVisible (default false) so cards
+        // that don't opt in pay no animation cost.
+        if (SecondaryActionVisible && SquareSecondaryActionButton != null)
+        {
+            SquareSecondaryActionButton.Visibility = Visibility.Visible;
+            CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
+                .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(150))
+                .Start(SquareSecondaryActionButton);
         }
 
         // Scale up via composition with proper CenterPoint
@@ -1096,6 +1210,20 @@ public sealed partial class ContentCard : UserControl
                 overlayBtn.Visibility = Visibility.Collapsed;
         }
 
+        // Mirror the secondary "Open album" button fade-out. Same 100 ms
+        // fade + 120 ms collapse delay as the play overlay above so both
+        // affordances retreat together.
+        if (SecondaryActionVisible && SquareSecondaryActionButton != null)
+        {
+            CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
+                .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(100))
+                .Start(SquareSecondaryActionButton);
+
+            await System.Threading.Tasks.Task.Delay(120);
+            if (!_isPointerOver)
+                SquareSecondaryActionButton.Visibility = Visibility.Collapsed;
+        }
+
         UpdatePlayingState();
 
         if (CardRoot != null)
@@ -1113,7 +1241,7 @@ public sealed partial class ContentCard : UserControl
         if (CircleImage != null) CircleImage.Opacity = 0.85;
     }
 
-    // ── Press animation ──
+    // â”€â”€ Press animation â”€â”€
 
     private void Card_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
@@ -1141,7 +1269,7 @@ public sealed partial class ContentCard : UserControl
             .Start(CardRoot);
     }
 
-    // ── Passive mode ──
+    // â”€â”€ Passive mode â”€â”€
 
     private static void OnIsLoadingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -1160,7 +1288,7 @@ public sealed partial class ContentCard : UserControl
         // inner play-button overlay still receives clicks.
     }
 
-    // ── Playing state ──
+    // â”€â”€ Playing state â”€â”€
 
     private static void OnShowPlaybackOverlayChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -1207,7 +1335,7 @@ public sealed partial class ContentCard : UserControl
         if (showPlayButton)
             EnsurePlayOverlayRealized();
 
-        // Null-guard every access — all overlays are x:Load-deferred, so any of them
+        // Null-guard every access â€” all overlays are x:Load-deferred, so any of them
         // may be null on a card that hasn't yet realized its subtree.
         if (SquarePlayingIndicator != null)
             SquarePlayingIndicator.Visibility = showSquarePlaying
@@ -1225,7 +1353,7 @@ public sealed partial class ContentCard : UserControl
 
         if (IsExternal)
         {
-            // External cards have no play / pending / paused notion — overlay
+            // External cards have no play / pending / paused notion â€” overlay
             // visibility is purely hover-driven, handled in Card_PointerEntered/Exited.
             // Keep the play button collapsed in case a card flipped from non-external
             // to external while realized.
@@ -1262,7 +1390,7 @@ public sealed partial class ContentCard : UserControl
             TitleText.ClearValue(TextBlock.ForegroundProperty);
     }
 
-    // ── Click handlers ──
+    // â”€â”€ Click handlers â”€â”€
 
     private void CardButton_Click(object sender, RoutedEventArgs e)
     {
@@ -1285,8 +1413,12 @@ public sealed partial class ContentCard : UserControl
             return;
         }
 
-        // Self-navigation: if NavigationUri is set, navigate directly
-        if (!string.IsNullOrEmpty(NavigationUri))
+        // Self-navigation: if NavigationUri is set AND auto-routing is enabled,
+        // navigate directly. The AutoNavigateOnTap gate lets surfaces opt out
+        // of the auto-route while still benefiting from NavigationUri-driven
+        // viewport prefetch + the SecondaryAction "Open album" button (e.g.
+        // artist-page discography cards whose primary tap expands inline).
+        if (AutoNavigateOnTap && !string.IsNullOrEmpty(NavigationUri))
         {
             var openInNewTab = Helpers.Navigation.NavigationHelpers.IsCtrlPressed();
             if (!openInNewTab && UseConnectedAnimation)
@@ -1298,6 +1430,46 @@ public sealed partial class ContentCard : UserControl
         }
 
         CardClick?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Click handler for the optional SecondaryAction overlay button. Routes
+    /// to AlbumPage with full prefetch + connected animation + count prefill
+    /// via <see cref="AlbumNavigationHelper.NavigateToAlbum"/>. Marks the event
+    /// handled so the underlying card Tapped / CardClick doesn't also fire â€”
+    /// critical on surfaces whose primary tap triggers a different action
+    /// (expand, select, etc.).
+    /// </summary>
+    private void SecondaryActionButton_Click(object sender, RoutedEventArgs e)
+    {
+        var uri = NavigationUri;
+        if (string.IsNullOrEmpty(uri)) return;
+        Helpers.Navigation.AlbumNavigationHelper.NavigateToAlbum(
+            uri,
+            title: Title,
+            subtitle: Subtitle,
+            imageUrl: ImageUrl,
+            totalTracks: NavigationTotalTracks > 0 ? NavigationTotalTracks : null,
+            connectedAnimationSource: UseConnectedAnimation ? GetConnectedAnimationSource() : null);
+
+        // RoutedEventArgs from Button.Click does not bubble to ancestor Tapped
+        // handlers under the WinUI 3 input model â€” the Button consumes the
+        // pointer before Tapped fires, so we don't need e.Handled = true here.
+        // CardClick is only invoked from CardButton_Click (which never sees the
+        // inner Button's click), so the expand path also stays untouched.
+    }
+
+    /// <summary>
+    /// The cover-image visual to use as the connected-animation source.
+    /// Square cards animate the SquareImageContainer; circle cards (artist
+    /// avatars) animate the CircleImageContainer. Returns null if neither is
+    /// available â€” caller's null-check skips the animation prep cleanly.
+    /// </summary>
+    private UIElement? GetConnectedAnimationSource()
+    {
+        if (IsCircularImage && CircleImageContainer is not null)
+            return CircleImageContainer;
+        return SquareImageContainer as UIElement;
     }
 
     private void SelectParentItemContainer()
@@ -1427,7 +1599,7 @@ public sealed partial class ContentCard : UserControl
         }
     }
 
-    // ── Navigation ──
+    // â”€â”€ Navigation â”€â”€
 
     private bool NavigateToUri(bool openInNewTab)
     {
@@ -1443,7 +1615,8 @@ public sealed partial class ContentCard : UserControl
             Uri = uri,
             Title = title,
             Subtitle = SubtitleText?.Text,
-            ImageUrl = ImageUrl
+            ImageUrl = ImageUrl,
+            TotalTracks = NavigationTotalTracks > 0 ? NavigationTotalTracks : null
         };
 
         switch (type)
@@ -1507,12 +1680,11 @@ public sealed partial class ContentCard : UserControl
         if (string.IsNullOrEmpty(uri) || IsCircularImage)
             return false;
 
-        // Don't snapshot before the source bitmap has decoded — the morph would
-        // start from an empty rect and pop into the cover mid-flight. Mirrors
-        // the PixelWidth > 0 readiness check used at LoadImage's resting-opacity
-        // snap (line 715). Cold-cache cards just fall back to the standard
-        // shimmer crossfade reveal, which looks correct.
-        if (SquareImage?.Source is not Microsoft.UI.Xaml.Media.Imaging.BitmapImage bmp || bmp.PixelWidth <= 0)
+        // Don't snapshot before the GPU surface has finished loading â€” the
+        // morph would start from an empty rect and pop into the cover mid-
+        // flight. Cold-cache cards fall back to the standard shimmer crossfade
+        // reveal, which looks correct.
+        if (SquareImage is null || !SquareImage.IsImageLoaded)
             return false;
 
         var parts = uri.Split(':');
@@ -1541,13 +1713,13 @@ public sealed partial class ContentCard : UserControl
         return true;
     }
 
-    // ── Helpers ──
+    // â”€â”€ Helpers â”€â”€
 
     private void EnsurePlayOverlayRealized()
     {
         if (IsExternal)
         {
-            // External cards never need play / now-playing chrome — only the
+            // External cards never need play / now-playing chrome â€” only the
             // "open in browser" overlay. Square is the only supported shape today.
             if (SquareExternalButton == null)
                 this.FindName("SquareExternalButton");
@@ -1682,7 +1854,7 @@ public sealed partial class ContentCard : UserControl
     /// on the grid, all circle-mode named elements (<c>CirclePlaceholder</c>, <c>CirclePlaceholderIcon</c>,
     /// <c>CircleImage</c>, <c>CircleImageBrush</c>, <c>CirclePlayButton</c>, <c>CirclePlayingIndicator</c>, etc.)
     /// start null until <see cref="FrameworkElement.FindName"/> triggers the subtree load.
-    /// Idempotent — returns early if the container is already realized.
+    /// Idempotent â€” returns early if the container is already realized.
     /// </summary>
     private void EnsureCircleRealized()
     {

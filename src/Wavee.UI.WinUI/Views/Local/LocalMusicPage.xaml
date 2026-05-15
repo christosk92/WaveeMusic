@@ -1,11 +1,13 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="Wavee.UI.WinUI.Views.Local.LocalMusicPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     xmlns:waveeLocal="using:Wavee.Local"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
-    NavigationCacheMode="Enabled">
+    NavigationCacheMode="Enabled"
+    waveeHelpers:PageEntranceFade.Fade="True">
 
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVis"/>

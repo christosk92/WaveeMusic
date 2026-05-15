@@ -138,7 +138,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
                         TryNavigateFrame(
                             _navigationParameter.InitialPageType,
                             _navigationParameter.NavigationParameter,
-                            new DrillInNavigationTransitionInfo());
+                            new SuppressNavigationTransitionInfo());
                     }
                     if (restoreDiagNavId != 0)
                         NavigationDiagnostics.Instance?.EndNav(restoreDiagNavId);
@@ -360,9 +360,22 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         _pendingPageName = pageType.Name;
         _pendingDiagNavId = diagNavId;
 
-        var transition = suppressTransition
-            ? (NavigationTransitionInfo)new SuppressNavigationTransitionInfo()
-            : new DrillInNavigationTransitionInfo();
+        // Frame's built-in navigation transition (DrillInNavigationTransitionInfo)
+        // is the documented perf hot-spot in WinUI 3 nav — Microsoft's own
+        // microsoft-ui-xaml#2707 traces the visible nav lag to the transition
+        // choreography, not the page swap itself. We suppress globally and let
+        // each page handle its own entrance: simple pages use the lightweight
+        // PageEntranceFade attached property (~150 ms composition opacity fade);
+        // heavy detail pages (Album / Playlist / Artist / Show / Episode) already
+        // orchestrate a shimmer→content crossfade via ContentPageController +
+        // ShimmerLoadGate.
+        //
+        // The `suppressTransition` parameter is preserved for signature stability
+        // (NavigationHelpers.Navigate still computes it for connected-animation
+        // paths) but is now effectively a no-op for the transition itself —
+        // both branches produce SuppressNavigationTransitionInfo. It still drives
+        // `_skipNextNavigationCacheTrim` below which is a separate concern.
+        var transition = (NavigationTransitionInfo)new SuppressNavigationTransitionInfo();
         _skipNextNavigationCacheTrim = suppressTransition;
         using (NavigationDiagnostics.Instance?.Stage(diagNavId, "frameNavigate"))
         {
@@ -462,7 +475,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
                 TryNavigateFrame(
                     _navigationParameter.InitialPageType,
                     _navigationParameter.NavigationParameter,
-                    new DrillInNavigationTransitionInfo());
+                    new SuppressNavigationTransitionInfo());
             }
             if (wakeDiagNavId != 0)
                 NavigationDiagnostics.Instance?.EndNav(wakeDiagNavId);

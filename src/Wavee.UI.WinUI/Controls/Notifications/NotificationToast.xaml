@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Notifications.NotificationToast"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:animations="using:CommunityToolkit.WinUI.Animations"
+    xmlns:media="using:CommunityToolkit.WinUI.Media"
+    xmlns:toolkit="using:CommunityToolkit.WinUI"
+    mc:Ignorable="d"
+    HorizontalAlignment="Center"
+    VerticalAlignment="Bottom"
+    MaxWidth="560"
+    MinWidth="280"
+    Visibility="Collapsed"
+    IsHitTestVisible="True">
+
+    <!-- Outer Border: paints the AttachedCardShadow only.
+         Inner Border carries the rounded background + stroke + content.
+         Two layers because composition-mask shadows clip child content
+         unreliably on a single rounded surface. -->
+    <Border x:Name="ShadowHost"
+            CornerRadius="8"
+            Background="Transparent">
+        <toolkit:Effects.Shadow>
+            <media:AttachedCardShadow BlurRadius="20"
+                                      Offset="0,4"
+                                      Opacity="0.20"
+                                      Color="Black"
+                                      CornerRadius="8"/>
+        </toolkit:Effects.Shadow>
+        <animations:Implicit.ShowAnimations>
+            <animations:OpacityAnimation Duration="0:0:0.28" From="0" To="1"/>
+            <animations:TranslationAnimation Duration="0:0:0.28" From="0,24,0" To="0,0,0"/>
+        </animations:Implicit.ShowAnimations>
+        <animations:Implicit.HideAnimations>
+            <animations:OpacityAnimation Duration="0:0:0.2" From="1" To="0"/>
+            <animations:TranslationAnimation Duration="0:0:0.2" From="0,0,0" To="0,16,0"/>
+        </animations:Implicit.HideAnimations>
+
+        <Border x:Name="ChipBorder"
+                CornerRadius="8"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource ControlElevationBorderBrush}"
+                BorderThickness="1"
+                MinHeight="44"
+                Padding="14,6,8,6">
+            <Grid ColumnSpacing="12" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <FontIcon x:Name="SeverityIcon"
+                          Grid.Column="0"
+                          FontSize="18"
+                          VerticalAlignment="Center"
+                          Foreground="{ThemeResource SystemFillColorSuccessBrush}"/>
+
+                <TextBlock x:Name="MessageText"
+                           Grid.Column="1"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap"
+                           MaxLines="2"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                           FontSize="14"/>
+
+                <Button x:Name="ActionButton"
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        MinHeight="32"
+                        Padding="12,4"
+                        Visibility="Collapsed"
+                        Click="OnActionClick"/>
+
+                <Button x:Name="CloseButton"
+                        Grid.Column="3"
+                        VerticalAlignment="Center"
+                        Width="28"
+                        Height="28"
+                        Padding="0"
+                        Style="{ThemeResource SubtleButtonStyle}"
+                        ToolTipService.ToolTip="Close"
+                        Click="OnCloseClick">
+                    <FontIcon Glyph="&#xE894;" FontSize="11"/>
+                </Button>
+            </Grid>
+        </Border>
+    </Border>
+</UserControl>

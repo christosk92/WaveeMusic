@@ -1,17 +1,13 @@
 using System;
-using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Wavee.UI.WinUI.Helpers;
-using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
 
 public sealed partial class ArtistCircleCard : UserControl
 {
-    private static ImageCacheService? _imageCache;
-
     public event EventHandler<RoutedEventArgs>? CardClick;
     public event EventHandler<RightTappedRoutedEventArgs>? CardRightTapped;
 
@@ -40,33 +36,21 @@ public sealed partial class ArtistCircleCard : UserControl
     {
         InitializeComponent();
         UpdateSize(80);
-        Unloaded += OnUnloaded;
-    }
-
-    private void OnUnloaded(object sender, RoutedEventArgs e)
-    {
-        // Drop the native decoded surface so the WinUI compositor releases it.
-        // OnImageUrlChanged re-fetches via ImageCacheService when the row is
-        // recycled, so dropping the Source here doesn't break re-realization.
-        if (CardImage != null) CardImage.Source = null;
     }
 
     private static void OnImageUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is ArtistCircleCard card && e.NewValue is string url)
+        if (d is not ArtistCircleCard card) return;
+        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(e.NewValue as string);
+        if (!string.IsNullOrEmpty(httpsUrl))
         {
-            var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url);
-            if (!string.IsNullOrEmpty(httpsUrl))
-            {
-                _imageCache ??= Ioc.Default.GetService<ImageCacheService>();
-                card.CardImage.Source = _imageCache?.GetOrCreate(httpsUrl, 100);
-                card.PlaceholderIcon.Visibility = Visibility.Collapsed;
-            }
-            else
-            {
-                card.CardImage.Source = null;
-                card.PlaceholderIcon.Visibility = Visibility.Visible;
-            }
+            card.CardImage.ImageUrl = httpsUrl;
+            card.PlaceholderIcon.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            card.CardImage.ImageUrl = null;
+            card.PlaceholderIcon.Visibility = Visibility.Visible;
         }
     }
 

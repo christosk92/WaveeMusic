@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     mc:Ignorable="d">
 
     <!--  Single row in the V4A "Popular Releases" list (right side of the
@@ -31,12 +32,17 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Cover -->
-            <Border Grid.Column="0"
+            <!-- Cover — x:Name'd so the code-behind can use it as the
+                 connected-animation source when self-routing to AlbumPage. -->
+            <Border x:Name="CoverContainer"
+                    Grid.Column="0"
                     Width="64" Height="64"
                     CornerRadius="6"
                     Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                <Image x:Name="CoverImage" Stretch="UniformToFill"/>
+                <imaging:CompositionImage x:Name="CoverImage"
+                                          Stretch="UniformToFill"
+                                          DecodePixelSize="112"
+                                          CornerRadius="6"/>
             </Border>
 
             <!-- Meta -->

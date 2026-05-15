@@ -12,6 +12,7 @@
     xmlns:tdg="using:Wavee.UI.WinUI.Controls.TrackDataGrid"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:contracts="using:Wavee.UI.WinUI.Data.Contracts"
+    xmlns:dtos="using:Wavee.UI.WinUI.Data.DTOs"
     xmlns:appControls="using:Wavee.UI.WinUI.Controls"
     xmlns:avatarStack="using:Wavee.UI.WinUI.Controls.AvatarStack"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
@@ -330,31 +331,85 @@
                                 Padding="16,24,8,24"
                                 Spacing="14"
                                 VerticalAlignment="Top">
-                        <controls:Shimmer x:Name="AlbumArtShimmerContainer"
-                                          HorizontalAlignment="Stretch"
-                                          CornerRadius="8"
-                                          SizeChanged="AlbumArtShimmerContainer_SizeChanged"/>
+
+                        <!-- Cover art shimmer — wrapped in the SAME AttachedCardShadow as the
+                             real Border (BlurRadius=32, Offset="0,12", Opacity=0.28) so the
+                             shadow doesn't pop in on load. Height tracks ActualWidth via
+                             AlbumArtShimmerContainer_SizeChanged to stay square. -->
+                        <Grid HorizontalAlignment="Stretch">
+                            <winUi:Effects.Shadow>
+                                <ui:AttachedCardShadow BlurRadius="32" Offset="0,12" Opacity="0.28"
+                                                       Color="Black" CornerRadius="8"
+                                                       InnerContentClipMode="CompositionMaskBrush"/>
+                            </winUi:Effects.Shadow>
+                            <controls:Shimmer x:Name="AlbumArtShimmerContainer"
+                                              HorizontalAlignment="Stretch"
+                                              CornerRadius="8"
+                                              SizeChanged="AlbumArtShimmerContainer_SizeChanged"/>
+                        </Grid>
+
+                        <!-- Type / Year pills — real chrome (Border Padding="10,3,10,5"
+                             CornerRadius=14 BorderThickness=1) with inner Shimmer rects
+                             sized to typical text width (11px SemiBold caps). This keeps
+                             the pill silhouette pixel-identical to the loaded state so
+                             only the text inside fades in. -->
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <controls:Shimmer Width="64" Height="24" CornerRadius="14"/>
-                            <controls:Shimmer Width="56" Height="24" CornerRadius="14"/>
+                            <Border CornerRadius="14"
+                                    Padding="10,3,10,5"
+                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="1">
+                                <controls:Shimmer Width="36" Height="11" CornerRadius="2"/>
+                            </Border>
+                            <Border CornerRadius="14"
+                                    Padding="10,3,10,5"
+                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="1">
+                                <controls:Shimmer Width="28" Height="11" CornerRadius="2"/>
+                            </Border>
                         </StackPanel>
-                        <StackPanel Spacing="6">
-                            <controls:Shimmer Height="30" HorizontalAlignment="Stretch" CornerRadius="6"/>
-                            <controls:Shimmer Height="30" Width="140" HorizontalAlignment="Left" CornerRadius="6"/>
-                        </StackPanel>
-                        <Grid VerticalAlignment="Center" ColumnSpacing="10">
+
+                        <!-- Title shimmer — single full-width 30px bar. Real title is
+                             FontSize=22 FontWeight=Bold MaxLines=3; most fit on one line
+                             at the 280 px default panel width. Two- or three-line titles
+                             grow content below downward on load (calm shift), which is
+                             preferred over reserving 2-3 lines and visibly collapsing
+                             upward on every typical (single-line) album. -->
+                        <controls:Shimmer Height="30" HorizontalAlignment="Stretch" CornerRadius="6"/>
+
+                        <!-- Artists row — mirror the real Grid: no ColumnSpacing (the
+                             real button uses Margin="0,0,10,0"), Col0 chrome matches
+                             ClickableBorder (Padding="6,4,8,4" CornerRadius=Overlay), and
+                             the inner avatar is a 32×32 circle (PersonPicture-sized), not
+                             the previous 64×40 pill. -->
+                        <Grid VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <controls:Shimmer Grid.Column="0" Width="64" Height="40" CornerRadius="20"/>
+                            <Border Grid.Column="0"
+                                    Margin="0,0,10,0"
+                                    Padding="6,4,8,4"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{ThemeResource OverlayCornerRadius}">
+                                <controls:Shimmer Width="32" Height="32" CornerRadius="16"/>
+                            </Border>
                             <controls:Shimmer Grid.Column="1" Height="14"
                                               HorizontalAlignment="Stretch"
                                               VerticalAlignment="Center"
                                               CornerRadius="4"/>
                         </Grid>
-                        <controls:Shimmer Width="180" Height="14"
+
+                        <!-- Meta inline line (CaptionTextBlockStyle = 12 px). -->
+                        <controls:Shimmer Width="180" Height="12"
                                           HorizontalAlignment="Left" CornerRadius="4"/>
+
+                        <!-- CTAs — sizes already match the real buttons (Play ~92×40 with
+                             CornerRadius=20 from Padding="18,10"; three 40×40 icon
+                             buttons CornerRadius=20). Margin/spacing identical. -->
                         <controls:WrapPanel Orientation="Horizontal"
                                             HorizontalSpacing="8" VerticalSpacing="8"
                                             Margin="0,8,0,0">
@@ -363,9 +418,30 @@
                             <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
                             <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
                         </controls:WrapPanel>
+
+                        <!-- "Other versions" shimmer — bound to the SAME condition the real
+                             DropDownButton uses (HasAlternateReleases). During shimmer the
+                             ViewModel flag is still false so this slot is unrealised; once
+                             alternates resolve the real button materialises in the same
+                             position the shimmer would have reserved. -->
                         <controls:Shimmer Width="220" Height="14"
-                                          Margin="0,8,0,0"
-                                          HorizontalAlignment="Left" CornerRadius="4"/>
+                                          x:Name="HasAlternateRelease"
+                                          x:Load="{x:Bind ViewModel.HasAlternateReleases, Mode=OneWay}"
+                                          HorizontalAlignment="Stretch"
+                                          CornerRadius="4"/>
+
+                        <!-- Release metadata block (Date / Label / Copyrights). Three
+                             always-painted shimmer bars at the worst-case heights — the
+                             block is the last element in the column, so reserving height
+                             here doesn't push anything else. Margins mirror the real
+                             StackPanel Spacing=6, Margin="0,8,0,0", and the copyrights
+                             bar's "0,4,0,0" extra top margin. -->
+                        <StackPanel Spacing="6" Margin="0,8,0,0">
+                            <controls:Shimmer Width="120" Height="14" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Width="80" Height="12" HorizontalAlignment="Left" CornerRadius="4"/>
+                            <controls:Shimmer Width="200" Height="12" HorizontalAlignment="Left" CornerRadius="4"
+                                              Margin="0,4,0,0"/>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
 
@@ -384,6 +460,7 @@
                                    AllowHorizontalRowScroll="False"
                                    ForceShowArtistColumn="{x:Bind ViewModel.HasMultipleArtists, Mode=OneWay}"
                                    IsLoading="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay}"
+                                   LoadingRowCount="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"
                                    ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"
                                    PlayCommand="{x:Bind ViewModel.PlayTrackCommand}"
                                    IsGrouped="{x:Bind ViewModel.IsMultiDisc, Mode=OneWay}"
@@ -474,6 +551,61 @@
                                             IsHitTestVisible="False"
                                             Background="{ThemeResource ShelfFadeRightBrush}"
                                             Visibility="{Binding ElementName=MoreByArtistShelf, Path=CanPageRight, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- Recommended Playlists. Spotify-curated editorial
+                                 playlists tied to this album, sourced from
+                                 RECOMMENDED_PLAYLISTS extended-metadata + batched
+                                 LIST_METADATA_V2 hero resolve. -->
+                            <StackPanel Spacing="16"
+                                        x:Name="HasRecommendedPlaylistsPanel"
+                                        x:Load="{x:Bind ViewModel.HasRecommendedPlaylists, Mode=OneWay}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="Recommended Playlists"
+                                               Style="{StaticResource SubtitleTextBlockStyle}"
+                                               FontWeight="Bold"
+                                               VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                                Visibility="{Binding ElementName=RecommendedPlaylistsShelf, Path=HasOverflow, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                                Command="{Binding ElementName=RecommendedPlaylistsShelf, Path=PageLeftCommand}">
+                                            <FontIcon Glyph="&#xE76B;" FontSize="12"/>
+                                        </Button>
+                                        <Button Style="{StaticResource ShelfChevronButtonStyle}"
+                                                Command="{Binding ElementName=RecommendedPlaylistsShelf, Path=PageRightCommand}">
+                                            <FontIcon Glyph="&#xE76C;" FontSize="12"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                                <Grid>
+                                    <shelf:ShelfScroller x:Name="RecommendedPlaylistsShelf"
+                                                         ItemsSource="{x:Bind ViewModel.RecommendedPlaylists, Mode=OneWay}"
+                                                         MinItemWidth="160" MaxItemWidth="200" Spacing="12">
+                                        <shelf:ShelfScroller.ItemTemplate>
+                                            <DataTemplate x:DataType="dtos:PlaylistDetailDto">
+                                                <cards:ContentCard
+                                                    Tag="{x:Bind}"
+                                                    ImageUrl="{x:Bind ImageUrl, Mode=OneTime}"
+                                                    Title="{x:Bind Name, Mode=OneTime}"
+                                                    Subtitle="{x:Bind Description, Mode=OneTime}"
+                                                    NavigationUri="{x:Bind Id, Mode=OneTime}"
+                                                    UseConnectedAnimation="False"
+                                                    PlaceholderGlyph="&#xE8FD;"
+                                                    IsCircularImage="False"/>
+                                            </DataTemplate>
+                                        </shelf:ShelfScroller.ItemTemplate>
+                                    </shelf:ShelfScroller>
+                                    <Border HorizontalAlignment="Right"
+                                            Width="96"
+                                            IsHitTestVisible="False"
+                                            Background="{ThemeResource ShelfFadeRightBrush}"
+                                            Visibility="{Binding ElementName=RecommendedPlaylistsShelf, Path=CanPageRight, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 </Grid>
                             </StackPanel>
 

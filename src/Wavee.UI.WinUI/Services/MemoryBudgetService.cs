@@ -18,12 +18,20 @@ namespace Wavee.UI.WinUI.Services;
 /// </summary>
 public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
 {
-    public const long DefaultBudgetBytes = 800L * 1024 * 1024 * 2;
+    public const long DefaultBudgetBytes = 800L * 1024 * 1024;
 
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan NormalCooldown = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan EscalationCooldown = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan EmergencyCooldown = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan PressureCacheMaxAge = TimeSpan.FromSeconds(30);
+
+    // Tier-3 fires when both Tier-1 (stale cleanup) and Tier-2 (warm-cache
+    // clear) have run and the working set is STILL ≥ this multiple of the
+    // soft budget. 1.10× = 10% overshoot after escalation. Below this we
+    // tolerate the overshoot until the next pressure tick to avoid a
+    // hard-clear loop on a transient spike.
+    private const double EmergencyTriggerMultiple = 1.10;
 
     private readonly IReadOnlyList<ICleanableCache> _caches;
     private readonly ILogger<MemoryBudgetService>? _logger;
@@ -33,6 +41,7 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
     private Task? _loopTask;
     private DateTimeOffset _lastReleaseAt = DateTimeOffset.MinValue;
     private DateTimeOffset _lastEscalationAt = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastEmergencyAt = DateTimeOffset.MinValue;
     private long _budgetBytes = DefaultBudgetBytes;
 
     public MemoryBudgetService(
@@ -193,6 +202,42 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
         _lastEscalationAt = now;
         await ClearWarmCachesAsync(ct).ConfigureAwait(false);
         CompactAndTrim("budget-escalated");
+
+        // Tier-3 emergency: still over budget by ≥10% after a Tier-2 sweep,
+        // and we're past the emergency cooldown. Hard-clear the image cache
+        // (drops pinned surfaces too — visible CompositionImage controls
+        // repaint placeholders then re-fetch from the OS HTTP cache, fast
+        // because the bytes never left). Other ICleanableCache implementations
+        // already cleared via Tier-2's ClearAsync().
+        var afterEsc = Capture();
+        var afterEscObserved = Math.Max(afterEsc.WorkingSetBytes, afterEsc.PrivateBytes);
+        if (afterEscObserved < _budgetBytes * EmergencyTriggerMultiple) return;
+        if (now - _lastEmergencyAt < EmergencyCooldown) return;
+
+        _lastEmergencyAt = now;
+        await ClearImageCacheHardAsync(ct).ConfigureAwait(false);
+        CompactAndTrim("budget-emergency");
+    }
+
+    private Task ClearImageCacheHardAsync(CancellationToken ct)
+    {
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            var svc = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<ImageCacheService>();
+            if (svc is null) return Task.CompletedTask;
+            var before = svc.Count;
+            svc.Clear();
+            _logger?.LogWarning(
+                "Memory budget Tier-3 emergency: hard-cleared image cache ({Before} entries)",
+                before);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Tier-3 image cache hard-clear failed");
+        }
+        return Task.CompletedTask;
     }
 
     private async Task CleanupStaleCachesAsync(CancellationToken ct)

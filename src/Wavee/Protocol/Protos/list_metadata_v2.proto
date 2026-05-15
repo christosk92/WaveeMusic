@@ -1,0 +1,44 @@
+// LIST_METADATA_V2 (extension kind 205) — playlist hero metadata.
+//
+// Field numbers verified by decoding a real editorial-playlist response
+// (spotify:playlist:37i9dQZF1DX786ROcOIz84). The protobuf carries many more
+// fields than declared here (timestamps, settings blobs, scalar flags); we
+// declare only what the playlist hero actually consumes — name, description,
+// image variants, and the format-attribute key/value bag (which carries
+// `header_image_url_desktop` and `primary_color` for editorial playlists).
+// Unknown fields are preserved as-is by Google.Protobuf so we can extend later
+// without server coordination.
+
+syntax = "proto3";
+
+option csharp_namespace = "Wavee.Protocol.ExtendedMetadata";
+
+message ListMetadataV2 {
+    string name = 3;
+    string description = 4;
+    // 5 = timestamp wrapper. 7 = source ("spotify"). 9 = settings blob.
+    // 10–18 = scalar flags. None of those are needed for hero paint.
+    string source = 7;
+
+    Images images = 21;
+    string format_string = 23;       // e.g. "format-shows-shuffle"
+    Attributes attributes = 24;
+
+    message Images {
+        repeated ImageVariant variant = 1;
+    }
+    message ImageVariant {
+        string format = 1;           // "default" | "small" | "large" | "xlarge"
+        string url = 2;
+    }
+    message Attributes {
+        repeated Attribute attribute = 1;
+    }
+    message Attribute {
+        // Keys observed: image_url, uri, is_video_first, header_image_url_desktop,
+        // recs.hasArtists, episode_description, status, correlation-id,
+        // isAlgotorial, primary_color, …
+        string key = 1;
+        string value = 2;
+    }
+}

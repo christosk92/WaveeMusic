@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Documents;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Omnibar;
 
@@ -140,6 +142,7 @@ public sealed partial class SearchFlyoutPanel : UserControl
         ResultsList.Visibility = Visibility.Visible;
         ResultsList.ItemsSource = items;
         ResetSelection();
+        PrefetchAlbumSuggestions(items);
     }
 
     /// <summary>
@@ -170,9 +173,33 @@ public sealed partial class SearchFlyoutPanel : UserControl
             _groupedSource.Source = groups;
             if (!ReferenceEquals(ResultsList.ItemsSource, _groupedSource.View))
                 ResultsList.ItemsSource = _groupedSource.View;
+
+            foreach (var group in groups)
+                PrefetchAlbumSuggestions(group);
         }
 
         ResetSelection();
+    }
+
+    // Render-time album metadata prefetch (Pattern B in AlbumPrefetcher). The
+    // typeahead list is short-lived as the user types — for every album URI
+    // that materialises in a suggestion render, kick off a background ALBUM_V4
+    // fetch via IAlbumPrefetcher. The prefetcher's session-wide dedup ensures
+    // a URI surviving across keystrokes ("met" → "metal" → "metallica") only
+    // fires once, and the 50 ms ExtendedMetadataStore debounce collapses
+    // concurrent suggestion-render bursts into single batch POSTs.
+    private void PrefetchAlbumSuggestions(IEnumerable<SearchSuggestionItem>? items)
+    {
+        if (items is null) return;
+        var prefetcher = Ioc.Default.GetService<IAlbumPrefetcher>();
+        if (prefetcher is null) return;
+        foreach (var item in items)
+        {
+            // Cover both Spotify and (future) local album URIs that start with
+            // the same prefix. IAlbumPrefetcher itself re-checks the prefix.
+            if (item.Type == SearchSuggestionType.Album && !string.IsNullOrEmpty(item.Uri))
+                prefetcher.EnqueueAlbumPrefetch(item.Uri);
+        }
     }
 
     public void ShowError(string message)

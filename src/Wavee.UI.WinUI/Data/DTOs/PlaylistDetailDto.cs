@@ -98,6 +98,21 @@ public sealed record PlaylistDetailDto
     /// Null when <see cref="SessionControlOptions"/> is also null.
     /// </summary>
     public string? SessionControlGroupId { get; init; }
+
+    /// <summary>
+    /// True when this DTO carries only the hero-paint subset (name, description,
+    /// image URLs, primary color) sourced from a viewport-driven prefetch via
+    /// <c>LIST_METADATA_V2</c> extended-metadata. False for the canonical
+    /// Pathfinder/playlist-cache payload that includes tracks, owner, permissions.
+    /// <para>
+    /// <see cref="Stores.PlaylistStore.HintPartial"/> uses this to gate the seed
+    /// (mirrors <c>AlbumStore.HintPartial</c>); <see cref="ApplyDetail"/>
+    /// already handles missing fields gracefully (preserves previous values), so
+    /// a partial seed paints the hero immediately and the full fetch hydrates
+    /// the rest without flicker.
+    /// </para>
+    /// </summary>
+    public bool IsPartial { get; init; }
 }
 
 /// <summary>

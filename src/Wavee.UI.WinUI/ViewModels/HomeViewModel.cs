@@ -744,10 +744,25 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         // Only update chips when we receive them (unfaceted responses)
         if (chips == null || chips.Count == 0 || DisplayedChips.Count > 0) return;
 
+        // Spotify's chip API doesn't include an "All" entry — prepend one
+        // synthetically so the bar always leads with the unfaceted view.
+        // SelectChipAsync already handles `string.IsNullOrEmpty(chip.Id)` as
+        // the unfaceted refetch path (lines ~1462), and the back-chip handler
+        // restores selection to the empty-Id chip, so a single empty-Id entry
+        // at the head is all the wiring needs.
+        if (!chips.Any(c => string.IsNullOrEmpty(c.Id)))
+        {
+            chips.Insert(0, new HomeChipViewModel
+            {
+                Id = string.Empty,
+                Label = "All"
+            });
+        }
+
         _mainChips = chips;
         _activeParentChip = null;
 
-        // "All" chip starts selected
+        // "All" chip (empty Id) starts selected — every other chip clears.
         foreach (var c in chips) c.IsSelected = string.IsNullOrEmpty(c.Id);
         DisplayedChips = new ObservableCollection<HomeChipViewModel>(chips);
 

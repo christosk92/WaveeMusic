@@ -35,7 +35,12 @@ namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 /// </summary>
 public sealed partial class TrackDataGrid : UserControl, IDisposable
 {
-    private static readonly int[] LoadingRowPlaceholders = Enumerable.Range(0, 10).ToArray();
+    // Default count when no page binds LoadingRowCount (or binds it as 0). Below
+    // the album-length median, so the typical case grows rows downward (additive,
+    // calm) rather than collapsing on load.
+    private const int DefaultLoadingRowCount = 6;
+    // Clamp ceiling so a 200-track playlist doesn't render 200 skeleton rows.
+    private const int MaxLoadingRowCount = 20;
     private readonly ObservableCollection<ITrackItem> _visibleRows = new();
     private readonly ObservableCollection<TrackDataGridGroup> _visibleGroups = new();
     private readonly CollectionViewSource _groupedRowsViewSource = new() { IsSourceGrouped = true };
@@ -71,7 +76,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         ApplyGroupHeaderTemplate();
         RowsList.ItemsSource = _visibleRows;
         RowsItemsView.ItemsSource = _visibleRows;
-        LoadingRowsRepeater.ItemsSource = LoadingRowPlaceholders;
+        ApplyLoadingRowCount();
         // Centralized subscription bus (see field comment).
         _lazyItemHandler = OnAnyLazyItemPropertyChanged;
         _visibleRows.CollectionChanged += OnVisibleRowsCollectionChanged;
@@ -813,7 +818,11 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     }
 
     private static void OnForceShowArtistColumnChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        => ((TrackDataGrid)d).RefreshRowShowFlags();
+    {
+        var grid = (TrackDataGrid)d;
+        grid.RefreshRowShowFlags();
+        grid.ApplyLoadingRowCount();
+    }
 
     /// <summary>
     /// Resolve whether a row should show the artist subline. Single source of
@@ -847,6 +856,108 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     {
         if (d is TrackDataGrid grid)
             grid.ApplyLoadingRowsVisibility();
+    }
+
+    // Skeleton row count. When 0 (binding source unset or absent), falls back to
+    // DefaultLoadingRowCount. Clamped at MaxLoadingRowCount to avoid pathological
+    // renders for large playlists. Album and playlist pages bind this to their
+    // ViewModel.TotalTracks, which is seeded by nav prefill and finalised by
+    // ApplyDetailAsync — so the skeleton renders the right number of rows
+    // before tracks materialise instead of always showing 10.
+    public static readonly DependencyProperty LoadingRowCountProperty =
+        DependencyProperty.Register(nameof(LoadingRowCount), typeof(int), typeof(TrackDataGrid),
+            new PropertyMetadata(0, OnLoadingRowCountChanged));
+
+    public int LoadingRowCount
+    {
+        get => (int)GetValue(LoadingRowCountProperty);
+        set => SetValue(LoadingRowCountProperty, value);
+    }
+
+    private static void OnLoadingRowCountChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackDataGrid grid)
+            grid.ApplyLoadingRowCount();
+    }
+
+    private void ApplyLoadingRowCount()
+    {
+        if (LoadingRowsRepeater is null)
+            return;
+
+        var requested = LoadingRowCount;
+        var effective = requested <= 0
+            ? DefaultLoadingRowCount
+            : Math.Min(requested, MaxLoadingRowCount);
+
+        // Each row shares the same column geometry, but we materialise a fresh
+        // LoadingRowConfig per row so the ItemsRepeater can DataTemplate-bind.
+        // Counts are small (≤20), so allocating the list every rebuild is fine.
+        var template = BuildLoadingRowConfigTemplate();
+        var items = new LoadingRowConfig[effective];
+        for (var i = 0; i < effective; i++)
+        {
+            items[i] = new LoadingRowConfig
+            {
+                Index = i,
+                ArtColumnWidth = template.ArtColumnWidth,
+                AlbumColumnWidth = template.AlbumColumnWidth,
+                AddedByColumnWidth = template.AddedByColumnWidth,
+                DateAddedColumnWidth = template.DateAddedColumnWidth,
+                PlayCountColumnWidth = template.PlayCountColumnWidth,
+                DurationColumnWidth = template.DurationColumnWidth,
+                TitleColumnMaxWidth = template.TitleColumnMaxWidth,
+                ShowArtistSubtitle = template.ShowArtistSubtitle,
+            };
+        }
+        LoadingRowsRepeater.ItemsSource = items;
+    }
+
+    /// <summary>
+    /// Derive the skeleton column geometry from the current page state. Mirrors
+    /// the real-row column visibility model in
+    /// <see cref="RowsList_ContainerContentChanging"/> so the skeleton row
+    /// matches what the real row will paint into the same column slots — no
+    /// horizontal shift when content loads.
+    /// </summary>
+    private LoadingRowConfig BuildLoadingRowConfigTemplate()
+    {
+        static GridLength WidthOrZero(TrackDataGridColumn? col)
+            => col is null ? new GridLength(0) : col.Length;
+
+        var artCol = Columns?.FirstOrDefault(c => c.Key == "TrackArt");
+        var albumCol = Columns?.FirstOrDefault(c => c.Key == "Album");
+        var addedByCol = Columns?.FirstOrDefault(c => c.Key == "AddedBy");
+        var dateAddedCol = Columns?.FirstOrDefault(c => c.Key == "DateAdded");
+        var playCountCol = Columns?.FirstOrDefault(c => c.Key == "PlayCount");
+        var durationCol = Columns?.FirstOrDefault(c => c.Key == "Duration");
+        var titleCol = Columns?.FirstOrDefault(c => c.Key == "Track");
+
+        // AddedBy is special: the column may be present in the set but hidden
+        // by the page-level AddedByVisible toggle (non-collab playlists). Mirror
+        // RowsList_ContainerContentChanging:279.
+        var addedByWidth = AddedByVisible && addedByCol is not null
+            ? addedByCol.Length
+            : new GridLength(0);
+
+        // Title MaxWidth defaults to 640 (playlist) but album pages use null
+        // (unbounded) so Plays/Duration pin right. Mirror that here: when the
+        // active title column's MaxLength is Auto, treat it as "no cap".
+        var titleMax = titleCol?.MaxLength is { GridUnitType: GridUnitType.Pixel } px
+            ? px.Value
+            : double.PositiveInfinity;
+
+        return new LoadingRowConfig
+        {
+            ArtColumnWidth = WidthOrZero(artCol),
+            AlbumColumnWidth = WidthOrZero(albumCol),
+            AddedByColumnWidth = addedByWidth,
+            DateAddedColumnWidth = WidthOrZero(dateAddedCol),
+            PlayCountColumnWidth = WidthOrZero(playCountCol),
+            DurationColumnWidth = WidthOrZero(durationCol),
+            TitleColumnMaxWidth = titleMax,
+            ShowArtistSubtitle = ResolveShowArtistColumn(),
+        };
     }
 
     public static readonly DependencyProperty IsGroupedProperty =
@@ -1077,12 +1188,14 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         if (addedByCol != null && addedByCol.IsVisible != newVisible)
         {
             addedByCol.IsVisible = newVisible;
+            grid.ApplyLoadingRowCount();
             // OnHeaderColumnChanged will run RefreshRowShowFlags as part of its
             // IsVisible-change branch — no need to call it again here.
             return;
         }
 
         grid.RefreshRowShowFlags();
+        grid.ApplyLoadingRowCount();
     }
 
     /// <summary>
@@ -1274,6 +1387,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         grid.RebuildHeader();
         grid.RebuildSortFlyout();
         grid.ReprojectRows();
+        grid.ApplyLoadingRowCount();
     }
 
     private void SyncAddedByColumnVisibility()

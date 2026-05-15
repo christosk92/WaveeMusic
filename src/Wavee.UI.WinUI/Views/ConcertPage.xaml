@@ -1,8 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="Wavee.UI.WinUI.Views.ConcertPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:appControls="using:Wavee.UI.WinUI.Controls"
@@ -12,7 +13,8 @@
     xmlns:winUi="using:CommunityToolkit.WinUI"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     xmlns:transitions="using:CommunityToolkit.WinUI"
-    Background="Transparent">
+    Background="Transparent"
+    waveeHelpers:PageEntranceFade.Fade="True">
 
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>

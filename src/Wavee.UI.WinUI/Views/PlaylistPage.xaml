@@ -51,12 +51,11 @@
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
 
-        <!-- Page-wide PaletteBackdropBrush border was removed in the hero
-             redesign: the wash bled the playlist's dominant colour across the
-             whole page including the track table. Hero identity now lives
-             entirely inside the banner row at the top of TwoColumnGrid below.
-             VM still computes PaletteBackdropBrush so the property pipeline
-             stays consistent across Album / Show / Concert / Episode. -->
+        <!-- Palette-tinted page wash sitting on top of the window's Mica.
+             Mirrors AlbumPage so playlist / album feel like the same surface.
+             Opacity is baked into the brush itself; null brush ⇒ nothing renders. -->
+        <Border IsHitTestVisible="False"
+                Background="{x:Bind ViewModel.PaletteBackdropBrush, Mode=OneWay}"/>
 
         <Grid x:Name="TwoColumnGrid"
               MaxWidth="2400"
@@ -532,6 +531,7 @@
                 PageKey="playlist"
                 UseItemsViewRows="True"
                 IsLoading="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay}"
+                LoadingRowCount="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"
                 AddedByVisible="{x:Bind ViewModel.ShouldShowAddedByColumn, Mode=OneWay}"
                 ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"
                 PlayCommand="{x:Bind ViewModel.PlayTrackCommand}">

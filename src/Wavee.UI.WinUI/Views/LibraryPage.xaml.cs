@@ -91,14 +91,19 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         // on every nav-from regardless of whether the visual content was trimmed.
         //Bindings?.Update();
 
-        // On back/forward navigation, restore the cached page as-is
-        if (e.NavigationMode is NavigationMode.Back or NavigationMode.Forward
-            && ContentHost?.Content != null)
-        {
-            return;
-        }
-
         var navigationParameter = UnwrapNavigationParameter(e.Parameter);
+
+        // Back/forward navigation needs to honour the parameter — the
+        // Segmented bar now pushes tab changes into the Frame back stack
+        // (see SelectorBar_SelectionChanged), so Back to Library/"albums"
+        // from Library/"artists" must actually re-select Albums. Previously
+        // this early-returned when ContentHost.Content was non-null, which
+        // worked back when tab switches lived outside the Frame stack — it
+        // would now leave the wrong tab visible after a back-nav.
+        //
+        // SetSelectedItemSilently and ShowTab both no-op when the target
+        // tab is already showing, so falling through to the standard path
+        // is safe for same-tab back/forward navs too.
         if (_trimmedForNavigationCache && navigationParameter is not string)
         {
             RestoreFromNavigationCache();
@@ -131,13 +136,30 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
     private void SelectorBar_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_disposed) return;
+        if (LibrarySelectorBar.SelectedItem is not SegmentedItem selectedItem) return;
 
-        // ContentHost.Content can be null after navigation-cache trimming. A selected
-        // tab still needs to materialize its view when the page is reused.
-        if (LibrarySelectorBar.SelectedItem is SegmentedItem selectedItem)
-        {
-            ShowTab(selectedItem);
-        }
+        // Route tab-bar clicks through the same NavigationHelpers entry
+        // points the sidebar uses. This means:
+        //   • Tab switch enters the outer Frame's back stack — Back returns
+        //     to the previous tab instead of leaving Library entirely.
+        //   • The tab strip header / icon / tooltip updates to match the
+        //     new section (NavigateInCurrentTab does this).
+        //   • ShellViewModel.UpdateNavigationState fires post-nav so the
+        //     toolbar Back button enables correctly.
+        //   • NavigationCacheMode=Enabled on LibraryPage means the same
+        //     instance is reused — OnNavigatedTo reads the tab-key
+        //     parameter and ShowTab swaps the cached UserControl in place.
+        //
+        // SelectionChanged only fires on an actual selection change, so
+        // we won't double-push the same tab key.
+        if (selectedItem == ArtistsItem)
+            Helpers.Navigation.NavigationHelpers.OpenArtists();
+        else if (selectedItem == LikedSongsItem)
+            Helpers.Navigation.NavigationHelpers.OpenLikedSongs();
+        else if (selectedItem == YourEpisodesItem)
+            Helpers.Navigation.NavigationHelpers.OpenPodcasts();
+        else
+            Helpers.Navigation.NavigationHelpers.OpenAlbums();
     }
 
     private void LibraryPage_Loaded(object sender, RoutedEventArgs e)
@@ -149,6 +171,53 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
                            ?? GetItemForTabKey(_trimmedSelectedTabKey);
         SetSelectedItemSilently(selectedItem);
         ShowTab(selectedItem);
+
+        // Pre-warm the other three views in the background so the first
+        // click on each tab is also an instantaneous ContentControl.Content
+        // reference swap, not a "construct then swap." Low priority so the
+        // active tab's first paint isn't delayed; each pre-warm runs as a
+        // separate dispatcher item so we yield between constructions and
+        // never block input for an extended period.
+        SchedulePreWarm(selectedItem);
+    }
+
+    /// <summary>
+    /// Lazily construct the three non-active library views on background
+    /// dispatcher ticks. Each ??= guard makes this idempotent — if a view
+    /// has already been built (e.g. user clicked the tab before the queue
+    /// drained), the construction is skipped. Cancellable via _disposed.
+    /// </summary>
+    private void SchedulePreWarm(SegmentedItem activeTab)
+    {
+        var queue = DispatcherQueue;
+        if (queue is null) return;
+
+        // Enqueue each construction separately so the dispatcher can pump
+        // input / animations between them. Low priority pushes them after
+        // any higher-priority work (initial layout, image loads, etc.).
+        queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (_disposed || activeTab == AlbumsItem) return;
+            _albumsView ??= new AlbumsLibraryView(ViewModel.Albums);
+        });
+
+        queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (_disposed || activeTab == ArtistsItem) return;
+            _artistsView ??= new ArtistsLibraryView(ViewModel.Artists);
+        });
+
+        queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (_disposed || activeTab == LikedSongsItem) return;
+            _likedSongsView ??= new LikedSongsView(ViewModel.LikedSongs);
+        });
+
+        queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (_disposed || activeTab == YourEpisodesItem) return;
+            _yourEpisodesView ??= new YourEpisodesView(ViewModel.YourEpisodes);
+        });
     }
 
     /// <summary>

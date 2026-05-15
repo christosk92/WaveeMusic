@@ -336,6 +336,18 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         _libraryDataService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
     }
 
+    /// <summary>
+    /// Called from <c>EpisodePage.TrimForNavigationCache</c> when the page
+    /// goes off-screen. Unhooks the singleton subscriptions that would
+    /// otherwise pin this VM (and its data) across Frame-cache evictions —
+    /// the exact pattern that produces a creeping 1–2 s click-delay over a
+    /// long session. The next <see cref="Activate"/> re-attaches.
+    /// </summary>
+    public void Hibernate()
+    {
+        DetachLongLivedServices();
+    }
+
     /// <summary>Entry-point from <c>EpisodePage.OnNavigatedTo</c>.</summary>
     public void Activate(EpisodeNavigationParameter parameter)
     {

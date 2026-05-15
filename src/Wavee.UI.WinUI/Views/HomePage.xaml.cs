@@ -42,6 +42,14 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     private const int NavigationCacheTrimDelaySeconds = 45;
     private const int ScrollRestoreMaxAttempts = 12;
     private const int ScrollRestoreRetryDelayMs = 16;
+    // Safety net for ImageLoadingSuspension. If BeginScrollRestore runs but
+    // the matching EndScrollRestore never fires (ViewModel stuck in IsLoading,
+    // page never receives a fresh sleep-state apply, etc.) the global
+    // suspension flag would stay on forever and gate ALL cold image loads.
+    // After this timeout we forcibly clear our generation's suspension. The
+    // generation check in EndScrollRestore is preserved — if the real End
+    // already fired and bumped the generation, this is a no-op.
+    private const int ScrollRestoreWatchdogMs = 3000;
     private bool _isRestoringScroll;
     private int _scrollRestoreGeneration;
     private int _layoutRecoveryGeneration;
@@ -324,6 +332,7 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.home.onNavigatedFrom");
         base.OnNavigatedFrom(e);
         _isNavigatedAway = true;
         CancelScrollRestore();
@@ -403,6 +412,18 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         ResetRegionsLayoutCache();
         AttachSectionsRepeater();
         ViewModel.ResumeFromNavigationCache();
+
+        // Force a synchronous measure+arrange right after attach so:
+        //   (a) ScrollViewer.ExtentHeight reflects the real content height
+        //       before TryApplyPendingSleepState's ScrollToImmediate runs,
+        //       avoiding the empty-extent retry loop in RestoreScrollOffsetAsync.
+        //   (b) RegionsRepeater realizes containers for the current viewport
+        //       (scroll = 0 at this point) so the upper sections paint.
+        // Without this the cached page can render with the upper region slots
+        // devirtualized until the user nudges the scrollbar.
+        RegionsRepeater?.UpdateLayout();
+        ContentContainer?.UpdateLayout();
+
         TryApplyPendingSleepState();
         QueueRestoredLayoutRefresh();
     }
@@ -461,7 +482,8 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         ResetRegionsLayoutCache();
         RegionsRepeater.ItemsSource = ViewModel.HeroAdapter.Regions;
         _sectionsDetachedForNavigationCache = false;
-        QueueRestoredLayoutRefresh();
+        // The synchronous UpdateLayout in RestoreFromNavigationCache replaces
+        // the queued refresh; keeping both was a redundant double pass.
     }
 
     private void ResetRegionsLayoutCache()
@@ -520,6 +542,23 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         _scrollRestoreGeneration++;
         _isRestoringScroll = true;
         ContentCard.IsImageLoadingSuspended = true;
+
+        // Watchdog — see ScrollRestoreWatchdogMs comment. If neither the
+        // normal RestoreScrollOffsetAsync completion nor an OnNavigatedFrom /
+        // Dispose path reaches EndScrollRestore in time, force-clear here.
+        var generation = _scrollRestoreGeneration;
+        _ = WatchdogClearSuspensionAsync(generation);
+    }
+
+    private async Task WatchdogClearSuspensionAsync(int generation)
+    {
+        try
+        {
+            await Task.Delay(ScrollRestoreWatchdogMs).ConfigureAwait(true);
+        }
+        catch { return; }
+        if (_isDisposed) return;
+        EndScrollRestore(generation);
     }
 
     private void CancelScrollRestore()
@@ -546,6 +585,16 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
 
             var target = Math.Clamp(offset, 0, maxOffset);
             ContentContainer.ScrollToImmediate(0, target);
+
+            // EffectiveViewport propagation to RegionsRepeater normally needs
+            // a layout cycle after ScrollToImmediate. Force it synchronously
+            // so SectionStackLayout's MeasureOverride re-runs with the new
+            // RealizationRect and realizes containers for the restored
+            // viewport position before paint — otherwise the user sees blank
+            // section slots until they nudge the scrollbar.
+            RegionsRepeater?.InvalidateMeasure();
+            ContentContainer?.UpdateLayout();
+
             QueueRestoredLayoutRefresh();
             await Task.Yield();
             await Task.Delay(ScrollRestoreRetryDelayMs);

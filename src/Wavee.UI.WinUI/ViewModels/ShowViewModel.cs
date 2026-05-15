@@ -296,6 +296,18 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         }
     }
 
+    /// <summary>
+    /// Called from <c>ShowPage.TrimForNavigationCache</c> when the page
+    /// goes off-screen. Unhooks the singleton subscriptions that would
+    /// otherwise pin this VM across Frame-cache evictions — the exact
+    /// pattern that produces a creeping 1–2 s click-delay over a long
+    /// session. The next <see cref="Activate"/> re-attaches.
+    /// </summary>
+    public void Hibernate()
+    {
+        DetachLongLivedServices();
+    }
+
     private void DetachLongLivedServices()
     {
         if (!_longLivedAttached) return;

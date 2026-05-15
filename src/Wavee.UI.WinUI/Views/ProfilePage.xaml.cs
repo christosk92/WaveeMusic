@@ -23,7 +23,6 @@ namespace Wavee.UI.WinUI.Views;
 
 public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable
 {
-    private static ImageCacheService? _imageCache;
     private readonly ProfileCache? _cache;
     private readonly ILogger<ProfilePage>? _logger;
     private bool _showingContent;
@@ -378,8 +377,12 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
         }
         if (imageUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            _imageCache ??= Ioc.Default.GetService<ImageCacheService>();
-            ProfileAvatar.ProfilePicture = _imageCache?.GetOrCreate(imageUrl, 100);
+            // Single-avatar surface — uncached one-off.
+            ProfileAvatar.ProfilePicture = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(imageUrl))
+            {
+                DecodePixelWidth = 100,
+                DecodePixelType = Microsoft.UI.Xaml.Media.Imaging.DecodePixelType.Logical,
+            };
         }
     }
 

@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Helpers;
+using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 
@@ -23,7 +24,6 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 /// </summary>
 public sealed partial class SpotlightReleaseCard : UserControl
 {
-    private static ImageCacheService? _imageCache;
     private SpriteVisual? _pulseRing;
 
     public event EventHandler<RoutedEventArgs>? CardClick;
@@ -63,6 +63,18 @@ public sealed partial class SpotlightReleaseCard : UserControl
         DependencyProperty.Register(nameof(Mode), typeof(SpotlightMode), typeof(SpotlightReleaseCard),
             new PropertyMetadata(SpotlightMode.LatestRelease, OnModeChanged));
 
+    // ─── Navigation DPs (artist→album prefetch + connected animation pass).
+    // When NavigationUri is set, CardSurface_Tapped self-routes through
+    // AlbumNavigationHelper (prefetch + connected anim + count prefill) and
+    // CardClick still fires for any subscriber that wants to react.
+    public static readonly DependencyProperty NavigationUriProperty =
+        DependencyProperty.Register(nameof(NavigationUri), typeof(string), typeof(SpotlightReleaseCard),
+            new PropertyMetadata(null));
+
+    public static readonly DependencyProperty NavigationTotalTracksProperty =
+        DependencyProperty.Register(nameof(NavigationTotalTracks), typeof(int), typeof(SpotlightReleaseCard),
+            new PropertyMetadata(0));
+
     public string TagText { get => (string)GetValue(TagTextProperty); set => SetValue(TagTextProperty, value); }
     public string EyebrowText { get => (string)GetValue(EyebrowTextProperty); set => SetValue(EyebrowTextProperty, value); }
     public string Title { get => (string)GetValue(TitleProperty); set => SetValue(TitleProperty, value); }
@@ -72,12 +84,45 @@ public sealed partial class SpotlightReleaseCard : UserControl
     public Brush? AccentBrush { get => (Brush?)GetValue(AccentBrushProperty); set => SetValue(AccentBrushProperty, value); }
     public SpotlightMode Mode { get => (SpotlightMode)GetValue(ModeProperty); set => SetValue(ModeProperty, value); }
 
+    public string? NavigationUri { get => (string?)GetValue(NavigationUriProperty); set => SetValue(NavigationUriProperty, value); }
+    public int NavigationTotalTracks { get => (int)GetValue(NavigationTotalTracksProperty); set => SetValue(NavigationTotalTracksProperty, value); }
+
+    // Album-metadata viewport prefetch. The spotlight card is always at the
+    // top of the artist page when rendered, so it effectively fires on first
+    // measure — but we still gate via EffectiveViewportChanged so it doesn't
+    // fetch when the card is offscreen on a small / narrow window mode.
+    private bool _albumPrefetchKicked;
+    private bool _playlistPrefetchKicked;
+    private const double AlbumPrefetchTriggerDistance = 500;
+    private const string AlbumUriPrefix = "spotify:album:";
+    private const string PlaylistUriPrefix = "spotify:playlist:";
+
     public SpotlightReleaseCard()
     {
         InitializeComponent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        EffectiveViewportChanged += OnEffectiveViewportChanged;
         ApplyModeVisuals();
+    }
+
+    private void OnEffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
+    {
+        var uri = NavigationUri;
+        if (string.IsNullOrEmpty(uri)) return;
+        if (args.BringIntoViewDistanceX > AlbumPrefetchTriggerDistance
+            || args.BringIntoViewDistanceY > AlbumPrefetchTriggerDistance) return;
+
+        if (!_albumPrefetchKicked && uri.StartsWith(AlbumUriPrefix, StringComparison.Ordinal))
+        {
+            _albumPrefetchKicked = true;
+            Ioc.Default.GetService<IAlbumPrefetcher>()?.EnqueueAlbumPrefetch(uri);
+        }
+        else if (!_playlistPrefetchKicked && uri.StartsWith(PlaylistUriPrefix, StringComparison.Ordinal))
+        {
+            _playlistPrefetchKicked = true;
+            Ioc.Default.GetService<IPlaylistMetadataPrefetcher>()?.EnqueuePlaylistPrefetch(uri);
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -88,10 +133,14 @@ public sealed partial class SpotlightReleaseCard : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        // Drop the decoded image surface; OnCoverImageUrlChanged refetches on
-        // re-realization.
-        if (CoverImage != null) CoverImage.Source = null;
+        // Do NOT clear CoverImage.ImageUrl here — CompositionImage releases
+        // its own pin on Unloaded. Clearing the URL would break the same-
+        // DataContext scroll-back-up path: the outer CoverImageUrl DP keeps
+        // its value across virtualization, so the change-callback never
+        // refires, and the inner ImageUrl stays null = blank tile.
         StopPulseAnimation();
+        _albumPrefetchKicked = false;
+        _playlistPrefetchKicked = false;
     }
 
     private void StartPulseAnimation()
@@ -226,14 +275,7 @@ public sealed partial class SpotlightReleaseCard : UserControl
 
         var url = e.NewValue as string;
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url);
-        if (string.IsNullOrEmpty(httpsUrl))
-        {
-            card.CoverImage.Source = null;
-            return;
-        }
-
-        _imageCache ??= Ioc.Default.GetService<ImageCacheService>();
-        card.CoverImage.Source = _imageCache?.GetOrCreate(httpsUrl, 192);
+        card.CoverImage.ImageUrl = string.IsNullOrEmpty(httpsUrl) ? null : httpsUrl;
     }
 
     private static void OnAccentBrushChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -251,7 +293,25 @@ public sealed partial class SpotlightReleaseCard : UserControl
         }
     }
 
-    private void CardSurface_Tapped(object sender, TappedRoutedEventArgs e) => CardClick?.Invoke(this, e);
+    private void CardSurface_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        // Self-route to AlbumPage when NavigationUri is set — connected anim
+        // from the CoverBorder, nav-prefill with TotalTracks, Ctrl+click new-
+        // tab semantics. CardClick still fires for back-compat with any host
+        // page subscribing for custom analytics / hooks.
+        var uri = NavigationUri;
+        if (!string.IsNullOrEmpty(uri))
+        {
+            AlbumNavigationHelper.NavigateToAlbum(
+                uri,
+                title: Title,
+                subtitle: Subtitle,
+                imageUrl: CoverImageUrl,
+                totalTracks: NavigationTotalTracks > 0 ? NavigationTotalTracks : null,
+                connectedAnimationSource: CoverBorder);
+        }
+        CardClick?.Invoke(this, e);
+    }
 
     private void InlineAction_Tapped(object sender, TappedRoutedEventArgs e) => e.Handled = true;
 

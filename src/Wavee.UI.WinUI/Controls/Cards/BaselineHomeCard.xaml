@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
     xmlns:winUi="using:CommunityToolkit.WinUI"
@@ -76,9 +77,10 @@
 
         <Grid x:Name="ImageStage" Grid.Row="0" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
             <Grid x:Name="HeroMotionHost">
-                <Image
+                <imaging:CompositionImage
                     x:Name="HeroImage"
                     Stretch="UniformToFill"
+                    DecodePixelSize="240"
                     Opacity="0.94"/>
 
                 <Grid
@@ -166,9 +168,11 @@
                             Opacity="0.18"/>
                     </winUi:Effects.Shadow>
                     <Grid>
-                        <Image
+                        <imaging:CompositionImage
                             x:Name="CoverThumbImage"
-                            Stretch="UniformToFill"/>
+                            Stretch="UniformToFill"
+                            DecodePixelSize="96"
+                            CornerRadius="10"/>
                         <FontIcon
                             x:Name="CoverThumbPlaceholder"
                             Glyph="&#xE8D6;"

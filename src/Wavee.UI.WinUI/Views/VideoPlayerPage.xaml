@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="Wavee.UI.WinUI.Views.VideoPlayerPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -13,7 +13,9 @@
     NavigationCacheMode="Disabled"
     Background="Black"
     RequestedTheme="Dark"
-    mc:Ignorable="d">
+    xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
+    mc:Ignorable="d"
+    waveeHelpers:PageEntranceFade.Fade="True">
 
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />

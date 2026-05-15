@@ -20,6 +20,8 @@ public static class VideoSurfaceMorph
 {
     public const string MiniToFullKey = "MiniToFullVideo";
     public const string FullToMiniKey = "FullToMiniVideo";
+    public const string MiniToGripperKey = "MiniToGripperVideo";
+    public const string GripperToMiniKey = "GripperToMiniVideo";
 
     /// <summary>
     /// Capture <paramref name="source"/> as the Mini → Full animation source.
@@ -49,6 +51,36 @@ public static class VideoSurfaceMorph
     /// </summary>
     public static void TryStartFullToMini(FrameworkElement target)
         => TryStart(FullToMiniKey, target);
+
+    /// <summary>
+    /// Capture <paramref name="source"/> as the Mini → Gripper animation
+    /// source. Call BEFORE the user clicks X on Mini (the floating player
+    /// collapses to the right-edge tab).
+    /// </summary>
+    public static void PrepareMiniToGripper(FrameworkElement source)
+        => Prepare(MiniToGripperKey, source);
+
+    /// <summary>
+    /// Replay the Mini → Gripper animation onto <paramref name="target"/>.
+    /// Call from the gripper's Loaded handler or its visibility change.
+    /// </summary>
+    public static void TryStartMiniToGripper(FrameworkElement target)
+        => TryStart(MiniToGripperKey, target);
+
+    /// <summary>
+    /// Capture <paramref name="source"/> as the Gripper → Mini animation
+    /// source. Call BEFORE the user clicks the gripper (expands back to
+    /// floating Mini).
+    /// </summary>
+    public static void PrepareGripperToMini(FrameworkElement source)
+        => Prepare(GripperToMiniKey, source);
+
+    /// <summary>
+    /// Replay the Gripper → Mini animation onto <paramref name="target"/>.
+    /// Call from Mini's Loaded handler / visibility change.
+    /// </summary>
+    public static void TryStartGripperToMini(FrameworkElement target)
+        => TryStart(GripperToMiniKey, target);
 
     private static void Prepare(string key, FrameworkElement source)
     {

@@ -54,7 +54,8 @@ public sealed partial class AlbumsLibraryView : UserControl, IDisposable
             Uri = album.Id,
             Title = album.Name,
             Subtitle = album.ArtistName,
-            ImageUrl = album.ImageUrl
+            ImageUrl = album.ImageUrl,
+            TotalTracks = album.TrackCount > 0 ? album.TrackCount : null
         };
         NavigationHelpers.OpenAlbum(param, album.Name, NavigationHelpers.IsCtrlPressed());
     }

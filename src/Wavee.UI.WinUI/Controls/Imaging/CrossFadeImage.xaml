@@ -5,25 +5,28 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     mc:Ignorable="d">
 
-    <!-- Two stacked Image layers + an optional placeholder fill. The host Grid
-         honors the consumer's Width/Height and clips by CornerRadius, so the
-         layout footprint is stable regardless of whether either Image has a
-         live Source. Layer opacities are driven by Composition animations from
-         code-behind — XAML keeps both at 0 so the very first source fades in
-         from blank rather than popping. -->
+    <!-- Two stacked CompositionImage layers + a palette-aware placeholder.
+         The host Grid honors the consumer's Width/Height and rounded corners
+         so layout footprint is stable regardless of which layer is currently
+         visible. Layer opacities are driven by Composition animations from
+         code-behind. -->
     <Grid x:Name="HostGrid"
           CornerRadius="{x:Bind CornerRadius, Mode=OneWay}">
         <Border x:Name="PlaceholderLayer"
-                Background="{x:Bind PlaceholderBrush, Mode=OneWay}" />
-        <Image x:Name="LayerA"
-               Stretch="{x:Bind Stretch, Mode=OneWay}"
-               Opacity="0"
-               IsHitTestVisible="False" />
-        <Image x:Name="LayerB"
-               Stretch="{x:Bind Stretch, Mode=OneWay}"
-               Opacity="0"
-               IsHitTestVisible="False" />
+                Background="{x:Bind PlaceholderBrush, Mode=OneWay}"
+                CornerRadius="{x:Bind CornerRadius, Mode=OneWay}"/>
+        <imaging:CompositionImage x:Name="LayerA"
+                                  Stretch="{x:Bind Stretch, Mode=OneWay}"
+                                  CornerRadius="{x:Bind CornerRadius, Mode=OneWay}"
+                                  Opacity="0"
+                                  IsHitTestVisible="False"/>
+        <imaging:CompositionImage x:Name="LayerB"
+                                  Stretch="{x:Bind Stretch, Mode=OneWay}"
+                                  CornerRadius="{x:Bind CornerRadius, Mode=OneWay}"
+                                  Opacity="0"
+                                  IsHitTestVisible="False"/>
     </Grid>
 </UserControl>

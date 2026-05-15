@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:local="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     mc:Ignorable="d">
 
@@ -42,9 +43,10 @@
                           Width="56" Height="54"
                           CornerRadius="3,0,0,3"
                           Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                        <Image x:Name="PillImage"
-                               Width="56" Height="54"
-                               Stretch="UniformToFill"/>
+                        <imaging:CompositionImage x:Name="PillImage"
+                                                  Width="56" Height="54"
+                                                  Stretch="UniformToFill"
+                                                  DecodePixelSize="100"/>
                         <FontIcon x:Name="PlaceholderIcon"
                                   Glyph="&#xE8D6;"
                                   FontSize="20"

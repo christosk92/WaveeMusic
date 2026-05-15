@@ -9,6 +9,7 @@
     xmlns:winUi="using:CommunityToolkit.WinUI"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:local="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
     mc:Ignorable="d"
     Background="Transparent"
@@ -66,11 +67,11 @@
                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                               HorizontalAlignment="Center"
                               VerticalAlignment="Center"/>
-                    <Image x:Name="SquareImage"
-                           Stretch="UniformToFill"
-                           Opacity="0"
-                           ImageOpened="SquareImage_ImageOpened"
-                           ImageFailed="SquareImage_ImageFailed"/>
+                    <imaging:CompositionImage x:Name="SquareImage"
+                                              Stretch="UniformToFill"
+                                              Opacity="0"
+                                              ImageOpened="SquareImage_ImageOpened"
+                                              ImageFailed="SquareImage_ImageFailed"/>
 
                     <!-- Play button overlay (shown on hover) -->
                     <Button x:Name="SquarePlayButton"
@@ -122,6 +123,30 @@
                         <local:LottieEqualizer x:Name="SquarePlayingEqualizer"
                                                IconSize="20"/>
                     </Border>
+
+                    <!-- SecondaryAction overlay — "Open album" affordance for surfaces
+                         whose primary tap does something other than navigate (e.g. the
+                         artist-page discography cards that expand inline on tap). The
+                         button click routes through AlbumNavigationHelper with full
+                         prefetch + connected animation + count prefill. Hidden at rest;
+                         Card_PointerEntered / Exited fade it in/out the same way the
+                         play-overlay button does, gated on SecondaryActionVisible. -->
+                    <Button x:Name="SquareSecondaryActionButton"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Margin="0,8,8,0"
+                            Width="28" Height="28"
+                            CornerRadius="14"
+                            Padding="0"
+                            Opacity="0"
+                            Visibility="Collapsed"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Click="SecondaryActionButton_Click"
+                            ToolTipService.ToolTip="{x:Bind SecondaryActionTooltip, Mode=OneWay}">
+                        <FontIcon Glyph="{x:Bind SecondaryActionGlyph, Mode=OneWay}"
+                                  FontSize="13"
+                                  Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                    </Button>
                 </Grid>
 
                 <!-- Circular image mode — deferred via x:Load="False". Realized on demand
@@ -146,15 +171,12 @@
                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                               HorizontalAlignment="Center"
                               VerticalAlignment="Center"/>
-                    <Ellipse x:Name="CircleImage"
-                             Opacity="0.85"
-                             HorizontalAlignment="Center"
-                             VerticalAlignment="Center">
-                        <Ellipse.Fill>
-                            <ImageBrush x:Name="CircleImageBrush"
-                                        Stretch="UniformToFill"/>
-                        </Ellipse.Fill>
-                    </Ellipse>
+                    <imaging:CompositionImage x:Name="CircleImage"
+                                              IsCircle="True"
+                                              Stretch="UniformToFill"
+                                              Opacity="0.85"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
 
                     <!-- Play button overlay for circle cards -->
                     <Button x:Name="CirclePlayButton"

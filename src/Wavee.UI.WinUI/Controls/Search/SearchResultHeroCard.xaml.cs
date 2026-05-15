@@ -60,7 +60,6 @@ public sealed partial class SearchResultHeroCard : UserControl
         set => SetValue(ColorHexProperty, value);
     }
 
-    private ImageCacheService? _imageCache;
     private IPlaybackStateService? _playbackStateService;
     private string? _trackId;
     private bool _isTrack;
@@ -182,6 +181,19 @@ public sealed partial class SearchResultHeroCard : UserControl
         _isTrack = item.Type == SearchResultType.Track;
         ApplyArtworkShape(isArtist);
         ApplyArtwork(item.ImageUrl, isArtist);
+
+        // Pattern B prefetch: the top-result hero is the highest click-through
+        // surface in search. Fire ALBUM_V4 / LIST_METADATA_V2 metadata prefetch
+        // immediately on bind when this item is an album / playlist. The
+        // prefetcher's session-wide dedup handles re-binds with the same URI;
+        // the prefix guard inside each prefetcher rejects non-Spotify URIs.
+        if (!string.IsNullOrEmpty(item.Uri))
+        {
+            if (item.Type == SearchResultType.Album)
+                Ioc.Default.GetService<IAlbumPrefetcher>()?.EnqueueAlbumPrefetch(item.Uri);
+            else if (item.Type == SearchResultType.Playlist)
+                Ioc.Default.GetService<IPlaylistMetadataPrefetcher>()?.EnqueuePlaylistPrefetch(item.Uri);
+        }
 
         // Hero background: resolve an artist (Artist itself, or the primary
         // artist of a Track/Album) via ArtistStore — shared cache with
@@ -469,12 +481,15 @@ public sealed partial class SearchResultHeroCard : UserControl
             return;
         }
 
-        _imageCache ??= Ioc.Default.GetService<ImageCacheService>();
-        var source = _imageCache?.GetOrCreate(httpsUrl, 160);
+        var source = new BitmapImage(new Uri(httpsUrl))
+        {
+            DecodePixelWidth = 160,
+            DecodePixelType = DecodePixelType.Logical,
+        };
 
         if (isArtist)
         {
-            ArtistAvatar.ProfilePicture = source as BitmapImage;
+            ArtistAvatar.ProfilePicture = source;
             ArtworkImage.Visibility = Visibility.Collapsed;
             ArtworkPlaceholderIcon.Visibility = Visibility.Collapsed;
         }

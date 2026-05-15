@@ -68,6 +68,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private bool _isDisposed;
     private bool _isNavigatingAway;
     private bool _heroPulseFired;
+    private bool _trimmedForNavigationCache;
+    private string? _lastRestoredArtistId;
     /// <summary>True once <see cref="ShimmerGate.RunCrossfadeAsync"/> has been
     /// triggered for the current load. Guards the crossfade's continuation
     /// against re-entrant navigation that fires <see cref="ShimmerGate.Reset"/>
@@ -127,8 +129,13 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.onNavigatedTo");
         base.OnNavigatedTo(e);
         _isNavigatingAway = false;
+        // Restore from the trimmed (hibernated) state before we re-Initialize
+        // the VM — matches AlbumPage's ordering so bindings are alive again
+        // by the time the new artist's data starts flowing.
+        RestoreFromNavigationCache();
 
         // Suppress the shy-header evaluator through the entire navigation
         // reset. Without this, ScrollView.ViewChanged events queued by the
@@ -167,8 +174,24 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             }
         }
 
+        // Compare against the INCOMING uri, not ViewModel.ArtistId — at this
+        // point ArtistId still references the previous artist (Initialize
+        // hasn't run yet). This is what was misfiring in
+        // RestoreFromNavigationCache and leaving stale bindings on cross-
+        // artist navs.
+        var artistChanged = !string.Equals(_lastRestoredArtistId, uri, StringComparison.Ordinal);
+
         if (!string.IsNullOrEmpty(uri))
             ViewModel.Initialize(uri);
+
+        // Re-evaluate every compiled x:Bind on the page so the freshly-reset
+        // VM state is picked up. Same-artist returns skip this for perf —
+        // nothing in the binding graph actually changed in that case.
+        if (artistChanged)
+        {
+            Bindings?.Update();
+            _lastRestoredArtistId = uri;
+        }
 
         ApplyPopularReleasesColumnWidth();
         UpdateResponsivePageChrome();
@@ -193,26 +216,50 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         ForceHeroVisualsVisible();
         ScheduleHeroArrangeRefresh();
 
-        // Drain the dispatcher so any ViewChanged events queued by the
-        // ScrollTo above fire (and short-circuit on Suppressed=true) before
-        // we re-enable evaluation. Re-Reset defensively in case anything
-        // touched the visual state during the queued events.
-        DispatcherQueue?.TryEnqueue(() =>
-        {
-            if (_isDisposed || _isNavigatingAway) return;
-            _shyHeader?.Reset();
-            if (_shyHeader is not null) _shyHeader.Suppressed = false;
-        });
+        // Drain the dispatcher AND wait an additional settle window before
+        // re-enabling the shy-header evaluator. One TryEnqueue tick wasn't
+        // enough — the ScrollViewer continues firing ViewChanged events
+        // through several frames after ScrollTo(0), and the user-visible
+        // symptom was the shy pill "inflating" into the hero band when the
+        // user scrolled up immediately after an artist→artist nav. Chain
+        // two dispatcher ticks + a short Task.Delay so the queued events
+        // (and any composition reflow) have actually finished before the
+        // evaluator wakes up.
+        _ = ReleaseShyHeaderSuppressionAsync(navigationRevision);
 
         ProbeWarmCacheReveal(navigationRevision, uri);
     }
 
+    private async Task ReleaseShyHeaderSuppressionAsync(int navigationRevision)
+    {
+        // First yield to let the immediate ScrollTo's first ViewChanged fire.
+        await Task.Yield();
+        if (_isDisposed || _isNavigatingAway || navigationRevision != _navigationRevision)
+            return;
+        // Then sleep long enough for the ScrollViewer to settle on the new
+        // artist's content. 250ms covers the post-nav layout + composition
+        // reflow window comfortably; the user doesn't perceive a delay
+        // because the shy pill is invisible during the suppression anyway.
+        await Task.Delay(250).ConfigureAwait(true);
+        if (_isDisposed || _isNavigatingAway || navigationRevision != _navigationRevision)
+            return;
+        _shyHeader?.Reset();
+        if (_shyHeader is not null) _shyHeader.Suppressed = false;
+    }
+
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.onNavigatedFrom");
         _isNavigatingAway = true;
         CancelResizeDebounce();
         CollapseExpandedAlbumCore();
         base.OnNavigatedFrom(e);
+        // Trim aggressively on every nav-away. ViewModel.Hibernate unsubscribes
+        // from the PlaybackStateService PropertyChanged singleton — that's the
+        // strong reference that pins this page's ViewModel across Frame cache
+        // evictions and produces the visible 1–2 s click delay over a long
+        // session. Mirrors the AlbumPage / PlaylistPage pattern.
+        TrimForNavigationCache();
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -246,6 +293,11 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         ScheduleHeroArrangeRefresh();
         ApplyPopularReleasesColumnWidth();
         TryShowContentNow();
+        // Seed the gallery marquee from whatever the VM already has — covers
+        // nav-cache restore where HasGallery was raised before this page was
+        // realized, so the ItemsSource assignment in ViewModel_PropertyChanged
+        // never saw a live GalleryMarquee element.
+        RebuildGallerySlides();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -405,7 +457,32 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             case nameof(ArtistViewModel.IsLoading):
                 TryShowContentNow();
                 break;
+            case nameof(ArtistViewModel.HasGallery):
+                RebuildGallerySlides();
+                break;
         }
+    }
+
+    /// <summary>
+    /// Feed <c>ViewModel.GalleryPhotos</c> into the compact marquee strip. The
+    /// strip does its own HTTPS normalisation + duplication for the seamless
+    /// loop; we just hand it the raw URL list (filtered down to non-empty).
+    /// </summary>
+    private void RebuildGallerySlides()
+    {
+        if (GalleryMarquee is null) return;
+        var photos = ViewModel.GalleryPhotos;
+        if (photos is null || photos.Count == 0)
+        {
+            GalleryMarquee.ItemsSource = null;
+            return;
+        }
+        var urls = new System.Collections.Generic.List<string>(photos.Count);
+        foreach (var photo in photos)
+        {
+            if (!string.IsNullOrEmpty(photo)) urls.Add(photo);
+        }
+        GalleryMarquee.ItemsSource = urls;
     }
 
     private async void ProbeWarmCacheReveal(int navigationRevision, string? expectedArtistId)
@@ -936,6 +1013,12 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         row.AccentForegroundBrush = ViewModel.PaletteAccentPillForegroundBrush;
         row.IsFeatured = args.Index == 0;
         row.Tag = vm.Uri;
+        // Self-routing DPs — control's internal CardButton_Click navigates
+        // via AlbumNavigationHelper (prefetch + connected anim + count
+        // prefill) when NavigationUri is set. Subtitle feeds nav prefill.
+        row.NavigationUri = vm.Uri;
+        row.NavigationTotalTracks = vm.TrackCount;
+        row.Subtitle = ViewModel.ArtistName;
 
         var meta = new System.Collections.Generic.List<string>(3);
         if (vm.Year > 0) meta.Add(vm.Year.ToString());
@@ -1394,10 +1477,20 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         }
     }
 
-    private void ConcertStub_Click(object sender, RoutedEventArgs e)
+    private void ConcertStub_Click(object sender, RoutedEventArgs e) => OpenConcertFromStub(sender);
+
+    private void ConcertStub_ViewClick(object sender, RoutedEventArgs e) => OpenConcertFromStub(sender);
+
+    private void OpenConcertFromStub(object sender)
     {
-        if (sender is TicketStub { Tag: string uri } && !string.IsNullOrEmpty(uri))
-            _logger?.LogDebug("ConcertStub clicked: {Uri}", uri);
+        if (sender is not TicketStub stub) return;
+        // Tag carries the spotify:concert URI (wired in ConcertsRepeater_ElementPrepared);
+        // DataContext is the original ConcertVm, which we use for the tab title.
+        if (stub.Tag is not string uri || string.IsNullOrEmpty(uri)) return;
+        var vm = stub.DataContext as ConcertVm;
+        var title = !string.IsNullOrEmpty(vm?.Venue) ? vm!.Venue! : (vm?.Title ?? "Concert");
+        var param = new ContentNavigationParameter { Uri = uri, Title = title };
+        NavigationHelpers.OpenConcert(param, title, NavigationHelpers.IsCtrlPressed());
     }
 
     private void ConcertStub_BuyClick(object sender, RoutedEventArgs e)
@@ -1416,11 +1509,54 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     private void MerchCard_BuyClick(object sender, RoutedEventArgs e) => MerchCard_Click(sender, e);
 
-    private void GalleryCard_Click(object sender, RoutedEventArgs e)
+    // ── Gallery marquee / lightbox ──────────────────────────────────────────
+    //
+    // MarqueeGalleryStrip raises ItemTapped with the original-list index when
+    // any tile is clicked (the strip itself handles duplication for the
+    // continuous loop and reports the un-duplicated index).
+    private void GalleryMarquee_ItemTapped(
+        Wavee.UI.WinUI.Controls.Gallery.MarqueeGalleryStrip sender,
+        Wavee.UI.WinUI.Controls.Gallery.GalleryItemTappedEventArgs args)
     {
-        if (sender is Button { Tag: string url })
-            _logger?.LogDebug("GalleryCard clicked: {Url}", url);
+        OpenGalleryLightboxAt(args.Index);
     }
+
+    private void OpenGalleryLightboxAt(int index)
+    {
+        var photos = ViewModel.GalleryPhotos;
+        if (photos is null || photos.Count == 0) return;
+        if (index < 0 || index >= photos.Count) index = 0;
+        GalleryFlip.SelectedIndex = index;
+        GalleryLightbox.Visibility = Visibility.Visible;
+        // Focus so the KeyDown handler can receive Esc.
+        GalleryLightbox.Focus(FocusState.Programmatic);
+    }
+
+    private void CloseGalleryLightbox()
+    {
+        if (GalleryLightbox is null) return;
+        GalleryLightbox.Visibility = Visibility.Collapsed;
+    }
+
+    private void GalleryLightbox_BackdropTapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        // Only dismiss when the tap landed on the backdrop itself or the FlipView's chrome —
+        // not on the actual photo. If the user clicks the photo we keep the lightbox open so
+        // the FlipView's prev/next gesture still works.
+        if (ReferenceEquals(e.OriginalSource, GalleryLightbox))
+            CloseGalleryLightbox();
+    }
+
+    private void GalleryLightbox_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Escape)
+        {
+            e.Handled = true;
+            CloseGalleryLightbox();
+        }
+    }
+
+    private void GalleryLightboxClose_Click(object sender, RoutedEventArgs e) => CloseGalleryLightbox();
 
     private void RelatedArtist_Click(object sender, RoutedEventArgs e)
     {
@@ -1501,9 +1637,35 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     // INavigationCacheMemoryParticipant
     // ─────────────────────────────────────────────────────────────────────
 
-    public void TrimForNavigationCache() => HeroGrid?.ReleaseSurface();
+    public void TrimForNavigationCache()
+    {
+        if (_trimmedForNavigationCache) return;
+        _trimmedForNavigationCache = true;
+        _lastRestoredArtistId = ViewModel.ArtistId;
+        HeroGrid?.ReleaseSurface();
+        // Hibernate releases the bound discography / related-artist / video /
+        // merch collections AND unsubscribes the VM from singleton services.
+        // Without this, the cached page's VM stays rooted by
+        // _playbackStateService.PropertyChanged forever — every cross-type
+        // navigation adds a stale ArtistViewModel to the singleton's
+        // invocation list, the heap grows linearly, Gen2 GCs lengthen, and
+        // clicks freeze for 1–2 s.
+        ViewModel.Hibernate();
+        // Detach compiled x:Bind so VM PropertyChanged firings can't reach
+        // the page tree while it sits invisible in the Frame cache.
+        Bindings?.StopTracking();
+    }
 
-    public void RestoreFromNavigationCache() => HeroGrid?.RestoreSurface();
+    public void RestoreFromNavigationCache()
+    {
+        HeroGrid?.RestoreSurface();
+        if (!_trimmedForNavigationCache) return;
+        _trimmedForNavigationCache = false;
+        // No Bindings.Update() here — OnNavigatedTo handles it AFTER
+        // ViewModel.Initialize(uri) so the artist-changed comparison sees the
+        // new target URI. Doing it here misfired on cross-artist navs because
+        // ViewModel.ArtistId is still the previous artist at restore time.
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // IDisposable

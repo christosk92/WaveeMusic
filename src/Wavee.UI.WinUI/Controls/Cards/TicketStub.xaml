@@ -78,13 +78,26 @@
                 </StackPanel>
             </StackPanel>
 
-            <!-- Buy -->
-            <HyperlinkButton Grid.Column="2"
-                             x:Name="BuyLink"
-                             Content="Buy ›"
-                             VerticalAlignment="Center"
-                             FontWeight="SemiBold"
-                             Click="BuyLink_Click"/>
+            <!-- View + Buy: View navigates to the in-app ConcertPage detail,
+                 Buy launches the offer's external ticket URL. Stacked vertically
+                 so a 240-px card has room for both labels without truncation. -->
+            <StackPanel Grid.Column="2"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Right"
+                        Spacing="-2">
+                <HyperlinkButton x:Name="ViewLink"
+                                 Content="View ›"
+                                 FontWeight="SemiBold"
+                                 Padding="6,2"
+                                 HorizontalAlignment="Right"
+                                 Click="ViewLink_Click"/>
+                <HyperlinkButton x:Name="BuyLink"
+                                 Content="Buy ›"
+                                 FontWeight="SemiBold"
+                                 Padding="6,2"
+                                 HorizontalAlignment="Right"
+                                 Click="BuyLink_Click"/>
+            </StackPanel>
         </Grid>
     </Button>
 </UserControl>

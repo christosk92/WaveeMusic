@@ -77,4 +77,8 @@ public sealed record AlbumView(
     string? PreReleaseRelative,
     string? ShareUrl,
     string? MetaInlineLine,
-    AlbumPalette? Palette);
+    AlbumPalette? Palette,
+    // Cached track count. Seeded by nav prefill (so the skeleton renders the
+    // right row count before the detail fetch lands) and overwritten by
+    // ApplyDetailAsync once tracks resolve.
+    int TotalTracks = 0);

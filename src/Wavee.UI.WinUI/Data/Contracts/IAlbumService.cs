@@ -41,6 +41,17 @@ public interface IAlbumService
     /// </summary>
     Task<AlbumArtistContextResult> GetArtistContextAsync(
         string artistUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches the curated playlist recommendations for an album via
+    /// <c>RECOMMENDED_PLAYLISTS</c> extended-metadata, then resolves each
+    /// playlist's hero metadata via batched <c>LIST_METADATA_V2</c>. Returns
+    /// partial <see cref="PlaylistDetailDto"/> entries (Id = full URI, Name +
+    /// ImageUrl + HeaderImageUrl populated when present, IsPartial = true).
+    /// Empty list when the album has no recommendations or the fetch fails.
+    /// </summary>
+    Task<IReadOnlyList<PlaylistDetailDto>> GetRecommendedPlaylistsAsync(
+        string albumUri, CancellationToken ct = default);
 }
 
 public sealed record AlbumSimilarResult
@@ -98,6 +109,18 @@ public sealed record AlbumDetailResult
     /// ConcertArtistPalette so the page can use the concert's theme-aware logic.
     /// </summary>
     public AlbumPalette? Palette { get; init; }
+
+    /// <summary>
+    /// True when this result is a viewport-prefetched <c>ALBUM_V4</c> extended-
+    /// metadata snapshot: hero fields populated (Name / Type / CoverArtUrl /
+    /// ReleaseDate / Artists / TotalTracks / DiscCount), but <see cref="Tracks"/>
+    /// is empty (AlbumV4 only carries track GIDs, not names/durations) and
+    /// secondary sections (<see cref="Copyrights"/>, <see cref="MoreByArtist"/>,
+    /// <see cref="AlternateReleases"/>, <see cref="Palette"/>, <see cref="Label"/>,
+    /// <see cref="ShareUrl"/>) are empty/null until the authoritative Pathfinder
+    /// fetch lands. <c>AlbumViewModel.ApplyDetailAsync</c> branches on this flag.
+    /// </summary>
+    public bool IsPartial { get; init; }
 }
 
 public sealed record AlbumAlternateReleaseResult

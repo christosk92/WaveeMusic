@@ -17,6 +17,7 @@
     xmlns:media="using:CommunityToolkit.WinUI.Media"
     xmlns:toolkit="using:CommunityToolkit.WinUI"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
+    xmlns:notifications="using:Wavee.UI.WinUI.Controls.Notifications"
     xmlns:minivideo="using:Wavee.UI.WinUI.Controls.MiniVideoPlayer"
     mc:Ignorable="d"
     Background="Transparent">
@@ -80,20 +81,6 @@
 
         <!-- Shell-level notification bars -->
         <StackPanel Grid.Row="2" Canvas.ZIndex="1">
-            <InfoBar
-                VerticalAlignment="Top"
-                HorizontalAlignment="Stretch"
-                IsOpen="{x:Bind ViewModel.IsNotificationOpen, Mode=TwoWay}"
-                Message="{x:Bind ViewModel.NotificationMessage, Mode=OneWay}"
-                Severity="{x:Bind ViewModel.NotificationSeverity, Mode=OneWay}"
-                IsClosable="True">
-                <InfoBar.ActionButton>
-                    <Button Content="{x:Bind ViewModel.NotificationActionLabel, Mode=OneWay}"
-                            Click="NotificationAction_Click"
-                            IsEnabled="{x:Bind ViewModel.IsNotificationActionEnabled, Mode=OneWay}"
-                            Visibility="{x:Bind ViewModel.HasNotificationAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                </InfoBar.ActionButton>
-            </InfoBar>
             <InfoBar x:Uid="Views_ShellPage__InfoBar_1"
                 x:Name="ConnectionErrorBar"
                 Title="Connection failed"
@@ -105,6 +92,21 @@
                 </InfoBar.ActionButton>
             </InfoBar>
         </StackPanel>
+
+        <!-- Floating Photos-style notification toast — floats above the player bar. -->
+        <notifications:NotificationToast
+            Grid.Row="2"
+            Canvas.ZIndex="3"
+            VerticalAlignment="Bottom"
+            HorizontalAlignment="Center"
+            Margin="0,0,0,16"
+            IsOpen="{x:Bind ViewModel.IsNotificationOpen, Mode=TwoWay}"
+            Message="{x:Bind ViewModel.NotificationMessage, Mode=OneWay}"
+            Severity="{x:Bind ViewModel.NotificationSeverity, Mode=OneWay}"
+            ActionLabel="{x:Bind ViewModel.NotificationActionLabel, Mode=OneWay}"
+            IsActionEnabled="{x:Bind ViewModel.IsNotificationActionEnabled, Mode=OneWay}"
+            ActionClick="NotificationAction_Click"
+            CloseRequested="Notification_CloseRequested"/>
 
         <!-- Connection overlay — blocks interaction while disconnected -->
         <Border
@@ -246,6 +248,19 @@
             VerticalAlignment="Bottom"
             Visibility="{x:Bind ViewModel.IsMiniPlayerVisibleInShell, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
             Margin="0,0,16,16"/>
+
+        <!-- Right-edge "tear-off" tab. Surfaces when the user has dismissed
+             the floating MiniVideoPlayer (X) but video keeps playing —
+             gives them a way to bring playback back into view without
+             stopping it. Inner Visibility is self-managed by the control
+             from ViewModel.IsGripperVisible; the outer wrapper gate just
+             hides it during Theatre / Fullscreen along with the Mini. -->
+        <minivideo:VideoGripperView
+            x:Name="VideoGripperControl"
+            Grid.Row="2"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Center"
+            Visibility="{x:Bind ViewModel.IsMiniPlayerVisibleInShell, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
 
         <!-- Theatre / Fullscreen overlay frame.
              Visible only when Presentation != Normal. RowSpan=4 + Canvas.ZIndex=10

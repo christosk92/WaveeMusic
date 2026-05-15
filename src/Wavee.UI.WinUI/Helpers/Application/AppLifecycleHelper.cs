@@ -761,13 +761,24 @@ public static class AppLifecycleHelper
                     new Data.Stores.ExtendedMetadataStore(
                         sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
                         sp.GetService<ILogger<Data.Stores.ExtendedMetadataStore>>()))
+                .AddSingleton<Services.IAlbumPrefetcher>(sp =>
+                    new Services.AlbumPrefetcher(
+                        sp.GetRequiredService<Data.Stores.ExtendedMetadataStore>(),
+                        sp.GetRequiredService<Data.Stores.AlbumStore>(),
+                        sp.GetService<ILogger<Services.AlbumPrefetcher>>()))
+                .AddSingleton<Services.IPlaylistMetadataPrefetcher>(sp =>
+                    new Services.PlaylistMetadataPrefetcher(
+                        sp.GetRequiredService<Data.Stores.ExtendedMetadataStore>(),
+                        sp.GetRequiredService<Data.Stores.PlaylistStore>(),
+                        sp.GetService<ILogger<Services.PlaylistMetadataPrefetcher>>()))
                 .AddSingleton<IAlbumService>(sp =>
                     new Data.Contexts.AlbumService(
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>(),
                         GetLocalLibraryService(sp),
                         sp.GetService<ILogger<Data.Contexts.AlbumService>>(),
-                        cacheCapacities.AlbumTracksHotCacheCapacity))
+                        cacheCapacities.AlbumTracksHotCacheCapacity,
+                        sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>()))
                 .AddSingleton<IPodcastService>(sp =>
                     new Data.Contexts.PodcastService(
                         sp.GetRequiredService<ISession>().Pathfinder,

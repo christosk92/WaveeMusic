@@ -36,18 +36,27 @@
 		<FileVersion>0.1.0.0</FileVersion>
 		<!-- Required for CommunityToolkit.Mvvm 8.4.0 on .NET 10 -->
 		<LangVersion>preview</LangVersion>
-		<!-- DATAS (Dynamic Adaptation To Application Sizes), default in .NET 9+.
-		     Bridges workstation/server: starts with one heap (workstation memory
-		     profile) and adds heaps under sustained pressure (server throughput).
-		     Pairs better with image-heavy navigation than vanilla workstation GC,
-		     which exhibited a textbook mid-life-crisis ratio (Gen0:Gen1:Gen2 ≈
-		     711:541:334) on this codebase — allocations living just long enough
-		     to escape Gen0. ServerGarbageCollection=true is required for DATAS;
-		     GarbageCollectionAdaptationMode=1 enables it. The audio pipeline runs
-		     out-of-process, so UI GC pauses don't need to protect playback. -->
+		<!-- Pure ServerGC (NO DATAS). ServerGarbageCollection=true provisions one
+		     managed heap per logical CPU at process start; allocations are
+		     contention-free and Gen2 sweeps run on dedicated GC threads in
+		     parallel. Costs ~50–100 MB more idle working set than DATAS but
+		     eliminates the adaptive-rebalance Gen2 pause that DATAS triggers on
+		     bursty allocation patterns (the exact shape of cross-type page
+		     navigation: alloc spike → idle → alloc spike). DATAS' published p99
+		     pause is ~3× ServerGC under this pattern (dotnet/runtime#93891),
+		     which manifested in WaveeMusic as 1–2 s UI freezes during Album →
+		     Artist → Album cycles.
+		     History: workstation GC (one heap, no parallel Gen2) was tried
+		     first and exhibited a mid-life-crisis ratio (Gen0:Gen1:Gen2 ≈
+		     711:541:334) on this codebase. DATAS was then tried and improved
+		     working set but introduced the adaptive-rebalance pause. ServerGC
+		     trades working set for predictable click latency — the right
+		     trade-off for a desktop app where navigation feel matters and the
+		     audio pipeline runs out-of-process (so UI GC pauses don't affect
+		     playback). -->
 		<ServerGarbageCollection>true</ServerGarbageCollection>
 		<ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
-		<GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
+		<GarbageCollectionAdaptationMode>0</GarbageCollectionAdaptationMode>
 
 		<!-- Required by Microsoft's official Windows AI APIs guide:
 		     https://learn.microsoft.com/en-us/windows/ai/apis/get-started

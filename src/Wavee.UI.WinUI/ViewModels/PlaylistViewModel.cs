@@ -900,6 +900,16 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         if (!string.IsNullOrEmpty(nav.Subtitle)) OwnerName = nav.Subtitle;
         else if (clearMissing) OwnerName = string.Empty;
+
+        // Seed TotalTracks so TrackDataGrid.LoadingRowCount renders the right
+        // number of skeleton rows before the playlist contents resolve. Source
+        // cards (sidebar rows, library lists, search hits) carry the count in
+        // nav.TotalTracks; deep links and other sourceless paths fall back to
+        // the grid's DefaultLoadingRowCount.
+        if (nav.TotalTracks is { } prefillTracks && prefillTracks > 0)
+            TotalTracks = prefillTracks;
+        else if (clearMissing)
+            TotalTracks = 0;
     }
 
     /// <summary>

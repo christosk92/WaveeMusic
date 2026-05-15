@@ -51,4 +51,20 @@ public sealed class AlbumStore : EntityStore<string, AlbumDetailResult>
 
     protected override Task WriteColdAsync(string key, AlbumDetailResult value, CancellationToken ct)
         => Task.CompletedTask;
+
+    /// <summary>
+    /// Seed a partial album payload parsed from an <c>ALBUM_V4</c> extended-
+    /// metadata viewport prefetch. Calls <see cref="EntityStore{TKey,TValue}.Hint"/>
+    /// which emits <c>Ready+Stale</c>, so the next <c>Observe(albumId)</c> subscriber
+    /// (e.g. AlbumPage activation) renders the partial immediately and the
+    /// authoritative Pathfinder fetch is scheduled automatically by
+    /// <c>MaterializeAsync</c>. No-op if the slot already holds a Ready+Fresh
+    /// (full) payload — never downgrades.
+    /// </summary>
+    public void HintPartial(string albumId, AlbumDetailResult partial)
+    {
+        if (!partial.IsPartial)
+            return; // misuse: only partials should be hinted (full payloads go via Push)
+        Hint(albumId, partial);
+    }
 }
