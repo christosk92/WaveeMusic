@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Playback.WatchVideoButton"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
+        <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+    </UserControl.Resources>
+
+    <!--
+        Shared "Watch Video" affordance — replaces three identical inline
+        copies in PlayerBar.xaml + SidebarPlayerWidget.xaml that all bound
+        the same VM commands with slightly different sizes. One control, one
+        place to change behaviour.
+
+        Visibility / IsEnabled gating lives ON the host inside the inner
+        Button so consumers don't need to repeat the same x:Bind
+        expressions; consumers just drop the control in and set
+        ButtonSize / IconSize.
+    -->
+    <Button x:Name="ButtonRoot"
+            Style="{StaticResource TransparentButtonStyle}"
+            Width="{x:Bind ButtonSize, Mode=OneWay}"
+            Height="{x:Bind ButtonSize, Mode=OneWay}"
+            Padding="0"
+            Click="OnButtonClick"
+            IsEnabled="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+            Visibility="{x:Bind ViewModel.IsCurrentTrackVideoCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+            ToolTipService.ToolTip="Watch Video">
+        <Grid Width="{x:Bind IconSize, Mode=OneWay}"
+              Height="{x:Bind IconSize, Mode=OneWay}">
+            <FontIcon Glyph="&#xE714;"
+                      FontSize="{x:Bind IconSize, Mode=OneWay}"
+                      Visibility="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+            <ProgressRing Width="{x:Bind IconSize, Mode=OneWay}"
+                          Height="{x:Bind IconSize, Mode=OneWay}"
+                          IsActive="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay}"
+                          Visibility="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+        </Grid>
+    </Button>
+</UserControl>

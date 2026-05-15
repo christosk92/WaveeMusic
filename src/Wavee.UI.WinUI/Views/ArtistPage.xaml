@@ -470,9 +470,20 @@
                             VerticalAlignment="Top">
 
                 <StackPanel x:Name="TopBandSection" Spacing="20">
-                    <!-- Header: title only; the top-track pager sits under the track grid. -->
+                    <!-- Header: title on the left, top-track pager on the right
+                         (right-aligned in column 1). The pager used to sit under
+                         the track grid; moving it inline with the title saves a
+                         row of vertical space and puts the paging affordance
+                         where the user is already looking when scanning the
+                         section title. -->
                     <Grid>
-                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Left">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0"
+                                    Orientation="Horizontal" Spacing="10"
+                                    VerticalAlignment="Center" HorizontalAlignment="Left">
                             <Border Width="3" MinHeight="22" CornerRadius="1.5"
                                     VerticalAlignment="Stretch"
                                     Background="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
@@ -490,6 +501,15 @@
                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                             </Border>
                         </StackPanel>
+                        <PipsPager x:Name="TopTracksPipsPager"
+                                   Grid.Column="1"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Center"
+                                   NumberOfPages="{x:Bind ViewModel.TotalPages, Mode=OneWay}"
+                                   SelectedPageIndex="{x:Bind ViewModel.CurrentPage, Mode=TwoWay}"
+                                   Visibility="{x:Bind ViewModel.HasMultiplePages, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                   PreviousButtonVisibility="Visible"
+                                   NextButtonVisibility="Visible"/>
                     </Grid>
 
                     <Grid x:Name="TopTracksBandGrid" ColumnSpacing="24" RowSpacing="20">
@@ -511,12 +531,7 @@
                                 Padding="0"
                                 VerticalAlignment="Top">
                             <Grid VerticalAlignment="Top">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
                                 <ItemsRepeater x:Name="TopTracksRepeater"
-                                               Grid.Row="0"
                                                VerticalAlignment="Top"
                                                ItemsSource="{x:Bind ViewModel.PagedTopTracks, Mode=OneWay}"
                                                ElementPrepared="TopTracksRepeater_ElementPrepared">
@@ -546,17 +561,8 @@
                                     </ItemsRepeater.ItemTemplate>
                                 </ItemsRepeater>
 
-                                <PipsPager x:Name="TopTracksPipsPager"
-                                           Grid.Row="1"
-                                           HorizontalAlignment="Center"
-                                           Margin="0,12,0,0"
-                                           NumberOfPages="{x:Bind ViewModel.TotalPages, Mode=OneWay}"
-                                           SelectedPageIndex="{x:Bind ViewModel.CurrentPage, Mode=TwoWay}"
-                                           Visibility="{x:Bind ViewModel.HasMultiplePages, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                           PreviousButtonVisibility="Visible"
-                                           NextButtonVisibility="Visible"/>
-
-                                <!-- (No per-section shimmer here — the unified
+                                <!-- PipsPager moved to the section title row above.
+                                     (No per-section shimmer here — the unified
                                      ShimmerContainer below BodyContent covers the
                                      band's placeholder via the x:Bind ShimmerGate flow.) -->
                             </Grid>
@@ -653,27 +659,14 @@
 
                 <!--  ════════════════════════════════════════════════════════
                       [4] DISCOGRAPHY
+                      Albums / Singles / Compilations subsections only — the
+                      "Discography" parent header was redundant with the
+                      sub-band titles, so it's removed and the section pulls
+                      up to sit closer to the band above.
                       ════════════════════════════════════════════════════════ -->
-                <StackPanel x:Name="DiscographySection" Spacing="20">
-                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                        <Border Width="3" MinHeight="22" CornerRadius="1.5"
-                                VerticalAlignment="Stretch"
-                                Background="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                        <TextBlock Text="Discography"
-                                   Style="{StaticResource SubtitleTextBlockStyle}"
-                                   FontWeight="SemiBold"
-                                   VerticalAlignment="Center"/>
-                        <Border CornerRadius="6"
-                                Padding="6,1"
-                                Background="{ThemeResource SubtleFillColorTertiaryBrush}"
-                                Visibility="{x:Bind ViewModel.IsDebugMode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <TextBlock Text="artistUnion.discography"
-                                       FontSize="10"
-                                       FontFamily="Consolas"
-                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                        </Border>
-                    </StackPanel>
-
+                <StackPanel x:Name="DiscographySection"
+                            Margin="0,-16,0,0"
+                            Spacing="20">
                     <!-- Albums grid -->
                     <StackPanel Spacing="12"
                                 Visibility="{x:Bind ViewModel.HasAlbums, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">

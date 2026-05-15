@@ -15,6 +15,20 @@ namespace Wavee.UI.WinUI.Services;
 public interface IMediaSurfaceConsumer
 {
     /// <summary>
+    /// Acquisition priority for this consumer. Higher wins. When a lower-
+    /// priority surface (e.g. the floating <c>MiniVideoPlayer</c>) tries to
+    /// acquire while a higher-priority surface (e.g. the fullscreen
+    /// <c>VideoPlayerPage</c>) is already the active owner, the arbiter
+    /// drops the request rather than letting the mini steal the surface
+    /// mid-navigation.
+    ///
+    /// Defaults to 0. Concrete consumers override with their own constant.
+    /// Suggested values: VideoPlayerPage = 10, MiniVideoPlayer = 5, sidebar
+    /// / expanded popout = 0.
+    /// </summary>
+    int OwnerPriority => 0;
+
+    /// <summary>
     /// Bind <paramref name="player"/> to this consumer's
     /// <c>MediaPlayerElement</c> (typically <c>element.SetMediaPlayer(player)</c>).
     /// Called by <see cref="IActiveVideoSurfaceService"/> when this consumer

@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
+    xmlns:mini="using:Wavee.UI.WinUI.Controls.MiniVideoPlayer"
     mc:Ignorable="d"
     Width="340"
     Height="232"
@@ -38,13 +39,19 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Video host: code-behind mounts a MediaPlayerElement here at
-                 index 0 (under the overlays) when IActiveVideoSurfaceService
-                 awards us the surface. Background is black so the rounded
-                 corners match the video letterbox. -->
+            <!-- Video host: VideoSurfaceHost mounts 3 layers (album art /
+                 blurred poster / live video). Code-behind mounts the live
+                 video element into SurfaceHost.VideoMountPoint when
+                 IActiveVideoSurfaceService awards us the surface. The
+                 enclosing Grid still owns overlays (buttons / progress bar /
+                 resize grips) above the surface. -->
             <Grid x:Name="MiniVideoHost"
-                  Grid.Row="0"
-                  Background="Black">
+                  Grid.Row="0">
+
+                <mini:VideoSurfaceHost x:Name="SurfaceHost"
+                                       AlbumArtUrl="{x:Bind ViewModel.Player.AlbumArtLarge, Mode=OneWay}"
+                                       PosterUrl="{x:Bind ViewModel.Player.AlbumArtLarge, Mode=OneWay}"
+                                       IsFirstFrameReady="{x:Bind ViewModel.HasVideoSurfaceWithFirstFrame, Mode=OneWay}" />
 
                 <!-- Click-anywhere expand: lowest overlay, fills the whole
                      video area. Specific buttons sit on top with their own
@@ -137,29 +144,6 @@
                                       FontSize="13"
                                       Foreground="White"/>
                         </Button>
-                    </StackPanel>
-                </Grid>
-
-                <Grid x:Name="MiniVideoStatusOverlay"
-                      Canvas.ZIndex="2"
-                      Background="#66000000"
-                      Visibility="Collapsed"
-                      IsHitTestVisible="False">
-                    <StackPanel
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Spacing="6">
-                        <ProgressRing
-                            Width="26"
-                            Height="26"
-                            IsActive="True"
-                            Foreground="White"/>
-                        <TextBlock
-                            x:Name="MiniVideoStatusText"
-                            Text="Buffering"
-                            FontSize="11"
-                            FontWeight="SemiBold"
-                            Foreground="White"/>
                     </StackPanel>
                 </Grid>
 

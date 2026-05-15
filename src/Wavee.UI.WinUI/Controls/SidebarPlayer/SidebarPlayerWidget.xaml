@@ -519,27 +519,7 @@
                             Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
                             FontSize="12" />
                     </ToggleButton>
-                    <Button
-                        Style="{StaticResource TransparentButtonStyle}"
-                        Width="28"
-                        Height="28"
-                        Padding="0"
-                        Command="{x:Bind ViewModel.SwitchToVideoCommand}"
-                        IsEnabled="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                        Visibility="{x:Bind ViewModel.IsCurrentTrackVideoCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                        ToolTipService.ToolTip="Watch Video">
-                        <Grid Width="14" Height="14">
-                            <FontIcon
-                                Glyph="&#xE714;"
-                                FontSize="12"
-                                Visibility="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
-                            <ProgressRing
-                                Width="14"
-                                Height="14"
-                                IsActive="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay}"
-                                Visibility="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                        </Grid>
-                    </Button>
+                    <playback:WatchVideoButton ButtonSize="28" IconSize="14" />
                     <Button
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="28"
@@ -758,27 +738,7 @@
                             Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
                             FontSize="12" />
                     </ToggleButton>
-                    <Button
-                        Style="{StaticResource TransparentButtonStyle}"
-                        Width="26"
-                        Height="26"
-                        Padding="0"
-                        Command="{x:Bind ViewModel.SwitchToVideoCommand}"
-                        IsEnabled="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
-                        Visibility="{x:Bind ViewModel.IsCurrentTrackVideoCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                        ToolTipService.ToolTip="Watch Video">
-                        <Grid Width="13" Height="13">
-                            <FontIcon
-                                Glyph="&#xE714;"
-                                FontSize="11"
-                                Visibility="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
-                            <ProgressRing
-                                Width="13"
-                                Height="13"
-                                IsActive="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay}"
-                                Visibility="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-                        </Grid>
-                    </Button>
+                    <playback:WatchVideoButton ButtonSize="26" IconSize="13" />
                     <Button
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="26"

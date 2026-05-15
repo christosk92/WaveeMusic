@@ -1262,13 +1262,16 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         IsResolvingVideo = true;
         try
         {
-            var routeToPlayerPopout = _dockingService?.IsPlayerDetached == true;
             var switched = await _playbackStateService.SwitchToVideoAsync();
             if (switched)
             {
                 PreferVideoPlaybackInSession = true;
-                if (!routeToPlayerPopout)
-                    NavigationHelpers.OpenVideoPlayer();
+                // Mini-as-default: the floating MiniVideoPlayer in the shell
+                // surfaces automatically when video playback becomes active.
+                // The user clicks Mini to expand into the fullscreen
+                // VideoPlayerPage via the Mini → Full ConnectedAnimation morph.
+                // No auto-navigation here — that broke the user's browse
+                // context every time a video started.
                 return;
             }
 

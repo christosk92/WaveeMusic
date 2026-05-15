@@ -172,27 +172,22 @@ public partial class App : Application
                 if (videoEngine is not null)
                 {
                     string? lastNavigatedUri = null;
+                    // Mini-as-default routing: the floating MiniVideoPlayer
+                    // in the shell handles surfacing whenever video playback
+                    // becomes active. Auto-navigating to the fullscreen page
+                    // hijacks whatever the user was browsing — instead the
+                    // Mini appears bottom-right and the user clicks it to
+                    // expand via ConnectedAnimation. The subscription is
+                    // kept (no functional behaviour) so any future per-track
+                    // hooks have a single place to land.
                     videoEngine.StateChanges.Subscribe(state =>
                     {
                         var uri = state.TrackUri;
                         if (string.IsNullOrEmpty(uri)) { lastNavigatedUri = null; return; }
-                        if (uri == lastNavigatedUri) return;
                         lastNavigatedUri = uri;
-                        if (VideoAutoNavigationSuppressor.TryConsume(uri))
-                            return;
-
-                        var dispatcher = MainWindow.Instance?.DispatcherQueue;
-                        dispatcher?.TryEnqueue(() =>
-                        {
-                            try
-                            {
-                                Wavee.UI.WinUI.Helpers.Navigation.NavigationHelpers.OpenVideoPlayer();
-                            }
-                            catch (Exception ex)
-                            {
-                                LogUnhandledException("VideoAutoNav", ex);
-                            }
-                        });
+                        // Consume the suppressor token so callers that rely
+                        // on "didn't auto-nav this URI" semantics stay correct.
+                        VideoAutoNavigationSuppressor.TryConsume(uri);
                     });
                 }
             }

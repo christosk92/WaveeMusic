@@ -45,6 +45,11 @@ namespace Wavee.UI.WinUI.Views;
 /// </summary>
 public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
 {
+    // Highest priority — the fullscreen page outranks the floating Mini and
+    // the sidebar widgets so a stray Mini.AcquireSurface during nav-in can't
+    // steal the surface back. See ActiveVideoSurfaceService.AcquireSurface.
+    int IMediaSurfaceConsumer.OwnerPriority => 10;
+
     private const int ScrimIdleHideMs = 1500;
     // Hard cap on how long the hover-pin can keep the chrome alive without
     // any pointer activity. Catches the case where a pointer enters the
@@ -68,7 +73,7 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
     private FrameworkElement? _videoElementSurface;
 
     private DispatcherQueueTimer? _hideTimer;
-    private Storyboard? _scrimFadeStoryboard;
+    private bool _scrimImplicitInstalled;
     private bool _scrimVisible = true;
     private bool _scrimPinned;
 
@@ -120,10 +125,14 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
 
         _surface.AcquireSurface(this);
 
+        // Replay the Mini → Full morph if the user expanded from the floating
+        // mini-player. No-op when the page was opened by other paths
+        // (e.g. direct navigation).
+        Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.TryStartMiniToFull(SurfaceHost);
+
         EnsureUpNextOverlay();
 
-        ApplyVideoStatusOverlay();
-        ApplyListenAsAudioVisibility();
+        UpdateSurfaceFirstFrameState();
         UpdateHeartState();
 
         // First paint: bring chrome up, then start the idle timer. Without
@@ -155,8 +164,6 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
             _hideTimer.Tick -= OnHideTimerTick;
             _hideTimer = null;
         }
-        _scrimFadeStoryboard?.Stop();
-        _scrimFadeStoryboard = null;
     }
 
     // ── Event wiring ───────────────────────────────────────────────────────
@@ -324,6 +331,10 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
                 var svc = _presentationService ??= Ioc.Default.GetService<INowPlayingPresentationService>();
                 if (svc is { IsExpanded: true })
                 {
+                    // Prepare the reverse morph BEFORE handing off so Mini's
+                    // Loaded handler can replay it. Safe no-op if Mini isn't
+                    // about to surface.
+                    Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.PrepareFullToMini(SurfaceHost);
                     svc.ExitToNormal();
                     args.Handled = true;
                     return;
@@ -393,12 +404,10 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        switch (e.PropertyName)
-        {
-            case nameof(PlayerBarViewModel.IsCurrentTrackAudioCapable):
-                ApplyListenAsAudioVisibility();
-                break;
-        }
+        // IsCurrentTrackAudioCapable used to be funnelled through code-behind
+        // (ApplyListenAsAudioVisibility) — the XAML now binds the button's
+        // Visibility directly to the VM, so there is no per-property switch
+        // needed here. Hook is left in place for future page-level reactions.
     }
 
     private void OnPlaybackStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -464,9 +473,8 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
     public void AttachSurface(MediaPlayer player)
     {
         _logger?.LogInformation(
-            "[VideoPlayerPage.AttachSurface] instance={Hash} isLoaded={IsLoaded} hadElement={HadElement} hostSize={W}x{H}",
-            GetHashCode(), IsLoaded, _videoElement is not null,
-            VideoHost.ActualWidth, VideoHost.ActualHeight);
+            "[VideoPlayerPage.AttachSurface] instance={Hash} isLoaded={IsLoaded} hadElement={HadElement}",
+            GetHashCode(), IsLoaded, _videoElement is not null);
         DetachElementSurfaceInternal();
         if (_videoElement is null)
         {
@@ -479,7 +487,7 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
                 IsTabStop = false,
                 IsHitTestVisible = false, // pointer events bubble to the scrim
             };
-            VideoHost.Children.Insert(0, _videoElement);
+            SurfaceHost.MountVideoElement(_videoElement);
             // Force layout so MediaFoundation sees a non-zero render target
             // BEFORE the SetMediaPlayer below — without this, a freshly-
             // created element occasionally renders black because the swap
@@ -487,9 +495,6 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
             // re-allocates after the first frame arrives. UpdateLayout flushes
             // the synchronous measure / arrange pass.
             _videoElement.UpdateLayout();
-            _logger?.LogDebug(
-                "[VideoPlayerPage.AttachSurface] created fresh MediaPlayerElement, post-layout size={W}x{H}",
-                _videoElement.ActualWidth, _videoElement.ActualHeight);
         }
         _videoElement.SetMediaPlayer(player);
 
@@ -511,7 +516,7 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
             // Best-effort; MediaFoundation is robust to a missed nudge.
         }
 
-        ApplyVideoStatusOverlay();
+        UpdateSurfaceFirstFrameState();
     }
 
     public void AttachElementSurface(FrameworkElement element)
@@ -521,11 +526,8 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
             return;
 
         _videoElementSurface = element;
-        element.HorizontalAlignment = HorizontalAlignment.Stretch;
-        element.VerticalAlignment = VerticalAlignment.Stretch;
-        element.IsHitTestVisible = false;
-        VideoHost.Children.Insert(0, element);
-        ApplyVideoStatusOverlay();
+        SurfaceHost.MountVideoElement(element);
+        UpdateSurfaceFirstFrameState();
     }
 
     public void DetachSurface()
@@ -535,48 +537,43 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
             GetHashCode(), _videoElement is not null, _videoElementSurface is not null, IsLoaded);
         DetachMediaPlayerSurfaceInternal();
         DetachElementSurfaceInternal();
-        ApplyVideoStatusOverlay();
+        UpdateSurfaceFirstFrameState();
     }
 
     private void DetachMediaPlayerSurfaceInternal()
     {
         if (_videoElement is null) return;
         _videoElement.SetMediaPlayer(null);
-        VideoHost.Children.Remove(_videoElement);
+        SurfaceHost.UnmountVideoElement(_videoElement);
         _videoElement = null;
-        _logger?.LogDebug("[VideoPlayerPage] MediaPlayerElement removed from VideoHost");
     }
 
     private void DetachElementSurfaceInternal()
     {
         if (_videoElementSurface is null) return;
-        VideoHost.Children.Remove(_videoElementSurface);
+        SurfaceHost.UnmountVideoElement(_videoElementSurface);
         _videoElementSurface.IsHitTestVisible = true;
         _videoElementSurface = null;
-        _logger?.LogDebug("[VideoPlayerPage] element surface removed from VideoHost");
     }
 
     private void OnActiveSurfaceChanged(object? sender, MediaPlayer? surface)
-        => DispatcherQueue?.TryEnqueue(ApplyVideoStatusOverlay);
+        => DispatcherQueue?.TryEnqueue(UpdateSurfaceFirstFrameState);
 
     private void OnSurfaceOwnershipChanged(object? sender, EventArgs e)
-        => DispatcherQueue?.TryEnqueue(ApplyVideoStatusOverlay);
+        => DispatcherQueue?.TryEnqueue(UpdateSurfaceFirstFrameState);
 
-    private void ApplyVideoStatusOverlay()
+    /// <summary>
+    /// Drives <see cref="VideoSurfaceHost.IsFirstFrameReady"/> from the
+    /// surface service's <c>HasActiveFirstFrame</c>. The host's implicit
+    /// composition animations handle the crossfade timing — we just flip
+    /// the bool and the layered visuals settle into the right opacity.
+    /// </summary>
+    private void UpdateSurfaceFirstFrameState()
     {
         var hasAttachedVideo = _videoElement is not null || _videoElementSurface is not null;
-        var showLoading = hasAttachedVideo
-                          && _surface.HasActiveSurface
-                          && !_surface.HasActiveFirstFrame;
-        var showBuffering = hasAttachedVideo
-                            && _surface.HasActiveSurface
-                            && _surface.HasActiveFirstFrame
-                            && _surface.IsActiveSurfaceBuffering;
-
-        VideoStatusText.Text = showBuffering ? "Buffering" : "Loading";
-        VideoStatusOverlay.Visibility = (showLoading || showBuffering)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        SurfaceHost.IsFirstFrameReady = hasAttachedVideo
+            && _surface.HasActiveSurface
+            && _surface.HasActiveFirstFrame;
     }
 
     // ── Auto-fade scrim ────────────────────────────────────────────────────
@@ -759,24 +756,37 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         if (_scrimVisible == visible && Scrim.Opacity == (visible ? 1 : 0)) return;
         _scrimVisible = visible;
 
-        _scrimFadeStoryboard?.Stop();
-        var sb = new Storyboard();
-        var anim = new DoubleAnimation
-        {
-            To = visible ? 1.0 : 0.0,
-            Duration = TimeSpan.FromMilliseconds(FadeDurationMs),
-            EnableDependentAnimation = true,
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
-        Storyboard.SetTarget(anim, Scrim);
-        Storyboard.SetTargetProperty(anim, "Opacity");
-        sb.Children.Add(anim);
-        _scrimFadeStoryboard = sb;
-        sb.Begin();
+        // One-time install of a composition Opacity implicit animation so we
+        // get free, framework-cheap fades on every flip without Storyboard
+        // create/Stop churn under rapid pointer movement.
+        EnsureScrimImplicitAnimation();
+        Scrim.Opacity = visible ? 1.0 : 0.0;
 
         // Disable hit-testing on the chrome while invisible so a stray click
         // does not hit an invisible transport control.
         Scrim.IsHitTestVisible = visible;
+    }
+
+    private void EnsureScrimImplicitAnimation()
+    {
+        if (_scrimImplicitInstalled) return;
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(Scrim);
+        var compositor = visual.Compositor;
+
+        var anim = compositor.CreateScalarKeyFrameAnimation();
+        anim.InsertExpressionKeyFrame(
+            1f,
+            "this.FinalValue",
+            compositor.CreateCubicBezierEasingFunction(
+                new System.Numerics.Vector2(0.16f, 1f),
+                new System.Numerics.Vector2(0.30f, 1f)));
+        anim.Duration = TimeSpan.FromMilliseconds(FadeDurationMs);
+        anim.Target = "Opacity";
+
+        var collection = compositor.CreateImplicitAnimationCollection();
+        collection["Opacity"] = anim;
+        visual.ImplicitAnimations = collection;
+        _scrimImplicitInstalled = true;
     }
 
     // ── Fullscreen toggle ──────────────────────────────────────────────────
@@ -797,13 +807,6 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         // No-op for chrome sync (VideoTransportBar owns that) — kept as the
         // subscription hook in case future AppWindow state changes need to
         // drive the cursor / scrim behavior.
-    }
-
-    private void ApplyListenAsAudioVisibility()
-    {
-        ListenAsAudioButton.Visibility = ViewModel.IsCurrentTrackAudioCapable
-            ? Visibility.Visible
-            : Visibility.Collapsed;
     }
 
     private void TrackTitle_Click(object sender, RoutedEventArgs e)

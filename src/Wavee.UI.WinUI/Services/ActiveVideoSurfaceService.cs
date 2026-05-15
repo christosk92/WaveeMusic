@@ -58,6 +58,22 @@ public sealed class ActiveVideoSurfaceService : IActiveVideoSurfaceService
 
     public void AcquireSurface(IMediaSurfaceConsumer consumer)
     {
+        // Owner priority: a lower-priority consumer (e.g. the floating
+        // MiniVideoPlayer) can't steal the surface from a higher-priority one
+        // (e.g. the fullscreen VideoPlayerPage). This prevents the race where
+        // Mini's Loaded fires AFTER FullPage's Loaded during a navigation and
+        // yanks the surface back to itself.
+        if (_currentOwner is not null
+            && !ReferenceEquals(_currentOwner, consumer)
+            && _currentOwner.OwnerPriority > consumer.OwnerPriority)
+        {
+            _logger?.LogDebug(
+                "[surface] AcquireSurface ignored: {Consumer} pri={Pri} < current {Current} pri={CurrentPri}",
+                consumer.GetType().Name, consumer.OwnerPriority,
+                _currentOwner.GetType().Name, _currentOwner.OwnerPriority);
+            return;
+        }
+
         // Detach the previous owner first so the MediaPlayer never has two
         // bound MediaPlayerElements at the same instant — that's what makes
         // handoff glitch-free.

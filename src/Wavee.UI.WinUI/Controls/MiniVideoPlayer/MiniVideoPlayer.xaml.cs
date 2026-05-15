@@ -29,6 +29,11 @@ namespace Wavee.UI.WinUI.Controls.MiniVideoPlayer;
 /// </remarks>
 public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
 {
+    // Middle priority — outranks Sidebar / Expanded (default 0) but yields
+    // to the fullscreen VideoPlayerPage. Prevents the Mini from yanking the
+    // surface mid-navigation when the user clicks to expand.
+    int IMediaSurfaceConsumer.OwnerPriority => 5;
+
     private readonly IActiveVideoSurfaceService _surface;
     public MiniVideoPlayerViewModel ViewModel { get; }
 
@@ -118,8 +123,10 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
             // the control — first-paint should converge to the same idle
             // state as a fade-out after hover.
             RestartHideTimer();
+            // Replay the reverse morph if VideoPlayerPage just navigated
+            // away. No-op when no animation was prepared.
+            Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.TryStartFullToMini(SurfaceHost);
         }
-        UpdateVideoStatusOverlay();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -148,7 +155,6 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
             return;
         }
 
-        UpdateVideoStatusOverlay();
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -168,11 +174,16 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
             _surface.ReleaseSurface(this);
             Visibility = Visibility.Collapsed;
         }
-        UpdateVideoStatusOverlay();
     }
 
     private void ExpandClickArea_Click(object sender, RoutedEventArgs e)
-        => ViewModel.ExpandCommand.Execute(null);
+    {
+        // Capture the Mini's video surface so the fullscreen page can morph
+        // into its bounds on Loaded — gives a YouTube-style scale-in feel
+        // instead of a hard nav cut.
+        Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.PrepareMiniToFull(SurfaceHost);
+        ViewModel.ExpandCommand.Execute(null);
+    }
 
     // ── IMediaSurfaceConsumer ─────────────────────────────────────────────
 
@@ -189,11 +200,9 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
                 VerticalAlignment = VerticalAlignment.Stretch,
                 IsHitTestVisible = false, // clicks bubble to ExpandClickArea
             };
-            // Row 0 of MiniVideoHost (the Button overlay sits at higher Z).
-            MiniVideoHost.Children.Insert(0, _element);
+            SurfaceHost.MountVideoElement(_element);
         }
         _element.SetMediaPlayer(player);
-        UpdateVideoStatusOverlay();
     }
 
     public void AttachElementSurface(FrameworkElement element)
@@ -203,52 +212,27 @@ public sealed partial class MiniVideoPlayer : UserControl, IMediaSurfaceConsumer
             return;
 
         _elementSurface = element;
-        element.HorizontalAlignment = HorizontalAlignment.Stretch;
-        element.VerticalAlignment = VerticalAlignment.Stretch;
-        element.IsHitTestVisible = false;
-        MiniVideoHost.Children.Insert(0, element);
-        UpdateVideoStatusOverlay();
+        SurfaceHost.MountVideoElement(element);
     }
 
     public void DetachSurface()
     {
         DetachMediaPlayerSurface();
         DetachElementSurface();
-        UpdateVideoStatusOverlay();
-    }
-
-    private void UpdateVideoStatusOverlay()
-    {
-        if (MiniVideoStatusOverlay is null) return;
-        var hasAttachedVideo = _element is not null || _elementSurface is not null;
-        var showLoading = ViewModel.IsVisible
-            && hasAttachedVideo
-            && _surface.HasActiveSurface
-            && !_surface.HasActiveFirstFrame;
-        var showBuffering = ViewModel.IsVisible
-            && hasAttachedVideo
-            && _surface.HasActiveSurface
-            && _surface.HasActiveFirstFrame
-            && _surface.IsActiveSurfaceBuffering;
-
-        MiniVideoStatusText.Text = showBuffering ? "Buffering" : "Loading";
-        MiniVideoStatusOverlay.Visibility = showLoading || showBuffering
-            ? Visibility.Visible
-            : Visibility.Collapsed;
     }
 
     private void DetachMediaPlayerSurface()
     {
         if (_element is null) return;
         _element.SetMediaPlayer(null);
-        MiniVideoHost.Children.Remove(_element);
+        SurfaceHost.UnmountVideoElement(_element);
         _element = null;
     }
 
     private void DetachElementSurface()
     {
         if (_elementSurface is null) return;
-        MiniVideoHost.Children.Remove(_elementSurface);
+        SurfaceHost.UnmountVideoElement(_elementSurface);
         _elementSurface.IsHitTestVisible = true;
         _elementSurface = null;
     }

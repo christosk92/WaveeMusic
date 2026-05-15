@@ -7,6 +7,7 @@
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:local="using:Wavee.UI.WinUI.Controls.Local"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
+    xmlns:mini="using:Wavee.UI.WinUI.Controls.MiniVideoPlayer"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     NavigationCacheMode="Disabled"
@@ -50,39 +51,15 @@
               Background="Black">
 
             <!--
-                VideoHost: the MediaPlayerElement is mounted here in code-behind
-                via AttachSurface/AttachElementSurface. We mount it as the first
-                child so the scrim renders above it. Stretches to fill the
-                column; MediaPlayerElement.Stretch=Uniform letterboxes content
-                with the column's black background to avoid awkward cropping.
+                VideoSurfaceHost provides the album-art / blurred-poster /
+                video-frame crossfade pipeline. Code-behind mounts the
+                MediaPlayerElement or WebView2 into its VideoMountPoint
+                when IActiveVideoSurfaceService awards us the surface.
+                No status overlay — the crossfade IS the loading affordance.
             -->
-            <Grid x:Name="VideoHost" />
-
-            <!--
-                Loading / Buffering / "Playing in another window" overlays.
-                Sits above the video but below the scrim chrome so it doesn't
-                fight pointer input on the transport bar. Visibility driven
-                by ApplyVideoStatusOverlay() in code-behind, which reads
-                IActiveVideoSurfaceService's HasActiveSurface / HasActiveFirstFrame /
-                IsActiveSurfaceBuffering / CurrentOwner.
-            -->
-            <Grid x:Name="VideoStatusOverlay"
-                  Visibility="Collapsed"
-                  Background="#80000000"
-                  IsHitTestVisible="False">
-                <StackPanel HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Spacing="14">
-                    <ProgressRing IsActive="True"
-                                  Width="40" Height="40"
-                                  Foreground="White" />
-                    <TextBlock x:Name="VideoStatusText"
-                               Text="Loading"
-                               FontSize="14"
-                               Foreground="White"
-                               HorizontalAlignment="Center" />
-                </StackPanel>
-            </Grid>
+            <mini:VideoSurfaceHost x:Name="SurfaceHost"
+                                   AlbumArtUrl="{x:Bind ViewModel.AlbumArtLarge, Mode=OneWay}"
+                                   PosterUrl="{x:Bind ViewModel.AlbumArtLarge, Mode=OneWay}" />
 
             <!-- ============== SCRIM ==============
                  Fades together as one unit when the pointer goes idle for
@@ -136,7 +113,7 @@
                             Background="#59000000"
                             Foreground="White"
                             Command="{x:Bind ViewModel.SwitchToAudioCommand}"
-                            Visibility="Collapsed">
+                            Visibility="{x:Bind ViewModel.IsCurrentTrackAudioCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel Orientation="Horizontal"
                                     VerticalAlignment="Center"
                                     Spacing="8">

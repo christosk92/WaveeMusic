@@ -342,6 +342,44 @@ public sealed class TrackData
 
     [JsonPropertyName("playability")]
     public Playability? Playability { get; init; }
+
+    /// <summary>
+    /// Audio / video associations published by Pathfinder. <c>videoAssociations.totalCount</c>
+    /// is &gt; 0 when the audio track has a linked music video — drives the
+    /// "Watch Video" affordance in search rows. The server includes this on
+    /// every track in <c>searchV2.topResults</c>; the DTO simply needed to
+    /// parse it.
+    /// </summary>
+    [JsonPropertyName("associationsV3")]
+    public TrackAssociationsV3? AssociationsV3 { get; init; }
+
+    /// <summary>
+    /// <c>"VIDEO"</c> when the track URI itself IS a video catalog entry
+    /// (not an audio track that has a linked video). Lets the UI route
+    /// directly to the video player without resolving an audio→video link.
+    /// </summary>
+    [JsonPropertyName("trackMediaType")]
+    public string? TrackMediaType { get; init; }
+}
+
+/// <summary>
+/// associationsV3 block published on every Pathfinder <c>Track</c>. We
+/// only consume the totalCounts — they're enough to render the badge and
+/// the watch-video button.
+/// </summary>
+public sealed class TrackAssociationsV3
+{
+    [JsonPropertyName("audioAssociations")]
+    public TrackAssociationCounts? AudioAssociations { get; init; }
+
+    [JsonPropertyName("videoAssociations")]
+    public TrackAssociationCounts? VideoAssociations { get; init; }
+}
+
+public sealed class TrackAssociationCounts
+{
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
 }
 
 /// <summary>

@@ -90,9 +90,19 @@ public interface ITrackItem : INotifyPropertyChanged
     bool IsLoaded { get; }
 
     /// <summary>
-    /// Whether this entry is a music video (has audio associations).
+    /// Whether this entry has a music video available — either the audio
+    /// track has a linked video (<c>associationsV3.videoAssociations.totalCount &gt; 0</c>),
+    /// or the track itself IS a video (<see cref="IsVideoTrack"/>). Drives
+    /// the "Watch Video" affordance / film-badge across track rows.
     /// </summary>
     bool HasVideo => false;
+
+    /// <summary>
+    /// True when this catalog entry IS a video track (Pathfinder
+    /// <c>trackMediaType == "VIDEO"</c>) rather than an audio track that has
+    /// a linked video. Plays should route directly to the video player.
+    /// </summary>
+    bool IsVideoTrack => false;
 
     /// <summary>
     /// Whether this track is saved/liked in the user's library.
