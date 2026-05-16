@@ -30,6 +30,8 @@
             Width="{x:Bind ButtonSize, Mode=OneWay}"
             Height="{x:Bind ButtonSize, Mode=OneWay}"
             Padding="0"
+            HorizontalContentAlignment="Center"
+            VerticalContentAlignment="Center"
             Click="OnButtonClick"
             IsEnabled="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
             Visibility="{x:Bind ViewModel.IsCurrentTrackVideoCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"

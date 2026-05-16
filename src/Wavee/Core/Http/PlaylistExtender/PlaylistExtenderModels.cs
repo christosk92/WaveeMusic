@@ -23,8 +23,48 @@ internal sealed class ExtendPlaylistRequest
 
 public sealed class ExtendPlaylistResponse
 {
+    [JsonPropertyName("recommendedTracks")]
+    public List<RecommendedExtendedTrack>? RecommendedTracks { get; init; }
+
     [JsonPropertyName("tracks")]
     public List<ExtendedTrack>? Tracks { get; init; }
+}
+
+public sealed class RecommendedExtendedTrack
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; init; }
+
+    [JsonPropertyName("originalId")]
+    public string? OriginalId { get; init; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+
+    [JsonPropertyName("artists")]
+    public List<ExtendedArtist>? Artists { get; init; }
+
+    [JsonPropertyName("album")]
+    public RecommendedExtendedAlbum? Album { get; init; }
+
+    /// <summary>Track duration in milliseconds.</summary>
+    [JsonPropertyName("duration")]
+    public long Duration { get; init; }
+}
+
+public sealed class RecommendedExtendedAlbum
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; init; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+
+    [JsonPropertyName("imageUrl")]
+    public string? ImageUrl { get; init; }
+
+    [JsonPropertyName("largeImageUrl")]
+    public string? LargeImageUrl { get; init; }
 }
 
 public sealed class ExtendedTrack
@@ -63,6 +103,9 @@ public sealed class ExtendedTrackMetadata
 
 public sealed class ExtendedArtist
 {
+    [JsonPropertyName("id")]
+    public string? Id { get; init; }
+
     [JsonPropertyName("name")]
     public string? Name { get; init; }
 

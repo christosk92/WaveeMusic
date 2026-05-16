@@ -335,6 +335,21 @@ public sealed class AudioEngine : IAsyncDisposable
 
     // ── Deferred playback loop (instant start from head data) ──
 
+    private IAudioDecoder? FindDecoderForCodec(string? codec, Stream stream, out Stream decodingStream)
+    {
+        if (string.Equals(codec, "vorbis", StringComparison.OrdinalIgnoreCase))
+        {
+            var decoder = _decoderRegistry.FindDecoderByFormatName("Vorbis");
+            if (decoder != null)
+            {
+                decodingStream = stream;
+                return decoder;
+            }
+        }
+
+        return _decoderRegistry.FindDecoder(stream, out decodingStream);
+    }
+
     private async Task PlaybackLoopDeferredAsync(PlayTrackCommand cmd, Task<DeferredResult> deferredTask, CancellationToken ct)
     {
         var startPositionMs = cmd.PositionMs;
@@ -403,7 +418,7 @@ public sealed class AudioEngine : IAsyncDisposable
         }
 
         // Decoder reads from lazyStream (head data first, then CDN seamlessly)
-        var decoder = _decoderRegistry.FindDecoder(lazyStream, out var decodingStream);
+        var decoder = FindDecoderForCodec(cmd.Codec, lazyStream, out var decodingStream);
         if (decoder == null)
             throw new NotSupportedException($"No decoder found for codec: {cmd.Codec}");
 
@@ -928,7 +943,7 @@ public sealed class AudioEngine : IAsyncDisposable
         await using var decryptStream = new AudioDecryptStream(audioKey, bufferedStream);
 
         // Decode
-        var decoder = _decoderRegistry.FindDecoder(decryptStream, out var decodingStream);
+        var decoder = FindDecoderForCodec(cmd.Codec, decryptStream, out var decodingStream);
         if (decoder == null)
             throw new NotSupportedException($"No decoder found for codec: {cmd.Codec}");
 

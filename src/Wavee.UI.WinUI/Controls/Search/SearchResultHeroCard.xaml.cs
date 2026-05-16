@@ -163,6 +163,7 @@ public sealed partial class SearchResultHeroCard : UserControl
             LoadBleedImage(null);
             RefreshPlaybackState();
             UpdateOverlayState();
+            ApplyAddChipForItem(null);
             return;
         }
 
@@ -233,6 +234,7 @@ public sealed partial class SearchResultHeroCard : UserControl
 
         RefreshPlaybackState();
         UpdateOverlayState();
+        ApplyAddChipForItem(item);
     }
 
     // ── Artist hero header (fetched via ArtistStore) ──

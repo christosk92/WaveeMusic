@@ -18,6 +18,12 @@ public sealed record AlbumTrackDto : ITrackItem
     public required string AlbumName { get; init; }
     public required string AlbumId { get; init; }
     public string? ImageUrl { get; init; }
+    /// <summary>
+    /// Smaller CDN flavor of <see cref="ImageUrl"/> for the 28-DIP / 36-DIP
+    /// thumbnails the app-wide "Add to playlist" flow uses. Optional —
+    /// callers fall back to <see cref="ImageUrl"/> when null.
+    /// </summary>
+    public string? ImageSmallUrl { get; init; }
     public TimeSpan Duration { get; init; }
     public bool IsExplicit { get; init; }
     /// <summary>

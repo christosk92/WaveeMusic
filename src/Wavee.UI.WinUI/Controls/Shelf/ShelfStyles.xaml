@@ -47,7 +47,6 @@
                          existing layout keeps the same proportions. -->
                     <Grid>
                         <ScrollView x:Name="PART_Scroll"
-                                    IgnoredInputKinds="All"
                                     ContentOrientation="Horizontal"
                                     HorizontalScrollBarVisibility="Hidden"
                                     VerticalScrollBarVisibility="Hidden"

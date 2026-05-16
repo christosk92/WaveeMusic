@@ -199,6 +199,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public bool IsRightPanelVisibleInShell =>
         IsRightPanelOpen && !Docking.IsRightPanelDetached;
 
+    public bool IsFriendsPanelActive =>
+        IsRightPanelOpen && RightPanelMode == Wavee.UI.WinUI.Data.Enums.RightPanelMode.FriendsActivity;
+
     private bool ShouldHideDockedPlayerForFloatingWindow =>
         Docking.IsPlayerDetached && _settingsService?.Settings.ShowDockedPlayerWithFloatingPlayer != true;
 
@@ -1839,6 +1842,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _appModel.IsRightPanelOpen = value;
         WeakReferenceMessenger.Default.Send(new RightPanelStateChangedMessage(value, RightPanelMode));
         OnPropertyChanged(nameof(IsRightPanelVisibleInShell));
+        OnPropertyChanged(nameof(IsFriendsPanelActive));
     }
 
     partial void OnRightPanelModeChanged(RightPanelMode value)
@@ -1846,6 +1850,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _appModel.RightPanelMode = value;
         if (IsRightPanelOpen)
             WeakReferenceMessenger.Default.Send(new RightPanelStateChangedMessage(true, value));
+        OnPropertyChanged(nameof(IsFriendsPanelActive));
     }
 
     partial void OnPlayerLocationChanged(PlayerLocation value)

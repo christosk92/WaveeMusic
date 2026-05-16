@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.AddToPlaylist.AddToPlaylistBar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:animations="using:CommunityToolkit.WinUI.Animations"
+    xmlns:media="using:CommunityToolkit.WinUI.Media"
+    xmlns:toolkit="using:CommunityToolkit.WinUI"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:avatars="using:Wavee.UI.WinUI.Controls.AvatarStack"
+    xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
+    xmlns:atp="using:Wavee.UI.Services.AddToPlaylist"
+    mc:Ignorable="d"
+    HorizontalAlignment="Center"
+    VerticalAlignment="Bottom"
+    MaxWidth="720"
+    MinWidth="360"
+    Visibility="Collapsed"
+    IsHitTestVisible="True">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter"/>
+
+        <!-- Pending track row template — used by the flyout that expands from
+             the stacked-thumbnail strip. Click on the row opens the track's
+             album/details page; the trailing × removes it from the pending set. -->
+        <DataTemplate x:Key="PendingTrackRowTemplate" x:DataType="atp:PendingTrackEntry">
+            <Grid ColumnSpacing="10" Padding="6,4" MinHeight="44">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0"
+                        Width="36" Height="36"
+                        CornerRadius="4"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <Grid>
+                        <FontIcon Glyph="&#xE8D6;"
+                                  FontSize="16"
+                                  Opacity="0.55"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"/>
+                        <imaging:CompositionImage ImageUrl="{x:Bind ImageUrl}"
+                                                  DecodePixelSize="72"
+                                                  CornerRadius="4"
+                                                  Stretch="UniformToFill"/>
+                    </Grid>
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                    <TextBlock Text="{x:Bind Title}"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis"
+                               MaxLines="1"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                    <TextBlock Text="{x:Bind ArtistName}"
+                               FontSize="11"
+                               TextTrimming="CharacterEllipsis"
+                               MaxLines="1"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
+                <Button Grid.Column="2"
+                        Width="28" Height="28"
+                        Padding="0"
+                        Style="{ThemeResource SubtleButtonStyle}"
+                        Tag="{x:Bind}"
+                        Click="OnRemovePendingClick"
+                        ToolTipService.ToolTip="Remove from pending">
+                    <FontIcon Glyph="&#xE894;" FontSize="11"/>
+                </Button>
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <!-- Same shadow + acrylic recipe as NotificationToast — proven for
+         floating shell-level surfaces; matches the visual weight the user
+         expects from "WinUI-style menubar". -->
+    <Border x:Name="ShadowHost"
+            CornerRadius="10"
+            Background="Transparent">
+        <toolkit:Effects.Shadow>
+            <media:AttachedCardShadow BlurRadius="24"
+                                      Offset="0,6"
+                                      Opacity="0.28"
+                                      Color="Black"
+                                      CornerRadius="10"/>
+        </toolkit:Effects.Shadow>
+        <animations:Implicit.ShowAnimations>
+            <animations:OpacityAnimation Duration="0:0:0.28" From="0" To="1"/>
+            <animations:TranslationAnimation Duration="0:0:0.28" From="0,28,0" To="0,0,0"/>
+        </animations:Implicit.ShowAnimations>
+        <animations:Implicit.HideAnimations>
+            <animations:OpacityAnimation Duration="0:0:0.2" From="1" To="0"/>
+            <animations:TranslationAnimation Duration="0:0:0.2" From="0,0,0" To="0,16,0"/>
+        </animations:Implicit.HideAnimations>
+
+        <Border x:Name="ChipBorder"
+                CornerRadius="10"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource ControlElevationBorderBrush}"
+                BorderThickness="1"
+                MinHeight="56"
+                Padding="6,6,10,6">
+            <Grid ColumnSpacing="8" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Target playlist button — tile + label, click navigates to
+                     the playlist (session stays active so the user can keep
+                     shopping after a quick peek). Styled as a flat button so
+                     the visual is "tile + label" not "obvious button chrome". -->
+                <Button Grid.Column="0"
+                        x:Name="TargetButton"
+                        Padding="8,4"
+                        CornerRadius="8"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="OnTargetClick"
+                        ToolTipService.ToolTip="Open this playlist">
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <Border Width="34" Height="34" CornerRadius="4"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                            <Grid>
+                                <FontIcon Glyph="&#xE8FD;"
+                                          FontSize="16"
+                                          Opacity="0.6"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                                <imaging:CompositionImage x:Name="TargetTileImage"
+                                                          ImageUrl="{x:Bind TargetImageUrl, Mode=OneWay}"
+                                                          DecodePixelSize="68"
+                                                          CornerRadius="4"
+                                                          Stretch="UniformToFill"/>
+                            </Grid>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Adding to"
+                                       FontSize="11"
+                                       Opacity="0.7"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock Text="{x:Bind TargetName, Mode=OneWay}"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       MaxLines="1"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Button>
+
+                <!-- Stacked album-cover thumbnails + count.
+                     Wrapped in a flat button that opens a Flyout listing all
+                     pending tracks (with per-row remove). Hidden when nothing
+                     pending so the bar collapses to label + Cancel/Add. -->
+                <Button Grid.Column="1"
+                        x:Name="PendingButton"
+                        HorizontalAlignment="Right"
+                        Padding="8,4"
+                        CornerRadius="8"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Visibility="{x:Bind HasPending, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                        ToolTipService.ToolTip="See all pending songs">
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <avatars:StackedThumbnails x:Name="ThumbnailStrip"
+                                                   MaxVisible="4"
+                                                   Items="{x:Bind ThumbnailItems, Mode=OneWay}"
+                                                   OverflowCount="{x:Bind ThumbnailOverflow, Mode=OneWay}"/>
+                        <TextBlock Text="{x:Bind CountLabel, Mode=OneWay}"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
+                    <Button.Flyout>
+                        <Flyout x:Name="PendingFlyout"
+                                Placement="Top"
+                                ShouldConstrainToRootBounds="True">
+                            <Flyout.FlyoutPresenterStyle>
+                                <Style TargetType="FlyoutPresenter">
+                                    <Setter Property="MinWidth" Value="320"/>
+                                    <Setter Property="MaxWidth" Value="380"/>
+                                    <Setter Property="MaxHeight" Value="420"/>
+                                    <Setter Property="Padding" Value="6"/>
+                                    <Setter Property="CornerRadius" Value="10"/>
+                                </Style>
+                            </Flyout.FlyoutPresenterStyle>
+                            <Grid RowSpacing="6">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0"
+                                           Text="{x:Bind FlyoutHeader, Mode=OneWay}"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           Margin="6,4,6,2"/>
+                                <ListView Grid.Row="1"
+                                          x:Name="PendingListView"
+                                          ItemsSource="{x:Bind PendingItems, Mode=OneWay}"
+                                          ItemTemplate="{StaticResource PendingTrackRowTemplate}"
+                                          SelectionMode="None"
+                                          IsItemClickEnabled="False">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem">
+                                            <Setter Property="Padding" Value="0"/>
+                                            <Setter Property="MinHeight" Value="44"/>
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
+                                </ListView>
+                            </Grid>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+
+                <Button x:Name="CancelButton"
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        MinHeight="36"
+                        Padding="14,4"
+                        CornerRadius="18"
+                        Background="Transparent"
+                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        IsEnabled="{x:Bind IsCancelEnabled, Mode=OneWay}"
+                        Click="OnCancelClick">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xE894;" FontSize="11"/>
+                        <TextBlock Text="Cancel" FontSize="12"/>
+                    </StackPanel>
+                </Button>
+
+                <!-- Accent Add button. Two stacked content states cross-fade
+                     via Implicit show/hide animations as IsSubmitting flips:
+                     • idle: "+ Add (N)"
+                     • loading: spinner + "Adding…"
+                     MinWidth keeps the button from shrinking during the swap
+                     so the layout doesn't reflow mid-animation. -->
+                <Button x:Name="AddButton"
+                        Grid.Column="3"
+                        VerticalAlignment="Center"
+                        MinHeight="36"
+                        MinWidth="120"
+                        Padding="16,4"
+                        CornerRadius="18"
+                        Style="{ThemeResource AccentButtonStyle}"
+                        IsEnabled="{x:Bind IsAddButtonEnabled, Mode=OneWay}"
+                        Click="OnAddClick">
+                    <Grid VerticalAlignment="Center">
+                        <StackPanel x:Name="AddIdleContent"
+                                    Orientation="Horizontal" Spacing="6"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Visibility="{x:Bind IsIdleStateVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <animations:Implicit.ShowAnimations>
+                                <animations:OpacityAnimation Duration="0:0:0.2" From="0" To="1"/>
+                            </animations:Implicit.ShowAnimations>
+                            <animations:Implicit.HideAnimations>
+                                <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0"/>
+                            </animations:Implicit.HideAnimations>
+                            <FontIcon Glyph="&#xE710;" FontSize="13"/>
+                            <TextBlock Text="{x:Bind AddButtonLabel, Mode=OneWay}" FontSize="13" FontWeight="SemiBold"/>
+                        </StackPanel>
+                        <StackPanel x:Name="AddLoadingContent"
+                                    Orientation="Horizontal" Spacing="8"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Visibility="{x:Bind IsSubmitting, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <animations:Implicit.ShowAnimations>
+                                <animations:OpacityAnimation Duration="0:0:0.2" From="0" To="1"/>
+                            </animations:Implicit.ShowAnimations>
+                            <animations:Implicit.HideAnimations>
+                                <animations:OpacityAnimation Duration="0:0:0.15" From="1" To="0"/>
+                            </animations:Implicit.HideAnimations>
+                            <ProgressRing IsActive="True"
+                                          Width="14" Height="14"
+                                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                            <TextBlock Text="Adding…"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                        </StackPanel>
+                    </Grid>
+                </Button>
+            </Grid>
+        </Border>
+    </Border>
+</UserControl>

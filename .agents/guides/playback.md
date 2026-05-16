@@ -88,7 +88,7 @@ rg -n "class PlaybackService|class PlaybackStateService|class PlayerBarViewModel
 | Audio key manager | `src/Wavee/Core/Audio/AudioKeyManager.cs` | `Task<AudioKey>` | AP-protocol track keys; 2.5 s timeout × 5 retries; disk cache; PlayPlay fallback when the deriver is registered. |
 | PlayPlay key deriver (UI) | `src/Wavee/Core/Audio/AudioHostPlayPlayKeyDeriver.cs` | obfuscated key + pack JSON → AES key | Routes the request to AudioHost via `derive_playplay_key` IPC. |
 | PlayPlay key emulator (AudioHost) | `src/Wavee.AudioHost/PlayPlay/PlayPlayKeyEmulator.cs` (proprietary; `PlayPlayKeyEmulator.Stub.cs` ships in public source) | LoadLibrary + `vm_runtime_init` + `vm_object_transform` | Runtime asset lives at `%LOCALAPPDATA%\Wavee\PlayPlay\packs\<id>\Spotify.dll`. See `CLAUDE.md` "Audio runtime support pack provisioning". |
-| Progressive downloader | `src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs` | head-data + lazy CDN | Instant-start: serves head file immediately, defers CDN range fetches in the background. Opens the local cache file directly if `LocalCacheFileId` is set, gated on `audioKey is { Length: 16 }`. On local-cache hits performs a 4-byte OggS magic check after decryption and auto-deletes + throws on mismatch (see "Persistent audio cache" below). |
+| Progressive downloader | `src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs` | head-data + lazy CDN | Instant-start: serves head file immediately, defers CDN range fetches in the background. Opens the local cache file directly if `LocalCacheFileId` is set, gated on `audioKey is { Length: 16 }`. On local-cache hits performs a 4-byte OggS magic check after decryption (byte 0 or byte 0xa7) and auto-deletes + throws on mismatch (see "Persistent audio cache" below). |
 | Eager progressive downloader | `src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs` | classic range-fetch loop + persistent-cache writer | Used when head-data fast path doesn't apply. Owns the `PersistToCacheAsync` / `CopyTempFileForPersistentCacheAsync` path that produces `.enc` files in `%LOCALAPPDATA%\Wavee\AudioCache\audio\`. Snapshots head bytes under `lock (_tempFile)` and re-encrypts in memory before writing — protects against the position race with concurrent BASS reads. |
 | Buffered HTTP stream | `src/Wavee.AudioHost/Audio/Streaming/BufferedHttpStream.cs` | HTTP byte stream with range support | Reused by both downloaders. |
 | Decrypt stream | `src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs` | AES-128-CTR wrapper over the encrypted Ogg bytes; null key = pass-through | Encrypts from byte 0 — see memory `reference_spotify_audio_offset_zero`. Constructor logs `keyFp=<SHA256-prefix>` (or `pass-through`) at DEBUG when an `ILogger` is supplied. NOTE: a separate Core-side `src/Wavee/Core/Crypto/AudioDecryptStream.cs` is proprietary and may be absent in public clones; that one is unused by AudioHost. |
@@ -456,13 +456,17 @@ byte 0 and BASS rejects with `FileFormat`.
 **Read protocol — `LazyProgressiveDownloader.InitializeCdnResourcesAsync`:**
 - Local-cache shortcut is gated on `audioKey is { Length: 16 }`; without
   a real key we go to CDN.
-- After constructing `_decryptStream`, peeks the first 4 decrypted bytes
-  and checks for the Ogg-Vorbis magic `O g g S` (0x4F 67 67 53). On
+- After constructing `_decryptStream`, peeks for the Ogg-Vorbis magic
+  `O g g S` (0x4F 67 67 53) at byte 0 and byte 0xa7. On
   mismatch: logs a `LogWarning`, disposes the streams, **deletes the
   cache file**, and throws `InvalidOperationException`. The next
   playback attempt re-resolves; with the cache file gone, the deferred
   resolution returns a real CDN URL and the file is re-downloaded
   correctly.
+- `Length` waits for deferred CDN/cache initialization before returning.
+  NVorbis can cache `Length` during reader construction; returning only
+  the head-file size makes the decoder report a false natural finish after
+  the instant-start window.
 - Why throw instead of falling through to CDN within the same call:
   `DeferredResolutionRegistry.CompleteFromCache` sets `CdnUrl = ""` on
   cache-hit deferred results — there is no CDN URL available to use.

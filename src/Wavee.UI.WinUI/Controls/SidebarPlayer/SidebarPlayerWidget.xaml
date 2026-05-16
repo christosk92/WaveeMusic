@@ -307,15 +307,6 @@
                                     </ToggleMenuFlyoutItem.Icon>
                                 </ToggleMenuFlyoutItem>
                                 <ToggleMenuFlyoutItem
-                                    Text="Friends Activity"
-                                    IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
-                                    Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}">
-                                    <ToggleMenuFlyoutItem.Icon>
-                                        <FontIcon Glyph="&#xE716;" FontSize="14" />
-                                    </ToggleMenuFlyoutItem.Icon>
-                                </ToggleMenuFlyoutItem>
-                                <MenuFlyoutSeparator />
-                                <ToggleMenuFlyoutItem
                                     Text="Mute"
                                     IsChecked="{x:Bind ViewModel.IsMuted, Mode=OneWay}"
                                     Command="{x:Bind ViewModel.ToggleMuteCommand}">
@@ -341,13 +332,6 @@
                                     </MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutSeparator />
-                                <MenuFlyoutItem
-                                    Text="Pop out to window"
-                                    Click="PopOutToWindow_Click">
-                                    <MenuFlyoutItem.Icon>
-                                        <FontIcon Glyph="&#xE8A7;" FontSize="14" />
-                                    </MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
                                 <MenuFlyoutItem
                                     Text="Move back to bottom bar"
                                     Click="MoveToBottomBar_Click">
@@ -794,15 +778,6 @@
                                     </ToggleMenuFlyoutItem.Icon>
                                 </ToggleMenuFlyoutItem>
                                 <ToggleMenuFlyoutItem
-                                    Text="Friends Activity"
-                                    IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
-                                    Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}">
-                                    <ToggleMenuFlyoutItem.Icon>
-                                        <FontIcon Glyph="&#xE716;" FontSize="14" />
-                                    </ToggleMenuFlyoutItem.Icon>
-                                </ToggleMenuFlyoutItem>
-                                <MenuFlyoutSeparator />
-                                <ToggleMenuFlyoutItem
                                     Text="Mute"
                                     IsChecked="{x:Bind ViewModel.IsMuted, Mode=OneWay}"
                                     Command="{x:Bind ViewModel.ToggleMuteCommand}">
@@ -827,13 +802,6 @@
                                     </MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutSeparator />
-                                <MenuFlyoutItem
-                                    Text="Pop out to window"
-                                    Click="PopOutToWindow_Click">
-                                    <MenuFlyoutItem.Icon>
-                                        <FontIcon Glyph="&#xE8A7;" FontSize="14" />
-                                    </MenuFlyoutItem.Icon>
-                                </MenuFlyoutItem>
                                 <MenuFlyoutItem
                                     Text="Move back to bottom bar"
                                     Click="MoveToBottomBar_Click">

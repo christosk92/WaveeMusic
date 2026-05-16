@@ -169,7 +169,11 @@ public sealed class AlbumService : IAlbumService
                 Name = a.Profile?.Name,
                 ImageUrl = a.Visuals?.AvatarImage?.Sources?.LastOrDefault()?.Url
             }).ToList() ?? [],
-            Tracks = MapTracksRaw(album.TracksV2?.Items).Select(r => ToDto(r, albumUri)).ToList(),
+            Tracks = MapTracksRaw(album.TracksV2?.Items).Select(r => ToDto(
+                r,
+                albumUri,
+                coverUrl: album.CoverArt?.Sources?.LastOrDefault()?.Url,
+                coverSmallUrl: album.CoverArt?.Sources?.FirstOrDefault()?.Url)).ToList(),
             MoreByArtist = album.MoreAlbumsByArtist?.Items?
                 .SelectMany(i => i.Discography?.PopularReleasesAlbums?.Items ?? [])
                 .Where(r => r.Uri != album.Uri) // exclude current album
@@ -598,7 +602,11 @@ public sealed class AlbumService : IAlbumService
         };
     }
 
-    private static AlbumTrackDto ToDto(AlbumTrackResult r, string albumUri = "")
+    private static AlbumTrackDto ToDto(
+        AlbumTrackResult r,
+        string albumUri = "",
+        string? coverUrl = null,
+        string? coverSmallUrl = null)
     {
         return new AlbumTrackDto
         {
@@ -611,6 +619,14 @@ public sealed class AlbumService : IAlbumService
             ArtistId = r.Artists.FirstOrDefault()?.Uri ?? "",
             AlbumName = "",
             AlbumId = albumUri,
+            // Spotify album tracks don't carry their own cover (it's the same
+            // album-level art across every row), and the album-page TrackDataGrid
+            // hides the art column — so this isn't shown on the page itself.
+            // Still populate it so off-page consumers that read ITrackItem.ImageUrl
+            // (notably the app-wide "Add to playlist" flow) have artwork to pass
+            // through to their thumbnails / flyout / submit pipeline.
+            ImageUrl = coverUrl,
+            ImageSmallUrl = coverSmallUrl,
             Duration = r.Duration,
             IsExplicit = r.IsExplicit,
             HasCanvas = r.HasVideo,

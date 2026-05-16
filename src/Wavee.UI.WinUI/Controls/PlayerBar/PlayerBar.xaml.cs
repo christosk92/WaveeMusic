@@ -606,14 +606,6 @@ public sealed partial class PlayerBar : UserControl
         _logger?.LogInformation("[PlayerBar] Player moved to sidebar via overflow menu");
     }
 
-    private void PopOutToWindow_Click(object sender, RoutedEventArgs e)
-    {
-        ViewModel.IsAlbumArtExpanded = false;
-        Ioc.Default.GetService<IShellSessionService>()?.UpdateLayout(s => s.PlayerWindowExpanded = true);
-        Ioc.Default.GetService<IPanelDockingService>()?.Detach(DetachablePanel.Player);
-        _logger?.LogInformation("[PlayerBar] Player popped out via bottom bar");
-    }
-
     private void ShowMiniVideoPlayer_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.IsAlbumArtExpanded = false;

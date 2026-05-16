@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Playlist.PlaylistShyPill"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
+    xmlns:waveePlayback="using:Wavee.UI.WinUI.Controls.Playback"
+    xmlns:transitions="using:CommunityToolkit.WinUI"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="#66FFFFFF"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="#33000000"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="ShyHeaderBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter"/>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <!-- Compact "shy" pill that morphs in from the playlist banner on scroll.
+         Matched-ID leaves (playlist-name / playlist-owner + card-shell on the
+         outer Border) drive the TransitionHelper morph between this control and
+         the hero banner's overlay on PlaylistPage. The cover thumb and Play
+         button do NOT have matched sources in the banner overlay (banner has
+         no cover thumb; Play button lives in the left sidebar). Those fade in
+         via TransitionHelper's IndependentElement* show animations. -->
+    <Border x:Name="PillBorder"
+            Padding="14,8"
+            MinWidth="380"
+            MaxWidth="720"
+            CornerRadius="28"
+            Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
+            BorderBrush="{ThemeResource ShyHeaderBorderBrush}"
+            BorderThickness="1"
+            transitions:TransitionHelper.Id="card-shell">
+        <Border.Shadow>
+            <ThemeShadow/>
+        </Border.Shadow>
+        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+            <!-- Cover thumb: 36x36 rounded square. No matched source on the banner
+                 (banner has no cover element), so this fades in independently. -->
+            <Border Width="36" Height="36" CornerRadius="4">
+                <Border.Background>
+                    <ImageBrush
+                        ImageSource="{x:Bind PlaylistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter=72}"
+                        Stretch="UniformToFill"/>
+                </Border.Background>
+            </Border>
+
+            <StackPanel VerticalAlignment="Center" Spacing="-1">
+                <TextBlock Text="{x:Bind PlaylistName, Mode=OneWay}"
+                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                           transitions:TransitionHelper.Id="playlist-name"/>
+                <TextBlock Text="{x:Bind OwnerName, Mode=OneWay}"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           transitions:TransitionHelper.Id="playlist-owner"/>
+            </StackPanel>
+
+            <!-- Play button. No matched source on the banner; fades in
+                 independently via the controller's show animation window. -->
+            <Button x:Name="PlayBtn"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Background="{x:Bind PaletteAccentPillBrush, Mode=OneWay}"
+                    Foreground="{x:Bind PaletteAccentPillForegroundBrush, Mode=OneWay}"
+                    Command="{x:Bind PlayCommand, Mode=OneWay}"
+                    Height="36"
+                    Padding="14,0"
+                    CornerRadius="18"
+                    Margin="6,0,0,0">
+                <waveePlayback:PlaybackActionContent IconSize="13"
+                                                     SpinnerSize="13"
+                                                     IsPlaying="{x:Bind IsPlaylistContextPlaying, Mode=OneWay}"
+                                                     IsPending="{x:Bind IsPlayPending, Mode=OneWay}"/>
+            </Button>
+        </StackPanel>
+    </Border>
+</UserControl>

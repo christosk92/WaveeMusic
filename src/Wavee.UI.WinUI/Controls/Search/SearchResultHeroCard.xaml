@@ -8,6 +8,7 @@
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
+    xmlns:addtoplaylist="using:Wavee.UI.WinUI.Controls.AddToPlaylist"
     mc:Ignorable="d">
 
     <Grid>
@@ -156,5 +157,15 @@
                                  VerticalAlignment="Stretch"
                                  CornerRadius="26"
                                  BeamThickness="2"/>
+
+        <!-- App-wide "Add to playlist" chip — top-right badge while an
+             IAddToPlaylistSession is active and the hero represents a track.
+             The chip's own session-watch controls visibility; this just
+             positions it. -->
+        <addtoplaylist:AddToPlaylistChip x:Name="AddChip"
+                                         HorizontalAlignment="Right"
+                                         VerticalAlignment="Top"
+                                         Margin="0,14,14,0"
+                                         Canvas.ZIndex="11"/>
     </Grid>
 </UserControl>

@@ -311,6 +311,16 @@
                         VerticalAlignment="Center"
                         Spacing="0"
                         Margin="0,0,12,0">
+                        <ToggleButton
+                            Style="{StaticResource SubtleToggleButtonStyle}"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
+                            Command="{x:Bind ViewModel.ToggleShuffleCommand}"
+                            ToolTipService.ToolTip="Shuffle">
+                            <FontIcon Glyph="&#xE8B1;" FontSize="14" />
+                        </ToggleButton>
                         <Button
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="34"
@@ -352,6 +362,18 @@
                             ToolTipService.ToolTip="Next">
                             <FontIcon Glyph="&#xF8AD;" FontSize="14" />
                         </Button>
+                        <ToggleButton
+                            Style="{StaticResource SubtleToggleButtonStyle}"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
+                            Command="{x:Bind ViewModel.ToggleRepeatCommand}"
+                            ToolTipService.ToolTip="Repeat">
+                            <FontIcon
+                                Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
+                                FontSize="14" />
+                        </ToggleButton>
                         <Button
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="34"
@@ -430,31 +452,7 @@
                             x:Name="InlineModeGroup"
                             Orientation="Horizontal"
                             VerticalAlignment="Center"
-                            Spacing="0">
-                            <ToggleButton
-                                Style="{StaticResource SubtleToggleButtonStyle}"
-                                Width="32"
-                                Height="32"
-                                Padding="0"
-                                IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
-                                Command="{x:Bind ViewModel.ToggleShuffleCommand}"
-                                ToolTipService.ToolTip="Shuffle">
-                                <FontIcon Glyph="&#xE8B1;" FontSize="14" />
-                            </ToggleButton>
-
-                            <ToggleButton
-                                Style="{StaticResource SubtleToggleButtonStyle}"
-                                Width="32"
-                                Height="32"
-                                Padding="0"
-                                IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
-                                Command="{x:Bind ViewModel.ToggleRepeatCommand}"
-                                ToolTipService.ToolTip="Repeat">
-                                <FontIcon
-                                    Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
-                                    FontSize="14" />
-                            </ToggleButton>
-                        </StackPanel>
+                            Spacing="0" />
 
                         <playback:AudioOutputPicker
                             x:Name="InlineVolumeGroup"
@@ -515,18 +513,6 @@
                                 <FontIcon Glyph="&#xED1E;" FontSize="14" />
                             </ToggleButton>
 
-                            <ToggleButton
-                                Style="{StaticResource SubtleToggleButtonStyle}"
-                                Width="32"
-                                Height="32"
-                                Padding="0"
-                                IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
-                                Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}"
-                                Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                ToolTipService.ToolTip="Friends Activity">
-                                <FontIcon Glyph="&#xE716;" FontSize="14" />
-                            </ToggleButton>
-
                             <playback:WatchVideoButton ButtonSize="32" IconSize="16" />
 
                             <Button
@@ -551,23 +537,8 @@
                                 </Grid>
                             </Button>
 
-                            <!-- Standalone Pop-Out — first-class only for music / podcast
-                                 content. For video, Pop-Out moves inside the
-                                 "Expand player" DropDownButton below so the bar has
-                                 a single expand affordance. -->
-                            <Button
-                                Style="{StaticResource TransparentButtonStyle}"
-                                Width="32"
-                                Height="32"
-                                Padding="0"
-                                Click="PopOutToWindow_Click"
-                                Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                ToolTipService.ToolTip="Pop out player">
-                                <FontIcon Glyph="&#xE8A7;" FontSize="14" />
-                            </Button>
-
                             <!-- Expand player (video only). One DropDownButton replaces
-                                 Theatre + Fullscreen + Pop-Out so the three near-identical
+                                 Theatre + Fullscreen so the two near-identical
                                  expand glyphs don't read as the same button to the user.
                                  Each menu item has its own glyph + label, so the choice
                                  is unambiguous. -->
@@ -596,13 +567,6 @@
                                             KeyboardAcceleratorTextOverride="F11">
                                             <MenuFlyoutItem.Icon>
                                                 <FontIcon Glyph="&#xE740;" FontSize="14" />
-                                            </MenuFlyoutItem.Icon>
-                                        </MenuFlyoutItem>
-                                        <MenuFlyoutItem
-                                            Text="Pop out to window"
-                                            Click="PopOutToWindow_Click">
-                                            <MenuFlyoutItem.Icon>
-                                                <FontIcon Glyph="&#xE8A7;" FontSize="14" />
                                             </MenuFlyoutItem.Icon>
                                         </MenuFlyoutItem>
                                     </MenuFlyout>
@@ -653,15 +617,6 @@
                                         Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                         <ToggleMenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE946;" FontSize="14" />
-                                        </ToggleMenuFlyoutItem.Icon>
-                                    </ToggleMenuFlyoutItem>
-                                    <ToggleMenuFlyoutItem
-                                        Text="Friends Activity"
-                                        IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
-                                        Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}"
-                                        Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                        <ToggleMenuFlyoutItem.Icon>
-                                            <FontIcon Glyph="&#xE716;" FontSize="14" />
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
                                     <MenuFlyoutItem
@@ -716,32 +671,6 @@
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
                                     <MenuFlyoutSeparator />
-                                    <ToggleMenuFlyoutItem
-                                        Text="Shuffle"
-                                        IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
-                                        Command="{x:Bind ViewModel.ToggleShuffleCommand}">
-                                        <ToggleMenuFlyoutItem.Icon>
-                                            <FontIcon Glyph="&#xE8B1;" FontSize="14" />
-                                        </ToggleMenuFlyoutItem.Icon>
-                                    </ToggleMenuFlyoutItem>
-                                    <ToggleMenuFlyoutItem
-                                        Text="Repeat"
-                                        IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
-                                        Command="{x:Bind ViewModel.ToggleRepeatCommand}">
-                                        <ToggleMenuFlyoutItem.Icon>
-                                            <FontIcon
-                                                Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
-                                                FontSize="14" />
-                                        </ToggleMenuFlyoutItem.Icon>
-                                    </ToggleMenuFlyoutItem>
-                                    <MenuFlyoutSeparator />
-                                    <MenuFlyoutItem
-                                        Text="Pop out to window"
-                                        Click="PopOutToWindow_Click">
-                                        <MenuFlyoutItem.Icon>
-                                            <FontIcon Glyph="&#xE8A7;" FontSize="14" />
-                                        </MenuFlyoutItem.Icon>
-                                    </MenuFlyoutItem>
                                     <MenuFlyoutItem
                                         Text="Show in sidebar"
                                         Click="ShowInSidebar_Click">
@@ -863,6 +792,16 @@
                         VerticalAlignment="Center"
                         Spacing="0"
                         Margin="0,0,4,0">
+                        <ToggleButton
+                            Style="{StaticResource SubtleToggleButtonStyle}"
+                            Width="30"
+                            Height="30"
+                            Padding="0"
+                            IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
+                            Command="{x:Bind ViewModel.ToggleShuffleCommand}"
+                            ToolTipService.ToolTip="Shuffle">
+                            <FontIcon Glyph="&#xE8B1;" FontSize="13" />
+                        </ToggleButton>
                         <Button
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="30"
@@ -904,6 +843,18 @@
                             ToolTipService.ToolTip="Next">
                             <FontIcon Glyph="&#xF8AD;" FontSize="14" />
                         </Button>
+                        <ToggleButton
+                            Style="{StaticResource SubtleToggleButtonStyle}"
+                            Width="30"
+                            Height="30"
+                            Padding="0"
+                            IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
+                            Command="{x:Bind ViewModel.ToggleRepeatCommand}"
+                            ToolTipService.ToolTip="Repeat">
+                            <FontIcon
+                                Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
+                                FontSize="13" />
+                        </ToggleButton>
                         <Button
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="30"
@@ -948,31 +899,7 @@
                             x:Name="NarrowInlineModeGroup"
                             Orientation="Horizontal"
                             VerticalAlignment="Center"
-                            Spacing="0">
-                            <ToggleButton
-                                Style="{StaticResource SubtleToggleButtonStyle}"
-                                Width="30"
-                                Height="30"
-                                Padding="0"
-                                IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
-                                Command="{x:Bind ViewModel.ToggleShuffleCommand}"
-                                ToolTipService.ToolTip="Shuffle">
-                                <FontIcon Glyph="&#xE8B1;" FontSize="13" />
-                            </ToggleButton>
-
-                            <ToggleButton
-                                Style="{StaticResource SubtleToggleButtonStyle}"
-                                Width="30"
-                                Height="30"
-                                Padding="0"
-                                IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
-                                Command="{x:Bind ViewModel.ToggleRepeatCommand}"
-                                ToolTipService.ToolTip="Repeat">
-                                <FontIcon
-                                    Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
-                                    FontSize="13" />
-                            </ToggleButton>
-                        </StackPanel>
+                            Spacing="0" />
 
                         <playback:AudioOutputPicker
                             x:Name="NarrowVolumeButton"
@@ -1027,15 +954,6 @@
                                             <FontIcon Glyph="&#xE946;" FontSize="14" />
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
-                                    <ToggleMenuFlyoutItem
-                                        Text="Friends Activity"
-                                        IsChecked="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
-                                        Command="{x:Bind ViewModel.ToggleFriendsPanelCommand}"
-                                        Visibility="{x:Bind ViewModel.IsMusicOnlyContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                        <ToggleMenuFlyoutItem.Icon>
-                                            <FontIcon Glyph="&#xE716;" FontSize="14" />
-                                        </ToggleMenuFlyoutItem.Icon>
-                                    </ToggleMenuFlyoutItem>
                                     <MenuFlyoutItem
                                         Text="Theatre mode"
                                         Command="{x:Bind ViewModel.EnterTheatreCommand}"
@@ -1088,32 +1006,6 @@
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
                                     <MenuFlyoutSeparator />
-                                    <ToggleMenuFlyoutItem
-                                        Text="Shuffle"
-                                        IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
-                                        Command="{x:Bind ViewModel.ToggleShuffleCommand}">
-                                        <ToggleMenuFlyoutItem.Icon>
-                                            <FontIcon Glyph="&#xE8B1;" FontSize="14" />
-                                        </ToggleMenuFlyoutItem.Icon>
-                                    </ToggleMenuFlyoutItem>
-                                    <ToggleMenuFlyoutItem
-                                        Text="Repeat"
-                                        IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
-                                        Command="{x:Bind ViewModel.ToggleRepeatCommand}">
-                                        <ToggleMenuFlyoutItem.Icon>
-                                            <FontIcon
-                                                Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
-                                                FontSize="14" />
-                                        </ToggleMenuFlyoutItem.Icon>
-                                    </ToggleMenuFlyoutItem>
-                                    <MenuFlyoutSeparator />
-                                    <MenuFlyoutItem
-                                        Text="Pop out to window"
-                                        Click="PopOutToWindow_Click">
-                                        <MenuFlyoutItem.Icon>
-                                            <FontIcon Glyph="&#xE8A7;" FontSize="14" />
-                                        </MenuFlyoutItem.Icon>
-                                    </MenuFlyoutItem>
                                     <MenuFlyoutItem
                                         Text="Show in sidebar"
                                         Click="ShowInSidebar_Click">

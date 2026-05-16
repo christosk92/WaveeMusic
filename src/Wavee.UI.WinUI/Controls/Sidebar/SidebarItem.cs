@@ -1024,6 +1024,26 @@ public sealed partial class SidebarItem : Control
 		var isLoading = (Item as SidebarItemModel)?.IsLoadingChildren ?? false;
 		VisualStateManager.GoToState(this, isLoading ? "LoadingChildren" : "NotLoadingChildren", useAnimations);
 
+		// HACK: WinUI 3 VSM does not reliably roll back the LoadingChildren
+		// state's `ChildrenPresenter.Visibility=Collapsed` setter when
+		// transitioning to the empty NotLoadingChildren state — even though
+		// the ExpansionStates group's `SectionHeaderExpanded` setter
+		// (Visibility=Visible) is still logically active in its own group.
+		// Symptom: a section whose children load AFTER the SidebarItem has
+		// realized (e.g. user playlists from cache/network) stays visually
+		// empty, with the chevron stuck in the "expanded" pose, until the
+		// user manually collapse+expands to retrigger a full state cycle.
+		// Force-assert from logical state to bypass VSM rollback.
+		if (childrenRepeater is not null)
+		{
+			var shouldShowChildren = !isLoading
+				&& IsExpanded
+				&& (isSectionHeader || HasChildren);
+			childrenRepeater.Visibility = shouldShowChildren
+				? Visibility.Visible
+				: Visibility.Collapsed;
+		}
+
 		UpdateSelectionState();
 	}
 

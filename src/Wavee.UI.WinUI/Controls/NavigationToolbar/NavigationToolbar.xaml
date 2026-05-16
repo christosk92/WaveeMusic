@@ -217,6 +217,20 @@
                     Visibility="{x:Bind IsOnProfilePage, Mode=OneWay}" />
             </Grid>
 
+            <ToggleButton
+                x:Name="FriendsButton"
+                Style="{StaticResource SubtleToggleButtonStyle}"
+                Width="36"
+                Height="32"
+                Padding="0"
+                CornerRadius="4"
+                VerticalAlignment="Center"
+                ToolTipService.ToolTip="Friends Activity"
+                IsChecked="{x:Bind IsFriendsPanelActive, Mode=OneWay}"
+                Click="FriendsButton_Click">
+                <FontIcon FontSize="14" Glyph="&#xE716;" />
+            </ToggleButton>
+
             <!-- Activity Bell -->
             <activityBell:ActivityBell VerticalAlignment="Center"/>
 

@@ -20,6 +20,8 @@
     xmlns:contracts="using:Wavee.UI.WinUI.Data.Contracts"
     xmlns:sessionTokens="using:Wavee.UI.WinUI.Controls.SessionTokens"
     xmlns:track="using:Wavee.UI.WinUI.Controls.Track"
+    xmlns:playlist="using:Wavee.UI.WinUI.Controls.Playlist"
+    xmlns:transitions="using:CommunityToolkit.WinUI"
     x:Name="PageRoot"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
@@ -29,6 +31,35 @@
         <DataTemplate x:Key="EmptyPlaylistGenreChipTemplate" x:DataType="home:BrowseAllItem">
             <homeViews:BrowseChip Item="{x:Bind}"/>
         </DataTemplate>
+
+        <!-- Shy-header morph: banner overlay -> floating compact pill. Matched
+             ids on the title + owner-name elements interpolate between the two
+             states; card-shell on the outer pill Border drives the chrome
+             morph. Cover thumb + Play button on the pill have no matched
+             source in the banner overlay, so they fade in via the Independent*
+             show window. Mirrors ArtistShyHeaderTransition. -->
+        <transitions:TransitionHelper x:Key="PlaylistShyHeaderTransition"
+                                      Duration="0:0:0.36"
+                                      ReverseDuration="0:0:0.30"
+                                      DefaultEasingMode="EaseInOut"
+                                      SourceToggleMethod="ByVisibility"
+                                      TargetToggleMethod="ByVisibility"
+                                      IndependentElementShowDuration="0:0:0.18"
+                                      IndependentElementShowDelay="0:0:0.10"
+                                      IndependentElementHideDuration="0:0:0.12"
+                                      IsHitTestVisibleWhenAnimating="False">
+            <transitions:TransitionConfig Id="card-shell" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="playlist-name" ScaleMode="Custom">
+                <transitions:TransitionConfig.CustomScalingCalculator>
+                    <helpers:TransitionTextScalingCalculator/>
+                </transitions:TransitionConfig.CustomScalingCalculator>
+            </transitions:TransitionConfig>
+            <transitions:TransitionConfig Id="playlist-owner" ScaleMode="Custom">
+                <transitions:TransitionConfig.CustomScalingCalculator>
+                    <helpers:TransitionTextScalingCalculator/>
+                </transitions:TransitionConfig.CustomScalingCalculator>
+            </transitions:TransitionConfig>
+        </transitions:TransitionHelper>
     </Page.Resources>
 
     <Grid x:Name="RootGrid" SizeChanged="RootGrid_SizeChanged">
@@ -46,8 +77,7 @@
                              threw XamlUnhandledException on every SizeChanged that flipped
                              between Wide/Narrow. If a narrow-mode header is reintroduced
                              later, re-add matching setters referencing the real name. -->
-                        <Setter Target="WidePlaylistPanel.Visibility" Value="Collapsed"/>
-                        <Setter Target="WidePlaylistScroller.Visibility" Value="Collapsed"/>
+                        <Setter Target="LeftColumnHost.Visibility" Value="Collapsed"/>
                         <Setter Target="ShimmerContainer.Visibility" Value="Collapsed"/>
                         <Setter Target="PlaylistSplitter.Visibility" Value="Collapsed"/>
                     </VisualState.Setters>
@@ -61,19 +91,34 @@
         <Border IsHitTestVisible="False"
                 Background="{x:Bind ViewModel.PaletteBackdropBrush, Mode=OneWay}"/>
 
+        <!-- Unified page-level scroller. Wraps the banner row + the two-column
+             content so the banner, left sidebar, and track table all scroll
+             together as a single document. The left sidebar's composition
+             Translation is bound to this scroller's ExpressionAnimationSources
+             in code-behind so it locks in place once the user scrolls past the
+             banner ("sticky left column"). The TrackDataGrid's
+             IsParentScrolling=true disables its internal ItemsView scroll so
+             it measures to natural height inside this scroller. -->
+        <ScrollView x:Name="PageScrollView"
+                    VerticalScrollMode="Auto"
+                    HorizontalScrollMode="Disabled"
+                    ZoomMode="Disabled"
+                    ContentOrientation="Vertical"
+                    Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
         <Grid x:Name="TwoColumnGrid"
               MaxWidth="2400"
-              HorizontalAlignment="Stretch"
-              Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+              HorizontalAlignment="Stretch">
             <Grid.RowDefinitions>
                 <!-- Banner row: 280 px hero band spanning all three columns.
                      Either composition image (HeaderImageUrl present) or a
                      procedural gradient (AnimatedHeroBackground), with the
                      title overlaid at the bottom-left. -->
                 <RowDefinition Height="Auto"/>
-                <!-- Content row: existing two-column layout (left = metadata
-                     sidebar, right = TrackDataGrid). -->
-                <RowDefinition Height="*"/>
+                <!-- Content row: was Height="*" when the page had a fixed
+                     viewport; now Auto so the row measures to natural content
+                     height (sidebar + track table + footer) and the outer
+                     PageScrollView handles all vertical motion. -->
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="LeftPanelColumn" Width="200" MinWidth="200" MaxWidth="500"/>
@@ -135,35 +180,51 @@
                      InlineEditableText keeps owner-rename inline-edit behavior
                      in its new home — click the title to edit (owners only).
                      Title shimmer occupies the same Y position so the swap
-                     when PlaylistName arrives is opacity-only, no shift. -->
-                <Grid VerticalAlignment="Bottom"
-                      Margin="32,0,32,20">
-                    <StackPanel Spacing="6" HorizontalAlignment="Stretch">
-                        <Grid MinHeight="48" HorizontalAlignment="Stretch">
-                            <controls1:InlineEditableText
-                                x:Name="BannerTitleEditor"
-                                Text="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
-                                ToolTipService.ToolTip="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
-                                IsEditable="{x:Bind ViewModel.CanEditName, Mode=OneWay}"
-                                IsBusy="{x:Bind ViewModel.IsRenaming, Mode=OneWay}"
-                                MaxLength="100"
-                                MaxLines="2"
-                                FontSize="{x:Bind helpers:TitleFontSizer.Hero(ViewModel.PlaylistName), Mode=OneWay}"
-                                FontWeight="Bold"
-                                TextAlignment="Left"
-                                HorizontalContentAlignment="Stretch"
-                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                Committed="PlaylistTitleEditor_Committed"
-                                Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
-                            <controls:Shimmer Width="480" Height="40" CornerRadius="6" HorizontalAlignment="Left"
-                                              Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                        </Grid>
-                        <TextBlock Text="{x:Bind ViewModel.OwnerName, Mode=OneWay}"
-                                   FontSize="14"
-                                   FontWeight="SemiBold"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Visibility="{x:Bind ViewModel.OwnerName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
-                    </StackPanel>
+                     when PlaylistName arrives is opacity-only, no shift.
+                     BannerOverlayPanel is the ShyHeaderController's `source`
+                     element; matched-IDs (card-shell, playlist-name,
+                     playlist-owner) interpolate with the PlaylistShyPill. -->
+                <Grid x:Name="BannerOverlayPanel"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch">
+                    <!-- Invisible card-shell anchor — gives the TransitionHelper
+                         a source rectangle to morph the pill's outer Border in
+                         from. Mirrors ArtistPage's HeroOverlayPanel pattern. -->
+                    <Border transitions:TransitionHelper.Id="card-shell"
+                            Background="Transparent"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch"/>
+                    <Grid VerticalAlignment="Bottom"
+                          Margin="32,0,32,20">
+                        <StackPanel Spacing="6" HorizontalAlignment="Stretch">
+                            <Grid MinHeight="48" HorizontalAlignment="Stretch">
+                                <controls1:InlineEditableText
+                                    x:Name="BannerTitleEditor"
+                                    Text="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
+                                    IsEditable="{x:Bind ViewModel.CanEditName, Mode=OneWay}"
+                                    IsBusy="{x:Bind ViewModel.IsRenaming, Mode=OneWay}"
+                                    MaxLength="100"
+                                    MaxLines="2"
+                                    FontSize="{x:Bind helpers:TitleFontSizer.Hero(ViewModel.PlaylistName), Mode=OneWay}"
+                                    FontWeight="Bold"
+                                    TextAlignment="Left"
+                                    HorizontalContentAlignment="Stretch"
+                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                    Committed="PlaylistTitleEditor_Committed"
+                                    Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                                    transitions:TransitionHelper.Id="playlist-name"/>
+                                <controls:Shimmer Width="480" Height="40" CornerRadius="6" HorizontalAlignment="Left"
+                                                  Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                            </Grid>
+                            <TextBlock Text="{x:Bind ViewModel.OwnerName, Mode=OneWay}"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Visibility="{x:Bind ViewModel.OwnerName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                                       transitions:TransitionHelper.Id="playlist-owner"/>
+                        </StackPanel>
+                    </Grid>
                 </Grid>
             </Grid>
 
@@ -242,16 +303,14 @@
                  + title block at the top are gated on LayoutMode == Cover (user
                  playlists). Banner-mode playlists hide both — their title lives
                  in the banner row's overlay above, and there is no square cover.
-                 Wrapped in a ScrollView so long descriptions / session-control
-                 chip grids / collaborator lists can scroll vertically when the
-                 panel doesn't fit the window height. -->
-            <ScrollView x:Name="WidePlaylistScroller" Grid.Row="1" Grid.Column="0"
-                        ContentOrientation="Vertical"
-                        HorizontalScrollMode="Disabled"
-                        HorizontalScrollBarVisibility="Hidden"
-                        VerticalScrollMode="Auto"
-                        VerticalScrollBarVisibility="Auto">
-            <StackPanel x:Name="WidePlaylistPanel"
+                 Previously wrapped in its own ScrollView (WidePlaylistScroller);
+                 now a direct Grid child so the page-level PageScrollView is the
+                 single scroll source. LeftColumnHost is the composition target —
+                 code-behind binds its Translation to PageScrollView's
+                 ExpressionAnimationSources to make it pin once the banner has
+                 scrolled past. -->
+            <StackPanel x:Name="LeftColumnHost"
+                        Grid.Row="1" Grid.Column="0"
                         Padding="16,20,8,20" Spacing="14" HorizontalAlignment="Stretch"
                         VerticalAlignment="Top">
 
@@ -600,7 +659,6 @@
                                 Spacing="8"/>
                 </controls1:ClickableBorder>
             </StackPanel>
-            </ScrollView>
 
             <controls1:GridSplitter
                 x:Name="PlaylistSplitter"
@@ -621,6 +679,7 @@
                 Margin="0,0,0,0"
                 PageKey="playlist"
                 UseItemsViewRows="True"
+                IsParentScrolling="True"
                 IsLoading="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay}"
                 LoadingRowCount="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"
                 AddedByVisible="{x:Bind ViewModel.ShouldShowAddedByColumn, Mode=OneWay}"
@@ -647,14 +706,16 @@
                 </tdg:TrackDataGrid.FilterBarContent>
 
                 <!-- "Recommended Songs" footer — Spotify's Enhance / Recommended
-                     Songs surface. Owner-gated (x:Load on CanEditItems keeps
-                     the subtree unrealised for non-owners and local playlists).
-                     Empty state shows a single "Find more songs" accent CTA;
-                     populated state swaps in an ItemsControl of recommendation
-                     cards. The DataTemplate routes Add/Dismiss back to the VM
-                     via PageRoot.ViewModel bindings — DataTemplate's local
-                     DataContext is the RecommendedTrackResult itself, not the
-                     page, so we cross-reference via ElementName=PageRoot. -->
+                     Songs surface. Gated on CanShowRecommendations (owner +
+                     ≥1 track): the recommender uses the existing tracks as
+                     seed, so an empty playlist has nothing to recommend
+                     against. Fetch is auto-triggered by the VM the first
+                     time both conditions hold; the populated state swaps in
+                     an ItemsControl of recommendation cards. The
+                     DataTemplate routes Add/Dismiss back to the VM via
+                     PageRoot.ViewModel bindings — DataTemplate's local
+                     DataContext is the RecommendedTrackResult itself, not
+                     the page, so we cross-reference via ElementName=PageRoot. -->
                 <tdg:TrackDataGrid.FooterContent>
                     <!-- Visibility (not x:Load) on the root: FooterContent is
                          typed as `object`, and the XAML compile-time deferred-
@@ -664,10 +725,11 @@
                     <StackPanel Padding="16,24,16,32"
                                 x:Name="FooterTracks"
                                 Spacing="16"
-                                Visibility="{x:Bind ViewModel.CanEditItems, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                Visibility="{x:Bind ViewModel.CanShowRecommendations, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0"
@@ -675,10 +737,28 @@
                                        Style="{StaticResource SubtitleTextBlockStyle}"
                                        FontWeight="Bold"
                                        VerticalAlignment="Center"/>
+                            <!-- "Find more songs" entry — opens the app-wide
+                                 add-to-playlist session targeted at this playlist
+                                 and lands the user in Search so they can shop.
+                                 Code-behind handler mirrors the empty-state CTA. -->
+                            <Button x:Name="FindMoreSongsChip"
+                                    Grid.Column="1"
+                                    Click="FindMoreSongsChip_Click"
+                                    Margin="0,0,8,0"
+                                    Height="32" Padding="12,0" CornerRadius="16"
+                                    Background="Transparent"
+                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    ToolTipService.ToolTip="Browse the app and add tracks to this playlist">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <FontIcon Glyph="&#xE721;" FontSize="12"/>
+                                    <TextBlock Text="Find more songs" FontSize="12"/>
+                                </StackPanel>
+                            </Button>
                             <!-- Refresh chip is always reachable (no Visibility binding) so
                                  the user can swap the batch with a single click whenever
                                  they don't like the current set. -->
-                            <Button Grid.Column="1"
+                            <Button Grid.Column="2"
                                     Command="{x:Bind ViewModel.FindRecommendedTracksCommand}"
                                     Height="32" Padding="12,0" CornerRadius="16"
                                     Background="Transparent"
@@ -691,20 +771,6 @@
                                 </StackPanel>
                             </Button>
                         </Grid>
-
-                        <!-- Empty state CTA — gated on the derived
-                             ShouldShowEmptyRecommendationsCta so it disappears
-                             when an error is showing too. -->
-                        <Button Command="{x:Bind ViewModel.FindRecommendedTracksCommand}"
-                                Style="{StaticResource AccentButtonStyle}"
-                                HorizontalAlignment="Stretch"
-                                Padding="14,10" CornerRadius="20"
-                                Visibility="{x:Bind ViewModel.ShouldShowEmptyRecommendationsCta, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
-                                <FontIcon Glyph="&#xE721;" FontSize="14"/>
-                                <TextBlock Text="Find more songs" FontSize="13" FontWeight="SemiBold"/>
-                            </StackPanel>
-                        </Button>
 
                         <!-- Error state — shown when the last fetch attempt failed.
                              Independent of HasRecommendedTracks so a refresh failure
@@ -763,15 +829,26 @@
                             </ItemsRepeater.Layout>
                             <ItemsRepeater.ItemTemplate>
                                 <DataTemplate x:DataType="contracts:RecommendedTrackResult">
-                                    <Grid ColumnSpacing="8">
+                                    <Grid ColumnSpacing="0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
 
+                                        <!-- TrackItem in Row mode to match the playlist's main
+                                             track table styling exactly. Album / date / added-by
+                                             / play-count / index columns are hidden — recs are
+                                             unordered and don't belong to the playlist yet, so
+                                             those table fields don't apply. -->
                                         <track:TrackItem Grid.Column="0"
-                                                         Mode="Compact"
+                                                         Mode="Row"
                                                          Track="{x:Bind}"
+                                                         ShowAlbumArt="True"
+                                                         ShowArtistColumn="True"
+                                                         ShowAlbumColumn="False"
+                                                         ShowDateAdded="False"
+                                                         ShowAddedByColumn="False"
+                                                         ShowPlayCount="False"
                                                          PreserveImageOnUnload="True"
                                                          PlayCommand="{Binding ElementName=PageRoot, Path=ViewModel.PlayTrackCommand}"/>
 
@@ -781,6 +858,7 @@
                                                 BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                                 BorderThickness="1"
                                                 VerticalAlignment="Center"
+                                                Margin="8,0,0,0"
                                                 Command="{Binding ElementName=PageRoot, Path=ViewModel.AddRecommendationCommand}"
                                                 CommandParameter="{x:Bind}"
                                                 ToolTipService.ToolTip="Add to this playlist">
@@ -829,22 +907,48 @@
                         TextAlignment="Center"
                         HorizontalAlignment="Center"/>
                     <TextBlock
-                        Text="Explore a genre below, then add songs from search to start building it."
+                        Text="Find songs to add — anything you tap with + lands here."
                         Style="{StaticResource BodyTextBlockStyle}"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         TextAlignment="Center"
                         TextWrapping="WrapWholeWords"/>
+                    <!-- Primary "Find songs to add" CTA. Enters app-wide add-to-playlist
+                         mode (IAddToPlaylistSession.Begin) and navigates to Search so the
+                         user can shop. Genre chips below also enter the same mode. -->
+                    <Button x:Name="EmptyStateFindSongsButton"
+                            Style="{StaticResource AccentButtonStyle}"
+                            HorizontalAlignment="Center"
+                            MinWidth="220"
+                            Padding="16,10" CornerRadius="20"
+                            Margin="0,4,0,0"
+                            Click="EmptyStateFindSongsButton_Click"
+                            Visibility="{x:Bind ViewModel.CanEditItems, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                            <FontIcon Glyph="&#xE721;" FontSize="14"/>
+                            <TextBlock Text="Find songs to add" FontSize="13" FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </Button>
+                    <TextBlock
+                        Text="Or browse by genre"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        TextAlignment="Center"
+                        Margin="0,8,0,0"
+                        Visibility="{x:Bind ViewModel.ShowEmptyPlaylistGenreGrid, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     <browseControls:BrowseGrid
+                        x:Name="EmptyStateBrowseGrid"
                         ItemsSource="{x:Bind ViewModel.EmptyPlaylistGenreItems, Mode=OneWay}"
                         ItemTemplate="{StaticResource EmptyPlaylistGenreChipTemplate}"
                         MinItemWidth="120"
-                        Margin="0,8,0,0"
+                        Margin="0,4,0,0"
                         HorizontalAlignment="Stretch"
+                        Tapped="EmptyStateBrowseGrid_Tapped"
                         Visibility="{x:Bind ViewModel.ShowEmptyPlaylistGenreGrid, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </StackPanel>
             </Grid>
 
         </Grid>
+        </ScrollView>
 
         <!-- Error overlay: shown when detail fetch or track fetch fails.
              Retry re-invalidates the PlaylistStore and resets track-load state. -->
@@ -852,5 +956,22 @@
             Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
             RetryCommand="{x:Bind ViewModel.RetryCommand}"/>
+
+        <!-- Floating shy pill — pinned at top-center of the page, outside the
+             PageScrollView so it doesn't scroll. ShyHeaderController flips it
+             Visible once the user scrolls past ~190 px (banner pin offset)
+             and morphs the matched-ID leaves with the banner overlay above. -->
+        <playlist:PlaylistShyPill
+            x:Name="PlaylistShyPill"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Margin="0,12,0,0"
+            Visibility="Collapsed"
+            PlaylistImageUrl="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay}"
+            PlaylistName="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
+            OwnerName="{x:Bind ViewModel.OwnerName, Mode=OneWay}"
+            PaletteAccentPillBrush="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
+            PaletteAccentPillForegroundBrush="{x:Bind ViewModel.PaletteAccentPillForegroundBrush, Mode=OneWay}"
+            PlayCommand="{x:Bind ViewModel.PlayAllCommand}"/>
     </Grid>
 </Page>

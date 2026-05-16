@@ -295,7 +295,8 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
             _logger?.LogDebug(
                 "[xfade][album-vm:{Id}] propset.isLoading old={Old} new={New} changed={Changed}",
                 XfadeLog.Tag(_albumId), _isLoading, value, changed);
-            SetProperty(ref _isLoading, value);
+            if (SetProperty(ref _isLoading, value))
+                OnPropertyChanged(nameof(IsContentReady));
         }
     }
 
@@ -305,8 +306,19 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
     public bool IsLoadingTracks
     {
         get => _isLoadingTracks;
-        set => SetProperty(ref _isLoadingTracks, value);
+        set
+        {
+            if (SetProperty(ref _isLoadingTracks, value))
+                OnPropertyChanged(nameof(IsContentReady));
+        }
     }
+
+    /// <summary>
+    /// True once both header metadata and tracks have hydrated. Drives the
+    /// footer rail's shimmer→content crossfade so the about-artist card and
+    /// related shelves don't appear floating below skeleton track rows.
+    /// </summary>
+    public bool IsContentReady => !_isLoading && !_isLoadingTracks;
 
     /// <summary>
     /// Whether an error occurred during loading.

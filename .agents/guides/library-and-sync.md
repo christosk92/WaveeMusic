@@ -1,7 +1,7 @@
 ---
 guide: library-and-sync
 scope: Every code path that reads, writes, syncs, or persists the user's Spotify library — collection sync, playlist cache, dealer-driven incremental updates, save/pin/follow write paths, and every library/playlist UI surface that reads from the database.
-last_verified: 2026-05-13
+last_verified: 2026-05-16
 verified_by: read+grep over src/Wavee/Core/Library/Spotify, src/Wavee/Core/Playlists, src/Wavee/Core/Storage, src/Wavee/Connect/LibraryChangeManager.cs, and src/Wavee.UI.WinUI/Data/Contexts
 root_index: AGENTS.md (Codex) and CLAUDE.md (Claude Code)
 ---
@@ -161,6 +161,9 @@ Key methods:
   `DeletePlaylistAsync`, `RenamePlaylistAsync`,
   `UpdatePlaylistDescriptionAsync`, `UpdatePlaylistCoverAsync`,
   `SetPlaylistCollaborativeAsync`, member-management calls.
+- `GetPlaylistRecommendationsAsync` - Spotify's `playlistextender/extendp`
+  endpoint for owner-only Recommended Songs. Send bare track IDs in
+  `trackSkipIDs`; the current response uses `recommendedTracks`.
 - Podcast detail / comments / reactions / progress writes.
 - Local-track playlist overlay ops (`AddLocalTracksToPlaylistAsync` etc.).
 

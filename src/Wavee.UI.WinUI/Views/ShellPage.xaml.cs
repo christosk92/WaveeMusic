@@ -17,6 +17,7 @@ using Wavee.UI.WinUI.Controls.NavigationToolbar;
 using Wavee.UI.WinUI.Controls.Sidebar;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -495,6 +496,10 @@ public sealed partial class ShellPage : Page
                 (s, dp) => UpdateExpandedArtSize());
         }
 
+        // Lift the notification toast when the app-wide "Add to playlist"
+        // bar is showing — both surfaces share the Row=2 bottom slot.
+        HookAddToPlaylistSessionForToast();
+
         // Unsubscribe to avoid duplicate calls
         Loaded -= ShellPage_Loaded;
     }
@@ -636,6 +641,11 @@ public sealed partial class ShellPage : Page
     {
         var openInNewTab = NavigationHelpers.IsCtrlPressed();
         NavigationHelpers.OpenHome(openInNewTab);
+    }
+
+    private void NavToolbar_FriendsRequested(NavigationToolbar sender, RoutedEventArgs args)
+    {
+        WeakReferenceMessenger.Default.Send(new ToggleRightPanelMessage(RightPanelMode.FriendsActivity));
     }
 
     private void NavToolbar_SearchQuerySubmitted(NavigationToolbar sender, string queryText)

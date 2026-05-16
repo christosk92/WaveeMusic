@@ -52,6 +52,8 @@ public static class FluentGlyphs
     public const string Artist = "";
     /// <summary>MusicAlbum — E93C.</summary>
     public const string Album = "";
+    /// <summary>MusicNote — E8D6. Track / album-art placeholder glyph.</summary>
+    public const string MusicNote = "";
     /// <summary>MusicNote — E8D6 / Playlist surface E8FD.</summary>
     public const string Playlist = "";
     /// <summary>Folder (closed) — E8B7.</summary>

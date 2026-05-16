@@ -38,6 +38,20 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
     public ShimmerLoadGate ShimmerGate => PageController.ShimmerGate;
 
+    /// <summary>
+    /// Sibling shimmer gate for the TrackDataGrid footer rail (about-artist card
+    /// + Fans-also-like / More-by-Artist shelves). Operates independently from
+    /// <see cref="ShimmerGate"/> so the footer can keep its skeleton up until
+    /// <see cref="AlbumViewModel.IsContentReady"/> flips true — i.e. after BOTH
+    /// header metadata and tracks have hydrated — instead of revealing the
+    /// instant the header lands and leaving an unstyled card floating below
+    /// still-animating skeleton rows.
+    /// </summary>
+    public ShimmerLoadGate FooterShimmerGate { get; } = new();
+
+    private bool _footerRevealed;
+    private int _footerRevealGeneration;
+
     public TabItemParameter? TabItemParameter => ViewModel.TabItemParameter;
 
     public event EventHandler<TabItemParameter>? ContentChanged;
@@ -101,6 +115,11 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
                 PageController.OnIsLoadingChanged();
             else
                 _ = ShowContentAfterAlbumLayoutSettlesAsync();
+        }
+        else if (e.PropertyName == nameof(AlbumViewModel.IsContentReady))
+        {
+            if (ViewModel.IsContentReady)
+                _ = TryRevealFooterAsync();
         }
         else if (e.PropertyName == nameof(AlbumViewModel.AlternateReleases))
             RebuildOtherVersionsFlyout();
@@ -214,7 +233,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         // expression reads it reactively — pushing a new value via
         // InsertScalar re-evaluates the animation without restart.
         _stickyProps = compositor.CreatePropertySet();
-        _stickyProps.InsertScalar("MaxLag", ComputeMaxLagFloat());
+        _stickyProps.InsertScalar("LeftColHeight", (float)LeftColumnHost.ActualHeight);
 
         // ExpressionAnimationSources on the NEW ScrollView control exposes
         // `Position` (Vector2) — positive Y when scrolled DOWN. That's the
@@ -227,8 +246,17 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         // Clamp(0, MaxLag) floors out at the top (no rubber-band overshoot)
         // and ceilings when the column is taller than the viewport (so it
         // can eventually scroll off).
+        // Clamp(Y, 0, max(0, ExtentH - LeftColH)):
+        //   • For Y small: T = Y → column pinned at viewport top.
+        //   • Once Y exceeds (ExtentH - LeftColH), T plateaus at that cap and
+        //     the column drifts up so its BOTTOM reaches viewport bottom at
+        //     Y_max. Without the cap, the column would stay pinned even at
+        //     max scroll and its bottom (release info / About card) would
+        //     stay permanently below the viewport. ExtentH is sourced from
+        //     scroll.Extent.Y so the expression re-evaluates reactively when
+        //     tracks load and the content extent grows.
         _stickyAnimation = compositor.CreateExpressionAnimation(
-            "Vector3(0, Clamp(scroll.Position.Y, 0, source.MaxLag), 0)");
+            "Vector3(0, Clamp(scroll.Position.Y, 0, Max(scroll.Extent.Y - source.LeftColHeight, 0)), 0)");
         _stickyAnimation.SetReferenceParameter("scroll", PageScrollView.ExpressionAnimationSources);
         _stickyAnimation.SetReferenceParameter("source", _stickyProps);
         visual.StartAnimation("Translation", _stickyAnimation);
@@ -266,10 +294,12 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
     private void StickyAnchors_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (_stickyProps is null) return;
-        _stickyProps.InsertScalar("MaxLag", ComputeMaxLagFloat());
+        if (_stickyProps is null || LeftColumnHost is null) return;
+        _stickyProps.InsertScalar("LeftColHeight", (float)LeftColumnHost.ActualHeight);
     }
 
+    // Retained for reference / future tuning. Not called by the expression
+    // animation anymore — Extent and LeftColHeight are sourced reactively.
     private float ComputeMaxLagFloat()
     {
         if (LeftColumnHost is null || PageScrollView is null) return float.MaxValue / 2f;
@@ -416,6 +446,9 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
         // Reset shimmer/content visual state for the fresh load.
         PageController.ResetForNewLoad();
+        _footerRevealed = false;
+        _footerRevealGeneration++;
+        FooterShimmerGate.Reset(() => FooterShimmer, () => FooterContent);
 
         var hasPendingAlbumArtAnimation =
             ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.AlbumArt);
@@ -474,7 +507,17 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             ViewModel.Activate(connectedAnimationNav.Uri, preserveHeaderPrefill: true);
 
         if (await SettleAlbumLayoutAsync())
+        {
             PageController.TryShowContentNow();
+            // Warm-cache footer trigger. AlbumStore can return Ready immediately
+            // for an album the user has visited before — IsLoading / IsLoadingTracks
+            // never flip during navigation, so ViewModel_PropertyChanged's
+            // IsContentReady branch never fires and the footer would stay in its
+            // freshly-Reset shimmer state forever. Kick the reveal here so the
+            // same-id / warm-cache cases match the cold-load timing.
+            if (ViewModel.IsContentReady)
+                _ = TryRevealFooterAsync();
+        }
     }
 
     // ── Transition settling ──────────────────────────────────────────────────
@@ -483,6 +526,56 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
     {
         if (await SettleAlbumLayoutAsync())
             PageController.TryShowContentNow();
+        if (ViewModel.IsContentReady)
+            _ = TryRevealFooterAsync();
+    }
+
+    /// <summary>
+    /// Fade the footer shimmer out and the real footer content in, matching the
+    /// timing of the main shimmer→content crossfade. Idempotent across repeated
+    /// flips of <see cref="AlbumViewModel.IsContentReady"/>, and guards against
+    /// nav-away / fresh-load races via a per-call generation counter.
+    /// </summary>
+    private async Task TryRevealFooterAsync()
+    {
+        if (_isDisposed || PageController.IsNavigatingAway) return;
+        if (_footerRevealed) return;
+
+        var generation = ++_footerRevealGeneration;
+
+        // Two Task.Yield()s + UpdateLayout matches SettleAlbumLayoutAsync's pattern:
+        // gives XAML one frame to measure the freshly-bound footer subtree
+        // before the composition crossfade starts, so neither shimmer nor real
+        // content snaps a layout pass mid-animation.
+        await Task.Yield();
+        if (_isDisposed || PageController.IsNavigatingAway || generation != _footerRevealGeneration)
+            return;
+
+        FooterShimmer?.UpdateLayout();
+        FooterContent?.UpdateLayout();
+        await Task.Yield();
+        if (_isDisposed || PageController.IsNavigatingAway || generation != _footerRevealGeneration)
+            return;
+
+        // FooterContent is x:Name'd (not x:Load gated), so it should be realised
+        // whenever the page tree is up. Defensive null-check covers the edge
+        // case where IsContentReady arrives before the framework has wired the
+        // named field on a freshly-constructed page.
+        var content = FooterContent;
+        if (content is null) return;
+
+        _footerRevealed = true;
+        _logger?.LogDebug(
+            "[xfade][album:{Id}] footer.xfade.start shimmer={ShimmerKnown}",
+            XfadeLog.Tag(ViewModel.AlbumId), FooterShimmer is not null);
+
+        await FooterShimmerGate.RunCrossfadeAsync(
+            FooterShimmer, content,
+            continuePredicate: () =>
+                _footerRevealed &&
+                !_isDisposed &&
+                !PageController.IsNavigatingAway &&
+                generation == _footerRevealGeneration);
     }
 
     private async Task<bool> SettleAlbumLayoutAsync()

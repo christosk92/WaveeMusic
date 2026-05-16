@@ -18,6 +18,7 @@
     xmlns:toolkit="using:CommunityToolkit.WinUI"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
     xmlns:notifications="using:Wavee.UI.WinUI.Controls.Notifications"
+    xmlns:addtoplaylist="using:Wavee.UI.WinUI.Controls.AddToPlaylist"
     xmlns:minivideo="using:Wavee.UI.WinUI.Controls.MiniVideoPlayer"
     mc:Ignorable="d"
     Background="Transparent">
@@ -61,6 +62,7 @@
             Grid.Row="1"
             Visibility="{x:Bind ViewModel.IsNavToolbarVisibleInShell, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
             IsRightPanelOpen="{x:Bind ViewModel.IsRightPanelOpen, Mode=TwoWay}"
+            IsFriendsPanelActive="{x:Bind ViewModel.IsFriendsPanelActive, Mode=OneWay}"
             CanGoBack="{x:Bind ViewModel.CanGoBack, Mode=OneWay}"
             CanGoForward="{x:Bind ViewModel.CanGoForward, Mode=OneWay}"
             IsOnHomePage="{x:Bind ViewModel.IsOnHomePage, Mode=OneWay}"
@@ -77,6 +79,7 @@
             SearchActionButtonClicked="NavToolbar_SearchActionButtonClicked"
             SearchSuggestions="{x:Bind ViewModel.SearchSuggestions, Mode=OneWay}"
             SuggestionGroups="{x:Bind ViewModel.SuggestionGroups, Mode=OneWay}"
+            FriendsRequested="NavToolbar_FriendsRequested"
             SignInRequested="NavToolbar_SignInRequested"/>
 
         <!-- Shell-level notification bars -->
@@ -95,6 +98,7 @@
 
         <!-- Floating Photos-style notification toast — floats above the player bar. -->
         <notifications:NotificationToast
+            x:Name="NotificationToastControl"
             Grid.Row="2"
             Canvas.ZIndex="3"
             VerticalAlignment="Bottom"
@@ -107,6 +111,18 @@
             IsActionEnabled="{x:Bind ViewModel.IsNotificationActionEnabled, Mode=OneWay}"
             ActionClick="NotificationAction_Click"
             CloseRequested="Notification_CloseRequested"/>
+
+        <!-- App-wide "Adding to playlist…" floating bar. Mounted once at the
+             shell level so it survives navigation between Browse, album,
+             artist, search etc. while a session is open. Self-managed
+             Visibility from IAddToPlaylistSession.IsActive. -->
+        <addtoplaylist:AddToPlaylistBar
+            x:Name="AddToPlaylistBarControl"
+            Grid.Row="2"
+            Canvas.ZIndex="4"
+            VerticalAlignment="Bottom"
+            HorizontalAlignment="Center"
+            Margin="0,0,0,16"/>
 
         <!-- Connection overlay — blocks interaction while disconnected -->
         <Border

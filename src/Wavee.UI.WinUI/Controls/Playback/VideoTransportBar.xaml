@@ -162,7 +162,7 @@
                     </Button.Flyout>
                 </Button>
 
-                <!-- Expand player — Theatre / Fullscreen / Mini player / Pop out.
+                <!-- Expand player — Theatre / Fullscreen / Mini player.
                      Glyph swaps on the active mode so the user can see at a glance
                      whether they can enter or exit. -->
                 <DropDownButton x:Name="ExpandPlayerDropDown"
@@ -198,13 +198,6 @@
                                             Click="MiniPlayerMenuItem_Click">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xEE49;" FontSize="14" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem x:Name="PopOutMenuItem"
-                                            Text="Pop out to window"
-                                            Click="PopOutMenuItem_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE8A7;" FontSize="14" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                         </MenuFlyout>

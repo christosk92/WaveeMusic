@@ -1463,10 +1463,11 @@ public sealed class LibraryDataService : ILibraryDataService
 
         var fullPlaylistUri = NormalizePlaylistUri(playlistUri);
         var spClient = _session.SpClient;
+        var trackSkipIds = NormalizeTrackSkipIds(skipUris);
 
         var response = await spClient.ExtendPlaylistAsync(
             fullPlaylistUri,
-            skipUris,
+            trackSkipIds,
             numResults,
             ct).ConfigureAwait(false);
 
@@ -1478,6 +1479,42 @@ public sealed class LibraryDataService : ILibraryDataService
         if (response is null)
             throw new InvalidOperationException(
                 $"Playlist extender returned no response for {fullPlaylistUri}");
+
+        var recommendedTracks = response.RecommendedTracks;
+        if (recommendedTracks is { Count: > 0 })
+        {
+            var recommendedResults = new List<RecommendedTrackResult>(recommendedTracks.Count);
+            foreach (var t in recommendedTracks)
+            {
+                var uri = !string.IsNullOrWhiteSpace(t.OriginalId)
+                    ? t.OriginalId
+                    : !string.IsNullOrWhiteSpace(t.Id)
+                        ? $"spotify:track:{t.Id}"
+                        : null;
+                if (string.IsNullOrWhiteSpace(uri)) continue;
+
+                var id = !string.IsNullOrWhiteSpace(t.Id)
+                    ? t.Id
+                    : ExtractBareId(uri, "spotify:track:");
+                var artistNames = t.Artists is { Count: > 0 }
+                    ? string.Join(", ", t.Artists.Select(a => a.Name).Where(n => !string.IsNullOrEmpty(n)))
+                    : null;
+
+                recommendedResults.Add(new RecommendedTrackResult
+                {
+                    Uri = uri,
+                    Id = id,
+                    Name = t.Name,
+                    ArtistNames = artistNames,
+                    AlbumName = t.Album?.Name,
+                    ImageUrl = t.Album?.ImageUrl ?? t.Album?.LargeImageUrl,
+                    Duration = t.Duration > 0 ? TimeSpan.FromMilliseconds(t.Duration) : TimeSpan.Zero,
+                    OriginalIndex = recommendedResults.Count + 1,
+                });
+            }
+
+            return recommendedResults;
+        }
 
         var tracks = response.Tracks;
         if (tracks is null || tracks.Count == 0)
@@ -1580,6 +1617,43 @@ public sealed class LibraryDataService : ILibraryDataService
         return value.StartsWith("spotify:", StringComparison.Ordinal)
             ? value
             : $"spotify:track:{value}";
+    }
+
+    private static IReadOnlyList<string> NormalizeTrackSkipIds(IReadOnlyList<string>? idsOrUris)
+    {
+        if (idsOrUris is null || idsOrUris.Count == 0)
+            return Array.Empty<string>();
+
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var raw in idsOrUris)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                continue;
+
+            var id = ExtractBareId(raw, "spotify:track:");
+            if (IsSpotifyBase62Id(id))
+                ids.Add(id);
+        }
+
+        return ids.Count == 0 ? Array.Empty<string>() : ids.ToList();
+    }
+
+    private static bool IsSpotifyBase62Id(string value)
+    {
+        if (value.Length != SpotifyId.Base62Length)
+            return false;
+
+        foreach (var c in value)
+        {
+            var valid =
+                c is >= '0' and <= '9' ||
+                c is >= 'A' and <= 'Z' ||
+                c is >= 'a' and <= 'z';
+            if (!valid)
+                return false;
+        }
+
+        return true;
     }
 
     // ── Local-track playlist overlays ──

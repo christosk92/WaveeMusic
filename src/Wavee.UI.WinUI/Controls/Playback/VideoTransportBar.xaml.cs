@@ -1,7 +1,6 @@
 using System;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
-using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.Contracts;
@@ -14,21 +13,19 @@ namespace Wavee.UI.WinUI.Controls.Playback;
 
 /// <summary>
 /// Which surface is hosting this transport bar. Drives the contextual
-/// label / behavior of the "Mini player" + "Pop out to window" flyout
-/// entries — the same control renders differently in the cinematic page vs
-/// the floating popout window.
+/// behavior of the mini-player flyout entry. The same control renders
+/// differently in the cinematic page vs the floating popout window.
 /// </summary>
 public enum VideoTransportSurface
 {
     /// <summary>Hosted inside the main app window (cinematic VideoPlayerPage
     /// or the Theatre overlay). Mini-player exits the cinematic page to let
-    /// the floating mini PiP take over; Pop-out detaches the player into a
-    /// floating window.</summary>
+    /// the floating mini PiP take over.</summary>
     Main,
 
     /// <summary>Hosted inside the floating popout window
-    /// (PlayerFloatingWindow). Pop-out becomes "Dock back to main app";
-    /// Mini-player is hidden (the popout IS the alternate surface).</summary>
+    /// (PlayerFloatingWindow). Mini-player is hidden because the popout is
+    /// already the alternate surface.</summary>
     Popout,
 }
 
@@ -108,13 +105,10 @@ public sealed partial class VideoTransportBar : UserControl
             case VideoTransportSurface.Popout:
                 // Inside the floating popout: the popout IS the alternate
                 // surface, so Theatre + Mini-player are nonsense (Theatre
-                // collapses chrome on the main window we're not in; Mini
-                // player is what we'd "dock back to"). Pop-out becomes
-                // "Dock back to main app".
+                // collapses chrome on the main window we're not in).
                 TheatreMenuItem.Visibility = Visibility.Collapsed;
                 TheatreMiniSeparator.Visibility = Visibility.Collapsed;
                 MiniPlayerMenuItem.Visibility = Visibility.Collapsed;
-                PopOutMenuItem.Text = "Dock back to main app";
                 break;
 
             case VideoTransportSurface.Main:
@@ -122,7 +116,6 @@ public sealed partial class VideoTransportBar : UserControl
                 TheatreMenuItem.Visibility = Visibility.Visible;
                 TheatreMiniSeparator.Visibility = Visibility.Visible;
                 MiniPlayerMenuItem.Visibility = Visibility.Visible;
-                PopOutMenuItem.Text = "Pop out to window";
                 break;
         }
     }
@@ -320,42 +313,6 @@ public sealed partial class VideoTransportBar : UserControl
             hostFrame.GoBack();
         else
             Wavee.UI.WinUI.Helpers.Navigation.NavigationHelpers.OpenHome();
-    }
-
-    private void PopOutMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        if (Surface == VideoTransportSurface.Popout)
-        {
-            // Already in the popout — "Dock back" closes it.
-            try
-            {
-                Ioc.Default.GetService<Wavee.UI.WinUI.Services.Docking.IPanelDockingService>()?
-                    .Dock(Wavee.UI.WinUI.Services.Docking.DetachablePanel.Player);
-            }
-            catch { /* best-effort */ }
-            return;
-        }
-
-        // Main surface — exit expanded mode, force MainWindow out of OS
-        // fullscreen (synchronously) so the popout window doesn't open behind
-        // a stuck-fullscreen black window, then detach.
-        _presentation?.ExitToNormal();
-        try
-        {
-            var appWindow = MainWindow.Instance?.AppWindow;
-            if (appWindow?.Presenter.Kind == AppWindowPresenterKind.FullScreen)
-                appWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
-        }
-        catch { /* best-effort */ }
-
-        try
-        {
-            Ioc.Default.GetService<Wavee.UI.WinUI.Data.Contracts.IShellSessionService>()?
-                .UpdateLayout(s => s.PlayerWindowExpanded = true);
-            Ioc.Default.GetService<Wavee.UI.WinUI.Services.Docking.IPanelDockingService>()?
-                .Detach(Wavee.UI.WinUI.Services.Docking.DetachablePanel.Player);
-        }
-        catch { /* best-effort */ }
     }
 
     private static Frame? FindAncestorFrame(DependencyObject node)

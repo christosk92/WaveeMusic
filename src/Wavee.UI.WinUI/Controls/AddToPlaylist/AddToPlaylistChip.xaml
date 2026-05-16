@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.AddToPlaylist.AddToPlaylistChip"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Visibility="Collapsed">
+
+    <!-- 28-DIP round outline button. Visibility is driven by the code-behind
+         (session.IsActive AND IsEligible); glyph toggles between Add and
+         CheckMark depending on whether the configured TrackUri is in the
+         session's pending set. Click toggles. -->
+    <Button x:Name="ChipButton"
+            Width="28" Height="28"
+            Padding="0"
+            CornerRadius="14"
+            Background="Transparent"
+            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            Click="OnClick"
+            ToolTipService.ToolTip="Add to playlist">
+        <FontIcon x:Name="ChipGlyph"
+                  FontSize="13"
+                  Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+    </Button>
+</UserControl>

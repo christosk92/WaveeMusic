@@ -316,6 +316,7 @@ public sealed partial class AudioOutputPicker : UserControl
             CompactContentRoot.ColumnSpacing = 0;
             CompactNameColumn.Width = new GridLength(0);
             CompactChevronColumn.Width = new GridLength(0);
+            CompactDeviceIcon.FontSize = 16;
             CompactDeviceName.Visibility = Visibility.Collapsed;
             CompactChevron.Visibility = Visibility.Collapsed;
             return;
@@ -328,6 +329,7 @@ public sealed partial class AudioOutputPicker : UserControl
         CompactContentRoot.ColumnSpacing = 6;
         CompactNameColumn.Width = new GridLength(1, GridUnitType.Star);
         CompactChevronColumn.Width = GridLength.Auto;
+        CompactDeviceIcon.FontSize = 12;
         CompactDeviceName.Visibility = Visibility.Visible;
         CompactChevron.Visibility = Visibility.Visible;
     }

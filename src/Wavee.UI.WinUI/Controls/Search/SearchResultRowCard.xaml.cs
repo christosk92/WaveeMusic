@@ -154,6 +154,7 @@ public sealed partial class SearchResultRowCard : UserControl
             ApplyThumbnailShape(isArtist: false);
             RefreshPlaybackState();
             UpdateOverlayState();
+            ApplyAddChipForItem(null);
             return;
         }
 
@@ -172,6 +173,7 @@ public sealed partial class SearchResultRowCard : UserControl
 
         RefreshPlaybackState();
         UpdateOverlayState();
+        ApplyAddChipForItem(item);
     }
 
     private void ApplyThumbnailShape(bool isArtist)
@@ -242,10 +244,12 @@ public sealed partial class SearchResultRowCard : UserControl
 
         RefreshPlaybackState();
         UpdateOverlayState();
+        HookAddToPlaylistSession();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        UnhookAddToPlaylistSession();
         if (_subscribedToPlayback)
         {
             WeakReferenceMessenger.Default.Unregister<TrackStateRefreshMessage>(this);

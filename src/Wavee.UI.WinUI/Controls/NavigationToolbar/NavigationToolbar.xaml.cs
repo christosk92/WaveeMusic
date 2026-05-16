@@ -66,6 +66,16 @@ public sealed partial class NavigationToolbar : UserControl
         set => SetValue(IsRightPanelOpenProperty, value);
     }
 
+    public static readonly DependencyProperty IsFriendsPanelActiveProperty =
+        DependencyProperty.Register(nameof(IsFriendsPanelActive), typeof(bool), typeof(NavigationToolbar),
+            new PropertyMetadata(false));
+
+    public bool IsFriendsPanelActive
+    {
+        get => (bool)GetValue(IsFriendsPanelActiveProperty);
+        set => SetValue(IsFriendsPanelActiveProperty, value);
+    }
+
     public static readonly DependencyProperty CanGoForwardProperty =
         DependencyProperty.Register(nameof(CanGoForward), typeof(bool), typeof(NavigationToolbar),
             new PropertyMetadata(false));
@@ -278,6 +288,7 @@ public sealed partial class NavigationToolbar : UserControl
     public event TypedEventHandler<NavigationToolbar, object>? SearchSuggestionChosen;
     public event TypedEventHandler<NavigationToolbar, Data.Contracts.SearchSuggestionItem>? SearchActionButtonClicked;
     public event TypedEventHandler<NavigationToolbar, RoutedEventArgs>? SearchRetryRequested;
+    public event TypedEventHandler<NavigationToolbar, RoutedEventArgs>? FriendsRequested;
 
     /// <summary>
     /// Raised when the unauthenticated "Sign in" CTA is clicked. ShellPage listens and opens the sign-in dialog.
@@ -339,6 +350,11 @@ public sealed partial class NavigationToolbar : UserControl
     private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
     {
         _themeService?.ToggleTheme();
+    }
+
+    private void FriendsButton_Click(object sender, RoutedEventArgs e)
+    {
+        FriendsRequested?.Invoke(this, e);
     }
 
 

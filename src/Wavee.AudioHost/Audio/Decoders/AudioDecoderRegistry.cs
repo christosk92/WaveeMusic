@@ -25,6 +25,20 @@ public sealed class AudioDecoderRegistry
     }
 
     /// <summary>
+    /// Finds a registered decoder by its advertised format name.
+    /// </summary>
+    public IAudioDecoder? FindDecoderByFormatName(string formatName)
+    {
+        foreach (var decoder in _decoders)
+        {
+            if (string.Equals(decoder.FormatName, formatName, StringComparison.OrdinalIgnoreCase))
+                return decoder;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Finds a decoder that can decode the given stream.
     /// For non-seekable streams, returns a wrapped stream that prepends buffered header bytes.
     /// </summary>

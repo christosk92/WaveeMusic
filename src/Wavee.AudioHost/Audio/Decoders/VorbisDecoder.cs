@@ -39,6 +39,7 @@ public sealed class VorbisDecoder : IAudioDecoder
     private VorbisReader? _cachedReader;
     private SkipStream? _cachedSkipStream;
     private Stream? _cachedForStream;
+    private long _cachedOggStartOffset = SpotifyHeaderSize;
 
     public string FormatName => "Vorbis";
 
@@ -60,55 +61,7 @@ public sealed class VorbisDecoder : IAudioDecoder
         if (!stream.CanRead)
             return false;
 
-        var startPosition = stream.CanSeek ? stream.Position : 0;
-
-        try
-        {
-            // Seek to after Spotify header
-            if (stream.CanSeek)
-            {
-                if (stream.Length < SpotifyHeaderSize + 4)
-                    return false;
-
-                stream.Position = SpotifyHeaderSize;
-            }
-            else
-            {
-                // For non-seekable streams, skip bytes
-                var toSkip = SpotifyHeaderSize;
-                var skipBuffer = ArrayPool<byte>.Shared.Rent(Math.Min(toSkip, 1024));
-                try
-                {
-                    while (toSkip > 0)
-                    {
-                        var bytesRead = stream.Read(skipBuffer, 0, Math.Min(toSkip, skipBuffer.Length));
-                        if (bytesRead == 0)
-                            return false;
-                        toSkip -= bytesRead;
-                    }
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(skipBuffer);
-                }
-            }
-
-            // Read OGG magic bytes
-            Span<byte> magic = stackalloc byte[4];
-            var read = stream.Read(magic);
-            if (read < 4)
-                return false;
-
-            return magic.SequenceEqual(OggMagic);
-        }
-        finally
-        {
-            // Reset stream position if possible
-            if (stream.CanSeek)
-            {
-                stream.Position = startPosition;
-            }
-        }
+        return TryFindVorbisStartOffset(stream, out _);
     }
 
     /// <summary>
@@ -117,14 +70,21 @@ public sealed class VorbisDecoder : IAudioDecoder
     /// </summary>
     public Task<AudioFormat> GetFormatAsync(Stream stream, CancellationToken cancellationToken = default)
     {
+        var oggStartOffset = TryFindVorbisStartOffset(stream, out var detectedOffset)
+            ? detectedOffset
+            : SpotifyHeaderSize;
+
+        _logger?.LogDebug("Vorbis Ogg start offset: {Offset}", oggStartOffset);
+
         // Wrap stream to skip Spotify header
-        var skipStream = new SkipStream(stream, SpotifyHeaderSize, leaveOpen: true);
+        var skipStream = new SkipStream(stream, oggStartOffset, leaveOpen: true);
         var reader = new VorbisReader(skipStream, closeOnDispose: false);
 
         // Cache for reuse in DecodeAsync — avoids creating a second VorbisReader
         _cachedReader = reader;
         _cachedSkipStream = skipStream;
         _cachedForStream = stream;
+        _cachedOggStartOffset = oggStartOffset;
 
         return Task.FromResult(new AudioFormat(
             SampleRate: reader.SampleRate,
@@ -155,7 +115,10 @@ public sealed class VorbisDecoder : IAudioDecoder
         }
         else
         {
-            skipStream = new SkipStream(stream, SpotifyHeaderSize, leaveOpen: true);
+            var oggStartOffset = TryFindVorbisStartOffset(stream, out var detectedOffset)
+                ? detectedOffset
+                : _cachedOggStartOffset;
+            skipStream = new SkipStream(stream, oggStartOffset, leaveOpen: true);
             reader = new VorbisReader(skipStream, closeOnDispose: false);
         }
         // Always keep reference for inline SeekTo calls
@@ -215,6 +178,123 @@ public sealed class VorbisDecoder : IAudioDecoder
     {
         if (_cachedReader != null)
             _cachedReader.TimePosition = TimeSpan.FromMilliseconds(positionMs);
+    }
+
+    private static bool TryFindVorbisStartOffset(Stream stream, out long offset)
+    {
+        if (stream.CanSeek)
+        {
+            var startPosition = stream.Position;
+            try
+            {
+                if (HasVorbisHeaderAt(stream, 0))
+                {
+                    offset = 0;
+                    return true;
+                }
+
+                if (HasVorbisHeaderAt(stream, SpotifyHeaderSize))
+                {
+                    offset = SpotifyHeaderSize;
+                    return true;
+                }
+            }
+            finally
+            {
+                stream.Position = startPosition;
+            }
+
+            offset = 0;
+            return false;
+        }
+
+        if (TrySkipNonSeekable(stream, SpotifyHeaderSize) && HasVorbisHeaderAtCurrentPosition(stream))
+        {
+            offset = SpotifyHeaderSize;
+            return true;
+        }
+
+        offset = 0;
+        return false;
+    }
+
+    private static bool HasVorbisHeaderAt(Stream stream, long offset)
+    {
+        stream.Position = offset;
+        return HasVorbisHeaderAtCurrentPosition(stream);
+    }
+
+    private static bool HasVorbisHeaderAtCurrentPosition(Stream stream)
+    {
+        Span<byte> header = stackalloc byte[27];
+        if (!TryReadExactly(stream, header))
+            return false;
+
+        if (!header[..4].SequenceEqual(OggMagic))
+            return false;
+
+        var pageSegments = header[26];
+        Span<byte> lacing = stackalloc byte[255];
+        lacing = lacing[..pageSegments];
+        if (!TryReadExactly(stream, lacing))
+            return false;
+
+        var firstPacketLength = 0;
+        for (var i = 0; i < lacing.Length; i++)
+        {
+            firstPacketLength += lacing[i];
+            if (lacing[i] < 255)
+                break;
+        }
+
+        if (firstPacketLength < 7)
+            return false;
+
+        Span<byte> packetStart = stackalloc byte[7];
+        if (!TryReadExactly(stream, packetStart))
+            return false;
+
+        return packetStart[0] == 1
+            && packetStart[1] == (byte)'v'
+            && packetStart[2] == (byte)'o'
+            && packetStart[3] == (byte)'r'
+            && packetStart[4] == (byte)'b'
+            && packetStart[5] == (byte)'i'
+            && packetStart[6] == (byte)'s';
+    }
+
+    private static bool TryReadExactly(Stream stream, Span<byte> buffer)
+    {
+        while (!buffer.IsEmpty)
+        {
+            var read = stream.Read(buffer);
+            if (read <= 0)
+                return false;
+            buffer = buffer[read..];
+        }
+
+        return true;
+    }
+
+    private static bool TrySkipNonSeekable(Stream stream, int bytesToSkip)
+    {
+        var skipBuffer = ArrayPool<byte>.Shared.Rent(Math.Min(bytesToSkip, 1024));
+        try
+        {
+            while (bytesToSkip > 0)
+            {
+                var bytesRead = stream.Read(skipBuffer, 0, Math.Min(bytesToSkip, skipBuffer.Length));
+                if (bytesRead == 0)
+                    return false;
+                bytesToSkip -= bytesRead;
+            }
+
+            return true;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(skipBuffer);
+        }
     }
 
     /// <summary>

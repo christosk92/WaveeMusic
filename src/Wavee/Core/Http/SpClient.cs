@@ -52,6 +52,8 @@ public sealed class SpClient : ISpClient
     // ing read-only handler. See SpotifyClientIdentity.GetUserAgent for the
     // matching OS descriptor that uses x64[native:ARM] on ARM hosts.
     private static readonly string SpotifyClientUserAgent = SpotifyClientIdentity.GetUserAgent();
+    private static readonly string XpuiDesktopUserAgent =
+        $"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.179 Spotify/{SpotifyClientIdentity.DesktopSemver} Safari/537.36";
 
     private readonly ISession _session;
     private readonly HttpClient _httpClient;
@@ -2806,10 +2808,7 @@ public sealed class SpClient : ISpClient
         var accessToken = await _session.GetAccessTokenAsync(cancellationToken).ConfigureAwait(false);
         var url = $"{_baseUrl}/playlistextender/extendp/";
 
-        // Same identity-header set the /playlist/v2/.../signals route requires.
-        // The gateway gates /playlistextender on the same first-party tuple, so
-        // we reuse BuildPlaylistV2Request to keep the header surface in one place.
-        using var request = BuildPlaylistV2Request(url, accessToken.Token);
+        using var request = BuildXpuiJsonPostRequest(url, accessToken.Token);
         if (_clientTokenManager != null)
             await TryAttachClientTokenAsync(request, cancellationToken).ConfigureAwait(false);
 
@@ -2823,15 +2822,19 @@ public sealed class SpClient : ISpClient
             body,
             Wavee.Core.Http.PlaylistExtender.PlaylistExtenderJsonContext.Default.ExtendPlaylistRequest);
         request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+        request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json;charset=UTF-8");
 
         try
         {
             using var response = await SendWithRetryAsync(request, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 _logger?.LogDebug(
-                    "ExtendPlaylistAsync got {Status} for {Uri}",
-                    (int)response.StatusCode, playlistUri);
+                    "ExtendPlaylistAsync got {Status} for {Uri}: {Body}",
+                    (int)response.StatusCode,
+                    playlistUri,
+                    TruncateForLog(responseBody, 512));
                 return null;
             }
 
@@ -2847,6 +2850,28 @@ public sealed class SpClient : ISpClient
             return null;
         }
     }
+
+    private HttpRequestMessage BuildXpuiJsonPostRequest(string url, string bearerToken)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        request.Headers.TryAddWithoutValidation("User-Agent", XpuiDesktopUserAgent);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.AcceptLanguage.ParseAdd("en");
+        request.Headers.TryAddWithoutValidation("App-Platform", GetXpuiAppPlatform());
+        request.Headers.TryAddWithoutValidation("Spotify-App-Version", SpotifyClientIdentity.DesktopSemver);
+        request.Headers.TryAddWithoutValidation("Origin", "https://xpui.app.spotify.com");
+        request.Headers.TryAddWithoutValidation("Referer", "https://xpui.app.spotify.com/");
+        request.Headers.TryAddWithoutValidation("sec-ch-ua", "\"Not-A.Brand\";v=\"24\", \"Chromium\";v=\"146\"");
+        request.Headers.TryAddWithoutValidation("sec-ch-ua-mobile", "?0");
+        request.Headers.TryAddWithoutValidation("sec-ch-ua-platform", "\"Windows\"");
+        return request;
+    }
+
+    private static string GetXpuiAppPlatform()
+        => System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64
+            ? "Win32_ARM64"
+            : SpotifyClientIdentity.AppPlatform;
 
     private async Task<HttpResponseMessage> SendWithRetryAsync(
         HttpRequestMessage request,
@@ -3197,6 +3222,14 @@ public sealed class SpClient : ISpClient
         var text = uri.ToString();
         var queryIndex = text.IndexOf('?');
         return queryIndex >= 0 ? text[..queryIndex] : text;
+    }
+
+    private static string TruncateForLog(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+            return value ?? string.Empty;
+
+        return value[..maxLength];
     }
 
     private static string? GetHeaderValue(HttpResponseMessage response, string headerName)

@@ -15,6 +15,8 @@ namespace Wavee.AudioHost.Audio.Streaming;
 /// </remarks>
 public sealed class LazyProgressiveDownloader : Stream
 {
+    private const int SpotifyHeaderSize = 0xa7;
+
     private readonly byte[] _headData;
     private readonly Task<DeferredResult> _deferredTask;
     private readonly HttpClient _httpClient;
@@ -122,14 +124,11 @@ public sealed class LazyProgressiveDownloader : Stream
             if (_fileSizeKnown)
                 return _fileSize;
 
-            // Don't block on CDN init for Length — return head data size as estimate.
-            // The real file size arrives when CDN is initialized.
-            // NVorbis and other decoders read from position 0 forward; they'll get
-            // the real length once CDN resources are available.
-            if (_cdnInitialized && _fileSizeKnown)
-                return _fileSize;
-
-            return _headData.Length;
+            // Seekable decoders can cache Length during reader construction.
+            // Exposing the temporary head-file length makes a full track look
+            // like it naturally ends after the instant-start window.
+            EnsureCdnInitialized();
+            return _fileSize;
         }
     }
 
@@ -319,29 +318,21 @@ public sealed class LazyProgressiveDownloader : Stream
 
             _decryptStream = new AudioDecryptStream(audioKey, _cachedFileStream, decryptionStartOffset: 0, logger: _logger);
 
-            // Validate the decrypted header: Spotify audio is Ogg-Vorbis, so the first
-            // 4 bytes after decryption MUST be "OggS" (0x4f 67 67 53). If they aren't,
-            // this cache file was written by a broken persist path (clear-head not
-            // re-encrypted, wrong key at write time, or pre-fix code) and BASS will
-            // throw FileFormat on it. Delete the file and surface a retriable error;
-            // the next playback attempt will resolve fresh and download from CDN.
+            // Validate the decrypted header. Spotify Vorbis files are observed in two
+            // layouts: OggS at byte 0, or OggS after the 0xa7 Spotify header.
+            // If neither location matches, this cache file was written by a broken
+            // persist path (clear-head not re-encrypted, wrong key at write time, or
+            // pre-fix code) and decoders will throw FileFormat on it. Delete the file
+            // and surface a retriable error; the next playback attempt will resolve
+            // fresh and download from CDN.
             // We only reach this branch when audioKey is a real 16-byte key (gated
             // above), so a magic mismatch genuinely means the cache file is broken,
             // not just unkeyed.
-            Span<byte> magic = stackalloc byte[4];
-            int magicRead = _decryptStream.Read(magic);
-            _decryptStream.Position = 0;
-
-            bool magicOk = magicRead == 4
-                && magic[0] == (byte)'O' && magic[1] == (byte)'g'
-                && magic[2] == (byte)'g' && magic[3] == (byte)'S';
-
-            if (!magicOk)
+            if (!TryFindOggMagic(_decryptStream, out var magicOffset, out var magicReport))
             {
-                var magicHex = magicRead > 0 ? Convert.ToHexString(magic[..magicRead]) : "(empty)";
                 _logger?.LogWarning(
-                    "Cached file {FileId} failed Ogg-magic check (got {Magic}); deleting so the next playback fetches a fresh copy from CDN",
-                    deferred.LocalCacheFileId, magicHex);
+                    "Cached file {FileId} failed Ogg-magic check ({Magic}); deleting so the next playback fetches a fresh copy from CDN",
+                    deferred.LocalCacheFileId, magicReport);
 
                 await _decryptStream.DisposeAsync();
                 _decryptStream = null;
@@ -356,8 +347,11 @@ public sealed class LazyProgressiveDownloader : Stream
                 // retries; by then the cache file is gone and resolution will return
                 // a real CDN URL.
                 throw new InvalidOperationException(
-                    $"Local audio cache for {deferred.LocalCacheFileId} was corrupt (got {magicHex} after decrypt); deleted, retry playback");
+                    $"Local audio cache for {deferred.LocalCacheFileId} was corrupt ({magicReport} after decrypt); deleted, retry playback");
             }
+
+            _logger?.LogDebug("Cached file {FileId} passed Ogg-magic check at offset {Offset}",
+                deferred.LocalCacheFileId, magicOffset);
         }
 
         if (!useLocalCache)
@@ -403,6 +397,58 @@ public sealed class LazyProgressiveDownloader : Stream
         _cdnInitialized = true;
 
         _logger?.LogInformation("Audio source initialized - continuing playback from position {Position}", _position);
+    }
+
+    private static bool TryFindOggMagic(Stream stream, out long offset, out string report)
+    {
+        var startPosition = stream.CanSeek ? stream.Position : 0;
+        try
+        {
+            var foundAtZero = TryReadOggMagicAt(stream, 0, out var zeroMagic);
+            var foundAfterSpotifyHeader = TryReadOggMagicAt(stream, SpotifyHeaderSize, out var headerMagic);
+
+            report = $"0:{zeroMagic}, {SpotifyHeaderSize}:{headerMagic}";
+
+            if (foundAtZero)
+            {
+                offset = 0;
+                return true;
+            }
+
+            if (foundAfterSpotifyHeader)
+            {
+                offset = SpotifyHeaderSize;
+                return true;
+            }
+
+            offset = 0;
+            return false;
+        }
+        finally
+        {
+            if (stream.CanSeek)
+                stream.Position = startPosition;
+        }
+    }
+
+    private static bool TryReadOggMagicAt(Stream stream, long position, out string magicHex)
+    {
+        if (!stream.CanSeek)
+        {
+            magicHex = "not-seekable";
+            return false;
+        }
+
+        stream.Position = position;
+        Span<byte> magic = stackalloc byte[4];
+        var read = stream.Read(magic);
+        magicHex = read > 0 ? Convert.ToHexString(magic[..read]) : "(empty)";
+
+        return read == 4
+            && magic[0] == (byte)'O'
+            && magic[1] == (byte)'g'
+            && magic[2] == (byte)'g'
+            && magic[3] == (byte)'S';
     }
 
     #endregion

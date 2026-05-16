@@ -200,6 +200,28 @@
                                    VerticalAlignment="Center"
                                    Width="28" Height="28" Visibility="Collapsed"/>
 
+            <!-- App-wide "Add to playlist" mode affordance — swaps in for the
+                 heart while an IAddToPlaylistSession is active. Glyph toggles
+                 between Add (+) and CheckMark depending on whether THIS
+                 track is in the pending set. Code-behind manages visibility
+                 and glyph via UpdateAddToPlaylistAffordance(). -->
+            <Button x:Name="CompactAddToPlaylistButton" Grid.Column="2"
+                    VerticalAlignment="Center"
+                    Width="28" Height="28"
+                    Padding="0"
+                    CornerRadius="14"
+                    Background="Transparent"
+                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    Visibility="Collapsed"
+                    Click="CompactAddToPlaylistButton_Click"
+                    ToolTipService.ToolTip="Add to playlist">
+                <FontIcon x:Name="CompactAddToPlaylistGlyph"
+                          Glyph="&#xE710;"
+                          FontSize="13"
+                          Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+            </Button>
+
             <TextBlock x:Name="CompactDuration" Grid.Column="3"
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -318,6 +340,28 @@
                     <controls:HeartButton x:Name="RowHeartButton" Grid.Column="1"
                                            VerticalAlignment="Center" HorizontalAlignment="Center"
                                            Width="28" Height="28" Visibility="Collapsed"/>
+
+                    <!-- App-wide "Add to playlist" mode affordance — swaps in for the
+                         heart while an IAddToPlaylistSession is active. Glyph toggles
+                         between Add (+) and CheckMark depending on whether THIS
+                         track is in the pending set. Code-behind manages visibility
+                         and glyph via UpdateAddToPlaylistAffordance(). -->
+                    <Button x:Name="RowAddToPlaylistButton" Grid.Column="1"
+                            VerticalAlignment="Center" HorizontalAlignment="Center"
+                            Width="28" Height="28"
+                            Padding="0"
+                            CornerRadius="14"
+                            Background="Transparent"
+                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Visibility="Collapsed"
+                            Click="RowAddToPlaylistButton_Click"
+                            ToolTipService.ToolTip="Add to playlist">
+                        <FontIcon x:Name="RowAddToPlaylistGlyph"
+                                  Glyph="&#xE710;"
+                                  FontSize="13"
+                                  Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                    </Button>
 
                     <!-- Album thumbnail (34x34) -->
                     <Border x:Name="RowAlbumArtBorder" Grid.Column="2" Width="34" Height="34" CornerRadius="4"

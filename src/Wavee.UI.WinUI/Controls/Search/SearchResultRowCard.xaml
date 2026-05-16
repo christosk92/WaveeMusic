@@ -8,6 +8,7 @@
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
+    xmlns:addtoplaylist="using:Wavee.UI.WinUI.Controls.AddToPlaylist"
     mc:Ignorable="d">
 
     <Grid>
@@ -112,8 +113,12 @@
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </Border>
 
-                <!-- Trailing action glyph -->
-                <Border Grid.Column="3"
+                <!-- Trailing action glyph (decorative — chevron / heart / etc.).
+                     Hidden by code-behind when the app-wide "Add to playlist"
+                     mode is active AND this row is a track, so the trailing
+                     AddToPlaylistChip can swap in cleanly. -->
+                <Border x:Name="ActionIconHost"
+                        Grid.Column="3"
                         Width="28" Height="28"
                         CornerRadius="14"
                         Background="Transparent"
@@ -125,6 +130,15 @@
                               FontSize="16"
                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </Border>
+
+                <!-- App-wide "Add to playlist" trailing chip — same Grid slot
+                     as the decorative ActionIcon; chip's own session-watch
+                     decides whether to render. -->
+                <addtoplaylist:AddToPlaylistChip x:Name="AddChip"
+                                                 Grid.Column="3"
+                                                 VerticalAlignment="Center"
+                                                 HorizontalAlignment="Right"
+                                                 Margin="12,0,0,0"/>
             </Grid>
         </Border>
 

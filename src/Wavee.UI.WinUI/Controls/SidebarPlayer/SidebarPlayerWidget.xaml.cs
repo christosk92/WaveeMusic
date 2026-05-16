@@ -270,12 +270,6 @@ public sealed partial class SidebarPlayerWidget : UserControl, IMediaSurfaceCons
             docking.Dock(DetachablePanel.Player);
     }
 
-    private void PopOutToWindow_Click(object sender, RoutedEventArgs e)
-    {
-        Ioc.Default.GetService<IShellSessionService>()?.UpdateLayout(s => s.PlayerWindowExpanded = true);
-        Ioc.Default.GetService<IPanelDockingService>()?.Detach(DetachablePanel.Player);
-    }
-
     private void EndOfContextDismiss_Click(object sender, RoutedEventArgs e)
     {
         _playbackStateService?.DismissEndOfContext();

@@ -112,7 +112,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         nameof(PlaylistImageUrl), nameof(HeaderImageUrl), nameof(HasHeaderImage),
         nameof(OwnerName), nameof(OwnerId), nameof(OwnerAvatarUrl), nameof(IsOwner),
         nameof(IsPublic), nameof(IsCollaborative), nameof(BasePermission),
-        nameof(CanEditItems), nameof(CanAdministratePermissions), nameof(CanCancelMembership),
+        nameof(CanEditItems), nameof(CanShowRecommendations), nameof(CanAdministratePermissions), nameof(CanCancelMembership),
         nameof(CanAbuseReport), nameof(CanEditMetadata), nameof(CanEditName),
         nameof(CanEditDescription), nameof(CanEditPicture), nameof(CanEditCollaborative),
         nameof(CanDelete), nameof(HasOverflowItems), nameof(CanRemove),
@@ -691,7 +691,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     partial void OnTotalTracksChanged(int value)
     {
         OnPropertyChanged(nameof(MetaInlineLine));
+        OnPropertyChanged(nameof(CanShowRecommendations));
         NotifyEmptyPlaylistStateChanged();
+        MaybeAutoLoadRecommendations();
     }
     partial void OnTotalDurationChanged(string value) => OnPropertyChanged(nameof(MetaInlineLine));
 
@@ -762,6 +764,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         RemoveCoverCommand.NotifyCanExecuteChanged();
         DeletePlaylistCommand.NotifyCanExecuteChanged();
         ToggleCollaborativeCommand.NotifyCanExecuteChanged();
+        // CanEditItems may have just flipped true after tracks already loaded
+        // (capabilities arrive on a different envelope than the track list).
+        MaybeAutoLoadRecommendations();
     }
 
     partial void OnSelectedItemsChanged(IReadOnlyList<object> value)
@@ -992,6 +997,13 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             _allTracks = new List<PlaylistTrackDto>();
             OnPropertyChanged(nameof(ShouldShowAddedByColumn));
             _tracksLoadedFor = null;
+            // Reset recommendation state so the previous playlist's rows
+            // don't bleed through the brief window before the new fetch
+            // lands, and so the one-shot auto-trigger fires for the new id.
+            _recommendedTracks.Clear();
+            HasRecommendedTracks = false;
+            RecommendationsLoadFailed = false;
+            _recommendationsAutoTriggeredFor = null;
             ShowOnlyVideoTracks = false;
             NotifyVideoFilterProperties();
             PaletteBackdropBrush = null;
@@ -2422,24 +2434,34 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
     // ── Recommended Songs ("Enhance") ─────────────────────────────────────
     //
-    // Owner-gated, on-demand fetch of Spotify-curated track recommendations
-    // for THIS playlist. Backed by /playlistextender/extendp/ via
-    // ILibraryDataService.GetPlaylistRecommendationsAsync. We never auto-
-    // fetch (per the explicit-sync-over-auto convention): the user clicks
-    // "Find more songs" or "Refresh" on the footer section.
+    // Owner-gated fetch of Spotify-curated track recommendations for THIS
+    // playlist. Backed by /playlistextender/extendp/ via
+    // ILibraryDataService.GetPlaylistRecommendationsAsync. The recommender
+    // uses the playlist's existing tracks as seed, so the footer is hidden
+    // (and never fetched) when the playlist is empty.
+    //
+    // Fetch is auto-triggered the first time both CanEditItems and
+    // TotalTracks > 0 hold for a given PlaylistId — the user explicitly
+    // wanted this surface to populate without a manual click. Refreshes
+    // stay manual via the "Refresh" chip.
 
     private readonly ObservableCollection<RecommendedTrackResult> _recommendedTracks = [];
     public IReadOnlyList<RecommendedTrackResult> RecommendedTracks => _recommendedTracks;
+
+    /// <summary>True when the recommendations footer should render: owner +
+    /// at least one seed track. Drops the whole footer for empty playlists
+    /// (nothing to recommend against) and for non-owners.</summary>
+    public bool CanShowRecommendations => CanEditItems && TotalTracks > 0;
+
+    /// <summary>One-shot guard so capability + track-load events don't both
+    /// trigger a fetch on the same activation. Reset on playlist switch.</summary>
+    private string? _recommendationsAutoTriggeredFor;
 
     private bool _hasRecommendedTracks;
     public bool HasRecommendedTracks
     {
         get => _hasRecommendedTracks;
-        private set
-        {
-            if (SetProperty(ref _hasRecommendedTracks, value))
-                OnPropertyChanged(nameof(ShouldShowEmptyRecommendationsCta));
-        }
+        private set => SetProperty(ref _hasRecommendedTracks, value);
     }
 
     private bool _isFetchingRecommendations;
@@ -2455,18 +2477,21 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     public bool RecommendationsLoadFailed
     {
         get => _recommendationsLoadFailed;
-        private set
-        {
-            if (SetProperty(ref _recommendationsLoadFailed, value))
-                OnPropertyChanged(nameof(ShouldShowEmptyRecommendationsCta));
-        }
+        private set => SetProperty(ref _recommendationsLoadFailed, value);
     }
 
-    /// <summary>True only when the empty-state CTA ("Find more songs") should
-    /// render — i.e. we have no recs AND no failure to surface. Combining the
-    /// two bools into a derived predicate keeps the XAML free of converters
-    /// for the multi-condition case.</summary>
-    public bool ShouldShowEmptyRecommendationsCta => !HasRecommendedTracks && !RecommendationsLoadFailed;
+    private void MaybeAutoLoadRecommendations()
+    {
+        var playlistId = PlaylistId;
+        if (string.IsNullOrEmpty(playlistId)) return;
+        if (!CanEditItems || TotalTracks <= 0) return;
+        if (_allTracks.Count == 0) return;
+        if (IsFetchingRecommendations) return;
+        if (string.Equals(_recommendationsAutoTriggeredFor, playlistId, StringComparison.Ordinal)) return;
+
+        _recommendationsAutoTriggeredFor = playlistId;
+        FindRecommendedTracksCommand.Execute(null);
+    }
 
     /// <summary>
     /// Fetches Spotify-recommended tracks to add to this playlist. Skip-list
@@ -2531,6 +2556,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "AddRecommendationAsync failed for {Uri}", rec.Uri);
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show($"Couldn't add to playlist: {ex.Message}", NotificationSeverity.Error, TimeSpan.FromSeconds(5));
         }
     }
 

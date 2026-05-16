@@ -704,6 +704,10 @@ public sealed partial class TrackItem : UserControl
         item.ResolveImageColorHint();
         item.RefreshPlaybackState();
         item.UpdateOverlayState();
+        // Refresh the add-to-playlist + affordance against the new track —
+        // recycled rows can be re-pointed at a track that's already in the
+        // pending set, so we need to repaint the glyph (+ vs check).
+        item.UpdateAddToPlaylistAffordance();
         item.TrackChanged?.Invoke(item, EventArgs.Empty);
     }
 
@@ -1632,10 +1636,30 @@ public sealed partial class TrackItem : UserControl
         // Track on Loaded instead of only restoring the previously-bound image
         // URL. This keeps recycled rows from staying on placeholders until a
         // resize or layout refresh prepares them again.
+        //
+        // Clear the bound-image cache before rebinding so the Apply*AlbumArt
+        // dedup ("imageUrl == _bound*ImageUrl") doesn't short-circuit the
+        // re-apply. With PreserveImageOnUnload=true (artist top tracks,
+        // recommended songs), the previous track's URL was still in the
+        // cache from before Unload — recycled rows that drew a different
+        // (or no) image during the unload window would skip the re-push
+        // and stay on the wrong art. CompositionImage's own surface cache
+        // handles the actual dedup, so re-pushing an identical URL is free.
+        _boundCompactImageUrl = null;
+        _boundRowImageUrl = null;
         RebindObservedTrack();
         RepinVisibleAlbumArt();
         UpdateBadgePlacement();
         RefreshLikedState();
+
+        // Re-sync playback state from the global tracker. Without this, a row
+        // that was unloaded while showing a buffering ring (e.g. user clicked
+        // play, scrolled away, scrolled back) would keep _isBuffering = true
+        // until the next global PropertyChanged broadcast — which only fires
+        // on state transitions, so the ring could remain stuck across many
+        // rows after rapid plays in the artist top-tracks grid.
+        RefreshPlaybackState();
+        UpdateOverlayState();
 
         // Subscribe to global state changes via WeakReferenceMessenger so a
         // missed Unloaded `-=` (or container recycle past Unloaded) doesn't
@@ -1652,6 +1676,8 @@ public sealed partial class TrackItem : UserControl
             _likeService.SaveStateChanged += OnSaveStateChanged;
             _isSaveStateSubscribed = true;
         }
+
+        HookAddToPlaylistSession();
     }
 
     private void OnPlaybackStateChanged()
@@ -2064,6 +2090,23 @@ public sealed partial class TrackItem : UserControl
         SetCompactEqualizer(false, false);
         SetRowEqualizer(false, false);
         StopPendingBeam();
+
+        // Drop stale playback state so a recycled container can't paint a
+        // buffering / now-playing visual on the next track it's bound to
+        // before the bind path has had a chance to re-evaluate.
+        _isThisTrackPlaying = false;
+        _isThisTrackPaused = false;
+        _isBuffering = false;
+        if (CompactBufferingRing is not null)
+        {
+            CompactBufferingRing.IsActive = false;
+            CompactBufferingRing.Visibility = Visibility.Collapsed;
+        }
+        if (RowBufferingRing is not null)
+        {
+            RowBufferingRing.IsActive = false;
+            RowBufferingRing.Visibility = Visibility.Collapsed;
+        }
         if (_isMessengerRegistered)
         {
             WeakReferenceMessenger.Default.Unregister<TrackStateRefreshMessage>(this);
@@ -2075,6 +2118,8 @@ public sealed partial class TrackItem : UserControl
             _likeService.SaveStateChanged -= OnSaveStateChanged;
             _isSaveStateSubscribed = false;
         }
+
+        UnhookAddToPlaylistSession();
 
         if (PreserveImageOnUnload)
             return;

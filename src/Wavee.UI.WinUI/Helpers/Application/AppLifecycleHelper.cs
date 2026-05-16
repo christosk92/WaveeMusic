@@ -725,6 +725,16 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Services.IMusicVideoMetadataService>(),
                         sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
                         sp.GetService<ILogger<Data.Contexts.LibraryDataService>>()))
+                // App-wide "Add to playlist" modal session — shared singleton so
+                // the floating bar in ShellPage, TrackItem '+' affordances, and
+                // playlist-page entry points all see the same target + pending set.
+                .AddSingleton<Wavee.UI.Services.AddToPlaylist.IAddToPlaylistSubmitter>(sp =>
+                    new Services.AddToPlaylist.LibraryDataServiceAddToPlaylistSubmitter(
+                        sp.GetRequiredService<ILibraryDataService>()))
+                .AddSingleton<Wavee.UI.Services.AddToPlaylist.IAddToPlaylistSession>(sp =>
+                    new Wavee.UI.Services.AddToPlaylist.AddToPlaylistSession(
+                        sp.GetRequiredService<Wavee.UI.Services.AddToPlaylist.IAddToPlaylistSubmitter>(),
+                        sp.GetService<ILogger<Wavee.UI.Services.AddToPlaylist.AddToPlaylistSession>>()))
                 .AddSingleton(sp =>
                     new Data.Stores.PlaylistStore(
                         sp.GetRequiredService<ILibraryDataService>(),

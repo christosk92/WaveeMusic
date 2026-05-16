@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.AvatarStack.StackedThumbnails"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Sibling of AvatarStack but with rounded-square tiles for album art —
+         our album covers are always square everywhere else in the app, so the
+         "Adding to playlist…" bar's thumbnail stack should match. Same overlap
+         geometry, same "+N" overflow badge, same dumb-control philosophy. -->
+    <StackPanel x:Name="HostStack"
+                Orientation="Horizontal"
+                VerticalAlignment="Center"/>
+</UserControl>
