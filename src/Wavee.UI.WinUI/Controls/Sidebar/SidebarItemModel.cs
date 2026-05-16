@@ -9,7 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Wavee.UI.WinUI.DragDrop;
+using Wavee.UI.Services.DragDrop;
 
 namespace Wavee.UI.WinUI.Controls.Sidebar;
 
@@ -117,6 +117,14 @@ public class SidebarItemModel : ISidebarItemModel
     /// taste, Remove from Library).
     /// </summary>
     public bool IsOwner { get; set; }
+
+    /// <summary>
+    /// True when the current user can mutate this playlist's tracks (owner OR
+    /// collaborative). Drag-drop drop predicates gate add-tracks gestures on
+    /// this so drops onto non-editable rows (Discover Weekly, friends'
+    /// playlists, etc.) are rejected before they round-trip to the server.
+    /// </summary>
+    public bool CanEditItems { get; set; }
 
     /// <summary>
     /// Whether to show an empty placeholder when this group has no children.

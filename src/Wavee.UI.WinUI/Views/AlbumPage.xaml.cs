@@ -31,6 +31,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
     private bool _trimmedForNavigationCache;
     private string? _lastRestoredAlbumId;
     private int _layoutSettlingGeneration;
+    private int _scrollResetGeneration;
 
     public AlbumViewModel ViewModel { get; }
 
@@ -229,39 +230,39 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         // ignores `StartAnimation("Translation", …)` without this.
         ElementCompositionPreview.SetIsTranslationEnabled(LeftColumnHost, true);
 
-        // Local property set carries the dynamic MaxLag scalar. The
-        // expression reads it reactively — pushing a new value via
-        // InsertScalar re-evaluates the animation without restart.
+        // Property set kept (empty) so the SetReferenceParameter("source", ...)
+        // wiring stays in place; the current expression only depends on the
+        // ScrollView's own ExpressionAnimationSources (Position, Extent,
+        // Viewport) so no per-element scalars are needed.
         _stickyProps = compositor.CreatePropertySet();
-        _stickyProps.InsertScalar("LeftColHeight", (float)LeftColumnHost.ActualHeight);
 
         // ExpressionAnimationSources on the NEW ScrollView control exposes
-        // `Position` (Vector2) — positive Y when scrolled DOWN. That's the
+        // `Position` (Vector2 — positive Y when scrolled DOWN),
+        // `Extent` (content size) and `Viewport` (visible size). That's the
         // raw offset we want to apply as a positive Y translation to pull
         // the column DOWN, countering the scroll's upward push and pinning
         // the column in place. (The OLD ScrollViewer.ManipulationPropertySet
         // used a NEGATIVE `Translation` property — different shape; don't
         // confuse the two.)
         //
-        // Clamp(0, MaxLag) floors out at the top (no rubber-band overshoot)
-        // and ceilings when the column is taller than the viewport (so it
-        // can eventually scroll off).
-        // Clamp(Y, 0, max(0, ExtentH - LeftColH)):
+        // Clamp(Y, 0, max(0, ExtentH - ViewportH)):
         //   • For Y small: T = Y → column pinned at viewport top.
-        //   • Once Y exceeds (ExtentH - LeftColH), T plateaus at that cap and
-        //     the column drifts up so its BOTTOM reaches viewport bottom at
-        //     Y_max. Without the cap, the column would stay pinned even at
-        //     max scroll and its bottom (release info / About card) would
-        //     stay permanently below the viewport. ExtentH is sourced from
-        //     scroll.Extent.Y so the expression re-evaluates reactively when
-        //     tracks load and the content extent grows.
+        //   • At max scroll (Y = ExtentH - ViewportH), T plateaus at the cap;
+        //     since the page can't scroll further, the column visually stays
+        //     pinned for the entire scroll range.
+        //
+        // Earlier revisions capped at ExtentH - LeftColH. When the sidebar
+        // was taller than the available content (small track list, big
+        // metadata card), the cap collapsed to 0 and the column stopped
+        // sticking immediately after the user started scrolling — the
+        // "sticks for a few px and quits" symptom. Viewport-based cap
+        // sticks correctly for every size ratio.
         _stickyAnimation = compositor.CreateExpressionAnimation(
-            "Vector3(0, Clamp(scroll.Position.Y, 0, Max(scroll.Extent.Y - source.LeftColHeight, 0)), 0)");
+            "Vector3(0, Clamp(scroll.Position.Y, 0, Max(scroll.Extent.Y - scroll.Viewport.Y, 0)), 0)");
         _stickyAnimation.SetReferenceParameter("scroll", PageScrollView.ExpressionAnimationSources);
         _stickyAnimation.SetReferenceParameter("source", _stickyProps);
         visual.StartAnimation("Translation", _stickyAnimation);
 
-        // Keep MaxLag fresh as either side resizes.
         LeftColumnHost.SizeChanged += StickyAnchors_SizeChanged;
         PageScrollView.SizeChanged += StickyAnchors_SizeChanged;
     }
@@ -294,8 +295,11 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
     private void StickyAnchors_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (_stickyProps is null || LeftColumnHost is null) return;
-        _stickyProps.InsertScalar("LeftColHeight", (float)LeftColumnHost.ActualHeight);
+        // Cap is sourced from scroll.Extent.Y / scroll.Viewport.Y which the
+        // expression reads reactively from ExpressionAnimationSources — no
+        // SizeChanged-driven scalar push is needed. Hook retained so any
+        // future tweak that re-introduces a column-height term has a wiring
+        // point.
     }
 
     // Retained for reference / future tuning. Not called by the expression
@@ -446,6 +450,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
         // Reset shimmer/content visual state for the fresh load.
         PageController.ResetForNewLoad();
+        ResetScrollPositionForNavigation();
         _footerRevealed = false;
         _footerRevealGeneration++;
         FooterShimmerGate.Reset(() => FooterShimmer, () => FooterContent);
@@ -521,6 +526,46 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
     }
 
     // ── Transition settling ──────────────────────────────────────────────────
+
+    private void ResetScrollPositionForNavigation()
+    {
+        var generation = ++_scrollResetGeneration;
+        TryScrollToTop("navigation");
+
+        if (DispatcherQueue is not null)
+            DispatcherQueue.TryEnqueue(() => _ = ResetScrollPositionAfterLayoutAsync(generation));
+        else
+            _ = ResetScrollPositionAfterLayoutAsync(generation);
+    }
+
+    private async Task ResetScrollPositionAfterLayoutAsync(int generation)
+    {
+        await Task.Yield();
+        if (_isDisposed || PageController.IsNavigatingAway || generation != _scrollResetGeneration)
+            return;
+
+        TryScrollToTop("dispatcher");
+
+        await Task.Yield();
+        if (_isDisposed || PageController.IsNavigatingAway || generation != _scrollResetGeneration)
+            return;
+
+        TryScrollToTop("layout");
+    }
+
+    private void TryScrollToTop(string reason)
+    {
+        try
+        {
+            PageScrollView?.ScrollTo(
+                0, 0,
+                new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "AlbumPage scroll-to-top during {Reason} failed.", reason);
+        }
+    }
 
     private async Task ShowContentAfterAlbumLayoutSettlesAsync()
     {

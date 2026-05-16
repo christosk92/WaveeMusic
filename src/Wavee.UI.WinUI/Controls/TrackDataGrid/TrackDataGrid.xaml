@@ -311,7 +311,13 @@
                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                 KeyDown="RowsList_KeyDown"
-                SelectionMode="Extended">
+                SelectionMode="Extended"
+                CanDragItems="True"
+                AllowDrop="{x:Bind CanReorder, Mode=OneWay}"
+                DragItemsStarting="RowsList_DragItemsStarting"
+                DragItemsCompleted="RowsList_DragItemsCompleted"
+                DragOver="RowsList_DragOver"
+                Drop="RowsList_Drop">
                 <ListView.ItemContainerTransitions>
                     <TransitionCollection>
                         <AddDeleteThemeTransition/>
@@ -377,7 +383,10 @@
                  anyway. -->
             <StackPanel x:Name="RowsItemsViewHost"
                         Grid.Row="1"
-                        Visibility="Collapsed">
+                        Visibility="Collapsed"
+                        AllowDrop="{x:Bind CanReorder, Mode=OneWay}"
+                        DragOver="RowsItemsViewHost_DragOver"
+                        Drop="RowsItemsViewHost_Drop">
 
                 <ItemsView
                     x:Name="RowsItemsView"

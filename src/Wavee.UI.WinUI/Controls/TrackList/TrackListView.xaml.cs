@@ -16,6 +16,8 @@ using CommunityToolkit.Mvvm.Input;
 using Windows.ApplicationModel.DataTransfer;
 using Wavee.UI.WinUI.Controls.Track;
 using System.Windows.Input;
+using Wavee.UI.Services.DragDrop;
+using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.DragDrop;
@@ -108,6 +110,38 @@ public sealed partial class TrackListView : UserControl
     public static readonly DependencyProperty ViewModelProperty =
         DependencyProperty.Register(nameof(ViewModel), typeof(ITrackListViewModel), typeof(TrackListView),
             new PropertyMetadata(null, OnViewModelChanged));
+
+    /// <summary>
+    /// Spotify URI of the context this list represents (e.g. <c>spotify:playlist:xxx</c>).
+    /// Used by the drag system: when a drop on this same list has a matching source
+    /// context URI, the registry routes the drop to the playlist-track-reorder handler
+    /// instead of cross-list "add tracks".
+    /// </summary>
+    public string? ContextUri
+    {
+        get => (string?)GetValue(ContextUriProperty);
+        set => SetValue(ContextUriProperty, value);
+    }
+
+    public static readonly DependencyProperty ContextUriProperty =
+        DependencyProperty.Register(nameof(ContextUri), typeof(string), typeof(TrackListView),
+            new PropertyMetadata(null));
+
+    /// <summary>
+    /// When true, the ListView enables WinUI's built-in intra-list reorder gesture
+    /// (drag a row to a new position) AND is itself a drop target for the registry's
+    /// <c>PlaylistTrackList</c> route. Owners-only playlists bind this to <c>true</c>;
+    /// everything else stays false.
+    /// </summary>
+    public bool CanReorder
+    {
+        get => (bool)GetValue(CanReorderProperty);
+        set => SetValue(CanReorderProperty, value);
+    }
+
+    public static readonly DependencyProperty CanReorderProperty =
+        DependencyProperty.Register(nameof(CanReorder), typeof(bool), typeof(TrackListView),
+            new PropertyMetadata(false));
 
     private static void OnViewModelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -891,9 +925,18 @@ public sealed partial class TrackListView : UserControl
             return;
         }
 
-        var payload = new TrackDragPayload(tracks);
-        e.Data.SetData(payload.DataFormat, payload.SerializedData);
-        e.Data.RequestedOperation = DataPackageOperation.Copy;
+        var trackUris = tracks.Select(t => t.Id).ToArray();
+
+        // Source index = first dragged track's row index. Only meaningful when
+        // we can locate the row in InternalListView.Items; if not, leave null
+        // (cross-list / virtualized cases just don't get reorder).
+        int? sourceStartIndex = null;
+        if (tracks[0] is { } first && InternalListView.Items.IndexOf(first) is var idx and >= 0)
+            sourceStartIndex = idx;
+
+        var payload = new TrackDragPayload(trackUris, sourceContextUri: ContextUri, sourceStartIndex: sourceStartIndex);
+        DragPackageWriter.Write(e.Data, payload);
+        e.Data.RequestedOperation = DataPackageOperation.Copy | DataPackageOperation.Move;
 
         _dragStateService?.StartDrag(payload);
     }
@@ -901,6 +944,59 @@ public sealed partial class TrackListView : UserControl
     private void InternalListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
     {
         _dragStateService?.EndDrag();
+    }
+
+    /// <summary>
+    /// Raised when the user drops a contiguous block back into this same list.
+    /// Carries (sourceStartIndex, length, targetIndex) in <c>_allTracks</c>
+    /// coordinates; the listening page is responsible for persisting the new
+    /// order via its ViewModel.
+    /// </summary>
+    public event System.Action<int, int, int>? TracksReorderRequested;
+
+    private void InternalListView_DragOver(object sender, Microsoft.UI.Xaml.DragEventArgs e)
+    {
+        if (!CanReorder) return;
+        // Only intra-list reorder is accepted here; cross-list track drops route
+        // through the sidebar / playerbar / queue targets instead.
+        if (_dragStateService?.CurrentPayload is TrackDragPayload p
+            && !string.IsNullOrEmpty(ContextUri)
+            && string.Equals(p.SourceContextUri, ContextUri, System.StringComparison.Ordinal))
+        {
+            e.AcceptedOperation = DataPackageOperation.Move;
+        }
+    }
+
+    private void InternalListView_Drop(object sender, Microsoft.UI.Xaml.DragEventArgs e)
+    {
+        if (!CanReorder) return;
+        if (_dragStateService?.CurrentPayload is not TrackDragPayload p) return;
+        if (string.IsNullOrEmpty(ContextUri)
+            || !string.Equals(p.SourceContextUri, ContextUri, System.StringComparison.Ordinal))
+            return;
+
+        var fromIndex = p.SourceStartIndex ?? -1;
+        var length = p.ItemCount;
+        if (fromIndex < 0 || length <= 0) return;
+
+        // Resolve drop target = nearest ListViewItem under the drop point.
+        var toIndex = ComputeReorderTargetIndex(e);
+        if (toIndex < 0) return;
+
+        TracksReorderRequested?.Invoke(fromIndex, length, toIndex);
+    }
+
+    private int ComputeReorderTargetIndex(Microsoft.UI.Xaml.DragEventArgs e)
+    {
+        // Walk up from the original source to find the containing ListViewItem,
+        // then ask the ListView for its index. When the user drops in empty
+        // space below the last row, append to the end.
+        var element = e.OriginalSource as DependencyObject;
+        while (element is not null and not ListViewItem)
+            element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
+        if (element is ListViewItem lvi)
+            return InternalListView.IndexFromContainer(lvi);
+        return InternalListView.Items.Count;
     }
 
     #endregion

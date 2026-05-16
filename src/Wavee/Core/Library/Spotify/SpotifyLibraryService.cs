@@ -1,12 +1,15 @@
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect;
 using Wavee.Core.Http;
+using Wavee.Core.Library.Spotify.Outbox;
 using Wavee.Core.Playlists;
 using Wavee.Core.Session;
 using Wavee.Core.Storage;
 using Wavee.Core.Storage.Abstractions;
+using Wavee.Core.Storage.Outbox;
 using Wavee.Protocol.Collection;
 using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Metadata;
@@ -38,6 +41,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
     private readonly IMetadataDatabase _database;
     private readonly SpClient _spClient;
     private readonly ISession _session;
+    private readonly IOutboxProcessor _outboxProcessor;
     private readonly LibraryChangeManager? _libraryChangeManager;
     private readonly IExtendedMetadataClient? _metadataClient;
     private readonly IPlaylistCacheService? _playlistCache;
@@ -53,6 +57,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
     /// <param name="database">Unified metadata database for persistence.</param>
     /// <param name="spClient">Spotify API client.</param>
     /// <param name="session">Active session for username.</param>
+    /// <param name="outboxProcessor">Shared outbox processor that drains pending save/remove ops.</param>
     /// <param name="libraryChangeManager">Optional manager for real-time updates.</param>
     /// <param name="metadataClient">Optional extended metadata client for fetching track details.</param>
     /// <param name="logger">Optional logger.</param>
@@ -60,6 +65,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
         IMetadataDatabase database,
         SpClient spClient,
         ISession session,
+        IOutboxProcessor outboxProcessor,
         LibraryChangeManager? libraryChangeManager = null,
         IExtendedMetadataClient? metadataClient = null,
         IPlaylistCacheService? playlistCache = null,
@@ -68,6 +74,7 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
         _database = database ?? throw new ArgumentNullException(nameof(database));
         _spClient = spClient ?? throw new ArgumentNullException(nameof(spClient));
         _session = session ?? throw new ArgumentNullException(nameof(session));
+        _outboxProcessor = outboxProcessor ?? throw new ArgumentNullException(nameof(outboxProcessor));
         _libraryChangeManager = libraryChangeManager;
         _metadataClient = metadataClient;
         _playlistCache = playlistCache;
@@ -1116,12 +1123,13 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
             }
 
             // 3. Enqueue for background API sync (no rollback — local state is source of truth)
-            await _database.EnqueueLibraryOpAsync(uri, itemType, LibraryOutboxOperation.Save, ct);
+            var savePayload = JsonSerializer.Serialize(new LibraryOpPayload(itemType), LibraryOpJson.Default.LibraryOpPayload);
+            await _database.EnqueueOutboxAsync(LibrarySaveHandler.Kind, uri, savePayload, ct);
 
             _logger?.LogInformation("{ItemType} saved locally + enqueued: {Uri}", displayName, uri);
 
             // 4. Try immediate sync (fire-and-forget, don't block the caller)
-            _ = ProcessOutboxAsync();
+            _ = _outboxProcessor.RunAsync();
 
             return true;
         }
@@ -1147,12 +1155,13 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
             await _database.RemoveFromSpotifyLibraryAsync(uri, ct);
 
             // 2. Enqueue for background API sync
-            await _database.EnqueueLibraryOpAsync(uri, itemType, LibraryOutboxOperation.Remove, ct);
+            var removePayload = JsonSerializer.Serialize(new LibraryOpPayload(itemType), LibraryOpJson.Default.LibraryOpPayload);
+            await _database.EnqueueOutboxAsync(LibraryRemoveHandler.Kind, uri, removePayload, ct);
 
             _logger?.LogInformation("{ItemType} removed locally + enqueued: {Uri}", displayName, uri);
 
             // 3. Try immediate sync
-            _ = ProcessOutboxAsync();
+            _ = _outboxProcessor.RunAsync();
 
             return true;
         }
@@ -1165,90 +1174,15 @@ public sealed class SpotifyLibraryService : ISpotifyLibraryService
 
     /// <summary>
     /// Processes pending outbox operations, syncing local changes to Spotify API.
-    /// Safe to call multiple times — operations are idempotent.
+    /// Now a thin delegate to the shared <see cref="IOutboxProcessor"/> — the
+    /// retry / dispatch / drop-after-max-retries logic lives there. Both
+    /// library save/remove and playlist bulk-add drain through the same
+    /// processor, so this call also flushes pending playlist ops.
     /// </summary>
-    public async Task<int> ProcessOutboxAsync()
-    {
-        var failedCount = 0;
-        try
-        {
-            var username = GetUsername();
-            var ops = await _database.DequeueLibraryOpsAsync(50);
-            if (ops.Count == 0) return 0;
+    public Task<int> ProcessOutboxAsync() => _outboxProcessor.RunAsync();
 
-            foreach (var op in ops)
-            {
-                try
-                {
-                    // Drop permanently failed entries (bad data, invalid URIs, etc.)
-                    if (op.RetryCount >= 10)
-                    {
-                        _logger?.LogWarning("Outbox op exceeded max retries, dropping: {Uri}", op.ItemUri);
-                        await _database.CompleteLibraryOpAsync(op.Id);
-                        failedCount++;
-                        continue;
-                    }
-
-                    // Fast-fail malformed URIs that could only fail at the
-                    // server. Anything that's not a Spotify URI shouldn't be
-                    // here — it was queued by mistake (e.g. a wavee:local:*
-                    // URI from before the like-routing fix that wrongly
-                    // prefixed "spotify:track:" onto a non-Spotify trackId).
-                    // Dropping immediately prevents a retry loop.
-                    if (string.IsNullOrEmpty(op.ItemUri) || !op.ItemUri.StartsWith("spotify:", StringComparison.Ordinal))
-                    {
-                        _logger?.LogWarning("Outbox op has non-Spotify URI, dropping: {Uri}", op.ItemUri);
-                        await _database.CompleteLibraryOpAsync(op.Id);
-                        failedCount++;
-                        continue;
-                    }
-                    if (op.ItemUri.IndexOf(":wavee:", StringComparison.Ordinal) > 0)
-                    {
-                        _logger?.LogWarning("Outbox op contains nested wavee URI (legacy bug), dropping: {Uri}", op.ItemUri);
-                        await _database.CompleteLibraryOpAsync(op.Id);
-                        failedCount++;
-                        continue;
-                    }
-
-                    var set = GetSetForItemType(op.ItemType);
-                    var item = new CollectionItem
-                    {
-                        Uri = op.ItemUri,
-                        AddedAt = (int)op.CreatedAt,
-                        IsRemoved = op.Operation == LibraryOutboxOperation.Remove
-                    };
-
-                    await _spClient.WriteCollectionAsync(username, set, new[] { item });
-                    await _database.CompleteLibraryOpAsync(op.Id);
-
-                    _logger?.LogDebug("Outbox synced: {Op} {Uri}", op.Operation, op.ItemUri);
-                }
-                catch (Exception ex)
-                {
-                    failedCount++;
-                    _logger?.LogWarning(ex, "Outbox op failed (retry {Count}): {Uri}", op.RetryCount + 1, op.ItemUri);
-                    await _database.FailLibraryOpAsync(op.Id, ex.Message);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Outbox processing failed");
-            failedCount++;
-        }
-
-        return failedCount;
-    }
-
-    private static string GetSetForItemType(SpotifyLibraryItemType itemType) => itemType switch
-    {
-        SpotifyLibraryItemType.Track => CollectionSet,
-        SpotifyLibraryItemType.Album => CollectionSet,
-        SpotifyLibraryItemType.Artist => ArtistsSet,
-        SpotifyLibraryItemType.Show => ShowsSet,
-        SpotifyLibraryItemType.YlPin => YlPinSet,
-        _ => CollectionSet
-    };
+    // GetSetForItemType moved to LibraryOpDispatch — only called by the
+    // library save/remove outbox handlers now.
 
     #endregion
 

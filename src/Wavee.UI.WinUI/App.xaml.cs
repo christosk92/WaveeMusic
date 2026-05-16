@@ -20,6 +20,7 @@ public partial class App : Application
     private static IHost? _host;
     private static readonly SemaphoreSlim _shutdownGate = new(1, 1);
     private static Task? _shutdownTask;
+    private static int _shutdownStarted;
     // Owns the long-lived Rx subscription that drains the local-video
     // suppressor token on state changes. Stored in a field so it can be
     // disposed on shutdown — without this, the subscription was untracked
@@ -28,6 +29,8 @@ public partial class App : Application
     private static IDisposable? _localVideoStateSubscription;
 
     public static AppModel AppModel { get; private set; } = null!;
+
+    internal static bool IsHostShuttingDown => Volatile.Read(ref _shutdownStarted) != 0;
 
     public App()
     {
@@ -309,6 +312,7 @@ public partial class App : Application
 
     private void OnUserChoseQuit()
     {
+        Interlocked.Exchange(ref _shutdownStarted, 1);
         try { _host?.Dispose(); } catch { /* best-effort */ }
         _host = null;
         Exit();
@@ -316,6 +320,7 @@ public partial class App : Application
 
     internal static Task ShutdownHostAsync()
     {
+        Interlocked.Exchange(ref _shutdownStarted, 1);
         lock (_shutdownGate)
         {
             _shutdownTask ??= ShutdownHostCoreAsync();

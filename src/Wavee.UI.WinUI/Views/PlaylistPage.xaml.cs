@@ -231,26 +231,36 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
         _stickyProps = compositor.CreatePropertySet();
         _stickyProps.InsertScalar("BannerHeight", (float)HeroBannerRow.ActualHeight);
-        _stickyProps.InsertScalar("LeftColHeight", (float)LeftColumnHost.ActualHeight);
 
-        // Clamp(scroll.Position.Y - BannerHeight, 0, max(0, ExtentH - BannerHeight - LeftColHeight)):
-        //   • Y ≤ BannerHeight                          → 0 (banner scrolling away; column moves up with it)
-        //   • BannerHeight < Y < BannerHeight + T_max   → Y - BannerHeight (column pinned at viewport top)
-        //   • Y ≥ BannerHeight + T_max                  → T_max (column drifts up so its bottom reaches viewport bottom at Y_max)
+        // Clamp(scroll.Position.Y - BannerHeight, 0, T_max) where
+        // T_max = max(0, scroll.Extent.Y - BannerHeight - scroll.Viewport.Y):
+        //   • Y ≤ BannerHeight                       → T = 0 (column scrolls with banner)
+        //   • BannerHeight < Y < scroll_max          → T = Y - BannerHeight (pinned at viewport top)
+        //   • Y ≥ scroll_max                          → T = T_max (already at viewport top, scroll can't go further)
         //
-        // T_max = ExtentH - BannerHeight - LeftColHeight is the correct cap:
-        // it ensures the column's BOTTOM reaches the viewport bottom at max
-        // scroll, so any content at the bottom of the sidebar (release info,
-        // About card, collaborator stack) stays reachable. ExtentH is sourced
-        // from scroll.Extent.Y so the expression re-evaluates reactively when
-        // tracks load and grow the content extent — no SizeChanged hook
-        // needed for extent changes.
+        // Earlier revisions used LeftColHeight in the cap so the column's
+        // BOTTOM would reach viewport bottom at max scroll. That collapsed to 0
+        // whenever LeftColHeight > ExtentH - BannerH (small track list, big
+        // sidebar) — the column then never stuck at all after the banner
+        // cleared, which is the "stops after a few px" symptom users saw on
+        // playlists with few tracks. Viewport-based cap keeps the column
+        // pinned at viewport top through max scroll for every size ratio;
+        // sidebars taller than the viewport just get their bottom clipped
+        // (acceptable — release info / collaborator stack remain at the
+        // bottom of a usually-shorter metadata column).
+        //
+        // scroll.Position.Y / Extent.Y / Viewport.Y are all sourced from the
+        // ExpressionAnimationSources so the expression re-evaluates reactively
+        // when content grows or the window resizes.
         _stickyAnimation = compositor.CreateExpressionAnimation(
-            "Vector3(0, Clamp(scroll.Position.Y - source.BannerHeight, 0, Max(scroll.Extent.Y - source.BannerHeight - source.LeftColHeight, 0)), 0)");
+            "Vector3(0, Clamp(scroll.Position.Y - source.BannerHeight, 0, Max(scroll.Extent.Y - source.BannerHeight - scroll.Viewport.Y, 0)), 0)");
         _stickyAnimation.SetReferenceParameter("scroll", PageScrollView.ExpressionAnimationSources);
         _stickyAnimation.SetReferenceParameter("source", _stickyProps);
         visual.StartAnimation("Translation", _stickyAnimation);
 
+        // LeftColumnHost.SizeChanged is no longer load-bearing for the cap
+        // (we use scroll.Viewport.Y reactively) but we keep the hook so any
+        // future tweak that re-introduces a column-height term picks it up.
         LeftColumnHost.SizeChanged += StickyAnchors_SizeChanged;
         PageScrollView.SizeChanged += StickyAnchors_SizeChanged;
         HeroBannerRow.SizeChanged  += StickyAnchors_SizeChanged;
@@ -286,7 +296,6 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     {
         if (_stickyProps is null || HeroBannerRow is null || LeftColumnHost is null) return;
         _stickyProps.InsertScalar("BannerHeight", (float)HeroBannerRow.ActualHeight);
-        _stickyProps.InsertScalar("LeftColHeight", (float)LeftColumnHost.ActualHeight);
     }
 
     // ── Shy-header (banner → pinned PlaylistShyPill morph) ──────────────────
@@ -1835,6 +1844,12 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     private async void HeroDeleteButton_Click(object sender, RoutedEventArgs e)
     {
         await ConfirmAndDeletePlaylistAsync();
+    }
+
+    private async void TrackGrid_TracksReorderRequested(int fromIndex, int length, int toIndex)
+    {
+        if (ViewModel is null) return;
+        await ViewModel.ReorderTracksAsync(fromIndex, length, toIndex);
     }
 
     private async System.Threading.Tasks.Task ConfirmAndDeletePlaylistAsync()

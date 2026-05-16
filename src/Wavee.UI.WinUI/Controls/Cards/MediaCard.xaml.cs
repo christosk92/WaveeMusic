@@ -1,15 +1,47 @@
 using System;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Wavee.UI.Services.DragDrop;
+using Wavee.UI.Services.DragDrop.Payloads;
+using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Helpers;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
+
+public enum MediaCardContextKind
+{
+    None,
+    Album,
+    Playlist,
+    Artist,
+    Show,
+}
 
 public sealed partial class MediaCard : UserControl
 {
     public event EventHandler<RoutedEventArgs>? CardClick;
     public event EventHandler<RightTappedRoutedEventArgs>? CardRightTapped;
+
+    public static readonly DependencyProperty ContextUriProperty =
+        DependencyProperty.Register(nameof(ContextUri), typeof(string), typeof(MediaCard),
+            new PropertyMetadata(null));
+
+    public static readonly DependencyProperty ContextKindProperty =
+        DependencyProperty.Register(nameof(ContextKind), typeof(MediaCardContextKind), typeof(MediaCard),
+            new PropertyMetadata(MediaCardContextKind.None));
+
+    /// <summary>
+    /// Spotify URI of the entity this card represents (e.g. <c>spotify:album:xxx</c>).
+    /// When set together with <see cref="ContextKind"/>, the card becomes a drag
+    /// source that emits the matching <see cref="IDragPayload"/>.
+    /// </summary>
+    public string? ContextUri { get => (string?)GetValue(ContextUriProperty); set => SetValue(ContextUriProperty, value); }
+
+    /// <summary>What kind of context this card represents — drives the payload type.</summary>
+    public MediaCardContextKind ContextKind { get => (MediaCardContextKind)GetValue(ContextKindProperty); set => SetValue(ContextKindProperty, value); }
 
     public static readonly DependencyProperty ImageUrlProperty =
         DependencyProperty.Register(nameof(ImageUrl), typeof(string), typeof(MediaCard),
@@ -41,6 +73,21 @@ public sealed partial class MediaCard : UserControl
     {
         InitializeComponent();
         UpdateSize(160);
+        ManualDragAttachment.AttachWithPackageWriter(DragRoot, BuildDragPayload);
+    }
+
+    private IDragPayload? BuildDragPayload()
+    {
+        if (string.IsNullOrEmpty(ContextUri) || ContextKind == MediaCardContextKind.None)
+            return null;
+        return ContextKind switch
+        {
+            MediaCardContextKind.Album    => new AlbumDragPayload(ContextUri, Title, ImageUrl),
+            MediaCardContextKind.Playlist => new PlaylistDragPayload(ContextUri, Title),
+            MediaCardContextKind.Artist   => new ArtistDragPayload(ContextUri, Title),
+            MediaCardContextKind.Show     => new AlbumDragPayload(ContextUri, Title, ImageUrl),
+            _ => null,
+        };
     }
 
     private static void OnImageUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -95,4 +142,5 @@ public sealed partial class MediaCard : UserControl
         CardRightTapped?.Invoke(this, e);
         e.Handled = true;
     }
+
 }

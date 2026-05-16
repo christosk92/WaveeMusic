@@ -36,6 +36,8 @@ using Serilog.Extensions.Logging;
 using Wavee.Controls.Lyrics.Services.LocalizationService;
 using Wavee.UI.Contracts;
 using Wavee.UI.Services;
+using Wavee.UI.Services.DragDrop;
+using Wavee.UI.Services.DragDrop.Handlers;
 using Wavee.UI.WinUI.Services.Data;
 
 namespace Wavee.UI.WinUI.Helpers.Application;
@@ -679,6 +681,31 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<ISession>().SpClient,
                         sp.GetRequiredService<IMessenger>(),
                         sp.GetService<ILogger<TrackMetadataEnricher>>()))
+                // Unified outbox: pluggable handlers + one shared retry loop.
+                // Library save/remove and playlist bulk-add both drain through
+                // the same IOutboxProcessor. Register handlers before any
+                // service that injects IOutboxProcessor so the DI container
+                // has the full handler set on first resolve.
+                .AddSingleton<Wavee.Core.Storage.Outbox.IOutboxHandler>(sp =>
+                    new Wavee.Core.Library.Spotify.Outbox.LibrarySaveHandler(
+                        (Wavee.Core.Http.SpClient)sp.GetRequiredService<ISession>().SpClient,
+                        sp.GetRequiredService<ISession>()))
+                .AddSingleton<Wavee.Core.Storage.Outbox.IOutboxHandler>(sp =>
+                    new Wavee.Core.Library.Spotify.Outbox.LibraryRemoveHandler(
+                        (Wavee.Core.Http.SpClient)sp.GetRequiredService<ISession>().SpClient,
+                        sp.GetRequiredService<ISession>()))
+                .AddSingleton<Wavee.Core.Storage.Outbox.IOutboxHandler>(sp =>
+                    new Wavee.Core.Playlists.Outbox.PlaylistAddTracksHandler(
+                        (Wavee.Core.Http.SpClient)sp.GetRequiredService<ISession>().SpClient,
+                        sp.GetRequiredService<ISession>(),
+                        sp.GetRequiredService<Wavee.Core.Playlists.IPlaylistCacheService>(),
+                        sp.GetRequiredService<IMetadataDatabase>()))
+                .AddSingleton<Wavee.Core.Storage.Outbox.IOutboxProcessor>(sp =>
+                    new Wavee.Core.Storage.Outbox.OutboxProcessor(
+                        sp.GetRequiredService<IMetadataDatabase>(),
+                        sp.GetServices<Wavee.Core.Storage.Outbox.IOutboxHandler>(),
+                        sp.GetService<ILogger<Wavee.Core.Storage.Outbox.OutboxProcessor>>()))
+
                 .AddSingleton<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(sp =>
                 {
                     var session = sp.GetRequiredService<ISession>();
@@ -686,6 +713,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<IMetadataDatabase>(),
                         (Wavee.Core.Http.SpClient)session.SpClient,
                         session,
+                        sp.GetRequiredService<Wavee.Core.Storage.Outbox.IOutboxProcessor>(),
                         metadataClient: sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
                         playlistCache: sp.GetService<Wavee.Core.Playlists.IPlaylistCacheService>(),
                         logger: sp.GetService<ILogger<Wavee.Core.Library.Spotify.SpotifyLibraryService>>());
@@ -721,6 +749,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<ITrackLikeService>(),
                         sp.GetRequiredService<ISession>(),
                         sp.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>(),
+                        sp.GetRequiredService<Wavee.Core.Storage.Outbox.IOutboxProcessor>(),
                         sp.GetRequiredService<Data.Stores.ExtendedMetadataStore>(),
                         sp.GetRequiredService<Services.IMusicVideoMetadataService>(),
                         sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
@@ -1020,8 +1049,81 @@ public static class AppLifecycleHelper
                         GetLocalLibraryFacade(sp),
                         sp.GetService<ILogger<ViewModels.Local.LocalItemDetailFlyoutViewModel>>()))
 
-                // Drag & drop
+                // Drag & drop — visual-state singleton (unchanged), framework-neutral
+                // registry, and the WinUI→Library mediator adapter. Routes are wired
+                // up at resolve time so handlers can capture their service deps.
                 .AddSingleton<DragStateService>()
+                .AddSingleton<IPlaylistDragDropMediator, LibraryPlaylistMediator>()
+                .AddSingleton<IDragDropService>(sp =>
+                {
+                    var lib = sp.GetRequiredService<IPlaylistDragDropMediator>();
+                    var play = sp.GetRequiredService<IPlaybackService>();
+                    return new DragDropService()
+                        // Tracks → playlist row (add). Owner gating happens server-side.
+                        .Register(DragPayloadKind.Tracks, DropTargetKind.PlaylistRow,
+                            AddTracksToPlaylistHandler.CanDrop,
+                            (c, ct) => AddTracksToPlaylistHandler.HandleAsync(lib, c, ct))
+                        // Tracks → same playlist (reorder).
+                        .Register(DragPayloadKind.Tracks, DropTargetKind.PlaylistTrackList,
+                            ReorderPlaylistTracksHandler.CanDrop,
+                            (c, ct) => ReorderPlaylistTracksHandler.HandleAsync(lib, c, ct))
+                        // Tracks → queue / now-playing area.
+                        .Register(DragPayloadKind.Tracks, DropTargetKind.Queue,
+                            canDrop: null,
+                            (c, ct) => EnqueueTracksHandler.HandleAsync(play, c, ct))
+                        .Register(DragPayloadKind.Tracks, DropTargetKind.NowPlaying,
+                            canDrop: null,
+                            (c, ct) => EnqueueTracksHandler.HandleAsync(play, c, ct))
+                        // Card → now-playing area: switch context.
+                        .Register(DragPayloadKind.Album,    DropTargetKind.NowPlaying, null, (c, ct) => SwitchContextHandler.HandleAsync(play, c, ct))
+                        .Register(DragPayloadKind.Playlist, DropTargetKind.NowPlaying, null, (c, ct) => SwitchContextHandler.HandleAsync(play, c, ct))
+                        .Register(DragPayloadKind.Artist,   DropTargetKind.NowPlaying, null, (c, ct) => SwitchContextHandler.HandleAsync(play, c, ct))
+                        // Card → queue: enqueue the context's tracks (deferred — context
+                        // expansion needs the library service; the handler short-circuits
+                        // when it can't expand).
+                        .Register(DragPayloadKind.Album,    DropTargetKind.Queue, null, (c, ct) => SwitchContextHandler.EnqueueAsync(play, c, ct))
+                        .Register(DragPayloadKind.Playlist, DropTargetKind.Queue, null, (c, ct) => SwitchContextHandler.EnqueueAsync(play, c, ct))
+                        // Album / Artist / Liked / Show → playlist row append tracks.
+                        // Playlist → playlist row is position-aware: center
+                        // appends tracks, top/bottom reorders the playlist in
+                        // the sidebar rootlist.
+                        .Register(DragPayloadKind.Album,      DropTargetKind.PlaylistRow,
+                            AddContextTracksToPlaylistHandler.CanDrop,
+                            (c, ct) => AddContextTracksToPlaylistHandler.HandleAsync(lib, c, ct))
+                        .Register(DragPayloadKind.Artist,     DropTargetKind.PlaylistRow,
+                            AddContextTracksToPlaylistHandler.CanDrop,
+                            (c, ct) => AddContextTracksToPlaylistHandler.HandleAsync(lib, c, ct))
+                        .Register(DragPayloadKind.Playlist,   DropTargetKind.PlaylistRow,
+                            SidebarReorderHandler.CanDropPlaylistOnPlaylistRow,
+                            (c, ct) => SidebarReorderHandler.PlaylistOnPlaylistRowAsync(lib, c, ct))
+                        .Register(DragPayloadKind.LikedSongs, DropTargetKind.PlaylistRow,
+                            AddContextTracksToPlaylistHandler.CanDrop,
+                            (c, ct) => AddContextTracksToPlaylistHandler.HandleAsync(lib, c, ct))
+                        .Register(DragPayloadKind.Show,       DropTargetKind.PlaylistRow,
+                            AddContextTracksToPlaylistHandler.CanDrop,
+                            (c, ct) => AddContextTracksToPlaylistHandler.HandleAsync(lib, c, ct))
+                        // Liked / Show on Queue + NowPlaying — Spotify Connect
+                        // resolves spotify:collection and spotify:show:* as
+                        // playable contexts.
+                        .Register(DragPayloadKind.LikedSongs, DropTargetKind.Queue,      null, (c, ct) => SwitchContextHandler.EnqueueAsync(play, c, ct))
+                        .Register(DragPayloadKind.Show,       DropTargetKind.Queue,      null, (c, ct) => SwitchContextHandler.EnqueueAsync(play, c, ct))
+                        .Register(DragPayloadKind.LikedSongs, DropTargetKind.NowPlaying, null, (c, ct) => SwitchContextHandler.HandleAsync(play, c, ct))
+                        .Register(DragPayloadKind.Show,       DropTargetKind.NowPlaying, null, (c, ct) => SwitchContextHandler.HandleAsync(play, c, ct))
+                        // Card → sidebar folder row: nest the playlist into the folder.
+                        .Register(DragPayloadKind.Playlist, DropTargetKind.FolderRow,
+                            canDrop: null,
+                            (c, ct) => SidebarReorderHandler.NestPlaylistAsync(lib, c, ct))
+                        // Sidebar row → another sidebar row (reorder) or folder (nest).
+                        .Register(DragPayloadKind.SidebarItem, DropTargetKind.PlaylistRow,
+                            canDrop: null,
+                            (c, ct) => SidebarReorderHandler.ReorderAsync(lib, c, ct))
+                        .Register(DragPayloadKind.SidebarItem, DropTargetKind.FolderRow,
+                            canDrop: null,
+                            (c, ct) => SidebarReorderHandler.NestOrReorderAsync(lib, c, ct))
+                        .Register(DragPayloadKind.SidebarItem, DropTargetKind.SidebarRoot,
+                            canDrop: null,
+                            (c, ct) => SidebarReorderHandler.MoveToRootAsync(lib, c, ct));
+                })
 
                 // Utilities
                 .AddSingleton<AppModel>()

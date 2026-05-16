@@ -83,7 +83,12 @@ public sealed class MetadataDatabase : IMetadataDatabase
     //      local_enrichment_negatives, local_plays, local_lyrics. SQL constants live in
     //      Wavee.Local.Schema.LocalSchemaV17 (in the new Wavee.Local classlib that owns
     //      all local-files logic). See docs/superpowers/specs/2026-05-12-local-files-redesign-design.md.
-    private const int CurrentSchemaVersion = 21;
+    // v22: Replaced library_outbox with a unified `outbox` table — adds
+    //      op_kind (handler discriminator), payload (JSON), progress_offset
+    //      (resume cursor for chunked ops). Library save/remove + playlist
+    //      add-tracks both queue through the same table now, processed by
+    //      Wavee.Core.Storage.Outbox.OutboxProcessor.
+    private const int CurrentSchemaVersion = 22;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -274,7 +279,32 @@ public sealed class MetadataDatabase : IMetadataDatabase
         new SchemaMigration(
             FromVersion: 20,
             ToVersion: 21,
-            Sql: Wavee.Local.Schema.LocalSchemaV21.MigrationSql)
+            Sql: Wavee.Local.Schema.LocalSchemaV21.MigrationSql),
+
+        // v22: Drop the narrow `library_outbox` (Save/Remove only) and create a
+        // unified `outbox` table that any handler can queue into. Library
+        // saves/removes and bulk playlist adds both go through this single
+        // queue + processor now. Queue contents are transient by nature — any
+        // in-flight rows at migration time get dropped, which is fine: the
+        // user retries the action and the new row queues normally. No data
+        // preserved from the old table.
+        new SchemaMigration(
+            FromVersion: 21,
+            ToVersion: 22,
+            Sql: """
+                DROP TABLE IF EXISTS library_outbox;
+                CREATE TABLE IF NOT EXISTS outbox (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    op_kind         TEXT    NOT NULL,
+                    primary_uri     TEXT    NOT NULL,
+                    payload         TEXT    NULL,
+                    progress_offset INTEGER NULL,
+                    created_at      INTEGER NOT NULL,
+                    retry_count     INTEGER NOT NULL DEFAULT 0,
+                    last_error      TEXT    NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_outbox_created ON outbox(created_at);
+                """)
     ];
 
     private sealed record SchemaMigration(int FromVersion, int ToVersion, string Sql);
@@ -441,6 +471,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
             DROP TABLE IF EXISTS album_tracks_cache;
             DROP TABLE IF EXISTS lyrics_cache;
             DROP TABLE IF EXISTS library_outbox;
+            DROP TABLE IF EXISTS outbox;
             DROP TABLE IF EXISTS media_overrides;
             DROP TABLE IF EXISTS local_files;
             DROP TABLE IF EXISTS local_artwork;
@@ -1015,21 +1046,27 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 cmd.ExecuteNonQuery();
             }
 
-            // Library outbox (pending API sync operations)
+            // Unified outbox (pending API sync operations across library, playlists, etc).
+            // Handler discriminator lives in op_kind; per-op payload is JSON;
+            // progress_offset is a resume cursor for chunked handlers. No
+            // UNIQUE constraint on primary_uri — duplicate ops are valid
+            // (e.g. user adds the same track to a playlist twice — Spotify
+            // allows duplicate playlist entries).
             using (var cmd = connection.CreateCommand())
             {
                 cmd.Transaction = transaction;
                 cmd.CommandText = """
-                    CREATE TABLE IF NOT EXISTS library_outbox (
-                        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                        item_uri    TEXT NOT NULL,
-                        item_type   INTEGER NOT NULL,
-                        operation   INTEGER NOT NULL,
-                        created_at  INTEGER NOT NULL,
-                        retry_count INTEGER NOT NULL DEFAULT 0,
-                        last_error  TEXT,
-                        UNIQUE(item_uri)
+                    CREATE TABLE IF NOT EXISTS outbox (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        op_kind         TEXT    NOT NULL,
+                        primary_uri     TEXT    NOT NULL,
+                        payload         TEXT    NULL,
+                        progress_offset INTEGER NULL,
+                        created_at      INTEGER NOT NULL,
+                        retry_count     INTEGER NOT NULL DEFAULT 0,
+                        last_error      TEXT    NULL
                     );
+                    CREATE INDEX IF NOT EXISTS idx_outbox_created ON outbox(created_at);
                     """;
                 cmd.ExecuteNonQuery();
             }
@@ -2855,10 +2892,13 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
     #endregion
 
-    #region Library Outbox Operations
+    #region Outbox Operations
 
-    public async Task EnqueueLibraryOpAsync(string itemUri, SpotifyLibraryItemType itemType, LibraryOutboxOperation operation, CancellationToken ct = default)
+    public async Task EnqueueOutboxAsync(string opKind, string primaryUri, string? payloadJson = null, CancellationToken ct = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(opKind);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primaryUri);
+
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         await _writeLock.WaitAsync(ct);
         try
@@ -2867,51 +2907,51 @@ public sealed class MetadataDatabase : IMetadataDatabase
             await connection.OpenAsync(ct);
             using var cmd = connection.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO library_outbox (item_uri, item_type, operation, created_at)
-                VALUES ($uri, $type, $op, $created)
-                ON CONFLICT(item_uri) DO UPDATE SET
-                    item_type = excluded.item_type,
-                    operation = excluded.operation,
-                    created_at = excluded.created_at,
-                    retry_count = 0,
-                    last_error = NULL;
+                INSERT INTO outbox (op_kind, primary_uri, payload, created_at)
+                VALUES ($kind, $uri, $payload, $created);
                 """;
-            cmd.Parameters.AddWithValue("$uri", itemUri);
-            cmd.Parameters.AddWithValue("$type", (int)itemType);
-            cmd.Parameters.AddWithValue("$op", (int)operation);
+            cmd.Parameters.AddWithValue("$kind", opKind);
+            cmd.Parameters.AddWithValue("$uri", primaryUri);
+            cmd.Parameters.AddWithValue("$payload", (object?)payloadJson ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$created", now);
             await cmd.ExecuteNonQueryAsync(ct);
         }
         finally { _writeLock.Release(); }
     }
 
-    public async Task<List<LibraryOutboxEntry>> DequeueLibraryOpsAsync(int limit = 50, CancellationToken ct = default)
+    public async Task<List<OutboxEntry>> DequeueOutboxAsync(int limit = 50, CancellationToken ct = default)
     {
         using var connection = CreateConnection();
         await connection.OpenAsync(ct);
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT id, item_uri, item_type, operation, created_at, retry_count, last_error FROM library_outbox ORDER BY created_at LIMIT $limit;";
+        cmd.CommandText = """
+            SELECT id, op_kind, primary_uri, payload, progress_offset, created_at, retry_count, last_error
+            FROM outbox
+            ORDER BY created_at
+            LIMIT $limit;
+            """;
         cmd.Parameters.AddWithValue("$limit", limit);
 
-        var results = new List<LibraryOutboxEntry>();
+        var results = new List<OutboxEntry>();
         using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
-            results.Add(new LibraryOutboxEntry
+            results.Add(new OutboxEntry
             {
                 Id = reader.GetInt64(0),
-                ItemUri = reader.GetString(1),
-                ItemType = (SpotifyLibraryItemType)reader.GetInt32(2),
-                Operation = (LibraryOutboxOperation)reader.GetInt32(3),
-                CreatedAt = reader.GetInt64(4),
-                RetryCount = reader.GetInt32(5),
-                LastError = reader.IsDBNull(6) ? null : reader.GetString(6)
+                OpKind = reader.GetString(1),
+                PrimaryUri = reader.GetString(2),
+                Payload = reader.IsDBNull(3) ? null : reader.GetString(3),
+                ProgressOffset = reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                CreatedAt = reader.GetInt64(5),
+                RetryCount = reader.GetInt32(6),
+                LastError = reader.IsDBNull(7) ? null : reader.GetString(7)
             });
         }
         return results;
     }
 
-    public async Task CompleteLibraryOpAsync(long id, CancellationToken ct = default)
+    public async Task AdvanceOutboxProgressAsync(long id, int progressOffset, CancellationToken ct = default)
     {
         await _writeLock.WaitAsync(ct);
         try
@@ -2919,14 +2959,30 @@ public sealed class MetadataDatabase : IMetadataDatabase
             using var connection = CreateConnection();
             await connection.OpenAsync(ct);
             using var cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM library_outbox WHERE id = $id;";
+            cmd.CommandText = "UPDATE outbox SET progress_offset = $offset WHERE id = $id;";
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.Parameters.AddWithValue("$offset", progressOffset);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally { _writeLock.Release(); }
+    }
+
+    public async Task CompleteOutboxAsync(long id, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM outbox WHERE id = $id;";
             cmd.Parameters.AddWithValue("$id", id);
             await cmd.ExecuteNonQueryAsync(ct);
         }
         finally { _writeLock.Release(); }
     }
 
-    public async Task FailLibraryOpAsync(long id, string? error, CancellationToken ct = default)
+    public async Task FailOutboxAsync(long id, string? error, CancellationToken ct = default)
     {
         await _writeLock.WaitAsync(ct);
         try
@@ -2934,7 +2990,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
             using var connection = CreateConnection();
             await connection.OpenAsync(ct);
             using var cmd = connection.CreateCommand();
-            cmd.CommandText = "UPDATE library_outbox SET retry_count = retry_count + 1, last_error = $error WHERE id = $id;";
+            cmd.CommandText = "UPDATE outbox SET retry_count = retry_count + 1, last_error = $error WHERE id = $id;";
             cmd.Parameters.AddWithValue("$id", id);
             cmd.Parameters.AddWithValue("$error", (object?)error ?? DBNull.Value);
             await cmd.ExecuteNonQueryAsync(ct);
@@ -3849,7 +3905,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 DELETE FROM sync_state;
                 DELETE FROM spotify_playlists;
                 DELETE FROM rootlist_cache;
-                DELETE FROM library_outbox;
+                DELETE FROM outbox;
                 """;
             await cmd.ExecuteNonQueryAsync(cancellationToken);
             await tx.CommitAsync(cancellationToken);

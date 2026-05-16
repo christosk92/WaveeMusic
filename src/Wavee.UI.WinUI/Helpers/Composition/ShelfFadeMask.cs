@@ -155,18 +155,22 @@ public static class ShelfFadeMask
             var blurredBackdrop = effectFactory.CreateBrush();
             blurredBackdrop.SetSourceParameter("Backdrop", backdrop);
 
-            // Linear alpha gradient — transparent on left, modest opacity on
+            // Linear alpha gradient — transparent on left, fully opaque on
             // right. The colour channel of the mask is ignored; only alpha
-            // weights the source brush. 4-stop curve mirrors the previous
-            // ShelfFadeRightBrush so the visual rhythm stays consistent with
-            // any surfaces that still rely on a static gradient.
+            // weights the source brush. The right edge needs alpha=255 so the
+            // blurred backdrop visibly differs from the underlying cards in
+            // dark mode (a partially-transparent blur of dark cards looks
+            // identical to the cards themselves, defeating the fade). The
+            // earlier stops at 0.25 / 0.55 frontload the curve so the fade
+            // builds up faster — content that's only halfway off-screen
+            // already reads as "behind glass".
             _maskGradient = compositor.CreateLinearGradientBrush();
             _maskGradient.StartPoint = new Vector2(0f, 0.5f);
             _maskGradient.EndPoint = new Vector2(1f, 0.5f);
             _maskGradient.ColorStops.Add(compositor.CreateColorGradientStop(0f,    Color.FromArgb(0,   255, 255, 255)));
-            _maskGradient.ColorStops.Add(compositor.CreateColorGradientStop(0.35f, Color.FromArgb(64,  255, 255, 255)));
-            _maskGradient.ColorStops.Add(compositor.CreateColorGradientStop(0.72f, Color.FromArgb(180, 255, 255, 255)));
-            _maskGradient.ColorStops.Add(compositor.CreateColorGradientStop(1f,    Color.FromArgb(230, 255, 255, 255)));
+            _maskGradient.ColorStops.Add(compositor.CreateColorGradientStop(0.25f, Color.FromArgb(96,  255, 255, 255)));
+            _maskGradient.ColorStops.Add(compositor.CreateColorGradientStop(0.55f, Color.FromArgb(210, 255, 255, 255)));
+            _maskGradient.ColorStops.Add(compositor.CreateColorGradientStop(1f,    Color.FromArgb(255, 255, 255, 255)));
 
             var maskBrush = compositor.CreateMaskBrush();
             maskBrush.Source = blurredBackdrop;

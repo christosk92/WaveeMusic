@@ -120,7 +120,7 @@
                      LeftColumnHost is the parallax target — code-behind grabs
                      its composition Visual and translates Y at ~0.4× the
                      PageScrollView's vertical offset. -->
-                    <Grid x:Name="LeftColumnHost" Grid.Column="0">
+                    <Grid x:Name="LeftColumnHost" Grid.Column="0" VerticalAlignment="Top">
 
                         <!-- Real left panel — fades in once data arrives. -->
                         <StackPanel x:Name="ContentContainer"
@@ -283,10 +283,11 @@
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
-                            <!-- Primary CTAs: Play (big accent) + Shuffle (icon). Save / Share /
-                         queue / radio moved into the labeled pill cluster below — keeping
-                         them as both icon AND pill would have been redundant. -->
-                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                            <!-- Primary CTAs: Play (big accent) + Shuffle / Save / Share (icon row).
+                         Save uses the shared HeartButton (toggles between filled / outline
+                         on IsSaved); Share mirrors HeartButton's transparent-icon style so the
+                         three secondary actions read as a single coherent cluster. -->
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0" VerticalAlignment="Center">
                                 <Button Style="{StaticResource AccentButtonStyle}"
                                 Background="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
                                 Foreground="{x:Bind ViewModel.PaletteAccentPillForegroundBrush, Mode=OneWay}"
@@ -305,39 +306,29 @@
                                 ToolTipService.ToolTip="Shuffle play">
                                     <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
                                 </Button>
+                                <appControls:HeartButton IsLiked="{x:Bind ViewModel.IsSaved, Mode=OneWay}"
+                                                         Command="{x:Bind ViewModel.ToggleSaveCommand}"
+                                                         VerticalAlignment="Center"/>
+                                <Button Click="Share_Click"
+                                        IsEnabled="{x:Bind ViewModel.CanShare, Mode=OneWay}"
+                                        Width="32" Height="32" CornerRadius="16" Padding="0"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        VerticalAlignment="Center"
+                                        ToolTipService.ToolTip="Copy link to album">
+                                    <FontIcon Glyph="&#xE72D;" FontSize="14"/>
+                                </Button>
                             </StackPanel>
 
                             <!-- Secondary action cluster — labeled pill buttons matching the
                                  prototype's `.action-cluster` (36 px, transparent bg,
                                  1 px divider stroke). WrapPanel so the row spills to a
-                                 second line on narrow column widths. -->
+                                 second line on narrow column widths.
+                                 Save + Share live in the icon row above the cluster — keeping
+                                 them as both icon AND pill would have been redundant. -->
                             <controls:WrapPanel Orientation="Horizontal"
                                                 HorizontalSpacing="6" VerticalSpacing="6"
                                                 Margin="0,4,0,0">
-                                <Button Command="{x:Bind ViewModel.ToggleSaveCommand}"
-                                        Height="36" Padding="14,0" CornerRadius="18"
-                                        Background="Transparent"
-                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                        BorderThickness="1"
-                                        ToolTipService.ToolTip="Save to your library">
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <FontIcon Glyph="{x:Bind ViewModel.IsSaved, Mode=OneWay, Converter={StaticResource BoolToHeartGlyphConverter}}"
-                                                  FontSize="12"/>
-                                        <TextBlock Text="Save" FontSize="13"/>
-                                    </StackPanel>
-                                </Button>
-                                <Button Click="Share_Click"
-                                        IsEnabled="{x:Bind ViewModel.CanShare, Mode=OneWay}"
-                                        Height="36" Padding="14,0" CornerRadius="18"
-                                        Background="Transparent"
-                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                        BorderThickness="1"
-                                        ToolTipService.ToolTip="Copy link to album">
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <FontIcon Glyph="&#xE72D;" FontSize="12"/>
-                                        <TextBlock Text="Share" FontSize="13"/>
-                                    </StackPanel>
-                                </Button>
                                 <Button x:Name="AddToPlaylistPillButton"
                                         Height="36" Padding="14,0" CornerRadius="18"
                                         Background="Transparent"
@@ -782,6 +773,7 @@
                                     BorderThickness="1"
                                     CornerRadius="12"
                                     Padding="14"
+                                    Margin="0,0,16,0"
                                     PointerEntered="MusicVideoStrip_PointerEntered"
                                     PointerExited="MusicVideoStrip_PointerExited"
                                     PointerPressed="MusicVideoStrip_PointerPressed"
@@ -856,6 +848,7 @@
                                  there's no placeholder-flicker window. -->
                             <artistControls:ArtistSummaryCard
                                 x:Name="FooterArtistCard"
+                                Margin="0,0,16,0"
                                 ArtistUri="{x:Bind ViewModel.ArtistId, Mode=OneWay}"
                                 ArtistName="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
                                 ArtistImageUrl="{x:Bind ViewModel.ArtistAvatarImageUrl, Mode=OneWay}"

@@ -8,6 +8,8 @@
     xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     mc:Ignorable="d">
 
+    <Grid x:Name="DragRoot"
+          Background="Transparent">
     <Button x:Name="CardButton"
             Padding="0" Background="Transparent" BorderThickness="0"
             HorizontalContentAlignment="Stretch"
@@ -35,4 +37,5 @@
                        TextTrimming="CharacterEllipsis" MaxLines="1"/>
         </StackPanel>
     </Button>
+    </Grid>
 </UserControl>

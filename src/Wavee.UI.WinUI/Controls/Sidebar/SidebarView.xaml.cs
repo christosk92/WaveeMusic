@@ -6,6 +6,7 @@ using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI;
 using Microsoft.UI.Input;
+using Wavee.UI.Services.DragDrop;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Helpers.UI;
 using Microsoft.UI.Xaml;

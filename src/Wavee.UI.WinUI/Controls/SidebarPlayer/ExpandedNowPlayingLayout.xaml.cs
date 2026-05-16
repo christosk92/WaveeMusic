@@ -782,6 +782,48 @@ public sealed partial class ExpandedNowPlayingLayout : UserControl, IMediaSurfac
         FadeVideoOverlay(visible: false);
     }
 
+    private void MediaFrame_DragOver(object sender, DragEventArgs e)
+    {
+        // Big cover art accepts album / playlist / artist cards → "switch context".
+        // Tracks are intentionally ignored here (queue-only via PlayerBar) to
+        // avoid yanking the current playback when the user just wanted to enqueue.
+        if (e.DataView.Contains(Wavee.UI.Services.DragDrop.DragFormats.Album)
+            || e.DataView.Contains(Wavee.UI.Services.DragDrop.DragFormats.Playlist)
+            || e.DataView.Contains(Wavee.UI.Services.DragDrop.DragFormats.Artist))
+        {
+            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+            e.DragUIOverride.Caption = "Play this";
+            e.DragUIOverride.IsCaptionVisible = true;
+            e.DragUIOverride.IsGlyphVisible = true;
+        }
+    }
+
+    private async void MediaFrame_Drop(object sender, DragEventArgs e)
+    {
+        var dropService = Ioc.Default.GetService<Wavee.UI.Services.DragDrop.IDragDropService>();
+        if (dropService is null) return;
+
+        var payload = await Wavee.UI.WinUI.DragDrop.DragPackageReader.ReadAsync(e.DataView, dropService);
+        if (payload is null) return;
+        if (payload.Kind == Wavee.UI.Services.DragDrop.DragPayloadKind.Tracks) return;
+
+        var modifiers = Wavee.UI.WinUI.DragDrop.DragModifiersCapture.Current();
+        var ctx = new Wavee.UI.Services.DragDrop.DropContext(
+            payload,
+            Wavee.UI.Services.DragDrop.DropTargetKind.NowPlaying,
+            TargetId: null,
+            Position: Wavee.UI.Services.DragDrop.DropPosition.Inside,
+            TargetIndex: null,
+            modifiers);
+        var result = await dropService.DropAsync(ctx);
+        if (result.UserMessage is { } msg)
+        {
+            Ioc.Default.GetService<INotificationService>()?
+                .Show(msg, result.Success ? Wavee.UI.WinUI.Data.Models.NotificationSeverity.Informational : Wavee.UI.WinUI.Data.Models.NotificationSeverity.Warning,
+                    TimeSpan.FromSeconds(3));
+        }
+    }
+
     private bool IsTheaterVideoLayoutActive()
         => IsLoaded
            && _isTheaterMode

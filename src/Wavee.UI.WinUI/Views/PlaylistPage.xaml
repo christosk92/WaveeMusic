@@ -398,7 +398,7 @@
                         IsBusy="{x:Bind ViewModel.IsRenaming, Mode=OneWay}"
                         MaxLength="100"
                         MaxLines="3"
-                        FontSize="{x:Bind helpers:TitleFontSizer.CompactHero(ViewModel.PlaylistName), Mode=OneWay}"
+                        FontSize="{x:Bind helpers:TitleFontSizer.Hero(ViewModel.PlaylistName), Mode=OneWay}"
                         FontWeight="Black"
                         TextAlignment="Left"
                         HorizontalContentAlignment="Stretch"
@@ -446,10 +446,11 @@
                            Margin="0,2,0,0"
                            TextWrapping="Wrap"/>
 
-                <!-- 5a. Primary CTAs — Play (big accent) + Shuffle (icon). Save /
-                     Share / queue / radio moved into the labeled pill cluster
-                     below so the page matches the AlbumPage hierarchy. -->
-                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                <!-- 5a. Primary CTAs — Play (big accent) + Shuffle / Save / Share (icon row).
+                     Save (HeartButton) is hidden for owners — owners get the Delete pill in
+                     the secondary cluster instead. Share mirrors HeartButton's transparent
+                     32×32 style so the three secondary actions read as a coherent cluster. -->
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0" VerticalAlignment="Center">
                     <Button Style="{StaticResource AccentButtonStyle}"
                             Command="{x:Bind ViewModel.PlayAllCommand}"
                             Padding="18,10" CornerRadius="20"
@@ -466,42 +467,27 @@
                             ToolTipService.ToolTip="Shuffle play">
                         <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
                     </Button>
+                    <controls1:HeartButton IsLiked="{x:Bind ViewModel.IsFollowed, Mode=OneWay}"
+                                           Command="{x:Bind ViewModel.ToggleFollowCommand}"
+                                           VerticalAlignment="Center"
+                                           Visibility="{x:Bind ViewModel.IsOwner, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                    <Button Command="{x:Bind ViewModel.SharePlaylistCommand}"
+                            Width="32" Height="32" CornerRadius="16" Padding="0"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            VerticalAlignment="Center"
+                            ToolTipService.ToolTip="Copy link to playlist">
+                        <FontIcon Glyph="&#xE72D;" FontSize="14"/>
+                    </Button>
                 </StackPanel>
 
                 <!-- 5b. Secondary action cluster — labeled pill buttons mirroring
                      AlbumPage's `.action-cluster`. WrapPanel so the row spills to a
-                     second line on narrow column widths. Save/Delete swap based on
-                     ownership; the rest are unconditional. -->
+                     second line on narrow column widths. Save + Share live in the
+                     icon row above; Delete is owners-only and stays here. -->
                 <controls:WrapPanel Orientation="Horizontal"
                                     HorizontalSpacing="6" VerticalSpacing="6"
                                     Margin="0,4,0,0">
-                    <!-- Save (Follow). Non-owners only — owners get the Delete pill
-                         on the right edge of this cluster instead. -->
-                    <Button Command="{x:Bind ViewModel.ToggleFollowCommand}"
-                            Height="36" Padding="14,0" CornerRadius="18"
-                            Background="Transparent"
-                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            ToolTipService.ToolTip="Save to your library"
-                            Visibility="{x:Bind ViewModel.IsOwner, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <FontIcon Glyph="{x:Bind ViewModel.IsFollowed, Mode=OneWay, Converter={StaticResource BoolToHeartGlyphConverter}}"
-                                      FontSize="12"/>
-                            <TextBlock Text="Save" FontSize="13"/>
-                        </StackPanel>
-                    </Button>
-                    <!-- Share -->
-                    <Button Command="{x:Bind ViewModel.SharePlaylistCommand}"
-                            Height="36" Padding="14,0" CornerRadius="18"
-                            Background="Transparent"
-                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            ToolTipService.ToolTip="Copy link to playlist">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <FontIcon Glyph="&#xE72D;" FontSize="12"/>
-                            <TextBlock Text="Share" FontSize="13"/>
-                        </StackPanel>
-                    </Button>
                     <!-- Add to playlist (flyout — picks the destination from the
                          user's playlists, then copies all tracks of THIS playlist). -->
                     <Button x:Name="AddPlaylistToPlaylistPillButton"
@@ -683,6 +669,9 @@
                 IsLoading="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay}"
                 LoadingRowCount="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"
                 AddedByVisible="{x:Bind ViewModel.ShouldShowAddedByColumn, Mode=OneWay}"
+                ContextUri="{x:Bind ViewModel.PlaylistId, Mode=OneWay}"
+                CanReorder="{x:Bind ViewModel.CanReorderTracks, Mode=OneWay}"
+                TracksReorderRequested="TrackGrid_TracksReorderRequested"
                 ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"
                 PlayCommand="{x:Bind ViewModel.PlayTrackCommand}">
                 <tdg:TrackDataGrid.FilterBarContent>

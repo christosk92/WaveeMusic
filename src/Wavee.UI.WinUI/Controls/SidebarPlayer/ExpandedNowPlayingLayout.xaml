@@ -83,6 +83,9 @@
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 RenderTransformOrigin="0.5,0.5"
+                AllowDrop="True"
+                DragOver="MediaFrame_DragOver"
+                Drop="MediaFrame_Drop"
                 PointerEntered="MediaFrame_PointerEntered"
                 PointerExited="MediaFrame_PointerExited">
                 <Grid.RenderTransform>

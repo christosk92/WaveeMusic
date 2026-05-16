@@ -386,6 +386,49 @@ public interface ILibraryDataService
     /// </summary>
     Task ReorderPlaylistOverlayAsync(string playlistUri, IReadOnlyList<string> orderedTrackUris, CancellationToken ct = default);
 
+    // ── Drag-drop mutations ──
+
+    /// <summary>
+    /// Moves a contiguous block of tracks within an owned playlist. Posts a single
+    /// <c>Op.Mov</c> against <c>/playlist/v2/playlist/{id}/changes</c>. Server-side
+    /// permission gate: the call rejects with 4xx on non-owned playlists.
+    /// </summary>
+    Task ReorderTracksInPlaylistAsync(
+        string playlistId,
+        int fromIndex,
+        int length,
+        int toIndex,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Moves a sidebar entry (playlist URI, or folder start-group URI) to land
+    /// before / after / inside another rootlist entry. For folders the entire
+    /// start-group / end-group pair plus everything between moves together.
+    /// </summary>
+    Task MovePlaylistInRootlistAsync(
+        string sourceUri,
+        string targetUri,
+        Wavee.UI.Services.DragDrop.DropPosition position,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Moves a playlist into a folder identified by its <c>spotify:start-group:{id}</c>
+    /// URI. The playlist lands at the head of the folder's children.
+    /// </summary>
+    Task MovePlaylistIntoFolderAsync(
+        string playlistUri,
+        string folderStartUri,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Moves a playlist currently inside a folder out to the supplied top-level
+    /// rootlist index (0-based, ignoring folder markers).
+    /// </summary>
+    Task MovePlaylistOutOfFolderAsync(
+        string playlistUri,
+        int destinationRootIndex,
+        CancellationToken ct = default);
+
     /// <summary>
     /// Event raised when playlists change (created, deleted, updated).
     /// </summary>

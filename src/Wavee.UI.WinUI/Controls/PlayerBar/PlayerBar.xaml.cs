@@ -17,6 +17,7 @@ using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Messages;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.Playback;
 using Wavee.UI.WinUI.Helpers.UI;
@@ -661,6 +662,25 @@ public sealed partial class PlayerBar : UserControl
 
     private async void PlayerBarRoot_DragOver(object sender, Microsoft.UI.Xaml.DragEventArgs e)
     {
+        // Wavee internal drags (tracks, albums, playlists, artists) come first —
+        // the player bar is the universal "Add to queue" target while playback
+        // is active. Subtitle file drops only apply during local video, so they
+        // fall through behind this branch.
+        if (e.DataView.Contains(Wavee.UI.Services.DragDrop.DragFormats.Tracks)
+            || e.DataView.Contains(Wavee.UI.Services.DragDrop.DragFormats.Album)
+            || e.DataView.Contains(Wavee.UI.Services.DragDrop.DragFormats.Playlist)
+            || e.DataView.Contains(Wavee.UI.Services.DragDrop.DragFormats.Artist))
+        {
+            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+            var shift = Microsoft.UI.Input.InputKeyboardSource
+                .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift)
+                .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+            e.DragUIOverride.Caption = shift ? "Play next" : "Add to queue";
+            e.DragUIOverride.IsCaptionVisible = true;
+            e.DragUIOverride.IsGlyphVisible = true;
+            return;
+        }
+
         if (_playbackStateService?.CurrentTrackIsVideo != true
             && _playbackStateService?.CurrentLocalContentKind
                 is not Wavee.Local.Classification.LocalContentKind.TvEpisode
@@ -691,6 +711,34 @@ public sealed partial class PlayerBar : UserControl
 
     private async void PlayerBarRoot_Drop(object sender, Microsoft.UI.Xaml.DragEventArgs e)
     {
+        // Wavee internal drag — route through the drop registry as Queue (or
+        // NowPlaying for context payloads). The registry's handler enqueues
+        // tracks or switches the active context as appropriate.
+        var dropService = Ioc.Default.GetService<Wavee.UI.Services.DragDrop.IDragDropService>();
+        if (dropService is not null)
+        {
+            var payload = await Wavee.UI.WinUI.DragDrop.DragPackageReader.ReadAsync(e.DataView, dropService);
+            if (payload is not null)
+            {
+                var targetKind = payload.Kind == Wavee.UI.Services.DragDrop.DragPayloadKind.Tracks
+                    ? Wavee.UI.Services.DragDrop.DropTargetKind.Queue
+                    : Wavee.UI.Services.DragDrop.DropTargetKind.NowPlaying;
+                var modifiers = Wavee.UI.WinUI.DragDrop.DragModifiersCapture.Current();
+                var ctx = new Wavee.UI.Services.DragDrop.DropContext(
+                    payload, targetKind, TargetId: null,
+                    Position: Wavee.UI.Services.DragDrop.DropPosition.Inside,
+                    TargetIndex: null, modifiers);
+                var result = await dropService.DropAsync(ctx);
+                if (result.UserMessage is { } msg)
+                {
+                    Ioc.Default.GetService<INotificationService>()?
+                        .Show(msg, result.Success ? NotificationSeverity.Informational : NotificationSeverity.Warning,
+                            TimeSpan.FromSeconds(3));
+                }
+                return;
+            }
+        }
+
         if (!e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
             return;
 

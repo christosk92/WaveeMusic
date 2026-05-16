@@ -19,6 +19,7 @@ using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
+using Wavee.UI.Services.DragDrop;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.Playback;
@@ -947,31 +948,61 @@ public sealed partial class ShellPage : Page
 
     private async void SidebarControl_ItemDropped(object? sender, ItemDroppedEventArgs e)
     {
-        if (!e.DroppedItem.Contains("WaveeTrackIds")) return;
+        var service = Ioc.Default.GetService<IDragDropService>();
+        if (service is null) return;
+
+        var payload = await DragPackageReader.ReadAsync(e.DroppedItem, service);
+        if (payload is null) return;
         if (e.DropTarget is not SidebarItemModel model) return;
 
-        var playlistId = model.Tag;
-        if (string.IsNullOrEmpty(playlistId) || !playlistId.StartsWith("spotify:playlist:")) return;
+        var targetId = model.Tag;
+        if (string.IsNullOrEmpty(targetId)) return;
 
-        try
+        var targetKind = ResolveSidebarTargetKind(model);
+        var dropPosition = MapDropPosition(e.dropPosition);
+        var modifiers = DragModifiersCapture.Current();
+
+        var ctx = new DropContext(payload, targetKind, targetId, dropPosition, TargetIndex: null, modifiers);
+        var result = await service.DropAsync(ctx);
+
+        if (!result.Success && result.UserMessage is not null)
         {
-            var data = await e.DroppedItem.GetDataAsync("WaveeTrackIds") as string;
-            var trackIds = data?.Split('|', StringSplitOptions.RemoveEmptyEntries);
-            if (trackIds is { Length: > 0 } && _libraryDataService != null)
+            _logger?.LogWarning("Sidebar drop failed: {Message}", result.UserMessage);
+            ViewModel.ShowNotification(result.UserMessage);
+            return;
+        }
+        if (result.Success)
+        {
+            // Localized "added X tracks" wins for the historic track-add path so we
+            // don't show two competing strings; everything else uses the handler's
+            // own UserMessage (set in EnqueueTracks etc.).
+            if (payload.Kind == DragPayloadKind.Tracks && targetKind == DropTargetKind.PlaylistRow)
             {
-                await _libraryDataService.AddTracksToPlaylistAsync(playlistId, trackIds);
-                _logger?.LogInformation("Added {TrackCount} track(s) to playlist {PlaylistId}", trackIds.Length, playlistId);
+                _logger?.LogInformation("Added {TrackCount} track(s) to playlist {PlaylistId}", result.ItemsAffected, targetId);
                 ViewModel.ShowNotification(string.Format(
                     AppLocalization.GetString("Playlist_AddTracksSucceeded"),
-                    trackIds.Length));
+                    result.ItemsAffected));
+            }
+            else if (result.UserMessage is not null)
+            {
+                ViewModel.ShowNotification(result.UserMessage);
             }
         }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Failed to handle track drop onto playlist {PlaylistId}", playlistId);
-            ViewModel.ShowNotification(AppLocalization.GetString("Playlist_AddTracksFailed"));
-        }
     }
+
+    private static DropTargetKind ResolveSidebarTargetKind(SidebarItemModel model)
+    {
+        if (model.IsFolder || (model.Tag?.StartsWith("spotify:start-group:", StringComparison.Ordinal) ?? false))
+            return DropTargetKind.FolderRow;
+        return DropTargetKind.PlaylistRow;
+    }
+
+    private static DropPosition MapDropPosition(SidebarItemDropPosition pos) => pos switch
+    {
+        SidebarItemDropPosition.Top    => DropPosition.Before,
+        SidebarItemDropPosition.Bottom => DropPosition.After,
+        _                              => DropPosition.Inside,
+    };
 
     // ── App-wide zoom (Ctrl+Plus / Ctrl+Minus / Ctrl+0) ──
 

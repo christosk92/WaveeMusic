@@ -10,9 +10,13 @@ using CommunityToolkit.Mvvm.Messaging;
 using Windows.Foundation;
 using Windows.UI;
 using Wavee.UI.Contracts;
+using Wavee.UI.Services.DragDrop;
+using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.WinUI.Controls.Imaging;
 using Wavee.UI.WinUI.Data.Messages;
+using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Services;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
 
@@ -406,6 +410,7 @@ public sealed partial class ContentCard : UserControl
         // once on construction â€” the system shows it on hover automatically as long as
         // the cursor stays assigned, no per-event toggling needed.
         ProtectedCursor = Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand);
+        EnsureManualDragAttached();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         // Backstop for ItemsRepeater recycle: OnUnloaded nulls the image
@@ -1142,6 +1147,47 @@ public sealed partial class ContentCard : UserControl
 
             LoadImage(ImageUrl);
         });
+    }
+
+    // ── Drag & drop ──
+    //
+    // Manual drag detection (not XAML CanDrag) because the inner Button
+    // captures pointer on PointerPressed for its own Click pipeline, which
+    // blocks the framework's drag threshold from firing DragStarting. The
+    // helper hooks pointer events and calls StartDragAsync past a movement
+    // threshold — which raises DragStarting even when CanDrag is false.
+
+    private bool _manualDragAttached;
+
+    private void EnsureManualDragAttached()
+    {
+        if (_manualDragAttached) return;
+        _manualDragAttached = true;
+        ManualDragAttachment.AttachWithPackageWriter(this, BuildDragPayload);
+    }
+
+    private IDragPayload? BuildDragPayload()
+    {
+        var uri = NavigationUri;
+        if (string.IsNullOrEmpty(uri)) return null;
+        return ResolveDragPayload(uri, Title ?? string.Empty, ImageUrl);
+    }
+
+    private static IDragPayload? ResolveDragPayload(string uri, string title, string? imageUrl)
+    {
+        if (uri.StartsWith("spotify:album:", StringComparison.Ordinal))
+            return new AlbumDragPayload(uri, title, imageUrl);
+        if (uri.StartsWith("spotify:playlist:", StringComparison.Ordinal))
+            return new PlaylistDragPayload(uri, title);
+        if (uri.StartsWith("spotify:artist:", StringComparison.Ordinal))
+            return new ArtistDragPayload(uri, title);
+        if (uri.StartsWith("spotify:show:", StringComparison.Ordinal))
+            return new ShowDragPayload(uri, title, imageUrl);
+        // "spotify:collection" or "spotify:collection:tracks" → the user's
+        // Liked Songs. Match either spelling for forward compatibility.
+        if (uri.StartsWith("spotify:collection", StringComparison.Ordinal))
+            return new LikedSongsDragPayload();
+        return null;
     }
 
     // â”€â”€ Hover handling â”€â”€

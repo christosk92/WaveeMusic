@@ -566,28 +566,40 @@ public interface IMetadataDatabase : IAsyncDisposable
 
     #endregion
 
-    #region Library Outbox Operations
+    #region Outbox Operations
 
     /// <summary>
-    /// Enqueues a library operation for background API sync.
-    /// If a pending op for the same URI exists, it is replaced.
+    /// Enqueues an outbox operation for background API sync.
+    /// Handlers register against the <paramref name="opKind"/> string — see
+    /// <c>Wavee.Core.Storage.Outbox.IOutboxHandler</c>. Idempotency is at the
+    /// handler's discretion (no row-level dedupe in the queue itself —
+    /// duplicate operations land as separate entries; handlers that need
+    /// resume-after-crash semantics persist <c>ProgressOffset</c>).
     /// </summary>
-    Task EnqueueLibraryOpAsync(string itemUri, SpotifyLibraryItemType itemType, LibraryOutboxOperation operation, CancellationToken ct = default);
+    Task EnqueueOutboxAsync(string opKind, string primaryUri, string? payloadJson = null, CancellationToken ct = default);
 
     /// <summary>
-    /// Dequeues pending library operations ordered by creation time.
+    /// Dequeues pending outbox operations ordered by creation time.
     /// </summary>
-    Task<List<LibraryOutboxEntry>> DequeueLibraryOpsAsync(int limit = 50, CancellationToken ct = default);
+    Task<List<OutboxEntry>> DequeueOutboxAsync(int limit = 50, CancellationToken ct = default);
 
     /// <summary>
-    /// Marks a library outbox entry as completed (deletes it).
+    /// Advances the resume cursor for a multi-chunk operation after a chunk has
+    /// been successfully applied. A subsequent retry resumes from this offset
+    /// rather than replaying the whole op (which would re-send chunks already
+    /// applied — bad when the upstream allows duplicate inserts).
     /// </summary>
-    Task CompleteLibraryOpAsync(long id, CancellationToken ct = default);
+    Task AdvanceOutboxProgressAsync(long id, int progressOffset, CancellationToken ct = default);
 
     /// <summary>
-    /// Marks a library outbox entry as failed, incrementing retry count.
+    /// Marks an outbox entry as completed (deletes it).
     /// </summary>
-    Task FailLibraryOpAsync(long id, string? error, CancellationToken ct = default);
+    Task CompleteOutboxAsync(long id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Marks an outbox entry as failed, incrementing retry count.
+    /// </summary>
+    Task FailOutboxAsync(long id, string? error, CancellationToken ct = default);
 
     #endregion
 }
@@ -617,7 +629,10 @@ public sealed record ExtensionWriteRecord(
     long TtlSeconds);
 
 /// <summary>
-/// Outbox operation type.
+/// Outbox operation kinds for library mutations. Embedded in the
+/// <c>OutboxEntry.Payload</c> JSON when the op-kind is <c>"library.save"</c>
+/// or <c>"library.remove"</c> so the handler can rebuild the
+/// <see cref="SpotifyLibraryItemType"/> + intent without a dedicated column.
 /// </summary>
 public enum LibraryOutboxOperation { Save = 0, Remove = 1 }
 
@@ -659,14 +674,23 @@ public sealed record MediaOverrideEntry
 }
 
 /// <summary>
-/// A pending library operation in the outbox.
+/// A pending operation in the unified outbox. The <see cref="OpKind"/>
+/// discriminator decides which <c>IOutboxHandler</c> processes the entry.
+/// <see cref="Payload"/> is op-specific JSON (handler-defined shape).
+/// <see cref="ProgressOffset"/> is only meaningful for chunked ops that resume
+/// after partial application.
 /// </summary>
-public sealed record LibraryOutboxEntry
+public sealed record OutboxEntry
 {
     public long Id { get; init; }
-    public required string ItemUri { get; init; }
-    public SpotifyLibraryItemType ItemType { get; init; }
-    public LibraryOutboxOperation Operation { get; init; }
+    /// <summary>Handler discriminator (e.g. <c>"library.save"</c>, <c>"library.remove"</c>, <c>"playlist.add-tracks"</c>).</summary>
+    public required string OpKind { get; init; }
+    /// <summary>Primary URI the op acts on — track for library ops, playlist for playlist ops.</summary>
+    public required string PrimaryUri { get; init; }
+    /// <summary>Op-specific JSON payload (handler-defined). Null when the URI alone is sufficient.</summary>
+    public string? Payload { get; init; }
+    /// <summary>Resume cursor for multi-chunk handlers. Null for single-shot ops.</summary>
+    public int? ProgressOffset { get; init; }
     public long CreatedAt { get; init; }
     public int RetryCount { get; init; }
     public string? LastError { get; init; }

@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -48,6 +49,8 @@ public enum TrackItemDisplayMode
 /// </summary>
 public sealed partial class TrackItem : UserControl
 {
+    private const int OptimisticPlayPendingTimeoutMs = 8000;
+
     #region Dependency Properties
 
     public static readonly DependencyProperty TrackProperty =
@@ -508,6 +511,8 @@ public sealed partial class TrackItem : UserControl
     private bool _isThisTrackPlaying;
     private bool _isThisTrackPaused;
     private bool _isBuffering;
+    private CancellationTokenSource? _localBufferingTimeoutCts;
+    private string? _localBufferingTimeoutTrackId;
     private string? _boundCompactImageUrl;
     private string? _boundRowImageUrl;
     // URL we've already retried once after ImageFailed. Prevents infinite retry loops
@@ -1777,6 +1782,7 @@ public sealed partial class TrackItem : UserControl
             _isThisTrackPlaying = false;
             _isThisTrackPaused = false;
             _isBuffering = false;
+            CancelLocalBufferingTimeout();
             StopPendingBeam();
             return;
         }
@@ -1787,6 +1793,9 @@ public sealed partial class TrackItem : UserControl
         _isThisTrackPaused = isThisTrack && !TrackStateBehavior.IsCurrentlyPlaying;
         _isBuffering = track.Id == TrackStateBehavior.BufferingTrackId
                        && TrackStateBehavior.IsCurrentlyBuffering;
+
+        if (!_isBuffering)
+            CancelLocalBufferingTimeout();
 
         if (wasBuffering && !_isBuffering && isThisTrack)
             ResetHoverVisualState();
@@ -1997,6 +2006,63 @@ public sealed partial class TrackItem : UserControl
         PlaybackPendingBeam?.Stop();
     }
 
+    private void StartLocalBufferingTimeout(string trackId)
+    {
+        CancelLocalBufferingTimeout();
+
+        var cts = new CancellationTokenSource();
+        _localBufferingTimeoutCts = cts;
+        _localBufferingTimeoutTrackId = trackId;
+        _ = ClearLocalBufferingAfterTimeoutAsync(trackId, cts.Token);
+    }
+
+    private async Task ClearLocalBufferingAfterTimeoutAsync(string trackId, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(OptimisticPlayPendingTimeoutMs, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            if (ct.IsCancellationRequested
+                || !_isBuffering
+                || !string.Equals(_localBufferingTimeoutTrackId, trackId, StringComparison.Ordinal)
+                || !string.Equals(Track?.Id, trackId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (TrackStateBehavior.IsCurrentlyBuffering
+                && string.Equals(TrackStateBehavior.BufferingTrackId, trackId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            CancelLocalBufferingTimeout();
+            _isBuffering = false;
+            UpdateOverlayState();
+        });
+    }
+
+    private void CancelLocalBufferingTimeout()
+    {
+        var cts = _localBufferingTimeoutCts;
+        _localBufferingTimeoutCts = null;
+        _localBufferingTimeoutTrackId = null;
+
+        if (cts is null)
+            return;
+
+        try { cts.Cancel(); }
+        catch (ObjectDisposedException) { }
+        cts.Dispose();
+    }
+
     #endregion
 
     #region Click / Play
@@ -2097,6 +2163,7 @@ public sealed partial class TrackItem : UserControl
         _isThisTrackPlaying = false;
         _isThisTrackPaused = false;
         _isBuffering = false;
+        CancelLocalBufferingTimeout();
         if (CompactBufferingRing is not null)
         {
             CompactBufferingRing.IsActive = false;
@@ -2411,6 +2478,7 @@ public sealed partial class TrackItem : UserControl
             _isThisTrackPlaying = false;
             _isThisTrackPaused = false;
             _isBuffering = true;
+            StartLocalBufferingTimeout(track.Id);
             UpdateOverlayState();
         }
 

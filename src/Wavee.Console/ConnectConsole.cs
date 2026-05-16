@@ -115,11 +115,28 @@ internal sealed class ConnectConsole : IDisposable, IAsyncDisposable
                     ? new LibraryChangeManager(_session.Dealer, _logger)
                     : null;
 
+                // Build the outbox processor with both library handlers — same
+                // shape the WinUI host wires up in DI, but constructed by hand
+                // here since this console doesn't use a DI container for the
+                // library subsystem. PlaylistAddTracksHandler isn't registered
+                // (the console never triggers playlist add-tracks).
+                var spClient = (SpClient)_session.SpClient;
+                var outboxHandlers = new Wavee.Core.Storage.Outbox.IOutboxHandler[]
+                {
+                    new Wavee.Core.Library.Spotify.Outbox.LibrarySaveHandler(spClient, _session),
+                    new Wavee.Core.Library.Spotify.Outbox.LibraryRemoveHandler(spClient, _session),
+                };
+                var outboxProcessor = new Wavee.Core.Storage.Outbox.OutboxProcessor(
+                    metadataDatabase,
+                    outboxHandlers,
+                    null);
+
                 // Create SpotifyLibraryService using unified MetadataDatabase
                 _libraryService = new SpotifyLibraryService(
                     metadataDatabase,
-                    (SpClient)_session.SpClient,
+                    spClient,
                     _session,
+                    outboxProcessor,
                     libraryChangeManager,
                     _serviceProvider?.GetService<IExtendedMetadataClient>(),
                     _logger);

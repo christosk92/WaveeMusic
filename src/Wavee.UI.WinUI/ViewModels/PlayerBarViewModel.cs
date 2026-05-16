@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -888,15 +889,22 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
     private void UpdatePositionTimerState()
     {
-        if (_positionTimer == null) return;
+        if (_disposed || _positionTimer == null) return;
         var shouldRun = IsPlaying && (_barVisibleCount > 0 || _widgetVisibleCount > 0);
-        if (shouldRun)
+        try
         {
-            _positionTimer.Start();
+            if (shouldRun)
+            {
+                _positionTimer.Start();
+            }
+            else
+            {
+                _positionTimer.Stop();
+            }
         }
-        else
+        catch (COMException ex) when (App.IsHostShuttingDown)
         {
-            _positionTimer.Stop();
+            _logger?.LogDebug(ex, "Ignoring position timer state update during host shutdown.");
         }
     }
 
@@ -1461,11 +1469,33 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _chapterFetchCts?.Dispose();
         _chapterFetchCts = null;
 
-        if (_positionTimer != null)
+        DisposePositionTimer();
+    }
+
+    private void DisposePositionTimer()
+    {
+        var timer = _positionTimer;
+        if (timer == null)
+            return;
+
+        _positionTimer = null;
+
+        try
         {
-            _positionTimer.Stop();
-            _positionTimer.Tick -= OnPositionTimerTick;
-            _positionTimer = null;
+            timer.Tick -= OnPositionTimerTick;
+        }
+        catch (COMException ex) when (_disposed || App.IsHostShuttingDown)
+        {
+            _logger?.LogDebug(ex, "Ignoring position timer event detach during disposal.");
+        }
+
+        try
+        {
+            timer.Stop();
+        }
+        catch (COMException ex) when (_disposed || App.IsHostShuttingDown)
+        {
+            _logger?.LogDebug(ex, "Ignoring position timer stop during disposal.");
         }
     }
 }

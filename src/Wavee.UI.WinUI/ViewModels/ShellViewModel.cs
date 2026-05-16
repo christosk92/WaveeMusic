@@ -25,6 +25,7 @@ using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using AppNotificationSeverity = Wavee.UI.WinUI.Data.Models.NotificationSeverity;
+using Wavee.UI.Services.DragDrop;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Views;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -424,6 +425,17 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         // Subscribe to all library data changes (sync complete, Dealer deltas, etc.)
         _libraryDataService.DataChanged += OnLibraryDataChanged;
+
+        // Drag-state hook: while ANY drag is in progress, expand every
+        // sidebar folder so deeply-nested folders become drop targets
+        // without requiring the user to hover each folder for the
+        // auto-expand-on-hover timeout. Restore pre-drag state on drag end.
+        // The expansion changes are suppressed from persistence
+        // (OnSidebarGroupPropertyChanged checks _suppressExpansionPersistence)
+        // so the user's saved layout isn't trampled.
+        var dragStateService = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<Wavee.UI.WinUI.DragDrop.DragStateService>();
+        if (dragStateService is not null)
+            dragStateService.DragStateChanged += OnGlobalDragStateChanged;
 
         // Per-playlist change → sidebar mosaic refresh. PlaylistDiffApplier
         // updates Items in the cache after a Mercury push, but the sidebar's
@@ -883,7 +895,100 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets")
             };
 
+        // Suppress persistence during drag-driven auto-expand. The drag flow
+        // owns the snapshot/restore; if we let it write through to
+        // _shellSession the user's saved layout gets clobbered when they end
+        // a drag with folders that were collapsed before the drag started.
+        if (_suppressExpansionPersistence) return;
+
         _shellSession.UpdateSidebarGroupExpansion(group.Tag!, group.IsExpanded);
+    }
+
+    // ── Drag-time folder auto-expand ───────────────────────────────────────
+
+    private Dictionary<string, bool>? _preDragFolderExpansion;
+    private bool _suppressExpansionPersistence;
+
+    private void OnGlobalDragStateChanged(bool isDragging)
+    {
+        // Marshal to UI thread — SidebarItemModel changes flow into XAML bindings.
+        var dq = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()
+                 ?? DispatcherQueueIfAvailable();
+        if (dq is null)
+        {
+            ApplyDragExpansion(isDragging);
+            return;
+        }
+        dq.TryEnqueue(() => ApplyDragExpansion(isDragging));
+    }
+
+    private static Microsoft.UI.Dispatching.DispatcherQueue? DispatcherQueueIfAvailable()
+        => Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+
+    private void ApplyDragExpansion(bool isDragging)
+    {
+        if (isDragging)
+        {
+            // Re-entrancy guard: rapid drag-start/end pairs while a snapshot
+            // is mid-restore would mix states. Skip if a snapshot exists.
+            if (_preDragFolderExpansion is not null) return;
+
+            _preDragFolderExpansion = new Dictionary<string, bool>(StringComparer.Ordinal);
+            _suppressExpansionPersistence = true;
+            try
+            {
+                ForEachFolder(item =>
+                {
+                    if (string.IsNullOrEmpty(item.Tag)) return;
+                    _preDragFolderExpansion[item.Tag!] = item.IsExpanded;
+                    if (!item.IsExpanded) item.IsExpanded = true;
+                });
+            }
+            finally
+            {
+                _suppressExpansionPersistence = false;
+            }
+        }
+        else
+        {
+            if (_preDragFolderExpansion is null) return;
+
+            _suppressExpansionPersistence = true;
+            try
+            {
+                foreach (var (tag, prev) in _preDragFolderExpansion)
+                {
+                    var item = FindSidebarItemByTag(tag);
+                    if (item is null) continue;
+                    if (item.IsExpanded != prev) item.IsExpanded = prev;
+                }
+            }
+            finally
+            {
+                _suppressExpansionPersistence = false;
+                _preDragFolderExpansion = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Walk every folder-kind sidebar item (including nested subfolders) and
+    /// invoke the action. Used by the drag-time auto-expand path.
+    /// </summary>
+    private void ForEachFolder(Action<SidebarItemModel> action)
+    {
+        foreach (var root in SidebarItems)
+            WalkInto(root);
+
+        void WalkInto(SidebarItemModel item)
+        {
+            if (item.IsFolder) action(item);
+            if (item.Children is System.Collections.IEnumerable kids)
+            {
+                foreach (var c in kids)
+                    if (c is SidebarItemModel child) WalkInto(child);
+            }
+        }
     }
 
     private static Microsoft.UI.Xaml.FrameworkElement CreateComingSoonBadge()
@@ -1403,7 +1508,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 IsFolder = true,
                 ShowEmptyPlaceholder = true,
                 EmptyPlaceholderText = AppLocalization.GetString("Shell_SidebarFolderEmpty"),
-                Children = children
+                Children = children,
+                DropPredicate = FolderDropPredicate(t.Key),
             };
             folderItem.PropertyChanged += OnSidebarGroupPropertyChanged;
             ApplyPersistedSidebarState(folderItem);
@@ -1444,12 +1550,28 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             IsFolder = true,
             ShowEmptyPlaceholder = true,
             EmptyPlaceholderText = AppLocalization.GetString("Shell_SidebarFolderEmpty"),
-            Children = children
+            Children = children,
+            DropPredicate = FolderDropPredicate($"folder:{folder.Id}"),
         };
         folderItem.PropertyChanged += OnSidebarGroupPropertyChanged;
         ApplyPersistedSidebarState(folderItem);
         return folderItem;
     }
+
+    /// <summary>
+    /// Drop-eligibility predicate for sidebar folder rows. Folders accept any
+    /// playlist (nest into folder) or any sibling sidebar row (reorder around
+    /// the folder). They never accept tracks directly — tracks land on
+    /// playlists, not folders.
+    /// </summary>
+    private static Func<Wavee.UI.Services.DragDrop.IDragPayload, bool> FolderDropPredicate(string folderTag) =>
+        payload => payload switch
+        {
+            Wavee.UI.Services.DragDrop.Payloads.PlaylistDragPayload => true,
+            Wavee.UI.Services.DragDrop.Payloads.SidebarReorderPayload sp
+                => !string.Equals(sp.SourceUri, folderTag, StringComparison.OrdinalIgnoreCase),
+            _ => false,
+        };
 
     /// <summary>
     /// Walks <see cref="RootlistNode.Children"/> in arrival order, emitting playlist or
@@ -1485,6 +1607,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private SidebarItemModel CreatePlaylistSidebarItem(PlaylistSummaryDto playlist)
     {
+        // Capture for the DropPredicate closure — keeps the predicate stable
+        // when the row is re-bound to a fresh summary later.
+        var canEdit = playlist.CanEditItems;
         var item = new SidebarItemModel
         {
             Text = playlist.Name,
@@ -1495,8 +1620,29 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             // re-composition on a content change.
             ImageUrl = playlist.ImageUrl,
             IsOwner = playlist.IsOwner,
+            CanEditItems = canEdit,
             BadgeCount = playlist.TrackCount,
-            DropPredicate = payload => payload.DataFormat == "WaveeTrackIds"
+            // Playlist rows accept:
+            //  - Tracks (add)             — only on rows the user can edit
+            //  - Album/Artist/Liked/Show  — same edit gate (resolves to add-tracks)
+            //  - PlaylistDragPayload      — same edit gate (copy source tracks)
+            //  - SidebarReorderPayload    — always allowed when source != target
+            //                               (handler branches on drop position:
+            //                                Top/Bottom = reorder, Center = copy
+            //                                — copy still respects edit gate)
+            DropPredicate = payload => payload switch
+            {
+                Wavee.UI.Services.DragDrop.Payloads.TrackDragPayload          => canEdit,
+                Wavee.UI.Services.DragDrop.Payloads.AlbumDragPayload          => canEdit,
+                Wavee.UI.Services.DragDrop.Payloads.ArtistDragPayload         => canEdit,
+                Wavee.UI.Services.DragDrop.Payloads.LikedSongsDragPayload     => canEdit,
+                Wavee.UI.Services.DragDrop.Payloads.ShowDragPayload           => canEdit,
+                Wavee.UI.Services.DragDrop.Payloads.PlaylistDragPayload pp    => canEdit
+                    && !string.Equals(pp.PlaylistUri, playlist.Id, StringComparison.OrdinalIgnoreCase),
+                Wavee.UI.Services.DragDrop.Payloads.SidebarReorderPayload sp
+                    => !string.Equals(sp.SourceUri, playlist.Id, StringComparison.OrdinalIgnoreCase),
+                _ => false,
+            },
         };
 
         // Spotify "custom" playlists (auto-named, e.g. "내 플레이리스트 #15") arrive either with

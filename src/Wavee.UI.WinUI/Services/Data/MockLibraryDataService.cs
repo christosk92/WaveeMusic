@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Wavee.UI.Services.DragDrop;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 
@@ -84,6 +85,12 @@ public sealed class MockLibraryDataService : ILibraryDataService
     private readonly List<LibraryPodcastShowDto> _mockPodcastShows;
     private readonly List<LikedSongsFilterDto> _mockLikedSongFilters;
     private readonly Dictionary<string, List<PlaylistTrackDto>> _mockPlaylistTracks;
+
+    public Task MovePlaylistIntoFolderAsync(string playlistUri, string folderStartUri, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task MovePlaylistOutOfFolderAsync(string playlistUri, int destinationRootIndex, CancellationToken ct = default)
+        => Task.CompletedTask;
 
     public event EventHandler? PlaylistsChanged;
     public event EventHandler? DataChanged;
@@ -600,6 +607,16 @@ public sealed class MockLibraryDataService : ILibraryDataService
         => Task.FromResult<IReadOnlyList<Wavee.UI.WinUI.Data.DTOs.PlaylistOverlayRow>>(Array.Empty<Wavee.UI.WinUI.Data.DTOs.PlaylistOverlayRow>());
 
     public Task ReorderPlaylistOverlayAsync(string playlistUri, IReadOnlyList<string> orderedTrackUris, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    // Mock no-ops for the drag-drop mutators — the mock library doesn't model
+    // the rootlist or playlist track positions, so reorders simply do nothing.
+    // MovePlaylistIntoFolderAsync / MovePlaylistOutOfFolderAsync already
+    // stubbed near the top of this file; only the two missing ones live here.
+    public Task ReorderTracksInPlaylistAsync(string playlistId, int fromIndex, int length, int toIndex, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task MovePlaylistInRootlistAsync(string sourceUri, string targetUri, DropPosition position, CancellationToken ct = default)
         => Task.CompletedTask;
 
     public Task AddTracksToPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)

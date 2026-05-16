@@ -1187,14 +1187,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             line = StripLeadingArtistSubject(line, artistName!);
 
         line = StripLeadingArticle(line);
-        line = CompressJypProgramOrigin(line);
-
-        var mentionsNineMembers =
-            MentionsNineMembers(biography) ||
-            string.Equals(artistName, "TWICE", StringComparison.OrdinalIgnoreCase);
-        if (mentionsNineMembers && line.StartsWith("K-Pop girl group", StringComparison.OrdinalIgnoreCase))
-            line = "Nine-member " + line;
-
         line = EnsureSentenceCasing(line);
         if (line.Length > 150)
             line = line.Substring(0, 147).TrimEnd() + "...";
@@ -1238,26 +1230,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         if (line.StartsWith("the ", StringComparison.OrdinalIgnoreCase))
             return line[4..].TrimStart();
         return line;
-    }
-
-    private static string CompressJypProgramOrigin(string line)
-    {
-        const string marker = "produced by JYP Entertainment through the reality program";
-        var idx = line.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-        if (idx < 0) return line;
-
-        var prefix = line[..idx].TrimEnd();
-        return string.IsNullOrEmpty(prefix)
-            ? "From JYP Entertainment."
-            : $"{prefix} from JYP Entertainment.";
-    }
-
-    private static bool MentionsNineMembers(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return false;
-        return text.IndexOf("9 members", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               text.IndexOf("nine members", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               text.IndexOf("nine-member", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static string EnsureSentenceCasing(string line)
@@ -1333,6 +1305,11 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             var fallbackName = ArtistName;
             var fallbackImageUrl = ArtistImageUrl;
             Artist = BuildArtistView(overview, fallbackName, fallbackImageUrl);
+            var releaseImageByUri = new Dictionary<string, string>(StringComparer.Ordinal);
+            var releaseImageByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            AddReleaseImages(overview.Albums, releaseImageByUri, releaseImageByName);
+            AddReleaseImages(overview.Singles, releaseImageByUri, releaseImageByName);
+            AddReleaseImages(overview.Compilations, releaseImageByUri, releaseImageByName);
 
             // -- Top tracks (batch to avoid N+1 CollectionChanged events) --
             var newTracks = new ObservableCollection<LazyTrackItem>();
@@ -1353,7 +1330,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                     Title = track.Title,
                     Uri = track.Uri,
                     AlbumName = track.AlbumName,
-                    AlbumImageUrl = track.AlbumImageUrl,
+                    AlbumImageUrl = track.AlbumImageUrl
+                                    ?? TryGetReleaseImage(track, releaseImageByUri, releaseImageByName),
                     AlbumUri = track.AlbumUri,
                     Duration = track.Duration,
                     PlayCountRaw = track.PlayCount,
@@ -1416,6 +1394,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             // Spotify's getArtistOverview GraphQL response is inconsistent: many
             // tracks come back without albumOfTrack.coverArt populated. Resolve
             // them via the extended-metadata pipeline and patch the VMs.
+            _ = EnrichMissingTopTrackImagesAsync(artistId, generation);
 
             // -- Extended top tracks (background, parallel) --
 
@@ -1620,7 +1599,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         if (!IsCurrentLoad(artistId, generation))
             return;
 
-        _ = EnrichMissingTopTrackImagesAsync(artistId, generation);
         _ = LoadExtendedTopTracksAsync(artistId, generation);
 
         var releasesSnapshot = _allReleases
@@ -1666,6 +1644,44 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         var maxPlaceholders = Math.Min(totalCount - count, 20);
         for (int i = count; i < count + maxPlaceholders; i++)
             _allReleases.Add(LazyReleaseItem.Placeholder($"{phPrefix}-{i}", i));
+    }
+
+    private static void AddReleaseImages(
+        IEnumerable<ArtistReleaseResult> releases,
+        IDictionary<string, string> byUri,
+        IDictionary<string, string> byName)
+    {
+        foreach (var release in releases)
+        {
+            if (string.IsNullOrWhiteSpace(release.ImageUrl))
+                continue;
+
+            if (!string.IsNullOrWhiteSpace(release.Uri))
+                byUri.TryAdd(release.Uri, release.ImageUrl);
+
+            if (!string.IsNullOrWhiteSpace(release.Name))
+                byName.TryAdd(release.Name, release.ImageUrl);
+        }
+    }
+
+    private static string? TryGetReleaseImage(
+        ArtistTopTrackResult track,
+        IReadOnlyDictionary<string, string> releaseImageByUri,
+        IReadOnlyDictionary<string, string> releaseImageByName)
+    {
+        if (!string.IsNullOrWhiteSpace(track.AlbumUri)
+            && releaseImageByUri.TryGetValue(track.AlbumUri, out var byUri))
+        {
+            return byUri;
+        }
+
+        if (!string.IsNullOrWhiteSpace(track.AlbumName)
+            && releaseImageByName.TryGetValue(track.AlbumName, out var byName))
+        {
+            return byName;
+        }
+
+        return null;
     }
 
     private async Task PrefetchReleaseColorsAsync(
@@ -2159,8 +2175,13 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         {
             // Clicked track isn't in the local TopTracks cache — fall back to
             // server-side context resolution.
-            await _playbackService.PlayTrackInContextAsync(track.Uri, ArtistId,
+            var fallbackResult = await _playbackService.PlayTrackInContextAsync(track.Uri, ArtistId,
                 new PlayContextOptions { PlayOriginFeature = "artist_page" });
+            if (!fallbackResult.IsSuccess)
+            {
+                _playbackStateService.ClearBuffering();
+                _logger?.LogWarning("Play artist track failed: {Error}", fallbackResult.ErrorMessage);
+            }
             return;
         }
 
@@ -2180,8 +2201,19 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             }
         };
 
-        _playbackStateService.LoadQueue(queueItems, context, startIndex);
-        await Task.CompletedTask;
+        var trackUris = queueItems.Select(item => item.TrackId).ToList();
+        var result = await _playbackService.PlayTracksAsync(
+            trackUris,
+            startIndex,
+            context,
+            queueItems,
+            CancellationToken.None);
+
+        if (!result.IsSuccess)
+        {
+            _playbackStateService.ClearBuffering();
+            _logger?.LogWarning("Play artist top-track queue failed: {Error}", result.ErrorMessage);
+        }
     }
 
     /// <summary>Kicks the IPlaybackStateService radio endpoint with the current
@@ -2313,9 +2345,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     /// Backfills <see cref="ArtistTopTrackVm.AlbumImageUrl"/> for any
     /// initial top tracks the GraphQL overview returned without cover art.
     /// Resolves the missing URLs via the extended-metadata pipeline (cache
-    /// + batched TrackV4 fetch) and replaces the affected
-    /// <see cref="LazyTrackItem"/> entries so <c>TrackItem</c> picks up
-    /// the new <c>Track.ImageUrl</c> on the next layout pass.
+    /// + batched TrackV4 fetch) and populates the existing
+    /// <see cref="LazyTrackItem"/> wrappers so visible <c>TrackItem</c>
+    /// controls receive the image-property notification immediately.
     /// </summary>
     private async Task EnrichMissingTopTrackImagesAsync(string artistId, int generation)
     {
@@ -2372,14 +2404,12 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                         HasCanvasVideo = vm.HasCanvasVideo,
                         HasLinkedLocalVideo = vm.HasLinkedLocalVideo,
                     };
-                    TopTracks[i] = LazyTrackItem.Loaded(patched.Id, vm.Index, patched);
+                    entry.Populate(patched);
                     anyPatched = true;
                 }
 
                 if (anyPatched)
                 {
-                    _pagedTopTracksCache = null;
-                    OnPropertyChanged(nameof(PagedTopTracks));
                     OnPropertyChanged(nameof(TopTracksFirst10));
                 }
 

@@ -445,6 +445,48 @@ public sealed partial class QueueControl : UserControl
         _logger?.LogInformation("Queue pill: clear queue (no-op, API pending)");
     }
 
+    private void UserQueue_DragOver(object sender, DragEventArgs e)
+    {
+        if (e.DataView.Contains(Wavee.UI.Services.DragDrop.DragFormats.Tracks)
+            || e.DataView.Contains(Wavee.UI.Services.DragDrop.DragFormats.Album)
+            || e.DataView.Contains(Wavee.UI.Services.DragDrop.DragFormats.Playlist)
+            || e.DataView.Contains(Wavee.UI.Services.DragDrop.DragFormats.Artist))
+        {
+            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+            var shift = InputKeyboardSource
+                .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift)
+                .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+            e.DragUIOverride.Caption = shift ? "Play next" : "Add to queue";
+            e.DragUIOverride.IsCaptionVisible = true;
+            e.DragUIOverride.IsGlyphVisible = true;
+        }
+    }
+
+    private async void UserQueue_Drop(object sender, DragEventArgs e)
+    {
+        var dropService = Ioc.Default.GetService<Wavee.UI.Services.DragDrop.IDragDropService>();
+        if (dropService is null) return;
+
+        var payload = await Wavee.UI.WinUI.DragDrop.DragPackageReader.ReadAsync(e.DataView, dropService);
+        if (payload is null) return;
+
+        var modifiers = Wavee.UI.WinUI.DragDrop.DragModifiersCapture.Current();
+        var ctx = new Wavee.UI.Services.DragDrop.DropContext(
+            payload,
+            Wavee.UI.Services.DragDrop.DropTargetKind.Queue,
+            TargetId: null,
+            Position: Wavee.UI.Services.DragDrop.DropPosition.Inside,
+            TargetIndex: null,
+            modifiers);
+        var result = await dropService.DropAsync(ctx);
+        if (result.UserMessage is { } msg)
+        {
+            Ioc.Default.GetService<INotificationService>()?
+                .Show(msg, result.Success ? Wavee.UI.WinUI.Data.Models.NotificationSeverity.Informational : Wavee.UI.WinUI.Data.Models.NotificationSeverity.Warning,
+                    TimeSpan.FromSeconds(3));
+        }
+    }
+
     private void InfiniteButton_Click(object sender, RoutedEventArgs e)
     {
         if (_settingsService == null) return;

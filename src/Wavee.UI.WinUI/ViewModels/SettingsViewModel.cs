@@ -21,7 +21,6 @@ using Serilog.Events;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Controls.TabBar;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.Core.Session;
 using Wavee.Core.Time;

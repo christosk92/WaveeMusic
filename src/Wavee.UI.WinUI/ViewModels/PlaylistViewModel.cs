@@ -112,7 +112,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         nameof(PlaylistImageUrl), nameof(HeaderImageUrl), nameof(HasHeaderImage),
         nameof(OwnerName), nameof(OwnerId), nameof(OwnerAvatarUrl), nameof(IsOwner),
         nameof(IsPublic), nameof(IsCollaborative), nameof(BasePermission),
-        nameof(CanEditItems), nameof(CanShowRecommendations), nameof(CanAdministratePermissions), nameof(CanCancelMembership),
+        nameof(CanEditItems), nameof(CanReorderTracks), nameof(CanShowRecommendations), nameof(CanAdministratePermissions), nameof(CanCancelMembership),
         nameof(CanAbuseReport), nameof(CanEditMetadata), nameof(CanEditName),
         nameof(CanEditDescription), nameof(CanEditPicture), nameof(CanEditCollaborative),
         nameof(CanDelete), nameof(HasOverflowItems), nameof(CanRemove),
@@ -217,6 +217,13 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     // always able to edit items matches Spotify's actual permission model
     // and unblocks the owner-only Recommended Songs footer + remove gestures.
     public bool CanEditItems => Playlist?.CanEditItems == true || Playlist?.IsOwner == true;
+
+    /// <summary>
+    /// True when the user is allowed to drag-reorder tracks within this list. We
+    /// gate on owner-edit AND on "no sort applied" — applying a sort makes manual
+    /// position meaningless, so the gesture is hidden in that mode.
+    /// </summary>
+    public bool CanReorderTracks => CanEditItems && _currentSortColumn == PlaylistSortColumn.Custom;
     public bool CanAdministratePermissions => Playlist?.CanAdministratePermissions == true;
     public bool CanCancelMembership => Playlist?.CanCancelMembership == true;
     public bool CanAbuseReport => Playlist?.CanAbuseReport == true;
@@ -672,6 +679,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         OnPropertyChanged(nameof(IsSortingByArtist));
         OnPropertyChanged(nameof(IsSortingByAlbum));
         OnPropertyChanged(nameof(IsSortingByAddedAt));
+        // Switching to / from Custom toggles whether drag-reorder makes sense.
+        OnPropertyChanged(nameof(CanReorderTracks));
         ApplyFilterAndSort();
     }
 
@@ -2582,6 +2591,51 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     private void AddToPlaylist(PlaylistSummaryDto? playlist)
     {
         if (playlist == null || !HasSelection) return;
+    }
+
+    /// <summary>
+    /// Drag-reorder a contiguous block of tracks within this playlist. Called
+    /// from the WinUI ListView's drop handler after the user moves a row
+    /// (or selection). Performs the optimistic local move immediately, then
+    /// posts the change to Spotify; on failure restores the prior order and
+    /// surfaces a notification.
+    /// </summary>
+    public async Task ReorderTracksAsync(int fromIndex, int length, int toIndex, CancellationToken ct = default)
+    {
+        if (!CanReorderTracks) return;
+        if (length <= 0) return;
+        if (string.IsNullOrEmpty(PlaylistId)) return;
+        if (fromIndex < 0 || fromIndex >= _allTracks.Count) return;
+        if (toIndex >= fromIndex && toIndex < fromIndex + length) return;
+
+        var snapshot = _allTracks.ToList();
+        try
+        {
+            // Local optimistic move (server is the source of truth for the
+            // committed order, but we don't want to wait for the round-trip).
+            var moving = _allTracks.GetRange(fromIndex, length);
+            _allTracks.RemoveRange(fromIndex, length);
+            var insertAt = toIndex > fromIndex ? toIndex - length : toIndex;
+            insertAt = Math.Clamp(insertAt, 0, _allTracks.Count);
+            _allTracks.InsertRange(insertAt, moving);
+            UpdateAggregates();
+            ApplyFilterAndSort();
+
+            await _libraryDataService
+                .ReorderTracksInPlaylistAsync(PlaylistId, fromIndex, length, toIndex, ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to reorder tracks in playlist {PlaylistId} (from={From}, length={Length}, to={To})",
+                PlaylistId, fromIndex, length, toIndex);
+            _allTracks = snapshot;
+            UpdateAggregates();
+            ApplyFilterAndSort();
+            CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>()?
+                .Show("Couldn't reorder tracks", NotificationSeverity.Warning, TimeSpan.FromSeconds(4));
+        }
     }
 
     /// <summary>

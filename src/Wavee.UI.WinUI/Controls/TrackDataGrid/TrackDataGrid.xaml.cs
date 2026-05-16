@@ -14,11 +14,15 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Wavee.UI.Services.DragDrop;
+using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 using WaveeGridSplitter = Wavee.UI.WinUI.Controls.GridSplitter;
 
@@ -395,6 +399,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             _rowByLazyItem.Remove(lazy);
     }
 
+    private readonly HashSet<Track.TrackItem> _itemsViewRowsWithManualDrag = new();
+
     private void RowsItemsViewTrackItem_Loaded(object sender, RoutedEventArgs e)
     {
         if (sender is not Track.TrackItem row)
@@ -409,6 +415,30 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         RegisterRowForLazyItem(row, sourceItem as LazyTrackItem);
         ApplyItemsViewContainerDensity(row);
         row.IsSelected = sourceItem is not null && RowsItemsView.SelectedItems.Contains(sourceItem);
+
+        // Attach manual drag once per realized row. WinUI 3's ItemContainer/
+        // CanDrag pipeline doesn't fire DragStarting when an inner control
+        // captures pointer for selection; the helper drives StartDragAsync
+        // from a movement threshold instead.
+        if (_itemsViewRowsWithManualDrag.Add(row))
+        {
+            ManualDragAttachment.AttachWithPackageWriter(row, () =>
+            {
+                var t = row.Track;
+                if (t is null) return null;
+                var selected = RowsItemsView.SelectedItems?.OfType<ITrackItem>().ToList()
+                                ?? new List<ITrackItem>();
+                IReadOnlyList<ITrackItem> tracks = selected.Contains(t) && selected.Count > 0
+                    ? selected
+                    : new[] { t };
+                var uris = tracks.Select(x => x.Id).ToArray();
+                var sourceIndex = _visibleRows.IndexOf(tracks[0]);
+                return new TrackDragPayload(
+                    uris,
+                    sourceContextUri: ContextUri,
+                    sourceStartIndex: sourceIndex >= 0 ? sourceIndex : null);
+            });
+        }
     }
 
     private void RowsItemsViewTrackItem_Unloaded(object sender, RoutedEventArgs e)
@@ -417,6 +447,9 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             return;
 
         _itemsViewRows.Remove(row);
+        // Intentionally leave the row in _itemsViewRowsWithManualDrag so a
+        // recycle (Unload → Load on the same row instance) doesn't double-
+        // register the manual-drag pointer handlers.
         row.TrackChanged -= RowsItemsViewTrackItem_TrackChanged;
         UnregisterRow(row);
     }
@@ -1477,13 +1510,15 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         if (grid._subscribedSource is not null)
             grid._subscribedSource.CollectionChanged -= grid.OnSourceCollectionChanged;
         grid._subscribedSource = null;
+        if (grid._disposed || App.IsHostShuttingDown)
+            return;
 
         if (e.NewValue is INotifyCollectionChanged notifying)
         {
             grid._subscribedSource = notifying;
             notifying.CollectionChanged += grid.OnSourceCollectionChanged;
         }
-        grid.RefreshSnapshot();
+        grid.RefreshSnapshot(e.NewValue as IEnumerable);
         grid.ReprojectRows();
     }
 
@@ -1519,15 +1554,18 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void OnSourceCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        RefreshSnapshot();
+        if (_disposed || App.IsHostShuttingDown)
+            return;
+
+        RefreshSnapshot(sender as IEnumerable ?? _subscribedSource as IEnumerable);
         ReprojectRows();
     }
 
-    private void RefreshSnapshot()
+    private void RefreshSnapshot(IEnumerable? source)
     {
-        _sourceSnapshot = ItemsSource is IEnumerable<ITrackItem> typed
+        _sourceSnapshot = source is IEnumerable<ITrackItem> typed
             ? typed.ToArray()
-            : ItemsSource?.Cast<ITrackItem>().ToArray() ?? Array.Empty<ITrackItem>();
+            : source?.Cast<ITrackItem>().ToArray() ?? Array.Empty<ITrackItem>();
     }
 
     // ----------------------------------------------------------- header rebuild
@@ -2224,6 +2262,168 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         ToolbarLeftContent = null;
         FilterBarContent = null;
         DataContext = null;
+    }
+
+    // ── Drag & drop ──
+
+    /// <summary>
+    /// Spotify URI of the context this grid represents (e.g. <c>spotify:playlist:xxx</c>).
+    /// When a drop on this grid carries a <c>TrackDragPayload</c> whose
+    /// <c>SourceContextUri</c> equals <see cref="ContextUri"/>, the drop is
+    /// interpreted as an intra-list reorder and surfaced via
+    /// <see cref="TracksReorderRequested"/>.
+    /// </summary>
+    public string? ContextUri
+    {
+        get => (string?)GetValue(ContextUriProperty);
+        set => SetValue(ContextUriProperty, value);
+    }
+
+    public static readonly DependencyProperty ContextUriProperty =
+        DependencyProperty.Register(nameof(ContextUri), typeof(string), typeof(TrackDataGrid),
+            new PropertyMetadata(null));
+
+    /// <summary>
+    /// When true, this grid accepts intra-list reorder drops. Owners-only
+    /// playlists bind this to <c>true</c>; everything else stays false.
+    /// </summary>
+    public bool CanReorder
+    {
+        get => (bool)GetValue(CanReorderProperty);
+        set => SetValue(CanReorderProperty, value);
+    }
+
+    public static readonly DependencyProperty CanReorderProperty =
+        DependencyProperty.Register(nameof(CanReorder), typeof(bool), typeof(TrackDataGrid),
+            new PropertyMetadata(false));
+
+    /// <summary>
+    /// Raised when the user drops a contiguous block back into this same grid.
+    /// Carries (sourceStartIndex, length, targetIndex) in <c>_visibleRows</c>
+    /// coordinates; the page persists the new order through its ViewModel.
+    /// </summary>
+    public event Action<int, int, int>? TracksReorderRequested;
+
+    private DragStateService? _dragState;
+
+    private DragStateService? ResolveDragState() =>
+        _dragState ??= Ioc.Default.GetService<DragStateService>();
+
+    private void RowsList_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+    {
+        var tracks = e.Items.OfType<ITrackItem>().ToList();
+        if (tracks.Count == 0) { e.Cancel = true; return; }
+        WriteTrackPayload(e.Data, tracks, RowsList.Items.IndexOf(tracks[0]));
+        e.Data.RequestedOperation = DataPackageOperation.Copy | DataPackageOperation.Move;
+    }
+
+    private void RowsList_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+    {
+        ResolveDragState()?.EndDrag();
+    }
+
+    private void RowsList_DragOver(object sender, DragEventArgs e)
+    {
+        if (!CanReorder) return;
+        if (ResolveDragState()?.CurrentPayload is TrackDragPayload p
+            && !string.IsNullOrEmpty(ContextUri)
+            && string.Equals(p.SourceContextUri, ContextUri, StringComparison.Ordinal))
+        {
+            e.AcceptedOperation = DataPackageOperation.Move;
+        }
+    }
+
+    private void RowsList_Drop(object sender, DragEventArgs e)
+    {
+        if (!TryReadIntraListReorder(e, out var fromIndex, out var length)) return;
+        var toIndex = ResolveDropTargetIndex(e.OriginalSource, RowsList, _visibleRows.Count);
+        if (toIndex < 0) return;
+        TracksReorderRequested?.Invoke(fromIndex, length, toIndex);
+    }
+
+    // RowsItemsView drag-source wiring lives on the inner TrackItem (per row)
+    // via ManualDragAttachment in RowsItemsViewTrackItem_Loaded. ItemContainer's
+    // CanDrag pipeline gets swallowed by its selection pointer handling, so the
+    // framework-driven DragStarting event was never firing for that path.
+
+    private void RowsItemsViewHost_DragOver(object sender, DragEventArgs e)
+    {
+        if (!CanReorder) return;
+        if (ResolveDragState()?.CurrentPayload is TrackDragPayload p
+            && !string.IsNullOrEmpty(ContextUri)
+            && string.Equals(p.SourceContextUri, ContextUri, StringComparison.Ordinal))
+        {
+            e.AcceptedOperation = DataPackageOperation.Move;
+        }
+    }
+
+    private void RowsItemsViewHost_Drop(object sender, DragEventArgs e)
+    {
+        if (!TryReadIntraListReorder(e, out var fromIndex, out var length)) return;
+        var toIndex = ResolveDropTargetIndex(e.OriginalSource, RowsItemsView, _visibleRows.Count);
+        if (toIndex < 0) return;
+        TracksReorderRequested?.Invoke(fromIndex, length, toIndex);
+    }
+
+    private void WriteTrackPayload(DataPackage data, IReadOnlyList<ITrackItem> tracks, int sourceStartIndex)
+    {
+        var uris = tracks.Select(t => t.Id).ToArray();
+        var payload = new TrackDragPayload(
+            uris,
+            sourceContextUri: ContextUri,
+            sourceStartIndex: sourceStartIndex >= 0 ? sourceStartIndex : null);
+        DragPackageWriter.Write(data, payload);
+        ResolveDragState()?.StartDrag(payload);
+    }
+
+    private bool TryReadIntraListReorder(DragEventArgs e, out int fromIndex, out int length)
+    {
+        fromIndex = -1;
+        length = 0;
+        if (!CanReorder) return false;
+        if (ResolveDragState()?.CurrentPayload is not TrackDragPayload p) return false;
+        if (string.IsNullOrEmpty(ContextUri)
+            || !string.Equals(p.SourceContextUri, ContextUri, StringComparison.Ordinal))
+            return false;
+        if (p.SourceStartIndex is not int from || p.ItemCount <= 0) return false;
+        fromIndex = from;
+        length = p.ItemCount;
+        return true;
+    }
+
+    /// <summary>
+    /// Walks up the visual tree from the drop point to find the nearest row
+    /// container, then returns its index. Drops below the last row fall back
+    /// to "append" (return the count).
+    /// </summary>
+    private static int ResolveDropTargetIndex(object originalSource, ListViewBase listView, int totalCount)
+    {
+        var element = originalSource as DependencyObject;
+        while (element is not null and not ListViewItem)
+            element = VisualTreeHelper.GetParent(element);
+        if (element is ListViewItem lvi)
+        {
+            var idx = listView.IndexFromContainer(lvi);
+            if (idx >= 0) return idx;
+        }
+        return totalCount;
+    }
+
+    private int ResolveDropTargetIndex(object originalSource, ItemsView itemsView, int totalCount)
+    {
+        // Walk up to the dropped-on ItemContainer; its DataContext is the row's
+        // ITrackItem. Index it in _visibleRows (the grid's only source) to get
+        // the target slot. Drops in empty space below the last row append.
+        var element = originalSource as DependencyObject;
+        while (element is not null and not ItemContainer)
+            element = VisualTreeHelper.GetParent(element);
+        if (element is ItemContainer container
+            && container.DataContext is ITrackItem item
+            && _visibleRows.IndexOf(item) is int idx and >= 0)
+        {
+            return idx;
+        }
+        return totalCount;
     }
 }
 

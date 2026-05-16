@@ -4,7 +4,7 @@
 using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Wavee.UI.WinUI.DragDrop;
+using Wavee.UI.Services.DragDrop;
 
 namespace Wavee.UI.WinUI.Controls.Sidebar;
 

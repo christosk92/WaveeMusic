@@ -43,6 +43,7 @@ public sealed class LibraryDataService : ILibraryDataService
     private readonly IMessenger _messenger;
     private readonly IMusicVideoMetadataService? _musicVideoMetadata;
     private readonly ISpotifyLibraryService? _spotifyLibraryService;
+    private readonly Wavee.Core.Storage.Outbox.IOutboxProcessor _outboxProcessor;
     private readonly ILogger? _logger;
     // Cached set of currently-pinned URIs, refreshed alongside GetPinnedItemsAsync
     // and after every Pin/Unpin call. Lets sidebar buttons + context menus
@@ -82,6 +83,7 @@ public sealed class LibraryDataService : ILibraryDataService
         ITrackLikeService likeService,
         ISession session,
         Wavee.Core.DependencyInjection.WaveeCacheOptions cacheOptions,
+        Wavee.Core.Storage.Outbox.IOutboxProcessor outboxProcessor,
         ExtendedMetadataStore? extendedMetadataStore = null,
         IMusicVideoMetadataService? musicVideoMetadata = null,
         ISpotifyLibraryService? spotifyLibraryService = null,
@@ -96,6 +98,7 @@ public sealed class LibraryDataService : ILibraryDataService
         _messenger = messenger;
         _musicVideoMetadata = musicVideoMetadata;
         _spotifyLibraryService = spotifyLibraryService;
+        _outboxProcessor = outboxProcessor ?? throw new ArgumentNullException(nameof(outboxProcessor));
         _logger = logger;
         _databasePath = cacheOptions.DatabasePath;
 
@@ -266,7 +269,13 @@ public sealed class LibraryDataService : ILibraryDataService
                 ImageUrl = decoration?.ImageUrl ?? persisted?.ImageUrl,
                 TrackCount = decoration?.Length ?? persisted?.TrackCount ?? 0,
                 IsOwner = !string.IsNullOrWhiteSpace(currentUserId)
-                    && string.Equals(ownerUserId, currentUserId, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(ownerUserId, currentUserId, StringComparison.OrdinalIgnoreCase),
+                // Decoration is the authoritative source for collab status on
+                // the rootlist row; fall back to the persisted entry when the
+                // decoration hasn't loaded yet. Safe default is false (drops
+                // get rejected until the real flag arrives — better than
+                // silently failing server-side).
+                IsCollaborative = decoration?.IsCollaborative ?? persisted?.IsCollaborative ?? false,
             });
         }
 
@@ -1396,60 +1405,36 @@ public sealed class LibraryDataService : ILibraryDataService
         ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
         if (trackIds is null || trackIds.Count == 0) return;
 
-        var userData = _session.GetUserData()
+        // Validate that we have an authenticated session even though the
+        // actual write happens in the outbox handler — fail fast if the user
+        // is signed out instead of silently queueing an op that can never run.
+        _ = _session.GetUserData()
             ?? throw new InvalidOperationException("AddTracksToPlaylistAsync requires an authenticated session");
-        var username = userData.Username;
-        var spClient = _session.SpClient;
+
         var playlistUri = NormalizePlaylistUri(playlistId);
 
-        var addOp = new Wavee.Protocol.Playlist.Op
-        {
-            Kind = Wavee.Protocol.Playlist.Op.Types.Kind.Add,
-            Add = new Wavee.Protocol.Playlist.Add
-            {
-                AddLast = true,
-            }
-        };
-
-        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        // Filter + normalize once so the handler can rely on well-formed URIs.
+        var normalized = new List<string>(trackIds.Count);
         foreach (var raw in trackIds)
         {
             if (string.IsNullOrWhiteSpace(raw)) continue;
-            addOp.Add.Items.Add(new Wavee.Protocol.Playlist.Item
-            {
-                Uri = NormalizeTrackUri(raw),
-                Attributes = new Wavee.Protocol.Playlist.ItemAttributes
-                {
-                    Timestamp = nowMs,
-                }
-            });
+            normalized.Add(NormalizeTrackUri(raw));
         }
-        if (addOp.Add.Items.Count == 0) return;
+        if (normalized.Count == 0) return;
 
-        var cached = await _playlistCache.GetPlaylistAsync(playlistUri, ct: ct);
+        // Queue the bulk add. The handler chunks at 500/Op, advances the
+        // ProgressOffset cursor per chunk, and retries automatically on
+        // failure via the shared OutboxProcessor. Caller returns immediately;
+        // local optimistic UI (where present) renders the new tracks ahead of
+        // the server confirmation.
+        await Wavee.Core.Playlists.Outbox.PlaylistAddTracksHandler.EnqueueAsync(
+            _database, playlistUri, normalized, ct);
 
-        var changes = new Wavee.Protocol.Playlist.ListChanges
-        {
-            BaseRevision = ByteString.CopyFrom(cached.Revision),
-            Deltas =
-            {
-                new Wavee.Protocol.Playlist.Delta
-                {
-                    Ops = { addOp },
-                    Info = new Wavee.Protocol.Playlist.ChangeInfo
-                    {
-                        User = username,
-                        Timestamp = nowMs,
-                    },
-                }
-            },
-            WantResultingRevisions = true,
-            WantSyncResult = true,
-            Nonces = { RandomNumberGenerator.GetInt32(1, int.MaxValue) },
-        };
+        // Fire-and-forget kick so the user sees the tracks land within seconds
+        // on the common path; offline / failure simply leaves the entry queued
+        // for the next outbox run (app launch or reconnect).
+        _ = _outboxProcessor.RunAsync();
 
-        var fresh = await spClient.ChangePlaylistAsync(playlistUri, changes, ct);
-        await _playlistCache.ApplyFreshContentAsync(playlistUri, fresh, ct);
         ScheduleChangeEmit(dataChanged: true, playlistsChanged: false);
     }
 
@@ -1964,6 +1949,202 @@ public sealed class LibraryDataService : ILibraryDataService
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger?.LogDebug(ex, "DeletePlaylistAsync: rootlist refresh failed after removing {Uri}", playlistUri);
+        }
+
+        ScheduleChangeEmit(dataChanged: true, playlistsChanged: true);
+    }
+
+    public async Task ReorderTracksInPlaylistAsync(
+        string playlistId,
+        int fromIndex,
+        int length,
+        int toIndex,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+        if (length <= 0) return;
+        if (fromIndex < 0) throw new ArgumentOutOfRangeException(nameof(fromIndex));
+        if (toIndex < 0) throw new ArgumentOutOfRangeException(nameof(toIndex));
+        // Spotify rejects no-op moves with 400; bail before the round trip.
+        if (toIndex >= fromIndex && toIndex < fromIndex + length) return;
+
+        var userData = _session.GetUserData()
+            ?? throw new InvalidOperationException("ReorderTracksInPlaylistAsync requires an authenticated session");
+        var username = userData.Username;
+        var spClient = _session.SpClient;
+        var playlistUri = NormalizePlaylistUri(playlistId);
+
+        var cached = await _playlistCache.GetPlaylistAsync(playlistUri, ct: ct);
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        var changes = new Wavee.Protocol.Playlist.ListChanges
+        {
+            BaseRevision = ByteString.CopyFrom(cached.Revision),
+            Deltas =
+            {
+                new Wavee.Protocol.Playlist.Delta
+                {
+                    Ops =
+                    {
+                        new Wavee.Protocol.Playlist.Op
+                        {
+                            Kind = Wavee.Protocol.Playlist.Op.Types.Kind.Mov,
+                            Mov = new Wavee.Protocol.Playlist.Mov
+                            {
+                                FromIndex = fromIndex,
+                                Length = length,
+                                ToIndex = toIndex,
+                            }
+                        }
+                    },
+                    Info = new Wavee.Protocol.Playlist.ChangeInfo
+                    {
+                        User = username,
+                        Timestamp = nowMs,
+                    },
+                }
+            },
+            WantResultingRevisions = true,
+            WantSyncResult = true,
+            Nonces = { RandomNumberGenerator.GetInt32(1, int.MaxValue) },
+        };
+
+        var fresh = await spClient.ChangePlaylistAsync(playlistUri, changes, ct);
+        await _playlistCache.ApplyFreshContentAsync(playlistUri, fresh, ct);
+        ScheduleChangeEmit(dataChanged: true, playlistsChanged: false);
+    }
+
+    public async Task MovePlaylistInRootlistAsync(
+        string sourceUri,
+        string targetUri,
+        Wavee.UI.Services.DragDrop.DropPosition position,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceUri);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetUri);
+        if (string.Equals(sourceUri, targetUri, StringComparison.OrdinalIgnoreCase)) return;
+
+        var userData = _session.GetUserData()
+            ?? throw new InvalidOperationException("MovePlaylistInRootlistAsync requires an authenticated session");
+        var username = userData.Username;
+
+        var rootlist = await _playlistCache.GetRootlistAsync(ct: ct);
+        var fromIndex = FindRootlistEntryIndex(rootlist, sourceUri);
+        var targetIndex = FindRootlistEntryIndex(rootlist, targetUri);
+
+        if (fromIndex < 0 || targetIndex < 0)
+        {
+            rootlist = await _playlistCache.GetRootlistAsync(forceRefresh: true, ct);
+            fromIndex = FindRootlistEntryIndex(rootlist, sourceUri);
+            targetIndex = FindRootlistEntryIndex(rootlist, targetUri);
+        }
+        if (fromIndex < 0) throw new InvalidOperationException($"Source '{sourceUri}' is not in the current user's rootlist.");
+        if (targetIndex < 0) throw new InvalidOperationException($"Target '{targetUri}' is not in the current user's rootlist.");
+
+        var sourceLength = RootlistEntrySpan(rootlist, fromIndex);
+        var targetLength = RootlistEntrySpan(rootlist, targetIndex);
+
+        // Compute desired insert position in the original list. The proto's
+        // Mov is interpreted by the server as: remove [fromIndex .. fromIndex+length-1],
+        // then insert at toIndex in the post-removal list. Spotify's Web API uses
+        // the same insert_before convention.
+        int toIndex = position switch
+        {
+            Wavee.UI.Services.DragDrop.DropPosition.Before => targetIndex,
+            Wavee.UI.Services.DragDrop.DropPosition.After  => targetIndex + targetLength,
+            // Inside is only meaningful for folder targets; fall back to After otherwise.
+            Wavee.UI.Services.DragDrop.DropPosition.Inside => rootlist.Items[targetIndex] is RootlistFolderStart
+                ? targetIndex + 1
+                : targetIndex + targetLength,
+            _ => targetIndex + targetLength,
+        };
+
+        // No-op when the source already sits exactly where the user is dropping.
+        if (toIndex == fromIndex || (toIndex > fromIndex && toIndex <= fromIndex + sourceLength)) return;
+
+        await PostRootlistMovAsync(username, rootlist, fromIndex, sourceLength, toIndex, ct);
+    }
+
+    public Task MovePlaylistIntoFolderAsync(
+        string playlistUri,
+        string folderStartUri,
+        CancellationToken ct = default)
+    {
+        // Insert at the very top of the folder's children (right after start-group).
+        return MovePlaylistInRootlistAsync(playlistUri, folderStartUri, Wavee.UI.Services.DragDrop.DropPosition.Inside, ct);
+    }
+
+    public async Task MovePlaylistOutOfFolderAsync(
+        string playlistUri,
+        int destinationRootIndex,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
+        if (destinationRootIndex < 0) throw new ArgumentOutOfRangeException(nameof(destinationRootIndex));
+
+        var userData = _session.GetUserData()
+            ?? throw new InvalidOperationException("MovePlaylistOutOfFolderAsync requires an authenticated session");
+        var username = userData.Username;
+
+        var rootlist = await _playlistCache.GetRootlistAsync(ct: ct);
+        var fromIndex = FindRootlistPlaylistIndex(rootlist, playlistUri);
+        if (fromIndex < 0)
+        {
+            rootlist = await _playlistCache.GetRootlistAsync(forceRefresh: true, ct);
+            fromIndex = FindRootlistPlaylistIndex(rootlist, playlistUri);
+        }
+        if (fromIndex < 0) throw new InvalidOperationException($"Playlist '{playlistUri}' is not in the current user's rootlist.");
+
+        await PostRootlistMovAsync(username, rootlist, fromIndex, 1, destinationRootIndex, ct);
+    }
+
+    private async Task PostRootlistMovAsync(
+        string username,
+        RootlistSnapshot rootlist,
+        int fromIndex,
+        int length,
+        int toIndex,
+        CancellationToken ct)
+    {
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var changes = new Wavee.Protocol.Playlist.ListChanges
+        {
+            BaseRevision = ByteString.CopyFrom(rootlist.Revision),
+            Deltas =
+            {
+                new Wavee.Protocol.Playlist.Delta
+                {
+                    Ops =
+                    {
+                        new Wavee.Protocol.Playlist.Op
+                        {
+                            Kind = Wavee.Protocol.Playlist.Op.Types.Kind.Mov,
+                            Mov = new Wavee.Protocol.Playlist.Mov
+                            {
+                                FromIndex = fromIndex,
+                                Length = length,
+                                ToIndex = toIndex,
+                            }
+                        }
+                    },
+                    Info = BuildRootlistChangeInfo(username, nowMs),
+                }
+            },
+            WantResultingRevisions = true,
+            WantSyncResult = true,
+            Nonces = { NextRootlistNonce() },
+        };
+
+        await _session.SpClient.PostRootlistChangesAsync(username, changes, ct);
+        await _playlistCache.InvalidateAsync(PlaylistCacheUris.Rootlist, ct);
+
+        try
+        {
+            await _playlistCache.GetRootlistAsync(forceRefresh: true, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogDebug(ex, "Rootlist refresh after Mov failed (from={From}, length={Length}, to={To})", fromIndex, length, toIndex);
         }
 
         ScheduleChangeEmit(dataChanged: true, playlistsChanged: true);
@@ -2758,6 +2939,87 @@ public sealed class LibraryDataService : ILibraryDataService
         }
 
         return -1;
+    }
+
+    /// <summary>
+    /// Locates a rootlist folder entry. Accepts both forms the sidebar uses:
+    /// <c>spotify:start-group:{id}[:{name}]</c> (the real wire URI) and
+    /// <c>folder:{id}</c> (the sidebar's navigation tag). Matches on the 16-hex
+    /// id so cosmetic renames don't break callers that captured the URI earlier.
+    /// </summary>
+    private static int FindRootlistFolderStartIndex(RootlistSnapshot rootlist, string folderStartUri)
+    {
+        var folderId = folderStartUri switch
+        {
+            _ when folderStartUri.StartsWith("spotify:start-group:", StringComparison.OrdinalIgnoreCase) =>
+                folderStartUri.Split(':') is { Length: >= 3 } parts ? parts[2] : null,
+            _ when folderStartUri.StartsWith("folder:", StringComparison.OrdinalIgnoreCase) =>
+                folderStartUri["folder:".Length..],
+            _ => null,
+        };
+        if (string.IsNullOrEmpty(folderId)) return -1;
+
+        for (var i = 0; i < rootlist.Items.Count; i++)
+        {
+            if (rootlist.Items[i] is RootlistFolderStart fs
+                && string.Equals(fs.Id, folderId, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Given the index of a <see cref="RootlistFolderStart"/>, walks forward to
+    /// the matching <see cref="RootlistFolderEnd"/> (same id, accounting for
+    /// nested folders that share neither id nor span). Returns <c>-1</c> if
+    /// no end marker is found.
+    /// </summary>
+    private static int FindMatchingFolderEndIndex(RootlistSnapshot rootlist, int startIndex)
+    {
+        if (startIndex < 0 || startIndex >= rootlist.Items.Count) return -1;
+        if (rootlist.Items[startIndex] is not RootlistFolderStart start) return -1;
+
+        var depth = 1;
+        for (var i = startIndex + 1; i < rootlist.Items.Count; i++)
+        {
+            switch (rootlist.Items[i])
+            {
+                case RootlistFolderStart:
+                    depth++;
+                    break;
+                case RootlistFolderEnd end when string.Equals(end.Id, start.Id, StringComparison.OrdinalIgnoreCase):
+                    if (depth == 1) return i;
+                    depth--;
+                    break;
+            }
+        }
+        return -1;
+    }
+
+    private static int FindRootlistEntryIndex(RootlistSnapshot rootlist, string uri)
+    {
+        if (uri.StartsWith("spotify:start-group:", StringComparison.OrdinalIgnoreCase)
+            || uri.StartsWith("folder:", StringComparison.OrdinalIgnoreCase))
+            return FindRootlistFolderStartIndex(rootlist, uri);
+        return FindRootlistPlaylistIndex(rootlist, uri);
+    }
+
+    /// <summary>
+    /// Length of the rootlist entry at <paramref name="index"/> when treated as
+    /// a movable block: 1 for a bare playlist, span (end - start + 1) for a folder.
+    /// </summary>
+    private static int RootlistEntrySpan(RootlistSnapshot rootlist, int index)
+    {
+        if (index < 0 || index >= rootlist.Items.Count) return 0;
+        if (rootlist.Items[index] is RootlistFolderStart)
+        {
+            var endIdx = FindMatchingFolderEndIndex(rootlist, index);
+            return endIdx >= 0 ? endIdx - index + 1 : 1;
+        }
+        return 1;
     }
 
     private static PlaylistBasePermission MapBasePermission(CachedPlaylistBasePermission value)

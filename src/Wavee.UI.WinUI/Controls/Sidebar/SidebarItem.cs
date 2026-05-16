@@ -17,6 +17,8 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using System.Collections;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using Wavee.UI.Services.DragDrop;
+using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Styles;
 using Windows.ApplicationModel.DataTransfer;
@@ -72,7 +74,14 @@ public sealed partial class SidebarItem : Control
 				args.Handled = true;
 			}
 		};
+		// Manual drag attachment: WinUI 3's CanDrag/DragStarting routing through
+		// the SidebarItem control gets swallowed by the inner ElementBorder's
+		// selection pointer handling. ManualDragAttachment hooks pointer events
+		// directly and calls StartDragAsync past a movement threshold — the
+		// DragStarting handler below still runs but is wired by the helper.
+		ManualDragAttachment.AttachWithPackageWriter(this, BuildSidebarDragPayload);
 		DragStarting += SidebarItem_DragStarting;
+		DropCompleted += SidebarItem_DropCompleted;
 
 		Loaded += SidebarItem_Loaded;
 		Unloaded += SidebarItem_Unloaded;
@@ -297,6 +306,19 @@ public sealed partial class SidebarItem : Control
 		}
 
 		HandleItemChange();
+
+		// Reorder/copy edges (Top/Bottom = rootlist reorder, Center = copy
+		// tracks into target playlist) only resolve when UseReorderDrop is
+		// true. Default is false on section-header rows / generic items.
+		// Playlists and folders both want edge semantics so the drag-over
+		// indicator can paint "insert above / below" lines.
+		if (Item is SidebarItemModel m && !m.IsSectionHeader && (m.IsFolder
+			|| (m.Tag?.StartsWith("spotify:playlist:", System.StringComparison.Ordinal) ?? false)
+			|| (m.Tag?.StartsWith("folder:", System.StringComparison.Ordinal) ?? false)
+			|| (m.Tag?.StartsWith("spotify:start-group:", System.StringComparison.Ordinal) ?? false)))
+		{
+			UseReorderDrop = true;
+		}
 
 		_dragStateService = Ioc.Default.GetService<DragStateService>();
 		if (_dragStateService != null)
@@ -548,15 +570,36 @@ public sealed partial class SidebarItem : Control
 		UpdateIcon();
 	}
 
+	/// <summary>
+	/// Builds the drag payload for this sidebar row. Returns null for rows that
+	/// shouldn't participate (disabled, no Tag, section headers). Called by
+	/// <see cref="ManualDragAttachment"/> at drag-start time.
+	/// </summary>
+	private Wavee.UI.Services.DragDrop.IDragPayload? BuildSidebarDragPayload()
+	{
+		if (!IsItemEnabled) return null;
+		if (Item is not SidebarItemModel model || string.IsNullOrEmpty(model.Tag)) return null;
+
+		var isFolder = model.IsFolder
+			|| model.Tag!.StartsWith("spotify:start-group:", System.StringComparison.Ordinal)
+			|| model.Tag!.StartsWith("folder:", System.StringComparison.Ordinal);
+		return new Wavee.UI.Services.DragDrop.Payloads.SidebarReorderPayload(
+			sourceUri: model.Tag!,
+			itemKind: isFolder
+				? Wavee.UI.Services.DragDrop.Payloads.SidebarItemKind.Folder
+				: Wavee.UI.Services.DragDrop.Payloads.SidebarItemKind.Playlist);
+	}
+
 	private void SidebarItem_DragStarting(UIElement sender, DragStartingEventArgs args)
 	{
-		if (!IsItemEnabled)
-		{
-			args.Cancel = true;
-			return;
-		}
+		// ManualDragAttachment already populates the DataPackage via DragPackageWriter.
+		// This handler stays only to keep the existing XAML hook (DragStarting +=) and
+		// give the drag UI overlay a chance to render a meaningful preview later.
+	}
 
-		args.Data.SetData(StandardDataFormats.Text, Item!.Text.ToString());
+	private void SidebarItem_DropCompleted(UIElement sender, DropCompletedEventArgs args)
+	{
+		_dragStateService?.EndDrag();
 	}
 
 	private void SetFlyoutOpen(bool isOpen = true)
@@ -934,6 +977,21 @@ public sealed partial class SidebarItem : Control
 		}
 
 		var useSelectedState = ShouldShowSelectionIndicator();
+
+		// Selected rows never paint hover. Spotify-desktop behaves the same —
+		// the selection indicator already says "this is the active row", and
+		// stacking a hover overlay on top of it just makes the row look
+		// double-tinted. This also fixes the "hover state stuck after I
+		// clicked the row" perception: previously the cursor was still over
+		// the row at click time, so isPointerOver stayed true and the visual
+		// state landed in PointerOverSelected (selected + hover paint) until
+		// the cursor physically left the row.
+		if (useSelectedState && !isPointerDown)
+		{
+			VisualStateManager.GoToState(this, "NormalSelected", true);
+			return;
+		}
+
 		if (isPointerDown)
 		{
 			VisualStateManager.GoToState(this, useSelectedState ? "PressedSelected" : "Pressed", true);
@@ -1119,43 +1177,39 @@ public sealed partial class SidebarItem : Control
 		}
 	}
 
-	private async void ItemBorder_DragOver(object sender, DragEventArgs e)
+	private void ItemBorder_DragOver(object sender, DragEventArgs e)
 	{
 		if (!IsItemEnabled)
 			return;
 
-		// Accept drops only when CanDrop allows it
-		if (e.DataView.Contains("WaveeTrackIds")
-			&& Item is ISidebarItemModel model
+		var pos = DetermineDropTargetPosition(e);
+		if (Item is ISidebarItemModel model
 			&& _dragStateService?.CurrentPayload is { } payload
-			&& model.CanDrop(payload))
+			&& CanDropAtPosition(model, payload, pos))
 		{
 			e.AcceptedOperation = DataPackageOperation.Copy;
-			VisualStateManager.GoToState(this, "DragOnTop", true);
-			Owner?.RaiseItemDragOver(this, SidebarItemDropPosition.Center, e);
+			switch (pos)
+			{
+				case SidebarItemDropPosition.Top:
+					VisualStateManager.GoToState(this, "DragInsertAbove", true);
+					break;
+				case SidebarItemDropPosition.Bottom:
+					VisualStateManager.GoToState(this, "DragInsertBelow", true);
+					break;
+				default:
+					VisualStateManager.GoToState(this, "DragOnTop", true);
+					break;
+			}
+
+			Owner?.RaiseItemDragOver(this, pos, e);
 			return;
 		}
 
+		// Auto-expand folders on hover so the user can drop "into" them.
 		if (HasChildren)
 		{
 			IsExpanded = true;
 		}
-
-		var insertsAbove = DetermineDropTargetPosition(e);
-		if (insertsAbove == SidebarItemDropPosition.Center)
-		{
-			VisualStateManager.GoToState(this, "DragOnTop", true);
-		}
-		else if (insertsAbove == SidebarItemDropPosition.Top)
-		{
-			VisualStateManager.GoToState(this, "DragInsertAbove", true);
-		}
-		else if (insertsAbove == SidebarItemDropPosition.Bottom)
-		{
-			VisualStateManager.GoToState(this, "DragInsertBelow", true);
-		}
-
-		Owner?.RaiseItemDragOver(this, insertsAbove, e);
 	}
 
 	private void ItemBorder_ContextRequested(UIElement sender, Microsoft.UI.Xaml.Input.ContextRequestedEventArgs args)
@@ -1181,7 +1235,7 @@ public sealed partial class SidebarItem : Control
 		if (_dragStateService?.IsDragging == true
 			&& Item is ISidebarItemModel model
 			&& _dragStateService.CurrentPayload is { } payload
-			&& model.CanDrop(payload))
+			&& CanDropSomewhereOnRow(model, payload))
 			VisualStateManager.GoToState(this, "DragAvailable", true);
 		else
 			UpdatePointerState();
@@ -1192,8 +1246,17 @@ public sealed partial class SidebarItem : Control
 		if (!IsItemEnabled)
 			return;
 
+		var pos = DetermineDropTargetPosition(e);
+		if (Item is ISidebarItemModel model
+			&& _dragStateService?.CurrentPayload is { } payload
+			&& !CanDropAtPosition(model, payload, pos))
+		{
+			UpdatePointerState();
+			return;
+		}
+
 		UpdatePointerState();
-		Owner?.RaiseItemDropped(this, DetermineDropTargetPosition(e), e);
+		Owner?.RaiseItemDropped(this, pos, e);
 	}
 
 	private void OnGlobalDragStateChanged(bool isDragging)
@@ -1209,7 +1272,7 @@ public sealed partial class SidebarItem : Control
 
 			if (isDragging && payload != null)
 			{
-				if (Item is ISidebarItemModel model && model.CanDrop(payload))
+				if (Item is ISidebarItemModel model && CanDropSomewhereOnRow(model, payload))
 					VisualStateManager.GoToState(this, "DragAvailable", true);
 				else if (_elementBorder != null)
 					_elementBorder.Opacity = 0.3;
@@ -1220,6 +1283,57 @@ public sealed partial class SidebarItem : Control
 			}
 		});
 	}
+
+	private bool CanDropSomewhereOnRow(ISidebarItemModel model, IDragPayload payload)
+	{
+		if (model.CanDrop(payload)) return true;
+
+		if (Item is not SidebarItemModel row || string.IsNullOrEmpty(row.Tag))
+			return false;
+
+		// Playlist cards can be inserted before/after any sidebar playlist or
+		// folder row. Center-drop copy/nest checks stay position-specific below.
+		if (payload is PlaylistDragPayload playlist
+			&& !string.Equals(playlist.PlaylistUri, row.Tag, StringComparison.OrdinalIgnoreCase)
+			&& IsPlaylistOrFolderRow(row))
+			return true;
+
+		return false;
+	}
+
+	private bool CanDropAtPosition(ISidebarItemModel model, IDragPayload payload, SidebarItemDropPosition position)
+	{
+		if (Item is SidebarItemModel row && !string.IsNullOrEmpty(row.Tag))
+		{
+			if (payload is PlaylistDragPayload playlist
+				&& !string.Equals(playlist.PlaylistUri, row.Tag, StringComparison.OrdinalIgnoreCase)
+				&& IsPlaylistOrFolderRow(row))
+			{
+				if (position is SidebarItemDropPosition.Top or SidebarItemDropPosition.Bottom)
+					return true;
+
+				return row.IsFolder || row.CanEditItems;
+			}
+
+			if (payload is SidebarReorderPayload sidebar
+				&& !string.Equals(sidebar.SourceUri, row.Tag, StringComparison.OrdinalIgnoreCase)
+				&& IsPlaylistOrFolderRow(row))
+			{
+				if (position is SidebarItemDropPosition.Top or SidebarItemDropPosition.Bottom)
+					return true;
+
+				return row.IsFolder || (row.CanEditItems && sidebar.ItemKind == SidebarItemKind.Playlist);
+			}
+		}
+
+		return model.CanDrop(payload);
+	}
+
+	private static bool IsPlaylistOrFolderRow(SidebarItemModel row) =>
+		row.IsFolder
+		|| (row.Tag?.StartsWith("spotify:playlist:", StringComparison.Ordinal) ?? false)
+		|| (row.Tag?.StartsWith("folder:", StringComparison.Ordinal) ?? false)
+		|| (row.Tag?.StartsWith("spotify:start-group:", StringComparison.Ordinal) ?? false);
 
 	private SidebarItemDropPosition DetermineDropTargetPosition(DragEventArgs args)
 	{
