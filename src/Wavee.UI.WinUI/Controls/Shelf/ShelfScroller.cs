@@ -4,6 +4,8 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 
 namespace Wavee.UI.WinUI.Controls.Shelf;
 
@@ -35,6 +37,42 @@ public sealed class ShelfScroller : Control
         DefaultStyleKey = typeof(ShelfScroller);
         PageLeftCommand = new RelayCommand(PageLeft, () => CanPageLeft);
         PageRightCommand = new RelayCommand(PageRight, () => CanPageRight);
+
+        // Wheel-over-shelf must scroll the host page, not be eaten by the
+        // inner ScrollView. The new ScrollView's InteractionTracker captures
+        // wheel input at the system input layer (before standard routed-event
+        // handlers run), so IgnoredInputKinds="All" alone does not reliably
+        // bubble the wheel to ancestor scrollers. Hook the event with
+        // handledEventsToo so we catch it regardless of who else acted on it
+        // and forward the delta to the nearest ancestor ScrollView.
+        AddHandler(
+            PointerWheelChangedEvent,
+            new PointerEventHandler(OnPointerWheelChanged),
+            handledEventsToo: true);
+    }
+
+    private void OnPointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        var props = e.GetCurrentPoint(this).Properties;
+        var delta = props.MouseWheelDelta;
+        if (delta == 0) return;
+
+        DependencyObject? parent = VisualTreeHelper.GetParent(this);
+        while (parent is not null)
+        {
+            if (parent is ScrollView ancestor)
+            {
+                // One wheel notch = 120 units. 96 px/notch feels close to a
+                // browser; large enough to traverse a track row + small gap
+                // per click without overshooting on rapid spins.
+                const double NotchPixels = 96.0;
+                var dy = -(delta / 120.0) * NotchPixels;
+                ancestor.ScrollBy(0, dy);
+                e.Handled = true;
+                return;
+            }
+            parent = VisualTreeHelper.GetParent(parent);
+        }
     }
 
     // ── Item-binding DPs ────────────────────────────────────────────────────
