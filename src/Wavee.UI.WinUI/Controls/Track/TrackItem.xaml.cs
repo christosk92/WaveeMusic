@@ -56,19 +56,21 @@ public sealed partial class TrackItem : UserControl
 
     public static readonly DependencyProperty ModeProperty =
         DependencyProperty.Register(nameof(Mode), typeof(TrackItemDisplayMode), typeof(TrackItem),
-            new PropertyMetadata(TrackItemDisplayMode.Compact, OnModeChanged));
+            new PropertyMetadata(TrackItemDisplayMode.Row, OnModeChanged));
 
-    // Read-only mirror DPs that drive x:Load on the inactive mode's
-    // CompositionImage. Synced from OnModeChanged. Default matches Mode's
-    // default (Compact) so CompactAlbumArt loads on first realize, RowAlbumArt
-    // stays deferred for the common case.
+    // Read-only mirror DPs that drive x:Load on each mode's whole subtree.
+    // Synced from OnModeChanged. Defaults match Mode's default (Row) so playlist /
+    // album / liked-songs surfaces — the common case — realize RowRoot
+    // directly with no Compact→Row flash during template instantiation.
+    // Compact-mode callers (e.g. artist Top Tracks, search results) must set
+    // Mode="Compact" explicitly.
     public static readonly DependencyProperty IsCompactModeProperty =
         DependencyProperty.Register(nameof(IsCompactMode), typeof(bool), typeof(TrackItem),
-            new PropertyMetadata(true));
+            new PropertyMetadata(false));
 
     public static readonly DependencyProperty IsRowModeProperty =
         DependencyProperty.Register(nameof(IsRowMode), typeof(bool), typeof(TrackItem),
-            new PropertyMetadata(false));
+            new PropertyMetadata(true));
 
     public bool IsCompactMode
     {
@@ -538,13 +540,12 @@ public sealed partial class TrackItem : UserControl
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
 
-        // Heart button click handling
-        CompactHeartButton.Command = new CommunityToolkit.Mvvm.Input.RelayCommand(OnHeartClicked);
-        RowHeartButton.Command = new CommunityToolkit.Mvvm.Input.RelayCommand(OnHeartClicked);
-
-        // Play button clicks (both modes)
-        CompactPlayButton.Click += OnPlayButtonClick;
-        RowPlayButton.Click += OnPlayButtonClick;
+        // Default DP value for Mode is Row, so x:Load realizes RowRoot for
+        // this instance. InitializeComponent evaluates x:Bind for x:Load, but
+        // realization can be deferred to the next layout pass — force it now
+        // so WireRowHandlers' element references are non-null.
+        if (RowRoot is null) FindName(nameof(RowRoot));
+        WireRowHandlers();
 
         // Tap-to-play (respects TrackClickBehavior setting)
         Tapped += OnTapped;
@@ -554,16 +555,41 @@ public sealed partial class TrackItem : UserControl
         RightTapped += OnRightTapped;
         Holding += OnHolding;
 
-        // Row mode navigation links. Per-artist links inside RowArtistsHost are
-        // wired in RebuildArtistsSubline (each link gets its own Click handler);
-        // RowAlbumLink stays a single HyperlinkButton.
-        RowAlbumLink.Click += OnAlbumLinkClick;
-
         // CompactAlbumArt / RowAlbumArt ImageFailed subscriptions happen
         // lazily in EnsureCompactAlbumArtRealized / EnsureRowAlbumArtRealized.
-        // Both controls are x:Load-deferred based on Mode, so the named
+        // Both controls are inside x:Load-deferred subtrees, so the named
         // fields are null until the first time the active mode is shown.
+    }
 
+    // ── Mode-aware event wiring ────────────────────────────────────────────
+    // CompactBorder and RowRoot are x:Load-deferred on Mode, so cross-mode
+    // event subscription from the constructor would NRE on the inactive side.
+    // Wire the active mode's handlers when its subtree is realized: the
+    // constructor wires the default-Row side, and OnModeChanged wires the
+    // other side when Mode flips. Idempotent via the _xWired flags; the
+    // flags are cleared in OnModeChanged when the corresponding subtree is
+    // unloaded so a future re-realization re-attaches handlers to the new
+    // element instances.
+    private bool _compactHandlersWired;
+    private bool _rowHandlersWired;
+
+    private void WireCompactHandlers()
+    {
+        if (_compactHandlersWired) return;
+        if (CompactHeartButton is null || CompactPlayButton is null) return;
+        CompactHeartButton.Command = new CommunityToolkit.Mvvm.Input.RelayCommand(OnHeartClicked);
+        CompactPlayButton.Click += OnPlayButtonClick;
+        _compactHandlersWired = true;
+    }
+
+    private void WireRowHandlers()
+    {
+        if (_rowHandlersWired) return;
+        if (RowHeartButton is null || RowPlayButton is null || RowAlbumLink is null) return;
+        RowHeartButton.Command = new CommunityToolkit.Mvvm.Input.RelayCommand(OnHeartClicked);
+        RowPlayButton.Click += OnPlayButtonClick;
+        RowAlbumLink.Click += OnAlbumLinkClick;
+        _rowHandlersWired = true;
     }
 
     // ── Lazy realize: inactive-mode CompositionImage subtree ──
@@ -573,11 +599,12 @@ public sealed partial class TrackItem : UserControl
 
     private void EnsureCompactAlbumArtRealized()
     {
-        // x:Load realizes the element when IsCompactMode flips to true.
-        // CompactAlbumArt is guaranteed non-null here because callers only
-        // reach this path when Mode == Compact (which also set IsCompactMode).
-        if (CompactAlbumArt is null)
-            this.FindName("CompactAlbumArt");
+        // CompactAlbumArt lives inside CompactBorder, which is x:Load-deferred
+        // behind IsCompactMode. Force-realize the parent first so the child's
+        // name lookup resolves — FindName on a child of a deferred parent
+        // does not transitively realize the parent.
+        if (CompactBorder is null) FindName(nameof(CompactBorder));
+        if (CompactAlbumArt is null) FindName(nameof(CompactAlbumArt));
         if (!_compactAlbumArtSubscribed && CompactAlbumArt is not null)
         {
             CompactAlbumArt.ImageFailed += OnCompactAlbumArtFailed;
@@ -587,8 +614,8 @@ public sealed partial class TrackItem : UserControl
 
     private void EnsureRowAlbumArtRealized()
     {
-        if (RowAlbumArt is null)
-            this.FindName("RowAlbumArt");
+        if (RowRoot is null) FindName(nameof(RowRoot));
+        if (RowAlbumArt is null) FindName(nameof(RowAlbumArt));
         if (!_rowAlbumArtSubscribed && RowAlbumArt is not null)
         {
             RowAlbumArt.ImageFailed += OnRowAlbumArtFailed;
@@ -601,12 +628,39 @@ public sealed partial class TrackItem : UserControl
     private static void OnModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
-        // Drive x:Load on the inactive mode's CompositionImage. Setting these
+        // Drive x:Load on the inactive mode's whole subtree. Setting these
         // BEFORE ApplyMode/BindTrackData ensures the right subtree is realized
         // by the time we try to set its ImageUrl.
         var compact = item.Mode == TrackItemDisplayMode.Compact;
+
+        // Reset the wired flag for the side we're leaving — x:Load unloads
+        // that subtree and a future Mode flip back will create fresh element
+        // instances that need fresh handlers.
+        if (compact) item._rowHandlersWired = false;
+        else item._compactHandlersWired = false;
+
         item.IsCompactMode = compact;
         item.IsRowMode = !compact;
+
+        // x:Load binding propagates on the next layout pass, but the imperative
+        // calls below (BindTrackData, ApplyLoadingVisualState, etc.) need the
+        // named fields populated NOW. Force the active subtree to realize
+        // synchronously via FindName — this both wires up the generated x:Name
+        // fields and triggers x:Load loading of the deferred element.
+        if (compact)
+        {
+            if (item.CompactBorder is null) item.FindName(nameof(CompactBorder));
+        }
+        else
+        {
+            if (item.RowRoot is null) item.FindName(nameof(RowRoot));
+        }
+
+        // Wire the newly-active mode's event handlers. Each Wire* method is
+        // idempotent, so re-firing for the same mode is a no-op.
+        if (compact) item.WireCompactHandlers();
+        else item.WireRowHandlers();
+
         item.ApplyMode();
         item.ResetHoverVisualState();
         item.SyncLoadingStateFromTrack();
@@ -616,22 +670,23 @@ public sealed partial class TrackItem : UserControl
 
     private void ApplyMode()
     {
-        if (Mode == TrackItemDisplayMode.Compact)
+        // CompactBorder / RowRoot Visibility is set declaratively in XAML and
+        // gated by x:Load on IsCompactMode / IsRowMode — only the active mode's
+        // subtree exists, so the inactive side is null. Don't toggle Visibility
+        // here; let x:Load handle realization.
+        if (Mode != TrackItemDisplayMode.Compact)
         {
-            CompactBorder.Visibility = Visibility.Visible;
-            RowRoot.Visibility = Visibility.Collapsed;
-        }
-        else
-        {
-            CompactBorder.Visibility = Visibility.Collapsed;
-            RowRoot.Visibility = Visibility.Visible;
             ApplyRowDensityPadding();
             ApplyRowColumnVisibility();
         }
 
-        RowPopularityBadge.Visibility = ShowPopularityBadge && Mode == TrackItemDisplayMode.Row
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        // RowPopularityBadge lives inside RowRoot, which is null when Mode==Compact.
+        if (RowPopularityBadge is not null)
+        {
+            RowPopularityBadge.Visibility = ShowPopularityBadge && Mode == TrackItemDisplayMode.Row
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
     }
 
     #endregion
@@ -1164,19 +1219,27 @@ public sealed partial class TrackItem : UserControl
     private static void OnDateAddedTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
-        item.RowDateAdded.Text = (string?)e.NewValue ?? "";
+        // RowDateAdded lives inside RowRoot, which is x:Load-deferred. Skip
+        // when Mode is Compact; BindRowData repopulates this when the row
+        // realizes if needed.
+        if (item.RowDateAdded is not null)
+            item.RowDateAdded.Text = (string?)e.NewValue ?? "";
     }
 
     private static void OnPlayCountTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
-        item.RowPlayCount.Text = (string?)e.NewValue ?? "";
+        // RowPlayCount lives inside the x:Load-deferred RowRoot subtree.
+        if (item.RowPlayCount is not null)
+            item.RowPlayCount.Text = (string?)e.NewValue ?? "";
         item.UpdateCompactSubtitleText();
     }
 
     private static void OnShowPopularityBadgeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
+        // RowPopularityBadge lives inside the x:Load-deferred RowRoot subtree.
+        if (item.RowPopularityBadge is null) return;
         item.RowPopularityBadge.Visibility = (bool)e.NewValue && item.Mode == TrackItemDisplayMode.Row
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -1185,6 +1248,10 @@ public sealed partial class TrackItem : UserControl
     private static void OnAddedByTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
+        // RowAddedByText / RowAddedByAvatar / RowAddedByCell live inside the
+        // x:Load-deferred RowRoot subtree — skip when Compact-mode hosts set
+        // the DP before / without ever realizing the Row subtree.
+        if (item.RowAddedByText is null) return;
         var text = (string?)e.NewValue ?? "";
         item.RowAddedByText.Text = text;
         // Feed the same text to PersonPicture so it can derive initials when
@@ -1201,6 +1268,8 @@ public sealed partial class TrackItem : UserControl
     private static void OnAddedByAvatarUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
+        // RowAddedByAvatar lives inside the x:Load-deferred RowRoot subtree.
+        if (item.RowAddedByAvatar is null) return;
         var url = (string?)e.NewValue;
         if (string.IsNullOrEmpty(url))
         {
@@ -1631,8 +1700,10 @@ public sealed partial class TrackItem : UserControl
         if (track == null || _likeService == null) return;
 
         var isLiked = GetTrackLikedState(track);
-        CompactHeartButton.IsLiked = isLiked;
-        RowHeartButton.IsLiked = isLiked;
+        // CompactHeartButton / RowHeartButton are inside x:Load-deferred subtrees,
+        // so the inactive mode's reference is null. Update whichever is realized.
+        if (CompactHeartButton is not null) CompactHeartButton.IsLiked = isLiked;
+        if (RowHeartButton is not null) RowHeartButton.IsLiked = isLiked;
         track.IsLiked = isLiked;
     }
 
@@ -1663,8 +1734,8 @@ public sealed partial class TrackItem : UserControl
             return;
 
         var isLiked = _likeService.IsSaved(Data.Contracts.SavedItemType.Track, uri);
-        CompactHeartButton.IsLiked = isLiked;
-        RowHeartButton.IsLiked = isLiked;
+        if (CompactHeartButton is not null) CompactHeartButton.IsLiked = isLiked;
+        if (RowHeartButton is not null) RowHeartButton.IsLiked = isLiked;
         expectedTrack.IsLiked = isLiked;
     }
 
@@ -2068,8 +2139,9 @@ public sealed partial class TrackItem : UserControl
             case nameof(ITrackItem.IsLiked):
                 if (track is not null)
                 {
-                    CompactHeartButton.IsLiked = GetTrackLikedState(track);
-                    RowHeartButton.IsLiked = GetTrackLikedState(track);
+                    var likedState = GetTrackLikedState(track);
+                    if (CompactHeartButton is not null) CompactHeartButton.IsLiked = likedState;
+                    if (RowHeartButton is not null) RowHeartButton.IsLiked = likedState;
                 }
                 return;
 
@@ -2200,40 +2272,49 @@ public sealed partial class TrackItem : UserControl
     // slot beside the title. When the subline is hidden (album page, XS density,
     // missing artist) the inline slot is used so badges don't float on an empty row.
     // Compact mode always has the artist subtitle, so badges always go on the subline.
+    //
+    // CompactBorder and RowRoot are x:Load-deferred behind IsCompactMode / IsRowMode,
+    // so the inactive mode's named fields are null. Branch on Mode and only touch
+    // the realized subtree's elements.
     private void UpdateBadgePlacement()
     {
         var track = Track;
         var hasVideo = track?.HasVideo == true;
         var isExplicit = track?.IsExplicit == true;
 
-        // Compact: subtitle is the artist text and is always present when bound.
-        CompactExplicit.Visibility = isExplicit ? Visibility.Visible : Visibility.Collapsed;
-        CompactVideoBadge.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
-        var compactHasSubtitle = !string.IsNullOrWhiteSpace(track?.ArtistName);
-        CompactVideoSeparator.Visibility = (hasVideo && compactHasSubtitle)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-
-        // Row: subline is visible only when the artist link is. Separator depends on
-        // the link's visibility, not just on whether ArtistName is set — that's the
-        // fix for the orphan "·" on album rows where the link is collapsed but the
-        // album artist name is non-empty.
-        var sublineVisible = RowArtistsHost.Visibility == Visibility.Visible && !ShowProgress;
-        if (sublineVisible)
+        if (Mode == TrackItemDisplayMode.Compact)
         {
-            RowExplicit.Visibility = isExplicit ? Visibility.Visible : Visibility.Collapsed;
-            RowVideoBadge.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
-            RowVideoSeparator.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
-            RowExplicitInline.Visibility = Visibility.Collapsed;
-            RowVideoBadgeInline.Visibility = Visibility.Collapsed;
+            // Compact: subtitle is the artist text and is always present when bound.
+            CompactExplicit.Visibility = isExplicit ? Visibility.Visible : Visibility.Collapsed;
+            CompactVideoBadge.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
+            var compactHasSubtitle = !string.IsNullOrWhiteSpace(track?.ArtistName);
+            CompactVideoSeparator.Visibility = (hasVideo && compactHasSubtitle)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
         }
         else
         {
-            RowExplicit.Visibility = Visibility.Collapsed;
-            RowVideoBadge.Visibility = Visibility.Collapsed;
-            RowVideoSeparator.Visibility = Visibility.Collapsed;
-            RowExplicitInline.Visibility = isExplicit && !ShowProgress ? Visibility.Visible : Visibility.Collapsed;
-            RowVideoBadgeInline.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
+            // Row: subline is visible only when the artist link is. Separator depends on
+            // the link's visibility, not just on whether ArtistName is set — that's the
+            // fix for the orphan "·" on album rows where the link is collapsed but the
+            // album artist name is non-empty.
+            var sublineVisible = RowArtistsHost.Visibility == Visibility.Visible && !ShowProgress;
+            if (sublineVisible)
+            {
+                RowExplicit.Visibility = isExplicit ? Visibility.Visible : Visibility.Collapsed;
+                RowVideoBadge.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
+                RowVideoSeparator.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
+                RowExplicitInline.Visibility = Visibility.Collapsed;
+                RowVideoBadgeInline.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                RowExplicit.Visibility = Visibility.Collapsed;
+                RowVideoBadge.Visibility = Visibility.Collapsed;
+                RowVideoSeparator.Visibility = Visibility.Collapsed;
+                RowExplicitInline.Visibility = isExplicit && !ShowProgress ? Visibility.Visible : Visibility.Collapsed;
+                RowVideoBadgeInline.Visibility = hasVideo ? Visibility.Visible : Visibility.Collapsed;
+            }
         }
     }
 

@@ -2794,6 +2794,60 @@ public sealed class SpClient : ISpClient
     /// <summary>
     /// Sends an HTTP request with exponential backoff retry logic.
     /// </summary>
+    /// <inheritdoc/>
+    public async Task<Wavee.Core.Http.PlaylistExtender.ExtendPlaylistResponse?> ExtendPlaylistAsync(
+        string playlistUri,
+        IReadOnlyList<string>? trackSkipIds,
+        int numResults = 20,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistUri);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken).ConfigureAwait(false);
+        var url = $"{_baseUrl}/playlistextender/extendp/";
+
+        // Same identity-header set the /playlist/v2/.../signals route requires.
+        // The gateway gates /playlistextender on the same first-party tuple, so
+        // we reuse BuildPlaylistV2Request to keep the header surface in one place.
+        using var request = BuildPlaylistV2Request(url, accessToken.Token);
+        if (_clientTokenManager != null)
+            await TryAttachClientTokenAsync(request, cancellationToken).ConfigureAwait(false);
+
+        var body = new Wavee.Core.Http.PlaylistExtender.ExtendPlaylistRequest
+        {
+            PlaylistUri = playlistUri,
+            TrackSkipIds = trackSkipIds ?? Array.Empty<string>(),
+            NumResults = numResults
+        };
+        var payload = JsonSerializer.Serialize(
+            body,
+            Wavee.Core.Http.PlaylistExtender.PlaylistExtenderJsonContext.Default.ExtendPlaylistRequest);
+        request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+        try
+        {
+            using var response = await SendWithRetryAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger?.LogDebug(
+                    "ExtendPlaylistAsync got {Status} for {Uri}",
+                    (int)response.StatusCode, playlistUri);
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            return await JsonSerializer.DeserializeAsync(
+                stream,
+                Wavee.Core.Http.PlaylistExtender.PlaylistExtenderJsonContext.Default.ExtendPlaylistResponse,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogDebug(ex, "ExtendPlaylistAsync failed for {Uri}", playlistUri);
+            return null;
+        }
+    }
+
     private async Task<HttpResponseMessage> SendWithRetryAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken)

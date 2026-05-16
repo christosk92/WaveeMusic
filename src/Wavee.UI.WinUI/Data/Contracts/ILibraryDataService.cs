@@ -263,6 +263,24 @@ public interface ILibraryDataService
     Task AddTracksToPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default);
 
     /// <summary>
+    /// Fetches Spotify-recommended tracks to suggest adding to the given playlist
+    /// (the "Enhance" / "Recommended Songs" feature). Backed by the
+    /// <c>spclient.../playlistextender/extendp/</c> endpoint. Only meaningful on
+    /// user-owned playlists; callers should gate on <c>CanEditItems</c>. Returns
+    /// an empty list on failure so the UI can soft-collapse the section.
+    /// </summary>
+    /// <param name="playlistUri">Full <c>spotify:playlist:*</c> URI.</param>
+    /// <param name="skipUris">Track URIs the server should NOT return — typically
+    /// tracks already in the playlist + tracks the user has dismissed this
+    /// session. Pass null/empty for a first-load.</param>
+    /// <param name="numResults">Max number of recommendations (Spotify's UI uses 20).</param>
+    Task<IReadOnlyList<RecommendedTrackResult>> GetPlaylistRecommendationsAsync(
+        string playlistUri,
+        IReadOnlyList<string>? skipUris = null,
+        int numResults = 20,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Removes tracks from a playlist. Removes every occurrence whose URI matches
     /// one of the supplied IDs / URIs (duplicate-aware via items_as_key).
     /// </summary>
@@ -391,4 +409,72 @@ public interface ILibraryDataService
     /// when the sync completes so callers do not need to poll.
     /// </summary>
     void RequestSyncIfEmpty();
+}
+
+/// <summary>
+/// Single row in the "Recommended Songs" footer section of PlaylistPage —
+/// projection of one <c>playlistextender</c> response entry. Implements
+/// <see cref="ITrackItem"/> so the canonical <c>Controls.Track.TrackItem</c>
+/// row control can render it directly and the global now-playing indicator
+/// (driven by <c>TrackStateBehavior</c>) lights up the matching row when the
+/// user plays one of these tracks. Wire fields (<see cref="Name"/>,
+/// <see cref="ArtistNames"/>) and ITrackItem fields (<see cref="ITrackItem.Title"/>,
+/// <see cref="ITrackItem.ArtistName"/>) co-exist — the interface members are
+/// explicit projections of the wire-side fields.
+/// </summary>
+public sealed class RecommendedTrackResult : ITrackItem
+{
+    // Not `required` — XAML's compile-time TypeInfo generator emits a
+    // parameterless `new RecommendedTrackResult()` for x:DataType templates
+    // and CS9035s on any required member.
+    public string Uri { get; init; } = string.Empty;
+    /// <summary>Bare track id (last segment of <see cref="Uri"/>). Carried
+    /// as a separate field so <c>TrackStateBehavior.CurrentTrackId</c>
+    /// comparisons don't have to re-parse the URI on every dispatch.</summary>
+    public string Id { get; init; } = string.Empty;
+    /// <summary>Wire-side track name (Spotify ships either <c>name</c> or
+    /// <c>trackName</c>; we pick whichever lands). Projected as
+    /// <see cref="ITrackItem.Title"/>.</summary>
+    public string? Name { get; init; }
+    /// <summary>Joined ", "-separated artist names ready for display. Projected
+    /// as <see cref="ITrackItem.ArtistName"/>.</summary>
+    public string? ArtistNames { get; init; }
+    public string? AlbumName { get; init; }
+    public string? ImageUrl { get; init; }
+    public System.TimeSpan Duration { get; init; }
+    public bool IsExplicit { get; init; }
+    public int OriginalIndex { get; init; }
+
+    // ── ITrackItem surface ───────────────────────────────────────────────
+    // Most interface members have sensible defaults at the interface level
+    // (HasVideo/IsLocal/Uid/etc.) so only the required members need explicit
+    // projections here.
+
+    string ITrackItem.Title => Name ?? string.Empty;
+    string ITrackItem.ArtistName => ArtistNames ?? string.Empty;
+    string ITrackItem.ArtistId => string.Empty;          // no artist nav target on recs
+    string ITrackItem.AlbumName => AlbumName ?? string.Empty;
+    string ITrackItem.AlbumId => string.Empty;           // no album nav target on recs
+    bool ITrackItem.IsLoaded => true;
+    string ITrackItem.DurationFormatted => Duration.TotalHours >= 1
+        ? Duration.ToString(@"h\:mm\:ss", System.Globalization.CultureInfo.InvariantCulture)
+        : Duration.ToString(@"m\:ss", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>Mutable per ITrackItem; future enhancement could backfill
+    /// from the library save service. Default false — the user can still
+    /// hover the heart button to like the track to their library
+    /// independently of adding it to this playlist.</summary>
+    private bool _isLiked;
+    public bool IsLiked
+    {
+        get => _isLiked;
+        set
+        {
+            if (_isLiked == value) return;
+            _isLiked = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsLiked)));
+        }
+    }
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 }

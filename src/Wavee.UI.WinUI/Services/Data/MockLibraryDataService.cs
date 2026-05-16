@@ -617,6 +617,12 @@ public sealed class MockLibraryDataService : ILibraryDataService
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<RecommendedTrackResult>> GetPlaylistRecommendationsAsync(string playlistUri, IReadOnlyList<string>? skipUris = null, int numResults = 20,
+        CancellationToken ct = default)
+    {
+        throw new NotImplementedException();
+    }
+
     public Task RemoveTracksFromPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
     {
         if (_mockPlaylistTracks.TryGetValue(playlistId, out var tracks))

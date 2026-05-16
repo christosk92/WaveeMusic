@@ -118,6 +118,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     {
         HookRowsListScrollViewer();
         ApplyHorizontalRowScroll();
+        ApplyVerticalRowScroll();
     }
 
     private void RowsList_Unloaded(object sender, RoutedEventArgs e)
@@ -133,6 +134,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     {
         HookRowsItemsViewScrollView();
         ApplyHorizontalRowScroll();
+        ApplyVerticalRowScroll();
     }
 
     private void RowsItemsView_Unloaded(object sender, RoutedEventArgs e)
@@ -1085,8 +1087,13 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         if (RowsList is null || RowsItemsView is null) return;
 
         RowsList.Visibility = UseItemsViewRows ? Visibility.Collapsed : Visibility.Visible;
-        RowsItemsView.Visibility = UseItemsViewRows ? Visibility.Visible : Visibility.Collapsed;
+        // Toggle the WRAPPER Grid so the ItemsView's footer ContentPresenter
+        // (RowsItemsViewHost row 1) also hides in ListView mode. Inner
+        // ItemsView stays at default Visibility=Visible inside the wrapper.
+        if (RowsItemsViewHost is not null)
+            RowsItemsViewHost.Visibility = UseItemsViewRows ? Visibility.Visible : Visibility.Collapsed;
         ApplyHorizontalRowScroll();
+        ApplyVerticalRowScroll();
         if (UseItemsViewRows)
             HookRowsItemsViewScrollView();
         else
@@ -1256,6 +1263,62 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     {
         if (d is TrackDataGrid self)
             self.ApplyHorizontalRowScroll();
+    }
+
+    public static readonly DependencyProperty IsParentScrollingProperty =
+        DependencyProperty.Register(nameof(IsParentScrolling), typeof(bool), typeof(TrackDataGrid),
+            new PropertyMetadata(false, OnIsParentScrollingChanged));
+
+    /// <summary>
+    /// When <c>true</c>, the internal ListView / ItemsView vertical scroll is
+    /// disabled so the grid renders all its rows at natural height and the
+    /// containing page's scroll viewer drives the whole layout. Used by
+    /// AlbumPage to merge the left sidebar + the track table into one
+    /// unified scroller. Default <c>false</c> — other consumers (PlaylistPage,
+    /// etc.) keep their normal in-grid vertical scroll.
+    ///
+    /// <para>
+    /// Tradeoff: in this mode all rows render up-front (no virtualization),
+    /// because the inner panel measures against the parent's infinite vertical
+    /// extent rather than a constrained viewport. Acceptable for typical album
+    /// sizes (≤30 tracks). Revisit if a 100+-track surface needs it.
+    /// </para>
+    /// </summary>
+    public bool IsParentScrolling
+    {
+        get => (bool)GetValue(IsParentScrollingProperty);
+        set => SetValue(IsParentScrollingProperty, value);
+    }
+
+    private static void OnIsParentScrollingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackDataGrid self)
+            self.ApplyVerticalRowScroll();
+    }
+
+    private void ApplyVerticalRowScroll()
+    {
+        if (RowsList is null) return;
+        if (IsParentScrolling)
+        {
+            ScrollViewer.SetVerticalScrollMode(RowsList, ScrollMode.Disabled);
+            ScrollViewer.SetVerticalScrollBarVisibility(RowsList, ScrollBarVisibility.Disabled);
+            if (RowsItemsView.ScrollView is { } itemsScrollView)
+            {
+                itemsScrollView.VerticalScrollMode = ScrollingScrollMode.Disabled;
+                itemsScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
+            }
+        }
+        else
+        {
+            ScrollViewer.SetVerticalScrollMode(RowsList, ScrollMode.Auto);
+            ScrollViewer.SetVerticalScrollBarVisibility(RowsList, ScrollBarVisibility.Auto);
+            if (RowsItemsView.ScrollView is { } itemsScrollView)
+            {
+                itemsScrollView.VerticalScrollMode = ScrollingScrollMode.Auto;
+                itemsScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Auto;
+            }
+        }
     }
 
     public static readonly DependencyProperty DateAddedFormatterProperty =

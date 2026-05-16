@@ -208,7 +208,15 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     }
 
     public PlaylistBasePermission BasePermission => Playlist?.BasePermission ?? PlaylistBasePermission.Viewer;
-    public bool CanEditItems => Playlist?.CanEditItems == true;
+    // Defensive OR with IsOwner mirrors the wire-layer logic in
+    // LibraryDataService.MapCapabilities (CanEditItems = value.CanEditItems
+    // || isOwner). In production we've seen Playlist envelopes land with
+    // IsOwner=true but CanEditItems=false anyway — most likely a partial /
+    // prefetched detail stamping the capabilities back to the ViewOnly
+    // default after a full detail had already set them. Treating owners as
+    // always able to edit items matches Spotify's actual permission model
+    // and unblocks the owner-only Recommended Songs footer + remove gestures.
+    public bool CanEditItems => Playlist?.CanEditItems == true || Playlist?.IsOwner == true;
     public bool CanAdministratePermissions => Playlist?.CanAdministratePermissions == true;
     public bool CanCancelMembership => Playlist?.CanCancelMembership == true;
     public bool CanAbuseReport => Playlist?.CanAbuseReport == true;
@@ -2293,6 +2301,62 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         BuildQueueAndPlay(index >= 0 ? index : 0, shuffle: false);
     }
 
+    /// <summary>Enqueue every track of this playlist, in current sort order.
+    /// Mirrors AlbumViewModel.AddAlbumToQueueCommand — same wire path
+    /// (<c>IPlaybackStateService.AddToQueue</c>). Used by the labeled pill in
+    /// the new action cluster.</summary>
+    [RelayCommand]
+    private void AddPlaylistToQueue()
+    {
+        if (_allTracks.Count == 0) return;
+        var trackUris = _allTracks
+            .Select(t => t.Uri)
+            .Where(u => !string.IsNullOrEmpty(u))
+            .Cast<string>()
+            .ToList();
+        if (trackUris.Count == 0) return;
+        _playbackStateService.AddToQueue(trackUris);
+    }
+
+    /// <summary>Seeds Spotify radio from this playlist's URI. Mirrors
+    /// AlbumViewModel.StartAlbumRadioAsyncCommand.</summary>
+    [RelayCommand]
+    private async Task StartPlaylistRadioAsync()
+    {
+        if (string.IsNullOrEmpty(PlaylistId)) return;
+        var seed = PlaylistId.StartsWith("spotify:playlist:", StringComparison.Ordinal)
+            ? PlaylistId
+            : $"spotify:playlist:{PlaylistId}";
+        var name = PlaylistName is { Length: > 0 } n ? $"{n} Radio" : "Playlist Radio";
+        await _playbackStateService.StartRadioAsync(seed, name);
+    }
+
+    /// <summary>Adds every track of THIS playlist to ANOTHER user playlist.
+    /// Caller supplies the destination (typically picked from a flyout
+    /// bound to <see cref="Playlists"/>). Filters out non-Spotify URIs.</summary>
+    [RelayCommand]
+    private async Task AddPlaylistToOtherPlaylistAsync(PlaylistSummaryDto? destination)
+    {
+        if (destination?.Id is not { Length: > 0 } destinationId) return;
+        if (_allTracks.Count == 0) return;
+        var trackUris = _allTracks
+            .Select(t => t.Uri)
+            .Where(u => !string.IsNullOrEmpty(u) && u!.StartsWith("spotify:track:", StringComparison.Ordinal))
+            .Cast<string>()
+            .ToList();
+        if (trackUris.Count == 0) return;
+
+        try
+        {
+            await _libraryDataService.AddTracksToPlaylistAsync(destinationId, trackUris).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "AddPlaylistToOtherPlaylistAsync failed for {Source} → {Destination}",
+                PlaylistId, destinationId);
+        }
+    }
+
     private void BuildQueueAndPlay(int startIndex, bool shuffle)
     {
         if (FilteredTracks.Count == 0) return;
@@ -2356,18 +2420,118 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         if (!HasSelection) return;
     }
 
+    // ── Recommended Songs ("Enhance") ─────────────────────────────────────
+    //
+    // Owner-gated, on-demand fetch of Spotify-curated track recommendations
+    // for THIS playlist. Backed by /playlistextender/extendp/ via
+    // ILibraryDataService.GetPlaylistRecommendationsAsync. We never auto-
+    // fetch (per the explicit-sync-over-auto convention): the user clicks
+    // "Find more songs" or "Refresh" on the footer section.
+
+    private readonly ObservableCollection<RecommendedTrackResult> _recommendedTracks = [];
+    public IReadOnlyList<RecommendedTrackResult> RecommendedTracks => _recommendedTracks;
+
+    private bool _hasRecommendedTracks;
+    public bool HasRecommendedTracks
+    {
+        get => _hasRecommendedTracks;
+        private set
+        {
+            if (SetProperty(ref _hasRecommendedTracks, value))
+                OnPropertyChanged(nameof(ShouldShowEmptyRecommendationsCta));
+        }
+    }
+
+    private bool _isFetchingRecommendations;
+    public bool IsFetchingRecommendations
+    {
+        get => _isFetchingRecommendations;
+        private set => SetProperty(ref _isFetchingRecommendations, value);
+    }
+
+    /// <summary>True when the last recommendations fetch attempt threw. Drives
+    /// the error card in the footer. Reset at the start of each new attempt.</summary>
+    private bool _recommendationsLoadFailed;
+    public bool RecommendationsLoadFailed
+    {
+        get => _recommendationsLoadFailed;
+        private set
+        {
+            if (SetProperty(ref _recommendationsLoadFailed, value))
+                OnPropertyChanged(nameof(ShouldShowEmptyRecommendationsCta));
+        }
+    }
+
+    /// <summary>True only when the empty-state CTA ("Find more songs") should
+    /// render — i.e. we have no recs AND no failure to surface. Combining the
+    /// two bools into a derived predicate keeps the XAML free of converters
+    /// for the multi-condition case.</summary>
+    public bool ShouldShowEmptyRecommendationsCta => !HasRecommendedTracks && !RecommendationsLoadFailed;
+
     /// <summary>
-    /// Empty-state CTA — surfaces a recommendations flow when the user has edit
-    /// capability on this playlist. Currently a stub: the recommendations endpoint
-    /// isn't wired up yet, so we just log. Replace with the real flow (open
-    /// recommended-tracks dialog or navigate to in-playlist search) when ready.
+    /// Fetches Spotify-recommended tracks to add to this playlist. Skip-list
+    /// is seeded from the current playlist's track URIs so the server doesn't
+    /// return tracks the user already has. On failure flips
+    /// <see cref="RecommendationsLoadFailed"/> so the error card renders.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanEditItems))]
-    private void FindRecommendedTracks()
+    private async Task FindRecommendedTracksAsync()
     {
-        _logger?.LogInformation(
-            "FindRecommendedTracks invoked for playlist '{PlaylistId}' (CanEditItems={CanEditItems}) -- TODO wire recommendations service",
-            PlaylistId, CanEditItems);
+        if (string.IsNullOrEmpty(PlaylistId) || IsFetchingRecommendations) return;
+
+        IsFetchingRecommendations = true;
+        RecommendationsLoadFailed = false;
+        try
+        {
+            var skipUris = _allTracks
+                .Select(t => t.Uri)
+                .Where(u => !string.IsNullOrEmpty(u))
+                .Cast<string>()
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var recs = await _libraryDataService
+                .GetPlaylistRecommendationsAsync(PlaylistId, skipUris, numResults: 20)
+                .ConfigureAwait(true);
+
+            _recommendedTracks.Clear();
+            foreach (var rec in recs) _recommendedTracks.Add(rec);
+            HasRecommendedTracks = _recommendedTracks.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "FindRecommendedTracksAsync failed for {PlaylistId}", PlaylistId);
+            RecommendationsLoadFailed = true;
+            // Keep _recommendedTracks intact — if a prior fetch succeeded, the
+            // error card sits alongside the existing list rather than wiping it.
+        }
+        finally
+        {
+            IsFetchingRecommendations = false;
+        }
+    }
+
+    /// <summary>Appends a single recommended track to the playlist. The track
+    /// drops out of the recommendation list immediately; the next refresh
+    /// won't return it (its URI joins the playlist's track set).</summary>
+    [RelayCommand]
+    private async Task AddRecommendationAsync(RecommendedTrackResult? rec)
+    {
+        if (rec is null || string.IsNullOrEmpty(rec.Uri) || string.IsNullOrEmpty(PlaylistId)) return;
+        try
+        {
+            await _libraryDataService
+                .AddTracksToPlaylistAsync(PlaylistId, new[] { rec.Uri })
+                .ConfigureAwait(true);
+            _recommendedTracks.Remove(rec);
+            HasRecommendedTracks = _recommendedTracks.Count > 0;
+            // _allTracks lands the new entry via the existing playlist-diff /
+            // dealer-update pipeline — no manual local append needed.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "AddRecommendationAsync failed for {Uri}", rec.Uri);
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanRemove))]

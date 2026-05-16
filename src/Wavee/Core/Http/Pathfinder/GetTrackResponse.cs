@@ -108,17 +108,72 @@ public sealed class GetTrackFirstArtistItem
     [JsonPropertyName("uri")]
     public string? Uri { get; init; }
 
+    [JsonPropertyName("id")]
+    public string? Id { get; init; }
+
     [JsonPropertyName("profile")]
     public GetTrackArtistProfile? Profile { get; init; }
 
+    [JsonPropertyName("visuals")]
+    public GetTrackArtistVisuals? Visuals { get; init; }
+
     [JsonPropertyName("discography")]
     public GetTrackArtistDiscography? Discography { get; init; }
+
+    [JsonPropertyName("relatedContent")]
+    public GetTrackArtistRelatedContent? RelatedContent { get; init; }
 }
 
 public sealed class GetTrackArtistProfile
 {
     [JsonPropertyName("name")]
     public string? Name { get; init; }
+}
+
+// Related-content shelf — same node the getArtistOverview query returns.
+// We consume `relatedArtists.items[]` to populate the AlbumPage "Fans also
+// like" pill row for short releases (≤ 2 tracks) without needing a separate
+// queryArtistOverview call.
+public sealed class GetTrackArtistRelatedContent
+{
+    [JsonPropertyName("relatedArtists")]
+    public GetTrackRelatedArtistsPage? RelatedArtists { get; init; }
+}
+
+public sealed class GetTrackRelatedArtistsPage
+{
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; init; }
+
+    [JsonPropertyName("items")]
+    public List<GetTrackRelatedArtist>? Items { get; init; }
+}
+
+public sealed class GetTrackRelatedArtist
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; init; }
+
+    [JsonPropertyName("uri")]
+    public string? Uri { get; init; }
+
+    [JsonPropertyName("profile")]
+    public GetTrackArtistProfile? Profile { get; init; }
+
+    [JsonPropertyName("visuals")]
+    public GetTrackArtistVisuals? Visuals { get; init; }
+}
+
+public sealed class GetTrackArtistVisuals
+{
+    [JsonPropertyName("avatarImage")]
+    public GetTrackArtistAvatarImage? AvatarImage { get; init; }
+}
+
+public sealed class GetTrackArtistAvatarImage
+{
+    [JsonPropertyName("sources")]
+    public List<ArtistImageSource>? Sources { get; init; }
 }
 
 // Discography subset — only the top-tracks list, used by the video page to

@@ -509,6 +509,52 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
 
     public bool HasArtistBioExcerpt => !string.IsNullOrWhiteSpace(_artistBioExcerpt);
 
+    // ── "About the artist" card (NPV-sourced) ────────────────────────────
+    //
+    // Populated by LoadArtistNpvAsync on every album open. Avatar / verified /
+    // monthly-listeners come straight from the queryNpvArtist response;
+    // the bio excerpt overlays the existing ArtistBioExcerpt (NPV wins when
+    // present, which matters for short releases where the heavier
+    // queryArtistOverview path is skipped).
+
+    private string? _artistAvatarImageUrl;
+    public string? ArtistAvatarImageUrl
+    {
+        get => _artistAvatarImageUrl;
+        private set => SetProperty(ref _artistAvatarImageUrl, value);
+    }
+
+    private bool _isArtistVerified;
+    public bool IsArtistVerified
+    {
+        get => _isArtistVerified;
+        private set => SetProperty(ref _isArtistVerified, value);
+    }
+
+    private long _artistMonthlyListeners;
+    public long ArtistMonthlyListeners
+    {
+        get => _artistMonthlyListeners;
+        private set => SetProperty(ref _artistMonthlyListeners, value);
+    }
+
+    /// <summary>True when the local <c>ITrackLikeService</c> reports this
+    /// album's lead artist as followed. Mirrors <c>ArtistViewModel.IsFollowing</c>'s
+    /// pattern — kept in sync via the existing <c>SaveStateChanged</c>
+    /// subscription that the album-save heart button already uses.</summary>
+    private bool _isArtistFollowing;
+    public bool IsArtistFollowing
+    {
+        get => _isArtistFollowing;
+        set => SetProperty(ref _isArtistFollowing, value);
+    }
+
+    /// <summary>True when the "About the artist" card has enough data to
+    /// render — name is always set from album detail, so the only gate is
+    /// having a valid <see cref="ArtistId"/>. Avatar / bio gracefully fall
+    /// back to placeholders inside the card when missing.</summary>
+    public bool HasArtistAboutCard => !string.IsNullOrEmpty(ArtistId) && !string.IsNullOrEmpty(ArtistName);
+
     /// <summary>True when the album's lead track has at least one music-video association.
     /// Used to gate the "Watch the official video" CTA on single-track releases.</summary>
     private bool _hasMusicVideo;
@@ -1460,11 +1506,40 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
             // Similar albums + artist context + music-video signal — non-blocking,
             // run after main detail render so the track table paints first.
             _ = LoadSimilarAlbumsAsync(albumId);
-            var primaryArtistUri = detail.Artists.FirstOrDefault()?.Uri;
-            if (!string.IsNullOrEmpty(primaryArtistUri))
-                _ = LoadArtistContextAsync(albumId, primaryArtistUri);
-            if (_allTracks.Count == 1)
-                _ = LoadMusicVideoSignalAsync(albumId, _allTracks[0]);
+
+            // Short releases (single / 2-track EP) — one getTrack call gives us
+            // both the music-video signal AND related-artists for "Fans also
+            // like", replacing the heavier queryArtistOverview round-trip. The
+            // bio excerpt isn't surfaced on the new design for short releases,
+            // so we accept losing it in exchange for one network call.
+            if (_allTracks.Count is >= 1 and <= 2)
+            {
+                _ = LoadSingleTrackContextAsync(albumId, _allTracks[0]);
+            }
+            else
+            {
+                // Multi-track albums keep the existing artist-overview path —
+                // bio excerpt + related-artists. Music video isn't promoted
+                // for ≥ 3-track albums.
+                var multiTrackArtistUri = detail.Artists.FirstOrDefault()?.Uri;
+                if (!string.IsNullOrEmpty(multiTrackArtistUri))
+                    _ = LoadArtistContextAsync(albumId, multiTrackArtistUri);
+            }
+
+            // "About the artist" card — NPV fetch runs unconditionally because
+            // it carries avatar + verified + monthly-listeners that the other
+            // two paths don't surface. NPV's bio also fills in for short
+            // releases where the overview path is skipped.
+            var npvArtistUri = detail.Artists.FirstOrDefault()?.Uri;
+            var npvLeadTrackUri = (_allTracks.FirstOrDefault()?.Data as AlbumTrackDto)?.Uri;
+            if (!string.IsNullOrEmpty(npvArtistUri) && !string.IsNullOrEmpty(npvLeadTrackUri))
+                _ = LoadArtistNpvAsync(albumId, npvArtistUri, npvLeadTrackUri);
+
+            // Seed the artist follow-state from the local likes store so the
+            // pill renders the correct glyph on first paint. The existing
+            // SaveStateChanged subscription (already attached for the album
+            // heart) keeps the bool in sync after toggles elsewhere.
+            RefreshArtistFollowState();
 
             // Recommended playlists — RECOMMENDED_PLAYLISTS extended-metadata
             // for this album, then batched LIST_METADATA_V2 to resolve names +
@@ -1570,7 +1645,14 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
 
     private void OnSaveStateChanged()
     {
-        _dispatcherQueue.TryEnqueue(RefreshSaveState);
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            RefreshSaveState();
+            // Same broadcast covers the album-heart AND the artist-follow pill
+            // — both bind to ITrackLikeService state, so a toggle from any
+            // other surface should re-paint the AlbumPage glyphs.
+            RefreshArtistFollowState();
+        });
     }
 
     private static string NormalizeAlbumUri(string albumIdOrUri)
@@ -1779,12 +1861,135 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
         }
     }
 
+    /// <summary>NPV-sourced "About the artist" data — fired alongside the
+    /// existing context fetch. Avatar / verified / monthly-listeners always
+    /// come from this path; the bio excerpt overlays the overview-sourced one
+    /// when present (which matters for short releases where overview is skipped).
+    /// </summary>
+    private async Task LoadArtistNpvAsync(string albumId, string artistUri, string leadTrackUri)
+    {
+        try
+        {
+            var npv = await Task.Run(async () =>
+                await _albumService.GetArtistNpvAsync(artistUri, leadTrackUri));
+            if (_disposed || AlbumId != albumId || npv is null) return; // stale or failed
+
+            ArtistAvatarImageUrl = npv.AvatarImageUrl;
+            IsArtistVerified = npv.IsVerified;
+            ArtistMonthlyListeners = npv.MonthlyListeners;
+            if (!string.IsNullOrEmpty(npv.BioExcerpt))
+                ArtistBioExcerpt = npv.BioExcerpt;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "LoadArtistNpvAsync failed for {ArtistUri}", artistUri);
+        }
+    }
+
+    /// <summary>Reads the canonical artist-followed state from the local likes
+    /// store. Mirrors <c>ArtistViewModel.RefreshFollowState</c>'s pattern so
+    /// the two pages stay agreement on what "Following" means.</summary>
+    private void RefreshArtistFollowState()
+    {
+        if (_likeService == null || string.IsNullOrEmpty(ArtistId)) return;
+        IsArtistFollowing = _likeService.IsSaved(SavedItemType.Artist, ArtistId);
+    }
+
+    /// <summary>Optimistic follow/unfollow toggle for the album's lead artist.
+    /// Same wire path that the ArtistPage's IsFollowing toggle uses
+    /// (<see cref="ITrackLikeService.ToggleSave"/>) — the SaveStateChanged
+    /// broadcast keeps every surface in sync.</summary>
+    [RelayCommand]
+    private void ToggleArtistFollow()
+    {
+        if (_likeService == null || string.IsNullOrEmpty(ArtistId)) return;
+        var wasFollowing = IsArtistFollowing;
+        IsArtistFollowing = !wasFollowing;
+        _likeService.ToggleSave(SavedItemType.Artist, ArtistId, wasFollowing);
+    }
+
+    private async Task LoadSingleTrackContextAsync(string albumId, LazyTrackItem track)
+    {
+        if (track?.Data is not AlbumTrackDto dto || string.IsNullOrEmpty(dto.Uri)) return;
+
+        try
+        {
+            var ctx = await Task.Run(async () =>
+                await _albumService.GetSingleTrackContextAsync(dto.Uri));
+            if (AlbumId != albumId || ctx == null) return; // stale or failed
+
+            MusicVideoUri = ctx.MusicVideoUri;
+            HasMusicVideo = !string.IsNullOrEmpty(ctx.MusicVideoUri);
+
+            _similarArtists.ReplaceWith(ctx.RelatedArtists);
+            HasSimilarArtists = _similarArtists.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to fetch single-track context for {TrackUri}", dto.Uri);
+        }
+    }
+
     [RelayCommand]
     private void OpenArtist()
     {
         if (!string.IsNullOrEmpty(ArtistId))
         {
             Helpers.Navigation.NavigationHelpers.OpenArtist(ArtistId, ArtistName ?? "Artist");
+        }
+    }
+
+    /// <summary>Enqueue every track of this album, in order. Mirrors the
+    /// "Add to queue" affordance from the prototype's action cluster. Local
+    /// albums aren't supported on the remote queue endpoint, so we no-op.</summary>
+    [RelayCommand]
+    private void AddAlbumToQueue()
+    {
+        if (_allTracks.Count == 0) return;
+        var trackUris = _allTracks
+            .Select(t => t.Data is AlbumTrackDto dto ? dto.Uri : null)
+            .Where(u => !string.IsNullOrEmpty(u))
+            .Cast<string>()
+            .ToList();
+        if (trackUris.Count == 0) return;
+        _playbackStateService.AddToQueue(trackUris);
+    }
+
+    /// <summary>Seeds Spotify radio from this album's URI. Mirrors the
+    /// PlayArtistRadioAsync command on ArtistViewModel; same wire path
+    /// (<c>StartRadioAsync</c>) — Spotify accepts any seedable URI here.</summary>
+    [RelayCommand]
+    private async Task StartAlbumRadioAsync()
+    {
+        if (string.IsNullOrEmpty(AlbumId)) return;
+        var uri = NormalizeAlbumUri(AlbumId);
+        var name = AlbumName is { Length: > 0 } n ? $"{n} Radio" : "Album Radio";
+        await _playbackStateService.StartRadioAsync(uri, name);
+    }
+
+    /// <summary>Adds every track of this album to a user playlist. Picked from
+    /// the action-cluster "Add to playlist" flyout — caller supplies the
+    /// target playlist. Local albums are skipped (their tracks aren't valid
+    /// Spotify URIs).</summary>
+    [RelayCommand]
+    private async Task AddAlbumToPlaylistAsync(PlaylistSummaryDto? playlist)
+    {
+        if (playlist?.Id is not { Length: > 0 } playlistId) return;
+        if (_allTracks.Count == 0) return;
+        var trackUris = _allTracks
+            .Select(t => t.Data is AlbumTrackDto dto ? dto.Uri : null)
+            .Where(u => !string.IsNullOrEmpty(u) && u!.StartsWith("spotify:track:", StringComparison.Ordinal))
+            .Cast<string>()
+            .ToList();
+        if (trackUris.Count == 0) return;
+
+        try
+        {
+            await _libraryDataService.AddTracksToPlaylistAsync(playlistId, trackUris).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "AddAlbumToPlaylistAsync failed for {Album} → {Playlist}", AlbumId, playlistId);
         }
     }
 

@@ -298,8 +298,14 @@ public sealed partial class CompositionImage : UserControl
         DiagLog("OnLoaded:enter", $"ImageUrl={ImageUrl ?? "(null)"} decode={DecodePixelSize}");
         _isAttached = true;
         EnsureCompositionResources();
-        AttachVisualToHost();
         ImageLoadingSuspension.Changed += OnSuspensionChanged;
+        // TryLoadCurrent calls AttachVisualToHost as part of its normal flow;
+        // calling it twice produced a duplicate "AttachVisualToHost:done" log
+        // per row with no functional benefit (SetElementChildVisual is
+        // idempotent). The noUrl:clear path inside TryLoadCurrent does not
+        // attach, which is correct — there's nothing to paint yet, and the
+        // next OnImageUrlChanged drives a fresh TryLoadCurrent that does
+        // attach.
         TryLoadCurrent();
         DiagLog("OnLoaded:exit");
     }

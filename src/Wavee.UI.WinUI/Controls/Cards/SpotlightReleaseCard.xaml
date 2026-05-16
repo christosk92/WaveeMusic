@@ -14,16 +14,16 @@
          Subtitle visibility, and Save/Share visibility. -->
     <Border x:Name="RootBorder"
             CornerRadius="8"
-            MaxWidth="440"
+            MaxWidth="360"
             Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
             BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}"
             BorderThickness="1"
             BackgroundSizing="InnerBorderEdge">
 
         <Grid x:Name="CardSurface"
-              Padding="16"
+              Padding="12"
               Background="Transparent"
-              RowSpacing="12"
+              RowSpacing="8"
               Tapped="CardSurface_Tapped">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -63,7 +63,7 @@
             </StackPanel>
 
             <!-- Body: cover + text + buttons -->
-            <Grid Grid.Row="1" ColumnSpacing="14">
+            <Grid Grid.Row="1" ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
@@ -71,17 +71,17 @@
 
                 <Border Grid.Column="0"
                         x:Name="CoverBorder"
-                        Width="96"
-                        Height="96"
+                        Width="72"
+                        Height="72"
                         CornerRadius="6"
                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                     <imaging:CompositionImage x:Name="CoverImage"
                                               Stretch="UniformToFill"
-                                              DecodePixelSize="192"
+                                              DecodePixelSize="144"
                                               CornerRadius="6"/>
                 </Border>
 
-                <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                     <TextBlock x:Name="EyebrowTextBlock"
                                Text="Latest release"
                                Style="{StaticResource CaptionTextBlockStyle}"
@@ -89,11 +89,12 @@
                                TextTrimming="CharacterEllipsis"
                                MaxLines="1"/>
                     <TextBlock x:Name="TitleTextBlock"
-                               Style="{StaticResource SubtitleTextBlockStyle}"
+                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                               FontSize="16"
                                TextTrimming="CharacterEllipsis"
-                               MaxLines="2"/>
+                               MaxLines="1"/>
                     <TextBlock x:Name="SubtitleTextBlock"
-                               Style="{StaticResource BodyTextBlockStyle}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextTrimming="CharacterEllipsis"
                                MaxLines="1"/>
@@ -117,38 +118,38 @@
                     </Border>
 
                     <StackPanel Orientation="Horizontal"
-                                Spacing="8"
-                                Margin="0,8,0,0">
+                                Spacing="6"
+                                Margin="0,4,0,0">
                         <Button x:Name="PlayButton"
                                 Style="{StaticResource AccentButtonStyle}"
-                                Height="30"
-                                Padding="11,0"
+                                Height="26"
+                                Padding="10,0"
                                 Tapped="InlineAction_Tapped"
                                 Click="PlayButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <FontIcon Glyph="&#xE768;" FontSize="11"/>
-                                <TextBlock Text="Play"/>
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                <FontIcon Glyph="&#xE768;" FontSize="10"/>
+                                <TextBlock Text="Play" FontSize="12"/>
                             </StackPanel>
                         </Button>
                         <Button x:Name="SaveButton"
                                 Style="{StaticResource SubtleButtonStyle}"
-                                Width="30"
-                                Height="30"
+                                Width="26"
+                                Height="26"
                                 Padding="0"
                                 ToolTipService.ToolTip="Save"
                                 Tapped="InlineAction_Tapped"
                                 Click="SaveButton_Click">
-                            <FontIcon Glyph="&#xEB51;" FontSize="14"/>
+                            <FontIcon Glyph="&#xEB51;" FontSize="12"/>
                         </Button>
                         <Button x:Name="ShareButton"
                                 Style="{StaticResource SubtleButtonStyle}"
-                                Width="30"
-                                Height="30"
+                                Width="26"
+                                Height="26"
                                 Padding="0"
                                 ToolTipService.ToolTip="Share"
                                 Tapped="InlineAction_Tapped"
                                 Click="ShareButton_Click">
-                            <FontIcon Glyph="&#xE72D;" FontSize="14"/>
+                            <FontIcon Glyph="&#xE72D;" FontSize="12"/>
                         </Button>
                     </StackPanel>
                 </StackPanel>

@@ -365,33 +365,54 @@
                 </ListView.Footer>
             </ListView>
 
-            <ItemsView
-                x:Name="RowsItemsView"
-                Grid.Row="1"
-                Visibility="Collapsed"
-                SelectionMode="Extended"
-                KeyDown="RowsList_KeyDown"
-                SelectionChanged="RowsItemsView_SelectionChanged">
-                <ItemsView.Layout>
-                    <StackLayout Orientation="Vertical" Spacing="0"/>
-                </ItemsView.Layout>
-                <ItemsView.ItemTemplate>
-                    <DataTemplate x:DataType="contracts:ITrackItem">
-                        <ItemContainer
-                            Padding="0"
-                            Margin="0,2"
-                            HorizontalContentAlignment="Stretch"
-                            VerticalContentAlignment="Stretch"
-                            MinHeight="0">
-                            <track:TrackItem
-                                Track="{x:Bind}"
-                                Mode="Row"
-                                Loaded="RowsItemsViewTrackItem_Loaded"
-                                Unloaded="RowsItemsViewTrackItem_Unloaded"/>
-                        </ItemContainer>
-                    </DataTemplate>
-                </ItemsView.ItemTemplate>
-            </ItemsView>
+            <!-- ItemsView path wrapper. ItemsView (unlike ListView) doesn't
+                 expose a Footer slot, so we put it + the FooterContent inside
+                 a vertical StackPanel. The whole stack is the single
+                 scrollable region — items + footer scroll together; the
+                 footer sits naturally below the last track row rather than
+                 hovering as a sticky bottom. ItemsView's internal ItemsRepeater
+                 still virtualizes inside the StackPanel because the
+                 ItemsRepeater hooks the nearest ScrollView/ScrollViewer ancestor
+                 for its viewport — which is what ItemsView wraps itself in
+                 anyway. -->
+            <StackPanel x:Name="RowsItemsViewHost"
+                        Grid.Row="1"
+                        Visibility="Collapsed">
+
+                <ItemsView
+                    x:Name="RowsItemsView"
+                    SelectionMode="Extended"
+                    KeyDown="RowsList_KeyDown"
+                    SelectionChanged="RowsItemsView_SelectionChanged">
+                    <ItemsView.Layout>
+                        <StackLayout Orientation="Vertical" Spacing="0"/>
+                    </ItemsView.Layout>
+                    <ItemsView.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:ITrackItem">
+                            <ItemContainer
+                                Padding="0"
+                                Margin="0,2"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalContentAlignment="Stretch"
+                                MinHeight="0">
+                                <track:TrackItem
+                                    Track="{x:Bind}"
+                                    Mode="Row"
+                                    Loaded="RowsItemsViewTrackItem_Loaded"
+                                    Unloaded="RowsItemsViewTrackItem_Unloaded"/>
+                            </ItemContainer>
+                        </DataTemplate>
+                    </ItemsView.ItemTemplate>
+                </ItemsView>
+
+                <!-- Footer slot for ItemsView mode. Mirrors the ListView.Footer
+                     above so consumers can bind the same FooterContent DP and
+                     get consistent rendering across both presenter modes.
+                     Lives inside the same StackPanel as the ItemsView so they
+                     share the parent's scroll region. -->
+                <ContentPresenter Content="{x:Bind FooterContent, Mode=OneWay}"
+                                  HorizontalContentAlignment="Stretch"/>
+            </StackPanel>
 
             <!--
                 Track-row skeleton. Column widths are bound to the active

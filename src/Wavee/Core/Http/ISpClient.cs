@@ -385,6 +385,26 @@ public interface ISpClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Fetches "Recommended Songs" for a playlist via the
+    /// <c>/playlistextender/extendp/</c> endpoint — Spotify's first-party
+    /// "Enhance" recommender. Returns up to <paramref name="numResults"/>
+    /// suggested tracks the user could add to the playlist. The
+    /// <paramref name="trackSkipIds"/> list seeds server-side de-dupe so
+    /// recently-added or dismissed tracks don't reappear.
+    /// </summary>
+    /// <remarks>
+    /// Only meaningful on user-owned playlists; the Spotify desktop client
+    /// only renders this affordance there too. On failure returns null —
+    /// callers should treat that as "no recommendations available" and
+    /// collapse the UI section.
+    /// </remarks>
+    Task<Wavee.Core.Http.PlaylistExtender.ExtendPlaylistResponse?> ExtendPlaylistAsync(
+        string playlistUri,
+        IReadOnlyList<string>? trackSkipIds,
+        int numResults = 20,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Fetches a user's profile via the spclient profile endpoint.
     /// Uses Login5 token + client-token (no public Web API, no 429 issues).
     /// </summary>

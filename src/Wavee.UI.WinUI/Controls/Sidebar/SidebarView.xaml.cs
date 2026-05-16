@@ -101,6 +101,11 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 				return;
 			case SidebarDisplayMode.Expanded:
 				VisualStateManager.GoToState(this, "Expanded", true);
+				// The "Expanded" visual state is empty — it relies on PaneColumnDefinition
+				// reverting to its XAML-default width (240). For users whose saved
+				// OpenPaneLength is something else (e.g. resized to 320), re-apply it
+				// here so the restored width matches their last expanded session.
+				UpdateOpenPaneLengthColumn();
 				return;
 			case SidebarDisplayMode.Minimal:
 				IsPaneOpen = false;
@@ -124,13 +129,22 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 
 	private void UpdateOpenPaneLengthColumn()
 	{
+		// OpenPaneLength is the "last known expanded width". In Compact/Minimal,
+		// the visual state owns PaneColumnDefinition.Width (SidebarCompactOpenPaneLength
+		// = 56) — applying OpenPaneLength here would clobber the Compact-mode width
+		// and produce a wide pane with Compact-mode items inside, which is what users
+		// saw on app re-open after closing with the sidebar collapsed.
+		if (DisplayMode != SidebarDisplayMode.Expanded)
+			return;
 		PaneColumnDefinition.Width = new GridLength(OpenPaneLength);
 	}
 
 	private void SidebarView_Loaded(object sender, RoutedEventArgs e)
 	{
 		UpdateDisplayMode();
-		UpdateOpenPaneLengthColumn();
+		// UpdateOpenPaneLengthColumn is invoked from UpdateDisplayMode when the
+		// mode is Expanded; for Compact/Minimal we deliberately leave the visual
+		// state's width in place.
 		PaneColumnGrid.Translation = new System.Numerics.Vector3(0, 0, 32);
 
 		_dragStateService = Ioc.Default.GetService<DragStateService>();

@@ -9,6 +9,7 @@
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
+    xmlns:helpers="using:Wavee.UI.WinUI.Helpers"
     xmlns:browseControls="using:Wavee.UI.WinUI.Controls.Browse"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
@@ -16,7 +17,10 @@
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:home="using:Wavee.UI.WinUI.ViewModels.Home"
     xmlns:homeViews="using:Wavee.UI.WinUI.Views.Home"
+    xmlns:contracts="using:Wavee.UI.WinUI.Data.Contracts"
     xmlns:sessionTokens="using:Wavee.UI.WinUI.Controls.SessionTokens"
+    xmlns:track="using:Wavee.UI.WinUI.Controls.Track"
+    x:Name="PageRoot"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">
@@ -139,11 +143,12 @@
                             <controls1:InlineEditableText
                                 x:Name="BannerTitleEditor"
                                 Text="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
+                                ToolTipService.ToolTip="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
                                 IsEditable="{x:Bind ViewModel.CanEditName, Mode=OneWay}"
                                 IsBusy="{x:Bind ViewModel.IsRenaming, Mode=OneWay}"
                                 MaxLength="100"
                                 MaxLines="2"
-                                FontSize="40"
+                                FontSize="{x:Bind helpers:TitleFontSizer.Hero(ViewModel.PlaylistName), Mode=OneWay}"
                                 FontWeight="Bold"
                                 TextAlignment="Left"
                                 HorizontalContentAlignment="Stretch"
@@ -178,6 +183,9 @@
                   Grid.Row="1" Grid.Column="0"
                   HorizontalAlignment="Stretch" VerticalAlignment="Top"
                   Padding="32,24,16,24">
+                <!-- Banner-mode skeleton (no cover/title — those live in the
+                     banner row above). Owner + stats + Play/Shuffle + 5-pill
+                     cluster shimmer. Geometry mirrors the loaded layout exactly. -->
                 <StackPanel Spacing="14"
                             Visibility="{x:Bind ViewModel.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeBannerVisibilityConverter}}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -185,17 +193,30 @@
                         <controls:Shimmer Width="120" Height="16" VerticalAlignment="Center"/>
                     </StackPanel>
                     <controls:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>
+                    <!-- Play + Shuffle -->
                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                         <controls:Shimmer Width="86" Height="40" CornerRadius="20"/>
                         <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
-                        <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
-                        <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
                     </StackPanel>
+                    <!-- 5-pill cluster -->
+                    <controls:WrapPanel Orientation="Horizontal"
+                                        HorizontalSpacing="6" VerticalSpacing="6"
+                                        Margin="0,4,0,0">
+                        <controls:Shimmer Width="74"  Height="36" CornerRadius="18"/>
+                        <controls:Shimmer Width="80"  Height="36" CornerRadius="18"/>
+                        <controls:Shimmer Width="136" Height="36" CornerRadius="18"/>
+                        <controls:Shimmer Width="128" Height="36" CornerRadius="18"/>
+                        <controls:Shimmer Width="108" Height="36" CornerRadius="18"/>
+                    </controls:WrapPanel>
                 </StackPanel>
+                <!-- Cover-mode skeleton: cover + hero-scale title + owner row +
+                     stats + Play/Shuffle + 5-pill cluster. Matches the loaded
+                     state so the swap is opacity-only. -->
                 <StackPanel Spacing="14"
                             Visibility="{x:Bind ViewModel.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeCoverVisibilityConverter}}">
                     <controls:Shimmer Height="220" CornerRadius="8" HorizontalAlignment="Stretch"/>
-                    <controls:Shimmer Width="220" Height="22" HorizontalAlignment="Left"/>
+                    <!-- Hero-scale title bar -->
+                    <controls:Shimmer Width="260" Height="44" HorizontalAlignment="Left" CornerRadius="6"/>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <controls:Shimmer Width="24" Height="24" CornerRadius="12"/>
                         <controls:Shimmer Width="120" Height="16" VerticalAlignment="Center"/>
@@ -204,9 +225,16 @@
                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                         <controls:Shimmer Width="86" Height="40" CornerRadius="20"/>
                         <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
-                        <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
-                        <controls:Shimmer Width="40" Height="40" CornerRadius="20"/>
                     </StackPanel>
+                    <controls:WrapPanel Orientation="Horizontal"
+                                        HorizontalSpacing="6" VerticalSpacing="6"
+                                        Margin="0,4,0,0">
+                        <controls:Shimmer Width="74"  Height="36" CornerRadius="18"/>
+                        <controls:Shimmer Width="80"  Height="36" CornerRadius="18"/>
+                        <controls:Shimmer Width="136" Height="36" CornerRadius="18"/>
+                        <controls:Shimmer Width="128" Height="36" CornerRadius="18"/>
+                        <controls:Shimmer Width="108" Height="36" CornerRadius="18"/>
+                    </controls:WrapPanel>
                 </StackPanel>
             </Grid>
 
@@ -295,28 +323,30 @@
                     </Border>
                 </Grid>
 
-                <!-- 2. Title (Cover mode only). InlineEditableText renders as a
-                     TextBlock for viewers (IsEditable=false) and swaps to a
-                     TextBox in-place for owners on click. Hidden in Banner mode
-                     — the banner overlay's BannerTitleEditor handles the title
-                     up there. Both wire to the same Committed handler. -->
-                <Grid x:Name="CoverTitleBlock" MinHeight="28" HorizontalAlignment="Stretch"
+                <!-- 2. Title (Cover mode only). Hero-scale to match AlbumPage:
+                     FontSize=40 / FontWeight=Black. InlineEditableText still
+                     swaps to a TextBox for owners on click; the inner text view
+                     inherits the FontSize / FontWeight DPs. Hidden in Banner
+                     mode — the banner overlay's BannerTitleEditor handles the
+                     title up there. Both wire to the same Committed handler. -->
+                <Grid x:Name="CoverTitleBlock" MinHeight="44" HorizontalAlignment="Stretch"
                       Visibility="{x:Bind ViewModel.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeCoverVisibilityConverter}}">
                     <controls1:InlineEditableText
                         x:Name="PlaylistTitleEditor"
                         Text="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
+                        ToolTipService.ToolTip="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
                         IsEditable="{x:Bind ViewModel.CanEditName, Mode=OneWay}"
                         IsBusy="{x:Bind ViewModel.IsRenaming, Mode=OneWay}"
                         MaxLength="100"
-                        MaxLines="4"
-                        FontSize="22"
-                        FontWeight="Bold"
+                        MaxLines="3"
+                        FontSize="{x:Bind helpers:TitleFontSizer.CompactHero(ViewModel.PlaylistName), Mode=OneWay}"
+                        FontWeight="Black"
                         TextAlignment="Left"
                         HorizontalContentAlignment="Stretch"
                         Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                         Committed="PlaylistTitleEditor_Committed"
                         Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
-                    <controls:Shimmer Width="220" Height="22" HorizontalAlignment="Left"
+                    <controls:Shimmer Width="260" Height="44" HorizontalAlignment="Left" CornerRadius="6"
                                       Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                 </Grid>
 
@@ -357,11 +387,10 @@
                            Margin="0,2,0,0"
                            TextWrapping="Wrap"/>
 
-                <!-- 5. Action row — Play (primary accent w/ label) + small icon-only
-                     Shuffle / Heart / Share / Overflow. WrapPanel so buttons flow to
-                     a second row when the panel is too narrow to fit them inline
-                     (small-window / resized-splitter cases). -->
-                <controls:WrapPanel Orientation="Horizontal" HorizontalSpacing="8" VerticalSpacing="8" Margin="0,8,0,0">
+                <!-- 5a. Primary CTAs — Play (big accent) + Shuffle (icon). Save /
+                     Share / queue / radio moved into the labeled pill cluster
+                     below so the page matches the AlbumPage hierarchy. -->
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                     <Button Style="{StaticResource AccentButtonStyle}"
                             Command="{x:Bind ViewModel.PlayAllCommand}"
                             Padding="18,10" CornerRadius="20"
@@ -378,48 +407,110 @@
                             ToolTipService.ToolTip="Shuffle play">
                         <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
                     </Button>
-                    <!-- Heart: hidden on owned playlists (owners are inherently
-                         followers of their own playlists; the affordance there is
-                         "delete" instead — see the trash button next door). -->
+                </StackPanel>
+
+                <!-- 5b. Secondary action cluster — labeled pill buttons mirroring
+                     AlbumPage's `.action-cluster`. WrapPanel so the row spills to a
+                     second line on narrow column widths. Save/Delete swap based on
+                     ownership; the rest are unconditional. -->
+                <controls:WrapPanel Orientation="Horizontal"
+                                    HorizontalSpacing="6" VerticalSpacing="6"
+                                    Margin="0,4,0,0">
+                    <!-- Save (Follow). Non-owners only — owners get the Delete pill
+                         on the right edge of this cluster instead. -->
                     <Button Command="{x:Bind ViewModel.ToggleFollowCommand}"
-                            Width="40" Height="40" CornerRadius="20" Padding="0"
-                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                            BorderThickness="0"
+                            Height="36" Padding="14,0" CornerRadius="18"
+                            Background="Transparent"
+                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
                             ToolTipService.ToolTip="Save to your library"
                             Visibility="{x:Bind ViewModel.IsOwner, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                        <FontIcon Glyph="{x:Bind ViewModel.IsFollowed, Mode=OneWay, Converter={StaticResource BoolToHeartGlyphConverter}}"
-                                  FontSize="14"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <FontIcon Glyph="{x:Bind ViewModel.IsFollowed, Mode=OneWay, Converter={StaticResource BoolToHeartGlyphConverter}}"
+                                      FontSize="12"/>
+                            <TextBlock Text="Save" FontSize="13"/>
+                        </StackPanel>
                     </Button>
-                    <!-- Delete: shown only on owned playlists. Click handler reuses
-                         the existing ConfirmAndDeletePlaylistAsync dialog. -->
+                    <!-- Share -->
+                    <Button Command="{x:Bind ViewModel.SharePlaylistCommand}"
+                            Height="36" Padding="14,0" CornerRadius="18"
+                            Background="Transparent"
+                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            ToolTipService.ToolTip="Copy link to playlist">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE72D;" FontSize="12"/>
+                            <TextBlock Text="Share" FontSize="13"/>
+                        </StackPanel>
+                    </Button>
+                    <!-- Add to playlist (flyout — picks the destination from the
+                         user's playlists, then copies all tracks of THIS playlist). -->
+                    <Button x:Name="AddPlaylistToPlaylistPillButton"
+                            Height="36" Padding="14,0" CornerRadius="18"
+                            Background="Transparent"
+                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            ToolTipService.ToolTip="Copy all tracks to another playlist">
+                        <Button.Flyout>
+                            <MenuFlyout x:Name="AddPlaylistToPlaylistMenuFlyout"
+                                        Placement="Bottom"
+                                        Opening="AddPlaylistToPlaylistMenuFlyout_Opening"/>
+                        </Button.Flyout>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE710;" FontSize="12"/>
+                            <TextBlock Text="Add to playlist" FontSize="13"/>
+                        </StackPanel>
+                    </Button>
+                    <!-- Add to queue -->
+                    <Button Command="{x:Bind ViewModel.AddPlaylistToQueueCommand}"
+                            Height="36" Padding="14,0" CornerRadius="18"
+                            Background="Transparent"
+                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            ToolTipService.ToolTip="Add every track to the queue">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE8FD;" FontSize="12"/>
+                            <TextBlock Text="Add to queue" FontSize="13"/>
+                        </StackPanel>
+                    </Button>
+                    <!-- Start radio -->
+                    <Button Command="{x:Bind ViewModel.StartPlaylistRadioCommand}"
+                            Height="36" Padding="14,0" CornerRadius="18"
+                            Background="Transparent"
+                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            ToolTipService.ToolTip="Start a radio seeded from this playlist">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE9E9;" FontSize="12"/>
+                            <TextBlock Text="Start radio" FontSize="13"/>
+                        </StackPanel>
+                    </Button>
+                    <!-- Delete: owners only. Reuses the existing
+                         ConfirmAndDeletePlaylistAsync dialog via HeroDeleteButton_Click. -->
                     <Button Click="HeroDeleteButton_Click"
-                            Width="40" Height="40" CornerRadius="20" Padding="0"
-                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                            BorderThickness="0"
+                            Height="36" Padding="14,0" CornerRadius="18"
+                            Background="Transparent"
+                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
                             ToolTipService.ToolTip="Delete playlist"
                             Visibility="{x:Bind ViewModel.IsOwner, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <FontIcon Glyph="&#xE74D;" FontSize="14"
-                                  Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE74D;" FontSize="12"
+                                      Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
+                            <TextBlock Text="Delete" FontSize="13"
+                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
+                        </StackPanel>
                     </Button>
-                    <Button Command="{x:Bind ViewModel.SharePlaylistCommand}"
-                            Width="40" Height="40" CornerRadius="20" Padding="0"
-                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                            BorderThickness="0"
-                            ToolTipService.ToolTip="Copy link to playlist">
-                        <FontIcon Glyph="&#xE72D;" FontSize="14"/>
-                    </Button>
-
-                    <!-- Owner overflow: collaborative toggle + delete. Hidden for
-                         viewers and contributors. Flyout built per-open in
-                         code-behind. -->
+                    <!-- Owner overflow (collaborative toggle, etc). Same flyout as before. -->
                     <Button x:Name="OwnerOverflowButton"
-                            Width="40" Height="40" CornerRadius="20" Padding="0"
-                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                            BorderThickness="0"
+                            Height="36" Width="36" Padding="0" CornerRadius="18"
+                            Background="Transparent"
+                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
                             ToolTipService.ToolTip="More"
                             Click="OwnerOverflowButton_Click"
                             Visibility="{x:Bind ViewModel.HasOverflowItems, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <FontIcon Glyph="&#xE712;" FontSize="14"/>
+                        <FontIcon Glyph="&#xE712;" FontSize="12"/>
                     </Button>
                 </controls:WrapPanel>
 
@@ -554,6 +645,153 @@
                         </StackPanel>
                     </ToggleButton>
                 </tdg:TrackDataGrid.FilterBarContent>
+
+                <!-- "Recommended Songs" footer — Spotify's Enhance / Recommended
+                     Songs surface. Owner-gated (x:Load on CanEditItems keeps
+                     the subtree unrealised for non-owners and local playlists).
+                     Empty state shows a single "Find more songs" accent CTA;
+                     populated state swaps in an ItemsControl of recommendation
+                     cards. The DataTemplate routes Add/Dismiss back to the VM
+                     via PageRoot.ViewModel bindings — DataTemplate's local
+                     DataContext is the RecommendedTrackResult itself, not the
+                     page, so we cross-reference via ElementName=PageRoot. -->
+                <tdg:TrackDataGrid.FooterContent>
+                    <!-- Visibility (not x:Load) on the root: FooterContent is
+                         typed as `object`, and the XAML compile-time deferred-
+                         load infrastructure can't attach x:Load on the direct
+                         child of a custom-control property setter — assignment
+                         throws XamlParseException at parse time. -->
+                    <StackPanel Padding="16,24,16,32"
+                                x:Name="FooterTracks"
+                                Spacing="16"
+                                Visibility="{x:Bind ViewModel.CanEditItems, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="Recommended Songs"
+                                       Style="{StaticResource SubtitleTextBlockStyle}"
+                                       FontWeight="Bold"
+                                       VerticalAlignment="Center"/>
+                            <!-- Refresh chip is always reachable (no Visibility binding) so
+                                 the user can swap the batch with a single click whenever
+                                 they don't like the current set. -->
+                            <Button Grid.Column="1"
+                                    Command="{x:Bind ViewModel.FindRecommendedTracksCommand}"
+                                    Height="32" Padding="12,0" CornerRadius="16"
+                                    Background="Transparent"
+                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    ToolTipService.ToolTip="Get a new batch of recommendations">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <FontIcon Glyph="&#xE72C;" FontSize="12"/>
+                                    <TextBlock Text="Refresh" FontSize="12"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <!-- Empty state CTA — gated on the derived
+                             ShouldShowEmptyRecommendationsCta so it disappears
+                             when an error is showing too. -->
+                        <Button Command="{x:Bind ViewModel.FindRecommendedTracksCommand}"
+                                Style="{StaticResource AccentButtonStyle}"
+                                HorizontalAlignment="Stretch"
+                                Padding="14,10" CornerRadius="20"
+                                Visibility="{x:Bind ViewModel.ShouldShowEmptyRecommendationsCta, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                <FontIcon Glyph="&#xE721;" FontSize="14"/>
+                                <TextBlock Text="Find more songs" FontSize="13" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Error state — shown when the last fetch attempt failed.
+                             Independent of HasRecommendedTracks so a refresh failure
+                             after an earlier successful load shows the error card
+                             alongside the existing rows (recovery doesn't lose work). -->
+                        <Border Visibility="{x:Bind ViewModel.RecommendationsLoadFailed, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Padding="14,12">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Grid.Column="0"
+                                          Glyph="&#xE783;"
+                                          FontSize="18"
+                                          VerticalAlignment="Center"
+                                          Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="Couldn't load recommendations"
+                                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                                               FontSize="13"/>
+                                    <TextBlock Text="Check your connection and try again."
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                                <Button Grid.Column="2"
+                                        Command="{x:Bind ViewModel.FindRecommendedTracksCommand}"
+                                        Height="32" Padding="12,0" CornerRadius="16"
+                                        Background="Transparent"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <FontIcon Glyph="&#xE72C;" FontSize="12"/>
+                                        <TextBlock Text="Retry" FontSize="12"/>
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </Border>
+
+                        <!-- Populated state — canonical TrackItem rows so each
+                             recommendation gets the global now-playing equalizer
+                             (via TrackStateBehavior) and the standard hover heart
+                             affordance for free. A trailing "+" button on the
+                             right adds the track directly to THIS playlist. The
+                             template-local DataContext is the RecommendedTrackResult
+                             itself, so the page commands route via ElementName=PageRoot. -->
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.RecommendedTracks, Mode=OneWay}"
+                                       Visibility="{x:Bind ViewModel.HasRecommendedTracks, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Vertical" Spacing="2"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="contracts:RecommendedTrackResult">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <track:TrackItem Grid.Column="0"
+                                                         Mode="Compact"
+                                                         Track="{x:Bind}"
+                                                         PreserveImageOnUnload="True"
+                                                         PlayCommand="{Binding ElementName=PageRoot, Path=ViewModel.PlayTrackCommand}"/>
+
+                                        <Button Grid.Column="1"
+                                                Width="32" Height="32" CornerRadius="16" Padding="0"
+                                                Background="Transparent"
+                                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                BorderThickness="1"
+                                                VerticalAlignment="Center"
+                                                Command="{Binding ElementName=PageRoot, Path=ViewModel.AddRecommendationCommand}"
+                                                CommandParameter="{x:Bind}"
+                                                ToolTipService.ToolTip="Add to this playlist">
+                                            <FontIcon Glyph="&#xE710;" FontSize="14"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </StackPanel>
+                </tdg:TrackDataGrid.FooterContent>
             </tdg:TrackDataGrid>
 
             <Grid

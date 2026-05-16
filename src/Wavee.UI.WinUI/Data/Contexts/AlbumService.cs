@@ -326,6 +326,109 @@ public sealed class AlbumService : IAlbumService
         }
     }
 
+    public async Task<AlbumSingleTrackContextResult?> GetSingleTrackContextAsync(
+        string trackUri, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(trackUri)) return null;
+        try
+        {
+            var response = await _pathfinder.GetTrackAsync(trackUri, ct).ConfigureAwait(false);
+            var union = response?.Data?.TrackUnion;
+            if (union == null) return null;
+
+            // Music-video sentinel — same shape as GetMusicVideoUriAsync.
+            // The video URI itself is resolved at click time via the
+            // music-video metadata service; here we only need a non-null
+            // signal to flip HasMusicVideo.
+            string? musicVideoUri = (union.AssociationsV3?.VideoAssociations?.TotalCount ?? 0) > 0
+                ? trackUri
+                : null;
+
+            // Related-artists — same shape ArtistOverview returns, so the
+            // existing RelatedArtistResult mapping holds. Cap at 8 to match
+            // the GetArtistContextAsync path's behaviour.
+            var firstArtist = union.FirstArtist?.Items?.FirstOrDefault();
+            var relatedItems = firstArtist?.RelatedContent?.RelatedArtists?.Items ?? new();
+            var related = relatedItems
+                .Take(8)
+                .Select(r => new RelatedArtistResult
+                {
+                    Id = r.Id,
+                    Uri = r.Uri,
+                    Name = r.Profile?.Name,
+                    ImageUrl = r.Visuals?.AvatarImage?.Sources?.LastOrDefault()?.Url
+                })
+                .ToList();
+
+            return new AlbumSingleTrackContextResult
+            {
+                MusicVideoUri = musicVideoUri,
+                RelatedArtists = related
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "GetSingleTrackContextAsync failed for {Uri}", trackUri);
+            return null;
+        }
+    }
+
+    public async Task<AlbumArtistNpvResult?> GetArtistNpvAsync(
+        string artistUri, string leadTrackUri, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(artistUri) || string.IsNullOrEmpty(leadTrackUri))
+            return null;
+        try
+        {
+            var response = await _pathfinder.GetNpvArtistAsync(
+                artistUri, leadTrackUri, ct: ct).ConfigureAwait(false);
+            var artist = response?.Data?.ArtistUnion;
+            if (artist is null) return null;
+
+            // Bio snippet — identical logic to GetArtistContextAsync so the
+            // card and the "Fans also like" path agree on how long the bio
+            // excerpt is.
+            string? excerpt = null;
+            var bio = artist.Profile?.Biography?.Text;
+            if (!string.IsNullOrWhiteSpace(bio))
+            {
+                var trimmed = bio.Trim();
+                if (trimmed.Length <= 200)
+                {
+                    excerpt = trimmed;
+                }
+                else
+                {
+                    var head = trimmed.AsSpan(0, Math.Min(trimmed.Length, 220));
+                    var lastPeriod = head.LastIndexOf('.');
+                    excerpt = lastPeriod > 80
+                        ? trimmed.Substring(0, lastPeriod + 1)
+                        : trimmed.Substring(0, 200) + "…";
+                }
+            }
+
+            // Verified flag — prefer the newer onPlatformReputationTrait,
+            // fall back to legacy profile.verified. Mirrors ArtistService.cs:124.
+            var isVerified = artist.OnPlatformReputationTrait?.Verification?.IsVerified
+                             ?? artist.Profile?.Verified
+                             ?? false;
+
+            return new AlbumArtistNpvResult
+            {
+                BioExcerpt = excerpt,
+                AvatarImageUrl = artist.Visuals?.AvatarImage?.Sources?.LastOrDefault()?.Url,
+                IsVerified = isVerified,
+                MonthlyListeners = artist.Stats?.MonthlyListeners ?? 0,
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "GetArtistNpvAsync failed for {ArtistUri}/{TrackUri}",
+                artistUri, leadTrackUri);
+            return null;
+        }
+    }
+
     public async Task<AlbumArtistContextResult> GetArtistContextAsync(
         string artistUri, CancellationToken ct = default)
     {

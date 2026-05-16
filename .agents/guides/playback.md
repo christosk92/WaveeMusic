@@ -1,7 +1,7 @@
 ---
 guide: playback
 scope: Local playback runtime — playback orchestrator, queue + context, track resolution, AudioHost IPC, decryption, DSP/equalizer, prefetch, local-file playback, video playback, and the UI playback service.
-last_verified: 2026-05-13
+last_verified: 2026-05-16
 verified_by: read+grep over src/Wavee/Audio, src/Wavee/AudioIpc, src/Wavee/Core/Audio, src/Wavee.AudioHost, src/Wavee.Playback.Contracts, src/Wavee.UI.WinUI/Data/Contexts (playback bits), src/Wavee.Local
 root_index: AGENTS.md (Codex) and CLAUDE.md (Claude Code)
 ---
@@ -88,10 +88,10 @@ rg -n "class PlaybackService|class PlaybackStateService|class PlayerBarViewModel
 | Audio key manager | `src/Wavee/Core/Audio/AudioKeyManager.cs` | `Task<AudioKey>` | AP-protocol track keys; 2.5 s timeout × 5 retries; disk cache; PlayPlay fallback when the deriver is registered. |
 | PlayPlay key deriver (UI) | `src/Wavee/Core/Audio/AudioHostPlayPlayKeyDeriver.cs` | obfuscated key + pack JSON → AES key | Routes the request to AudioHost via `derive_playplay_key` IPC. |
 | PlayPlay key emulator (AudioHost) | `src/Wavee.AudioHost/PlayPlay/PlayPlayKeyEmulator.cs` (proprietary; `PlayPlayKeyEmulator.Stub.cs` ships in public source) | LoadLibrary + `vm_runtime_init` + `vm_object_transform` | Runtime asset lives at `%LOCALAPPDATA%\Wavee\PlayPlay\packs\<id>\Spotify.dll`. See `CLAUDE.md` "Audio runtime support pack provisioning". |
-| Progressive downloader | `src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs` | head-data + lazy CDN | Instant-start: serves head file immediately, defers CDN range fetches in the background. Opens the local cache file directly if `LocalCacheFileId` is set. |
-| Eager progressive downloader | `src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs` | classic range-fetch loop | Used when head-data fast path doesn't apply. |
+| Progressive downloader | `src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs` | head-data + lazy CDN | Instant-start: serves head file immediately, defers CDN range fetches in the background. Opens the local cache file directly if `LocalCacheFileId` is set, gated on `audioKey is { Length: 16 }`. On local-cache hits performs a 4-byte OggS magic check after decryption and auto-deletes + throws on mismatch (see "Persistent audio cache" below). |
+| Eager progressive downloader | `src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs` | classic range-fetch loop + persistent-cache writer | Used when head-data fast path doesn't apply. Owns the `PersistToCacheAsync` / `CopyTempFileForPersistentCacheAsync` path that produces `.enc` files in `%LOCALAPPDATA%\Wavee\AudioCache\audio\`. Snapshots head bytes under `lock (_tempFile)` and re-encrypts in memory before writing — protects against the position race with concurrent BASS reads. |
 | Buffered HTTP stream | `src/Wavee.AudioHost/Audio/Streaming/BufferedHttpStream.cs` | HTTP byte stream with range support | Reused by both downloaders. |
-| Decrypt stream | `src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs` *(proprietary — absent in public source; `Streaming/SkipStream.cs` / stub may ship instead)* | AES-128-CTR wrapper over the encrypted Ogg bytes | Encrypts from byte 0 — see memory `reference_spotify_audio_offset_zero`. |
+| Decrypt stream | `src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs` | AES-128-CTR wrapper over the encrypted Ogg bytes; null key = pass-through | Encrypts from byte 0 — see memory `reference_spotify_audio_offset_zero`. Constructor logs `keyFp=<SHA256-prefix>` (or `pass-through`) at DEBUG when an `ILogger` is supplied. NOTE: a separate Core-side `src/Wavee/Core/Crypto/AudioDecryptStream.cs` is proprietary and may be absent in public clones; that one is unused by AudioHost. |
 | Skip stream helper | `src/Wavee.AudioHost/Audio/Decoders/SkipStream.cs` | seekable forward-skip wrapper | Lets decoders skip past container headers. |
 | File-id type | `src/Wavee.AudioHost/Audio/Streaming/FileId.cs` | base16 file ID parsing | One file-id per encoded variant. |
 | URL-aware stream | `src/Wavee.AudioHost/Audio/Streaming/UrlAwareStream.cs` | streams that need URL refresh on expiry | CDN URLs expire ~1 hour. |
@@ -417,6 +417,69 @@ UI doesn't snap back to the pre-seek position on the next 5 s tick.
   ticks so the progress bar moves continuously.
 - A seek-in-flight guard ensures a stale `state_update` arriving during
   a drag doesn't yank the bar backwards.
+
+### Persistent audio cache
+
+Fully-downloaded Spotify audio is written to
+`%LOCALAPPDATA%\Wavee\AudioCache\audio\<spotifyFileId>.enc` so future plays
+skip CDN resolution. The on-disk format is **uniformly AES-128-CTR
+encrypted from byte 0** — i.e. byte-identical to what the CDN serves. The
+reader at `LazyProgressiveDownloader.InitializeCdnResourcesAsync` opens
+the file and wraps it in `AudioDecryptStream(audioKey, file,
+decryptionStartOffset: 0)`. Anything else in the file produces garbage at
+byte 0 and BASS rejects with `FileFormat`.
+
+**Write protocol — `ProgressiveDownloader.PersistToCacheAsync`:**
+- Only fires after `IsFullyDownloaded` becomes true (download complete).
+  Guarded by `Interlocked.Exchange` so it runs at most once per
+  downloader instance.
+- The temp file (in `%TEMP%`) carries `[clear head bytes from headData]
+  [encrypted CDN body]`. The persist path must re-encrypt the clear head
+  region so the cache file is uniformly encrypted from byte 0.
+- **Refuses to persist** when `_clearHeadBytes > 0 && _persistentCacheAudioKey
+  == null` — without a key we cannot re-encrypt the head, and a verbatim
+  copy would produce a cache the reader can't decrypt. Emits a
+  `LogWarning` so this silent failure mode is visible in logs.
+- `CopyTempFileForPersistentCacheAsync` snapshots the clear head under
+  `lock (_tempFile)`, calls `AudioDecryptStream.ApplySpotifyCtr` to
+  re-encrypt the snapshot in place, writes it to the destination, then
+  streams the encrypted body chunk-by-chunk, taking the `_tempFile` lock
+  around each `Position = …; Read(…)` pair to match the
+  `WriteToTempFile` / `ReadFromTempFile` protocol. **Do not** revert to
+  async `ReadAsync` / `CopyToAsync` on `_tempFile` without the lock —
+  BASS reads are still arriving concurrently and would race the position.
+- Every persist emits one INFO log: `Persist {FileId}: clearHead=…B,
+  key={present|null}, branch={re-encrypt-head|verbatim},
+  tempHead16=<hex>` — the first 16 bytes of the temp file at offset 0,
+  useful for post-mortem if a cache later fails the read-side magic check.
+
+**Read protocol — `LazyProgressiveDownloader.InitializeCdnResourcesAsync`:**
+- Local-cache shortcut is gated on `audioKey is { Length: 16 }`; without
+  a real key we go to CDN.
+- After constructing `_decryptStream`, peeks the first 4 decrypted bytes
+  and checks for the Ogg-Vorbis magic `O g g S` (0x4F 67 67 53). On
+  mismatch: logs a `LogWarning`, disposes the streams, **deletes the
+  cache file**, and throws `InvalidOperationException`. The next
+  playback attempt re-resolves; with the cache file gone, the deferred
+  resolution returns a real CDN URL and the file is re-downloaded
+  correctly.
+- Why throw instead of falling through to CDN within the same call:
+  `DeferredResolutionRegistry.CompleteFromCache` sets `CdnUrl = ""` on
+  cache-hit deferred results — there is no CDN URL available to use.
+  Surfacing the error and letting the retry path re-resolve is the
+  minimum-change solution; one failed click per corrupt track, then
+  self-healed.
+
+When changing the persist or read path:
+- Keep the on-disk format `[enc head][enc body]` from byte 0. The reader
+  uses `decryptionStartOffset: 0` and any deviation will be a silent
+  garble.
+- Don't introduce reads from `_tempFile` outside `lock (_tempFile)`. The
+  background download path is the only writer; persist + BASS share the
+  read side.
+- Cache files written by older code (pre-2026-05-13 commit `ed8d50a`)
+  may have a clear head and trigger the new self-heal. That's expected —
+  the heal runs once per file and the rebuilt cache is correct.
 
 ### Local files
 

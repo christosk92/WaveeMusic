@@ -453,7 +453,6 @@
                                             <cards:SpotlightReleaseCard x:Name="SpotlightCard"
                                                                         Grid.Column="1"
                                                                         HorizontalAlignment="Right"
-                                                                        Width="420"
                                                                         VerticalAlignment="Bottom"
                                                                         Mode="{x:Bind ViewModel.SpotlightCardMode, Mode=OneWay}"
                                                                         TagText="{x:Bind ViewModel.SpotlightReleaseTagText, Mode=OneWay}"
@@ -577,6 +576,7 @@
                                     <ItemsRepeater.ItemTemplate>
                                         <DataTemplate x:DataType="vm:LazyTrackItem">
                                             <track:TrackItem
+                                                Mode="Compact"
                                                 Track="{x:Bind Mode=OneWay}"
                                                 PreserveImageOnUnload="True"
                                                 IsLoading="{x:Bind IsLoaded, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"

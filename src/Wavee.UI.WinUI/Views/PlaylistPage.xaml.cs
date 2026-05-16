@@ -1213,6 +1213,46 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         flyout.ShowAt(fe);
     }
 
+    private void AddPlaylistToPlaylistMenuFlyout_Opening(object? sender, object e)
+    {
+        if (sender is not MenuFlyout flyout) return;
+        flyout.Items.Clear();
+
+        // List the user's playlists; skip THIS one (copying a playlist to
+        // itself is pointless). Rebuilt on every open so renames / creates /
+        // deletes are picked up while the page sits in the nav cache.
+        foreach (var destination in ViewModel.Playlists)
+        {
+            if (string.IsNullOrEmpty(destination.Id)) continue;
+            if (string.Equals(destination.Id, ViewModel.PlaylistId, StringComparison.Ordinal)) continue;
+
+            var captured = destination;
+            var mi = new MenuFlyoutItem
+            {
+                Text = destination.Name ?? "Untitled playlist",
+                Tag = destination
+            };
+            mi.Click += (s, args) =>
+            {
+                _ = ViewModel.AddPlaylistToOtherPlaylistCommand.ExecuteAsync(captured);
+                Ioc.Default.GetService<INotificationService>()?.Show(
+                    $"Added to {captured.Name ?? "playlist"}",
+                    NotificationSeverity.Success,
+                    TimeSpan.FromSeconds(3));
+            };
+            flyout.Items.Add(mi);
+        }
+
+        if (flyout.Items.Count == 0)
+        {
+            flyout.Items.Add(new MenuFlyoutItem
+            {
+                Text = "No other playlists",
+                IsEnabled = false
+            });
+        }
+    }
+
     // ── Collaborator avatar stack ────────────────────────────────────────────
 
     private void RebuildCollaboratorStack()

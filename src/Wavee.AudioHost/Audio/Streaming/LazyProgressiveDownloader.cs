@@ -301,19 +301,66 @@ public sealed class LazyProgressiveDownloader : Stream
         _fileSize = deferred.FileSize;
         _fileSizeKnown = true;
 
-        if (!string.IsNullOrEmpty(deferred.LocalCacheFileId) && _audioCacheDirectory != null)
+        var useLocalCache = !string.IsNullOrEmpty(deferred.LocalCacheFileId)
+                             && _audioCacheDirectory != null
+                             && audioKey is { Length: 16 };
+        string? localCachePath = useLocalCache
+            ? Path.Combine(_audioCacheDirectory!, "audio", deferred.LocalCacheFileId + ".enc")
+            : null;
+
+        if (useLocalCache)
         {
             // ── Local cache path ────────────────────────────────────────────────────
             // The file is fully on disk — no CDN download needed.
-            var cachePath = Path.Combine(_audioCacheDirectory, "audio", deferred.LocalCacheFileId + ".enc");
             _logger?.LogInformation("Using local cache for {FileId} ({Bytes} bytes)", deferred.LocalCacheFileId, _fileSize);
 
-            _cachedFileStream = new FileStream(cachePath, FileMode.Open, FileAccess.Read,
+            _cachedFileStream = new FileStream(localCachePath!, FileMode.Open, FileAccess.Read,
                 FileShare.Read, 4096, FileOptions.SequentialScan);
 
-            _decryptStream = new AudioDecryptStream(audioKey, _cachedFileStream, decryptionStartOffset: 0);
+            _decryptStream = new AudioDecryptStream(audioKey, _cachedFileStream, decryptionStartOffset: 0, logger: _logger);
+
+            // Validate the decrypted header: Spotify audio is Ogg-Vorbis, so the first
+            // 4 bytes after decryption MUST be "OggS" (0x4f 67 67 53). If they aren't,
+            // this cache file was written by a broken persist path (clear-head not
+            // re-encrypted, wrong key at write time, or pre-fix code) and BASS will
+            // throw FileFormat on it. Delete the file and surface a retriable error;
+            // the next playback attempt will resolve fresh and download from CDN.
+            // We only reach this branch when audioKey is a real 16-byte key (gated
+            // above), so a magic mismatch genuinely means the cache file is broken,
+            // not just unkeyed.
+            Span<byte> magic = stackalloc byte[4];
+            int magicRead = _decryptStream.Read(magic);
+            _decryptStream.Position = 0;
+
+            bool magicOk = magicRead == 4
+                && magic[0] == (byte)'O' && magic[1] == (byte)'g'
+                && magic[2] == (byte)'g' && magic[3] == (byte)'S';
+
+            if (!magicOk)
+            {
+                var magicHex = magicRead > 0 ? Convert.ToHexString(magic[..magicRead]) : "(empty)";
+                _logger?.LogWarning(
+                    "Cached file {FileId} failed Ogg-magic check (got {Magic}); deleting so the next playback fetches a fresh copy from CDN",
+                    deferred.LocalCacheFileId, magicHex);
+
+                await _decryptStream.DisposeAsync();
+                _decryptStream = null;
+                await _cachedFileStream.DisposeAsync();
+                _cachedFileStream = null;
+                try { File.Delete(localCachePath!); }
+                catch (Exception ex) { _logger?.LogDebug(ex, "Failed to delete corrupt cache file {Path}", localCachePath); }
+
+                // The deferred result we received chose the local-cache shortcut and
+                // its CdnUrl is empty — we cannot rebuild the CDN downloader from
+                // inside this method. Surface a clear failure so the playback layer
+                // retries; by then the cache file is gone and resolution will return
+                // a real CDN URL.
+                throw new InvalidOperationException(
+                    $"Local audio cache for {deferred.LocalCacheFileId} was corrupt (got {magicHex} after decrypt); deleted, retry playback");
+            }
         }
-        else
+
+        if (!useLocalCache)
         {
             // ── CDN download path ───────────────────────────────────────────────────
             var cdnUrl = deferred.CdnUrl;
@@ -346,7 +393,8 @@ public sealed class LazyProgressiveDownloader : Stream
             _decryptStream = new AudioDecryptStream(
                 audioKey,
                 _cdnDownloader,
-                decryptionStartOffset: _headData.Length);
+                decryptionStartOffset: _headData.Length,
+                logger: _logger);
         }
 
         // Sync position

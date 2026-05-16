@@ -1,6 +1,7 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
 
 namespace Wavee.AudioHost.Audio.Streaming;
 
@@ -27,7 +28,7 @@ public sealed class AudioDecryptStream : Stream
     private long _keystreamBlockPosition = -1;
     private bool _disposed;
 
-    public AudioDecryptStream(byte[]? key, Stream baseStream, long decryptionStartOffset = 0)
+    public AudioDecryptStream(byte[]? key, Stream baseStream, long decryptionStartOffset = 0, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(baseStream);
 
@@ -44,6 +45,7 @@ public sealed class AudioDecryptStream : Stream
         if (key is null)
         {
             _aes = null;
+            logger?.LogDebug("AudioDecryptStream constructed in pass-through mode (null key, decryptOffset={Offset})", decryptionStartOffset);
             return;
         }
 
@@ -54,6 +56,15 @@ public sealed class AudioDecryptStream : Stream
         _aes.KeySize = 128;
         _aes.Key = key;
         _aes.Padding = PaddingMode.None;
+
+        logger?.LogDebug("AudioDecryptStream constructed (keyFp={KeyFp}, decryptOffset={Offset})", KeyFingerprint(key), decryptionStartOffset);
+    }
+
+    private static string KeyFingerprint(ReadOnlySpan<byte> key)
+    {
+        Span<byte> digest = stackalloc byte[32];
+        SHA256.HashData(key, digest);
+        return Convert.ToHexString(digest[..4]);
     }
 
     public override bool CanRead => true;

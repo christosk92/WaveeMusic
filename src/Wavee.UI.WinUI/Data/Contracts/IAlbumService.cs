@@ -43,6 +43,31 @@ public interface IAlbumService
         string artistUri, CancellationToken ct = default);
 
     /// <summary>
+    /// Combined music-video signal + related-artists fetch for a single track.
+    /// Backed by one <c>getTrack</c> persisted query — cheaper than calling
+    /// <see cref="GetMusicVideoUriAsync"/> + <see cref="GetArtistContextAsync"/>
+    /// separately when both are needed. Used by short releases (≤ 2 tracks)
+    /// where the artist-overview bio isn't surfaced and the only thing we need
+    /// from the artist is the related-artists list. Returns null when the
+    /// request fails outright; partial results (empty related-artists, no
+    /// video) return a populated record with empty/null fields.
+    /// </summary>
+    Task<AlbumSingleTrackContextResult?> GetSingleTrackContextAsync(
+        string trackUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches the "Now Playing View" artist data via the <c>queryNpvArtist</c>
+    /// Pathfinder query — the same call the Spotify desktop client makes for
+    /// its right-side sidebar. Returns the artist's bio excerpt, avatar URL,
+    /// verified flag, and monthly listeners count. Drives the AlbumPage
+    /// "About the artist" card. Requires both the artist URI and a track URI
+    /// (Spotify scopes the query through a track context). Returns null when
+    /// the request fails — caller should render the card on best-effort data.
+    /// </summary>
+    Task<AlbumArtistNpvResult?> GetArtistNpvAsync(
+        string artistUri, string leadTrackUri, CancellationToken ct = default);
+
+    /// <summary>
     /// Fetches the curated playlist recommendations for an album via
     /// <c>RECOMMENDED_PLAYLISTS</c> extended-metadata, then resolves each
     /// playlist's hero metadata via batched <c>LIST_METADATA_V2</c>. Returns
@@ -70,6 +95,43 @@ public sealed record AlbumArtistContextResult
 {
     public string? BioExcerpt { get; init; }
     public required List<RelatedArtistResult> SimilarArtists { get; init; }
+}
+
+/// <summary>
+/// Lead-artist data sourced from the <c>queryNpvArtist</c> Pathfinder query,
+/// used to render the AlbumPage "About the artist" card. All fields nullable
+/// because Spotify ships partial responses; the card hides individual
+/// sub-elements when their backing field is empty.
+/// </summary>
+public sealed record AlbumArtistNpvResult
+{
+    /// <summary>First-sentence or ~200-char snippet of the artist biography.</summary>
+    public string? BioExcerpt { get; init; }
+    /// <summary>Largest-source avatar URL. Falls back to album-page's existing
+    /// <c>ArtistImageUrl</c> when null.</summary>
+    public string? AvatarImageUrl { get; init; }
+    /// <summary>Verified-artist flag — drives the ★ glyph next to the name.</summary>
+    public bool IsVerified { get; init; }
+    /// <summary>Spotify monthly listeners count. Surfaced as a future enhancement.</summary>
+    public long MonthlyListeners { get; init; }
+}
+
+/// <summary>
+/// Combined music-video signal + related-artists for a single track. Hydrated
+/// in one <c>getTrack</c> Pathfinder call for short releases (≤ 2 tracks). The
+/// list type reuses <see cref="RelatedArtistResult"/> from <see cref="IArtistService"/>
+/// so the AlbumPage's "Fans also like" pills consume the same shape whether
+/// the source is <c>getTrack</c> (singles/EPs) or <c>queryArtistOverview</c>
+/// (full albums).
+/// </summary>
+public sealed record AlbumSingleTrackContextResult
+{
+    /// <summary>Sentinel video URI (equals the source track URI when the track
+    /// has at least one <c>videoAssociations</c> entry; null otherwise). Same
+    /// shape as <see cref="IAlbumService.GetMusicVideoUriAsync"/>.</summary>
+    public string? MusicVideoUri { get; init; }
+
+    public required List<RelatedArtistResult> RelatedArtists { get; init; }
 }
 
 public sealed record AlbumDetailResult

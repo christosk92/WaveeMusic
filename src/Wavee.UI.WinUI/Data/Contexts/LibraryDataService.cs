@@ -1453,6 +1453,67 @@ public sealed class LibraryDataService : ILibraryDataService
         ScheduleChangeEmit(dataChanged: true, playlistsChanged: false);
     }
 
+    public async Task<IReadOnlyList<RecommendedTrackResult>> GetPlaylistRecommendationsAsync(
+        string playlistUri,
+        IReadOnlyList<string>? skipUris = null,
+        int numResults = 20,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(playlistUri)) return Array.Empty<RecommendedTrackResult>();
+
+        var fullPlaylistUri = NormalizePlaylistUri(playlistUri);
+        var spClient = _session.SpClient;
+
+        var response = await spClient.ExtendPlaylistAsync(
+            fullPlaylistUri,
+            skipUris,
+            numResults,
+            ct).ConfigureAwait(false);
+
+        // SpClient soft-fails (returns null) on transport / status errors. We
+        // surface that as an exception here so the VM can flip its error flag
+        // and the UI can render a distinct error card instead of the empty CTA.
+        // A successful call that genuinely returned zero recommendations falls
+        // through to the empty-results branch below.
+        if (response is null)
+            throw new InvalidOperationException(
+                $"Playlist extender returned no response for {fullPlaylistUri}");
+
+        var tracks = response.Tracks;
+        if (tracks is null || tracks.Count == 0)
+            return Array.Empty<RecommendedTrackResult>();
+
+        var results = new List<RecommendedTrackResult>(tracks.Count);
+        foreach (var t in tracks)
+        {
+            if (string.IsNullOrEmpty(t.TrackUri)) continue;
+
+            // Server flip-flops between `name` and `trackName`; the DTO holds
+            // both nullable, pick whichever is populated.
+            var meta = t.Metadata;
+            var name = meta?.Name ?? meta?.TrackName;
+            var artists = meta?.ArtistList;
+            var artistNames = artists is { Count: > 0 }
+                ? string.Join(", ", artists.Select(a => a.Name).Where(n => !string.IsNullOrEmpty(n)))
+                : null;
+
+            results.Add(new RecommendedTrackResult
+            {
+                Uri = t.TrackUri,
+                // Bare id (`4xeu…`) — used by TrackStateBehavior to compare
+                // against the currently playing track without re-parsing URIs.
+                Id = t.TrackUri.Split(':').LastOrDefault() ?? t.TrackUri,
+                Name = name,
+                ArtistNames = artistNames,
+                AlbumName = meta?.AlbumName,
+                ImageUrl = meta?.TrackImageUri,
+                Duration = meta is { Duration: > 0 } ? TimeSpan.FromMilliseconds(meta.Duration) : TimeSpan.Zero,
+                OriginalIndex = results.Count + 1,
+            });
+        }
+        return results;
+    }
+
     public async Task RemoveTracksFromPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);

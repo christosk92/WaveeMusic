@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
+    xmlns:cfx="using:Wavee.UI.WinUI.Helpers.Composition"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:appControls="using:Wavee.UI.WinUI.Controls"
@@ -745,11 +746,6 @@
                                                     </DataTemplate>
                                                 </shelf:ShelfScroller.ItemTemplate>
                                             </shelf:ShelfScroller>
-                                            <Border HorizontalAlignment="Right"
-                                                    Width="96"
-                                                    IsHitTestVisible="False"
-                                                    Background="{ThemeResource ShelfFadeRightBrush}"
-                                                    Visibility="{Binding ElementName=PopularAlbumsShelf, Path=CanPageRight, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         </Grid>
                                     </StackPanel>
                                 </Grid>
@@ -802,11 +798,6 @@
                                 </DataTemplate>
                             </shelf:ShelfScroller.ItemTemplate>
                         </shelf:ShelfScroller>
-                        <Border HorizontalAlignment="Right"
-                                Width="96"
-                                IsHitTestVisible="False"
-                                Background="{ThemeResource ShelfFadeRightBrush}"
-                                Visibility="{Binding ElementName=FeaturedPlaylistsShelf, Path=CanPageRight, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     </Grid>
                 </StackPanel>
 
@@ -973,11 +964,6 @@
                                 </DataTemplate>
                             </shelf:ShelfScroller.ItemTemplate>
                         </shelf:ShelfScroller>
-                        <Border HorizontalAlignment="Right"
-                                Width="96"
-                                IsHitTestVisible="False"
-                                Background="{ThemeResource ShelfFadeRightBrush}"
-                                Visibility="{Binding ElementName=RelatedConcertsShelf, Path=CanPageRight, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     </Grid>
                 </StackPanel>
             </Grid>

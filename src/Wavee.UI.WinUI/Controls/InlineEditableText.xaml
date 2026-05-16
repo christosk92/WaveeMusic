@@ -34,7 +34,7 @@
             <Grid>
                 <TextBlock x:Name="DisplayText"
                            Text="{x:Bind Text, Mode=OneWay}"
-                           TextWrapping="Wrap"
+                           TextWrapping="WrapWholeWords"
                            TextTrimming="CharacterEllipsis"
                            FontSize="{x:Bind FontSize, Mode=OneWay}"
                            FontWeight="{x:Bind FontWeight, Mode=OneWay}"

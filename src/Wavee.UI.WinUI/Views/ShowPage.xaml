@@ -11,6 +11,7 @@
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
     xmlns:winUi="using:CommunityToolkit.WinUI"
     xmlns:appControls="using:Wavee.UI.WinUI.Controls"
+    xmlns:cfx="using:Wavee.UI.WinUI.Helpers.Composition"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     xmlns:dtos="using:Wavee.UI.WinUI.Data.DTOs"
@@ -614,11 +615,6 @@
                                             </DataTemplate>
                                         </shelf:ShelfScroller.ItemTemplate>
                                     </shelf:ShelfScroller>
-                                    <Border HorizontalAlignment="Right"
-                                            Width="96"
-                                            IsHitTestVisible="False"
-                                            Background="{ThemeResource ShelfFadeRightBrush}"
-                                            Visibility="{Binding ElementName=RecommendedShowsShelf, Path=CanPageRight, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 </Grid>
                             </StackPanel>
                         </StackPanel>

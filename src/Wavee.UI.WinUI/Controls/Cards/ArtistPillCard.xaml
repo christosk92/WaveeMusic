@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Cards.ArtistPillCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+        Compact "Fans also like" pill. 40 px tall capsule with a 28 px circular
+        avatar on the leading edge and a 13 px SemiBold name on the right.
+        Replaces the old AlbumPage row of ArtistCircleCards which were sized
+        for a 96 px grid layout and didn't fit the short-release left-column
+        rhythm.
+
+        Click navigates via NavigationHelpers.OpenArtist(uri, name). Behaviour
+        mirrors ArtistCircleCard: Ctrl-click opens a new tab.
+    -->
+    <Button x:Name="PillRoot"
+            Padding="6,0,14,0"
+            Height="40"
+            MinHeight="40"
+            CornerRadius="20"
+            HorizontalContentAlignment="Left"
+            VerticalContentAlignment="Center"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            Click="PillRoot_Click"
+            ToolTipService.ToolTip="{x:Bind ArtistName, Mode=OneWay}">
+        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <PersonPicture x:Name="Avatar"
+                           Width="28"
+                           Height="28"
+                           DisplayName="{x:Bind ArtistName, Mode=OneWay}"/>
+            <TextBlock x:Name="NameText"
+                       Text="{x:Bind ArtistName, Mode=OneWay}"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis"
+                       MaxLines="1"
+                       MaxWidth="180"/>
+        </StackPanel>
+    </Button>
+</UserControl>

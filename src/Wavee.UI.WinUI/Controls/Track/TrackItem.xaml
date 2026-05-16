@@ -70,7 +70,9 @@
 
     <Grid>
         <!-- ═══════════════ COMPACT MODE (grid cells: artist top tracks, search) ═══════════════ -->
-        <Border x:Name="CompactBorder" Visibility="Visible"
+        <Border x:Name="CompactBorder"
+                x:Load="{x:Bind IsCompactMode}"
+                Visibility="Visible"
                 CornerRadius="6"
                 BorderThickness="1"
                 BorderBrush="Transparent"
@@ -218,7 +220,12 @@
         </Border>
 
         <!-- ═══════════════ ROW MODE (table rows: playlists, albums, liked songs) ═══════════════ -->
-        <Border x:Name="RowRoot" Visibility="Collapsed"
+        <!-- x:Load gated on IsRowMode: the element only materializes when Mode==Row, so
+             Visibility is "Visible" by default (the legacy "Collapsed" was for the case
+             where both subtrees existed and ApplyMode toggled them at runtime). -->
+        <Border x:Name="RowRoot"
+                x:Load="{x:Bind IsRowMode}"
+                Visibility="Visible"
                 Padding="8,8" CornerRadius="6"
                 Background="Transparent">
             <Grid>

@@ -2,29 +2,15 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf">
+    xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
+    xmlns:cfx="using:Wavee.UI.WinUI.Helpers.Composition">
 
-    <!-- Horizontal fade-to-background brush for the right edge of a shelf. Shares
-         the 4-stop curve (0, 0.35, 0.72, 1 with alpha 0/40/C0/FF) used by the
-         RightPanelView tab-content fade so both surfaces feel like the same app. -->
-    <ResourceDictionary.ThemeDictionaries>
-        <ResourceDictionary x:Key="Dark">
-            <LinearGradientBrush x:Key="ShelfFadeRightBrush" StartPoint="0,0.5" EndPoint="1,0.5">
-                <GradientStop Color="#00202020" Offset="0"/>
-                <GradientStop Color="#40202020" Offset="0.35"/>
-                <GradientStop Color="#C0202020" Offset="0.72"/>
-                <GradientStop Color="#FF202020" Offset="1"/>
-            </LinearGradientBrush>
-        </ResourceDictionary>
-        <ResourceDictionary x:Key="Light">
-            <LinearGradientBrush x:Key="ShelfFadeRightBrush" StartPoint="0,0.5" EndPoint="1,0.5">
-                <GradientStop Color="#00F3F3F3" Offset="0"/>
-                <GradientStop Color="#40F3F3F3" Offset="0.35"/>
-                <GradientStop Color="#C0F3F3F3" Offset="0.72"/>
-                <GradientStop Color="#FFF3F3F3" Offset="1"/>
-            </LinearGradientBrush>
-        </ResourceDictionary>
-    </ResourceDictionary.ThemeDictionaries>
+    <!-- ShelfFadeRightBrush retired. Consumer pages now use the composition-
+         based attached property at
+         Wavee.UI.WinUI.Helpers.Composition.ShelfFadeMask.FadeRight, which
+         renders a backdrop sample of the underlying visuals through an alpha
+         gradient mask. That adapts to the page's palette-tinted backdrop and
+         Mica instead of painting a hardcoded brush over them. -->
 
     <!-- Chevron button style used by shelf headers (SectionShelf + any page
          that wires its own header to a ShelfScroller). Matches the Fluent card
@@ -48,20 +34,39 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="shelf:ShelfScroller">
-                    <ScrollView x:Name="PART_Scroll"
-                                ContentOrientation="Horizontal"
-                                HorizontalScrollBarVisibility="Hidden"
-                                VerticalScrollBarVisibility="Hidden"
-                                VerticalScrollMode="Disabled"
-                                ZoomMode="Disabled"
-                                VerticalAlignment="Top">
-                        <ItemsRepeater x:Name="PART_Repeater"
-                                       VerticalAlignment="Top">
-                            <ItemsRepeater.Layout>
-                                <shelf:ShelfLayout/>
-                            </ItemsRepeater.Layout>
-                        </ItemsRepeater>
-                    </ScrollView>
+                    <!-- Wrapper Grid hosts the scrolling items AND a baked-in
+                         right-edge fade overlay. The fade Border is gated on
+                         the templated parent's CanPageRight so it only shows
+                         when there's overflow to the right (short shelves
+                         that fit completely don't get the fade). The fade
+                         uses the composition-based ShelfFadeMask attached
+                         property — backdrop sample + Gaussian blur + alpha
+                         gradient — so it adapts to whatever's underneath
+                         instead of painting a hardcoded slab. Width=96
+                         matches the previous per-page Border so every
+                         existing layout keeps the same proportions. -->
+                    <Grid>
+                        <ScrollView x:Name="PART_Scroll"
+                                    IgnoredInputKinds="All"
+                                    ContentOrientation="Horizontal"
+                                    HorizontalScrollBarVisibility="Hidden"
+                                    VerticalScrollBarVisibility="Hidden"
+                                    VerticalScrollMode="Disabled"
+                                    ZoomMode="Disabled"
+                                    VerticalAlignment="Top">
+                            <ItemsRepeater x:Name="PART_Repeater"
+                                           VerticalAlignment="Top">
+                                <ItemsRepeater.Layout>
+                                    <shelf:ShelfLayout/>
+                                </ItemsRepeater.Layout>
+                            </ItemsRepeater>
+                        </ScrollView>
+                        <Border HorizontalAlignment="Right"
+                                Width="96"
+                                IsHitTestVisible="False"
+                                cfx:ShelfFadeMask.FadeRight="True"
+                                Visibility="{Binding CanPageRight, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    </Grid>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

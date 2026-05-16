@@ -730,13 +730,24 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
     {
         try
         {
+            // Refuse to persist a cache file we can't make readable. With a clear head
+            // present but no audio key, the only thing we could write is [clear head]
+            // [enc body] — which the reader (decryptOffset=0) would garble at byte 0
+            // and BASS would reject with FileFormat on every future play.
+            if (_clearHeadBytes > 0 && _persistentCacheAudioKey == null)
+            {
+                _logger?.LogWarning(
+                    "Skipping persistent cache write for {FileId}: no audio key available to re-encrypt {ClearHead}B head",
+                    _fileId.ToBase16(), _clearHeadBytes);
+                return;
+            }
+
             var dir = Path.GetDirectoryName(cachePath);
             if (dir != null && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
             // Read temp file from start and write to cache path atomically via a temp swap
             var swapPath = cachePath + ".tmp";
-            _tempFile.Seek(0, SeekOrigin.Begin);
             await using (var dest = new FileStream(swapPath, FileMode.Create, FileAccess.Write,
                 FileShare.None, 4096, useAsync: true))
             {
@@ -759,31 +770,57 @@ public sealed class ProgressiveDownloader : Stream, IAsyncDisposable
 
     private async Task CopyTempFileForPersistentCacheAsync(FileStream destination, CancellationToken ct)
     {
-        if (_clearHeadBytes <= 0 || _persistentCacheAudioKey == null)
+        // Snapshot the clear head bytes under lock so we can re-encrypt them
+        // without racing with concurrent BASS reads on _tempFile.
+        var headSnapshot = _clearHeadBytes > 0 ? new byte[_clearHeadBytes] : Array.Empty<byte>();
+        if (_clearHeadBytes > 0)
         {
-            await _tempFile.CopyToAsync(destination, ct);
-            return;
+            lock (_tempFile)
+            {
+                _tempFile.Position = 0;
+                _tempFile.ReadExactly(headSnapshot);
+            }
         }
 
-        var buffer = _bufferPool.Rent(Math.Min(_clearHeadBytes, 128 * 1024));
+        // Diagnostic: write-side decision + first 16 bytes of temp head, so we can
+        // tell post-mortem whether the persisted cache should have been valid.
+        var fpLen = Math.Min(16, headSnapshot.Length);
+        _logger?.LogInformation(
+            "Persist {FileId}: clearHead={ClearHead}B, key={KeyPresent}, branch={Branch}, tempHead16={Head16}",
+            _fileId.ToBase16(),
+            _clearHeadBytes,
+            _persistentCacheAudioKey != null ? "present" : "null",
+            _clearHeadBytes > 0 ? "re-encrypt-head" : "verbatim",
+            fpLen > 0 ? Convert.ToHexString(headSnapshot.AsSpan(0, fpLen)) : "(none)");
+
+        if (_clearHeadBytes > 0)
+        {
+            // Re-encrypt clear head in place so cache is uniformly encrypted from byte 0.
+            // _persistentCacheAudioKey is non-null here (PersistToCacheAsync guards above).
+            AudioDecryptStream.ApplySpotifyCtr(_persistentCacheAudioKey!, headSnapshot.AsSpan(), 0);
+            await destination.WriteAsync(headSnapshot, ct);
+        }
+
+        // Copy the remainder (encrypted CDN body) chunk-by-chunk, taking the
+        // _tempFile lock around each read to match the WriteToTempFile /
+        // ReadFromTempFile protocol and avoid position races with BASS.
+        var buffer = _bufferPool.Rent(64 * 1024);
         try
         {
-            long streamOffset = 0;
-            var remainingHead = _clearHeadBytes;
-            while (remainingHead > 0)
+            long position = _clearHeadBytes;
+            while (position < _fileSize)
             {
-                var toRead = Math.Min(buffer.Length, remainingHead);
-                var read = await _tempFile.ReadAsync(buffer.AsMemory(0, toRead), ct);
+                int read;
+                lock (_tempFile)
+                {
+                    _tempFile.Position = position;
+                    read = _tempFile.Read(buffer, 0, (int)Math.Min(buffer.Length, _fileSize - position));
+                }
                 if (read <= 0)
                     break;
-
-                AudioDecryptStream.ApplySpotifyCtr(_persistentCacheAudioKey, buffer.AsSpan(0, read), streamOffset);
                 await destination.WriteAsync(buffer.AsMemory(0, read), ct);
-                streamOffset += read;
-                remainingHead -= read;
+                position += read;
             }
-
-            await _tempFile.CopyToAsync(destination, ct);
         }
         finally
         {

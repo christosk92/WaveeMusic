@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.TabBar;
@@ -156,6 +157,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         // warm-cache navigation path where ApplyDetail runs before the page is
         // fully constructed and PropertyChanged finds HeaderArtistsText null.
         RebuildHeaderArtistsText();
+        AttachParallax();
     }
 
     private void AlbumPage_Unloaded(object sender, RoutedEventArgs e)
@@ -165,6 +167,119 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         // subscription attached for the page's lifetime — unhooking here would
         // leave the cached page deaf to the next IsLoading=false transition.
         PageController.IsNavigatingAway = true;
+        DetachParallax();
+    }
+
+    // ── Sticky left column (composition-thread) ──────────────────────────
+    //
+    // Single unified page-level ScrollView drives the whole layout (left
+    // sidebar + TrackDataGrid + footer rail). The ScrollView translates ALL
+    // its content up by `offset`, so to make the left column stay PINNED at
+    // its starting position we apply an equal-and-opposite Translation.Y to
+    // its composition Visual: `+offset` cancels the scroll exactly.
+    //
+    // CRITICAL: this runs as an ExpressionAnimation bound to the
+    // ScrollView's ExpressionAnimationSources — NOT a UI-thread
+    // ViewChanged handler. The event-handler version had a visible
+    // "scroll-then-snap-back" flicker because ViewChanged fires AFTER the
+    // frame has painted; the compensating translation always landed one
+    // frame late. The expression runs on the composition thread in
+    // lockstep with the scroll, so the visual is never observably out of
+    // position.
+    //
+    // The MaxLag scalar in the local _stickyProps property set caps the
+    // translation when the column is taller than the viewport — after the
+    // user has scrolled past the column's own extent, it begins to scroll
+    // off naturally so the page doesn't permanently lock the sidebar at the
+    // top. Updated via SizeChanged whenever either bounds change.
+
+    private bool _parallaxAttached;
+    private Microsoft.UI.Composition.CompositionPropertySet? _stickyProps;
+    private Microsoft.UI.Composition.ExpressionAnimation? _stickyAnimation;
+
+    private void AttachParallax()
+    {
+        if (_parallaxAttached) return;
+        if (PageScrollView is null || LeftColumnHost is null) return;
+        _parallaxAttached = true;
+
+        var visual = ElementCompositionPreview.GetElementVisual(LeftColumnHost);
+        var compositor = visual.Compositor;
+
+        // Animatable Translation requires opt-in; the default Visual surface
+        // ignores `StartAnimation("Translation", …)` without this.
+        ElementCompositionPreview.SetIsTranslationEnabled(LeftColumnHost, true);
+
+        // Local property set carries the dynamic MaxLag scalar. The
+        // expression reads it reactively — pushing a new value via
+        // InsertScalar re-evaluates the animation without restart.
+        _stickyProps = compositor.CreatePropertySet();
+        _stickyProps.InsertScalar("MaxLag", ComputeMaxLagFloat());
+
+        // ExpressionAnimationSources on the NEW ScrollView control exposes
+        // `Position` (Vector2) — positive Y when scrolled DOWN. That's the
+        // raw offset we want to apply as a positive Y translation to pull
+        // the column DOWN, countering the scroll's upward push and pinning
+        // the column in place. (The OLD ScrollViewer.ManipulationPropertySet
+        // used a NEGATIVE `Translation` property — different shape; don't
+        // confuse the two.)
+        //
+        // Clamp(0, MaxLag) floors out at the top (no rubber-band overshoot)
+        // and ceilings when the column is taller than the viewport (so it
+        // can eventually scroll off).
+        _stickyAnimation = compositor.CreateExpressionAnimation(
+            "Vector3(0, Clamp(scroll.Position.Y, 0, source.MaxLag), 0)");
+        _stickyAnimation.SetReferenceParameter("scroll", PageScrollView.ExpressionAnimationSources);
+        _stickyAnimation.SetReferenceParameter("source", _stickyProps);
+        visual.StartAnimation("Translation", _stickyAnimation);
+
+        // Keep MaxLag fresh as either side resizes.
+        LeftColumnHost.SizeChanged += StickyAnchors_SizeChanged;
+        PageScrollView.SizeChanged += StickyAnchors_SizeChanged;
+    }
+
+    private void DetachParallax()
+    {
+        if (!_parallaxAttached) return;
+        _parallaxAttached = false;
+
+        if (LeftColumnHost is not null)
+            LeftColumnHost.SizeChanged -= StickyAnchors_SizeChanged;
+        if (PageScrollView is not null)
+            PageScrollView.SizeChanged -= StickyAnchors_SizeChanged;
+
+        if (LeftColumnHost is not null)
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(LeftColumnHost);
+            visual.StopAnimation("Translation");
+            // Reset Translation explicitly so the next attach starts at
+            // origin — StopAnimation alone leaves the last computed value.
+            ElementCompositionPreview.SetIsTranslationEnabled(LeftColumnHost, true);
+            visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
+        }
+
+        _stickyAnimation?.Dispose();
+        _stickyAnimation = null;
+        _stickyProps?.Dispose();
+        _stickyProps = null;
+    }
+
+    private void StickyAnchors_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_stickyProps is null) return;
+        _stickyProps.InsertScalar("MaxLag", ComputeMaxLagFloat());
+    }
+
+    private float ComputeMaxLagFloat()
+    {
+        if (LeftColumnHost is null || PageScrollView is null) return float.MaxValue / 2f;
+        var columnHeight = LeftColumnHost.ActualHeight;
+        var viewportHeight = PageScrollView.ActualHeight;
+        // Column shorter than viewport: pin indefinitely (huge ceiling, the
+        // user can never scroll far enough to hit it).
+        if (columnHeight <= 0 || viewportHeight <= 0 || columnHeight <= viewportHeight)
+            return float.MaxValue / 2f;
+        return (float)(columnHeight - viewportHeight);
     }
 
     public void Dispose()
@@ -591,5 +706,161 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             "Album link copied",
             NotificationSeverity.Success,
             TimeSpan.FromSeconds(3));
+    }
+
+    private void MusicVideoStrip_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        // Start album playback. The PlayerBarViewModel's track-changed
+        // auto-switch picks up the new track and routes it to the video
+        // surface when the user has the "auto-switch to video" preference
+        // enabled. Otherwise the Watch-Video button on the player bar lights
+        // up because IsCurrentTrackVideoCapable flips true once the player
+        // is positioned on a track with videoAssociations.
+        if (string.IsNullOrEmpty(ViewModel.MusicVideoUri)) return;
+        ViewModel.PlayAlbumCommand.Execute(null);
+        e.Handled = true;
+    }
+
+    // ── MusicVideoStrip hover/press affordance ─────────────────────────────
+    // Direct property assignment instead of VSM: Border doesn't host VSGs in
+    // its visual tree, and ContentControl's default ContentPresenter prevents
+    // GoToState's one-level child walk from reaching state groups placed on
+    // a nested Grid. Instant property snaps look fine for a card hover (same
+    // as Windows Photos cards). The play-button scale uses a Storyboard so
+    // it feels mechanical, not jumpy.
+
+    private Microsoft.UI.Xaml.Media.Brush? _mvsNormalBg;
+    private Microsoft.UI.Xaml.Media.Brush? _mvsHoverBg;
+    private Microsoft.UI.Xaml.Media.Brush? _mvsPressedBg;
+    private Microsoft.UI.Xaml.Media.Brush? _mvsNormalBorder;
+    private Microsoft.UI.Xaml.Media.Brush? _mvsHoverBorder;
+
+    private void EnsureMusicVideoStripBrushesCached()
+    {
+        if (_mvsNormalBg is not null) return;
+        var res = Application.Current.Resources;
+        _mvsNormalBg = (Microsoft.UI.Xaml.Media.Brush)res["CardBackgroundFillColorDefaultBrush"];
+        _mvsHoverBg = (Microsoft.UI.Xaml.Media.Brush)res["CardBackgroundFillColorSecondaryBrush"];
+        _mvsPressedBg = (Microsoft.UI.Xaml.Media.Brush)res["ControlFillColorTertiaryBrush"];
+        _mvsNormalBorder = (Microsoft.UI.Xaml.Media.Brush)res["CardStrokeColorDefaultBrush"];
+        _mvsHoverBorder = (Microsoft.UI.Xaml.Media.Brush)res["ControlStrokeColorSecondaryBrush"];
+    }
+
+    private void AnimateMusicVideoStripPlayScale(double target)
+    {
+        if (MusicVideoStripPlayScale is null) return;
+        var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        var xAnim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+        {
+            To = target,
+            Duration = TimeSpan.FromMilliseconds(140),
+            EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase
+            {
+                EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut
+            }
+        };
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(xAnim, MusicVideoStripPlayScale);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(xAnim, "ScaleX");
+        var yAnim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+        {
+            To = target,
+            Duration = TimeSpan.FromMilliseconds(140),
+            EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase
+            {
+                EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut
+            }
+        };
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(yAnim, MusicVideoStripPlayScale);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(yAnim, "ScaleY");
+        sb.Children.Add(xAnim);
+        sb.Children.Add(yAnim);
+        sb.Begin();
+    }
+
+    private void MusicVideoStrip_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        EnsureMusicVideoStripBrushesCached();
+        MusicVideoStrip.Background = _mvsHoverBg;
+        MusicVideoStrip.BorderBrush = _mvsHoverBorder;
+        MusicVideoStripDarkenOverlay.Opacity = 0.18;
+        AnimateMusicVideoStripPlayScale(1.08);
+        ProtectedCursor = Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand);
+    }
+
+    private void MusicVideoStrip_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        EnsureMusicVideoStripBrushesCached();
+        MusicVideoStrip.Background = _mvsNormalBg;
+        MusicVideoStrip.BorderBrush = _mvsNormalBorder;
+        MusicVideoStripDarkenOverlay.Opacity = 0.32;
+        AnimateMusicVideoStripPlayScale(1.0);
+        ProtectedCursor = null;
+    }
+
+    private void MusicVideoStrip_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        EnsureMusicVideoStripBrushesCached();
+        MusicVideoStrip.Background = _mvsPressedBg;
+        MusicVideoStripDarkenOverlay.Opacity = 0.24;
+        AnimateMusicVideoStripPlayScale(0.96);
+    }
+
+    private void MusicVideoStrip_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        EnsureMusicVideoStripBrushesCached();
+        MusicVideoStrip.Background = _mvsHoverBg;
+        MusicVideoStripDarkenOverlay.Opacity = 0.18;
+        AnimateMusicVideoStripPlayScale(1.08);
+    }
+
+    private void ArtistsStackButton_Loaded(object sender, RoutedEventArgs e)
+    {
+        // Hand-cursor affordance on hover so the "click to expand artists"
+        // affordance reads as interactive — without it the chevron alone is
+        // easy to miss next to the avatar stack.
+        if (sender is ClickableBorder cb) cb.ShowHandCursor();
+    }
+
+    private void AddToPlaylistMenuFlyout_Opening(object? sender, object e)
+    {
+        if (sender is not MenuFlyout flyout) return;
+        // Rebuild on every open — user playlists may have been created /
+        // renamed / deleted while the page sat in the navigation cache.
+        flyout.Items.Clear();
+        foreach (var playlist in ViewModel.Playlists)
+        {
+            var captured = playlist;
+            var mi = new MenuFlyoutItem
+            {
+                Text = playlist.Name ?? "Untitled playlist",
+                Tag = playlist
+            };
+            mi.Click += (s, args) =>
+            {
+                _ = ViewModel.AddAlbumToPlaylistCommand.ExecuteAsync(captured);
+                _notificationService?.Show(
+                    $"Added to {captured.Name ?? "playlist"}",
+                    NotificationSeverity.Success,
+                    TimeSpan.FromSeconds(3));
+            };
+            flyout.Items.Add(mi);
+        }
+        if (flyout.Items.Count == 0)
+        {
+            flyout.Items.Add(new MenuFlyoutItem
+            {
+                Text = "No playlists yet",
+                IsEnabled = false
+            });
+        }
+    }
+
+    private void MerchCard_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is AlbumMerchItemResult merch
+            && !string.IsNullOrEmpty(merch.ShopUrl))
+        {
+            _ = ViewModel.OpenMerchItemCommand.ExecuteAsync(merch.ShopUrl);
+        }
     }
 }
