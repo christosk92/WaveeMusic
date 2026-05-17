@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using System.Windows.Input;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 
 namespace Wavee.UI.WinUI.ViewModels.Contracts;
 

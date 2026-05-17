@@ -1,6 +1,6 @@
 using System;
 using Microsoft.UI.Xaml.Controls;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;

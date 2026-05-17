@@ -1,5 +1,5 @@
 using System;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.Services.Data;
 

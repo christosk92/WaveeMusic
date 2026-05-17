@@ -1,4 +1,4 @@
-﻿namespace BetterLyrics.Core.Models.Domain
+namespace BetterLyrics.Core.Models.Domain
 {
     public record LyricsSearchResult(
         string? Title,

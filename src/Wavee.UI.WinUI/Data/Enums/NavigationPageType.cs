@@ -16,5 +16,6 @@ public enum NavigationPageType
     Show,
     Episode,
     PodcastBrowse,
-    Browse
+    Browse,
+    ArtistDiscography
 }

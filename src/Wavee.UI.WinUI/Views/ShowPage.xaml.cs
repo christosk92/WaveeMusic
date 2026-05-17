@@ -1,4 +1,6 @@
 using System;
+using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -13,8 +15,7 @@ using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.Cards;
 using Wavee.UI.WinUI.Controls.ShowEpisode;
 using Wavee.UI.WinUI.Controls.TabBar;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;

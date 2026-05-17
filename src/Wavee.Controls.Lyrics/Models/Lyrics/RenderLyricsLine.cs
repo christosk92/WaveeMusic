@@ -1,4 +1,4 @@
-﻿using Wavee.Controls.Lyrics.Enums;
+using Wavee.Controls.Lyrics.Enums;
 using Wavee.Controls.Lyrics.Extensions;
 using Wavee.Controls.Lyrics.Helper;
 using Microsoft.Graphics.Canvas;

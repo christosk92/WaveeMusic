@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.Protocol.ExtendedMetadata;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Stores;
 
 namespace Wavee.UI.WinUI.Services;

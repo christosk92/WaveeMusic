@@ -1,5 +1,6 @@
 using System;
 using Microsoft.UI.Xaml;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers.UI;
 

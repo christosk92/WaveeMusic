@@ -1,4 +1,4 @@
-﻿namespace Wavee.Controls.Lyrics.Models
+namespace Wavee.Controls.Lyrics.Models
 {
     public struct Keyframe<T>
     {

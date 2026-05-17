@@ -1,4 +1,6 @@
 using System;
+using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
 using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -6,7 +8,6 @@ using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Wavee.Core.Library.Spotify;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Services;
@@ -124,9 +125,9 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             }
 
             // Capture before-counts for delta calculation
-            var beforeTracks = _likeService?.GetCount(Data.Contracts.SavedItemType.Track) ?? 0;
-            var beforeAlbums = _likeService?.GetCount(Data.Contracts.SavedItemType.Album) ?? 0;
-            var beforeArtists = _likeService?.GetCount(Data.Contracts.SavedItemType.Artist) ?? 0;
+            var beforeTracks = _likeService?.GetCount(SavedItemType.Track) ?? 0;
+            var beforeAlbums = _likeService?.GetCount(SavedItemType.Album) ?? 0;
+            var beforeArtists = _likeService?.GetCount(SavedItemType.Artist) ?? 0;
 
             _logger?.LogInformation("Starting library sync...");
             bool hadPartialFailure = false;
@@ -207,9 +208,9 @@ public sealed class LibrarySyncOrchestrator : IDisposable
             }
 
             // Calculate delta (after - before)
-            var afterTracks = _likeService?.GetCount(Data.Contracts.SavedItemType.Track) ?? 0;
-            var afterAlbums = _likeService?.GetCount(Data.Contracts.SavedItemType.Album) ?? 0;
-            var afterArtists = _likeService?.GetCount(Data.Contracts.SavedItemType.Artist) ?? 0;
+            var afterTracks = _likeService?.GetCount(SavedItemType.Track) ?? 0;
+            var afterAlbums = _likeService?.GetCount(SavedItemType.Album) ?? 0;
+            var afterArtists = _likeService?.GetCount(SavedItemType.Artist) ?? 0;
 
             // Diagnostic: compare synced counts (what Spotify has) vs loaded counts (what we can display)
             try

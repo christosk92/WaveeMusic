@@ -16,13 +16,12 @@ using Windows.UI;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.Playback;
-using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
 

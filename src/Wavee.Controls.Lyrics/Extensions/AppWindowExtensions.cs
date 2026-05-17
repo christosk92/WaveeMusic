@@ -1,4 +1,4 @@
-﻿using Wavee.Controls.Lyrics.Helper;
+using Wavee.Controls.Lyrics.Helper;
 using Microsoft.UI.Windowing;
 
 namespace Wavee.Controls.Lyrics.Extensions

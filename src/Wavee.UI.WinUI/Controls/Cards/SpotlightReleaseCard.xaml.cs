@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Numerics;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Composition;

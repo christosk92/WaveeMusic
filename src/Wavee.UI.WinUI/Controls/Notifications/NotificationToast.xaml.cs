@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Wavee.UI.WinUI.Data.Contracts;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Styles;
@@ -9,7 +10,7 @@ namespace Wavee.UI.WinUI.Controls.Notifications;
 /// <summary>
 /// Floating Photos-style toast chip used by the shell. Centered, rounded,
 /// auto-dismissing, with optional action button and explicit close. The
-/// shell binds this to <see cref="Data.Contracts.INotificationService"/> via
+/// shell binds this to <see cref="Wavee.UI.WinUI.Data.Contracts.INotificationService"/> via
 /// <see cref="ViewModels.ShellViewModel"/>.
 /// </summary>
 public sealed partial class NotificationToast : UserControl

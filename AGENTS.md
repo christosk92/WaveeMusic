@@ -54,6 +54,44 @@ Read the relevant guide before changing that area:
    Claude Code picks it up too.
 6. Re-verify and update `last_verified` whenever you touch the inventoried area.
 
+## Protocol-isolation invariant
+
+ViewModels and Controls in `Wavee.UI.WinUI` must NOT reference any of these
+types directly. Always go through a `Wavee.UI/Services/*` (or
+`Wavee.UI.WinUI/Data/Contexts/*` for the not-yet-moved services) interface:
+
+- `Wavee.Core.Session.ISession` and its raw client surfaces
+  (`SpClient`, `Pathfinder`, `Dealer`, `Mercury`, `AudioKeyManager`)
+- `Wavee.Core.Http.SpClient`, `Wavee.Core.Http.IPathfinderClient`
+- `Wavee.Protocol.*` (protobuf types)
+- `Wavee.Connect.*` (dealer / connect-state wire types)
+- `Wavee.Core.Authentication.*`
+
+Allow-listed escapes (DI wiring + diagnostics + a handful of Control surfaces
+that legitimately touch the wire shape):
+- `Helpers/Application/AppLifecycleHelper` — DI composition root, naturally
+  references `ISession` to construct the wrapping services.
+- `ViewModels/DebugViewModel.cs` — raw HTTP / Pathfinder / dealer test bench.
+- `ViewModels/ConnectStateViewModel.cs` — renders the raw `RemoteStateRecorder`
+  dealer feed.
+- `ViewModels/SettingsViewModel.cs` — exposes the session-clock NTP debug
+  readout (touches `session.Clock`).
+- `ViewModels/ArtistViewModel.cs` — single fully-qualified catch of
+  `Wavee.Core.Session.SessionException` to drive the "Connecting…" hero state.
+- `Controls/Playback/AudioOutputPicker.xaml.cs` — maps `Wavee.Connect.DeviceType`
+  enum values to icon glyphs (the enum is the wire shape but used here as a
+  domain enum).
+- `Controls/Local/LinkSpotifyTrackFlyout.xaml.cs` — writes a `Wavee.Protocol.Metadata`
+  blob onto a local file's overlay.
+- `Controls/ContextMenu/Builders/LocalItemContextMenuBuilder.cs` — reads
+  metadata-blob fields for the right-click menu on locally-linked Spotify tracks.
+
+Anything else in `ViewModels/*` or `Controls/*` is a violation — add a service
+method instead of leaking the raw client into the VM. The invariant is enforced
+mechanically by `test/Wavee.UI.Tests/Architecture/ProtocolIsolationTests.cs`;
+new violations fail the test suite, and the allow-list is the single source of
+truth (kept in sync with the test).
+
 ## How This Pairs With CLAUDE.md
 
 - `AGENTS.md` (this file) is the entry point Codex reads automatically.

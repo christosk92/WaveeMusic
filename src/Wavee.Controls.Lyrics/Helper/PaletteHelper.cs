@@ -1,4 +1,4 @@
-﻿using ColorThiefDotNet;
+using ColorThiefDotNet;
 using Impressionist.Abstractions;
 using Impressionist.Implementations;
 using System;

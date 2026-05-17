@@ -17,12 +17,10 @@ using Wavee.Core.Data;
 using Wavee.Core.Http;
 using Windows.UI;
 using Wavee.Core.Playlists;
-using Wavee.Core.Session;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.Helpers;
 using Wavee.UI.Models;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Stores;
 using Wavee.UI.WinUI.Extensions;
@@ -51,14 +49,15 @@ public enum PlaylistLayoutMode { Banner, Cover }
 /// <summary>
 /// ViewModel for the Playlist detail page with imperative filtering and sorting.
 /// </summary>
-public sealed partial class PlaylistViewModel : ObservableObject, ITrackListViewModel, IDisposable
+public sealed partial class PlaylistViewModel : Wavee.UI.ViewModels.Helpers.TrackListViewModelBase, ITrackListViewModel, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
     private readonly IPlaylistPermissionService _playlistPermissionService;
     private readonly IPlaylistMutationService _playlistMutationService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly PlaylistStore _playlistStore;
-    private readonly ISession? _session;
+    private readonly IHomeFeedService? _homeFeedService;
+    private readonly IAuthState? _authState;
     private readonly IPlaylistCacheService? _playlistCache;
     private readonly Services.PlaylistMosaicService? _mosaicService;
     private readonly Services.IUserProfileResolver? _userProfileResolver;
@@ -275,7 +274,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
     /// <summary>Bare current-user id, used to suppress the "added by" badge on
     /// rows the current user added themselves.</summary>
-    public string? CurrentUserId => _session?.GetUserData()?.Username;
+    public string? CurrentUserId => _authState?.Username;
 
     public bool TryGetAddedByProfile(string addedBy, out UserProfileSummary? profile)
     {
@@ -465,12 +464,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     [ObservableProperty]
     private bool _hasAnyAddedAt;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SelectedCount))]
-    [NotifyPropertyChangedFor(nameof(HasSelection))]
-    [NotifyPropertyChangedFor(nameof(SelectionHeaderText))]
-    [NotifyPropertyChangedFor(nameof(CanRemove))]
-    private IReadOnlyList<object> _selectedItems = Array.Empty<object>();
+    // SelectedItems / SelectedCount / HasSelection / SelectionHeaderText are
+    // inherited from TrackListViewModelBase. CanRemove notification is fired
+    // in OnSelectionChanged below.
 
     // Stable instance mutated in place — see Tier 1 rationale on bound
     // collections elsewhere in the project. Used by the "Add to playlist"
@@ -597,12 +593,6 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     public bool ShowFollowerCountText
         => !IsFollowerCountLoading && !string.IsNullOrEmpty(FollowerCountFormatted);
 
-    public int SelectedCount => SelectedItems.Count;
-    public bool HasSelection => SelectedItems.Count > 0;
-    public string SelectionHeaderText => SelectedCount == 1
-        ? "1 track selected"
-        : $"{SelectedCount} tracks selected";
-
     // Sort indicator properties for column headers
     public bool IsSortingByTitle => CurrentSortColumn == PlaylistSortColumn.Title;
     public bool IsSortingByArtist => CurrentSortColumn == PlaylistSortColumn.Artist;
@@ -635,20 +625,22 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         ILogger<PlaylistViewModel>? logger = null,
         Services.PlaylistMosaicService? mosaicService = null,
         Services.IUserProfileResolver? userProfileResolver = null,
-        ISession? session = null,
+        IAuthState? authState = null,
         IPlaylistCacheService? playlistCache = null,
-        Services.IMusicVideoMetadataService? musicVideoMetadata = null)
+        Services.IMusicVideoMetadataService? musicVideoMetadata = null,
+        IHomeFeedService? homeFeedService = null)
     {
         _libraryDataService = libraryDataService;
         _playlistPermissionService = playlistPermissionService;
         _playlistMutationService = playlistMutationService;
         _playbackStateService = playbackStateService;
         _playlistStore = playlistStore;
-        _session = session;
+        _authState = authState;
         _playlistCache = playlistCache;
         _mosaicService = mosaicService;
         _userProfileResolver = userProfileResolver;
         _musicVideoMetadata = musicVideoMetadata;
+        _homeFeedService = homeFeedService;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
@@ -753,7 +745,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     {
         if (!ShowEmptyPlaylistState || HasEmptyPlaylistGenreItems || _emptyPlaylistGenresLoadStarted)
             return;
-        if (_session is null || !_session.IsConnected())
+        if (_homeFeedService is null || !_homeFeedService.IsAvailable)
             return;
 
         _emptyPlaylistGenresLoadStarted = true;
@@ -781,8 +773,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         MaybeAutoLoadRecommendations();
     }
 
-    partial void OnSelectedItemsChanged(IReadOnlyList<object> value)
+    protected override void OnSelectionChanged()
     {
+        OnPropertyChanged(nameof(CanRemove));
         PlaySelectedCommand.NotifyCanExecuteChanged();
         PlayAfterCommand.NotifyCanExecuteChanged();
         AddSelectedToQueueCommand.NotifyCanExecuteChanged();
@@ -1474,9 +1467,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         if (_suppressSessionSignal) return;
         if (newValue is null) return;
         if (ReferenceEquals(oldValue, newValue)) return;
-        if (_session is null || _playlistCache is null)
+        if (_playlistCache is null)
         {
-            _logger?.LogDebug("Session control chip selected but Session/PlaylistCache not wired; ignoring");
+            _logger?.LogDebug("Session control chip selected but PlaylistCache not wired; ignoring");
             return;
         }
         if (string.IsNullOrEmpty(newValue.SignalIdentifier))
@@ -1551,23 +1544,20 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         try
         {
-            // Capture the POST response — Spotify ships the re-personalised
-            // SelectedListContent inline. No need for a follow-up GET (which
-            // would race the server's signal-processing pipeline) or for
-            // /diff (which 509s on editorial mixes). We hand the bytes
-            // straight to the cache, which maps + persists + emits Changes.
-            var freshContent = await _session!.SpClient.SendPlaylistSignalAsync(
+            // POST + cache-apply collapse into one call: the mutation service
+            // captures the POST response (the re-personalised SelectedListContent
+            // Spotify returns inline — no follow-up GET needed because it races
+            // the signal-processing pipeline; no /diff because editorial mixes
+            // 509 it) and hands the bytes to the cache, which maps + persists
+            // + emits Changes.
+            var ok = await _playlistMutationService.SendPlaylistSignalAsync(
                 playlistId,
                 revision!,
                 signalKey,
                 requestId,
                 ct).ConfigureAwait(false);
 
-            if (ct.IsCancellationRequested || PlaylistId != playlistId)
-                return;
-
-            await _playlistCache!.ApplyFreshContentAsync(playlistId, freshContent, ct).ConfigureAwait(false);
-            if (ct.IsCancellationRequested || PlaylistId != playlistId)
+            if (!ok || ct.IsCancellationRequested || PlaylistId != playlistId)
                 return;
 
             // Don't clear IsLoading here. The chase beam should keep going
@@ -1757,7 +1747,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     {
         try
         {
-            var response = await _session!.Pathfinder.GetBrowseAllAsync(ct).ConfigureAwait(false);
+            if (_homeFeedService is null) return;
+            var response = await _homeFeedService.GetBrowseAllAsync(ct).ConfigureAwait(false);
+            if (response is null) return;
             var genres = BrowseAllGrouper
                 .Genres(BrowseAllParser.Extract(response))
                 .Take(18)

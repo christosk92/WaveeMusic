@@ -1,4 +1,5 @@
 using System;
+using Wavee.UI.Contracts;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reactive.Linq;
@@ -19,8 +20,7 @@ using Wavee.Protocol.DescriptorExtension;
 using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Metadata;
 using Wavee.Protocol.Resumption;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Stores;
 using Wavee.UI.WinUI.Services;

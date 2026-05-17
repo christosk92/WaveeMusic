@@ -2,7 +2,6 @@ using System;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Wavee.UI.Contracts;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers.Playback;
 
 namespace Wavee.UI.WinUI.Data.DTOs;

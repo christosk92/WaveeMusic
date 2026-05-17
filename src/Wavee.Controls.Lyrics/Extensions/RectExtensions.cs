@@ -1,4 +1,4 @@
-﻿using System.Numerics;
+using System.Numerics;
 using Vanara.PInvoke;
 using Windows.Foundation;
 using Windows.Graphics;

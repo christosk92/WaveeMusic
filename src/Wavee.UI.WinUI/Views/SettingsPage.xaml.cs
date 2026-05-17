@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls.Settings;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Services;

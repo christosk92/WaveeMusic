@@ -11,11 +11,11 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.Models;
+using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -35,7 +35,7 @@ public sealed partial class PlayerBar : UserControl
 
     public PlayerBarViewModel ViewModel { get; }
 
-    private readonly Data.Contracts.ITrackLikeService? _likeService;
+    private readonly ITrackLikeService? _likeService;
     private readonly IPlaybackStateService? _playbackStateService;
     private readonly IMusicVideoMetadataService? _musicVideoMetadata;
     private readonly IPanelDockingService? _dockingService;
@@ -57,7 +57,7 @@ public sealed partial class PlayerBar : UserControl
     public PlayerBar()
     {
         ViewModel = Ioc.Default.GetRequiredService<PlayerBarViewModel>();
-        _likeService = Ioc.Default.GetService<Data.Contracts.ITrackLikeService>();
+        _likeService = Ioc.Default.GetService<ITrackLikeService>();
         _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
         _musicVideoMetadata = Ioc.Default.GetService<IMusicVideoMetadataService>();
         _dockingService = Ioc.Default.GetService<IPanelDockingService>();
@@ -335,7 +335,7 @@ public sealed partial class PlayerBar : UserControl
         var uri = PlaybackSaveTargetResolver.GetTrackUri(_playbackStateService);
         if (!string.IsNullOrEmpty(uri))
         {
-            PlayerHeartButton.IsLiked = _likeService?.IsSaved(Data.Contracts.SavedItemType.Track, uri) == true;
+            PlayerHeartButton.IsLiked = _likeService?.IsSaved(SavedItemType.Track, uri) == true;
             return;
         }
 
@@ -356,7 +356,7 @@ public sealed partial class PlayerBar : UserControl
             return;
 
         PlayerHeartButton.IsLiked = !string.IsNullOrEmpty(uri)
-            && _likeService?.IsSaved(Data.Contracts.SavedItemType.Track, uri) == true;
+            && _likeService?.IsSaved(SavedItemType.Track, uri) == true;
     }
 
     private async Task OnPlayerHeartClickedAsync()
@@ -366,9 +366,9 @@ public sealed partial class PlayerBar : UserControl
             .ConfigureAwait(true);
         if (string.IsNullOrEmpty(uri) || _likeService == null) return;
 
-        var isLiked = _likeService.IsSaved(Data.Contracts.SavedItemType.Track, uri);
+        var isLiked = _likeService.IsSaved(SavedItemType.Track, uri);
         _logger?.LogInformation("[PlayerBar] Heart clicked: uri={Uri}, wasLiked={WasLiked} → {NewLiked}", uri, isLiked, !isLiked);
-        _likeService.ToggleSave(Data.Contracts.SavedItemType.Track, uri, isLiked);
+        _likeService.ToggleSave(SavedItemType.Track, uri, isLiked);
         PlayerHeartButton.IsLiked = !isLiked;
     }
 

@@ -7,7 +7,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
 using Wavee.UI.Contracts;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers.Navigation;

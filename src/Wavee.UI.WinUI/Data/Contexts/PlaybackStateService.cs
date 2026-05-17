@@ -15,9 +15,9 @@ using Wavee.Core.Http;
 using Wavee.Core.Session;
 using Wavee.Playback.Contracts;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.Enums;
 using Wavee.UI.Models;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
@@ -183,7 +183,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         IColorService colorService,
         IMessenger messenger,
         DispatcherQueue dispatcherQueue,
-        ILogger? logger = null,
+        ILogger<PlaybackStateService>? logger = null,
         IHomeFeedCache? homeFeedCache = null,
         INotificationService? notificationService = null)
     {

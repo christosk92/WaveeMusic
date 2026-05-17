@@ -15,6 +15,7 @@ using Wavee.Core.Http.Lyrics;
 using Wavee.Core.Session;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.Services;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Lyrics;

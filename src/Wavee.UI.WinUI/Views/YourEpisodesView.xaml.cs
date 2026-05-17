@@ -7,7 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.TrackDataGrid;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -156,7 +156,7 @@ public sealed partial class YourEpisodesView : UserControl, IDisposable
         _episodeGroupGrids.Remove(grid);
     }
 
-    private void EpisodeGroupGrid_RowSelected(object? sender, Wavee.UI.WinUI.Data.Contracts.ITrackItem selected)
+    private void EpisodeGroupGrid_RowSelected(object? sender, Wavee.UI.Contracts.ITrackItem selected)
     {
         if (_clearingEpisodeGridSelection)
             return;

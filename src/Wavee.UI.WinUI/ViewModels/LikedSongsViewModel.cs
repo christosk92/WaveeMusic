@@ -11,11 +11,8 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
-using Wavee.Core.Session;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Services;
@@ -31,14 +28,14 @@ public enum LikedSongsSortColumn { Title, Artist, Album, AddedAt }
 /// <summary>
 /// ViewModel for the Liked Songs page with imperative filtering and sorting.
 /// </summary>
-public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListViewModel, IDisposable
+public sealed partial class LikedSongsViewModel : Wavee.UI.ViewModels.Helpers.TrackListViewModelBase, ITrackListViewModel, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
     private readonly Wavee.UI.Services.Infra.IReloadCoordinator _reloadCoordinator;
     private IDisposable? _reloadRegistration;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ITrackDescriptorFetcher _descriptorFetcher;
-    private readonly ISession _session;
+    private readonly IAuthState? _authState;
     private readonly IMusicVideoMetadataService? _musicVideoMetadata;
     private readonly ILogger? _logger;
     private readonly DispatcherQueue _dispatcherQueue;
@@ -100,12 +97,6 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
     private string _totalDuration = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SelectedCount))]
-    [NotifyPropertyChangedFor(nameof(HasSelection))]
-    [NotifyPropertyChangedFor(nameof(SelectionHeaderText))]
-    private IReadOnlyList<object> _selectedItems = Array.Empty<object>();
-
-    [ObservableProperty]
     private IReadOnlyList<PlaylistSummaryDto> _playlists = Array.Empty<PlaylistSummaryDto>();
 
     public ObservableCollection<LikedSongDto> FilteredSongs { get; } = [];
@@ -118,11 +109,8 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
 
     private IEnumerable<LikedSongDto> SelectedTracks => SelectedItems.OfType<LikedSongDto>();
 
-    public int SelectedCount => SelectedItems.Count;
-    public bool HasSelection => SelectedItems.Count > 0;
-    public string SelectionHeaderText => SelectedCount == 1
-        ? "1 track selected"
-        : $"{SelectedCount} tracks selected";
+    // SelectedItems / SelectedCount / HasSelection / SelectionHeaderText inherited
+    // from TrackListViewModelBase (Phase 4 dedup).
 
     // Sort indicator properties for column headers
     public bool IsSortingByTitle => CurrentSortColumn == LikedSongsSortColumn.Title;
@@ -140,15 +128,15 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         ILibraryDataService libraryDataService,
         IPlaybackStateService playbackStateService,
         ITrackDescriptorFetcher descriptorFetcher,
-        ISession session,
         Wavee.UI.Services.Infra.IReloadCoordinator reloadCoordinator,
+        IAuthState? authState = null,
         IMusicVideoMetadataService? musicVideoMetadata = null,
         ILogger<LikedSongsViewModel>? logger = null)
     {
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
         _descriptorFetcher = descriptorFetcher;
-        _session = session;
+        _authState = authState;
         _reloadCoordinator = reloadCoordinator;
         _musicVideoMetadata = musicVideoMetadata;
         _logger = logger;
@@ -246,7 +234,7 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         ApplyFilterAndSort();
     }
 
-    partial void OnSelectedItemsChanged(IReadOnlyList<object> value)
+    protected override void OnSelectionChanged()
     {
         PlaySelectedCommand.NotifyCanExecuteChanged();
         PlayAfterCommand.NotifyCanExecuteChanged();
@@ -576,7 +564,7 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         // `spotify:user:{username}:collection`. Passing the UI sentinel
         // "liked-songs" instead 400s /context-resolve/v1/autoplay and corrupts
         // the outgoing dealer state.
-        var username = _session.GetUserData()?.Username;
+        var username = _authState?.Username;
         if (string.IsNullOrEmpty(username))
         {
             _logger?.LogWarning("Cannot start Liked Songs playback — no authenticated user");

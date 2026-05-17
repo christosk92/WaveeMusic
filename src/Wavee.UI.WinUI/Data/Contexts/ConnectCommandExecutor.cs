@@ -11,7 +11,7 @@ using Wavee.Core.Session;
 using Wavee.Core.Audio;
 using Wavee.Playback.Contracts;
 using Wavee.UI.Models;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
@@ -56,7 +56,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         _audioPipelineProxy = null;
     }
 
-    public ConnectCommandExecutor(ConnectCommandClient client, Session session, ILogger? logger = null)
+    public ConnectCommandExecutor(ConnectCommandClient client, Session session, ILogger<ConnectCommandExecutor>? logger = null)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _session = session ?? throw new ArgumentNullException(nameof(session));

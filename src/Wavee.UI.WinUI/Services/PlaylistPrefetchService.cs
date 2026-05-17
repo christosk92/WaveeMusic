@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 
 namespace Wavee.UI.WinUI.Services;

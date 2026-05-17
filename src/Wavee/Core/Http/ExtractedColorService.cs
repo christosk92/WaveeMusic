@@ -33,7 +33,7 @@ public sealed class ExtractedColorService : IColorService, IAsyncDisposable
     public ExtractedColorService(
         IPathfinderClient pathfinder,
         IMetadataDatabase db,
-        ILogger? logger = null,
+        ILogger<ExtractedColorService>? logger = null,
         TimeSpan? debounceWindow = null,
         int? batchSize = null)
     {

@@ -1,4 +1,4 @@
-﻿using Wavee.Controls.Lyrics.Models;
+using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Services.LocalizationService;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.International.Converters.TraditionalChineseToSimplifiedConverter;

@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.ViewModels;
 using Wavee.UI.WinUI.Controls.SidebarPlayer;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers.Application;
 using Wavee.UI.WinUI.Services.Docking;

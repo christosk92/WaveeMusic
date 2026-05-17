@@ -12,11 +12,11 @@ using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.Controls.Lyrics.Models.Settings;
 using Wavee.UI.Helpers;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Services;
 using Microsoft.UI;
 using Windows.UI;
-using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
 

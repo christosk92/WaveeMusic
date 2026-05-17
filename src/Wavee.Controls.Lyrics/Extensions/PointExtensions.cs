@@ -1,4 +1,4 @@
-﻿using Windows.Foundation;
+using Windows.Foundation;
 using Windows.Graphics;
 
 namespace Wavee.Controls.Lyrics.Extensions

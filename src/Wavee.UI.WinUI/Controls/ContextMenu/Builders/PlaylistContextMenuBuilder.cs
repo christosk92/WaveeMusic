@@ -47,7 +47,8 @@ public static class PlaylistContextMenuBuilder
         items.Add(new ContextMenuItemModel
         {
             Text = AppLocalization.GetString("PlaylistMenu_Shuffle"),
-            Glyph = FluentGlyphs.Shuffle,
+            Glyph = FluentGlyphs.Shuffle,
+
             AccentIconStyleKey = "App.AccentIcons.Media.Shuffle",
             Command = ctx.ShuffleCommand,
             Invoke = ctx.ShuffleCommand is null ? () => Debug.WriteLine($"ShufflePlaylist: {uri}") : null,

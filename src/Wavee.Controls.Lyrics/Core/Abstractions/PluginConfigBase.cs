@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BetterLyrics.Core.Interfaces;
 using System.Runtime.CompilerServices;
 

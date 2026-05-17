@@ -1,4 +1,4 @@
-﻿namespace BetterLyrics.Core.Models.SettingsSchema
+namespace BetterLyrics.Core.Models.SettingsSchema
 {
     public abstract class SettingDef
     {

@@ -14,6 +14,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
@@ -27,7 +28,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 
 public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
-    private readonly Wavee.Core.Session.ISession? _session;
+    private readonly IHomeFeedService? _homeFeedService;
     private readonly ISettingsService? _settingsService;
     private readonly Services.HomeFeedCache? _homeFeedCache;
 
@@ -177,7 +178,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     public event EventHandler<TabItemParameter>? ContentChanged;
 
     public HomeViewModel(
-        Wavee.Core.Session.ISession? session = null,
+        IHomeFeedService? homeFeedService = null,
         ISettingsService? settingsService = null,
         Services.HomeFeedCache? homeFeedCache = null,
         Services.RecentlyPlayedService? recentlyPlayedService = null,
@@ -186,7 +187,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         ILogger<HomeViewModel>? logger = null,
         Wavee.Local.ILocalLibraryService? localLibrary = null)
     {
-        _session = session;
+        _homeFeedService = homeFeedService;
         _settingsService = settingsService;
         _homeFeedCache = homeFeedCache;
         _recentlyPlayedService = recentlyPlayedService;
@@ -241,7 +242,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
         try
         {
-            if (_session == null || !_session.IsConnected())
+            if (_homeFeedService is null || !_homeFeedService.IsAvailable)
             {
                 UpdateGreeting();
                 return;
@@ -280,7 +281,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             // 2. Fetch fresh data
             if (_homeFeedCache != null)
             {
-                var snapshot = await _homeFeedCache.FetchFreshAsync(_session);
+                var snapshot = await _homeFeedCache.FetchFreshAsync();
                 Greeting = snapshot.Greeting ?? Greeting;
                 var ordered = ApplyPreferences(snapshot.Sections);
 
@@ -297,12 +298,15 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                 await RefreshLocalSectionAsync();
 
                 // Start background refresh
-                _homeFeedCache.StartBackgroundRefresh(_session);
+                _homeFeedCache.StartBackgroundRefresh();
             }
             else
             {
-                // No cache service — direct fetch
-                var response = await _session.Pathfinder.GetHomeAsync(sectionItemsLimit: 10);
+                // No cache service — direct fetch through the home-feed service.
+                var response = _homeFeedService is null
+                    ? null
+                    : await _homeFeedService.GetHomeAsync(sectionItemsLimit: 10).ConfigureAwait(false);
+                if (response is null) return;
                 var result = await Task.Run(() => _parserFactory.Parse(response));
                 Greeting = result.Greeting ?? Greeting;
                 var ordered = ApplyPreferences(result.Sections);
@@ -1520,7 +1524,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
     private async Task RefetchWithFacet(string? facet)
     {
-        if (_homeFeedCache == null || _session == null || !_session.IsConnected()) return;
+        if (_homeFeedCache == null || _homeFeedService is null || !_homeFeedService.IsAvailable) return;
 
         CancelBaselineEnrichment();
         _homeFeedCache.CurrentFacet = string.IsNullOrEmpty(facet) ? null : facet;
@@ -1536,7 +1540,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
         try
         {
-            var snapshot = await _homeFeedCache.FetchFreshAsync(_session);
+            var snapshot = await _homeFeedCache.FetchFreshAsync();
             System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] Got {snapshot.Sections.Count} sections, greeting={snapshot.Greeting}");
             Greeting = snapshot.Greeting ?? Greeting;
             var ordered = ApplyPreferences(snapshot.Sections);
@@ -1818,20 +1822,8 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     /// </summary>
     internal async Task<Wavee.Core.Http.Pathfinder.BrowseAllResponse?> FetchBrowseAllAsync(CancellationToken ct)
     {
-        if (_session == null || !_session.IsConnected()) return null;
-        try
-        {
-            return await _session.Pathfinder.GetBrowseAllAsync(ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Failed to fetch Browse All categories");
-            return null;
-        }
+        if (_homeFeedService is null) return null;
+        return await _homeFeedService.GetBrowseAllAsync(ct).ConfigureAwait(false);
     }
 
     private bool _longLivedAttached;
@@ -1859,7 +1851,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
     private void BeginBaselineEnrichment()
     {
-        if (_session == null || !_session.IsConnected()) return;
+        if (_homeFeedService is null || !_homeFeedService.IsAvailable) return;
 
         CancelBaselineEnrichment();
 
@@ -1895,7 +1887,9 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     {
         try
         {
-            var response = await _session!.Pathfinder.GetFeedBaselineLookupAsync(uris, ct).ConfigureAwait(false);
+            if (_homeFeedService is null) return;
+            var response = await _homeFeedService.GetFeedBaselineLookupAsync(uris, ct).ConfigureAwait(false);
+            if (response is null) return;
             var lookup = BuildBaselineEnrichmentLookup(response);
 
             _dispatcherQueue.TryEnqueue(() =>

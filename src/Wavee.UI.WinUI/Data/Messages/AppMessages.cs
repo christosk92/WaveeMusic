@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.Messaging.Messages;
 using Wavee.Core.Session;
 using Wavee.UI.Models;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Models;
 

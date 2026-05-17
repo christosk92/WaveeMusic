@@ -17,13 +17,13 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.Helpers;
 using Wavee.UI.Services;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -504,7 +504,7 @@ public sealed partial class TrackItem : UserControl
     private bool _isAlternateRow;
     private bool _useCardRow;
     private readonly ThemeColorService? _themeColors = Ioc.Default.GetService<ThemeColorService>();
-    private readonly Data.Contracts.ITrackLikeService? _likeService = Ioc.Default.GetService<Data.Contracts.ITrackLikeService>();
+    private readonly ITrackLikeService? _likeService = Ioc.Default.GetService<ITrackLikeService>();
     private readonly Microsoft.Extensions.Logging.ILogger? _logger = Ioc.Default.GetService<Microsoft.Extensions.Logging.ILogger<TrackItem>>();
     private readonly IPlaybackStateService? _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
     private readonly IMusicVideoMetadataService? _musicVideoMetadata = Ioc.Default.GetService<IMusicVideoMetadataService>();
@@ -1750,7 +1750,7 @@ public sealed partial class TrackItem : UserControl
 
         var uri = GetImmediateSaveTargetUri(track);
         if (!string.IsNullOrEmpty(uri))
-            return _likeService.IsSaved(Data.Contracts.SavedItemType.Track, uri);
+            return _likeService.IsSaved(SavedItemType.Track, uri);
 
         if (IsCurrentPlaybackVideoTrack(track))
             _ = RefreshCurrentVideoLikedStateAsync(track);
@@ -1766,7 +1766,7 @@ public sealed partial class TrackItem : UserControl
         if (Track != expectedTrack || string.IsNullOrEmpty(uri) || _likeService is null)
             return;
 
-        var isLiked = _likeService.IsSaved(Data.Contracts.SavedItemType.Track, uri);
+        var isLiked = _likeService.IsSaved(SavedItemType.Track, uri);
         if (CompactHeartButton is not null) CompactHeartButton.IsLiked = isLiked;
         if (RowHeartButton is not null) RowHeartButton.IsLiked = isLiked;
         expectedTrack.IsLiked = isLiked;
@@ -2109,12 +2109,12 @@ public sealed partial class TrackItem : UserControl
         if (string.IsNullOrEmpty(uri))
             return;
 
-        var wasLiked = _likeService.IsSaved(Data.Contracts.SavedItemType.Track, uri);
+        var wasLiked = _likeService.IsSaved(SavedItemType.Track, uri);
         _logger?.LogInformation("HeartButton: ToggleSave uri={Uri}, currentlyLiked={IsLiked}", uri, wasLiked);
 
         // Just tell the service - it updates the cache, fires SaveStateChanged,
         // and ALL hearts across the app react via OnSaveStateChanged.
-        _likeService.ToggleSave(Data.Contracts.SavedItemType.Track, uri, wasLiked);
+        _likeService.ToggleSave(SavedItemType.Track, uri, wasLiked);
     }
 
     private string? GetImmediateSaveTargetUri(ITrackItem track)
@@ -2701,4 +2701,3 @@ public sealed partial class TrackItem : UserControl
 
     #endregion
 }
-

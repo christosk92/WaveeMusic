@@ -11,9 +11,9 @@ using Microsoft.UI.Dispatching;
 using Wavee.Connect;
 using Wavee.Core.Session;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.Enums;
 using Wavee.UI.Models;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Models;
 
@@ -50,7 +50,7 @@ internal sealed partial class PlaybackService : ObservableObject, IPlaybackServi
         Session session,
         INotificationService notificationService,
         IPlaybackPromptService promptService,
-        ILogger? logger = null)
+        ILogger<PlaybackService>? logger = null)
     {
         _executor = executor ?? throw new ArgumentNullException(nameof(executor));
         _session = session ?? throw new ArgumentNullException(nameof(session));

@@ -1,4 +1,5 @@
 using System;
+using Wavee.UI.WinUI.Data.DTOs;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -18,6 +19,7 @@ using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers;
@@ -42,8 +44,6 @@ using Microsoft.UI;
 using Microsoft.UI.Xaml.Media.Animation;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
-using Wavee.UI.Contracts;
-using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Controls.RightPanel;
@@ -3607,7 +3607,7 @@ public sealed partial class RightPanelView : UserControl
         if (_detailsVm?.PlaybackState is not { } ps) return;
         if (string.IsNullOrEmpty(ps.CurrentTrackId)) return;
 
-        var adapter = new Data.DTOs.NowPlayingTrackAdapter(ps);
+        var adapter = new Wavee.UI.WinUI.Data.DTOs.NowPlayingTrackAdapter(ps);
         var ctx = new TrackMenuContext
         {
             ShowCreditsAction = () =>

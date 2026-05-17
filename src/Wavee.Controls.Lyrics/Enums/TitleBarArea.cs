@@ -1,4 +1,4 @@
-﻿namespace Wavee.Controls.Lyrics.Enums
+namespace Wavee.Controls.Lyrics.Enums
 {
     public enum TitleBarArea
     {

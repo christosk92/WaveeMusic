@@ -1,4 +1,4 @@
-﻿using Wavee.Controls.Lyrics.Models.Lyrics;
+using Wavee.Controls.Lyrics.Models.Lyrics;
 using System;
 using System.Collections.Generic;
 

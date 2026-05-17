@@ -12,7 +12,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
 using Wavee.Core.Http.Pathfinder;
-using Wavee.Core.Session;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
@@ -34,7 +33,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// </summary>
 public sealed partial class BrowseViewModel : SectionFeedViewModelBase
 {
-    private readonly ISession? _session;
+    private readonly IHomeFeedService? _homeFeedService;
     private readonly ILogger? _logger;
     private readonly DispatcherQueue _dispatcherQueue;
 
@@ -69,10 +68,10 @@ public sealed partial class BrowseViewModel : SectionFeedViewModelBase
     public ICommand NavigateToCtaCommand { get; }
 
     public BrowseViewModel(
-        ISession? session = null,
+        IHomeFeedService? homeFeedService = null,
         ILogger<BrowseViewModel>? logger = null)
     {
-        _session = session;
+        _homeFeedService = homeFeedService;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
@@ -105,7 +104,7 @@ public sealed partial class BrowseViewModel : SectionFeedViewModelBase
     [RelayCommand]
     private async Task ReloadCoreAsync()
     {
-        if (_session is null || !_session.IsConnected())
+        if (_homeFeedService is null || !_homeFeedService.IsAvailable)
         {
             HasError = true;
             ErrorMessage = "Not connected.";
@@ -118,7 +117,7 @@ public sealed partial class BrowseViewModel : SectionFeedViewModelBase
 
         try
         {
-            var response = await _session.Pathfinder.GetBrowsePageAsync(CurrentUri).ConfigureAwait(false);
+            var response = await _homeFeedService.GetBrowsePageAsync(CurrentUri).ConfigureAwait(false);
 
             // Header — title + accent. Headers can be missing on some pages
             // (sub-page xlink targets); fall back gracefully.

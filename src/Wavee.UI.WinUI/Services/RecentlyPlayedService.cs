@@ -12,7 +12,6 @@ using Wavee.Core.Session;
 using Wavee.UI.Contracts;
 using Wavee.UI.Helpers;
 using Wavee.UI.Models;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Styles;

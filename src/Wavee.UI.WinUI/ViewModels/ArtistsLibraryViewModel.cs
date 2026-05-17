@@ -8,9 +8,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
 using Wavee.UI.Contracts;
-using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Services;
@@ -25,7 +24,7 @@ public enum ArtistsLibraryStage
     Tracks
 }
 
-public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackListViewModel, IDisposable
+public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helpers.TrackListViewModelBase, ITrackListViewModel, IDisposable
 {
     private const string PreferencesTabKey = "artists";
 
@@ -825,18 +824,8 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
 
     #region ITrackListViewModel Implementation
 
-    // Selection tracking
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SelectedCount))]
-    [NotifyPropertyChangedFor(nameof(HasSelection))]
-    [NotifyPropertyChangedFor(nameof(SelectionHeaderText))]
-    private IReadOnlyList<object> _selectedItems = Array.Empty<object>();
-
-    public int SelectedCount => SelectedItems.Count;
-    public bool HasSelection => SelectedItems.Count > 0;
-    public string SelectionHeaderText => SelectedCount == 1
-        ? "1 track selected"
-        : $"{SelectedCount} tracks selected";
+    // Selection tracking — SelectedItems / SelectedCount / HasSelection /
+    // SelectionHeaderText are inherited from TrackListViewModelBase.
 
     // Sorting - no-op for album tracks (always in track order)
     // Renamed from SortBy to avoid colliding with the LibrarySortBy observable
@@ -926,7 +915,7 @@ public sealed partial class ArtistsLibraryViewModel : ObservableObject, ITrackLi
 
     #endregion
 
-    partial void OnSelectedItemsChanged(IReadOnlyList<object> value)
+    protected override void OnSelectionChanged()
     {
         PlaySelectedCommand.NotifyCanExecuteChanged();
         PlayAfterCommand.NotifyCanExecuteChanged();

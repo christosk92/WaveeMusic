@@ -19,12 +19,12 @@ using Microsoft.UI.Xaml.Controls;
 using Serilog.Events;
 // Processors now live in AudioHost — EQ config goes via IPC
 using Wavee.Core.Storage.Abstractions;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.Core.Session;
 using Wavee.Core.Time;
-using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Application;
@@ -1396,7 +1396,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public ObservableCollection<EqualizerBandViewModel> EqBands { get; } = [];
 
     // EQ control goes through IPC to AudioHost via IAudioPipelineControl
-    private Data.Contracts.IAudioPipelineControl? _pipelineControl;
+    private Wavee.UI.Contracts.IAudioPipelineControl? _pipelineControl;
 
     [ObservableProperty]
     private bool _isEqualizerEnabled;
@@ -1415,7 +1415,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     private long _equalizerApplyVersion;
 
-    public void InitializeEqualizer(Data.Contracts.IAudioPipelineControl? control)
+    public void InitializeEqualizer(Wavee.UI.Contracts.IAudioPipelineControl? control)
     {
         _pipelineControl = control;
 

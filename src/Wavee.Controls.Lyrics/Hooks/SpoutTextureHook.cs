@@ -1,4 +1,4 @@
-﻿using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas;
 using SpoutDx.Net.Interop;
 using System;
 using Vanara.PInvoke;

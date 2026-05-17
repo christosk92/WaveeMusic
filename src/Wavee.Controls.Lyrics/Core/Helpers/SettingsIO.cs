@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text.Json.Serialization.Metadata;
 
 namespace BetterLyrics.Core.Helpers

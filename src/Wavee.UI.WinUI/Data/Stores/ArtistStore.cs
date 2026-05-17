@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Data;
 using Wavee.Core.Storage.Abstractions;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.Data.Stores;
 

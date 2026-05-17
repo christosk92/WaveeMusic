@@ -1,4 +1,4 @@
-﻿using Wavee.Controls.Lyrics.Enums;
+using Wavee.Controls.Lyrics.Enums;
 using Wavee.Controls.Lyrics.Helper;
 using CommunityToolkit.Mvvm.ComponentModel;
 

@@ -1,4 +1,4 @@
-﻿namespace Wavee.Controls.Lyrics.Enums
+namespace Wavee.Controls.Lyrics.Enums
 {
     /// <summary>
     /// 支持读取的内存数值类型

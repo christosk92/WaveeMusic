@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Wavee.UI.Helpers;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
 

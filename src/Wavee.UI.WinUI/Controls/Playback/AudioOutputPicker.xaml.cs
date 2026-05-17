@@ -626,8 +626,7 @@ public sealed partial class AudioOutputPicker : UserControl
     {
         try
         {
-            var session = Ioc.Default.GetService<Wavee.Core.Session.Session>();
-            return session?.Config?.DeviceId;
+            return Ioc.Default.GetService<Wavee.UI.Contracts.IAuthState>()?.DeviceId;
         }
         catch
         {

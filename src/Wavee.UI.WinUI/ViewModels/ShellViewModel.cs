@@ -16,8 +16,9 @@ using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Controls.Sidebar;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Styles;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
@@ -32,7 +33,6 @@ using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Views;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml;
-using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Services.Docking;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -2065,13 +2065,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// fires; cleared when the panel is toggled off for that mode.
     /// </summary>
     [ObservableProperty]
-    private Wavee.UI.WinUI.Data.Contracts.ITrackItem? _selectedTrackForDetails;
+    private Wavee.UI.Contracts.ITrackItem? _selectedTrackForDetails;
 
     /// <summary>
     /// Open the right panel with the temporary "Track details" tab showing metadata for
     /// <paramref name="track"/>. No-op when <paramref name="track"/> is null.
     /// </summary>
-    public void ShowTrackDetails(Wavee.UI.WinUI.Data.Contracts.ITrackItem? track)
+    public void ShowTrackDetails(Wavee.UI.Contracts.ITrackItem? track)
     {
         if (track is null) return;
         SelectedTrackForDetails = track;

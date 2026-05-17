@@ -66,6 +66,29 @@ public static class NavigationHelpers
     }
 
     /// <summary>
+    /// Navigate to the dedicated artist-discography page for a single group
+    /// (Albums or Singles). Triggered by the "See all" tile that ArtistPage
+    /// appends when a group's total exceeds the on-page cap. The destination
+    /// page renders a <c>BreadcrumbBar</c> back to the parent artist; the
+    /// first crumb routes through <see cref="OpenArtist(object, string, bool)"/>.
+    /// </summary>
+    public static void OpenArtistDiscography(
+        string artistUri,
+        string artistName,
+        ArtistDiscographyGroupKind groupKind,
+        string? artistImageUrl = null,
+        bool openInNewTab = false)
+    {
+        var param = new ArtistDiscographyNavigationParameter(artistUri, artistName, groupKind, artistImageUrl);
+        var groupLabel = groupKind == ArtistDiscographyGroupKind.Albums ? "Albums" : "Singles";
+        var header = string.IsNullOrWhiteSpace(artistName)
+            ? groupLabel
+            : $"{artistName} – {groupLabel}";
+        Navigate(typeof(ArtistDiscographyPage), param, header,
+            CreateIconSource(typeof(ArtistPage), artistUri), openInNewTab);
+    }
+
+    /// <summary>
     /// Navigate to album — both <c>spotify:album:*</c> and
     /// <c>wavee:local:album:*</c> URIs route to the unified AlbumPage.
     /// <c>AlbumService.GetDetailAsync</c> handles the source branching.

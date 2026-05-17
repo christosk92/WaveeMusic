@@ -1,11 +1,11 @@
 using System;
+using Wavee.UI.Contracts;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Playlists;
 using Wavee.Core.Storage.Abstractions;
-using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Services;
 

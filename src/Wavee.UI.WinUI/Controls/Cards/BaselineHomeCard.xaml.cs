@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -16,7 +16,6 @@ using Wavee.Playback.Contracts;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.Services;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;

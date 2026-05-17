@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Documents;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Omnibar;

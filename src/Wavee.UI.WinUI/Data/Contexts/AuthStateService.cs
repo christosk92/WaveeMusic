@@ -13,8 +13,7 @@ using Wavee.Core.Authentication;
 using Wavee.Core.Session;
 using Wavee.OAuth;
 using Wavee.UI.Contracts;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Services;
 
@@ -68,6 +67,7 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
 
     public bool IsAuthenticated => Status == AuthStatus.Authenticated;
     public bool IsPremium => AccountType == Core.Session.AccountType.Premium;
+    public string? DeviceId => _sessionConfig?.DeviceId;
 
     public event EventHandler<AuthStatus>? AuthStatusChanged;
 

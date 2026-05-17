@@ -714,7 +714,7 @@
                         </StackPanel>
 
                         <ItemsRepeater x:Name="AlbumsRepeater"
-                                       ItemsSource="{x:Bind ViewModel.Albums, Mode=OneWay}"
+                                       ItemsSource="{x:Bind ViewModel.AlbumsCapped, Mode=OneWay}"
                                        ElementClearing="DiscographyRepeater_ElementClearing">
                             <ItemsRepeater.Layout>
                                 <UniformGridLayout MinItemWidth="160"
@@ -739,6 +739,38 @@
                                 </DataTemplate>
                             </ItemsRepeater.ItemTemplate>
                         </ItemsRepeater>
+
+                        <!-- See-all-albums tile. Only appears when the artist has more
+                             than 100 albums (capped grid above shows 30); routes to the
+                             dedicated ArtistDiscographyPage so the user gets a full
+                             paginatable view + breadcrumb without bloating this page. -->
+                        <Button x:Name="AlbumsSeeAllTile"
+                                Visibility="{x:Bind ViewModel.ShowAlbumsSeeAllTile, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                Padding="20,14"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Click="AlbumsSeeAll_Click">
+                            <Grid HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="{x:Bind ViewModel.AlbumsSeeAllLabel, Mode=OneWay}"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           VerticalAlignment="Center"/>
+                                <FontIcon Grid.Column="1"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          Glyph="&#xE76C;"
+                                          FontSize="14"
+                                          VerticalAlignment="Center"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Grid>
+                        </Button>
                     </StackPanel>
 
                     <!-- Singles grid -->
@@ -759,7 +791,7 @@
                         </StackPanel>
 
                         <ItemsRepeater x:Name="SinglesRepeater"
-                                       ItemsSource="{x:Bind ViewModel.Singles, Mode=OneWay}"
+                                       ItemsSource="{x:Bind ViewModel.SinglesCapped, Mode=OneWay}"
                                        ElementClearing="DiscographyRepeater_ElementClearing">
                             <ItemsRepeater.Layout>
                                 <UniformGridLayout MinItemWidth="160"
@@ -784,6 +816,35 @@
                                 </DataTemplate>
                             </ItemsRepeater.ItemTemplate>
                         </ItemsRepeater>
+
+                        <!-- See-all-singles tile (mirror of AlbumsSeeAllTile above). -->
+                        <Button x:Name="SinglesSeeAllTile"
+                                Visibility="{x:Bind ViewModel.ShowSinglesSeeAllTile, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                Padding="20,14"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Click="SinglesSeeAll_Click">
+                            <Grid HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="{x:Bind ViewModel.SinglesSeeAllLabel, Mode=OneWay}"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           VerticalAlignment="Center"/>
+                                <FontIcon Grid.Column="1"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          Glyph="&#xE76C;"
+                                          FontSize="14"
+                                          VerticalAlignment="Center"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Grid>
+                        </Button>
                     </StackPanel>
 
                     <!-- Appears on shelf -->

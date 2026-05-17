@@ -9,7 +9,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.ViewModels;

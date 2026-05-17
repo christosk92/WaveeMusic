@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
-using Wavee.Core.Session;
+using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -38,18 +38,22 @@ public sealed record ProfileSnapshot
 /// </summary>
 public sealed class ProfileCache : PageCache<ProfileSnapshot>, IProfileCache
 {
-    private readonly IColorService _colorService;
+    private readonly IUserProfileService? _userProfileService;
 
-    public ProfileCache(IColorService colorService, ILogger<ProfileCache>? logger = null) : base(logger)
+    public ProfileCache(IUserProfileService? userProfileService = null, ILogger<ProfileCache>? logger = null)
+        : base(logger)
     {
-        _colorService = colorService;
+        _userProfileService = userProfileService;
     }
 
-    protected override Task<ProfileSnapshot> FetchCoreAsync(ISession session, CancellationToken ct)
+    protected override bool IsAvailable => _userProfileService?.IsAvailable ?? false;
+
+    protected override async Task<ProfileSnapshot> FetchCoreAsync(CancellationToken ct)
     {
-        var userData = session.GetUserData()
-            ?? throw new InvalidOperationException("No user data available");
-        return ProfileFetcher.LoadAsync(session, userData.Username, _colorService, Logger, ct);
+        if (_userProfileService is null)
+            throw new InvalidOperationException("ProfileCache requires IUserProfileService to fetch fresh data.");
+        var loaded = await _userProfileService.LoadAuthenticatedUserAsync(ct).ConfigureAwait(false);
+        return (ProfileSnapshot)loaded;
     }
 
     // ── Flat-list diff helpers ──

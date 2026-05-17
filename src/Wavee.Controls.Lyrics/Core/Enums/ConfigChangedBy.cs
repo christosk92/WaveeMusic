@@ -1,4 +1,4 @@
-﻿namespace BetterLyrics.Core.Enums
+namespace BetterLyrics.Core.Enums
 {
     public enum ConfigChangedBy
     {

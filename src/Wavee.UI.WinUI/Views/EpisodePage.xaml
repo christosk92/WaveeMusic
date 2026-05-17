@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="Wavee.UI.WinUI.Views.EpisodePage"
     x:Name="PageRoot"
@@ -12,7 +12,7 @@
     xmlns:winUi="using:CommunityToolkit.WinUI"
     xmlns:appControls="using:Wavee.UI.WinUI.Controls"
     xmlns:comments="using:Wavee.UI.WinUI.Controls.Comments"
-    xmlns:dtos="using:Wavee.UI.WinUI.Data.DTOs"
+    xmlns:dtos="using:Wavee.UI.Models"
     xmlns:rightPanel="using:Wavee.UI.WinUI.Controls.RightPanel"
     xmlns:showEpisode="using:Wavee.UI.WinUI.Controls.ShowEpisode"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"

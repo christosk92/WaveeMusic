@@ -12,7 +12,7 @@ using Wavee.Core.Storage.Entities;
 using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Metadata;
 using Wavee.UI.Models;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
 
@@ -45,7 +45,7 @@ internal sealed class TrackMetadataEnricher : IRecipient<TrackEnrichmentRequestM
         ICacheService cacheService,
         ISpClient spClient,
         IMessenger messenger,
-        ILogger? logger = null)
+        ILogger<TrackMetadataEnricher>? logger = null)
     {
         _metadataClient = metadataClient;
         _cacheService = cacheService;

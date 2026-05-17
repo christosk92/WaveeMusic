@@ -1,4 +1,4 @@
-﻿using Wavee.Controls.Lyrics.Models;
+using Wavee.Controls.Lyrics.Models;
 using System;
 
 namespace Wavee.Controls.Lyrics.Helper.Lyrics

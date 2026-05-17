@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Navigation;

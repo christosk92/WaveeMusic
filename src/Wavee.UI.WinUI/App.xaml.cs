@@ -1,4 +1,5 @@
 using System;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.Audio;
 using System.Collections.Immutable;
 using System.Runtime;
@@ -235,7 +236,7 @@ public partial class App : Application
                 // Instance for hot-path access. All three are subscribers, not
                 // producers — being live ~50 ms after first paint is safe.
                 Ioc.Default.GetRequiredService<Data.Contexts.LibrarySyncOrchestrator>();
-                Ioc.Default.GetRequiredService<Data.Contracts.IActivityService>();
+                Ioc.Default.GetRequiredService<Wavee.UI.WinUI.Data.Contracts.IActivityService>();
                 Ioc.Default.GetRequiredService<Services.UiOperationProfiler>();
                 Ioc.Default.GetRequiredService<Diagnostics.NavigationDiagnostics>();
             });

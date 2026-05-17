@@ -1,4 +1,4 @@
-﻿using BetterLyrics.Core.Enums;
+using BetterLyrics.Core.Enums;
 using Wavee.Controls.Lyrics.Enums;
 
 namespace Wavee.Controls.Lyrics.Extensions

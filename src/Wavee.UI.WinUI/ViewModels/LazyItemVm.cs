@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -163,11 +163,11 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
 
     // Extra properties for custom columns (not on ITrackItem, accessed via reflection)
     public string PlayCountFormatted =>
-        Data is Data.DTOs.AlbumTrackDto album ? album.PlayCountFormatted :
+        Data is Wavee.UI.Models.AlbumTrackDto album ? album.PlayCountFormatted :
         Data is ArtistTopTrackVm artist ? artist.PlayCountFormatted : "";
 
     public string AddedAtFormatted =>
-        Data is Data.DTOs.PlaylistTrackDto p ? p.AddedAtFormatted : "";
+        Data is Wavee.UI.Models.PlaylistTrackDto p ? p.AddedAtFormatted : "";
 
     public static LazyTrackItem Loaded(string id, int index, ITrackItem data) => new()
     {

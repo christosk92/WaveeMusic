@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="Wavee.UI.WinUI.Views.ShowPage"
     x:Name="PageRoot"
@@ -14,7 +14,7 @@
     xmlns:cfx="using:Wavee.UI.WinUI.Helpers.Composition"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
-    xmlns:dtos="using:Wavee.UI.WinUI.Data.DTOs"
+    xmlns:dtos="using:Wavee.UI.Models"
     xmlns:showEpisode="using:Wavee.UI.WinUI.Controls.ShowEpisode"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"

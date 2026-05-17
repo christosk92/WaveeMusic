@@ -14,8 +14,8 @@ using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Metadata;
 using Wavee.Protocol.Resumption;
 using Wavee.UI.WinUI.Data.Contexts.Helpers;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Contracts;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Stores;
 
 namespace Wavee.UI.WinUI.Data.Contexts;

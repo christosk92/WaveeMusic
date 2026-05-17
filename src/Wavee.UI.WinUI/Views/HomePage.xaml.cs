@@ -16,7 +16,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Controls.Layouts;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Controls.Cards;

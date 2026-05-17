@@ -7,7 +7,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 
 namespace Wavee.UI.WinUI.Helpers;
 

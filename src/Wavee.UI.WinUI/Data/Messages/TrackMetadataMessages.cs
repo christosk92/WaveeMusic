@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Threading;
 using CommunityToolkit.Mvvm.Messaging.Messages;
 using Wavee.UI.Models;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Data.Messages;

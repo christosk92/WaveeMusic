@@ -24,8 +24,9 @@ using Wavee.UI.WinUI.Controls.HeroHeader;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Diagnostics;
@@ -1622,7 +1623,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         flyout.ShowAt(anchor);
     }
 
-    private FrameworkElement BuildMemberRow(Data.Contracts.PlaylistMemberResult member, bool adminMode)
+    private FrameworkElement BuildMemberRow(Wavee.UI.Contracts.PlaylistMemberResult member, bool adminMode)
     {
         var row = new Grid { ColumnSpacing = 10 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1681,7 +1682,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         Grid.SetColumn(roleChip, 2);
         row.Children.Add(roleChip);
 
-        if (adminMode && member.Role != Data.Contracts.PlaylistMemberRole.Owner)
+        if (adminMode && member.Role != Wavee.UI.Contracts.PlaylistMemberRole.Owner)
         {
             var more = new Button
             {
@@ -1693,9 +1694,9 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             };
             var memberMenu = new MenuFlyout();
             foreach (var role in new[] {
-                Data.Contracts.PlaylistMemberRole.Contributor,
-                Data.Contracts.PlaylistMemberRole.Viewer,
-                Data.Contracts.PlaylistMemberRole.Blocked })
+                Wavee.UI.Contracts.PlaylistMemberRole.Contributor,
+                Wavee.UI.Contracts.PlaylistMemberRole.Viewer,
+                Wavee.UI.Contracts.PlaylistMemberRole.Blocked })
             {
                 var item = new ToggleMenuFlyoutItem
                 {

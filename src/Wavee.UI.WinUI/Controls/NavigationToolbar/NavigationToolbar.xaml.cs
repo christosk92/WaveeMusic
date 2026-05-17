@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Windows.Foundation;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Wavee.UI.WinUI.Controls.Omnibar;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers.Navigation;
 
@@ -286,7 +287,7 @@ public sealed partial class NavigationToolbar : UserControl
     public event TypedEventHandler<NavigationToolbar, string>? SearchTextChanged;
     public event TypedEventHandler<NavigationToolbar, string>? SearchQuerySubmitted;
     public event TypedEventHandler<NavigationToolbar, object>? SearchSuggestionChosen;
-    public event TypedEventHandler<NavigationToolbar, Data.Contracts.SearchSuggestionItem>? SearchActionButtonClicked;
+    public event TypedEventHandler<NavigationToolbar, Wavee.UI.Contracts.SearchSuggestionItem>? SearchActionButtonClicked;
     public event TypedEventHandler<NavigationToolbar, RoutedEventArgs>? SearchRetryRequested;
     public event TypedEventHandler<NavigationToolbar, RoutedEventArgs>? FriendsRequested;
 
@@ -337,7 +338,7 @@ public sealed partial class NavigationToolbar : UserControl
             SearchSuggestionChosen?.Invoke(this, args.SelectedItem);
     }
 
-    private void SearchOmnibar_ActionButtonClicked(Omnibar.Omnibar sender, Data.Contracts.SearchSuggestionItem item)
+    private void SearchOmnibar_ActionButtonClicked(Omnibar.Omnibar sender, Wavee.UI.Contracts.SearchSuggestionItem item)
     {
         SearchActionButtonClicked?.Invoke(this, item);
     }

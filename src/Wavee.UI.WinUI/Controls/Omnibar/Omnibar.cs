@@ -8,7 +8,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.System;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.Controls.Omnibar;
 

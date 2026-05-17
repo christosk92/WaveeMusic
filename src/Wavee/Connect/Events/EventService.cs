@@ -228,4 +228,3 @@ public sealed class EventService : IAsyncDisposable
         }
     }
 }
-

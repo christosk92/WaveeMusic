@@ -158,4 +158,3 @@ public sealed record CollectionSyncState
         IsSyncing = true
     };
 }
-

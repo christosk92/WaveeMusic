@@ -129,21 +129,45 @@ internal static class ProfileFetcher
 }
 
 /// <summary>
-/// One-shot per-username profile loader. No caching, no background refresh — used when
-/// navigating to another user's profile. The authenticated user's profile still goes through
-/// <see cref="ProfileCache"/> for hot-snapshot reuse.
+/// Default <see cref="Wavee.UI.Contracts.IUserProfileService"/>. Wraps the
+/// ISession that <see cref="ProfileFetcher"/> needs so neither ProfileCache nor
+/// ProfileViewModel needs to hold the raw session.
 /// </summary>
-public sealed class ProfileService
+public sealed class ProfileService : Wavee.UI.Contracts.IUserProfileService
 {
+    private readonly ISession? _session;
     private readonly IColorService _colorService;
     private readonly ILogger<ProfileService>? _logger;
 
-    public ProfileService(IColorService colorService, ILogger<ProfileService>? logger = null)
+    public ProfileService(
+        IColorService colorService,
+        ISession? session = null,
+        ILogger<ProfileService>? logger = null)
     {
+        _session = session;
         _colorService = colorService;
         _logger = logger;
     }
 
-    public Task<ProfileSnapshot> LoadAsync(ISession session, string usernameOrUri, CancellationToken ct = default)
-        => ProfileFetcher.LoadAsync(session, usernameOrUri, _colorService, _logger, ct);
+    public bool IsAvailable => _session is not null && _session.IsConnected();
+
+    public string? AuthenticatedUsername => _session?.GetUserData()?.Username;
+
+    public async Task<object> LoadAsync(string usernameOrUri, CancellationToken ct = default)
+    {
+        if (_session is null)
+            throw new InvalidOperationException("ProfileService cannot load — no session is wired.");
+        return await ProfileFetcher.LoadAsync(_session, usernameOrUri, _colorService, _logger, ct)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<object> LoadAuthenticatedUserAsync(CancellationToken ct = default)
+    {
+        if (_session is null)
+            throw new InvalidOperationException("ProfileService cannot load — no session is wired.");
+        var username = _session.GetUserData()?.Username
+            ?? throw new InvalidOperationException("Authenticated user has no username.");
+        return await ProfileFetcher.LoadAsync(_session, username, _colorService, _logger, ct)
+            .ConfigureAwait(false);
+    }
 }

@@ -10,8 +10,7 @@ using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls.TabBar;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
@@ -43,8 +42,7 @@ public sealed class SearchSectionViewModel
 
 public sealed partial class SearchViewModel : ObservableObject, ITabBarItemContent
 {
-    private readonly IPathfinderClient _pathfinderClient;
-    private readonly ISearchService? _searchService;
+    private readonly ISearchService _searchService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ILogger? _logger;
     private readonly List<SearchResultItem> _allItems = [];
@@ -140,17 +138,15 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
     private readonly Wavee.Local.ILocalLibraryService? _localLibrary;
 
     public SearchViewModel(
-        IPathfinderClient pathfinderClient,
+        ISearchService searchService,
         IPlaybackStateService playbackStateService,
         ILogger<SearchViewModel>? logger = null,
-        Wavee.Local.ILocalLibraryService? localLibrary = null,
-        ISearchService? searchService = null)
+        Wavee.Local.ILocalLibraryService? localLibrary = null)
     {
-        _pathfinderClient = pathfinderClient;
+        _searchService = searchService;
         _playbackStateService = playbackStateService;
         _logger = logger;
         _localLibrary = localLibrary;
-        _searchService = searchService;
 
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Search, null)
         {
@@ -273,10 +269,7 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
             }
 
             // All filter — searchTopResultsList + local-library merge.
-            var spotifyTask = Task.Run(() => _pathfinderClient.SearchAsync(
-                query,
-                SearchScope.All,
-                limit: 50));
+            var spotifyTask = Task.Run(() => _searchService.SearchAllAsync(query, limit: 50));
             var localTask = _localLibrary is null
                 ? Task.FromResult<IReadOnlyList<Wavee.Local.LocalSearchResult>>(Array.Empty<Wavee.Local.LocalSearchResult>())
                 : _localLibrary.SearchAsync(query, limit: 12);

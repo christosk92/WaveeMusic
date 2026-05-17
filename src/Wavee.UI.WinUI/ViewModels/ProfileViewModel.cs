@@ -12,8 +12,8 @@ using Microsoft.UI.Xaml.Media;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Controls.TabBar;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Contracts;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
@@ -23,12 +23,12 @@ using Windows.UI;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
-public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemContent, ITrackListViewModel
+public sealed partial class ProfileViewModel : Wavee.UI.ViewModels.Helpers.TrackListViewModelBase, ITabBarItemContent, ITrackListViewModel
 {
     private readonly ProfileCache? _profileCache;
-    private readonly ProfileService? _profileService;
-    private readonly Wavee.Core.Session.Session? _session;
+    private readonly IUserProfileService? _profileService;
     private readonly IAuthState? _authState;
+    private readonly IUserFollowService? _userFollowService;
     private readonly ILogger? _logger;
     private ProfileSnapshot? _lastSnapshot;
     private bool _isHibernated;
@@ -109,10 +109,11 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
     public bool IsSortingByAlbum => false;
     public bool IsSortingByAddedAt => false;
 
-    public IReadOnlyList<object> SelectedItems { get; set; } = [];
-    public int SelectedCount => 0;
-    public bool HasSelection => false;
-    public string SelectionHeaderText => "";
+    // Profile page has no track-row selection; SelectedItems / SelectedCount /
+    // HasSelection inherited from TrackListViewModelBase return inert defaults.
+    // Header is overridden to "" so a stray selection-mode binding never paints
+    // a "0 tracks selected" string on the profile chrome.
+    public override string SelectionHeaderText => string.Empty;
 
     public IReadOnlyList<PlaylistSummaryDto> Playlists => [];
 
@@ -122,15 +123,15 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
 
     public ProfileViewModel(
         ProfileCache? profileCache = null,
-        ProfileService? profileService = null,
-        Wavee.Core.Session.Session? session = null,
+        IUserProfileService? profileService = null,
         IAuthState? authState = null,
+        IUserFollowService? userFollowService = null,
         ILogger<ProfileViewModel>? logger = null)
     {
         _profileCache = profileCache;
         _profileService = profileService;
-        _session = session;
         _authState = authState;
+        _userFollowService = userFollowService;
         _logger = logger;
 
         TabItemParameter = new TabItemParameter
@@ -148,7 +149,7 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
     public async void Initialize(ContentNavigationParameter? parameter = null)
     {
         var targetUsername = ResolveTargetUsername(parameter);
-        var authUsername = _session?.GetUserData()?.Username;
+        var authUsername = _authState?.Username ?? _profileService?.AuthenticatedUsername;
         var loadingSelf = string.IsNullOrEmpty(targetUsername)
             || (authUsername != null && string.Equals(authUsername, targetUsername, StringComparison.OrdinalIgnoreCase));
 
@@ -177,16 +178,16 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
             HasData = false;
             try
             {
-                if (_session is null || !_session.IsConnected())
+                if (_profileService is null || !_profileService.IsAvailable)
                 {
-                    _logger?.LogWarning("Cannot load profile: session is null or not connected");
+                    _logger?.LogWarning("Cannot load profile: profile service unavailable");
                     return;
                 }
                 if (_profileCache != null)
                 {
-                    var snapshot2 = await _profileCache.FetchFreshAsync(_session);
+                    var snapshot2 = await _profileCache.FetchFreshAsync();
                     ApplySnapshot(snapshot2 with { IsCurrentUser = true });
-                    _profileCache.StartBackgroundRefresh(_session);
+                    _profileCache.StartBackgroundRefresh();
                 }
                 else
                 {
@@ -208,13 +209,13 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
             HasData = false;
             try
             {
-                if (_session is null || !_session.IsConnected() || _profileService is null)
+                if (_profileService is null || !_profileService.IsAvailable)
                 {
-                    _logger?.LogWarning("Cannot load profile for {User}: session/profileService unavailable", targetUsername);
+                    _logger?.LogWarning("Cannot load profile for {User}: profile service unavailable", targetUsername);
                     return;
                 }
-                var snapshot = await _profileService.LoadAsync(_session, targetUsername!);
-                ApplySnapshot(snapshot);
+                var loaded = await _profileService.LoadAsync(targetUsername!);
+                ApplySnapshot((ProfileSnapshot)loaded);
             }
             catch (Exception ex)
             {
@@ -382,20 +383,12 @@ public sealed partial class ProfileViewModel : ObservableObject, ITabBarItemCont
     [RelayCommand]
     private async Task ToggleFollowAsync()
     {
-        if (IsCurrentUser || _session is null || string.IsNullOrEmpty(Username)) return;
+        if (IsCurrentUser || _userFollowService is null || string.IsNullOrEmpty(Username)) return;
         var wasFollowing = IsFollowing;
         IsFollowing = !wasFollowing;   // optimistic
-        try
-        {
-            var ok = wasFollowing
-                ? await _session.SpClient.UnfollowUserAsync(Username!, CancellationToken.None)
-                : await _session.SpClient.FollowUserAsync(Username!, CancellationToken.None);
-            if (!ok) IsFollowing = wasFollowing;  // revert on API failure
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "ToggleFollow failed for user {User}", Username);
-            IsFollowing = wasFollowing;  // revert on exception
-        }
+        var ok = wasFollowing
+            ? await _userFollowService.UnfollowAsync(Username!, CancellationToken.None)
+            : await _userFollowService.FollowAsync(Username!, CancellationToken.None);
+        if (!ok) IsFollowing = wasFollowing;  // revert on API failure (service swallows + logs)
     }
 }

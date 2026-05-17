@@ -5,8 +5,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Wavee.Core.Session;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Services;
@@ -23,19 +23,30 @@ public sealed record HomeFeedSnapshot(string? Greeting, List<HomeSection> Sectio
 public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
 {
     private readonly HomeResponseParserFactory _parserFactory;
+    private readonly IHomeFeedService? _homeFeedService;
 
     /// <summary>Current facet filter (chip id). Null or empty = no filter.</summary>
     public string? CurrentFacet { get; set; }
 
-    public HomeFeedCache(HomeResponseParserFactory? parserFactory = null, ILogger<HomeFeedCache>? logger = null) : base(logger)
+    public HomeFeedCache(
+        IHomeFeedService? homeFeedService = null,
+        HomeResponseParserFactory? parserFactory = null,
+        ILogger<HomeFeedCache>? logger = null) : base(logger)
     {
+        _homeFeedService = homeFeedService;
         _parserFactory = parserFactory ?? new HomeResponseParserFactory();
     }
 
-    protected override async Task<HomeFeedSnapshot> FetchCoreAsync(ISession session, CancellationToken ct)
+    protected override bool IsAvailable => _homeFeedService?.IsAvailable ?? false;
+
+    protected override async Task<HomeFeedSnapshot> FetchCoreAsync(CancellationToken ct)
     {
-        var response = await session.Pathfinder.GetHomeAsync(sectionItemsLimit: 10, facet: CurrentFacet, ct: ct)
-            .ConfigureAwait(false);
+        if (_homeFeedService is null)
+            throw new InvalidOperationException("HomeFeedCache requires IHomeFeedService to fetch fresh data.");
+
+        var response = await _homeFeedService.GetHomeAsync(sectionItemsLimit: 10, facet: CurrentFacet, ct: ct)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Home feed service returned no data.");
 
         var result = await Task.Run(() => _parserFactory.Parse(response), ct).ConfigureAwait(false);
         PreserveDisplayDataFromPreviousSnapshot(result.Sections, GetCached()?.Sections);

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Numerics;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
@@ -14,7 +14,6 @@ using Windows.Foundation;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;

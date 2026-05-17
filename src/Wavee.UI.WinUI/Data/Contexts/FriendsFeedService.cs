@@ -14,6 +14,7 @@ using Wavee.Core.Http;
 using Wavee.Core.Http.Presence;
 using Wavee.Core.Session;
 using SessionImpl = Wavee.Core.Session.Session;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.ViewModels;

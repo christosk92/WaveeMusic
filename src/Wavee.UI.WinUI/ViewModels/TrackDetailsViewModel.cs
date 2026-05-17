@@ -17,8 +17,6 @@ using Wavee.UI.Contracts;
 using Wavee.UI.Formatters;
 using Wavee.UI.Helpers;
 using Wavee.UI.Models;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
 
@@ -34,7 +32,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
     private const int MaxPodcastCommentLength = 500;
 
     private readonly IPlaybackStateService _playbackState;
-    private readonly IPathfinderClient _pathfinder;
+    private readonly ITrackDetailsService _trackDetailsService;
     private readonly ITrackCreditsService _creditsService;
     private readonly ILibraryDataService _libraryDataService;
     private readonly IPodcastEpisodeService _podcastEpisodeService;
@@ -214,7 +212,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
 
     public TrackDetailsViewModel(
         IPlaybackStateService playbackState,
-        IPathfinderClient pathfinder,
+        ITrackDetailsService trackDetailsService,
         ITrackCreditsService creditsService,
         ILibraryDataService libraryDataService,
         IPodcastEpisodeService podcastEpisodeService,
@@ -222,7 +220,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         ILogger<TrackDetailsViewModel>? logger = null)
     {
         _playbackState = playbackState;
-        _pathfinder = pathfinder;
+        _trackDetailsService = trackDetailsService;
         _creditsService = creditsService;
         _libraryDataService = libraryDataService;
         _podcastEpisodeService = podcastEpisodeService;
@@ -314,7 +312,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
                 : SpotifyUriHelper.ToUri(SpotifyEntityKind.Track, trackId);
 
             // Fetch NpvArtist and credits in parallel
-            var npvTask = _pathfinder.GetNpvArtistAsync(artistId, trackUri, ct: ct);
+            var npvTask = _trackDetailsService.GetTrackDetailsAsync(artistId, trackUri, ct: ct);
             var creditsTask = _creditsService.GetCreditsAsync(trackUri, ct);
 
             await Task.WhenAll(npvTask, creditsTask);
@@ -393,7 +391,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
             await Task.Yield();
 
             var npvTask = FetchOptionalDetailsAsync(
-                () => _pathfinder.GetNpvEpisodeAsync(episodeUri, numberOfChapters: 10, ct),
+                () => _trackDetailsService.GetEpisodeDetailsAsync(episodeUri, numberOfChapters: 10, ct),
                 "episode NPV");
             var detailTask = FetchOptionalDetailsAsync(
                 () => _podcastEpisodeService.GetPodcastEpisodeDetailAsync(episodeUri, ct),
@@ -1040,4 +1038,3 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         _fetchCts?.Dispose();
     }
 }
-

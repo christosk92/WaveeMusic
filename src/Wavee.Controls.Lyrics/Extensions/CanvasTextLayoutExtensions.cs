@@ -1,4 +1,4 @@
-﻿using Wavee.Controls.Lyrics.Helper;
+using Wavee.Controls.Lyrics.Helper;
 using Microsoft.Graphics.Canvas.Text;
 
 namespace Wavee.Controls.Lyrics.Extensions

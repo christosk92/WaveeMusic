@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.ComponentModel;
 using System.Numerics;
@@ -27,7 +27,6 @@ using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Controls.Track;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
@@ -681,7 +680,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
         foreach (var track in ViewModel.TopTracks)
         {
-            if (track is { IsLoaded: true, Data: Wavee.UI.WinUI.Data.Contracts.ITrackItem item }
+            if (track is { IsLoaded: true, Data: Wavee.UI.Contracts.ITrackItem item }
                 && !string.IsNullOrWhiteSpace(item.Title))
             {
                 emphasize.Add(item.Title!);
@@ -1152,6 +1151,27 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     {
         if (sender is ContentCard card && card.Tag is string uri && !string.IsNullOrEmpty(uri))
             NavigationHelpers.OpenAlbum(uri, card.Title ?? string.Empty);
+    }
+
+    private void AlbumsSeeAll_Click(object sender, RoutedEventArgs e)
+        => OpenDiscography(ArtistDiscographyGroupKind.Albums);
+
+    private void SinglesSeeAll_Click(object sender, RoutedEventArgs e)
+        => OpenDiscography(ArtistDiscographyGroupKind.Singles);
+
+    private void OpenDiscography(ArtistDiscographyGroupKind groupKind)
+    {
+        var artistId = ViewModel.ArtistId;
+        if (string.IsNullOrWhiteSpace(artistId)) return;
+        var uri = artistId.StartsWith("spotify:artist:", StringComparison.Ordinal)
+            ? artistId
+            : $"spotify:artist:{artistId}";
+        NavigationHelpers.OpenArtistDiscography(
+            uri,
+            ViewModel.ArtistName ?? string.Empty,
+            groupKind,
+            ViewModel.ArtistImageUrl,
+            NavigationHelpers.IsCtrlPressed());
     }
 
     private async void AlbumCard_Click(object? sender, EventArgs e)

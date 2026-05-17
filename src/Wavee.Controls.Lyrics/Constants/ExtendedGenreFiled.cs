@@ -1,4 +1,4 @@
-﻿namespace Wavee.Controls.Lyrics.Constants
+namespace Wavee.Controls.Lyrics.Constants
 {
     public class ExtendedGenreFiled
     {

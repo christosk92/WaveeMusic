@@ -2,7 +2,6 @@ using System;
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
-using Wavee.Core.Session;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Services;
@@ -15,9 +14,9 @@ public interface IHomeFeedCache : IDisposable
     bool HasData { get; }
     bool IsStale { get; }
     HomeFeedSnapshot? GetCached();
-    Task<HomeFeedSnapshot> FetchFreshAsync(ISession session, CancellationToken ct = default);
+    Task<HomeFeedSnapshot> FetchFreshAsync(CancellationToken ct = default);
     void Invalidate();
-    void StartBackgroundRefresh(ISession session);
+    void StartBackgroundRefresh();
     void StopBackgroundRefresh();
     void SuspendRefresh();
     void ResumeRefresh();

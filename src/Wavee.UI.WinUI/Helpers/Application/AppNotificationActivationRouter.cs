@@ -1,4 +1,5 @@
 using System;
+using Wavee.UI.WinUI.Data.Contracts;
 using System.Collections.Generic;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Dispatching;

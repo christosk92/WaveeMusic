@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="Wavee.UI.WinUI.Views.PlaylistPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -17,7 +17,7 @@
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:home="using:Wavee.UI.WinUI.ViewModels.Home"
     xmlns:homeViews="using:Wavee.UI.WinUI.Views.Home"
-    xmlns:contracts="using:Wavee.UI.WinUI.Data.Contracts"
+    xmlns:contracts="using:Wavee.UI.Contracts"
     xmlns:sessionTokens="using:Wavee.UI.WinUI.Controls.SessionTokens"
     xmlns:track="using:Wavee.UI.WinUI.Controls.Track"
     xmlns:playlist="using:Wavee.UI.WinUI.Controls.Playlist"

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <UserControl
     x:Class="Wavee.UI.WinUI.Views.ArtistsLibraryView"
     x:Name="Root"
@@ -9,7 +9,7 @@
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:tracklist="using:Wavee.UI.WinUI.Controls.TrackList"
     xmlns:track="using:Wavee.UI.WinUI.Controls.Track"
-    xmlns:dto="using:Wavee.UI.WinUI.Data.DTOs"
+    xmlns:dto="using:Wavee.UI.Models"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     xmlns:primitives="using:CommunityToolkit.WinUI.Controls"
     xmlns:toolkit="using:CommunityToolkit.WinUI"

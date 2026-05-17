@@ -1,4 +1,4 @@
-﻿namespace BetterLyrics.Core.Interfaces
+namespace BetterLyrics.Core.Interfaces
 {
     public interface ILocalizer
     {

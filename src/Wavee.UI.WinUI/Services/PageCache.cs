@@ -2,13 +2,14 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Wavee.Core.Session;
 
 namespace Wavee.UI.WinUI.Services;
 
 /// <summary>
 /// Generic page-level cache with instant serve, stale detection, and periodic background refresh.
-/// Subclasses implement <see cref="FetchCoreAsync"/> to fetch their specific data shape.
+/// Subclasses implement <see cref="FetchCoreAsync"/> to fetch their specific data shape and
+/// <see cref="IsAvailable"/> to gate background refresh — the cache itself never touches
+/// <c>ISession</c> so consumers can stay on the framework-neutral service layer.
 /// </summary>
 public abstract class PageCache<TSnapshot> : IDisposable where TSnapshot : class
 {
@@ -64,18 +65,26 @@ public abstract class PageCache<TSnapshot> : IDisposable where TSnapshot : class
 
     /// <summary>
     /// Implement in subclass: fetch fresh data from APIs and return a snapshot.
+    /// Subclasses own their own dependencies (e.g. <c>IHomeFeedService</c>).
     /// </summary>
-    protected abstract Task<TSnapshot> FetchCoreAsync(ISession session, CancellationToken ct);
+    protected abstract Task<TSnapshot> FetchCoreAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Subclass-supplied gate that controls whether the periodic background refresh
+    /// should run on a given tick. Replaces the old <c>session.IsConnected()</c> check
+    /// without coupling the base class to <c>ISession</c>.
+    /// </summary>
+    protected abstract bool IsAvailable { get; }
 
     /// <summary>
     /// Fetches fresh data, updates cache, returns the snapshot. Thread-safe.
     /// </summary>
-    public async Task<TSnapshot> FetchFreshAsync(ISession session, CancellationToken ct = default)
+    public async Task<TSnapshot> FetchFreshAsync(CancellationToken ct = default)
     {
         await _fetchLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var snapshot = await FetchCoreAsync(session, ct).ConfigureAwait(false);
+            var snapshot = await FetchCoreAsync(ct).ConfigureAwait(false);
             _cached = snapshot;
             _lastFetchTime = DateTimeOffset.UtcNow;
             return snapshot;
@@ -87,13 +96,13 @@ public abstract class PageCache<TSnapshot> : IDisposable where TSnapshot : class
     }
 
     /// <summary>Starts periodic background refresh. Safe to call multiple times.</summary>
-    public void StartBackgroundRefresh(ISession session)
+    public void StartBackgroundRefresh()
     {
         if (_refreshTask != null) return;
 
         _cts = new CancellationTokenSource();
         _refreshTimer = new PeriodicTimer(RefreshInterval);
-        _refreshTask = RunRefreshLoopAsync(session, _cts.Token);
+        _refreshTask = RunRefreshLoopAsync(_cts.Token);
     }
 
     public void StopBackgroundRefresh()
@@ -106,7 +115,7 @@ public abstract class PageCache<TSnapshot> : IDisposable where TSnapshot : class
         _refreshTask = null;
     }
 
-    private async Task RunRefreshLoopAsync(ISession session, CancellationToken ct)
+    private async Task RunRefreshLoopAsync(CancellationToken ct)
     {
         try
         {
@@ -114,10 +123,10 @@ public abstract class PageCache<TSnapshot> : IDisposable where TSnapshot : class
             {
                 try
                 {
-                    if (_suspended || !session.IsConnected()) continue;
+                    if (_suspended || !IsAvailable) continue;
 
                     Logger?.LogDebug("{CacheType} background refresh starting", GetType().Name);
-                    var snapshot = await FetchFreshAsync(session, ct).ConfigureAwait(false);
+                    var snapshot = await FetchFreshAsync(ct).ConfigureAwait(false);
                     DataRefreshed?.Invoke(snapshot);
                     Logger?.LogDebug("{CacheType} background refresh complete", GetType().Name);
                 }

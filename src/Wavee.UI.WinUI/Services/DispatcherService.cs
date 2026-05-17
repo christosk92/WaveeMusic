@@ -1,5 +1,6 @@
 using System;
 using Microsoft.UI.Dispatching;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Services;

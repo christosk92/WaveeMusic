@@ -12,8 +12,9 @@ using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Metadata;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Stores;
 
 namespace Wavee.UI.WinUI.Data.Contexts;

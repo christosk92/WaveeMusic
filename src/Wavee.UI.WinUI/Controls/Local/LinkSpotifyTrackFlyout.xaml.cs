@@ -17,7 +17,7 @@ using Wavee.Core.Http.Pathfinder;
 using Wavee.Protocol.Metadata;
 using Wavee.UI.Helpers;
 using Wavee.UI.Library.Local;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;

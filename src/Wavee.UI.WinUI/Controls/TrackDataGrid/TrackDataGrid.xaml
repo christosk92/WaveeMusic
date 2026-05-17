@@ -1,9 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <UserControl
     x:Class="Wavee.UI.WinUI.Controls.TrackDataGrid.TrackDataGrid"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:contracts="using:Wavee.UI.WinUI.Data.Contracts"
+    xmlns:contracts="using:Wavee.UI.Contracts"
     xmlns:local="using:Wavee.UI.WinUI.Controls.TrackDataGrid"
     xmlns:track="using:Wavee.UI.WinUI.Controls.Track"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">

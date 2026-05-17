@@ -4,8 +4,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.UI.Services.DragDrop;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
+using Wavee.UI.Contracts;
+using Wavee.UI.Models;
 
 namespace Wavee.UI.WinUI.Services.Data;
 

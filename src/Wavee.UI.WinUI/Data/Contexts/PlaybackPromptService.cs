@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Wavee.UI.WinUI.Controls;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Data.Contexts;

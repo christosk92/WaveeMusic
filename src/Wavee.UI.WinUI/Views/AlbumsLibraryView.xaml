@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <UserControl
     x:Class="Wavee.UI.WinUI.Views.AlbumsLibraryView"
     x:Name="Root"
@@ -10,7 +10,7 @@
     xmlns:libcontrols="using:Wavee.UI.WinUI.Controls.Library"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:tracklist="using:Wavee.UI.WinUI.Controls.TrackList"
-    xmlns:dto="using:Wavee.UI.WinUI.Data.DTOs"
+    xmlns:dto="using:Wavee.UI.Models"
     xmlns:primitives="using:CommunityToolkit.WinUI.Controls"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     mc:Ignorable="d"

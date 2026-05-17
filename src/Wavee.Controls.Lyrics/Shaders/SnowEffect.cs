@@ -1,4 +1,4 @@
-﻿using ComputeSharp;
+using ComputeSharp;
 using ComputeSharp.D2D1;
 
 namespace Wavee.Controls.Lyrics.Shaders

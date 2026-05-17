@@ -1,8 +1,8 @@
 using CommunityToolkit.Mvvm.DependencyInjection;
+using Wavee.UI.Contracts;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Controls;
 

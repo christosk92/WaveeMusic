@@ -15,12 +15,11 @@ using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 using Wavee.Core.Data;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.Helpers;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Controls.AvatarStack;
 using Wavee.UI.WinUI.Controls.TabBar;
-using Wavee.UI.WinUI.Data.Contracts;
-using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Data.Stores;
@@ -47,7 +46,7 @@ public sealed record DiscGroupHeader(int Number, string TitleText, string Durati
 /// ViewModel for the Album detail page.
 /// Album tracks are static after load — no reactive pipeline needed.
 /// </summary>
-public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewModel, ITabBarItemContent, IDisposable
+public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackListViewModelBase, ITrackListViewModel, ITabBarItemContent, IDisposable
 {
     private readonly IAlbumService _albumService;
     private readonly AlbumStore _albumStore;
@@ -77,7 +76,6 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
     private bool _isSortDescending = false;
     private int _totalTracks;
     private string _totalDuration = "";
-    private IReadOnlyList<object> _selectedItems = Array.Empty<object>();
     private readonly ObservableCollection<PlaylistSummaryDto> _playlists = [];
     // Bound collections kept as stable instances and mutated in place. Assigning
     // a new list reference here forces ItemsRepeater/ListView to recycle every
@@ -409,40 +407,17 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
     }
 
     /// <summary>
-    /// Currently selected items in the ListView.
+    /// Refresh selection-driven command CanExecute flags when SelectedItems
+    /// changes. The base class hooks the partial method on SelectedItems and
+    /// calls this; the property itself is inherited.
     /// </summary>
-    public IReadOnlyList<object> SelectedItems
+    protected override void OnSelectionChanged()
     {
-        get => _selectedItems;
-        set
-        {
-            SetProperty(ref _selectedItems, value);
-            OnPropertyChanged(nameof(SelectedCount));
-            OnPropertyChanged(nameof(HasSelection));
-            OnPropertyChanged(nameof(SelectionHeaderText));
-            PlaySelectedCommand.NotifyCanExecuteChanged();
-            PlayAfterCommand.NotifyCanExecuteChanged();
-            AddSelectedToQueueCommand.NotifyCanExecuteChanged();
-            AddToPlaylistCommand.NotifyCanExecuteChanged();
-        }
+        PlaySelectedCommand.NotifyCanExecuteChanged();
+        PlayAfterCommand.NotifyCanExecuteChanged();
+        AddSelectedToQueueCommand.NotifyCanExecuteChanged();
+        AddToPlaylistCommand.NotifyCanExecuteChanged();
     }
-
-    /// <summary>
-    /// Number of selected tracks.
-    /// </summary>
-    public int SelectedCount => SelectedItems.Count;
-
-    /// <summary>
-    /// Whether any tracks are selected.
-    /// </summary>
-    public bool HasSelection => SelectedItems.Count > 0;
-
-    /// <summary>
-    /// Selection header text for the command bar.
-    /// </summary>
-    public string SelectionHeaderText => SelectedCount == 1
-        ? "1 track selected"
-        : $"{SelectedCount} tracks selected";
 
     /// <summary>
     /// User's playlists for "Add to playlist" menu.

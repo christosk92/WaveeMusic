@@ -190,7 +190,7 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable
 
         if (sender.SelectedItem != ViewModel.SelectedArtist)
         {
-            ViewModel.SelectedArtist = sender.SelectedItem as Data.DTOs.LibraryArtistDto;
+            ViewModel.SelectedArtist = sender.SelectedItem as Wavee.UI.Models.LibraryArtistDto;
         }
     }
 
@@ -249,7 +249,7 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable
 
     private void NarrowArtistsView_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs args)
     {
-        if (sender.SelectedItem is Data.DTOs.LibraryArtistDto artist)
+        if (sender.SelectedItem is Wavee.UI.Models.LibraryArtistDto artist)
         {
             ViewModel.ShowSelectedArtistDetails(artist);
         }
@@ -257,7 +257,7 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable
 
     private void NarrowArtistItem_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        if (sender is FrameworkElement element && element.DataContext is Data.DTOs.LibraryArtistDto artist)
+        if (sender is FrameworkElement element && element.DataContext is Wavee.UI.Models.LibraryArtistDto artist)
         {
             ViewModel.ShowSelectedArtistDetails(artist);
         }

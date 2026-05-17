@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -78,7 +79,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         // delegate to reach AlbumTrackDto.PlayCountFormatted (TrackItem doesn't know
         // about the album-specific DTO). Same pattern as PlaylistPage.
         TrackGrid.PlayCountFormatter = item =>
-            item is ViewModels.LazyTrackItem lazy && lazy.Data is Data.DTOs.AlbumTrackDto dto
+            item is ViewModels.LazyTrackItem lazy && lazy.Data is Wavee.UI.Models.AlbumTrackDto dto
                 ? dto.PlayCountFormatted
                 : "";
         TrackGrid.PopularityBadgeSelector = ViewModel.IsPopularTrack;

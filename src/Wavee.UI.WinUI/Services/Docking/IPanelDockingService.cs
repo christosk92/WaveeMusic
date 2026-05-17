@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Threading.Tasks;
 using Microsoft.UI.Windowing;
 using Windows.Graphics;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 
 namespace Wavee.UI.WinUI.Services.Docking;

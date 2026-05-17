@@ -1,4 +1,4 @@
-﻿namespace Impressionist.Implementations
+namespace Impressionist.Implementations
 {
     public static class PaletteGenerators
     {

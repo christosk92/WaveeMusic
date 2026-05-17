@@ -10,13 +10,13 @@ using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.NavigationToolbar;
 using Wavee.UI.WinUI.Controls.Sidebar;
 using Wavee.UI.WinUI.Controls.TabBar;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.Services.DragDrop;
@@ -677,7 +677,7 @@ public sealed partial class ShellPage : Page
         ViewModel.RetrySearchSuggestions();
     }
 
-    private void NavToolbar_SearchActionButtonClicked(NavigationToolbar sender, Data.Contracts.SearchSuggestionItem item)
+    private void NavToolbar_SearchActionButtonClicked(NavigationToolbar sender, Wavee.UI.Contracts.SearchSuggestionItem item)
     {
         ViewModel.OnSuggestionActionClicked(item);
     }

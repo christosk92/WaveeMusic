@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -14,11 +14,10 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Wavee.Core.Data;
 using Wavee.Core.Http;
-using Wavee.Core.Session;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Controls.TabBar;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Data.Stores;
 using Wavee.UI.Formatters;
@@ -96,6 +95,28 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     private readonly ObservableCollection<LazyReleaseItem> _singles = [];
     public IReadOnlyList<LazyReleaseItem> Singles => _singles;
+
+    /// <summary>
+    /// Threshold above which the Albums / Singles grids on <c>ArtistPage</c>
+    /// switch to capped projections + a "See all N" tile that opens the
+    /// dedicated <c>ArtistDiscographyPage</c>. Prolific artists (legacy
+    /// labels, VA / soundtrack accounts) can have 200–500 releases per group;
+    /// rendering all of them on the artist page hammered the composition
+    /// tree and dwarfed every other section.
+    /// </summary>
+    private const int DiscographyCapThreshold = 100;
+    private const int DiscographyCardCap = 30;
+
+    // Capped projections kept as separate ObservableCollections so the
+    // ArtistPage repeaters re-use ReplaceWith's smart in-place diff (single
+    // Reset notification) instead of a full re-bind on every paginated
+    // append. SyncCappedProjections() keeps them in sync with _albums /
+    // _singles from DispatchReleases.
+    private readonly ObservableCollection<LazyReleaseItem> _albumsCapped = [];
+    public IReadOnlyList<LazyReleaseItem> AlbumsCapped => _albumsCapped;
+
+    private readonly ObservableCollection<LazyReleaseItem> _singlesCapped = [];
+    public IReadOnlyList<LazyReleaseItem> SinglesCapped => _singlesCapped;
 
     private readonly ObservableCollection<LazyReleaseItem> _compilations = [];
     public IReadOnlyList<LazyReleaseItem> Compilations => _compilations;
@@ -290,8 +311,12 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     [NotifyPropertyChangedFor(nameof(HasSpotlightComment))]
     [NotifyPropertyChangedFor(nameof(AlbumsTotalCount))]
     [NotifyPropertyChangedFor(nameof(HasAlbums))]
+    [NotifyPropertyChangedFor(nameof(ShowAlbumsSeeAllTile))]
+    [NotifyPropertyChangedFor(nameof(AlbumsSeeAllLabel))]
     [NotifyPropertyChangedFor(nameof(SinglesTotalCount))]
     [NotifyPropertyChangedFor(nameof(HasSingles))]
+    [NotifyPropertyChangedFor(nameof(ShowSinglesSeeAllTile))]
+    [NotifyPropertyChangedFor(nameof(SinglesSeeAllLabel))]
     [NotifyPropertyChangedFor(nameof(CompilationsTotalCount))]
     [NotifyPropertyChangedFor(nameof(HasCompilations))]
     [NotifyPropertyChangedFor(nameof(PinnedItem))]
@@ -517,6 +542,17 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     public bool HasAlbums => AlbumsTotalCount > 0;
     public bool HasSingles => SinglesTotalCount > 0;
     public bool HasCompilations => CompilationsTotalCount > 0;
+
+    /// <summary>
+    /// When true, the ArtistPage Albums grid has been capped to the first
+    /// <see cref="DiscographyCardCap"/> items and the "See all" tile is
+    /// visible. Drives the tile's Visibility binding.
+    /// </summary>
+    public bool ShowAlbumsSeeAllTile => AlbumsTotalCount > DiscographyCapThreshold;
+    public bool ShowSinglesSeeAllTile => SinglesTotalCount > DiscographyCapThreshold;
+
+    public string AlbumsSeeAllLabel => $"See all {AlbumsTotalCount} albums";
+    public string SinglesSeeAllLabel => $"See all {SinglesTotalCount} singles";
 
     [ObservableProperty] private double _discographyGridScale = 1.0;
 
@@ -1156,6 +1192,27 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         _albums.ReplaceWith(albums);
         _singles.ReplaceWith(singles);
         _compilations.ReplaceWith(compilations);
+
+        SyncCappedDiscographyProjections();
+    }
+
+    /// <summary>
+    /// Mirror <see cref="_albums"/> / <see cref="_singles"/> into the capped
+    /// projections that <c>ArtistPage</c> binds against. Uses the same
+    /// <c>ReplaceWith</c> in-place diff so the bound <c>ItemsRepeater</c>
+    /// only sees a single Reset notification per dispatch rather than a
+    /// full re-bind cascade. When the parent group is under the threshold,
+    /// the capped projection mirrors the full list; when above, it's
+    /// capped at <see cref="DiscographyCardCap"/> and the "See all" tile
+    /// becomes visible via <see cref="ShowAlbumsSeeAllTile"/> /
+    /// <see cref="ShowSinglesSeeAllTile"/>.
+    /// </summary>
+    private void SyncCappedDiscographyProjections()
+    {
+        var albumsCap = AlbumsTotalCount > DiscographyCapThreshold ? DiscographyCardCap : int.MaxValue;
+        var singlesCap = SinglesTotalCount > DiscographyCapThreshold ? DiscographyCardCap : int.MaxValue;
+        _albumsCapped.ReplaceWith(_albums.Take(albumsCap));
+        _singlesCapped.ReplaceWith(_singles.Take(singlesCap));
     }
 
     private static string InferTypeFromId(string id)
@@ -1474,7 +1531,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             if (_bioSummarizer is not null && string.IsNullOrWhiteSpace(overview.Biography))
                 _backgroundWork.Run(_ => LoadBioSummaryAsync(artistId), "ArtistViewModel.LoadBioSummary");
         }
-        catch (SessionException)
+        catch (Wavee.Core.Session.SessionException)
         {
             HasError = true;
             ErrorMessage = "Connecting to Spotifyâ€¦";
@@ -2147,7 +2204,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
             var topTrackNames = _topTracks
                 .Where(t => t.IsLoaded && t.Data is { } d && !string.IsNullOrEmpty(d.Title))
-                .Select(t => ((Data.Contracts.ITrackItem)t.Data!).Title!)
+                .Select(t => ((Wavee.UI.Contracts.ITrackItem)t.Data!).Title!)
                 .Where(s => !string.IsNullOrEmpty(s))
                 .Take(5)
                 .ToList();

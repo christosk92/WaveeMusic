@@ -1,4 +1,4 @@
-﻿using Wavee.Controls.Lyrics.Helper;
+using Wavee.Controls.Lyrics.Helper;
 using System.Collections.Generic;
 using System.Linq;
 

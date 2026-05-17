@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 using Wavee.Core.Audio;
 using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Metadata;
-using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Stores;
 using MetadataAlbum = Wavee.Protocol.Metadata.Album;
 using MetadataImage = Wavee.Protocol.Metadata.Image;

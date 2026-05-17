@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Windows.UI;
 
 namespace Wavee.Controls.Lyrics.Models

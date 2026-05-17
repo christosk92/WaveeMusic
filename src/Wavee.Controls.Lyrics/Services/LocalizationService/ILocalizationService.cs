@@ -1,4 +1,4 @@
-﻿namespace Wavee.Controls.Lyrics.Services.LocalizationService
+namespace Wavee.Controls.Lyrics.Services.LocalizationService
 {
     public interface ILocalizationService
     {
