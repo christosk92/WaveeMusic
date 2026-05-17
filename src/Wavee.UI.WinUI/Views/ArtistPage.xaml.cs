@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.ComponentModel;
 using System.Numerics;
@@ -17,15 +17,19 @@ using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.Services.DragDrop;
+using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 using Wavee.UI.WinUI.Controls.Cards;
 using Wavee.UI.WinUI.Controls.HeroHeader;
+using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Controls.Track;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
@@ -65,6 +69,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private GradientStop? _pageTintFadeStop;
     private bool _parallaxAttached;
     private bool _heroSizeHandlersAttached;
+    private bool _heroDragAttached;
     private bool _isDisposed;
     private bool _isNavigatingAway;
     private bool _heroPulseFired;
@@ -73,7 +78,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     /// <summary>True once <see cref="ShimmerGate.RunCrossfadeAsync"/> has been
     /// triggered for the current load. Guards the crossfade's continuation
     /// against re-entrant navigation that fires <see cref="ShimmerGate.Reset"/>
-    /// while a prior crossfade is still in its 250 ms delay window — without
+    /// while a prior crossfade is still in its 250 ms delay window â€” without
     /// this, the stale crossfade's `Visibility=Collapsed` finalisation could
     /// hide the freshly-realised shimmer skeleton mid-load.</summary>
     private bool _showingContent;
@@ -123,31 +128,31 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         UpdateResponsivePageChrome();
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Navigation
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.onNavigatedTo");
         base.OnNavigatedTo(e);
         _isNavigatingAway = false;
         // Restore from the trimmed (hibernated) state before we re-Initialize
-        // the VM — matches AlbumPage's ordering so bindings are alive again
-        // by the time the new artist's data starts flowing.
+        // the VM â€” matches AlbumPage’s ordering so bindings are alive again
+        // by the time the new artist’s data starts flowing.
         RestoreFromNavigationCache();
 
         // Suppress the shy-header evaluator through the entire navigation
         // reset. Without this, ScrollView.ViewChanged events queued by the
         // ScrollTo(0) below can fire while _isPinned still reads true from
-        // the previous artist's deep scroll — the controller then calls
+        // the previous artist’s deep scroll â€” the controller then calls
         // _transition.ReverseAsync() to morph the pill back to the hero
-        // overlay, the matched-IDs interpolate scale 1→hero scale over the
+        // overlay, the matched-IDs interpolate scale 1â†’hero scale over the
         // 300 ms reverse duration, and the user sees the shy pill visibly
         // inflate to fill the hero band before snapping out. We unsuppress
         // on a dispatcher tick after Stop+Reset have landed.
         if (_shyHeader is not null) _shyHeader.Suppressed = true;
-        // Belt-and-braces: even if the TransitionHelper's internal Reset is
+        // Belt-and-braces: even if the TransitionHelper’s internal Reset is
         // laggy, the pill is forced invisible from frame one of the new nav.
         if (ShyHeaderCard is not null) ShyHeaderCard.Visibility = Visibility.Collapsed;
 
@@ -174,9 +179,24 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             }
         }
 
-        // Compare against the INCOMING uri, not ViewModel.ArtistId — at this
+        // Yield once between the shimmer flip and the heavy VM-init /
+        // Bindings.Update / Attach* work below. Without this the framework
+        // runs the whole method synchronously and DWM never gets a paint
+        // frame to show the just-armed shimmer OR the page-entrance fade’s
+        // first few percent — the user sees the page pop in fully rendered
+        // after the UI thread finally returns. Task.Yield posts the
+        // continuation to the dispatcher, which forces a render frame in
+        // between. The navigation-revision guard makes a follow-on nav
+        // (user clicks another artist before this one’s bindings have
+        // landed) supersede this in-flight invocation cleanly — the newer
+        // OnNavigatedTo runs its own sync sweep and the older one bails.
+        await Task.Yield();
+        if (_isDisposed || _isNavigatingAway || navigationRevision != _navigationRevision)
+            return;
+
+        // Compare against the INCOMING uri, not ViewModel.ArtistId â€” at this
         // point ArtistId still references the previous artist (Initialize
-        // hasn't run yet). This is what was misfiring in
+        // hasn’t run yet). This is what was misfiring in
         // RestoreFromNavigationCache and leaving stale bindings on cross-
         // artist navs.
         var artistChanged = !string.Equals(_lastRestoredArtistId, uri, StringComparison.Ordinal);
@@ -185,7 +205,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             ViewModel.Initialize(uri);
 
         // Re-evaluate every compiled x:Bind on the page so the freshly-reset
-        // VM state is picked up. Same-artist returns skip this for perf —
+        // VM state is picked up. Same-artist returns skip this for perf â€”
         // nothing in the binding graph actually changed in that case.
         if (artistChanged)
         {
@@ -218,10 +238,10 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
         // Drain the dispatcher AND wait an additional settle window before
         // re-enabling the shy-header evaluator. One TryEnqueue tick wasn't
-        // enough — the ScrollViewer continues firing ViewChanged events
+        // enough â€” the ScrollViewer continues firing ViewChanged events
         // through several frames after ScrollTo(0), and the user-visible
         // symptom was the shy pill "inflating" into the hero band when the
-        // user scrolled up immediately after an artist→artist nav. Chain
+        // user scrolled up immediately after an artistâ†’artist nav. Chain
         // two dispatcher ticks + a short Task.Delay so the queued events
         // (and any composition reflow) have actually finished before the
         // evaluator wakes up.
@@ -255,16 +275,16 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         CollapseExpandedAlbumCore();
         base.OnNavigatedFrom(e);
         // Trim aggressively on every nav-away. ViewModel.Hibernate unsubscribes
-        // from the PlaybackStateService PropertyChanged singleton — that's the
+        // from the PlaybackStateService PropertyChanged singleton â€” that's the
         // strong reference that pins this page's ViewModel across Frame cache
-        // evictions and produces the visible 1–2 s click delay over a long
+        // evictions and produces the visible 1â€“2 s click delay over a long
         // session. Mirrors the AlbumPage / PlaylistPage pattern.
         TrimForNavigationCache();
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Loaded / Unloaded
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -288,12 +308,13 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         FireHeroPlayPulseOnce();
         RebuildBioRuns();
         AttachHeroSizeHandlers();
+        AttachHeroDragSource();
         ApplyResponsiveHeroName();
         UpdateResponsivePageChrome();
         ScheduleHeroArrangeRefresh();
         ApplyPopularReleasesColumnWidth();
         TryShowContentNow();
-        // Seed the gallery marquee from whatever the VM already has — covers
+        // Seed the gallery marquee from whatever the VM already has â€” covers
         // nav-cache restore where HasGallery was raised before this page was
         // realized, so the ItemsSource assignment in ViewModel_PropertyChanged
         // never saw a live GalleryMarquee element.
@@ -313,6 +334,30 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         if (_heroSizeHandlersAttached) return;
         HeroPhotoBorder.SizeChanged += OnHeroPhotoBorderSizeChanged;
         _heroSizeHandlersAttached = true;
+    }
+
+    /// <summary>
+    /// Makes the hero region a drag source that emits an
+    /// <see cref="ArtistDragPayload"/>. The user can drop the artist onto a
+    /// playlist row (→ append top tracks), a folder, or the sidebar Pinned
+    /// drop zone. <see cref="ManualDragAttachment"/> uses a 6 px movement
+    /// threshold so taps on inner buttons (Play / Follow / Spotlight card)
+    /// still register as clicks; only an actual drag promotes the gesture.
+    /// </summary>
+    private void AttachHeroDragSource()
+    {
+        if (_heroDragAttached) return;
+        _heroDragAttached = true;
+        ManualDragAttachment.AttachWithPackageWriter(HeroPhotoBorder, BuildHeroDragPayload);
+    }
+
+    private IDragPayload? BuildHeroDragPayload()
+    {
+        var id = ViewModel.ArtistId;
+        if (string.IsNullOrWhiteSpace(id)) return null;
+        var uri = id.StartsWith("spotify:artist:", StringComparison.Ordinal) ? id : $"spotify:artist:{id}";
+        var name = ViewModel.ArtistName ?? string.Empty;
+        return new ArtistDragPayload(uri, name);
     }
 
     private void DetachHeroSizeHandlers()
@@ -378,7 +423,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         var w = HeroPhotoBorder.ActualWidth;
         if (w <= 0) return;
 
-        // Target size scales ≈ 7 % of hero width, capped 56–200 px.
+        // Target size scales â‰ˆ 7 % of hero width, capped 56â€“200 px.
         var maxSize = Math.Clamp(w * 0.07, 56.0, 200.0);
         var minSize = Math.Max(32.0, maxSize * 0.32);
         var size = maxSize;
@@ -417,7 +462,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             size = Math.Max(minSize, size * 0.94);
         }
 
-        // Step 2: even at min size the name overflows one line (rare — long
+        // Step 2: even at min size the name overflows one line (rare â€” long
         // multi-word names on narrow viewports). Last resort: enable wrap so
         // a second line can absorb the overflow.
         HeroNameText.TextWrapping = TextWrapping.WrapWholeWords;
@@ -427,9 +472,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         HeroNameText.LineHeight = size * 0.88;
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // ViewModel change tracking
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
         => ContentChanged?.Invoke(this, e);
@@ -537,7 +582,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     /// <summary>Collapse the right column to 0 when there are no popular
     /// releases AND we're not loading. During the initial load we keep the
     /// column open at 1* width so its shimmer can render alongside the
-    /// top-tracks grid — collapsing it during load would leave a one-sided
+    /// top-tracks grid â€” collapsing it during load would leave a one-sided
     /// skeleton that doesn't predict the final layout.</summary>
     private void ApplyPopularReleasesColumnWidth()
     {
@@ -601,15 +646,15 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         ApplyPopularReleasesColumnWidth();
     }
 
-    /// <summary>x:Bind helper for the popular-releases Border visibility —
+    /// <summary>x:Bind helper for the popular-releases Border visibility â€”
     /// visible while loading (so the shimmer renders) and once loaded only
     /// when the artist actually has popular releases.</summary>
     public static Visibility ShowPopularColumnArea(bool hasPopularReleases, bool isLoading)
         => (hasPopularReleases || isLoading) ? Visibility.Visible : Visibility.Collapsed;
 
-    // ─────────────────────────────────────────────────────────────────────
-    // About-this-artist bio — heuristic em-styling
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // About-this-artist bio â€” heuristic em-styling
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>
     /// Rebuilds <see cref="BioExcerptTextBlock"/>'s inline runs, emphasising
@@ -651,7 +696,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     }
 
     /// <summary>
-    /// Strip HTML tags, decode entities, and collapse whitespace — produces a
+    /// Strip HTML tags, decode entities, and collapse whitespace â€” produces a
     /// single flowing paragraph suitable for the about-excerpt TextBlock's
     /// run-tokenizer. Mirrors the primitives <see cref="Wavee.UI.WinUI.Controls.HtmlTextBlock"/>
     /// uses internally so the excerpt and the full-biography card stay in sync.
@@ -704,9 +749,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // PageTintFill — palette-driven gradient backdrop
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // PageTintFill â€” palette-driven gradient backdrop
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void ApplyPageTint()
     {
@@ -751,7 +796,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     private Color ResolveTintColor(string? hex)
     {
-        // Honour the artist palette when available — the BackgroundTinted tier
+        // Honour the artist palette when available â€” the BackgroundTinted tier
         // is the same one the production hero scrim uses. Fall back to the
         // HeaderHeroColorHex when palette is null, then to a near-bg neutral
         // when both are missing.
@@ -782,15 +827,15 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             : Color.FromArgb(0x55, 0xE6, 0xE6, 0xEE);
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Scroll-driven parallax
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>Defensive reset of MagazineHero + HeroOverlayPanel composition
     /// state. The section-reveal animation and shy-header morph both manipulate
     /// these visuals' Opacity/Offset; if a prior morph or a re-entrant cache nav
     /// leaves either Visual mid-animation, the new artist's hero can land at
-    /// Opacity ≈ 0 with only the page-tint visible behind it. Stop any in-flight
+    /// Opacity â‰ˆ 0 with only the page-tint visible behind it. Stop any in-flight
     /// Composition animations and snap properties back to defaults so the hero
     /// is always visible from frame one.</summary>
     private void ForceHeroVisualsVisible()
@@ -866,7 +911,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         }
         catch
         {
-            // Visual may not be realised yet on early nav — safe to ignore.
+            // Visual may not be realised yet on early nav â€” safe to ignore.
         }
     }
 
@@ -898,9 +943,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Section reveal (Composition keyframes, staggered)
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void AttachSectionRevealAnimations()
     {
@@ -941,9 +986,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         visual.StartAnimation("Opacity", opacity);
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Hero Play one-shot pulse
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void FireHeroPlayPulseOnce()
     {
@@ -964,14 +1009,14 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         visual.StartAnimation("Scale", pulse);
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // ElementPrepared handlers — bind cards that don't use plain x:Bind
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ElementPrepared handlers â€” bind cards that don't use plain x:Bind
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>The grid layout reports column-count changes whenever its
     /// width crosses a MinItemWidth threshold. Mirroring the legacy page,
     /// we feed that count to the ViewModel so TracksPerPage =
-    /// RowsPerPage × ColumnCount stays correct as the viewport resizes.</summary>
+    /// RowsPerPage Ã— ColumnCount stays correct as the viewport resizes.</summary>
     private void TopTracksLayout_ColumnCountChanged(object? sender, int columns)
     {
         ViewModel.ColumnCount = columns;
@@ -983,14 +1028,14 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
         // RowIndex is bound via x:Bind to LazyTrackItem.Index (absolute), so
         // page 2 of extended tracks shows ranks 9..16 instead of resetting to
-        // 1..8 — don't override here.
-        // No popularity badge — the rank number is enough and the star clashes
+        // 1..8 â€” don't override here.
+        // No popularity badge â€” the rank number is enough and the star clashes
         // with the selection pill on row 1. No pre-selection either; let the
         // user pick.
         row.ShowPopularityBadge = false;
 
         // Alternating row striping (matches TrackDataGrid in playlists) plus a
-        // hover tint so the row reads as interactive — the raw ItemsRepeater
+        // hover tint so the row reads as interactive â€” the raw ItemsRepeater
         // host here doesn't get either by default.
         row.SetAlternatingBorder(args.Index % 2 != 0, useCardRow: false);
         row.RowHoverBackgroundBrush =
@@ -1005,7 +1050,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         row.Title = vm.Name ?? string.Empty;
         row.CoverImageUrl = vm.ImageUrl;
         row.Rank = args.Index + 1;
-        // Push the artist palette through before flipping IsFeatured — the
+        // Push the artist palette through before flipping IsFeatured â€” the
         // featured-row tint derives directly from AccentBrush, so setting it
         // first means the highlight reads as the artist's palette colour
         // rather than the hardcoded teal default for one frame.
@@ -1013,7 +1058,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         row.AccentForegroundBrush = ViewModel.PaletteAccentPillForegroundBrush;
         row.IsFeatured = args.Index == 0;
         row.Tag = vm.Uri;
-        // Self-routing DPs — control's internal CardButton_Click navigates
+        // Self-routing DPs â€” control's internal CardButton_Click navigates
         // via AlbumNavigationHelper (prefetch + connected anim + count
         // prefill) when NavigationUri is set. Subtitle feeds nav prefill.
         row.NavigationUri = vm.Uri;
@@ -1024,7 +1069,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         if (vm.Year > 0) meta.Add(vm.Year.ToString());
         if (!string.IsNullOrEmpty(vm.Type)) meta.Add(ToTitleCase(vm.Type));
         if (vm.TrackCount > 0) meta.Add($"{vm.TrackCount} tracks");
-        row.Meta = string.Join(" · ", meta);
+        row.Meta = string.Join(" Â· ", meta);
 
         Wavee.UI.WinUI.Behaviors.CardHoverScaleBehavior.SetEnable(row, true);
     }
@@ -1051,9 +1096,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             ? s
             : char.ToUpperInvariant(s[0]) + s[1..].ToLowerInvariant();
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Click handlers
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void SpotlightCard_Click(object sender, RoutedEventArgs e)
     {
@@ -1124,7 +1169,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
         if (ViewModel.ExpandedAlbum?.Id == item.Id)
         {
-            // User clicked the already-expanded album → animate the close.
+            // User clicked the already-expanded album â†’ animate the close.
             await CollapseExpandedAlbumAsync(animate: true);
             return;
         }
@@ -1509,7 +1554,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     private void MerchCard_BuyClick(object sender, RoutedEventArgs e) => MerchCard_Click(sender, e);
 
-    // ── Gallery marquee / lightbox ──────────────────────────────────────────
+    // â”€â”€ Gallery marquee / lightbox â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     //
     // MarqueeGalleryStrip raises ItemTapped with the original-list index when
     // any tile is clicked (the strip itself handles duplication for the
@@ -1540,7 +1585,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     private void GalleryLightbox_BackdropTapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
-        // Only dismiss when the tap landed on the backdrop itself or the FlipView's chrome —
+        // Only dismiss when the tap landed on the backdrop itself or the FlipView's chrome â€”
         // not on the actual photo. If the user clicks the photo we keep the lightbox open so
         // the FlipView's prev/next gesture still works.
         if (ReferenceEquals(e.OriginalSource, GalleryLightbox))
@@ -1633,9 +1678,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         return null;
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // INavigationCacheMemoryParticipant
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public void TrimForNavigationCache()
     {
@@ -1643,13 +1688,21 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         _trimmedForNavigationCache = true;
         _lastRestoredArtistId = ViewModel.ArtistId;
         HeroGrid?.ReleaseSurface();
+        // Stop the scroll-driven ExpressionAnimations. OnUnloaded also calls
+        // this, but under NavigationCacheMode=Enabled the page sits in the
+        // Frame's cache while invisible and Unloaded doesn't reliably fire
+        // on navigate-away — leaving composition-thread animations evaluating
+        // against the now-detached ScrollView for every cached page. The
+        // AttachScrollParallax call in OnNavigatedTo re-establishes them on
+        // re-entry; the guard inside makes both directions idempotent.
+        DetachScrollParallax();
         // Hibernate releases the bound discography / related-artist / video /
         // merch collections AND unsubscribes the VM from singleton services.
         // Without this, the cached page's VM stays rooted by
-        // _playbackStateService.PropertyChanged forever — every cross-type
+        // _playbackStateService.PropertyChanged forever â€" every cross-type
         // navigation adds a stale ArtistViewModel to the singleton's
         // invocation list, the heap grows linearly, Gen2 GCs lengthen, and
-        // clicks freeze for 1–2 s.
+        // clicks freeze for 1â€"2 s.
         ViewModel.Hibernate();
         // Detach compiled x:Bind so VM PropertyChanged firings can't reach
         // the page tree while it sits invisible in the Frame cache.
@@ -1661,15 +1714,15 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         HeroGrid?.RestoreSurface();
         if (!_trimmedForNavigationCache) return;
         _trimmedForNavigationCache = false;
-        // No Bindings.Update() here — OnNavigatedTo handles it AFTER
+        // No Bindings.Update() here â€” OnNavigatedTo handles it AFTER
         // ViewModel.Initialize(uri) so the artist-changed comparison sees the
         // new target URI. Doing it here misfired on cross-artist navs because
         // ViewModel.ArtistId is still the previous artist at restore time.
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // IDisposable
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public void Dispose()
     {

@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
+using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
@@ -42,6 +43,9 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
     private readonly IPodcastService _podcastService;
     private readonly ITrackLikeService? _likeService;
     private readonly ILibraryDataService? _libraryDataService;
+    private readonly IPodcastEpisodeService? _podcastEpisodeService;
+    private readonly Wavee.UI.Services.Infra.IChangeBus? _changeBus;
+    private IDisposable? _changeBusSubscription;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger? _logger;
@@ -265,12 +269,16 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         IPlaybackStateService playbackStateService,
         ITrackLikeService? likeService = null,
         ILibraryDataService? libraryDataService = null,
+        IPodcastEpisodeService? podcastEpisodeService = null,
+        Wavee.UI.Services.Infra.IChangeBus? changeBus = null,
         ILogger<ShowViewModel>? logger = null)
     {
         _podcastService = podcastService ?? throw new ArgumentNullException(nameof(podcastService));
         _playbackStateService = playbackStateService ?? throw new ArgumentNullException(nameof(playbackStateService));
         _likeService = likeService;
         _libraryDataService = libraryDataService;
+        _podcastEpisodeService = podcastEpisodeService;
+        _changeBus = changeBus;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
@@ -289,10 +297,13 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         if (_likeService != null)
             _likeService.SaveStateChanged += OnSaveStateChanged;
         _playbackStateService.PropertyChanged += OnPlaybackStateChanged;
-        if (_libraryDataService != null)
+        if (_podcastEpisodeService != null)
+            _podcastEpisodeService.PodcastEpisodeProgressChanged += OnPodcastEpisodeProgressChanged;
+        if (_changeBus != null)
         {
-            _libraryDataService.DataChanged += OnLibraryDataChanged;
-            _libraryDataService.PodcastEpisodeProgressChanged += OnPodcastEpisodeProgressChanged;
+            _changeBusSubscription = _changeBus.Changes
+                .Where(static s => s == Wavee.UI.Services.Infra.ChangeScope.Library)
+                .Subscribe(_ => OnLibraryDataChanged(this, EventArgs.Empty));
         }
     }
 
@@ -315,11 +326,10 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         if (_likeService != null)
             _likeService.SaveStateChanged -= OnSaveStateChanged;
         _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
-        if (_libraryDataService != null)
-        {
-            _libraryDataService.DataChanged -= OnLibraryDataChanged;
-            _libraryDataService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
-        }
+        if (_podcastEpisodeService != null)
+            _podcastEpisodeService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
+        _changeBusSubscription?.Dispose();
+        _changeBusSubscription = null;
     }
 
     /// <summary>Entry-point from <c>ShowPage.OnNavigatedTo</c>.</summary>
@@ -752,7 +762,7 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         IReadOnlyList<string> episodeUris,
         CancellationToken ct)
     {
-        if (_libraryDataService is null)
+        if (_podcastEpisodeService is null)
             return;
 
         try
@@ -762,8 +772,7 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
             {
                 ct.ThrowIfCancellationRequested();
 
-                var progress = await _libraryDataService
-                    .GetPodcastEpisodeProgressAsync(uri, ct)
+                var progress = await _podcastEpisodeService.GetPodcastEpisodeProgressAsync(uri, ct)
                     .ConfigureAwait(false);
                 if (progress is null)
                     continue;

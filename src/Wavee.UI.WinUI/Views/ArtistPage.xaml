@@ -23,6 +23,7 @@
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     xmlns:views="using:Wavee.UI.WinUI.Views"
     xmlns:gallery="using:Wavee.UI.WinUI.Controls.Gallery"
+    waveeHelpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">

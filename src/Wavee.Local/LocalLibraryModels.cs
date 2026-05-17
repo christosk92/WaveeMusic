@@ -62,7 +62,7 @@ public sealed record LocalTrackRow(
     public string? SpotifyArtistUri { get; init; }
     /// <summary>HTTPS URL to the Spotify CDN-hosted album cover (i.scdn.co)
     /// — pre-resolved at enrichment time so UI bindings don't repeatedly
-    /// hit <see cref="Wavee.UI.WinUI.Helpers.SpotifyImageHelper.ToHttpsUrl"/>.</summary>
+    /// hit <see cref="Wavee.UI.Helpers.SpotifyImageHelper.ToHttpsUrl"/>.</summary>
     public string? SpotifyCoverUrl  { get; init; }
 
     /// <summary>

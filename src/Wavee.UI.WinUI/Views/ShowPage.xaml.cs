@@ -103,10 +103,18 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
     {
         if (!_trimmedForNavigationCache) return;
         _trimmedForNavigationCache = false;
-        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.show.bindingsUpdate"))
+        // Defer Bindings.Update to the next dispatcher tick so DWM gets a
+        // paint frame between the page reattaching and the synchronous
+        // binding sweep. Frame.Navigate runs this method sync, so without
+        // the defer the user sees the page pop in fully rendered before the
+        // PageEntranceFade ever animates.
+        DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
         {
-            Bindings?.Update();
-        }
+            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.show.bindingsUpdate"))
+            {
+                Bindings?.Update();
+            }
+        });
     }
 
     private void ViewModel_ContentChanged(object? sender, TabItemParameter e)
@@ -173,6 +181,15 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
     private async void LoadNewContent(object? parameter)
     {
         PageController.ResetForNewLoad();
+
+        // Yield once between the shimmer flip and the synchronous Activate
+        // / PrefillFrom chain. Without this, OnNavigatedTo runs the whole
+        // sequence in one UI-thread tick — DWM never gets a paint frame to
+        // show the just-armed shimmer OR the page-entrance fade's first
+        // percent, and the page pops in fully rendered.
+        await Task.Yield();
+        if (PageController.IsNavigatingAway)
+            return;
 
         ContentNavigationParameter? navigationParameter = null;
         var showUri = parameter switch

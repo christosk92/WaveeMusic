@@ -394,6 +394,14 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         _trimmedForNavigationCache = true;
         _lastRestoredAlbumId = ViewModel.AlbumId;
         ViewModel.Hibernate();
+        // Detach the sticky-column ExpressionAnimation. AlbumPage_Unloaded
+        // also calls this, but under NavigationCacheMode=Enabled the page
+        // sits in the Frame's cache while invisible and Unloaded doesn't
+        // reliably fire on navigate-away — leaving the composition-thread
+        // animation evaluating against the now-detached ScrollView until the
+        // page is finally evicted. AttachParallax is idempotent and runs
+        // again from AlbumPage_Loaded on re-entry.
+        DetachParallax();
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
         // sibling is no longer rooted by the (singleton-store-subscribed) VM —
         // without this the entire page tree is pinned across navigations.
@@ -413,10 +421,24 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             && string.Equals(_lastRestoredAlbumId, ViewModel.AlbumId, StringComparison.Ordinal);
         if (!sameAlbum)
         {
-            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.bindingsUpdate"))
+            // Defer to the next dispatcher tick so DWM gets a paint frame
+            // between the page reattaching (still showing the freshly-armed
+            // shimmer / pre-update state) and the synchronous binding sweep
+            // that would otherwise hog the UI thread immediately. Without
+            // this defer, the user sees the page "just appear" fully rendered
+            // — Frame.Navigate calls this sync, Bindings.Update runs sync,
+            // and the post-nav PageEntranceFade never gets a render frame to
+            // animate against. Update is still synchronous within the queued
+            // delegate; the trick is just yielding once between the nav swap
+            // and the heavy sweep.
+            DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
             {
-                Bindings?.Update();
-            }
+                if (_isDisposed) return;
+                using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.bindingsUpdate"))
+                {
+                    Bindings?.Update();
+                }
+            });
         }
         // ResetForNewLoad + ViewModel.Activate + TryShowContentNow used to run here
         // too — but OnNavigatedTo → LoadNewContent fires next on the same dispatch

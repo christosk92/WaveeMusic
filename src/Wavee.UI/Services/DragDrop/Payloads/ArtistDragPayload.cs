@@ -14,7 +14,9 @@ public sealed class ArtistDragPayload : IDragPayload
     public DragPayloadKind Kind => DragPayloadKind.Artist;
     public string InternalFormat => DragFormats.Artist;
     public int ItemCount => 1;
-    public IReadOnlyList<string> HttpsUrls => [SpotifyUri.ToHttps(ArtistUri)];
+    public IReadOnlyList<string> HttpsUrls => Wavee.UI.Helpers.SpotifyUriHelper.ToHttps(ArtistUri) is { } u
+        ? [u]
+        : Array.Empty<string>();
 
     [JsonConstructor]
     public ArtistDragPayload(string artistUri, string name)

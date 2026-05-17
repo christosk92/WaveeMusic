@@ -191,9 +191,27 @@ public sealed class PathfinderClient : IPathfinderClient
 
         response.EnsureSuccessStatusCode();
 
-        // Parse response using typed context
-        var responseJson = await response.Content.ReadAsStringAsync(ct);
-        var result = JsonSerializer.Deserialize(responseJson, jsonTypeInfo);
+        // Parse response using typed context. Stream-deserialize for everything
+        // except HomeResponse — Pathfinder bodies for big playlists / browse
+        // pages routinely exceed 85 KB and ReadAsStringAsync materialises the
+        // whole thing on the LOH, which compounds across navigations into a
+        // fragmented heap (see WinUI perf trace). DeserializeAsync reads in
+        // pooled chunks. HomeResponse uses RawJson downstream
+        // (HomeRawJsonHelper parses extra unmodelled fields), so it keeps the
+        // string path — there is exactly one Home call per session.
+        T? result;
+        if (typeof(T) == typeof(HomeResponse))
+        {
+            var responseJson = await response.Content.ReadAsStringAsync(ct);
+            result = JsonSerializer.Deserialize(responseJson, jsonTypeInfo);
+            if (result is HomeResponse homeResponse)
+                homeResponse.RawJson = responseJson;
+        }
+        else
+        {
+            using var stream = await response.Content.ReadAsStreamAsync(ct);
+            result = await JsonSerializer.DeserializeAsync(stream, jsonTypeInfo, ct).ConfigureAwait(false);
+        }
 
         if (result == null)
         {
@@ -201,9 +219,6 @@ public sealed class PathfinderClient : IPathfinderClient
                 SpClientFailureReason.RequestFailed,
                 $"Failed to parse {operationName} response");
         }
-
-        if (result is HomeResponse homeResponse)
-            homeResponse.RawJson = responseJson;
 
         return result;
     }

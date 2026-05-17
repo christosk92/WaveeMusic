@@ -1,6 +1,7 @@
 using System;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.Converters;

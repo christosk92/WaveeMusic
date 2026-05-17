@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Text;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers;
 

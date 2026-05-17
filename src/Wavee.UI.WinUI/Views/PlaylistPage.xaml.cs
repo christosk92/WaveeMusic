@@ -27,6 +27,7 @@ using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Diagnostics;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -700,6 +701,11 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
     private async void LoadParameter(object? parameter)
     {
+        // Snapshot the nav revision so a follow-on navigation that re-enters
+        // LoadParameter can supersede this one cleanly at the Task.Yield()
+        // checkpoint below.
+        var loadRevision = _navigationRevision;
+
         // If we were trimmed since the last LoadParameter, the x:Bind graph is
         // currently detached (TrimForNavigationCache called Bindings.StopTracking).
         // Re-attach BEFORE the Activate / PrefillFrom / ApplyDetail chain below
@@ -729,6 +735,18 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PlaylistArt);
 
         PageController.ResetForNewLoad();
+
+        // Yield once between the shimmer flip and the Activate / PrefillFrom
+        // / data-fetch chain below. The framework runs OnNavigatedTo →
+        // LoadParameter synchronously up to the first await, so without this
+        // explicit yield DWM never gets a frame to paint the just-armed
+        // shimmer OR the page-entrance fade's first percent — the user sees
+        // the page pop in fully rendered after the UI thread completes the
+        // sync sweep. The revision guard makes a follow-on nav supersede
+        // this in-flight invocation cleanly.
+        await Task.Yield();
+        if (_isDisposed || PageController.IsNavigatingAway || loadRevision != _navigationRevision)
+            return;
 
         string? playlistId = null;
         Data.Parameters.ContentNavigationParameter? connectedAnimationNav = null;
@@ -853,6 +871,14 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         _lastRestoredPlaylistId = ViewModel.PlaylistId;
         ViewModel.Hibernate();
         ReleaseHeaderBackgroundSurface();
+        // Stop the sticky-column ExpressionAnimation. PlaylistPage_Unloaded
+        // also calls this, but under NavigationCacheMode=Enabled the page
+        // sits in the Frame's cache while invisible and Unloaded doesn't
+        // reliably fire on navigate-away — leaving the composition-thread
+        // animation evaluating against the now-detached ScrollView until the
+        // page is finally evicted. AttachParallax is idempotent and runs
+        // again from PlaylistPage_Loaded on re-entry.
+        DetachParallax();
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
         // sibling is no longer rooted by the (singleton-store-subscribed) VM —
         // without this the entire page tree is pinned across navigations.

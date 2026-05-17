@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Wavee.Local.Classification;
+using Wavee.Protocol.Metadata;
 using Wavee.UI.Library.Local;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
@@ -19,7 +20,7 @@ namespace Wavee.UI.WinUI.Services;
 /// builds the <see cref="LocalItemMenuContext"/> with the standard set of
 /// callbacks (Play / Like / Mark watched / Set kind / Add to collection /
 /// Edit details / Delete from disk / etc.), and forwards to
-/// <see cref="ContextMenuHost.Show"/>.
+/// <see cref="Protocol.Metadata.Show"/>.
 ///
 /// <para>Pages just pass the row's effective metadata (URI / file path /
 /// kind / liked-state / watched-at) plus the <c>RightTappedRoutedEventArgs</c>

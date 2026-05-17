@@ -25,6 +25,7 @@ using Windows.Media.Core;
 using Windows.Media.Playback;
 using Windows.Storage;
 using Microsoft.Extensions.Logging;
+using Wavee.UI.WinUI.Controls.MiniVideoPlayer;
 
 namespace Wavee.UI.WinUI.Views;
 

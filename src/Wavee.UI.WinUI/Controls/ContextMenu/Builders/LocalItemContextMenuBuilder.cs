@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Wavee.Local.Classification;
 using Wavee.Local.Models;
+using Wavee.Protocol.Metadata;
 using Wavee.UI.Library.Local;
 using Wavee.UI.WinUI.Styles;
 
@@ -14,7 +15,7 @@ namespace Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 /// Builds the context menu shown when the user right-clicks any local item
 /// (track / episode / movie / music video / other). Mirrors the static-method
 /// shape used by <c>SidebarPlaylistContextMenuBuilder</c> so it slots into
-/// <see cref="ContextMenuHost.Show"/> the same way.
+/// <see cref="Show"/> the same way.
 /// </summary>
 public static class LocalItemContextMenuBuilder
 {

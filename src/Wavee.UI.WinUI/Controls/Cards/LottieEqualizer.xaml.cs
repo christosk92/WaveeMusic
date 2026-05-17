@@ -68,12 +68,6 @@ public sealed partial class LottieEqualizer : UserControl
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         ActualThemeChanged += OnActualThemeChanged;
-        // EffectiveViewportChanged fires when the control's effective viewport
-        // (accounting for scroll-viewer clipping) changes. We use it to pause
-        // Lottie playback while the equalizer is scrolled off-screen — even if
-        // IsActive=true, no point rasterizing a multi-layer vector that the
-        // user can't see.
-        EffectiveViewportChanged += OnEffectiveViewportChanged;
         ApplyIconSize();
     }
 
@@ -92,12 +86,20 @@ public sealed partial class LottieEqualizer : UserControl
         // Default _isInViewport to true on load; the first
         // EffectiveViewportChanged fires shortly after with the real state.
         _isInViewport = true;
+        // EffectiveViewportChanged fires when the control's effective viewport
+        // (accounting for scroll-viewer clipping) changes. Subscribed on attach
+        // so the handler doesn't accumulate in the WinRT EventSource table
+        // across navigation-cached realizations. Used to pause Lottie playback
+        // while the equalizer is scrolled off-screen — even if IsActive=true,
+        // no point rasterizing a multi-layer vector that the user can't see.
+        EffectiveViewportChanged += OnEffectiveViewportChanged;
         ApplyColor();
         UpdatePlayback();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        EffectiveViewportChanged -= OnEffectiveViewportChanged;
         _isLoaded = false;
         ResetToRestFrame();
     }

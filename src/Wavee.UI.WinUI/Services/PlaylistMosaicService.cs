@@ -18,6 +18,7 @@ using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Helpers;
 using Windows.Storage;
 using Windows.Storage.Streams;
+using Wavee.UI.Helpers;
 
 namespace Wavee.UI.WinUI.Services;
 

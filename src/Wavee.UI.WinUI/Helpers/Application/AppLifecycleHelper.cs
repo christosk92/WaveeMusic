@@ -503,6 +503,22 @@ public static class AppLifecycleHelper
                     return svc;
                 })
                 .AddSingleton<Services.INowPlayingPresentationService, Services.NowPlayingPresentationService>()
+                // Logged fire-and-forget helper for background tasks the UI
+                // starts but doesn't await — replaces naked _ = SomeAsync(...)
+                // sites so any thrown exception lands in the structured log
+                // instead of the unobserved-task scheduler.
+                .AddSingleton<Wavee.UI.Services.Infra.IBackgroundWorkRunner, Wavee.UI.Services.Infra.BackgroundWorkRunner>()
+                // Single sink for "something changed" notifications — coalesces
+                // bursts (150 ms window) and replaces the four-way fan-out
+                // (DataChanged / PlaylistsChanged events + LibraryDataChangedMessage
+                // / PlaylistsChangedMessage messages) that existed before Phase 1.
+                .AddSingleton<Wavee.UI.Services.Infra.IChangeBus, Wavee.UI.Services.Infra.ChangeBus>()
+                // Drains the "subscribe → cancel CTS → reload → marshal" pattern
+                // from VMs; backed by IChangeBus.
+                .AddSingleton<Wavee.UI.Services.Infra.IReloadCoordinator, Wavee.UI.Services.Infra.ReloadCoordinator>()
+                // Composes IPlaylistCacheService with IChangeBus so call sites
+                // can express "I just mutated playlist X" in one call.
+                .AddSingleton<Wavee.UI.Services.Infra.ICacheInvalidator, Wavee.UI.Services.Infra.CacheInvalidator>()
                 // Windows-shell video frame thumbnail provider for the local
                 // scanner. Registered as IVideoThumbnailExtractor so the
                 // scanner DI in Wavee.Core picks it up without needing a
@@ -527,6 +543,7 @@ public static class AppLifecycleHelper
                 .AddSingleton(sp =>
                     new Data.Contexts.LibrarySyncOrchestrator(
                         sp.GetRequiredService<IMessenger>(),
+                        sp.GetRequiredService<Wavee.UI.Services.Infra.IChangeBus>(),
                         sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
                         sp.GetService<ITrackLikeService>(),
                         sp.GetService<INotificationService>(),
@@ -740,26 +757,57 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<ITrackLikeService>(),
                         sp.GetRequiredService<IProfileCache>(),
                         sp.GetService<ILogger<UserScopeGuard>>()))
+                .AddSingleton<Data.Contracts.IPinService>(sp =>
+                    new Data.Contexts.PinService(
+                        sp.GetRequiredService<IMetadataDatabase>(),
+                        sp.GetRequiredService<Wavee.UI.Services.Infra.IChangeBus>(),
+                        sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
+                        sp.GetService<ILogger<Data.Contexts.PinService>>()))
+                .AddSingleton<Data.Contracts.IPlaylistPermissionService>(sp =>
+                    new Data.Contexts.PlaylistPermissionService(
+                        sp.GetRequiredService<ISession>(),
+                        sp.GetService<ILogger<Data.Contexts.PlaylistPermissionService>>()))
+                .AddSingleton<Data.Contracts.IRootlistService>(sp =>
+                    new Data.Contexts.RootlistService(
+                        sp.GetRequiredService<ISession>(),
+                        sp.GetRequiredService<Wavee.Core.Playlists.IPlaylistCacheService>(),
+                        sp.GetRequiredService<Wavee.UI.Services.Infra.IChangeBus>(),
+                        sp.GetService<ILogger<Data.Contexts.RootlistService>>()))
+                .AddSingleton<Data.Contracts.IPodcastEpisodeService>(sp =>
+                    new Data.Contexts.PodcastEpisodeService(
+                        sp.GetRequiredService<IMetadataDatabase>(),
+                        sp.GetRequiredService<ISession>(),
+                        sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
+                        sp.GetService<Data.Stores.ExtendedMetadataStore>(),
+                        sp.GetService<ILogger<Data.Contexts.PodcastEpisodeService>>()))
+                .AddSingleton<Data.Contracts.IPlaylistMutationService>(sp =>
+                    new Data.Contexts.PlaylistMutationService(
+                        sp.GetRequiredService<IMetadataDatabase>(),
+                        sp.GetRequiredService<Wavee.Core.Playlists.IPlaylistCacheService>(),
+                        sp.GetRequiredService<ISession>(),
+                        sp.GetRequiredService<Wavee.Core.Storage.Outbox.IOutboxProcessor>(),
+                        sp.GetRequiredService<Wavee.UI.Services.Infra.IChangeBus>(),
+                        sp.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>(),
+                        sp.GetService<ILogger<Data.Contexts.PlaylistMutationService>>()))
                 .AddSingleton<ILibraryDataService>(sp =>
                     new Data.Contexts.LibraryDataService(
                         sp.GetRequiredService<IMetadataDatabase>(),
                         sp.GetRequiredService<Wavee.Core.Playlists.IPlaylistCacheService>(),
                         sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
+                        sp.GetRequiredService<Wavee.UI.Services.Infra.IChangeBus>(),
                         sp.GetRequiredService<IMessenger>(),
                         sp.GetRequiredService<ITrackLikeService>(),
                         sp.GetRequiredService<ISession>(),
-                        sp.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>(),
-                        sp.GetRequiredService<Wavee.Core.Storage.Outbox.IOutboxProcessor>(),
+                        sp.GetRequiredService<Data.Contracts.IPodcastEpisodeService>(),
                         sp.GetRequiredService<Data.Stores.ExtendedMetadataStore>(),
                         sp.GetRequiredService<Services.IMusicVideoMetadataService>(),
-                        sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
                         sp.GetService<ILogger<Data.Contexts.LibraryDataService>>()))
                 // App-wide "Add to playlist" modal session — shared singleton so
                 // the floating bar in ShellPage, TrackItem '+' affordances, and
                 // playlist-page entry points all see the same target + pending set.
                 .AddSingleton<Wavee.UI.Services.AddToPlaylist.IAddToPlaylistSubmitter>(sp =>
                     new Services.AddToPlaylist.LibraryDataServiceAddToPlaylistSubmitter(
-                        sp.GetRequiredService<ILibraryDataService>()))
+                        sp.GetRequiredService<Data.Contracts.IPlaylistMutationService>()))
                 .AddSingleton<Wavee.UI.Services.AddToPlaylist.IAddToPlaylistSession>(sp =>
                     new Wavee.UI.Services.AddToPlaylist.AddToPlaylistSession(
                         sp.GetRequiredService<Wavee.UI.Services.AddToPlaylist.IAddToPlaylistSubmitter>(),
@@ -824,7 +872,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>(),
                         sp.GetRequiredService<ISession>().SpClient,
                         sp.GetRequiredService<Data.Stores.ExtendedMetadataStore>(),
-                        sp.GetService<ILibraryDataService>(),
+                        sp.GetService<Data.Contracts.IPodcastEpisodeService>(),
                         sp.GetService<ILogger<Data.Contexts.PodcastService>>()))
                 .AddSingleton<ISearchService>(sp =>
                     new Data.Contexts.SearchService(
@@ -870,6 +918,7 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<ISession>().Pathfinder,
                         sp.GetRequiredService<ITrackCreditsService>(),
                         sp.GetRequiredService<ILibraryDataService>(),
+                        sp.GetRequiredService<Data.Contracts.IPodcastEpisodeService>(),
                         sp.GetRequiredService<IMediaOverrideService>(),
                         sp.GetService<ILogger<TrackDetailsViewModel>>()))
 
@@ -884,6 +933,7 @@ public static class AppLifecycleHelper
                         sp.GetService<IPanelDockingService>(),
                         sp.GetService<IPodcastService>(),
                         sp.GetService<ILibraryDataService>(),
+                        sp.GetService<Data.Contracts.IPodcastEpisodeService>(),
                         sp.GetService<ILoggerFactory>()))
                 .AddTransient<HomeViewModel>(sp =>
                     new HomeViewModel(

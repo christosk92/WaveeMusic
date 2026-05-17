@@ -364,8 +364,7 @@ public sealed class SpClient : ISpClient
 
         httpResponse.EnsureSuccessStatusCode();
 
-        var responseBytes = await ExtendedMetadataClient.ReadResponseBytesAsync(httpResponse, cancellationToken);
-        var response = BatchedExtensionResponse.Parser.ParseFrom(responseBytes);
+        var response = await ExtendedMetadataClient.ParseResponseAsync(BatchedExtensionResponse.Parser, httpResponse, cancellationToken);
         var extensionData = response.GetExtensionData(entityUri, extensionKind);
         if (extensionData?.ExtensionData is null)
             throw new SpClientException(SpClientFailureReason.NotFound, $"Extended metadata not found: {entityUri}");
@@ -1583,8 +1582,12 @@ public sealed class SpClient : ISpClient
 
         response.EnsureSuccessStatusCode();
 
-        var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        var content = Protocol.Playlist.SelectedListContent.Parser.ParseFrom(responseBytes);
+        // Stream-parse the protobuf instead of buffering into a byte[]; big
+        // playlist payloads (300+ tracks) push past the 85 KB LOH boundary
+        // and contribute to the fragmentation observed in the navigation
+        // perf trace. ParseFrom(Stream) reads the wire format incrementally.
+        var content = await ExtendedMetadataClient.ParseResponseAsync(
+            Protocol.Playlist.SelectedListContent.Parser, response, cancellationToken);
 
         _logger?.LogDebug("Playlist fetched: {Uri}, length={Length}, revision={HasRevision}",
             playlistUri, content.Length, content.Revision?.Length > 0);

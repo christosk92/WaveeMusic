@@ -434,8 +434,7 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
 
         httpResponse.EnsureSuccessStatusCode();
 
-        var responseBytes = await ReadResponseBytesAsync(httpResponse, cancellationToken);
-        var response = BatchedExtensionResponse.Parser.ParseFrom(responseBytes);
+        var response = await ParseResponseAsync(BatchedExtensionResponse.Parser, httpResponse, cancellationToken);
 
         _logger?.LogDebug("Extended metadata response: {Count} extension arrays", response.ExtendedMetadata.Count);
 
@@ -577,6 +576,31 @@ public sealed class ExtendedMetadataClient : IExtendedMetadataClient
         using var buffer = new MemoryStream();
         await decodedStream.CopyToAsync(buffer, cancellationToken);
         return buffer.ToArray();
+    }
+
+    /// <summary>
+    /// Stream-decompress + parse a protobuf response without buffering the
+    /// entire payload into a contiguous <see cref="byte"/>[]. Large
+    /// extended-metadata responses (album / track batches for big playlists,
+    /// regularly &gt;200&#160;KB) would otherwise land on the Large Object
+    /// Heap as a fresh per-request allocation and contribute to LOH
+    /// fragmentation — observed at ~40&#160;% in the navigation-slowness
+    /// profiling pass. <c>MessageParser&lt;T&gt;.ParseFrom(Stream)</c> reads
+    /// the protobuf wire format incrementally from the decompressed stream,
+    /// keeping every per-call allocation pool-sized.
+    /// </summary>
+    internal static async Task<T> ParseResponseAsync<T>(
+        Google.Protobuf.MessageParser<T> parser,
+        HttpResponseMessage response,
+        CancellationToken cancellationToken = default)
+        where T : Google.Protobuf.IMessage<T>
+    {
+        ArgumentNullException.ThrowIfNull(parser);
+        ArgumentNullException.ThrowIfNull(response);
+
+        await using var baseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var decodedStream = CreateDecodedStream(baseStream, response.Content.Headers.ContentEncoding);
+        return parser.ParseFrom(decodedStream);
     }
 
     private static Stream CreateDecodedStream(Stream baseStream, ICollection<string> encodings)

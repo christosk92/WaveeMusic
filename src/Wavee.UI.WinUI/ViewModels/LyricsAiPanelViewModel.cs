@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Wavee.Controls.Lyrics.Models.Lyrics;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Styles;
 
@@ -316,7 +317,11 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
     }
 
     private static string BuildTrackUri(string? trackId) =>
-        string.IsNullOrEmpty(trackId) ? "spotify:track:unknown" : $"spotify:track:{trackId}";
+        string.IsNullOrEmpty(trackId)
+            ? SpotifyUriHelper.ToUri(SpotifyEntityKind.Track, "unknown")
+            : SpotifyUriHelper.IsKind(trackId, SpotifyEntityKind.Track)
+                ? trackId
+                : SpotifyUriHelper.ToUri(SpotifyEntityKind.Track, trackId);
 
     private static string SnapshotText(string? text) =>
         string.IsNullOrEmpty(text) ? string.Empty : new string(text.AsSpan());

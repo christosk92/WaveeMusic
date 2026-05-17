@@ -15,6 +15,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Models.Lyrics;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -42,6 +43,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.Contracts;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Data.Models;
 
 namespace Wavee.UI.WinUI.Controls.RightPanel;
@@ -2836,11 +2838,12 @@ public sealed partial class RightPanelView : UserControl
     private static string BuildTrackUri(string? trackId)
     {
         if (string.IsNullOrWhiteSpace(trackId))
-            return "spotify:track:unknown";
+            return SpotifyUriHelper.ToUri(SpotifyEntityKind.Track, "unknown");
 
-        return trackId.StartsWith("spotify:track:", StringComparison.Ordinal)
-            ? trackId.Trim()
-            : $"spotify:track:{trackId.Trim()}";
+        var trimmed = trackId.Trim();
+        return SpotifyUriHelper.IsKind(trimmed, SpotifyEntityKind.Track)
+            ? trimmed
+            : SpotifyUriHelper.ToUri(SpotifyEntityKind.Track, trimmed);
     }
 
     // Lyrics snippet (TextBlock-based, synced to playback)

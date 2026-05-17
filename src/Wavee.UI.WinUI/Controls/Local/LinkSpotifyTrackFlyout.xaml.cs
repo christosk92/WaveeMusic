@@ -15,6 +15,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.Protocol.Metadata;
+using Wavee.UI.Helpers;
 using Wavee.UI.Library.Local;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;

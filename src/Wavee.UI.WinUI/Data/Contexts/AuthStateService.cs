@@ -280,7 +280,7 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
 
         // 2. Tear down the playback engine before we disconnect the session — the engine
         //    uses the session for AudioKey/CDN requests.
-        Helpers.Application.AppLifecycleHelper.TeardownPlaybackEngine();
+        Wavee.UI.WinUI.Helpers.Application.AppLifecycleHelper.TeardownPlaybackEngine();
 
         // 3. Disconnect the live AP/dealer connection so the old user's session is
         //    actually terminated (not just "logged out" from the UI's POV).
@@ -363,14 +363,14 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         }
 
         // Initialize local playback engine — either in-process or out-of-process
-        if (Helpers.Application.AppLifecycleHelper.UseOutOfProcessAudio)
+        if (Wavee.UI.WinUI.Helpers.Application.AppLifecycleHelper.UseOutOfProcessAudio)
         {
-            await Helpers.Application.AppLifecycleHelper.InitializeOutOfProcessAudioAsync(_session, _logger);
+            await Wavee.UI.WinUI.Helpers.Application.AppLifecycleHelper.InitializeOutOfProcessAudioAsync(_session, _logger);
         }
         else
         {
             // In-process fallback removed — all audio goes through AudioHost
-            await Helpers.Application.AppLifecycleHelper.InitializeOutOfProcessAudioAsync(_session, _logger);
+            await Wavee.UI.WinUI.Helpers.Application.AppLifecycleHelper.InitializeOutOfProcessAudioAsync(_session, _logger);
         }
 
         // SetStatus fires AuthStatusChangedMessage → LibrarySyncOrchestrator handles sync

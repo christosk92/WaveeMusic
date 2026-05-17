@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
@@ -47,7 +48,7 @@ public sealed partial class PopularReleaseRow : UserControl
         DependencyProperty.Register(nameof(AccentForegroundBrush), typeof(Brush), typeof(PopularReleaseRow),
             new PropertyMetadata(null, OnAccentForegroundBrushChanged));
 
-    // ─── Navigation DPs (added with the artist→album prefetch + connected
+    // â”€â”€â”€ Navigation DPs (added with the artistâ†’album prefetch + connected
     // animation pass). When NavigationUri is set, the internal click handler
     // self-routes through AlbumNavigationHelper (prefetch + connected anim +
     // count prefill) and the CardClick event also fires for any subscriber
@@ -77,7 +78,7 @@ public sealed partial class PopularReleaseRow : UserControl
     public int NavigationTotalTracks { get => (int)GetValue(NavigationTotalTracksProperty); set => SetValue(NavigationTotalTracksProperty, value); }
     public string? Subtitle { get => (string?)GetValue(SubtitleProperty); set => SetValue(SubtitleProperty, value); }
 
-    // Album-metadata viewport prefetch. Single-shot per realization — reset
+    // Album-metadata viewport prefetch. Single-shot per realization â€” reset
     // in OnUnloaded so container recycling re-fires when the row re-enters
     // the viewport. IAlbumPrefetcher's session-wide dedup keeps duplicate
     // POSTs out of the network.
@@ -90,14 +91,22 @@ public sealed partial class PopularReleaseRow : UserControl
     public PopularReleaseRow()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        // Subscribe on attach so the handler doesn't accumulate in the WinRT
+        // EventSource table across ItemsRepeater container recycles.
         EffectiveViewportChanged += OnEffectiveViewportChanged;
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        EffectiveViewportChanged -= OnEffectiveViewportChanged;
         // CompositionImage releases its own pin on Unloaded.
-        // Don't clear CoverImage.ImageUrl — breaks scroll-back-up.
+        // Don't clear CoverImage.ImageUrl â€” breaks scroll-back-up.
         _albumPrefetchKicked = false;
         _playlistPrefetchKicked = false;
     }
@@ -183,7 +192,7 @@ public sealed partial class PopularReleaseRow : UserControl
 
     private void CardButton_Click(object sender, RoutedEventArgs e)
     {
-        // Self-route when NavigationUri is set — fires connected animation
+        // Self-route when NavigationUri is set â€” fires connected animation
         // from the cover Border to AlbumPage's hero, builds a nav-prefill
         // ContentNavigationParameter with TotalTracks, and respects Ctrl+click
         // for new-tab. Falls back to the CardClick event for any subscriber

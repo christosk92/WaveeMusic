@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.UI;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Styles;
@@ -102,7 +103,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
         set => SetValue(NavigationUriProperty, value);
     }
 
-    // ── Composition state ───────────────────────────────────────────
+    // â”€â”€ Composition state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Built lazily on first Loaded; rebuilt whenever a thumbnail URL DP
     // changes or the host size changes. Disposed on Unloaded.
     private Compositor? _compositor;
@@ -116,14 +117,14 @@ public sealed partial class LikedSongsRecentCard : UserControl
     private float _hostWidth;
     private int _thumbnailGeneration;
 
-    // Per-slot fan layout — back-to-front. Each slot has a rest pose (matches
+    // Per-slot fan layout â€” back-to-front. Each slot has a rest pose (matches
     // Spotify's tight stack where thumbnails barely peek behind the heart)
     // and a hover pose (the fan spreads out and the heart steps left so the
     // covers become fully visible). Composition animations interpolate the
     // rotation + offset between the two.
     //
     // All dimensions are now expressed as RATIOS of host width and resolved
-    // at runtime — the card is consumed by SingleRowLayout which sizes its
+    // at runtime â€” the card is consumed by SingleRowLayout which sizes its
     // children by available row width, so a fixed-pixel composition stayed
     // tiny in the bottom-left on any card wider than the original ~140 px
     // target (the visual bug the user flagged).
@@ -136,7 +137,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
     private const float ThumbSizeRatio = 0.60f;
 
     // Heart tile edge length as a fraction of host width. Originally a fixed
-    // 56 px — on a ~140 px host that's 40%; on a 250 px host it shrank to 22%
+    // 56 px â€” on a ~140 px host that's 40%; on a 250 px host it shrank to 22%
     // and looked tiny. Keep it at ~40% always.
     private const float HeartSizeRatio = 0.40f;
 
@@ -144,17 +145,17 @@ public sealed partial class LikedSongsRecentCard : UserControl
     // OffsetX = pixels from left, OffsetY = pixels UP from bottom.
     private static readonly SlotPoseRatio[] RestLayoutRatios =
     [
-        // Back of stack — at the left edge, partly behind heart
+        // Back of stack â€” at the left edge, partly behind heart
         new(-3f, 0.00f, 0.16f),
-        // Middle — small step right + up
+        // Middle â€” small step right + up
         new( 0f, 0.10f, 0.21f),
-        // Front — rightmost of the cluster, highest
+        // Front â€” rightmost of the cluster, highest
         new( 3f, 0.20f, 0.27f),
     ];
 
     private static readonly SlotPoseRatio[] HoverLayoutRatios =
     [
-        // Subtle spread — fan opens slightly to the right but the leftmost
+        // Subtle spread â€” fan opens slightly to the right but the leftmost
         // slot stays anchored to the edge. Stays inside the card width.
         new(-7f, 0.00f, 0.17f),
         new( 1f, 0.16f, 0.24f),
@@ -193,7 +194,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
     /// two recents-saved cards aren't visually indistinguishable. Called from
     /// both <see cref="OnLoaded"/> (first realisation) and the
     /// <see cref="NavigationUri"/> DP changed callback (ItemsRepeater
-    /// recycling — same control instance, new item).
+    /// recycling â€” same control instance, new item).
     /// </summary>
     private void ApplyTileVariant()
     {
@@ -230,7 +231,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
 
     private void ImageArea_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        // Keep the image area square — Recents card slot is sized by the
+        // Keep the image area square â€” Recents card slot is sized by the
         // outer SingleRowLayout / ShelfScroller (width-driven). Without this
         // the row collapses to whatever the heart tile + text minimum is.
         if (e.NewSize.Width <= 0) return;
@@ -238,7 +239,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
             ImageArea.Height = e.NewSize.Width;
 
         // Rebuild the composition when the host width changes so the fan +
-        // heart sizing scales with the card — without this they stay at
+        // heart sizing scales with the card â€” without this they stay at
         // their first-realised pixel size and look tiny on wider cards.
         if (Math.Abs((float)e.NewSize.Width - _hostWidth) > 0.5f)
             RebuildThumbnails();
@@ -284,7 +285,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
         }
     }
 
-    // ── Composition graph ─────────────────────────────────────────────
+    // â”€â”€ Composition graph â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void EnsureCompositionGraph()
     {
@@ -296,7 +297,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
         ElementCompositionPreview.SetElementChildVisual(ThumbnailHost, _thumbnailContainer);
 
         // Pull the heart's backing Visual so we can animate its translation +
-        // scale on hover. Translation (vs. Offset) is the right knob here —
+        // scale on hover. Translation (vs. Offset) is the right knob here â€”
         // it's a delta that stacks on top of the XAML-assigned layout position
         // instead of replacing it. Must be enabled per-element first.
         ElementCompositionPreview.SetIsTranslationEnabled(HeartTile, true);
@@ -316,13 +317,13 @@ public sealed partial class LikedSongsRecentCard : UserControl
 
         var urls = new[] { Thumbnail1ImageUrl, Thumbnail2ImageUrl, Thumbnail3ImageUrl };
 
-        // The fan anchors at the top-right of ThumbnailHost — derive the
+        // The fan anchors at the top-right of ThumbnailHost â€” derive the
         // host width from a cached size or fall back to the layout slot.
         // CenterPoint = size/2 so rotation pivots on the visual's center.
         var hostWidth = (float)(ThumbnailHost.ActualWidth > 0 ? ThumbnailHost.ActualWidth : ImageArea.ActualWidth);
         if (hostWidth <= 0)
         {
-            // Layout hasn't run yet — defer to next pass.
+            // Layout hasn't run yet â€” defer to next pass.
             ThumbnailHost.SizeChanged -= DeferredHostSized;
             ThumbnailHost.SizeChanged += DeferredHostSized;
             return;
@@ -347,9 +348,9 @@ public sealed partial class LikedSongsRecentCard : UserControl
         // Render only the number of slots Spotify says were recently added,
         // capped at the three thumbnails the home response can carry AND at
         // the number of URLs we actually have. This avoids:
-        //   • a three-card fan for a one-episode save event (AddedCount cap)
-        //   • empty placeholder squares when the URI list is missing from
-        //     group_metadata (observed for spotify:collection:your-episodes —
+        //   â€¢ a three-card fan for a one-episode save event (AddedCount cap)
+        //   â€¢ empty placeholder squares when the URI list is missing from
+        //     group_metadata (observed for spotify:collection:your-episodes â€”
         //     Spotify omits field 2 episode URIs there, only ships the count)
         // When the resolver later fills Thumbnail{1..3}ImageUrl, RebuildThumbnails
         // re-runs and draws the slots that now have URLs.
@@ -371,7 +372,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
             sprite.RotationAngleInDegrees = pose.Rotation;
             sprite.Offset = ComputeOffset(pose);
 
-            // Soft drop shadow per visual — depth that XAML couldn't easily do.
+            // Soft drop shadow per visual â€” depth that XAML couldn't easily do.
             // Blur scales with host so the depth reads consistent across sizes.
             var shadow = _compositor.CreateDropShadow();
             shadow.BlurRadius = Math.Max(6f, hostWidth * 0.05f);
@@ -410,14 +411,14 @@ public sealed partial class LikedSongsRecentCard : UserControl
                                 spriteRef.Brush = imgBrush;
                             }
                             // On non-Success, leave the placeholder brush in
-                            // place — the slot still reads as a card-coloured
+                            // place â€” the slot still reads as a card-coloured
                             // square peeking out behind the heart tile.
                         });
                     };
                 }
                 catch
                 {
-                    // Bad URI — placeholder brush stays.
+                    // Bad URI â€” placeholder brush stays.
                 }
             }
 
@@ -492,7 +493,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
         _compositor = null;
     }
 
-    // ── Pointer + nav ─────────────────────────────────────────────────
+    // â”€â”€ Pointer + nav â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void CardRoot_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
@@ -531,7 +532,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
         var ease = _compositor.CreateCubicBezierEasingFunction(
             new Vector2(0.2f, 0f), new Vector2(0f, 1f));
 
-        // Thumbnails — animate offset + rotation per slot.
+        // Thumbnails â€” animate offset + rotation per slot.
         var poseSet = toHover ? HoverLayoutRatios : RestLayoutRatios;
         for (var i = 0; i < _sprites.Count && i < poseSet.Length; i++)
         {
@@ -550,11 +551,11 @@ public sealed partial class LikedSongsRecentCard : UserControl
             sprite.StartAnimation(nameof(SpriteVisual.RotationAngleInDegrees), rotAnim);
         }
 
-        // Heart — translate + scale. "Translation" is the additive delta that
+        // Heart â€” translate + scale. "Translation" is the additive delta that
         // sits alongside the XAML-assigned layout offset (enabled in
         // EnsureCompositionGraph). Naming gotcha: animations target the
         // string "Translation", but the property is exposed via expression-
-        // accessible name only — there's no clr-side getter on Visual.
+        // accessible name only â€” there's no clr-side getter on Visual.
         // Translation deltas scale with host so the step-aside reads the
         // same on a 140 px card and a 280 px card.
         if (_heartVisual != null)

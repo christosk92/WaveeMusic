@@ -23,6 +23,7 @@
     xmlns:playlist="using:Wavee.UI.WinUI.Controls.Playlist"
     xmlns:transitions="using:CommunityToolkit.WinUI"
     x:Name="PageRoot"
+    helpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">

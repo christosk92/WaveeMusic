@@ -20,6 +20,7 @@ using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Home;
 using Windows.UI;
+using Wavee.UI.Helpers;
 
 namespace Wavee.UI.WinUI.ViewModels;
 

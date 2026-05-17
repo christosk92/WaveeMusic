@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Data.DTOs;
 

@@ -15,7 +15,9 @@ public sealed class PlaylistDragPayload : IDragPayload
     public DragPayloadKind Kind => DragPayloadKind.Playlist;
     public string InternalFormat => DragFormats.Playlist;
     public int ItemCount => 1;
-    public IReadOnlyList<string> HttpsUrls => [SpotifyUri.ToHttps(PlaylistUri)];
+    public IReadOnlyList<string> HttpsUrls => Wavee.UI.Helpers.SpotifyUriHelper.ToHttps(PlaylistUri) is { } u
+        ? [u]
+        : Array.Empty<string>();
 
     [JsonConstructor]
     public PlaylistDragPayload(string playlistUri, string name, bool isOwned = false)

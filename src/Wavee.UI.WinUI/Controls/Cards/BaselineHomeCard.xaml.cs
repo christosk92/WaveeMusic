@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -18,6 +18,7 @@ using Wavee.UI.Models;
 using Wavee.UI.Services;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
@@ -163,7 +164,7 @@ public sealed partial class BaselineHomeCard : UserControl
             oldItem.PropertyChanged -= Item_PropertyChanged;
 
         // Item swap on a virtualized card = the previous item is leaving this
-        // container. Card_Unloaded does NOT fire on ListView recycling — the
+        // container. Card_Unloaded does NOT fire on ListView recycling â€” the
         // visual tree stays realized, just rebound to a new DataContext. If
         // we don't stop the canvas preview + audio here, the OLD item's
         // MediaSource stays pinned (each active preview is ~3.6 MB of
@@ -1349,7 +1350,7 @@ public sealed partial class BaselineHomeCard : UserControl
         await ChangePreviewTrackAsync(1);
     }
 
-    // ── Now-playing highlight service ──
+    // â”€â”€ Now-playing highlight service â”€â”€
 
     private void OnHighlightServiceChanged(string? contextUri, string? albumUri, bool playing)
         => ApplyHighlight(contextUri, albumUri, playing);
@@ -1580,7 +1581,7 @@ public sealed partial class BaselineHomeCard : UserControl
         StopPreviewVisualization();
         UnregisterPreviewAudio();
 
-        // Don't clear HeroImage / CoverThumbImage ImageUrl — CompositionImage
+        // Don't clear HeroImage / CoverThumbImage ImageUrl â€” CompositionImage
         // releases its own pin on Unloaded. Clearing breaks scroll-back-up.
         // Reset our local cache markers so LoadImages re-applies the URL on
         // re-attach even when the outer Item DP is unchanged.

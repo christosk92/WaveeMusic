@@ -47,6 +47,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private readonly IPanelDockingService? _dockingService;
     private readonly IPodcastService? _podcastService;
     private readonly ILibraryDataService? _libraryDataService;
+    private readonly IPodcastEpisodeService? _podcastEpisodeService;
     private readonly ILogger? _logger;
     private bool _disposed;
     private CancellationTokenSource? _chapterFetchCts;
@@ -282,6 +283,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                               IPanelDockingService? dockingService = null,
                               IPodcastService? podcastService = null,
                               ILibraryDataService? libraryDataService = null,
+                              IPodcastEpisodeService? podcastEpisodeService = null,
                               ILoggerFactory? loggerFactory = null)
     {
         _playbackStateService = playbackStateService;
@@ -290,6 +292,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _dockingService = dockingService;
         _podcastService = podcastService;
         _libraryDataService = libraryDataService;
+        _podcastEpisodeService = podcastEpisodeService;
         _logger = loggerFactory?.CreateLogger<PlayerBarViewModel>();
 
         _navigateToArtistCommand = new RelayCommand<object?>(NavigateToArtist);
@@ -423,7 +426,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         {
             await Task.Yield();
 
-            var progress = await _libraryDataService!
+            var progress = await _podcastEpisodeService!
                 .GetPodcastEpisodeProgressAsync(episodeUri)
                 .ConfigureAwait(true);
 
@@ -556,7 +559,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         try
         {
-            await _libraryDataService!
+            await _podcastEpisodeService!
                 .SavePodcastEpisodeProgressAsync(episodeUri, resumePosition, completed)
                 .ConfigureAwait(false);
         }

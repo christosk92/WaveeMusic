@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Numerics;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
@@ -16,6 +16,7 @@ using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
@@ -53,7 +54,7 @@ public sealed partial class SearchResultRowCard : UserControl
     private bool _subscribedToPlayback;
 
     // Album-metadata viewport prefetch (Pattern A in AlbumPrefetcher). Single-
-    // shot per (realization × item) — reset on Unloaded AND on ApplyItem (so a
+    // shot per (realization Ã— item) â€” reset on Unloaded AND on ApplyItem (so a
     // recycled row showing a different album fires once for the new URI).
     private bool _albumPrefetchKicked;
     private bool _playlistPrefetchKicked;
@@ -77,7 +78,6 @@ public sealed partial class SearchResultRowCard : UserControl
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         ActualThemeChanged += OnActualThemeChanged;
-        EffectiveViewportChanged += OnEffectiveViewportChanged;
     }
 
     private void OnEffectiveViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
@@ -233,6 +233,10 @@ public sealed partial class SearchResultRowCard : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // Subscribe on attach so the handler doesn't accumulate in the WinRT
+        // EventSource table across ItemsRepeater container recycles.
+        EffectiveViewportChanged += OnEffectiveViewportChanged;
+
         if (!_subscribedToPlayback)
         {
             TrackStateBehavior.EnsurePlaybackSubscription();
@@ -249,6 +253,8 @@ public sealed partial class SearchResultRowCard : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        EffectiveViewportChanged -= OnEffectiveViewportChanged;
+
         UnhookAddToPlaylistSession();
         if (_subscribedToPlayback)
         {
@@ -269,7 +275,7 @@ public sealed partial class SearchResultRowCard : UserControl
 
     private void OnPlaybackStateChanged()
     {
-        // Same filter as TrackItem.OnPlaybackStateChanged — skip the dispatch
+        // Same filter as TrackItem.OnPlaybackStateChanged â€” skip the dispatch
         // when this card's effective playback state can't have flipped.
         if (_trackId == null) return;
 
@@ -428,7 +434,7 @@ public sealed partial class SearchResultRowCard : UserControl
     private void OnTapped(object sender, TappedRoutedEventArgs e)
     {
         // Push an immediate buffering state for tracks so the loading visual appears
-        // synchronously on click — same trick TrackItem uses (see TrackItem.xaml.cs:935-950).
+        // synchronously on click â€” same trick TrackItem uses (see TrackItem.xaml.cs:935-950).
         // Skip if this row is already the active/buffering track.
         if (!_isTrack || _trackId == null) return;
         if (_trackId == TrackStateBehavior.CurrentTrackId) return;

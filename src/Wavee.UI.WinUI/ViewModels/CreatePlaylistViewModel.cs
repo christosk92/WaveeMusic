@@ -31,6 +31,8 @@ public sealed partial class CreatePlaylistViewModel : ObservableObject, ITabBarI
     private IReadOnlyList<string>? _trackIds;
 
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IRootlistService _rootlistService;
+    private readonly IPlaylistMutationService _playlistMutationService;
 
     public TabItemParameter? TabItemParameter { get; private set; }
 
@@ -53,9 +55,11 @@ public sealed partial class CreatePlaylistViewModel : ObservableObject, ITabBarI
         ? $"Adding {TrackCount} track{(TrackCount == 1 ? "" : "s")}"
         : "";
 
-    public CreatePlaylistViewModel(ILibraryDataService libraryDataService)
+    public CreatePlaylistViewModel(ILibraryDataService libraryDataService, IRootlistService rootlistService, IPlaylistMutationService playlistMutationService)
     {
         _libraryDataService = libraryDataService;
+        _rootlistService = rootlistService;
+        _playlistMutationService = playlistMutationService;
     }
 
     public void Initialize(CreatePlaylistParameter parameter)
@@ -90,8 +94,8 @@ public sealed partial class CreatePlaylistViewModel : ObservableObject, ITabBarI
         // picks up the resulting RootlistModificationInfo push and fires the sidebar
         // refresh — no manual cache invalidation needed here.
         var created = IsFolder
-            ? await _libraryDataService.CreateFolderAsync(Name)
-            : await _libraryDataService.CreatePlaylistAsync(Name, _trackIds);
+            ? await _rootlistService.CreateFolderAsync(Name)
+            : await _playlistMutationService.CreatePlaylistAsync(Name, _trackIds);
 
         if (IsFolder)
         {

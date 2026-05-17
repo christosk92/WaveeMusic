@@ -30,7 +30,7 @@ public sealed class PodcastService : IPodcastService
     private readonly IExtendedMetadataClient _extendedMetadata;
     private readonly ISpClient _spClient;
     private readonly ExtendedMetadataStore? _metadataStore;
-    private readonly ILibraryDataService? _libraryData;
+    private readonly IPodcastEpisodeService? _podcastEpisodeService;
     private readonly ILogger? _logger;
     private readonly object _showEpisodeCacheGate = new();
     private readonly Dictionary<string, Episode> _showEpisodeCache = new(StringComparer.Ordinal);
@@ -47,14 +47,14 @@ public sealed class PodcastService : IPodcastService
         IExtendedMetadataClient extendedMetadata,
         ISpClient spClient,
         ExtendedMetadataStore? metadataStore = null,
-        ILibraryDataService? libraryData = null,
+        IPodcastEpisodeService? podcastEpisodeService = null,
         ILogger<PodcastService>? logger = null)
     {
         _pathfinder = pathfinder ?? throw new ArgumentNullException(nameof(pathfinder));
         _extendedMetadata = extendedMetadata ?? throw new ArgumentNullException(nameof(extendedMetadata));
         _spClient = spClient ?? throw new ArgumentNullException(nameof(spClient));
         _metadataStore = metadataStore;
-        _libraryData = libraryData;
+        _podcastEpisodeService = podcastEpisodeService;
         _logger = logger;
     }
 
@@ -817,7 +817,7 @@ public sealed class PodcastService : IPodcastService
         IReadOnlyList<string> uris, CancellationToken ct)
     {
         var map = new Dictionary<string, EpisodeProgressSnapshot>(StringComparer.Ordinal);
-        if (_libraryData is null) return map;
+        if (_podcastEpisodeService is null) return map;
 
         // GetPodcastEpisodeProgressAsync hydrates a single shared cache on first
         // call and then serves every subsequent lookup from memory, so this loop
@@ -826,7 +826,7 @@ public sealed class PodcastService : IPodcastService
         {
             try
             {
-                var dto = await _libraryData.GetPodcastEpisodeProgressAsync(uri, ct).ConfigureAwait(false);
+                var dto = await _podcastEpisodeService.GetPodcastEpisodeProgressAsync(uri, ct).ConfigureAwait(false);
                 if (dto is null) continue;
                 map[uri] = new EpisodeProgressSnapshot(
                     dto.PlayedState ?? "NOT_STARTED",

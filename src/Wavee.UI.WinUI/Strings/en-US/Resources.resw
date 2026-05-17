@@ -989,6 +989,9 @@ the music you previously queued?</value>
   <data name="Shell_SidebarPinned" xml:space="preserve">
     <value>Pinned</value>
   </data>
+  <data name="Shell_SidebarPinDropZone" xml:space="preserve">
+    <value>Drop here to pin to sidebar</value>
+  </data>
   <data name="Shell_SidebarPlaylists" xml:space="preserve">
     <value>Playlists</value>
   </data>

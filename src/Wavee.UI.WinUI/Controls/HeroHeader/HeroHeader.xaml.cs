@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Numerics;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.Controls.HeroHeader;
@@ -37,7 +38,7 @@ public sealed partial class HeroHeader : UserControl
     private string? _loadedImageUrl;
     private string? _requestedImageUrl;
 
-    // ── Dependency Properties ──
+    // â”€â”€ Dependency Properties â”€â”€
 
     public static readonly DependencyProperty ImageUrlProperty =
         DependencyProperty.Register(nameof(ImageUrl), typeof(string), typeof(HeroHeader),
@@ -143,7 +144,7 @@ public sealed partial class HeroHeader : UserControl
     /// When true, override the theme-aware scrim with a much stronger
     /// black-regardless-of-theme gradient. Used by media-banner pages
     /// (local TV / movie / cast detail) where overlay text is forced
-    /// white and needs a Netflix / Disney+-style dark scrim under it —
+    /// white and needs a Netflix / Disney+-style dark scrim under it â€”
     /// regardless of whether the app is in Light or Dark mode. Default
     /// false preserves the existing ArtistPage / PlaylistPage look.
     /// </summary>
@@ -178,7 +179,7 @@ public sealed partial class HeroHeader : UserControl
 
         if (IntenseScrim)
         {
-            // Intense (banner) scrim — heavy gradient that fades the photo
+            // Intense (banner) scrim â€” heavy gradient that fades the photo
             // toward the page background. Color inverts by theme so overlay
             // text reads correctly: black scrim with white text in dark mode,
             // white scrim with dark text in light mode. Top stays transparent
@@ -205,8 +206,8 @@ public sealed partial class HeroHeader : UserControl
         }
 
         // Inverted scrim by theme:
-        //   Dark   → black gradient (photo fades into dark page, white overlay text)
-        //   Light  → white gradient (photo fades into bright page, dark overlay text)
+        //   Dark   â†’ black gradient (photo fades into dark page, white overlay text)
+        //   Light  â†’ white gradient (photo fades into bright page, dark overlay text)
         // White needs more alpha than black for equivalent perceptual weight, so the
         // Light values are deliberately higher than the Dark values' magnitude.
         var isDark = theme != ElementTheme.Light;
@@ -292,7 +293,7 @@ public sealed partial class HeroHeader : UserControl
 
     private void ApplyScrollFade()
     {
-        // Don't fight the pop-in animation — the image stack starts at Opacity=0
+        // Don't fight the pop-in animation â€” the image stack starts at Opacity=0
         // and animates to 1; once that has run we own the steady-state opacity here.
         if (!_hasAnimated)
             return;
@@ -318,7 +319,7 @@ public sealed partial class HeroHeader : UserControl
         _containerVisual = _compositor.CreateContainerVisual();
         _containerVisual.RelativeSizeAdjustment = Vector2.One;
 
-        // 1. Image layer with gradient fade mask (opaque top → transparent bottom = blends with page)
+        // 1. Image layer with gradient fade mask (opaque top â†’ transparent bottom = blends with page)
         var fadeMask = _compositor.CreateLinearGradientBrush();
         fadeMask.StartPoint = new Vector2(0.5f, 0f);
         fadeMask.EndPoint = new Vector2(0.5f, 1f);
@@ -447,7 +448,7 @@ public sealed partial class HeroHeader : UserControl
 
     /// <summary>
     /// Dispose the backing <see cref="LoadedImageSurface"/> (typically
-    /// 1600×420 ≈ 2.6 MB at retina) without tearing the composition tree
+    /// 1600Ã—420 â‰ˆ 2.6 MB at retina) without tearing the composition tree
     /// apart. Intended for pages with <c>NavigationCacheMode="Enabled"</c>
     /// where <see cref="OnUnloaded"/> never fires on navigate-away: the
     /// page's <c>OnNavigatedFrom</c> should call this, and
@@ -623,7 +624,7 @@ public sealed partial class HeroHeader : UserControl
     {
         if (_containerVisual == null || _compositor == null) return;
 
-        // Skip animation on re-attach — image already visible
+        // Skip animation on re-attach â€” image already visible
         if (_hasAnimated)
         {
             _containerVisual.Opacity = 1f;

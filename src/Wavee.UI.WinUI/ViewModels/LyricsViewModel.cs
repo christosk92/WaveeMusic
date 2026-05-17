@@ -11,6 +11,7 @@ using Wavee.Controls.Lyrics.Helper;
 using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.Controls.Lyrics.Models.Settings;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Services;
 using Microsoft.UI;
@@ -210,7 +211,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         }
 
         if (trackId.Contains(':', StringComparison.Ordinal)
-            && !trackId.StartsWith("spotify:track:", StringComparison.Ordinal))
+            && !SpotifyUriHelper.IsKind(trackId, SpotifyEntityKind.Track))
         {
             _loadedTrackId = trackId;
             _loadedTrackSucceeded = true;

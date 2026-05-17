@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Windows.Input;
@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
@@ -19,14 +20,14 @@ namespace Wavee.UI.WinUI.Controls.Artist;
 /// <summary>
 /// Shared "About the artist" summary card. Drop it into any page that wants
 /// the canonical avatar + name + bio + Follow pill visual. Self-contained:
-/// the AI bio fallback (✨ sparkle + on-device Phi Silica summary when
-/// Spotify's bio is empty) is owned by the control — pages opt in via
+/// the AI bio fallback (âœ¨ sparkle + on-device Phi Silica summary when
+/// Spotify's bio is empty) is owned by the control â€” pages opt in via
 /// <see cref="EnableAiSummary"/>. Page-specific extras can be appended via
 /// <see cref="AdditionalContent"/>.
 /// </summary>
 public sealed partial class ArtistSummaryCard : UserControl
 {
-    // ── Data DPs ────────────────────────────────────────────────────────
+    // â”€â”€ Data DPs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public static readonly DependencyProperty ArtistUriProperty =
         DependencyProperty.Register(nameof(ArtistUri), typeof(string), typeof(ArtistSummaryCard),
@@ -68,7 +69,7 @@ public sealed partial class ArtistSummaryCard : UserControl
         DependencyProperty.Register(nameof(AdditionalContent), typeof(object), typeof(ArtistSummaryCard),
             new PropertyMetadata(null, OnAdditionalContentChanged));
 
-    // ── AI-summary DPs ──────────────────────────────────────────────────
+    // â”€â”€ AI-summary DPs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public static readonly DependencyProperty EnableAiSummaryProperty =
         DependencyProperty.Register(nameof(EnableAiSummary), typeof(bool), typeof(ArtistSummaryCard),
@@ -86,7 +87,7 @@ public sealed partial class ArtistSummaryCard : UserControl
         DependencyProperty.Register(nameof(SummaryTopTrackNames), typeof(IReadOnlyList<string>), typeof(ArtistSummaryCard),
             new PropertyMetadata(null));
 
-    // ── CLR wrappers ────────────────────────────────────────────────────
+    // â”€â”€ CLR wrappers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public string? ArtistUri { get => (string?)GetValue(ArtistUriProperty); set => SetValue(ArtistUriProperty, value); }
     public string? ArtistName { get => (string?)GetValue(ArtistNameProperty); set => SetValue(ArtistNameProperty, value); }
@@ -103,7 +104,7 @@ public sealed partial class ArtistSummaryCard : UserControl
     public string? SummaryMonthlyListenersDisplay { get => (string?)GetValue(SummaryMonthlyListenersDisplayProperty); set => SetValue(SummaryMonthlyListenersDisplayProperty, value); }
     public IReadOnlyList<string>? SummaryTopTrackNames { get => (IReadOnlyList<string>?)GetValue(SummaryTopTrackNamesProperty); set => SetValue(SummaryTopTrackNamesProperty, value); }
 
-    // ── State ───────────────────────────────────────────────────────────
+    // â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private CancellationTokenSource? _aiCts;
 
@@ -113,10 +114,10 @@ public sealed partial class ArtistSummaryCard : UserControl
         // Initial follow glyph/text so the button renders correctly before
         // any DP-changed callback fires.
         ApplyFollowVisual(false);
-        // Hand cursor on hover — propagates from this UserControl down to
+        // Hand cursor on hover â€” propagates from this UserControl down to
         // every descendant. Buttons don't override cursor in WinUI 3 by
         // default, so the Follow pill also shows the hand cursor (which is
-        // the correct affordance — clicking does an action).
+        // the correct affordance â€” clicking does an action).
         ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.Hand);
         Unloaded += OnUnloaded;
     }
@@ -127,7 +128,7 @@ public sealed partial class ArtistSummaryCard : UserControl
         _aiCts = null;
     }
 
-    // ── DP callbacks ────────────────────────────────────────────────────
+    // â”€â”€ DP callbacks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private static void OnArtistNameChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -135,7 +136,7 @@ public sealed partial class ArtistSummaryCard : UserControl
         var name = (string?)e.NewValue ?? string.Empty;
         card.NameTextBlock.Text = name;
         card.AvatarPicture.DisplayName = name;
-        // Artist switched — re-trigger AI flow if applicable. (Name change
+        // Artist switched â€” re-trigger AI flow if applicable. (Name change
         // alone doesn't guarantee the artist changed, but it's a cheap
         // additional trigger; OnAiInputChanged handles the no-op fast path.)
         card.MaybeTriggerAiSummary();
@@ -160,7 +161,7 @@ public sealed partial class ArtistSummaryCard : UserControl
         var bio = e.NewValue as string;
         card.BioTextBlock.Text = bio ?? string.Empty;
         // Externally-set non-empty bio (Spotify's real bio arrived) supersedes
-        // any AI summary that may have been shown — drop the sparkle.
+        // any AI summary that may have been shown â€” drop the sparkle.
         if (!string.IsNullOrWhiteSpace(bio))
             card.AiSparkle.Visibility = Visibility.Collapsed;
         // If the bio became empty AND AI is enabled, kick off a summary.
@@ -199,7 +200,7 @@ public sealed partial class ArtistSummaryCard : UserControl
     private void ApplyFollowVisual(bool following)
     {
         // Glyph constants live in FluentGlyphs (memory `feedback_fluent_glyphs`
-        // — never inline PUA literals in .cs files).
+        // â€” never inline PUA literals in .cs files).
         FollowGlyph.Glyph = following ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline;
         FollowLabel.Text = following ? "Following" : "Follow";
     }
@@ -220,18 +221,18 @@ public sealed partial class ArtistSummaryCard : UserControl
 
     private void FollowButton_Click(object sender, RoutedEventArgs e)
     {
-        // Forward to the consumer's command — the VM owns the actual save-state
+        // Forward to the consumer's command â€” the VM owns the actual save-state
         // toggle (mirrors ArtistViewModel.ToggleFollow). The IsFollowing DP
         // round-trips back through the binding after the VM mutates it.
         if (ToggleFollowCommand?.CanExecute(null) == true)
             ToggleFollowCommand.Execute(null);
     }
 
-    // ── Card-surface click + hover ──────────────────────────────────────
+    // â”€â”€ Card-surface click + hover â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void CardSurface_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        // Filter out taps that originated inside the Follow button — that
+        // Filter out taps that originated inside the Follow button â€” that
         // button handles its own Click and we don't want the card-surface
         // tap to ALSO navigate. Walk up the visual tree from the original
         // source; if we hit FollowButton before the CardSurface, ignore.
@@ -247,7 +248,7 @@ public sealed partial class ArtistSummaryCard : UserControl
     private void CardSurface_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         // Subtle background lift on hover. Mirrors the affordance the rest
-        // of the app uses (ContentCard, ArtistPillCard) — lighter card-fill
+        // of the app uses (ContentCard, ArtistPillCard) â€” lighter card-fill
         // tier signals "this is clickable".
         if (App.Current?.Resources["CardBackgroundFillColorSecondaryBrush"] is Brush hoverBrush)
             CardSurface.Background = hoverBrush;
@@ -270,7 +271,7 @@ public sealed partial class ArtistSummaryCard : UserControl
         return false;
     }
 
-    // ── AI bio fallback ─────────────────────────────────────────────────
+    // â”€â”€ AI bio fallback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private async void MaybeTriggerAiSummary()
     {
@@ -308,8 +309,8 @@ public sealed partial class ArtistSummaryCard : UserControl
 
             if (result.Kind == LyricsAiResultKind.Ok && !string.IsNullOrWhiteSpace(result.Text))
             {
-                // Set BioTextBlock directly rather than mutating the DP — that
-                // would re-enter OnBioExcerptChanged → MaybeTriggerAiSummary
+                // Set BioTextBlock directly rather than mutating the DP â€” that
+                // would re-enter OnBioExcerptChanged â†’ MaybeTriggerAiSummary
                 // and clear the sparkle.
                 BioTextBlock.Text = result.Text;
                 AiSparkle.Visibility = Visibility.Visible;
@@ -322,7 +323,7 @@ public sealed partial class ArtistSummaryCard : UserControl
         catch (Exception)
         {
             // Empty bio + no sparkle is the graceful fallback. We don't surface
-            // an error chrome on this affordance — the rest of the page is the
+            // an error chrome on this affordance â€” the rest of the page is the
             // primary surface; the bio is supplementary.
         }
     }

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Wavee.UI.WinUI.Helpers;
+namespace Wavee.UI.Helpers;
 
 /// <summary>
 /// Converts Spotify internal image URIs to loadable HTTPS URLs.

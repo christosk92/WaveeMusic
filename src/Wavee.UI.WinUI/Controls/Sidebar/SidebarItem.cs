@@ -28,7 +28,7 @@ namespace Wavee.UI.WinUI.Controls.Sidebar;
 
 public sealed partial class SidebarItem : Control
 {
-	private const double DROP_REPOSITION_THRESHOLD = 0.2; // Percentage of top/bottom at which we consider a drop to be a reposition/insertion
+	private const double DROP_REPOSITION_THRESHOLD = 0.3; // Percentage of top/bottom at which we consider a drop to be a reposition/insertion. Wider zones (was 0.2) pair with the row-spacing growth applied during drag — see DragAvailable / DragReorderable visual states.
 
 	public bool HasChildren => Item?.Children is IList enumerable && enumerable.Count > 0;
 	public bool IsGroupHeader => Item?.Children is not null;
@@ -50,6 +50,13 @@ public sealed partial class SidebarItem : Control
 	private INotifyCollectionChanged? _subscribedCollection;
 	private DragStateService? _dragStateService;
 	private Border? _elementBorder;
+	// Saved MaxHeight on the children repeater while a drag is active. The
+	// expand storyboard locks MaxHeight at count*childHeight (44 per row), so
+	// when children grow to 56 under Drag* visual states they get chopped off
+	// at the old ceiling. We lift the clip on drag-start and restore the
+	// pre-drag value (or fall back to the recomputed ChildrenPresenterHeight
+	// for the expanded case) on drag-end.
+	private double? _preDragChildrenMaxHeight;
 	private Action? _themeChangedHandler;
 	private Services.ThemeColorService? _themeColorService;
 	private CancellationTokenSource? _lazyIconCts;
@@ -323,6 +330,12 @@ public sealed partial class SidebarItem : Control
 		_dragStateService = Ioc.Default.GetService<DragStateService>();
 		if (_dragStateService != null)
 			_dragStateService.DragStateChanged += OnGlobalDragStateChanged;
+
+		// Drop-zone-only rows (e.g. the Pinned section's "Drop here to pin"
+		// placeholder) are invisible until a drag with an acceptable payload
+		// starts. Seat the initial visibility before the global drag-state
+		// signal arrives so the row doesn't flash visible during realization.
+		ApplyDropZoneVisibility();
 
 		// Guaranteed icon rebuild on Loaded. Unloaded nulls iconPresenter.Content
 		// + Icon (for memory). HandleItemChange → HookupItemChangeListener calls
@@ -1205,6 +1218,18 @@ public sealed partial class SidebarItem : Control
 			return;
 		}
 
+		// Current cursor position isn't a valid drop on this row. Revert to
+		// the row's ambient drag state so any insert/center indicator painted
+		// by a previous DragOver (e.g. user crossed from a valid edge into
+		// the invalid center of a non-editable playlist) is cleared, instead
+		// of leaving a stale "insert here" line until DragLeave fires.
+		e.AcceptedOperation = DataPackageOperation.None;
+		if (Item is ISidebarItemModel ambientModel
+			&& _dragStateService?.CurrentPayload is { } ambientPayload)
+		{
+			ApplyAmbientDragState(ambientModel, ambientPayload);
+		}
+
 		// Auto-expand folders on hover so the user can drop "into" them.
 		if (HasChildren)
 		{
@@ -1234,11 +1259,37 @@ public sealed partial class SidebarItem : Control
 	{
 		if (_dragStateService?.IsDragging == true
 			&& Item is ISidebarItemModel model
-			&& _dragStateService.CurrentPayload is { } payload
-			&& CanDropSomewhereOnRow(model, payload))
-			VisualStateManager.GoToState(this, "DragAvailable", true);
+			&& _dragStateService.CurrentPayload is { } payload)
+		{
+			ApplyAmbientDragState(model, payload);
+		}
 		else
+		{
 			UpdatePointerState();
+		}
+	}
+
+	/// <summary>
+	/// Picks the row's visual state when a drag is active but the pointer is
+	/// NOT over this row (drag-just-started, or pointer left this row). Three
+	/// tiers, all explicitly distinct so the user reads each row correctly:
+	/// <list type="bullet">
+	///   <item><c>DragAvailable</c> — center-drop is valid (folder, or playlist
+	///   the user can edit). Paints the blue outline.</item>
+	///   <item><c>DragReorderable</c> — only edge-reorder is valid (non-editable
+	///   playlist target). Grows row height for spacing but NO outline, so the
+	///   user isn't misled into thinking they can drop tracks "into" the row.</item>
+	///   <item>Faded (opacity 0.3) — drag has nothing to do with this row.</item>
+	/// </list>
+	/// </summary>
+	private void ApplyAmbientDragState(ISidebarItemModel model, IDragPayload payload)
+	{
+		if (CanCenterDropOnRow(model, payload))
+			VisualStateManager.GoToState(this, "DragAvailable", true);
+		else if (CanReorderAroundRow(model, payload))
+			VisualStateManager.GoToState(this, "DragReorderable", true);
+		else if (_elementBorder != null)
+			_elementBorder.Opacity = 0.3;
 	}
 
 	private void ItemBorder_Drop(object sender, DragEventArgs e)
@@ -1263,6 +1314,8 @@ public sealed partial class SidebarItem : Control
 	{
 		DispatcherQueue.TryEnqueue(() =>
 		{
+			ApplyDropZoneVisibility();
+
 			var payload = _dragStateService?.CurrentPayload;
 			if (!IsItemEnabled)
 			{
@@ -1270,12 +1323,12 @@ public sealed partial class SidebarItem : Control
 				return;
 			}
 
+			AdjustChildrenClipForDrag(isDragging);
+
 			if (isDragging && payload != null)
 			{
-				if (Item is ISidebarItemModel model && CanDropSomewhereOnRow(model, payload))
-					VisualStateManager.GoToState(this, "DragAvailable", true);
-				else if (_elementBorder != null)
-					_elementBorder.Opacity = 0.3;
+				if (Item is ISidebarItemModel model)
+					ApplyAmbientDragState(model, payload);
 			}
 			else
 			{
@@ -1284,19 +1337,98 @@ public sealed partial class SidebarItem : Control
 		});
 	}
 
-	private bool CanDropSomewhereOnRow(ISidebarItemModel model, IDragPayload payload)
+	/// <summary>
+	/// Drop-zone-only rows (currently the Pinned section's
+	/// "Drop here to pin to sidebar" placeholder) live in the children
+	/// collection permanently so the layout slot is stable, but they only
+	/// render when an active drag carries a payload their
+	/// <see cref="SidebarItemModel.DropPredicate"/> accepts. Hiding via
+	/// <see cref="UIElement.Visibility"/> = <see cref="Visibility.Collapsed"/>
+	/// removes them from the <c>StackLayout</c> measure so siblings re-flow
+	/// without a gap.
+	/// </summary>
+	private void ApplyDropZoneVisibility()
 	{
-		if (model.CanDrop(payload)) return true;
+		if (Item is not SidebarItemModel model || !model.IsDropZoneOnly)
+			return;
 
+		var payload = _dragStateService?.CurrentPayload;
+		var isDragging = _dragStateService?.IsDragging == true;
+		var accept = isDragging && payload is not null && model.CanDrop(payload);
+		Visibility = accept ? Visibility.Visible : Visibility.Collapsed;
+	}
+
+	/// <summary>
+	/// During a drag, each playlist/folder row in the sidebar grows from 44 →
+	/// 56 px via its Drag* visual state to create visible spacing for reorder
+	/// targets. If THIS row is an expanded section/folder, its
+	/// <c>ChildrenPresenter</c> has a fixed MaxHeight set by the expand
+	/// storyboard at <c>count × childHeight</c> (~44 each). Without lifting
+	/// that ceiling, the now-taller children get clipped off the bottom.
+	///
+	/// We leave MaxHeight at PositiveInfinity even after the drag ends rather
+	/// than snapping it back: the post-drag shrink animation (56 → 44 over
+	/// ~180 ms) needs the clip out of the way too, otherwise the last child
+	/// rows get briefly cropped on the way down. The collapse storyboard's
+	/// first keyframe re-snapshots MaxHeight on its own, so leaving it open
+	/// here doesn't break the next expand/collapse cycle.
+	/// </summary>
+	private void AdjustChildrenClipForDrag(bool isDragging)
+	{
+		if (childrenRepeater is null) return;
+
+		if (isDragging)
+		{
+			if (_preDragChildrenMaxHeight is null)
+				_preDragChildrenMaxHeight = childrenRepeater.MaxHeight;
+			childrenRepeater.MaxHeight = double.PositiveInfinity;
+		}
+		else if (_preDragChildrenMaxHeight is { } saved)
+		{
+			if (!IsExpanded)
+			{
+				// Row is collapsed — MaxHeight is owned by the collapse
+				// storyboard (which keyframes it to 0). Restore the saved
+				// value so the storyboard's discrete frame snapshot stays
+				// consistent on the next expand attempt.
+				childrenRepeater.MaxHeight = saved;
+			}
+			// Expanded: leave it at PositiveInfinity, see remarks above.
+			_preDragChildrenMaxHeight = null;
+		}
+	}
+
+	/// <summary>
+	/// True when a center drop on this row would do something useful — i.e.
+	/// add tracks (editable playlist) or nest into folder. Reuses
+	/// <see cref="CanDropAtPosition"/> with <see cref="SidebarItemDropPosition.Center"/>
+	/// so the visual outline cannot diverge from the actual drop-accept logic.
+	/// Non-editable Spotify-curated playlists return false here even though
+	/// they accept edge-reorder, which keeps the blue outline off them and
+	/// stops users from thinking they can drop tracks into someone else's
+	/// playlist.
+	/// </summary>
+	private bool CanCenterDropOnRow(ISidebarItemModel model, IDragPayload payload)
+		=> CanDropAtPosition(model, payload, SidebarItemDropPosition.Center);
+
+	/// <summary>
+	/// True when the user can drop near the top/bottom edge of this row to
+	/// reposition the dragged sidebar entry around it. Reorder is allowed on
+	/// any playlist/folder row (other than the source), regardless of edit
+	/// permission — the rootlist reorder doesn't mutate the target playlist.
+	/// </summary>
+	private bool CanReorderAroundRow(ISidebarItemModel model, IDragPayload payload)
+	{
 		if (Item is not SidebarItemModel row || string.IsNullOrEmpty(row.Tag))
 			return false;
+		if (!IsPlaylistOrFolderRow(row))
+			return false;
 
-		// Playlist cards can be inserted before/after any sidebar playlist or
-		// folder row. Center-drop copy/nest checks stay position-specific below.
-		if (payload is PlaylistDragPayload playlist
-			&& !string.Equals(playlist.PlaylistUri, row.Tag, StringComparison.OrdinalIgnoreCase)
-			&& IsPlaylistOrFolderRow(row))
-			return true;
+		if (payload is PlaylistDragPayload playlist)
+			return !string.Equals(playlist.PlaylistUri, row.Tag, StringComparison.OrdinalIgnoreCase);
+
+		if (payload is SidebarReorderPayload sidebar)
+			return !string.Equals(sidebar.SourceUri, row.Tag, StringComparison.OrdinalIgnoreCase);
 
 		return false;
 	}

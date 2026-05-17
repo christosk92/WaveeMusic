@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Styles;
@@ -401,7 +402,7 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
         {
             Uri = data.Uri ?? uri,
             Title = data.Name,
-            Subtitle = Helpers.SpotifyHtmlHelper.StripHtml(data.Description) is { Length: > 0 } desc
+            Subtitle = SpotifyHtmlHelper.StripHtml(data.Description) is { Length: > 0 } desc
                 ? desc : data.OwnerV2?.Data?.Name,
             ImageUrl = large ?? medium ?? small,
             ImageSmallUrl = small,

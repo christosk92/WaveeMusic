@@ -22,6 +22,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
 {
     private readonly SemaphoreSlim _syncLock = new(1, 1);
     private readonly IMessenger _messenger;
+    private readonly Wavee.UI.Services.Infra.IChangeBus _changeBus;
     private readonly ISpotifyLibraryService? _libraryService;
     private readonly ITrackLikeService? _likeService;
     private readonly INotificationService? _notificationService;
@@ -33,6 +34,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
 
     public LibrarySyncOrchestrator(
         IMessenger messenger,
+        Wavee.UI.Services.Infra.IChangeBus changeBus,
         ISpotifyLibraryService? libraryService = null,
         ITrackLikeService? likeService = null,
         INotificationService? notificationService = null,
@@ -42,6 +44,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
         IPlaylistPrefetcher? playlistPrefetcher = null)
     {
         _messenger = messenger;
+        _changeBus = changeBus;
         _libraryService = libraryService;
         _likeService = likeService;
         _notificationService = notificationService;
@@ -250,7 +253,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
 
             // Signal UI: sync done, refresh with real data
             _messenger.Send(new LibrarySyncCompletedMessage(summary));
-            _messenger.Send(new LibraryDataChangedMessage());
+            _changeBus.Publish(Wavee.UI.Services.Infra.ChangeScope.Library);
             _logger?.LogInformation("Library sync complete — UI notified");
 
             // Wire Dealer real-time changes → IMessenger (once)
@@ -294,7 +297,7 @@ public sealed class LibrarySyncOrchestrator : IDisposable
                 _logger?.LogInformation(
                     "[rootlist] orchestrator dealer rx set={Set} items={N} isRootlist={Root} playlistUri={Pu}",
                     evt.Set, evt.Items.Count, evt.IsRootlist, evt.PlaylistUri ?? "<none>");
-                _messenger.Send(new LibraryDataChangedMessage());
+                _changeBus.Publish(Wavee.UI.Services.Infra.ChangeScope.Library);
                 var isPlaylists = string.Equals(evt.Set, "playlists", StringComparison.OrdinalIgnoreCase);
                 var isYlpin = string.Equals(evt.Set, "ylpin", StringComparison.OrdinalIgnoreCase);
 
@@ -302,23 +305,22 @@ public sealed class LibrarySyncOrchestrator : IDisposable
                 {
                     _logger?.LogInformation(
                         "[rootlist] orchestrator -> SyncPlaylistsAsync re-run triggered (dealer-driven rootlist refresh)");
-                    _messenger.Send(new PlaylistsChangedMessage());
+                    _changeBus.Publish(Wavee.UI.Services.Infra.ChangeScope.Playlists);
 
                     // Rootlist dealer pushes carry only a revision bump — no item
-                    // list — so the immediate PlaylistsChangedMessage above only
-                    // causes the sidebar to re-read the still-stale DB. Run
-                    // SyncPlaylistsAsync in the background to fetch the new
-                    // rootlist and upsert any added/removed playlists, then
-                    // re-emit so the sidebar reads the freshly-synced rows.
-                    // LibraryDataService's 150ms coalesce absorbs the overlap
-                    // when the sync is fast. Mirrors the ylpin pattern below.
+                    // list — so the immediate Publish above only causes the
+                    // sidebar to re-read the still-stale DB. Run SyncPlaylistsAsync
+                    // in the background to fetch the new rootlist and upsert any
+                    // added/removed playlists, then publish again so the sidebar
+                    // reads the freshly-synced rows. ChangeBus's 150ms coalesce
+                    // absorbs the overlap when the sync is fast.
                     _ = Task.Run(async () =>
                     {
                         try
                         {
                             await svc.SyncPlaylistsAsync().ConfigureAwait(false);
-                            _messenger.Send(new LibraryDataChangedMessage());
-                            _messenger.Send(new PlaylistsChangedMessage());
+                            _changeBus.Publish(Wavee.UI.Services.Infra.ChangeScope.Library);
+                            _changeBus.Publish(Wavee.UI.Services.Infra.ChangeScope.Playlists);
                         }
                         catch (Exception ex)
                         {
@@ -331,10 +333,10 @@ public sealed class LibrarySyncOrchestrator : IDisposable
                 // has no parser for the hm://collection/ylpin/<user> shape), so
                 // the pre-emit above triggers a sidebar refresh that reads the
                 // still-stale DB. Re-run the incremental sync — cheap because
-                // it uses the stored sync token — then fire DataChanged again
-                // so the sidebar re-reads the freshly-synced rows. The 150ms
-                // coalesce window in LibraryDataService absorbs the overlap
-                // when the sync is fast.
+                // it uses the stored sync token — then publish Library again
+                // so the sidebar re-reads the freshly-synced rows. ChangeBus's
+                // 150ms coalesce window absorbs the overlap when the sync is
+                // fast.
                 if (isYlpin)
                 {
                     _logger?.LogInformation(
@@ -344,7 +346,8 @@ public sealed class LibrarySyncOrchestrator : IDisposable
                         try
                         {
                             await svc.SyncYlPinsAsync().ConfigureAwait(false);
-                            _messenger.Send(new LibraryDataChangedMessage());
+                            _changeBus.Publish(Wavee.UI.Services.Infra.ChangeScope.Library);
+                            _changeBus.Publish(Wavee.UI.Services.Infra.ChangeScope.Pins);
                         }
                         catch (Exception ex)
                         {

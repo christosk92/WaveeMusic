@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Numerics;
@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Controls.Imaging;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Windows.Foundation;
 using Windows.UI;
@@ -144,11 +145,11 @@ public sealed partial class MarqueeGalleryStrip : UserControl
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
         ClipGeometry.Rect = new Rect(0, 0, e.NewSize.Width, e.NewSize.Height);
-        // No Rebuild here — Rebuild's initial copy calculation uses a
+        // No Rebuild here â€” Rebuild's initial copy calculation uses a
         // conservative 2400 px host default so typical window resizes don't
         // expose uncovered gaps. Resizing past that ceiling will need a
         // manual refresh (or a follow-up that rebuilds when host grows past
-        // currentCopies × setWidth).
+        // currentCopies Ã— setWidth).
     }
 
     private void OnActualThemeChanged(FrameworkElement sender, object args) => RefreshFadeBrushes();
@@ -314,7 +315,7 @@ public sealed partial class MarqueeGalleryStrip : UserControl
             var speed = Math.Max(1, SpeedPxPerSec);
             var durationSec = Math.Clamp(_singleSetWidth / speed, 6, 600);
 
-            // Linear easing so the wrap is visually continuous — any other
+            // Linear easing so the wrap is visually continuous â€” any other
             // curve would jolt perceptibly at every cycle boundary.
             var linear = compositor.CreateLinearEasingFunction();
             var anim = compositor.CreateVector3KeyFrameAnimation();
@@ -352,7 +353,7 @@ public sealed partial class MarqueeGalleryStrip : UserControl
         _isHostHovered = false;
         if (_railVisual is null || _singleSetWidth <= 0) return;
         // Re-issue the loop animation. The visual snaps back to keyframe 0
-        // (origin) — small jump on resume, acceptable for v1. If users dislike
+        // (origin) â€” small jump on resume, acceptable for v1. If users dislike
         // the snap we can capture current Offset.X and re-keyframe to resume
         // from there.
         StartAnimation();
@@ -408,7 +409,7 @@ public sealed partial class MarqueeGalleryStrip : UserControl
         // the Offset animation is out of scope. The visual hierarchy already
         // gets enough lift from per-tile rounded clips + edge fades. If the
         // halo is later wanted back, wrap each tile in an AttachedCardShadow
-        // at low opacity — composes per-tile without needing a host
+        // at low opacity â€” composes per-tile without needing a host
         // SpriteVisual on the rail.
     }
 }

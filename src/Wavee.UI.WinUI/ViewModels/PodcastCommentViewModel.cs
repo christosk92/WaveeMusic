@@ -32,6 +32,7 @@ public sealed partial class PodcastCommentViewModel : ObservableObject
         "\U0001F44D"
     ];
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IPodcastEpisodeService _podcastEpisodeService;
     private readonly ILogger? _logger;
     private readonly List<string> _topReactionEmoji;
     private int _submittedReplyCount;
@@ -83,10 +84,12 @@ public sealed partial class PodcastCommentViewModel : ObservableObject
     public PodcastCommentViewModel(
         PodcastEpisodeCommentDto data,
         ILibraryDataService libraryDataService,
+        IPodcastEpisodeService podcastEpisodeService,
         ILogger? logger = null)
     {
         Data = data;
         _libraryDataService = libraryDataService;
+        _podcastEpisodeService = podcastEpisodeService;
         _logger = logger;
         _topReactionEmoji = data.TopReactionEmoji
             .Where(static emoji => !string.IsNullOrWhiteSpace(emoji))
@@ -190,11 +193,10 @@ public sealed partial class PodcastCommentViewModel : ObservableObject
         ReplyComposerStatus = null;
         try
         {
-            var reply = await _libraryDataService
-                .CreatePodcastCommentReplyAsync(Data.Uri, text)
+            var reply = await _podcastEpisodeService .CreatePodcastCommentReplyAsync(Data.Uri, text)
                 .ConfigureAwait(true);
 
-            Replies.Insert(0, new PodcastReplyViewModel(reply, _libraryDataService, _logger));
+            Replies.Insert(0, new PodcastReplyViewModel(reply, _libraryDataService, _podcastEpisodeService, _logger));
             _submittedReplyCount++;
             ReplyDraft = "";
             IsReplyComposerOpen = false;
@@ -225,8 +227,7 @@ public sealed partial class PodcastCommentViewModel : ObservableObject
         IsReacting = true;
         try
         {
-            await _libraryDataService
-                .ReactToPodcastCommentAsync(Data.Uri, emoji)
+            await _podcastEpisodeService .ReactToPodcastCommentAsync(Data.Uri, emoji)
                 .ConfigureAwait(true);
 
             ApplyReaction(emoji);
@@ -245,7 +246,7 @@ public sealed partial class PodcastCommentViewModel : ObservableObject
         string? pageToken = null,
         string? reactionUnicode = null,
         CancellationToken ct = default)
-        => _libraryDataService.GetPodcastCommentReactionsAsync(Data.Uri, pageToken, reactionUnicode, ct);
+        => _podcastEpisodeService.GetPodcastCommentReactionsAsync(Data.Uri, pageToken, reactionUnicode, ct);
 
     private async Task LoadMoreRepliesInternalAsync()
     {
@@ -257,7 +258,7 @@ public sealed partial class PodcastCommentViewModel : ObservableObject
             // continuation token returned by Spotify. Either way, pass null when
             // empty so the protocol-side variable serializes as `pageToken: null`.
             var token = string.IsNullOrEmpty(RepliesNextPageToken) ? null : RepliesNextPageToken;
-            var page = await _libraryDataService.GetPodcastCommentRepliesAsync(Data.Uri, token, CancellationToken.None);
+            var page = await _podcastEpisodeService.GetPodcastCommentRepliesAsync(Data.Uri, token, CancellationToken.None);
             if (page is null)
             {
                 RepliesNextPageToken = null;
@@ -265,7 +266,7 @@ public sealed partial class PodcastCommentViewModel : ObservableObject
             }
 
             foreach (var reply in page.Items)
-                Replies.Add(new PodcastReplyViewModel(reply, _libraryDataService, _logger));
+                Replies.Add(new PodcastReplyViewModel(reply, _libraryDataService, _podcastEpisodeService, _logger));
 
             RepliesNextPageToken = page.NextPageToken;
         }
@@ -319,6 +320,7 @@ public sealed partial class PodcastReplyViewModel : ObservableObject
         "\U0001F44D"
     ];
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IPodcastEpisodeService _podcastEpisodeService;
     private readonly ILogger? _logger;
     private readonly List<string> _topReactionEmoji;
     private int _reactionCount;
@@ -327,8 +329,10 @@ public sealed partial class PodcastReplyViewModel : ObservableObject
     public PodcastReplyViewModel(
         PodcastEpisodeCommentReplyDto data,
         ILibraryDataService libraryDataService,
+        IPodcastEpisodeService podcastEpisodeService,
         ILogger? logger = null)
     {
+        _podcastEpisodeService = podcastEpisodeService;
         Data = data;
         _libraryDataService = libraryDataService;
         _logger = logger;
@@ -367,8 +371,7 @@ public sealed partial class PodcastReplyViewModel : ObservableObject
         IsReacting = true;
         try
         {
-            await _libraryDataService
-                .ReactToPodcastCommentReplyAsync(Data.Uri, emoji)
+            await _podcastEpisodeService .ReactToPodcastCommentReplyAsync(Data.Uri, emoji)
                 .ConfigureAwait(true);
 
             ApplyReaction(emoji);
@@ -387,7 +390,7 @@ public sealed partial class PodcastReplyViewModel : ObservableObject
         string? pageToken = null,
         string? reactionUnicode = null,
         CancellationToken ct = default)
-        => _libraryDataService.GetPodcastCommentReactionsAsync(Data.Uri, pageToken, reactionUnicode, ct);
+        => _podcastEpisodeService.GetPodcastCommentReactionsAsync(Data.Uri, pageToken, reactionUnicode, ct);
 
     private void ApplyReaction(string emoji)
     {

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
@@ -13,8 +13,10 @@ using CommunityToolkit.Mvvm.Input;
 using Klankhuis.Hero.Controls;
 using Microsoft.UI.Dispatching;
 using Wavee.UI.Contracts;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Windows.UI;
+using Wavee.UI.WinUI.Controls.Cards;
 
 namespace Wavee.UI.WinUI.ViewModels.Home;
 
@@ -38,10 +40,10 @@ public sealed class SideCardItem
 /// Bridges <see cref="HomeViewModel"/> to the new hero band + region layout.
 /// Owns:
 /// <list type="bullet">
-///   <item><see cref="HeroSlides"/> — feeds the <c>HeroCarousel</c>.</item>
+///   <item><see cref="HeroSlides"/> â€” feeds the <c>HeroCarousel</c>.</item>
 ///   <item><see cref="SideCard0"/>/<see cref="SideCard1"/>/<see cref="SideCard2"/>
-///         — three fixed side-rail slots derived from the Shorts section.</item>
-///   <item><see cref="Regions"/> — bucketed sections by
+///         â€” three fixed side-rail slots derived from the Shorts section.</item>
+///   <item><see cref="Regions"/> â€” bucketed sections by
 ///         <see cref="HomeSectionClassifier"/>.</item>
 /// </list>
 /// Reactivity comes from the host: <c>Sections.CollectionChanged</c> and
@@ -53,7 +55,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
 {
     private static readonly Color FallbackAccent = Color.FromArgb(255, 0x60, 0xCD, 0xFF);
 
-    // High cap rather than a tight one — the home feed never serves more than
+    // High cap rather than a tight one â€” the home feed never serves more than
     // ~15 sections, but the user wants "1 to N of each section" with no
     // implicit drops. Sections whose first item has no resolvable image are
     // skipped (see RebuildHeroSlides), so this is the *upper* bound.
@@ -87,7 +89,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
     // HeroCarousel.ItemsSourceProperty rebuilds slides only on DP-change
     // (Klankhuis.Hero/Controls/HeroCarousel.cs ~line 131-139). It does NOT
     // subscribe to INotifyCollectionChanged on the bound list, so mutating an
-    // ObservableCollection in place wouldn't trigger a slide rebuild — slides
+    // ObservableCollection in place wouldn't trigger a slide rebuild â€” slides
     // would render as black with pagers but no overlay text. We reassign a
     // fresh List<> each rebuild so the DP setter fires and the carousel
     // rebuilds its slide visuals.
@@ -122,7 +124,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         DetachSectionsListener();
     }
 
-    // ── Reactivity ─────────────────────────────────────────────────────
+    // â”€â”€ Reactivity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void OnHostPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -137,7 +139,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
                 Dispatch(RebuildHeroSlides);
                 break;
             case nameof(HomeViewModel.IsLocalChipActive):
-                // Filter toggle is user-driven and should feel instant — keep
+                // Filter toggle is user-driven and should feel instant â€” keep
                 // it synchronous so the page doesn't visibly lag the chip
                 // press. Goes through Dispatch (not the queued RequestRebuild
                 // path) so the visible state change tracks the click.
@@ -151,9 +153,9 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         if (_disposed) return;
         // Coalesce the rebuild storm. PopulateSectionsChunkedAsync adds
         // sections one at a time with Task.Yield every 4, and
-        // ApplyBackgroundRefresh does Extract → ApplyDiff → Restore which
-        // fires N more events. Without coalescing, RebuildRegions ran ~20×
-        // per load on a mid-construction Regions collection — the path that
+        // ApplyBackgroundRefresh does Extract â†’ ApplyDiff â†’ Restore which
+        // fires N more events. Without coalescing, RebuildRegions ran ~20Ã—
+        // per load on a mid-construction Regions collection â€” the path that
         // produced duplicate LocalFiles regions and tripped the layout-cycle
         // guard. One queued dispatch consolidates the whole burst.
         RequestRebuild();
@@ -199,7 +201,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
             _dispatcherQueue.TryEnqueue(() => { if (!_disposed) action(); });
     }
 
-    // ── Rebuild orchestration ─────────────────────────────────────────
+    // â”€â”€ Rebuild orchestration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void Rebuild()
     {
@@ -209,7 +211,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         RebuildSideCards();
     }
 
-    // ── Regions ───────────────────────────────────────────────────────
+    // â”€â”€ Regions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void RebuildRegions()
     {
@@ -228,7 +230,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         }
 
         // Local-only filter (driven by the "Local files" chip) collapses
-        // the page down to just the LocalFiles band — every Spotify-sourced
+        // the page down to just the LocalFiles band â€” every Spotify-sourced
         // region is dropped from the output.
         var ordered = _host.IsLocalChipActive
             ? new[] { HomeRegionKind.LocalFiles }
@@ -243,11 +245,11 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
 
         // Reuse existing HomeRegion identity per Kind where possible so the
         // outer ItemsRepeater can recycle the rendered visual tree. Crucially,
-        // TryAdd keeps the FIRST same-kind region and drops any duplicates —
+        // TryAdd keeps the FIRST same-kind region and drops any duplicates â€”
         // the previous IndexOfRegion(kind, writeIndex) algorithm searched
         // forward only and could leave a stale region in front of writeIndex,
         // accumulating duplicate "Local files" bands across navigations. This
-        // clear-and-rebuild pattern is bounded by HomeRegionKind (≤5 entries)
+        // clear-and-rebuild pattern is bounded by HomeRegionKind (â‰¤5 entries)
         // so the perf delta vs. the old in-place Move is negligible.
         var existingByKind = new Dictionary<HomeRegionKind, HomeRegion>();
         foreach (var region in Regions)
@@ -267,7 +269,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         }
 
         // Reconcile Regions to `desired`. If the structure (order + identity)
-        // already matches, no-op — steady-state rebuilds (item-only updates
+        // already matches, no-op â€” steady-state rebuilds (item-only updates
         // inside existing regions) don't churn the visual tree at all. If
         // anything structural differs, full Clear + Add: ItemsRepeater
         // releases every realized container on Reset and re-realizes from
@@ -277,11 +279,11 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         // mid-pass, which left ItemsRepeater with stale realized containers
         // (a HomeRegionView bound to LocalFiles when Regions=[LocalFiles]
         // would never get Unloaded after the rebuild expanded Regions to 5
-        // entries — its data item was reused by reference and the layout
+        // entries â€” its data item was reused by reference and the layout
         // didn't request the now-out-of-realization index, so ItemsRepeater
         // skipped recycling it). Result: two LocalFiles bands painted at
         // different Y offsets. Clear+Add side-steps the desync at the cost
-        // of N≤5 fresh realizations on structural change — negligible.
+        // of Nâ‰¤5 fresh realizations on structural change â€” negligible.
         bool sameStructure = Regions.Count == desired.Count;
         if (sameStructure)
         {
@@ -304,30 +306,30 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
 
     private static void ReplaceSections(ObservableCollection<HomeSection> target, List<HomeSection> source)
     {
-        // Replace contents in place. We don't try to be clever with diffing here —
+        // Replace contents in place. We don't try to be clever with diffing here â€”
         // section identity inside a region is stable (Recents has 1, MadeForYou
-        // has ≤4, Discover has ≤8, Podcasts has ≤8) and HomeFeedCache.ApplyDiff
+        // has â‰¤4, Discover has â‰¤8, Podcasts has â‰¤8) and HomeFeedCache.ApplyDiff
         // already keeps the per-section item lists current. A full replace just
         // resyncs the bucketing.
         target.Clear();
         foreach (var s in source) target.Add(s);
     }
 
-    // ── Hero slides ───────────────────────────────────────────────────
+    // â”€â”€ Hero slides â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void RebuildHeroSlides()
     {
         var slides = new List<HeroCarouselItem>();
         var seenUris = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // Local-only filter — the hero never shows Spotify content while the
+        // Local-only filter â€” the hero never shows Spotify content while the
         // user has the "Local files" chip selected. FeaturedItem is the most-
         // recently-played Spotify item, so skip the "Pick up where you left
         // off" slide entirely; the per-section walk below sticks to the
         // local-section's items via the same SectionUri prefix filter.
         bool localOnly = _host.IsLocalChipActive;
 
-        // Slide 0 — FeaturedItem ("Pick up where you left off")
+        // Slide 0 â€” FeaturedItem ("Pick up where you left off")
         if (!localOnly && _host.FeaturedItem is { } featured && HasResolvableImage(featured.ImageUrl))
         {
             slides.Add(BuildSlide(
@@ -339,13 +341,13 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
                 seenUris.Add(featured.Uri!);
         }
 
-        // Slides 1..MaxHeroSlides−1 — first item of each section in feed order.
+        // Slides 1..MaxHeroSlidesâˆ’1 â€” first item of each section in feed order.
         // Sections are taken straight from the host's collection; no podcast
         // filtering, no facet-based gating, no shuffling. Skips:
         //   - Shorts (drive the side-rail shortcut cards exclusively),
         //   - RecentlyPlayed (no editorial value for a hero slide),
         //   - URI duplicates (the Featured slide above already covers some),
-        //   - items whose image URL doesn't resolve to a usable https:// URI —
+        //   - items whose image URL doesn't resolve to a usable https:// URI â€”
         //     LoadedImageSurface only fetches http(s); a slide built with
         //     ImageUri = null would render as a black rectangle and (worse)
         //     still occupy a carousel slot the user can pan into.
@@ -374,17 +376,17 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         // Sections.CollectionChanged via RequestRebuild's coalesced dispatcher
         // post. Three paths can race the rebuild past a moment where
         // _host.Sections is empty:
-        //   • Cold load — PopulateSectionsChunkedAsync calls Sections.Clear()
+        //   â€¢ Cold load â€” PopulateSectionsChunkedAsync calls Sections.Clear()
         //     before chunking adds back in. Coalescing usually folds the
         //     rebuild past the clear, but a yield between chunks can let the
         //     queued rebuild run while Sections is still empty.
-        //   • Nav-back from hibernation — ResumeAndRehydrate→ApplyBackgroundRefresh
-        //     →ApplyDiff mutates Sections one item at a time. Page nav also
+        //   â€¢ Nav-back from hibernation â€” ResumeAndRehydrateâ†’ApplyBackgroundRefresh
+        //     â†’ApplyDiff mutates Sections one item at a time. Page nav also
         //     re-fires Bindings.Update() which re-reads HeroSlides for the
-        //     carousel's ItemsSource DP — an empty list reassigned at that
+        //     carousel's ItemsSource DP â€” an empty list reassigned at that
         //     moment leaves the hero blank for a frame to ~1 sec until the
         //     next rebuild lands.
-        //   • Background refresh — same Extract→Diff→Restore pattern.
+        //   â€¢ Background refresh â€” same Extractâ†’Diffâ†’Restore pattern.
         // In every case the eventual final rebuild produces correct slides;
         // it's just the transient empty assignment that flickers. If we have
         // no source sections to walk AND we already have slides on screen,
@@ -392,14 +394,14 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         //
         // Intentional empties (Local-only chip with no local sections, the
         // user explicitly hiding everything) still apply, because in those
-        // cases Sections is non-empty — every entry just gets filtered out by
+        // cases Sections is non-empty â€” every entry just gets filtered out by
         // the localOnly guard inside the foreach.
         if (slides.Count == 0 && _host.Sections.Count == 0 && HeroSlides.Count > 0)
             return;
 
         // Identity guard. If the new list is structurally equal to the
         // current (same item URIs in the same order), skip the reassignment
-        // entirely. HeroCarousel.ItemsSource is a DP — reassigning to a
+        // entirely. HeroCarousel.ItemsSource is a DP â€” reassigning to a
         // logically-identical list still tears the carousel down and
         // re-realises every slide, which on a fast Bindings.Update() pass
         // costs a visible frame of blank carousel.
@@ -412,7 +414,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Cheap structural-equality check over the two slide lists — same count
+    /// Cheap structural-equality check over the two slide lists â€” same count
     /// + same Tag URI in the same order. The slides themselves are rebuilt
     /// fresh on every RebuildHeroSlides call (BuildSlide allocates new
     /// HeroCarouselItem instances), so ReferenceEquals on items always fails;
@@ -432,7 +434,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
 
     /// <summary>
     /// True only when the supplied raw URL resolves through
-    /// <c>SpotifyImageHelper.ToHttpsUrl</c> to an absolute http(s) URI — i.e.
+    /// <c>SpotifyImageHelper.ToHttpsUrl</c> to an absolute http(s) URI â€” i.e.
     /// the exact same gate Klankhuis's <c>LoadedImageSurface</c> fetch needs
     /// to succeed. Filtering on the raw string alone (null/empty) lets
     /// <c>spotify:image:&lt;invalid&gt;</c> and other unresolved forms through;
@@ -457,12 +459,12 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
             HeroPrimaryCtaCommand, HeroSecondaryCtaCommand);
     }
 
-    // ── Side rail ─────────────────────────────────────────────────────
+    // â”€â”€ Side rail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void RebuildSideCards()
     {
         // Shorts section stays in HomeViewModel.Sections (no parser refactor needed);
-        // the classifier returns null for Shorts so it doesn't appear in any region —
+        // the classifier returns null for Shorts so it doesn't appear in any region â€”
         // we just pull it out here for the three side-rail slots.
         var shorts = _host.Sections.FirstOrDefault(s => s.SectionType == HomeSectionType.Shorts);
         var items = shorts?.Items ?? new ObservableCollection<HomeSectionItem>();
@@ -481,7 +483,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         NavigationUri = src.Uri
     };
 
-    // ── Helpers ───────────────────────────────────────────────────────
+    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private static Color ParseColorOrFallback(string? hex)
     {
@@ -495,7 +497,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         if (string.IsNullOrWhiteSpace(raw)) return null;
         // Convert Spotify-internal image identifiers (spotify:image:..., spotify:mosaic:...)
         // to https://i.scdn.co/... URLs. The Klankhuis HeroCarousel + SideCard load images
-        // via LoadedImageSurface, which only accepts http(s) — feeding it a spotify: URI
+        // via LoadedImageSurface, which only accepts http(s) â€” feeding it a spotify: URI
         // succeeds at Uri.TryCreate (the scheme is valid) but the surface fetch silently
         // fails and the cover never paints. SpotifyImageHelper is what the existing
         // SpotifyImageConverter uses for the rest of the app.
@@ -517,7 +519,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Primary CTA action — start playback of the item's URI as a new context.
+    /// Primary CTA action â€” start playback of the item's URI as a new context.
     /// Mirrors <see cref="ContentCard"/>'s click-to-play path: resolve
     /// <see cref="IPlaybackService"/> from the IoC container and call
     /// <c>PlayContextAsync</c> on a worker thread so the UI thread doesn't
@@ -532,12 +534,12 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         _ = Task.Run(() => playback.PlayContextAsync(uri));
     }
 
-    // ── Browse All lazy load ──────────────────────────────────────────
+    // â”€â”€ Browse All lazy load â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>
     /// Fetches the Pathfinder browseAll surface, parses + groups, and surfaces
     /// the result via <see cref="BrowseGroups"/> / <see cref="IsBrowseLoading"/>.
-    /// One-shot per adapter lifetime — repeat calls are no-ops. Triggered by
+    /// One-shot per adapter lifetime â€” repeat calls are no-ops. Triggered by
     /// the BrowseAllSection control when it nears the viewport.
     /// </summary>
     public async Task LoadBrowseAsync()

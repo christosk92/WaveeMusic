@@ -18,6 +18,8 @@
     xmlns:showEpisode="using:Wavee.UI.WinUI.Controls.ShowEpisode"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:helpers="using:Wavee.UI.WinUI.Helpers"
+    helpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">

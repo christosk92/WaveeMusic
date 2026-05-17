@@ -10,6 +10,7 @@ using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.Core.Session;
 using Wavee.UI.Contracts;
+using Wavee.UI.Helpers;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
@@ -178,7 +179,7 @@ public sealed class RecentlyPlayedService : IDisposable
             for (var i = 0; i < uris.Count && i < 3; i++)
             {
                 if (resolved.TryGetValue(uris[i], out var raw) && !string.IsNullOrEmpty(raw))
-                    httpsUrls[i] = Helpers.SpotifyImageHelper.ToHttpsUrl(raw) ?? raw;
+                    httpsUrls[i] = SpotifyImageHelper.ToHttpsUrl(raw) ?? raw;
             }
 
             _dispatcherQueue.TryEnqueue(() =>

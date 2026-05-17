@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading.Tasks;
@@ -21,6 +21,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.UI;
@@ -142,7 +143,7 @@ public sealed partial class QueueControl : UserControl
 
         ApplyContextCard();
 
-        // ── Now Playing ──
+        // â”€â”€ Now Playing â”€â”€
         NowPlayingCard.Visibility = hasTrack ? Visibility.Visible : Visibility.Collapsed;
         if (hasTrack)
         {
@@ -156,8 +157,8 @@ public sealed partial class QueueControl : UserControl
             NowPlayingEqualizer.IsActive = _playbackService.IsPlaying;
         }
 
-        // ── Categorize raw queue items into four buckets ──
-        // Render order matches play order: Play-Next (head of user queue) → context → post-context → autoplay
+        // â”€â”€ Categorize raw queue items into four buckets â”€â”€
+        // Render order matches play order: Play-Next (head of user queue) â†’ context â†’ post-context â†’ autoplay
         var userQueued   = new List<QueueDisplayItem>();
         var nextFrom     = new List<QueueDisplayItem>();
         var postContext  = new List<QueueDisplayItem>();
@@ -196,7 +197,7 @@ public sealed partial class QueueControl : UserControl
         ResolveArtworkTints(postContext);
         ResolveArtworkTints(autoplay);
 
-        // ── Pill states ──
+        // â”€â”€ Pill states â”€â”€
         ShuffleButton.IsChecked = _playbackService.IsShuffle;
         RepeatButton.IsChecked = _playbackService.RepeatMode != RepeatMode.Off;
         RepeatGlyph.Glyph = _playbackService.RepeatMode == RepeatMode.Track
@@ -205,7 +206,7 @@ public sealed partial class QueueControl : UserControl
         InfiniteButton.IsChecked = _settingsService?.Settings.AutoplayEnabled ?? true;
         CrossfadeButton.IsChecked = false;
 
-        // ── User Queue section ──
+        // â”€â”€ User Queue section â”€â”€
         UserQueueSection.Visibility = userQueued.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (userQueued.Count > 0)
         {
@@ -217,7 +218,7 @@ public sealed partial class QueueControl : UserControl
             UserQueueRepeater.ItemsSource = null;
         }
 
-        // ── Next Up section (context continuation, non-autoplay) ──
+        // â”€â”€ Next Up section (context continuation, non-autoplay) â”€â”€
         NextUpSection.Visibility = nextFrom.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (nextFrom.Count > 0)
         {
@@ -229,11 +230,11 @@ public sealed partial class QueueControl : UserControl
             NextUpRepeater.ItemsSource = null;
         }
 
-        // ── Queued later section (post-context bucket, plays after this context) ──
+        // â”€â”€ Queued later section (post-context bucket, plays after this context) â”€â”€
         PostContextSection.Visibility = postContext.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (postContext.Count > 0)
         {
-            PostContextHeader.Text = $"QUEUED LATER · {postContext.Count}";
+            PostContextHeader.Text = $"QUEUED LATER Â· {postContext.Count}";
             PostContextRepeater.ItemsSource = postContext;
         }
         else
@@ -241,7 +242,7 @@ public sealed partial class QueueControl : UserControl
             PostContextRepeater.ItemsSource = null;
         }
 
-        // ── Autoplay section (similar music, dimmed) ──
+        // â”€â”€ Autoplay section (similar music, dimmed) â”€â”€
         AutoPlaySection.Visibility = hasAutoplay ? Visibility.Visible : Visibility.Collapsed;
         if (hasAutoplay)
         {
@@ -252,14 +253,14 @@ public sealed partial class QueueControl : UserControl
             AutoPlayRepeater.ItemsSource = null;
         }
 
-        // ── Delimiter ──
+        // â”€â”€ Delimiter â”€â”€
         DelimiterSection.Visibility = delimiter != null ? Visibility.Visible : Visibility.Collapsed;
         if (delimiter != null)
         {
             DelimiterText.Text = delimiter.AdvanceAction == "pause" ? "End of queue" : "Queue continues...";
         }
 
-        // ── Empty state ──
+        // â”€â”€ Empty state â”€â”€
         EmptyState.Visibility = !hasTrack && userQueued.Count == 0 && nextFrom.Count == 0 && postContext.Count == 0 && !hasAutoplay
             ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -374,7 +375,7 @@ public sealed partial class QueueControl : UserControl
         VisualOpacity = opacity,
     };
 
-    // ── Pill click handlers ──
+    // â”€â”€ Pill click handlers â”€â”€
 
     private void ResolveArtworkTints(IEnumerable<QueueDisplayItem> items)
     {
@@ -420,7 +421,7 @@ public sealed partial class QueueControl : UserControl
     {
         if (_playbackService == null) return;
         var desired = ShuffleButton.IsChecked == true;
-        _logger?.LogInformation("Queue pill: shuffle → {State}", desired);
+        _logger?.LogInformation("Queue pill: shuffle â†’ {State}", desired);
         _playbackService.SetShuffle(desired);
     }
 
@@ -434,13 +435,13 @@ public sealed partial class QueueControl : UserControl
             RepeatMode.Track => RepeatMode.Off,
             _ => RepeatMode.Off,
         };
-        _logger?.LogInformation("Queue pill: repeat → {Mode}", next);
+        _logger?.LogInformation("Queue pill: repeat â†’ {Mode}", next);
         _playbackService.SetRepeatMode(next);
     }
 
     private void ClearQueueButton_Click(object sender, RoutedEventArgs e)
     {
-        // Backend clear-queue API not yet implemented — log a no-op for now so the
+        // Backend clear-queue API not yet implemented â€” log a no-op for now so the
         // affordance is present without pretending to work.
         _logger?.LogInformation("Queue pill: clear queue (no-op, API pending)");
     }
@@ -492,7 +493,7 @@ public sealed partial class QueueControl : UserControl
         if (_settingsService == null) return;
         var current = _settingsService.Settings.AutoplayEnabled;
         var desired = !current;
-        _logger?.LogInformation("Queue pill: autoplay → {State}", desired);
+        _logger?.LogInformation("Queue pill: autoplay â†’ {State}", desired);
         _settingsService.Update(s => s.AutoplayEnabled = desired);
         InfiniteButton.IsChecked = desired;
         WeakReferenceMessenger.Default.Send(new AutoplayEnabledChangedMessage(desired));
@@ -500,11 +501,11 @@ public sealed partial class QueueControl : UserControl
 
     private void CrossfadeButton_Click(object sender, RoutedEventArgs e)
     {
-        // No crossfade API yet — visual-only toggle.
+        // No crossfade API yet â€” visual-only toggle.
         _logger?.LogInformation("Queue pill: crossfade toggled (no-op, API pending)");
     }
 
-    // ── Track row hover state ──
+    // â”€â”€ Track row hover state â”€â”€
 
     private void TrackRow_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
@@ -522,13 +523,13 @@ public sealed partial class QueueControl : UserControl
         g.Background = TransparentBrush;
     }
 
-    // ── Drag handle cursor ──
+    // â”€â”€ Drag handle cursor â”€â”€
 
     private void DragHandle_Loaded(object sender, RoutedEventArgs e)
     {
         // ChangeCursor sets the (protected) ProtectedCursor property via reflection, so
         // the icon shows the hand cursor whenever the pointer is over it. Done once at
-        // realize time — no per-frame pointer event overhead.
+        // realize time â€” no per-frame pointer event overhead.
         if (sender is FontIcon icon)
             icon.ChangeCursor(HandCursor);
     }

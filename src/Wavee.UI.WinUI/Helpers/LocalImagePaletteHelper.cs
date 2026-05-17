@@ -5,6 +5,7 @@ using Wavee.Controls.Lyrics.Helper;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
 using Windows.Storage.Streams;
+using Wavee.UI.Helpers;
 
 namespace Wavee.UI.WinUI.Helpers;
 

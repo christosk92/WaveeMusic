@@ -17,9 +17,11 @@ using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Windows.UI;
+using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -980,7 +982,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
         if (item.Subtitle == null && raw.TryGetProperty("description", out var desc))
         {
-            var descStr = Helpers.SpotifyHtmlHelper.StripHtml(desc.GetString());
+            var descStr = SpotifyHtmlHelper.StripHtml(desc.GetString());
             if (!string.IsNullOrEmpty(descStr))
                 item.Subtitle = descStr;
         }
@@ -1174,7 +1176,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         {
             Uri = data.Uri ?? uri,
             Title = data.Name,
-            Subtitle = Helpers.SpotifyHtmlHelper.StripHtml(data.Description) is { Length: > 0 } desc
+            Subtitle = SpotifyHtmlHelper.StripHtml(data.Description) is { Length: > 0 } desc
                 ? desc
                 : data.OwnerV2?.Data?.Name,
             ImageUrl = imageUrl,
@@ -2236,7 +2238,7 @@ public sealed class HomeSectionItem : ObservableObject
     /// <summary>
     /// CDN image variant ≲150 px wide. Distinct image-id from Medium/Large
     /// (different bytes, not a decode hint). Use via
-    /// <see cref="Helpers.SpotifyImageHelper.PickByDecodeSize"/> when the
+    /// <see cref="SpotifyImageHelper.PickByDecodeSize"/> when the
     /// consumer knows its slot size.
     /// </summary>
     public string? ImageSmallUrl
@@ -2279,7 +2281,7 @@ public sealed class HomeSectionItem : ObservableObject
     /// Best URL for a small slot (≤128 px decode — track row, avatar, pill).
     /// Falls back across flavors so card bindings always resolve to a usable
     /// URL even when Spotify only returned 1-2 sizes. Mirrors
-    /// <see cref="Helpers.SpotifyImageHelper.PickByDecodeSize"/> at decode size 64.
+    /// <see cref="SpotifyImageHelper.PickByDecodeSize"/> at decode size 64.
     /// </summary>
     public string? BestSmallImageUrl
         => _imageSmallUrl ?? _imageMediumUrl ?? _imageLargeUrl ?? _imageUrl;

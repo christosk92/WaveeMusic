@@ -28,8 +28,9 @@ public sealed class SidebarReorderPayload : IDragPayload
     public int ItemCount => 1;
 
     public IReadOnlyList<string> HttpsUrls => ItemKind == SidebarItemKind.Folder
+        || Wavee.UI.Helpers.SpotifyUriHelper.ToHttps(SourceUri) is not { } u
         ? Array.Empty<string>()
-        : [SpotifyUri.ToHttps(SourceUri)];
+        : [u];
 
     [JsonConstructor]
     public SidebarReorderPayload(string sourceUri, SidebarItemKind itemKind, string? currentParentFolderId = null)

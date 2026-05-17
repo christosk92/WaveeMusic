@@ -38,6 +38,7 @@ public class SidebarItemModel : ISidebarItemModel
     private bool _showPinToggleButton;
     private bool _isPinned;
     private bool _isEnabled = true;
+    private bool _isDropZoneOnly;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -260,6 +261,21 @@ public class SidebarItemModel : ISidebarItemModel
     /// Per-instance predicate that determines whether this item accepts a given drag payload.
     /// </summary>
     public Func<IDragPayload, bool>? DropPredicate { get; init; }
+
+    /// <summary>
+    /// True for placeholder rows that exist purely as drop targets — currently
+    /// the "Drop here to pin to sidebar" placeholder at the end of the Pinned
+    /// section. <see cref="SidebarItem"/> keeps these rows collapsed when no
+    /// drag is in flight, and reveals them only when the active drag payload
+    /// matches <see cref="DropPredicate"/>. Their accept logic flows through
+    /// the normal drop pipeline; the special tag tells the shell how to
+    /// translate the drop into an action (e.g. pin-to-sidebar).
+    /// </summary>
+    public bool IsDropZoneOnly
+    {
+        get => _isDropZoneOnly;
+        set => SetProperty(ref _isDropZoneOnly, value);
+    }
 
     /// <summary>
     /// Optional lazy loader for the icon. When non-null, the SidebarItem control invokes

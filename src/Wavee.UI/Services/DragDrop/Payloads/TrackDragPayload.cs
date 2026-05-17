@@ -35,7 +35,11 @@ public sealed class TrackDragPayload : IDragPayload
     public string InternalFormat => DragFormats.Tracks;
     public int ItemCount => TrackUris.Count;
 
-    public IReadOnlyList<string> HttpsUrls => TrackUris.Select(SpotifyUri.ToHttps).ToArray();
+    public IReadOnlyList<string> HttpsUrls => TrackUris
+        .Select(Wavee.UI.Helpers.SpotifyUriHelper.ToHttps)
+        .Where(u => !string.IsNullOrEmpty(u))
+        .Cast<string>()
+        .ToArray();
 
     [JsonConstructor]
     public TrackDragPayload(
@@ -66,5 +70,5 @@ public sealed class TrackDragPayload : IDragPayload
     /// not full URIs). Provided so <c>DragPackageWriter</c> can keep emitting
     /// the legacy format for one release.
     /// </summary>
-    public string LegacyPipeJoinedIds => string.Join('|', TrackUris.Select(SpotifyUri.BareId));
+    public string LegacyPipeJoinedIds => string.Join('|', TrackUris.Select(Wavee.UI.Helpers.SpotifyUriHelper.BareId));
 }

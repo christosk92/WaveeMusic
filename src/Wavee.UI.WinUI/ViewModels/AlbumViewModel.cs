@@ -15,6 +15,7 @@ using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 using Wavee.Core.Data;
 using Wavee.UI.Contracts;
+using Wavee.UI.Helpers;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Controls.AvatarStack;
 using Wavee.UI.WinUI.Controls.TabBar;
@@ -53,6 +54,7 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
     private CompositeDisposable? _subscriptions;
     private string? _appliedDetailFor;
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IPlaylistMutationService _playlistMutationService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ITrackLikeService? _likeService;
     private readonly DispatcherQueue _dispatcherQueue;
@@ -716,6 +718,7 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
         IAlbumService albumService,
         AlbumStore albumStore,
         ILibraryDataService libraryDataService,
+        IPlaylistMutationService playlistMutationService,
         IPlaybackStateService playbackStateService,
         ITrackLikeService? likeService = null,
         IMusicVideoMetadataService? musicVideoMetadata = null,
@@ -725,6 +728,7 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
         _albumService = albumService;
         _albumStore = albumStore;
         _libraryDataService = libraryDataService;
+        _playlistMutationService = playlistMutationService;
         _playbackStateService = playbackStateService;
         _likeService = likeService;
         _musicVideoMetadata = musicVideoMetadata;
@@ -1990,14 +1994,14 @@ public sealed partial class AlbumViewModel : ObservableObject, ITrackListViewMod
         if (_allTracks.Count == 0) return;
         var trackUris = _allTracks
             .Select(t => t.Data is AlbumTrackDto dto ? dto.Uri : null)
-            .Where(u => !string.IsNullOrEmpty(u) && u!.StartsWith("spotify:track:", StringComparison.Ordinal))
+            .Where(u => SpotifyUriHelper.IsKind(u, SpotifyEntityKind.Track))
             .Cast<string>()
             .ToList();
         if (trackUris.Count == 0) return;
 
         try
         {
-            await _libraryDataService.AddTracksToPlaylistAsync(playlistId, trackUris).ConfigureAwait(false);
+            await _playlistMutationService.AddTracksToPlaylistAsync(playlistId, trackUris).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

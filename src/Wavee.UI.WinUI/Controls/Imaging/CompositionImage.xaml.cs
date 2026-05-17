@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Numerics;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Composition;
@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
 
@@ -15,7 +16,7 @@ namespace Wavee.UI.WinUI.Controls.Imaging;
 /// Composition-backed image control. Hosts a <see cref="SpriteVisual"/>
 /// whose brush is the GPU-resident <see cref="CachedImage.Surface"/> from
 /// <see cref="ImageCacheService"/>. No <c>BitmapImage</c> in the visual
-/// tree — the decoded CPU pixel buffer is released after the GPU upload.
+/// tree â€” the decoded CPU pixel buffer is released after the GPU upload.
 ///
 /// <para>
 /// Usage: <c>&lt;imaging:CompositionImage ImageUrl="{x:Bind Url}" DecodePixelSize="200" /&gt;</c>.
@@ -32,7 +33,7 @@ namespace Wavee.UI.WinUI.Controls.Imaging;
 /// </summary>
 public sealed partial class CompositionImage : UserControl
 {
-    // ── Dependency Properties ──
+    // â”€â”€ Dependency Properties â”€â”€
 
     public static readonly DependencyProperty ImageUrlProperty =
         DependencyProperty.Register(nameof(ImageUrl), typeof(string), typeof(CompositionImage),
@@ -110,7 +111,7 @@ public sealed partial class CompositionImage : UserControl
 
     /// <summary>
     /// True once the underlying surface has reported a successful load. Useful
-    /// for x:Bind triggers — e.g. collapse a placeholder glyph when this flips
+    /// for x:Bind triggers â€” e.g. collapse a placeholder glyph when this flips
     /// to true. Set by the control; binding is one-way out.
     /// </summary>
     public bool IsImageLoaded
@@ -119,12 +120,12 @@ public sealed partial class CompositionImage : UserControl
         private set => SetValue(IsImageLoadedProperty, value);
     }
 
-    // ── Events ──
+    // â”€â”€ Events â”€â”€
 
     public event EventHandler? ImageOpened;
     public event EventHandler? ImageFailed;
 
-    // ── State ──
+    // â”€â”€ State â”€â”€
 
     private ImageCacheService? _cache;
     private SpriteVisual? _spriteVisual;
@@ -133,7 +134,7 @@ public sealed partial class CompositionImage : UserControl
     // to the SpriteVisual's Size so they auto-track regardless of when
     // ActualWidth/ActualHeight become valid. Without that, an x:Load-deferred
     // CompositionImage realized after its parent's layout pass would have
-    // its clip stuck at 0×0 — invisible — until the next SizeChanged fired,
+    // its clip stuck at 0Ã—0 â€” invisible â€” until the next SizeChanged fired,
     // which doesn't happen reliably in ItemsRepeater virtualization.
     private CompositionEllipseGeometry? _ellipseGeometry;
     private CompositionGeometricClip? _ellipseClip;
@@ -147,9 +148,9 @@ public sealed partial class CompositionImage : UserControl
     private bool _initialized;
     private EventHandler? _loadCompletedHandler;
 
-    // ── Diagnostics ──
+    // â”€â”€ Diagnostics â”€â”€
     // Flip to false (or wire to a service flag) once the intermittent blank-
-    // tile bug is fully traced. Trace level is verbose — every CompositionImage
+    // tile bug is fully traced. Trace level is verbose â€” every CompositionImage
     // logs its full load lifecycle.
     private static bool s_diagEnabled = true;
     private static int s_nextDiagId;
@@ -159,7 +160,7 @@ public sealed partial class CompositionImage : UserControl
     {
         if (!s_diagEnabled) return;
         var urlTail = _resolvedUrl is null ? "(null)" :
-            _resolvedUrl.Length > 18 ? "…" + _resolvedUrl[^18..] : _resolvedUrl;
+            _resolvedUrl.Length > 18 ? "â€¦" + _resolvedUrl[^18..] : _resolvedUrl;
         var hasBrush = _surfaceBrush is not null ? "B" : "-";
         var hasVis = _spriteVisual is not null ? "V" : "-";
         var hasCached = _currentCachedImage is not null ? "C" : "-";
@@ -193,7 +194,7 @@ public sealed partial class CompositionImage : UserControl
             var compositor = _hostVisual.Compositor;
             _spriteVisual = compositor.CreateSpriteVisual();
             // Auto-track the host's size. Avoids the race where ActualWidth is
-            // still 0 on Loaded — the visual would otherwise stay 0×0 forever
+            // still 0 on Loaded â€” the visual would otherwise stay 0Ã—0 forever
             // unless a later SizeChanged fired, which doesn't happen for
             // already-sized parents inside ItemsRepeater virtualization.
             _spriteVisual.RelativeSizeAdjustment = Vector2.One;
@@ -207,7 +208,7 @@ public sealed partial class CompositionImage : UserControl
             // HOST (parent) visual's Size via expression animation. The
             // SpriteVisual's own Size stays (0,0) because it uses
             // RelativeSizeAdjustment, so we MUST reference the host visual
-            // — referencing the sprite would clip everything to 0×0.
+            // â€” referencing the sprite would clip everything to 0Ã—0.
             CreateClipGeometriesWithExpressions(compositor);
         }
         catch
@@ -221,7 +222,7 @@ public sealed partial class CompositionImage : UserControl
     {
         if (_spriteVisual is null || _hostVisual is null) return;
 
-        // Rounded rectangle clip — CompositionGeometricClip wrapping a
+        // Rounded rectangle clip â€” CompositionGeometricClip wrapping a
         // CompositionRoundedRectangleGeometry whose Size is expression-bound
         // to the HOST visual size (SurfaceHost's element visual, which WinUI
         // auto-sizes from layout). CornerRadius is set per-shape by UpdateClip.
@@ -234,7 +235,7 @@ public sealed partial class CompositionImage : UserControl
         _roundedRectClip = compositor.CreateGeometricClip();
         _roundedRectClip.Geometry = _roundedRectGeometry;
 
-        // Ellipse clip — center and radius expression-bound to host.Size/2
+        // Ellipse clip â€” center and radius expression-bound to host.Size/2
         // and min(host.X,host.Y)/2 respectively.
         _ellipseGeometry = compositor.CreateEllipseGeometry();
 
@@ -303,7 +304,7 @@ public sealed partial class CompositionImage : UserControl
         // calling it twice produced a duplicate "AttachVisualToHost:done" log
         // per row with no functional benefit (SetElementChildVisual is
         // idempotent). The noUrl:clear path inside TryLoadCurrent does not
-        // attach, which is correct — there's nothing to paint yet, and the
+        // attach, which is correct â€” there's nothing to paint yet, and the
         // next OnImageUrlChanged drives a fresh TryLoadCurrent that does
         // attach.
         TryLoadCurrent();
@@ -316,7 +317,7 @@ public sealed partial class CompositionImage : UserControl
         _isAttached = false;
         ImageLoadingSuspension.Changed -= OnSuspensionChanged;
 
-        // Non-destructive unload — drop the cache pin and unsubscribe pending
+        // Non-destructive unload â€” drop the cache pin and unsubscribe pending
         // LoadCompleted callbacks so they don't fire while we're not visible.
         // Keep _surfaceBrush.Surface, the sprite visual attached to SurfaceHost,
         // and PlaceholderHost.Opacity intact: when the page is restored from
@@ -324,13 +325,13 @@ public sealed partial class CompositionImage : UserControl
         // there is no flicker / re-load animation. If the cache happens to
         // evict the entry during the trim window the brush keeps a dangling
         // surface reference; per the Composition contract that just renders
-        // transparent and OnLoaded → TryLoadCurrent re-fetches a fresh surface
+        // transparent and OnLoaded â†’ TryLoadCurrent re-fetches a fresh surface
         // via the cold-load path.
         //
         // We DO clear _resolvedUrl / _currentCachedImage / _pinnedDecode so
         // TryLoadCurrent's same-url bail-out doesn't trip on stale state. The
         // peek fast-path in TryLoadCurrent will hit the cache and re-assign
-        // the same surface atomically — the visual stays identical.
+        // the same surface atomically â€” the visual stays identical.
         //
         // For full GPU-resource teardown (memory pressure, app shutdown) call
         // ReleaseCompositionResources explicitly.
@@ -440,7 +441,7 @@ public sealed partial class CompositionImage : UserControl
         if (_roundedRectGeometry is not null && _roundedRectClip is not null)
         {
             // CompositionRoundedRectangleGeometry has a single uniform
-            // CornerRadius. Use the max of the four corners — this control's
+            // CornerRadius. Use the max of the four corners â€” this control's
             // consumers all set uniform CornerRadius today.
             var maxRadius = (float)Math.Max(
                 Math.Max(corners.TopLeft, corners.TopRight),
@@ -508,7 +509,7 @@ public sealed partial class CompositionImage : UserControl
 
         var decode = DecodePixelSize;
 
-        // Already painting this exact (url, decode) → no work.
+        // Already painting this exact (url, decode) â†’ no work.
         if (string.Equals(_resolvedUrl, url, StringComparison.Ordinal)
             && _pinnedDecode == decode
             && _currentCachedImage is not null)
@@ -526,7 +527,7 @@ public sealed partial class CompositionImage : UserControl
             return;
         }
 
-        // FAST-PATH — peek without kicking off a network load. If the cache
+        // FAST-PATH â€” peek without kicking off a network load. If the cache
         // already has a decoded surface, swap it onto the brush atomically
         // (single compositor frame, no placeholder flash) and BYPASS the
         // image-loading suspension gate. Suspension only exists to throttle
@@ -547,7 +548,7 @@ public sealed partial class CompositionImage : UserControl
             return;
         }
 
-        // True cold load — respect suspension. OnSuspensionChanged will
+        // True cold load â€” respect suspension. OnSuspensionChanged will
         // re-call TryLoadCurrent when the gate lifts.
         if (ImageLoadingSuspension.IsSuspended)
         {
@@ -568,7 +569,7 @@ public sealed partial class CompositionImage : UserControl
 
         if (cached.IsLoaded)
         {
-            // Raced with another control that just finished loading — atomic swap.
+            // Raced with another control that just finished loading â€” atomic swap.
             _surfaceBrush.Surface = cached.Surface;
             DiagLog("TryLoad:cacheHit:surfaceAssigned");
             OnCachedLoaded(success: true);
@@ -581,7 +582,7 @@ public sealed partial class CompositionImage : UserControl
             return;
         }
 
-        // Genuine cold load — clear the surface so the placeholder shows
+        // Genuine cold load â€” clear the surface so the placeholder shows
         // during the wait, then subscribe.
         try { _surfaceBrush.Surface = null; } catch { }
         ResetPlaceholderOpacity();
@@ -656,12 +657,12 @@ public sealed partial class CompositionImage : UserControl
 
     /// <summary>
     /// Drops the cache pin and unsubscribes the LoadCompleted handler. Does
-    /// NOT touch the brush surface or the placeholder — those decisions
+    /// NOT touch the brush surface or the placeholder â€” those decisions
     /// belong to the caller. Used from:
     /// <list type="bullet">
-    /// <item>OnUnloaded — keep visuals intact across nav-cache trim/restore.</item>
-    /// <item>TryLoadCurrent's URL-change paths — atomic surface swap, no clear.</item>
-    /// <item>OnCachedLoaded failure — paired with ClearVisualsForBlank.</item>
+    /// <item>OnUnloaded â€” keep visuals intact across nav-cache trim/restore.</item>
+    /// <item>TryLoadCurrent's URL-change paths â€” atomic surface swap, no clear.</item>
+    /// <item>OnCachedLoaded failure â€” paired with ClearVisualsForBlank.</item>
     /// </list>
     /// </summary>
     private void ReleasePin()
@@ -686,7 +687,7 @@ public sealed partial class CompositionImage : UserControl
     /// <summary>
     /// Clears the brush surface and resets PlaceholderHost.Opacity so the
     /// placeholder shows. Use ONLY when the control should be visually blank
-    /// (URL→null or load-failure) — never on Unloaded, since nav-cache
+    /// (URLâ†’null or load-failure) â€” never on Unloaded, since nav-cache
     /// trim/restore relies on the visual staying painted.
     /// </summary>
     private void ClearVisualsForBlank()

@@ -29,8 +29,15 @@ public sealed partial class BrowseAllSection : UserControl
     public BrowseAllSection()
     {
         InitializeComponent();
-        EffectiveViewportChanged += OnEffectiveViewportChanged;
+        Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        // Subscribe on attach so the handler doesn't accumulate in the WinRT
+        // EventSource table across HomePage navigation-cache realizations.
+        EffectiveViewportChanged += OnEffectiveViewportChanged;
     }
 
     public static readonly DependencyProperty AdapterProperty = DependencyProperty.Register(
@@ -116,6 +123,8 @@ public sealed partial class BrowseAllSection : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        EffectiveViewportChanged -= OnEffectiveViewportChanged;
+
         if (_subscribedAdapter is not null)
         {
             _subscribedAdapter.PropertyChanged -= OnAdapterPropertyChanged;

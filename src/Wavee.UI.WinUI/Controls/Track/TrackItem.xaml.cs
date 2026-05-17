@@ -17,6 +17,8 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.Contracts;
+using Wavee.UI.Helpers;
+using Wavee.UI.Services;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
@@ -1290,7 +1292,7 @@ public sealed partial class TrackItem : UserControl
         // The resolver may return either a direct https URL or a Spotify
         // internal `spotify:image:{hex}` reference; route both through the
         // helper so PersonPicture always gets a loadable URI.
-        var httpsUrl = Helpers.SpotifyImageHelper.ToHttpsUrl(url) ?? url;
+        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url) ?? url;
         if (!Uri.TryCreate(httpsUrl, UriKind.Absolute, out var avatarUri))
         {
             item.RowAddedByAvatar.ProfilePicture = null;
@@ -2126,11 +2128,13 @@ public sealed partial class TrackItem : UserControl
         if (!string.IsNullOrEmpty(track.Uri))
             return track.Uri;
 
-        return string.IsNullOrEmpty(track.Id) ? null : $"spotify:track:{track.Id}";
+        return string.IsNullOrEmpty(track.Id)
+            ? null
+            : SpotifyUriHelper.ToUri(SpotifyEntityKind.Track, track.Id);
     }
 
     private static bool IsSpotifyEpisodeUri(string? uri)
-        => uri?.StartsWith("spotify:episode:", StringComparison.Ordinal) == true;
+        => SpotifyUriHelper.IsKind(uri, SpotifyEntityKind.Episode);
 
     private bool IsCurrentPlaybackVideoTrack(ITrackItem track)
     {
@@ -2143,7 +2147,7 @@ public sealed partial class TrackItem : UserControl
 
         var currentTrackUri = currentTrackId.Contains(':', StringComparison.Ordinal)
             ? currentTrackId
-            : $"spotify:track:{currentTrackId}";
+            : SpotifyUriHelper.ToUri(SpotifyEntityKind.Track, currentTrackId);
 
         return string.Equals(track.Id, currentTrackId, StringComparison.Ordinal)
                || string.Equals(track.Uri, currentTrackUri, StringComparison.Ordinal);

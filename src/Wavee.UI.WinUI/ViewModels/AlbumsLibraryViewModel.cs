@@ -29,6 +29,7 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
     private const string PreferencesTabKey = "albums";
 
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IPlaylistMutationService _playlistMutationService;
     private readonly IAlbumService _albumService;
     private readonly IPlaybackService _playbackService;
     private readonly ITrackLikeService? _likeService;
@@ -118,6 +119,7 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
 
     public AlbumsLibraryViewModel(
         ILibraryDataService libraryDataService,
+        IPlaylistMutationService playlistMutationService,
         IAlbumService albumService,
         IPlaybackService playbackService,
         ITrackLikeService? likeService = null,
@@ -125,6 +127,7 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
         LibraryRecentsService? libraryRecents = null)
     {
         _libraryDataService = libraryDataService;
+        _playlistMutationService = playlistMutationService;
         _albumService = albumService;
         _playbackService = playbackService;
         _likeService = likeService;
@@ -762,7 +765,7 @@ public sealed partial class AlbumsLibraryViewModel : ObservableObject, ITrackLis
         if (playlist == null || !HasSelection) return;
         var trackIds = SelectedItems.OfType<AlbumTrackDto>().Select(t => t.Uri).ToList();
         if (trackIds.Count == 0) return;
-        await _libraryDataService.AddTracksToPlaylistAsync(playlist.Id, trackIds);
+        await _playlistMutationService.AddTracksToPlaylistAsync(playlist.Id, trackIds);
     }
 
     // Explicit ITrackListViewModel ICommand implementation

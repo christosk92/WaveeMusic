@@ -20,6 +20,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.Services.DragDrop;
+using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.Playback;
@@ -42,6 +43,8 @@ public sealed partial class ShellPage : Page
     private readonly IActiveVideoSurfaceService? _videoSurface;
     private readonly MiniVideoPlayerViewModel? _miniVideoViewModel;
     private readonly ILibraryDataService? _libraryDataService;
+    private IPinService? _pinService;
+    private IPlaylistMutationService? _playlistMutationService;
 
     private const double ZoomStep = 0.1;
     private const double ZoomMin = 0.5;
@@ -69,6 +72,7 @@ public sealed partial class ShellPage : Page
         _videoSurface = Ioc.Default.GetService<IActiveVideoSurfaceService>();
         _miniVideoViewModel = Ioc.Default.GetService<MiniVideoPlayerViewModel>();
         _libraryDataService = Ioc.Default.GetService<ILibraryDataService>();
+        _playlistMutationService = Ioc.Default.GetService<IPlaylistMutationService>();
         InitializeComponent();
 
         // Apply saved zoom level
@@ -654,9 +658,13 @@ public sealed partial class ShellPage : Page
         ViewModel.Search(queryText);
     }
 
-    private void NavToolbar_SearchTextChanged(NavigationToolbar sender, string text)
+    private async void NavToolbar_SearchTextChanged(NavigationToolbar sender, string text)
     {
-        ViewModel.OnSearchTextChanged(text);
+        // Async-void boundary: this is a WinUI event handler, the standard
+        // place for it. The VM method is Task-returning so it can be unit-
+        // tested and the await flows back here.
+        try { await ViewModel.OnSearchTextChangedAsync(text); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[ShellPage] OnSearchTextChanged failed: {ex}"); }
     }
 
     private void NavToolbar_SearchSuggestionChosen(NavigationToolbar sender, object item)
@@ -909,7 +917,7 @@ public sealed partial class ShellPage : Page
                     : null,
                 ToggleLibraryAction = model.IsOwner
                     ? null  // owners can't "remove from library" — use Delete instead (builder hides this row)
-                    : () => _ = _libraryDataService?.SetPlaylistFollowedAsync(playlistUri, followed: false)!
+                    : () => _ = _playlistMutationService?.SetPlaylistFollowedAsync(playlistUri, followed: false)!
             });
         }
 
@@ -937,7 +945,7 @@ public sealed partial class ShellPage : Page
 
         try
         {
-            await _libraryDataService.DeletePlaylistAsync(playlistUri);
+            await _playlistMutationService.DeletePlaylistAsync(playlistUri);
         }
         catch (Exception ex)
         {
@@ -957,6 +965,16 @@ public sealed partial class ShellPage : Page
 
         var targetId = model.Tag;
         if (string.IsNullOrEmpty(targetId)) return;
+
+        // Pin drop zone is wired outside the (payloadKind, targetKind) routing
+        // table because it doesn't move things around — it writes to ylpin
+        // via PinAsync. Short-circuit here so the registry's playlist-row /
+        // folder-row routes don't try to interpret it as a rootlist target.
+        if (string.Equals(targetId, ShellViewModel.SidebarPinDropZoneTag, StringComparison.Ordinal))
+        {
+            await HandlePinDropZoneDropAsync(payload);
+            return;
+        }
 
         var targetKind = ResolveSidebarTargetKind(model);
         var dropPosition = MapDropPosition(e.dropPosition);
@@ -995,6 +1013,50 @@ public sealed partial class ShellPage : Page
         if (model.IsFolder || (model.Tag?.StartsWith("spotify:start-group:", StringComparison.Ordinal) ?? false))
             return DropTargetKind.FolderRow;
         return DropTargetKind.PlaylistRow;
+    }
+
+    /// <summary>
+    /// Routes a drop on the sidebar's pin-drop-zone placeholder to
+    /// <see cref="IPinService.PinAsync"/>, which writes the URI into
+    /// the user's <c>ylpin</c> collection so it appears in the Pinned
+    /// section. Accepts the payload kinds that the placeholder advertises in
+    /// its <see cref="SidebarItemModel.DropPredicate"/> (playlist / album /
+    /// artist / show).
+    /// </summary>
+    private async Task HandlePinDropZoneDropAsync(IDragPayload payload)
+    {
+        var pinService = _pinService ??= Ioc.Default.GetService<IPinService>();
+        if (pinService is null) return;
+
+        var uri = payload switch
+        {
+            PlaylistDragPayload p => p.PlaylistUri,
+            AlbumDragPayload    a => a.AlbumUri,
+            ArtistDragPayload   ar => ar.ArtistUri,
+            ShowDragPayload     s => s.ShowUri,
+            _ => null,
+        };
+        if (string.IsNullOrWhiteSpace(uri)) return;
+
+        if (pinService.IsPinned(uri))
+        {
+            ViewModel.ShowNotification("Already pinned to the sidebar.");
+            return;
+        }
+
+        try
+        {
+            var ok = await pinService.PinAsync(uri);
+            if (ok)
+                ViewModel.ShowNotification("Pinned to the sidebar.");
+            else
+                ViewModel.ShowNotification("Couldn't pin to the sidebar. Check your connection and try again.", InfoBarSeverity.Warning);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "PinAsync failed for {Uri}", uri);
+            ViewModel.ShowNotification("Couldn't pin to the sidebar. Check your connection and try again.", InfoBarSeverity.Warning);
+        }
     }
 
     private static DropPosition MapDropPosition(SidebarItemDropPosition pos) => pos switch

@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Windows.Foundation;
 using Windows.UI;
 using Wavee.UI.Contracts;
+using Wavee.UI.Helpers;
 using Wavee.UI.Services.DragDrop;
 using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.WinUI.Controls.Imaging;
@@ -17,6 +18,7 @@ using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Services;
 using Windows.ApplicationModel.DataTransfer;
+using Wavee.UI.WinUI.Helpers.Navigation;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
 
@@ -413,19 +415,18 @@ public sealed partial class ContentCard : UserControl
         EnsureManualDragAttached();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
-        // Backstop for ItemsRepeater recycle: OnUnloaded nulls the image
-        // Source for memory; the Loaded handler is supposed to re-call
-        // LoadImage on re-realization, but in some recycle paths (same item
-        // reused in the same container) the binding does not re-trigger and
-        // Loaded may fire before x:Bind has propagated the new DataContext.
-        // EffectiveViewportChanged fires whenever this element's viewport in
-        // an ancestor scroller changes â€” including the first measurement
-        // after re-attach â€” and lets us reload the cached bitmap on demand.
-        EffectiveViewportChanged += OnEffectiveViewportChanged;
+        // EffectiveViewportChanged is attached/detached in OnLoaded/OnUnloaded
+        // rather than in the constructor so the handler doesn't accumulate
+        // entries in the WinRT EventSource table across ItemsRepeater
+        // container recycles. The first realize still picks up the right
+        // image — OnLoaded calls LoadImage unconditionally before the first
+        // viewport event fires.
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        EffectiveViewportChanged += OnEffectiveViewportChanged;
+
         if (IsPassive && !_passiveHandlersAdded)
         {
             _passiveHandlersAdded = true;
@@ -465,6 +466,8 @@ public sealed partial class ContentCard : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        EffectiveViewportChanged -= OnEffectiveViewportChanged;
+
         ResetInteractionState(updatePlayingState: false);
         StopPendingBeam();
 
@@ -906,13 +909,13 @@ public sealed partial class ContentCard : UserControl
 
     private static string? ResolveCardImageUrl(string? url)
     {
-        var httpsUrl = Helpers.SpotifyImageHelper.ToHttpsUrl(url);
+        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url);
         if (!string.IsNullOrEmpty(httpsUrl))
             return httpsUrl;
 
         // Home cards need a cheap preview. Full playlist/sidebar surfaces still
         // use PlaylistMosaicService for composed 2x2 mosaics.
-        return Helpers.SpotifyImageHelper.TryParseMosaicTileUrls(url, out var tileUrls) && tileUrls.Count > 0
+        return SpotifyImageHelper.TryParseMosaicTileUrls(url, out var tileUrls) && tileUrls.Count > 0
             ? tileUrls[0]
             : null;
     }

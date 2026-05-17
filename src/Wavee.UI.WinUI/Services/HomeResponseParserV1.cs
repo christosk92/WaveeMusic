@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.Json;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.ViewModels;

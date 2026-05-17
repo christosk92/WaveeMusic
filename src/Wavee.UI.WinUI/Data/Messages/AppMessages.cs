@@ -220,11 +220,6 @@ public sealed class AudioProcessStateChangedMessage(string state, string? messag
     : ValueChangedMessage<(string State, string? Message)>((state, message));
 
 /// <summary>
-/// Sent when library data changes (sync complete, Dealer delta, user action).
-/// </summary>
-public sealed class LibraryDataChangedMessage;
-
-/// <summary>
 /// Sent when the user toggles whether local files appear as a Home shelf.
 /// </summary>
 public sealed class HomeLocalFilesVisibilityChangedMessage(bool isVisible)
@@ -262,11 +257,6 @@ public sealed class VideoMiniPlayerPromptStateChangedMessage(bool isOpen)
 /// LibrarySyncOrchestrator handles this; no-ops if a sync is already in progress.
 /// </summary>
 public sealed class RequestLibrarySyncMessage;
-
-/// <summary>
-/// Sent when playlists specifically change.
-/// </summary>
-public sealed class PlaylistsChangedMessage;
 
 // --- Right Panel Messages ---
 

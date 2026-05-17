@@ -2,6 +2,7 @@ using System;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.Enums;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Data.Enums;
 
 namespace Wavee.UI.WinUI.Converters;
@@ -155,7 +156,7 @@ public sealed class StringToImageSourceConverter : IValueConverter
         if (value is not string rawUri || string.IsNullOrWhiteSpace(rawUri))
             return null;
 
-        var uri = Helpers.SpotifyImageHelper.ToHttpsUrl(rawUri) ?? rawUri;
+        var uri = SpotifyImageHelper.ToHttpsUrl(rawUri) ?? rawUri;
         var decodeSize = int.TryParse(parameter?.ToString(), out var parsed) ? parsed : 200;
 
         return new BitmapImage(new Uri(uri))

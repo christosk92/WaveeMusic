@@ -2,29 +2,35 @@ using System.Collections.Generic;
 using System.Net;
 using System.Text.RegularExpressions;
 
-namespace Wavee.UI.WinUI.Helpers;
+namespace Wavee.UI.Helpers;
 
 /// <summary>
 /// One token of a parsed Spotify description: either a plain-text run or a Spotify
 /// link. Consumers walk an ordered sequence of these to materialize a RichTextBlock
 /// with mixed Run + Hyperlink inlines while preserving the original ordering.
 /// </summary>
-public readonly record struct SpotifyHtmlToken(bool IsLink, string Text, string? Uri);
+internal readonly record struct SpotifyHtmlToken(bool IsLink, string Text, string? Uri);
 
 /// <summary>
 /// Utilities for parsing Spotify's HTML-formatted descriptions.
 /// Spotify uses &lt;a href=spotify:playlist:xxx&gt;Name&lt;/a&gt; format in descriptions.
 /// </summary>
-public static partial class SpotifyHtmlHelper
+internal static partial class SpotifyHtmlHelper
 {
     /// <summary>
-    /// Strips all HTML tags, returning plain text.
-    /// Converts &lt;a href=...&gt;text&lt;/a&gt; to just "text".
+    /// Strips all HTML tags, returning plain text. Converts
+    /// &lt;a href=...&gt;text&lt;/a&gt; to just "text" and &lt;br&gt; to a
+    /// newline. HTML entities (&amp;amp;, &amp;quot;, &amp;#39;, &amp;#x1f90d;,
+    /// …) are decoded. Returns <c>null</c> when the input is null or empty so
+    /// callers can use the null-coalesce pattern naturally.
     /// </summary>
-    public static string StripHtml(string? html)
+    public static string? StripHtml(string? html)
     {
-        if (string.IsNullOrEmpty(html)) return string.Empty;
-        return HtmlTagRegex().Replace(html, "").Trim();
+        if (string.IsNullOrEmpty(html)) return null;
+        var text = BrTagRegex().Replace(html, "\n");
+        text = HtmlTagRegex().Replace(text, "");
+        text = WebUtility.HtmlDecode(text);
+        return text.Trim();
     }
 
     /// <summary>
@@ -95,6 +101,11 @@ public static partial class SpotifyHtmlHelper
     // Matches any HTML tag
     [GeneratedRegex(@"<[^>]+>", RegexOptions.Compiled)]
     private static partial Regex HtmlTagRegex();
+
+    // Matches <br>, <br/>, <br />, case-insensitive — replaced with newline
+    // before the generic tag-strip so paragraph breaks survive.
+    [GeneratedRegex(@"<br\s*/?>", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    private static partial Regex BrTagRegex();
 
     // Matches <a href=spotify:...>text</a> or <a href="spotify:...">text</a>
     [GeneratedRegex(@"<a\s+href=""?(spotify:[^"">\s]+)""?[^>]*>(.*?)</a>", RegexOptions.Compiled | RegexOptions.IgnoreCase)]

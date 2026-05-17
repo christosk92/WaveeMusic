@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Numerics;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Composition;
@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
@@ -16,7 +17,7 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 
 /// <summary>
 /// Hero-rail spotlight card used at the bottom-right of the V4A magazine hero.
-/// Renders three modes via the <see cref="Mode"/> DP — Pinned (pin glyph +
+/// Renders three modes via the <see cref="Mode"/> DP â€” Pinned (pin glyph +
 /// quoted-comment block with accent left bar, no Save/Share), LatestRelease
 /// (animated pulse dot + Save/Share), or PopularRelease (star glyph + Save/
 /// Share). The card chrome is theme-aware: acrylic base + flyout-paired
@@ -63,7 +64,7 @@ public sealed partial class SpotlightReleaseCard : UserControl
         DependencyProperty.Register(nameof(Mode), typeof(SpotlightMode), typeof(SpotlightReleaseCard),
             new PropertyMetadata(SpotlightMode.LatestRelease, OnModeChanged));
 
-    // ─── Navigation DPs (artist→album prefetch + connected animation pass).
+    // â”€â”€â”€ Navigation DPs (artistâ†’album prefetch + connected animation pass).
     // When NavigationUri is set, CardSurface_Tapped self-routes through
     // AlbumNavigationHelper (prefetch + connected anim + count prefill) and
     // CardClick still fires for any subscriber that wants to react.
@@ -89,7 +90,7 @@ public sealed partial class SpotlightReleaseCard : UserControl
 
     // Album-metadata viewport prefetch. The spotlight card is always at the
     // top of the artist page when rendered, so it effectively fires on first
-    // measure — but we still gate via EffectiveViewportChanged so it doesn't
+    // measure â€” but we still gate via EffectiveViewportChanged so it doesn't
     // fetch when the card is offscreen on a small / narrow window mode.
     private bool _albumPrefetchKicked;
     private bool _playlistPrefetchKicked;
@@ -102,7 +103,6 @@ public sealed partial class SpotlightReleaseCard : UserControl
         InitializeComponent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
-        EffectiveViewportChanged += OnEffectiveViewportChanged;
         ApplyModeVisuals();
     }
 
@@ -127,13 +127,18 @@ public sealed partial class SpotlightReleaseCard : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // Subscribe on attach so the handler doesn't accumulate in the WinRT
+        // EventSource table across ItemsRepeater container recycles.
+        EffectiveViewportChanged += OnEffectiveViewportChanged;
+
         if (Mode == SpotlightMode.LatestRelease)
             StartPulseAnimation();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        // Do NOT clear CoverImage.ImageUrl here — CompositionImage releases
+        EffectiveViewportChanged -= OnEffectiveViewportChanged;
+        // Do NOT clear CoverImage.ImageUrl here â€” CompositionImage releases
         // its own pin on Unloaded. Clearing the URL would break the same-
         // DataContext scroll-back-up path: the outer CoverImageUrl DP keeps
         // its value across virtualization, so the change-callback never
@@ -282,7 +287,7 @@ public sealed partial class SpotlightReleaseCard : UserControl
     {
         if (d is SpotlightReleaseCard c && e.NewValue is SolidColorBrush b)
         {
-            // Only chrome affordances ride the palette brush — pulse dot,
+            // Only chrome affordances ride the palette brush â€” pulse dot,
             // Play button background, and the comment block's left accent bar.
             // Inline text stays on the system theme so the card reads as part
             // of the app chrome rather than adopting an unpredictable
@@ -295,7 +300,7 @@ public sealed partial class SpotlightReleaseCard : UserControl
 
     private void CardSurface_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        // Self-route to AlbumPage when NavigationUri is set — connected anim
+        // Self-route to AlbumPage when NavigationUri is set â€” connected anim
         // from the CoverBorder, nav-prefill with TotalTracks, Ctrl+click new-
         // tab semantics. CardClick still fires for back-compat with any host
         // page subscribing for custom analytics / hooks.

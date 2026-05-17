@@ -5,6 +5,7 @@ using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Styles;
 using Wavee.UI.WinUI.ViewModels;
 using Windows.UI;
+using Wavee.UI.Helpers;
 
 namespace Wavee.UI.WinUI.Services;
 

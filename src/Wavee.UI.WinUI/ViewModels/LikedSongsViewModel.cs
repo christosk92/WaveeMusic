@@ -34,6 +34,8 @@ public enum LikedSongsSortColumn { Title, Artist, Album, AddedAt }
 public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListViewModel, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
+    private readonly Wavee.UI.Services.Infra.IReloadCoordinator _reloadCoordinator;
+    private IDisposable? _reloadRegistration;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly ITrackDescriptorFetcher _descriptorFetcher;
     private readonly ISession _session;
@@ -139,6 +141,7 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         IPlaybackStateService playbackStateService,
         ITrackDescriptorFetcher descriptorFetcher,
         ISession session,
+        Wavee.UI.Services.Infra.IReloadCoordinator reloadCoordinator,
         IMusicVideoMetadataService? musicVideoMetadata = null,
         ILogger<LikedSongsViewModel>? logger = null)
     {
@@ -146,6 +149,7 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         _playbackStateService = playbackStateService;
         _descriptorFetcher = descriptorFetcher;
         _session = session;
+        _reloadCoordinator = reloadCoordinator;
         _musicVideoMetadata = musicVideoMetadata;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
@@ -166,7 +170,10 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
     {
         if (_longLivedAttached) return;
         _longLivedAttached = true;
-        _libraryDataService.DataChanged += OnLibraryDataChanged;
+        _reloadRegistration = _reloadCoordinator.RegisterReload(
+            Wavee.UI.Services.Infra.ChangeScope.Library,
+            ReloadFromChangeAsync,
+            "LikedSongsViewModel.Reload");
         _descriptorFetcher.FetchCompleted += OnDescriptorFetchCompleted;
     }
 
@@ -174,8 +181,20 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
     {
         if (!_longLivedAttached) return;
         _longLivedAttached = false;
-        _libraryDataService.DataChanged -= OnLibraryDataChanged;
+        _reloadRegistration?.Dispose();
+        _reloadRegistration = null;
         _descriptorFetcher.FetchCompleted -= OnDescriptorFetchCompleted;
+    }
+
+    private async Task ReloadFromChangeAsync(CancellationToken ct)
+    {
+        if (_disposed || IsLoading) return;
+        // The dispatcher-marshalled call ensures the LoadAsync side-effects
+        // (ObservableCollection mutations) land on the UI thread; the
+        // coordinator hands us an already-marshalled context but we double-
+        // gate on _disposed/IsLoading in case the registration outlived its
+        // owner.
+        await LoadAsync().ConfigureAwait(false);
     }
 
     private void OnDescriptorFetchCompleted(object? sender, EventArgs e)
@@ -649,17 +668,6 @@ public sealed partial class LikedSongsViewModel : ObservableObject, ITrackListVi
         }
 
         return builder.ToString().Trim();
-    }
-
-    private void OnLibraryDataChanged(object? sender, EventArgs e)
-    {
-        _dispatcherQueue.TryEnqueue(async () =>
-        {
-            if (_disposed || IsLoading)
-                return;
-
-            await LoadAsync();
-        });
     }
 
     public void Dispose()

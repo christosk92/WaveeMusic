@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Numerics;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -20,6 +20,7 @@ using Wavee.UI.WinUI.Controls.Track.Behaviors;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Stores;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
 
@@ -124,7 +125,7 @@ public sealed partial class SearchResultHeroCard : UserControl
         ApplyTitleAccent();
         ApplyHoverBackground();
         // Rebuild the palette brush with the tier appropriate for the new theme
-        // (dark → HigherContrast, light → HighContrast — same policy as ConcertPage).
+        // (dark â†’ HigherContrast, light â†’ HighContrast â€” same policy as ConcertPage).
         ApplyPaletteBrush();
     }
 
@@ -197,8 +198,8 @@ public sealed partial class SearchResultHeroCard : UserControl
         }
 
         // Hero background: resolve an artist (Artist itself, or the primary
-        // artist of a Track/Album) via ArtistStore — shared cache with
-        // ArtistPage — and apply HeaderImageUrl + ink overlay for readability.
+        // artist of a Track/Album) via ArtistStore â€” shared cache with
+        // ArtistPage â€” and apply HeaderImageUrl + ink overlay for readability.
         // Playlists have no artist context, so they fall back to the theme bg.
         var heroArtistUri = item.Type switch
         {
@@ -208,7 +209,7 @@ public sealed partial class SearchResultHeroCard : UserControl
         };
 
         // Only wipe the existing bleed when the resolved artist actually
-        // changes — otherwise re-typing the same query (or any path that
+        // changes â€” otherwise re-typing the same query (or any path that
         // re-sets Item to the same artist) would clear the loaded image and
         // SubscribeArtist's same-uri early-return means no replay would refill
         // it.
@@ -237,7 +238,7 @@ public sealed partial class SearchResultHeroCard : UserControl
         ApplyAddChipForItem(item);
     }
 
-    // ── Artist hero header (fetched via ArtistStore) ──
+    // â”€â”€ Artist hero header (fetched via ArtistStore) â”€â”€
 
     private void SubscribeArtist(string? artistId)
     {
@@ -254,7 +255,7 @@ public sealed partial class SearchResultHeroCard : UserControl
         _artistSubscription = _artistStore.Observe(artistId)
             .Subscribe(
                 state => DispatcherQueue?.TryEnqueue(() => ApplyArtistState(state, artistId)),
-                _ => { /* swallow — no hero bg is the graceful fallback */ });
+                _ => { /* swallow â€” no hero bg is the graceful fallback */ });
     }
 
     private void ApplyArtistState(EntityState<ArtistOverviewResult> state, string expectedArtistId)
@@ -276,7 +277,7 @@ public sealed partial class SearchResultHeroCard : UserControl
         LoadBleedImage(bleedUrl);
         _currentPalette = ready.Value.Palette;
 
-        // Show the ink wash whenever we have EITHER a bleed image or a palette —
+        // Show the ink wash whenever we have EITHER a bleed image or a palette â€”
         // even a palette-only artist still gets a tinted card instead of the
         // default chrome, which is closer to what the user asked for.
         var hasVisual = !string.IsNullOrEmpty(bleedUrl) || _currentPalette != null;
@@ -297,10 +298,10 @@ public sealed partial class SearchResultHeroCard : UserControl
     /// <summary>
     /// Applies a theme-aware palette-tinted gradient brush on top of the black ink
     /// overlay. Uses the same tier policy as ConcertViewModel.ApplyTheme:
-    ///   dark theme  → HigherContrast (deepest saturated) for a rich backdrop
-    ///   light theme → HighContrast   (saturated, one step brighter) so the wash
+    ///   dark theme  â†’ HigherContrast (deepest saturated) for a rich backdrop
+    ///   light theme â†’ HighContrast   (saturated, one step brighter) so the wash
     ///                                 doesn't read as inky on a light app
-    /// MinContrast is intentionally skipped — too pastel to read white text over.
+    /// MinContrast is intentionally skipped â€” too pastel to read white text over.
     /// </summary>
     private void ApplyPaletteBrush()
     {
@@ -321,7 +322,7 @@ public sealed partial class SearchResultHeroCard : UserControl
         var bg = Windows.UI.Color.FromArgb(255, tier.BackgroundR, tier.BackgroundG, tier.BackgroundB);
         var bgTint = Windows.UI.Color.FromArgb(255, tier.BackgroundTintedR, tier.BackgroundTintedG, tier.BackgroundTintedB);
 
-        // Left → right fade: deep palette ink at the left where the title sits,
+        // Left â†’ right fade: deep palette ink at the left where the title sits,
         // transparent on the right where the hero image should show through.
         var brush = new LinearGradientBrush
         {
@@ -335,7 +336,7 @@ public sealed partial class SearchResultHeroCard : UserControl
         PaletteHeroOverlay.Background = brush;
     }
 
-    // ── Rich background (ColorHex + composition-masked artwork) ──
+    // â”€â”€ Rich background (ColorHex + composition-masked artwork) â”€â”€
 
     private static void OnColorHexChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -356,7 +357,7 @@ public sealed partial class SearchResultHeroCard : UserControl
 
     private static Windows.UI.Color ParseHexColor(string hex)
     {
-        // Same implementation as AlbumDetailPanel.ParseHexColor — accepts RGB or ARGB.
+        // Same implementation as AlbumDetailPanel.ParseHexColor â€” accepts RGB or ARGB.
         hex = hex.TrimStart('#');
         if (hex.Length == 6)
         {
@@ -402,7 +403,7 @@ public sealed partial class SearchResultHeroCard : UserControl
 
         EnsureBleedVisual();
 
-        // Dispose the previous brush + surface before swapping — both are
+        // Dispose the previous brush + surface before swapping â€” both are
         // unmanaged. The old ones leaked GPU memory before this fix, which
         // accumulated as the user scrolled fresh top-results into the card.
         if (_bleedVisual != null) _bleedVisual.Brush = null;
@@ -427,7 +428,7 @@ public sealed partial class SearchResultHeroCard : UserControl
         if (_bleedVisual != null) return;
 
         // Host on BleedSurfaceHost (an empty Border sibling of the overlays) rather
-        // than BleedImageArea — composition children always render above the host's
+        // than BleedImageArea â€” composition children always render above the host's
         // XAML descendants, so attaching to BleedImageArea would cover HeroInkOverlay
         // and PaletteHeroOverlay. Hosting on a sibling lets normal XAML z-order put
         // the overlays back on top.
@@ -539,7 +540,7 @@ public sealed partial class SearchResultHeroCard : UserControl
         StopPendingBeam();
         DisposeArtistSubscription();
 
-        // Composition resources are unmanaged — dispose to release the GPU/D3D handles.
+        // Composition resources are unmanaged â€” dispose to release the GPU/D3D handles.
         if (_bleedVisual != null)
         {
             BleedSurfaceHost.SizeChanged -= BleedSurfaceHost_SizeChanged;
@@ -557,7 +558,7 @@ public sealed partial class SearchResultHeroCard : UserControl
 
     private void OnPlaybackStateChanged()
     {
-        // Same filter as TrackItem.OnPlaybackStateChanged — skip the dispatch
+        // Same filter as TrackItem.OnPlaybackStateChanged â€” skip the dispatch
         // when this card's effective playback state can't have flipped. Note
         // the IsPaused condition mirrors RefreshPlaybackState exactly
         // (CurrentTrackId != null guard) so the dedup is sound.

@@ -20,6 +20,7 @@
     xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:avatarStack="using:Wavee.UI.WinUI.Controls.AvatarStack"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
+    helpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
     NavigationCacheMode="Enabled"
     Background="Transparent">

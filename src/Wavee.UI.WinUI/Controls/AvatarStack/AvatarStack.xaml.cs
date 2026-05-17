@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.Controls.AvatarStack;

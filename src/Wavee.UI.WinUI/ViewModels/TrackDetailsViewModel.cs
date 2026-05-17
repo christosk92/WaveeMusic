@@ -14,6 +14,8 @@ using Microsoft.Extensions.Logging;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.Contracts;
+using Wavee.UI.Formatters;
+using Wavee.UI.Helpers;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
@@ -35,6 +37,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
     private readonly IPathfinderClient _pathfinder;
     private readonly ITrackCreditsService _creditsService;
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IPodcastEpisodeService _podcastEpisodeService;
     private readonly IMediaOverrideService _mediaOverrideService;
     private readonly ILogger? _logger;
 
@@ -214,6 +217,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         IPathfinderClient pathfinder,
         ITrackCreditsService creditsService,
         ILibraryDataService libraryDataService,
+        IPodcastEpisodeService podcastEpisodeService,
         IMediaOverrideService mediaOverrideService,
         ILogger<TrackDetailsViewModel>? logger = null)
     {
@@ -221,6 +225,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         _pathfinder = pathfinder;
         _creditsService = creditsService;
         _libraryDataService = libraryDataService;
+        _podcastEpisodeService = podcastEpisodeService;
         _mediaOverrideService = mediaOverrideService;
         _logger = logger;
 
@@ -280,7 +285,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         }
 
         if (trackId.Contains(':', StringComparison.Ordinal)
-            && !trackId.StartsWith("spotify:track:", StringComparison.Ordinal))
+            && !SpotifyUriHelper.IsKind(trackId, SpotifyEntityKind.Track))
         {
             ClearData();
             return;
@@ -301,11 +306,12 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
 
         try
         {
-            // CurrentArtistId is already in "spotify:artist:xxx" format
-            // CurrentTrackId is the bare ID, needs "spotify:track:" prefix
-            var trackUri = trackId.StartsWith("spotify:track:", StringComparison.Ordinal)
+            // CurrentArtistId is already in "spotify:artist:xxx" format.
+            // CurrentTrackId may be a bare ID — SpotifyUriHelper.ToUri builds
+            // the canonical form whichever it arrives as.
+            var trackUri = SpotifyUriHelper.IsKind(trackId, SpotifyEntityKind.Track)
                 ? trackId
-                : $"spotify:track:{trackId}";
+                : SpotifyUriHelper.ToUri(SpotifyEntityKind.Track, trackId);
 
             // Fetch NpvArtist and credits in parallel
             var npvTask = _pathfinder.GetNpvArtistAsync(artistId, trackUri, ct: ct);
@@ -390,7 +396,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
                 () => _pathfinder.GetNpvEpisodeAsync(episodeUri, numberOfChapters: 10, ct),
                 "episode NPV");
             var detailTask = FetchOptionalDetailsAsync(
-                () => _libraryDataService.GetPodcastEpisodeDetailAsync(episodeUri, ct),
+                () => _podcastEpisodeService.GetPodcastEpisodeDetailAsync(episodeUri, ct),
                 "episode detail");
 
             await Task.WhenAll(npvTask, detailTask);
@@ -456,7 +462,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
                  && string.IsNullOrWhiteSpace(detail.Description)
                  && !string.IsNullOrWhiteSpace(episode?.HtmlDescription))
         {
-            detail = detail with { Description = StripHtml(episode.HtmlDescription) };
+            detail = detail with { Description = SpotifyHtmlHelper.StripHtml(episode.HtmlDescription) };
         }
 
         if (detail is not null && string.IsNullOrWhiteSpace(detail.ShowName) && !string.IsNullOrWhiteSpace(show?.Name))
@@ -490,7 +496,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
 
         PodcastComments = new ObservableCollection<PodcastCommentViewModel>(
             (detail?.Comments ?? [])
-                .Select(comment => new PodcastCommentViewModel(comment, _libraryDataService, _logger)));
+                .Select(comment => new PodcastCommentViewModel(comment, _libraryDataService, _podcastEpisodeService, _logger)));
         PodcastCommentsNextPageToken = detail?.CommentsNextPageToken;
         PodcastCommentsTotalCount = Math.Max(detail?.CommentsTotalCount ?? 0, PodcastComments.Count);
         PodcastCommentDraft = "";
@@ -509,7 +515,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
     {
         var show = episode.PodcastV2?.Data;
         var uri = string.IsNullOrWhiteSpace(episode.Uri) ? fallbackUri : episode.Uri!;
-        var description = StripHtml(episode.HtmlDescription) ?? episode.Description;
+        var description = SpotifyHtmlHelper.StripHtml(episode.HtmlDescription) ?? episode.Description;
 
         return new PodcastEpisodeDetailDto
         {
@@ -543,9 +549,9 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         ArtistName = artist?.Profile?.Name;
         ArtistUri = artist?.Uri;
         IsVerified = artist?.Profile?.Verified ?? false;
-        Followers = FormatNumber(artist?.Stats?.Followers ?? 0);
-        MonthlyListeners = FormatNumber(artist?.Stats?.MonthlyListeners ?? 0);
-        BiographyText = StripHtml(artist?.Profile?.Biography?.Text);
+        Followers = NumberFormatter.FormatPlayCount(artist?.Stats?.Followers ?? 0);
+        MonthlyListeners = NumberFormatter.FormatPlayCount(artist?.Stats?.MonthlyListeners ?? 0);
+        BiographyText = SpotifyHtmlHelper.StripHtml(artist?.Profile?.Biography?.Text);
         IsBioExpanded = false;
 
         ArtistAvatarUrl = artist?.Visuals?.AvatarImage?.Sources
@@ -816,11 +822,10 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         PodcastCommentStatus = null;
         try
         {
-            var comment = await _libraryDataService
-                .CreatePodcastEpisodeCommentAsync(detail.Uri, text)
+            var comment = await _podcastEpisodeService .CreatePodcastEpisodeCommentAsync(detail.Uri, text)
                 .ConfigureAwait(true);
 
-            PodcastComments.Insert(0, new PodcastCommentViewModel(comment, _libraryDataService, _logger));
+            PodcastComments.Insert(0, new PodcastCommentViewModel(comment, _libraryDataService, _podcastEpisodeService, _logger));
             PodcastCommentsTotalCount = Math.Max(PodcastCommentsTotalCount + 1, PodcastComments.Count);
             PodcastCommentDraft = "";
             PodcastCommentStatus = "Comment saved locally. Spotify posting is not wired yet.";
@@ -859,8 +864,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         PodcastCommentStatus = null;
         try
         {
-            var page = await _libraryDataService
-                .GetPodcastEpisodeCommentsPageAsync(detail.Uri, token)
+            var page = await _podcastEpisodeService .GetPodcastEpisodeCommentsPageAsync(detail.Uri, token)
                 .ConfigureAwait(true);
 
             if (page is null)
@@ -868,7 +872,7 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
 
             foreach (var comment in page.Items)
             {
-                PodcastComments.Add(new PodcastCommentViewModel(comment, _libraryDataService, _logger));
+                PodcastComments.Add(new PodcastCommentViewModel(comment, _libraryDataService, _podcastEpisodeService, _logger));
             }
 
             PodcastCommentsNextPageToken = page.NextPageToken;
@@ -949,17 +953,6 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
         _loadedTrackId = null;
     }
 
-    private static string FormatNumber(long value)
-    {
-        return value switch
-        {
-            >= 1_000_000_000 => $"{value / 1_000_000_000.0:F1}B",
-            >= 1_000_000 => $"{value / 1_000_000.0:F1}M",
-            >= 1_000 => $"{value / 1_000.0:F1}K",
-            _ => value.ToString("N0", CultureInfo.InvariantCulture)
-        };
-    }
-
     private static string NormalizeCommentText(string? text)
         => string.IsNullOrWhiteSpace(text)
             ? ""
@@ -1022,18 +1015,6 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
             ? parsed
             : null;
 
-    private static string? StripHtml(string? html)
-    {
-        if (string.IsNullOrEmpty(html)) return null;
-        // Replace <br>, <br/>, <br /> with newlines
-        var text = Regex.Replace(html, @"<br\s*/?>", "\n", RegexOptions.IgnoreCase);
-        // Strip remaining HTML tags
-        text = Regex.Replace(text, @"<[^>]+>", "");
-        // Decode all HTML entities (named, decimal, hex — e.g. &amp; &#39; &#x1f90d;)
-        text = System.Net.WebUtility.HtmlDecode(text);
-        return text.Trim();
-    }
-
     private static string? FormatConcertDate(string? isoDate)
     {
         if (string.IsNullOrEmpty(isoDate)) return null;
@@ -1060,89 +1041,3 @@ public sealed partial class TrackDetailsViewModel : ObservableObject, IDisposabl
     }
 }
 
-// ── View Models / Models ──
-
-public sealed class CreditGroupVm
-{
-    public string? RoleName { get; init; }
-    public List<ContributorVm>? Contributors { get; init; }
-}
-
-public sealed class ContributorVm
-{
-    public string? Name { get; init; }
-    public string? Uri { get; init; }
-    public string? ImageUrl { get; init; }
-    public List<string>? Roles { get; init; }
-    public string RolesText => Roles != null ? string.Join(", ", Roles) : "";
-}
-
-public sealed class RelatedVideoVm
-{
-    public string? Title { get; init; }
-    public string? ThumbnailUrl { get; init; }
-    public string? ArtistName { get; init; }
-    public string? Uri { get; init; }
-}
-
-public sealed class EpisodeChapterVm : ObservableObject
-{
-    private bool _isActive;
-    private bool _isCompleted;
-    private double _timelineCellProgress;
-
-    public int Number { get; init; }
-    public bool IsFirst { get; set; }
-    public bool IsLast { get; set; }
-    public string Title { get; init; } = "";
-    public string? Subtitle { get; init; }
-    public long StartMilliseconds { get; init; }
-    public long StopMilliseconds { get; init; }
-
-    public string StartTime => FormatTime(StartMilliseconds);
-    public string ChapterLabel => Number > 0 ? $"Chapter {Number}" : "Chapter";
-    public bool IsActive => _isActive;
-    public bool IsCompleted => _isCompleted;
-    public double TimelineCellProgress => _timelineCellProgress;
-    public double ContentOpacity => IsActive ? 1 : IsCompleted ? 0.86 : 0.66;
-    public double ChromeOpacity => IsActive ? 1 : IsCompleted ? 0.82 : 0.58;
-
-    public string TimeRange
-    {
-        get
-        {
-            if (StopMilliseconds > StartMilliseconds)
-                return $"{FormatTime(StartMilliseconds)} - {FormatTime(StopMilliseconds)}";
-
-            return FormatTime(StartMilliseconds);
-        }
-    }
-
-    private static string FormatTime(long milliseconds)
-    {
-        var time = TimeSpan.FromMilliseconds(Math.Max(0, milliseconds));
-        return time.TotalHours >= 1
-            ? time.ToString(@"h\:mm\:ss", CultureInfo.InvariantCulture)
-            : time.ToString(@"m\:ss", CultureInfo.InvariantCulture);
-    }
-
-    public void SetTimelineState(bool isActive, bool isCompleted, double progress)
-    {
-        var clamped = Math.Clamp(progress, 0, 1);
-        var changed = SetProperty(ref _isActive, isActive, nameof(IsActive));
-        changed |= SetProperty(ref _isCompleted, isCompleted, nameof(IsCompleted));
-        changed |= SetProperty(ref _timelineCellProgress, clamped, nameof(TimelineCellProgress));
-
-        if (!changed)
-            return;
-
-        OnPropertyChanged(nameof(ContentOpacity));
-        OnPropertyChanged(nameof(ChromeOpacity));
-    }
-}
-
-public sealed class ExternalLinkVm
-{
-    public string? Name { get; init; }
-    public string? Url { get; init; }
-}

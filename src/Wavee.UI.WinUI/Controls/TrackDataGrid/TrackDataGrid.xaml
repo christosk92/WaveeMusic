@@ -257,9 +257,22 @@
               virtualization is preserved per Microsoft's guidance. The
               HeaderHost sits OUTSIDE the ListView and stays vertically pinned;
               TrackDataGrid.xaml.cs syncs its X translation to the ListView's
-              internal ScrollViewer.HorizontalOffset via ViewChanged.  -->
+              internal ScrollViewer.HorizontalOffset via ViewChanged.
+
+              Three-row layout:
+                Row 0 = column header (HeaderHost ScrollViewer)
+                Row 1 = loading-row skeleton (LoadingRowsRepeater)
+                Row 2 = real items presenter (RowsList / RowsItemsViewHost)
+              Row 1 is Auto and collapses to 0 px when LoadingRowsRepeater is
+              Collapsed (i.e. IsLoading=false). When IsLoading=true the
+              skeleton rows sit ABOVE Row 2, so the empty ListView's Footer
+              (which hosts FooterContent + the sibling FooterShimmer) lays
+              out cleanly BELOW the skeleton rows instead of overlapping
+              them — fixes the "two stacked shimmer surfaces in the same
+              pixels" repaint glitch. -->
         <Grid Grid.Row="2">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
@@ -304,7 +317,7 @@
 
             <ListView
                 x:Name="RowsList"
-                Grid.Row="1"
+                Grid.Row="2"
                 HorizontalContentAlignment="Stretch"
                 Padding="0"
                 ScrollViewer.HorizontalScrollMode="Auto"
@@ -382,7 +395,7 @@
                  for its viewport — which is what ItemsView wraps itself in
                  anyway. -->
             <StackPanel x:Name="RowsItemsViewHost"
-                        Grid.Row="1"
+                        Grid.Row="2"
                         Visibility="Collapsed"
                         AllowDrop="{x:Bind CanReorder, Mode=OneWay}"
                         DragOver="RowsItemsViewHost_DragOver"
@@ -443,6 +456,10 @@
                 Margin="0,2,0,0"
                 IsHitTestVisible="False"
                 Visibility="Collapsed">
+                <!-- Row 1 (Auto, this grid's dedicated skeleton row). Renders
+                     ABOVE the ListView in Row 2 so the empty ListView's
+                     Footer slot (FooterContent + FooterShimmer) lays out
+                     below the skeleton rather than overlapping them. -->
                 <ItemsRepeater.Layout>
                     <StackLayout Orientation="Vertical" Spacing="4"/>
                 </ItemsRepeater.Layout>

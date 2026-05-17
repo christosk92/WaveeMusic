@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Input;
 using Wavee.UI.Services.DragDrop;
 using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.WinUI.DragDrop;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -40,7 +41,7 @@ public sealed partial class MediaCard : UserControl
     /// </summary>
     public string? ContextUri { get => (string?)GetValue(ContextUriProperty); set => SetValue(ContextUriProperty, value); }
 
-    /// <summary>What kind of context this card represents — drives the payload type.</summary>
+    /// <summary>What kind of context this card represents â€” drives the payload type.</summary>
     public MediaCardContextKind ContextKind { get => (MediaCardContextKind)GetValue(ContextKindProperty); set => SetValue(ContextKindProperty, value); }
 
     public static readonly DependencyProperty ImageUrlProperty =
@@ -61,7 +62,7 @@ public sealed partial class MediaCard : UserControl
 
     public static readonly DependencyProperty PlaceholderGlyphProperty =
         DependencyProperty.Register(nameof(PlaceholderGlyph), typeof(string), typeof(MediaCard),
-            new PropertyMetadata(""));
+            new PropertyMetadata("î£–"));
 
     public string? ImageUrl { get => (string?)GetValue(ImageUrlProperty); set => SetValue(ImageUrlProperty, value); }
     public string Title { get => (string)GetValue(TitleProperty); set => SetValue(TitleProperty, value); }

@@ -22,10 +22,12 @@ using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using AppNotificationSeverity = Wavee.UI.WinUI.Data.Models.NotificationSeverity;
 using Wavee.UI.Services.DragDrop;
+using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Views;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -43,6 +45,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 public sealed partial class ShellViewModel : ObservableObject, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IPinService _pinService;
     private readonly IPlaylistCacheService _playlistCache;
     private readonly IThemeService _themeService;
     private readonly INotificationService _notificationService;
@@ -51,7 +54,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly AppModel _appModel;
     private readonly IShellSessionService _shellSession;
     private readonly ISettingsService? _settingsService;
-    private IPanelDockingService? _docking;
+    private readonly IPanelDockingService _docking;
+    private readonly INowPlayingPresentationService _presentation;
+    private readonly MiniVideoPlayerViewModel? _miniVideoVm;
+    private readonly Wavee.UI.WinUI.DragDrop.DragStateService? _dragStateService;
+    private readonly Wavee.UI.Services.Infra.IBackgroundWorkRunner _backgroundWork;
+    private readonly Wavee.UI.Services.Infra.IChangeBus _changeBus;
+    private IDisposable? _changeBusPlaylistsSubscription;
+    private IDisposable? _changeBusLibrarySubscription;
     private readonly ILogger? _logger;
     private readonly IDispatcherService? _dispatcher;
     private readonly PlaylistMosaicService? _mosaicService;
@@ -65,7 +75,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly Wavee.Local.ILocalLibraryService? _localLibrary;
 
     // Resolves Spotify URL / URI pastes to a single entity preview shown in the omnibar.
-    // Optional — when null, link pastes still navigate but show only the synthetic
+    // Optional â€” when null, link pastes still navigate but show only the synthetic
     // "Open {kind}" placeholder card (no real name / cover).
     private readonly ISpotifyLinkPreviewService? _linkPreviewService;
 
@@ -76,7 +86,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     // Placeholder items used as the Spotify section's contents while the network call
     // is in flight. The Spotify section becomes visible from frame 1 (shimmer rows),
     // then the real items replace these when RefreshQuerySuggestionsAsync resolves.
-    // 4 entries — matches a 2×2 grid at wide widths, 4 stacked rows at narrow widths.
+    // 4 entries â€” matches a 2Ã—2 grid at wide widths, 4 stacked rows at narrow widths.
     private static readonly IReadOnlyList<SearchSuggestionItem> SpotifyShimmerPlaceholders =
     [
         new() { Title = string.Empty, Uri = "wavee:shimmer:0", Type = SearchSuggestionType.Shimmer },
@@ -155,18 +165,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Single source of truth for tear-off state. Bound from XAML (visibility
     /// gates) via <see cref="IsRightPanelVisibleInShell"/> /
-    /// <see cref="IsSidebarPlayerVisibleInShell"/>. Lazily resolved so existing
-    /// constructor wiring stays untouched.
+    /// <see cref="IsSidebarPlayerVisibleInShell"/>. Injected through the ctor
+    /// — the PropertyChanged subscription is wired in the constructor body.
     /// </summary>
-    public IPanelDockingService Docking =>
-        _docking ??= ResolveAndSubscribeDocking();
-
-    private IPanelDockingService ResolveAndSubscribeDocking()
-    {
-        var svc = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetRequiredService<IPanelDockingService>();
-        svc.PropertyChanged += OnDockingPropertyChanged;
-        return svc;
-    }
+    public IPanelDockingService Docking => _docking;
 
     private void OnDockingPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -217,9 +219,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Bottom player is visible only when it is the selected shell location and
     /// the popped-out player is not suppressing docked controls. Theatre /
-    /// Fullscreen presentation also collapse it — the expanded surface owns
+    /// Fullscreen presentation also collapse it â€” the expanded surface owns
     /// the whole window in those modes. Also collapses when the active tab is
-    /// VideoPlayerPage — that page has its own scrim transport, duplicating it
+    /// VideoPlayerPage â€” that page has its own scrim transport, duplicating it
     /// at the bottom of the window is just noise.
     /// </summary>
     public bool IsBottomPlayerVisibleInShell =>
@@ -228,7 +230,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         && IsNormalPresentation
         && !IsOnVideoPage;
 
-    // ── Floating mini-video-player visibility ────────────────────────────
+    // â”€â”€ Floating mini-video-player visibility â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     //
     // Compound gate: Normal presentation (no Theatre / Fullscreen takeover)
     // AND not on VideoPlayerPage in the active tab AND the mini-VM's own
@@ -237,18 +239,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     //
     // Forwarding PropertyChanged from the mini-VM keeps this single XAML
     // binding accurate without the consumer needing to track multiple sources.
-    private MiniVideoPlayerViewModel? _miniVideoVm;
-    public MiniVideoPlayerViewModel? MiniVideoPlayer =>
-        _miniVideoVm ??= ResolveAndSubscribeMiniVideoPlayer();
-
-    private MiniVideoPlayerViewModel? ResolveAndSubscribeMiniVideoPlayer()
-    {
-        var vm = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetService<MiniVideoPlayerViewModel>();
-        if (vm is not null)
-            vm.PropertyChanged += OnMiniVideoPlayerPropertyChanged;
-        return vm;
-    }
+    public MiniVideoPlayerViewModel? MiniVideoPlayer => _miniVideoVm;
 
     private void OnMiniVideoPlayerPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -261,20 +252,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         && !IsOnVideoPage
         && MiniVideoPlayer?.IsVisible == true;
 
-    // ── Now-playing presentation (Theatre / Fullscreen) ─────────────────
-    // Lazily resolved to keep the existing constructor wiring untouched —
-    // INowPlayingPresentationService is a small singleton, no DI cycles.
-    private INowPlayingPresentationService? _presentation;
-    public INowPlayingPresentationService Presentation =>
-        _presentation ??= ResolveAndSubscribePresentation();
-
-    private INowPlayingPresentationService ResolveAndSubscribePresentation()
-    {
-        var svc = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetRequiredService<INowPlayingPresentationService>();
-        svc.PropertyChanged += OnPresentationPropertyChanged;
-        return svc;
-    }
+    // ── Now-playing presentation (Theatre / Fullscreen) ──────────────────
+    // Injected through the ctor so the service-locator pattern stays out of
+    // the VM and the PropertyChanged subscription is wired up at construction
+    // time alongside the other singletons.
+    public INowPlayingPresentationService Presentation => _presentation;
 
     private void OnPresentationPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -288,7 +270,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(IsExpandedPresentation));
             OnPropertyChanged(nameof(IsFullscreenPresentation));
             OnPropertyChanged(nameof(IsTheatrePresentation));
-            // Chrome visibility helpers depend on presentation — re-raise so
+            // Chrome visibility helpers depend on presentation â€” re-raise so
             // the shell page collapses sidebar / tabs / nav / playerbar when
             // we expand into Theatre or Fullscreen.
             RaisePlayerSurfaceVisibilityChanged();
@@ -302,7 +284,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// <summary>True when the now-playing surface is in its default docked state.</summary>
     public bool IsNormalPresentation => Presentation.IsNormal;
 
-    /// <summary>True when in Theatre OR Fullscreen — chrome should hide.</summary>
+    /// <summary>True when in Theatre OR Fullscreen â€” chrome should hide.</summary>
     public bool IsExpandedPresentation => Presentation.IsExpanded;
 
     /// <summary>True specifically in Fullscreen (OS-level fullscreen presenter).</summary>
@@ -313,7 +295,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public bool IsTheatrePresentation =>
         Presentation.Presentation == NowPlayingPresentation.Theatre;
 
-    /// <summary>Tab strip is hidden in Theatre / Fullscreen — the player owns the window.</summary>
+    /// <summary>Tab strip is hidden in Theatre / Fullscreen â€” the player owns the window.</summary>
     public bool IsTabBarVisibleInShell => IsNormalPresentation;
 
     /// <summary>Navigation toolbar (search / back / forward) hides in expanded modes.</summary>
@@ -327,6 +309,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private ObservableCollection<SidebarItemModel> _sidebarItems = [];
+
+    // Tag → SidebarItemModel index covering the top-level section rows and
+    // their immediate (static) children. Built once by IndexSidebarTree after
+    // InitializeSidebarItems. Playlist / pinned rows are NOT indexed here —
+    // they come and go; the existing recursive FindSidebarItemByTag still
+    // handles them.
+    private readonly Dictionary<string, SidebarItemModel> _sidebarItemsByTag = new(StringComparer.Ordinal);
 
     [ObservableProperty]
     private ISidebarItemModel? _selectedSidebarItem;
@@ -366,6 +355,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     public ShellViewModel(
         ILibraryDataService libraryDataService,
+        IPinService pinService,
         IPlaylistCacheService playlistCache,
         IThemeService themeService,
         INotificationService notificationService,
@@ -373,14 +363,21 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         IPlaybackStateService playbackStateService,
         AppModel appModel,
         IShellSessionService shellSession,
+        IPanelDockingService docking,
+        INowPlayingPresentationService presentation,
         ISettingsService? settingsService = null,
         IDispatcherService? dispatcher = null,
         ILogger<ShellViewModel>? logger = null,
         PlaylistMosaicService? mosaicService = null,
         Wavee.Local.ILocalLibraryService? localLibrary = null,
-        ISpotifyLinkPreviewService? linkPreviewService = null)
+        ISpotifyLinkPreviewService? linkPreviewService = null,
+        MiniVideoPlayerViewModel? miniVideoVm = null,
+        Wavee.UI.WinUI.DragDrop.DragStateService? dragStateService = null,
+        Wavee.UI.Services.Infra.IBackgroundWorkRunner? backgroundWorkRunner = null,
+        Wavee.UI.Services.Infra.IChangeBus? changeBus = null)
     {
         _libraryDataService = libraryDataService;
+        _pinService = pinService;
         _playlistCache = playlistCache;
         _themeService = themeService;
         _notificationService = notificationService;
@@ -388,12 +385,26 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _playbackStateService = playbackStateService;
         _appModel = appModel;
         _shellSession = shellSession;
+        _docking = docking;
+        _presentation = presentation;
+        _miniVideoVm = miniVideoVm;
+        _dragStateService = dragStateService;
+        _backgroundWork = backgroundWorkRunner ?? new Wavee.UI.Services.Infra.BackgroundWorkRunner();
+        _changeBus = changeBus ?? new Wavee.UI.Services.Infra.ChangeBus();
         _settingsService = settingsService;
         _dispatcher = dispatcher;
         _logger = logger;
         _mosaicService = mosaicService;
         _localLibrary = AppFeatureFlags.LocalFilesEnabled ? localLibrary : null;
         _linkPreviewService = linkPreviewService;
+
+        // Wire PropertyChanged subscriptions for the injected singletons.
+        // (Previously these were wired in the lazy-resolve getters that the
+        // ctor-DI move replaced.)
+        _docking.PropertyChanged += OnDockingPropertyChanged;
+        _presentation.PropertyChanged += OnPresentationPropertyChanged;
+        if (_miniVideoVm is not null)
+            _miniVideoVm.PropertyChanged += OnMiniVideoPlayerPropertyChanged;
 
         // Initialize from AppModel (one-time read)
         _sidebarWidth = appModel.SidebarWidth;
@@ -420,11 +431,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // Subscribe to notification service changes to forward to XAML bindings
         _notificationService.PropertyChanged += OnNotificationServicePropertyChanged;
 
-        // Subscribe to playlist changes for reactive updates
-        _libraryDataService.PlaylistsChanged += OnPlaylistsChanged;
-
-        // Subscribe to all library data changes (sync complete, Dealer deltas, etc.)
-        _libraryDataService.DataChanged += OnLibraryDataChanged;
+        // Library / playlist change notifications now flow through IChangeBus.
+        // Filter by scope; OnPlaylistsChanged / OnLibraryDataChanged keep their
+        // original shape so the downstream handlers don't need to change.
+        _changeBusPlaylistsSubscription = _changeBus.Changes
+            .Where(static s => s == Wavee.UI.Services.Infra.ChangeScope.Playlists)
+            .Subscribe(_ => OnPlaylistsChanged(this, EventArgs.Empty));
+        _changeBusLibrarySubscription = _changeBus.Changes
+            .Where(static s => s == Wavee.UI.Services.Infra.ChangeScope.Library)
+            .Subscribe(_ => OnLibraryDataChanged(this, EventArgs.Empty));
 
         // Drag-state hook: while ANY drag is in progress, expand every
         // sidebar folder so deeply-nested folders become drop targets
@@ -433,19 +448,18 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // The expansion changes are suppressed from persistence
         // (OnSidebarGroupPropertyChanged checks _suppressExpansionPersistence)
         // so the user's saved layout isn't trampled.
-        var dragStateService = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<Wavee.UI.WinUI.DragDrop.DragStateService>();
-        if (dragStateService is not null)
-            dragStateService.DragStateChanged += OnGlobalDragStateChanged;
+        if (_dragStateService is not null)
+            _dragStateService.DragStateChanged += OnGlobalDragStateChanged;
 
-        // Per-playlist change → sidebar mosaic refresh. PlaylistDiffApplier
+        // Per-playlist change â†’ sidebar mosaic refresh. PlaylistDiffApplier
         // updates Items in the cache after a Mercury push, but the sidebar's
         // cached IconSource keeps pointing at the old composite forever
         // (LazyIconSourceLoader is cleared on first load). We listen for
         // Updated events here, drop the in-flight + on-disk mosaic via
         // PlaylistMosaicService.Invalidate, then kick off a fresh build and
-        // swap model.IconSource — the SidebarItem control listens for that
+        // swap model.IconSource â€” the SidebarItem control listens for that
         // PropertyChanged and re-renders the icon.
-        // Subscribe regardless of mosaic-service availability — the handler's
+        // Subscribe regardless of mosaic-service availability â€” the handler's
         // first phase promotes real covers from the cache (works with or without
         // the mosaic service), and the second phase only kicks in when a mosaic
         // is actually appropriate.
@@ -454,13 +468,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                               && !string.IsNullOrEmpty(evt.Uri))
             .Subscribe(evt => OnPlaylistContentsChanged(evt.Uri));
 
-        // Capture UI thread dispatcher for background → UI marshalling
+        // Capture UI thread dispatcher for background â†’ UI marshalling
         // Dispatcher captured via DI
         WeakReferenceMessenger.Default.Register<Data.Messages.LibrarySyncStartedMessage>(this, (_, _) =>
         {
             _dispatcher?.TryEnqueue(() =>
             {
-                _logger?.LogDebug("Sidebar: sync started — clearing badges");
+                _logger?.LogDebug("Sidebar: sync started â€” clearing badges");
                 ClearLibraryBadges();
             });
         });
@@ -468,18 +482,18 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             _dispatcher?.TryEnqueue(() =>
             {
-                _logger?.LogWarning("Sidebar: sync failed — {Error}", msg.Value);
+                _logger?.LogWarning("Sidebar: sync failed â€” {Error}", msg.Value);
                 ShowNotification(AppLocalization.Format("Shell_LibrarySyncFailed", msg.Value));
             });
         });
 
-        // Initial library load must wait for auth+sync to complete — rootlist lookup
+        // Initial library load must wait for auth+sync to complete â€” rootlist lookup
         // requires an authenticated username, so firing this from the constructor
         // races the auth pipeline and produces a spurious "Failed to load library data"
         // error on every cold start.
         WeakReferenceMessenger.Default.Register<Data.Messages.LibrarySyncCompletedMessage>(this, (_, _) =>
         {
-            _dispatcher?.TryEnqueue(() => _ = LoadLibraryDataAsync());
+            _dispatcher?.TryEnqueue(() => _backgroundWork.Run(_ => LoadLibraryDataAsync(), "ShellViewModel.LoadLibraryData"));
         });
 
         // On sign-out, wipe the signed-in user's sidebar state (badges + playlists)
@@ -490,7 +504,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             {
                 _dispatcher?.TryEnqueue(() =>
                 {
-                    _logger?.LogDebug("Sidebar: auth status {Status} — clearing library state", msg.Value);
+                    _logger?.LogDebug("Sidebar: auth status {Status} â€” clearing library state", msg.Value);
                     ClearLibrarySidebar();
                 });
             }
@@ -552,14 +566,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         ClearLibraryBadges();
 
-        var playlistsSection = SidebarItems.FirstOrDefault(x => x.Tag == "Playlists");
-        if (playlistsSection?.Children is ObservableCollection<SidebarItemModel> playlistChildren)
+        if (_sidebarItemsByTag.TryGetValue("Playlists", out var playlistsSection)
+            && playlistsSection.Children is ObservableCollection<SidebarItemModel> playlistChildren)
         {
             playlistChildren.Clear();
         }
 
-        var pinnedSection = SidebarItems.FirstOrDefault(x => x.Tag == "Pinned");
-        if (pinnedSection?.Children is ObservableCollection<SidebarItemModel> pinnedChildren)
+        if (_sidebarItemsByTag.TryGetValue("Pinned", out var pinnedSection)
+            && pinnedSection.Children is ObservableCollection<SidebarItemModel> pinnedChildren)
         {
             pinnedChildren.Clear();
         }
@@ -574,8 +588,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _playlistRefreshCts;
 
     // Subscription that re-builds a sidebar mosaic when its playlist's items
-    // change (Mercury push → PlaylistDiffApplier mutates Items → Updated event
-    // fires → we rebuild the composite). Without this, the cached mosaic
+    // change (Mercury push â†’ PlaylistDiffApplier mutates Items â†’ Updated event
+    // fires â†’ we rebuild the composite). Without this, the cached mosaic
     // keeps showing the old top-4 album covers until app restart.
     private IDisposable? _playlistMosaicChangesSubscription;
     private const int PlaylistRefreshDebounceMs = 250;
@@ -584,7 +598,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         // DataChanged fires for lots of unrelated things (liked-songs save state, Dealer
         // deltas on non-playlist topics, etc). We deliberately don't rebuild the whole
-        // sidebar here — only OnPlaylistsChanged does the heavy work. But the four
+        // sidebar here â€” only OnPlaylistsChanged does the heavy work. But the four
         // library badge counts (Albums / Artists / Liked Songs / Podcasts) ARE cheap to
         // refresh, and missing one means the sidebar shows a stale number after the user
         // likes/saves/follows something. So: stats-only refresh here.
@@ -600,20 +614,17 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private async Task RefreshLibraryBadgesAsync()
     {
         var stats = await _libraryDataService.GetStatsAsync();
-        var librarySection = SidebarItems.FirstOrDefault(x => x.Tag == "YourLibrary");
-        if (librarySection?.Children is not ObservableCollection<SidebarItemModel> children) return;
 
-        var albums = children.FirstOrDefault(x => x.Tag as string == "Albums");
-        if (albums != null) albums.BadgeCount = stats.AlbumCount;
-
-        var artists = children.FirstOrDefault(x => x.Tag as string == "Artists");
-        if (artists != null) artists.BadgeCount = stats.ArtistCount;
-
-        var liked = children.FirstOrDefault(x => x.Tag as string == "LikedSongs");
-        if (liked != null) liked.BadgeCount = stats.LikedSongsCount;
-
-        var podcasts = children.FirstOrDefault(x => x.Tag as string is "Podcasts" or "YourEpisodes");
-        if (podcasts != null) podcasts.BadgeCount = stats.PodcastCount;
+        if (_sidebarItemsByTag.TryGetValue("Albums", out var albums)) albums.BadgeCount = stats.AlbumCount;
+        if (_sidebarItemsByTag.TryGetValue("Artists", out var artists)) artists.BadgeCount = stats.ArtistCount;
+        if (_sidebarItemsByTag.TryGetValue("LikedSongs", out var liked)) liked.BadgeCount = stats.LikedSongsCount;
+        // Podcasts and YourEpisodes are two valid tags for the same row depending on
+        // build flavor — prefer Podcasts when both exist (legacy keeps both around).
+        if (_sidebarItemsByTag.TryGetValue("Podcasts", out var podcasts)
+            || _sidebarItemsByTag.TryGetValue("YourEpisodes", out podcasts))
+        {
+            podcasts.BadgeCount = stats.PodcastCount;
+        }
     }
 
     private void OnPlaylistsChanged(object? sender, EventArgs e)
@@ -646,7 +657,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         try
         {
-            // Phase 1 — cache-only. SQLite + hot in-memory only, never the network.
+            // Phase 1 â€” cache-only. SQLite + hot in-memory only, never the network.
             // When the user has been signed in before, this hydrates the sidebar in
             // a few ms. When the cache is empty (cold launch / signed-out), both
             // helpers return null and the shimmer stays visible until Phase 2.
@@ -662,7 +673,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 ClearPlaylistsLoadingState();
             }
 
-            // Phase 2 — network-backed refresh. Runs to completion even when Phase 1
+            // Phase 2 â€” network-backed refresh. Runs to completion even when Phase 1
             // already painted from cache; the smart diff in PopulatePlaylistsSidebar
             // reuses existing SidebarItemModels by Tag, so unchanged rows do not
             // flicker. Network failures here surface as caught exceptions but the
@@ -675,7 +686,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            // Network refresh failed — still drop the loading state so the user
+            // Network refresh failed â€” still drop the loading state so the user
             // isn't left staring at perpetual shimmer when the cache was empty.
             ClearPlaylistsLoadingState();
             _logger?.LogError(ex, "Failed to refresh playlists from service");
@@ -692,105 +703,42 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private void InitializeSidebarItems()
     {
-        SidebarItems =
-        [
-            // Pinned section (collapsible, dynamic items)
-            new SidebarItemModel
-            {
-                Text = AppLocalization.GetString("Shell_SidebarPinned"),
-                Tag = "Pinned",
-                IsExpanded = true,
-                IsSectionHeader = true,
-                ShowEmptyPlaceholder = true,
-                Children = new ObservableCollection<SidebarItemModel>
-                {
-                    // Dynamic pinned items will be populated here
-                }
-            },
-            // Your Library section (collapsible, NO playlists)
-            new SidebarItemModel
-            {
-                Text = AppLocalization.GetString("Shell_SidebarYourLibrary"),
-                Tag = "YourLibrary",
-                IsExpanded = true,
-                IsSectionHeader = true,
-                ShowCompactSeparatorBefore = true,
-                Children = new ObservableCollection<SidebarItemModel>
-                {
-                    new SidebarItemModel
-                    {
-                        Text = AppLocalization.GetString("Shell_SidebarAlbums"),
-                        IconSource = new FontIconSource { Glyph = "\uE93C" },
-                        Tag = "Albums",
-                        BadgeCount = 0
-                    },
-                    new SidebarItemModel
-                    {
-                        Text = AppLocalization.GetString("Shell_SidebarArtists"),
-                        IconSource = new FontIconSource { Glyph = "\uE77B" },
-                        Tag = "Artists",
-                        BadgeCount = 0
-                    },
-                    new SidebarItemModel
-                    {
-                        Text = AppLocalization.GetString("Shell_SidebarLikedSongs"),
-                        IconSource = new FontIconSource { Glyph = "\uEB52" },
-                        Tag = "LikedSongs",
-                        BadgeCount = 0,
-                        ShowPinToggleButton = true
-                    },
-                    new SidebarItemModel
-                    {
-                        Text = AppLocalization.GetString("Shell_SidebarPodcasts"),
-                        IconSource = new FontIconSource { Glyph = "\uEC05" },
-                        Tag = "Podcasts",
-                        BadgeCount = 0,
-                        ShowPinToggleButton = true
-                    },
-                    // Local files landing page. The typed shelves stay one click
-                    // deeper inside LocalLibraryPage instead of occupying four
-                    // separate sidebar rows. FontIconSource (not SymbolIconSource)
-                    // for parity with its siblings — SymbolIconSource carries a
-                    // different default size/margin that visibly stretches the
-                    // icon column and squeezes the label.
-                    new SidebarItemModel
-                    {
-                        Text = AppLocalization.GetString("Shell_SidebarLocalFiles"),
-                        IconSource = new FontIconSource { Glyph = FluentGlyphs.Folder },
-                        Tag = "LocalFiles",
-                        BadgeCount = null,
-                        IsEnabled = AppFeatureFlags.LocalFilesEnabled,
-                        ToolTip = AppFeatureFlags.LocalFilesEnabled
-                            ? AppLocalization.GetString("Shell_SidebarLocalFiles")
-                            : "Coming soon after the initial beta release",
-                        ItemDecorator = AppFeatureFlags.LocalFilesEnabled ? null : CreateComingSoonBadge()
-                    }
-                }
-            },
-            // Playlists section (collapsible). IsLoadingChildren=true on cold boot
-            // so the sidebar shows shimmer rows the instant it realizes, before any
-            // cache or network read has completed. RefreshPlaylistsAsync flips this
-            // back to false as soon as either tier yields a result.
-            new SidebarItemModel
-            {
-                Text = AppLocalization.GetString("Shell_SidebarPlaylists"),
-                Tag = "Playlists",
-                IsExpanded = true,
-                IsSectionHeader = true,
-                ShowCompactSeparatorBefore = true,
-                IsLoadingChildren = true,
-                ShowEmptyPlaceholder = true,
-                EmptyPlaceholderText = AppLocalization.GetString("Shell_SidebarNoPlaylists"),
-                ItemDecorator = CreatePlaylistsAddButton(),
-                Children = new ObservableCollection<SidebarItemModel>
-                {
-                    // User playlists will be populated dynamically
-                }
-            }
-        ];
+        SidebarItems = Wavee.UI.WinUI.Helpers.Sidebar.SidebarTreeBuilder.Build(
+            buildPinDropZoneRow: BuildPinDropZoneRow,
+            createComingSoonBadge: CreateComingSoonBadge,
+            createPlaylistsAddButton: CreatePlaylistsAddButton);
 
         foreach (var group in SidebarItems)
             group.PropertyChanged += OnSidebarGroupPropertyChanged;
+
+        IndexSidebarTree();
+    }
+
+    /// <summary>
+    /// Build the O(1) tag→item lookup over the static sidebar shape (top-level
+    /// sections + their immediate children). Playlist / pinned entries are
+    /// excluded — those are dynamic and still walked by the recursive
+    /// <see cref="FindSidebarItemByTag(string)"/> when a deep lookup is needed.
+    /// </summary>
+    private void IndexSidebarTree()
+    {
+        _sidebarItemsByTag.Clear();
+        foreach (var section in SidebarItems)
+        {
+            if (section.Tag is string sectionTag)
+                _sidebarItemsByTag[sectionTag] = section;
+            // Only walk immediate children — playlist / pinned rows are dynamic
+            // and would invalidate the index. Library badges (Albums, Artists,
+            // LikedSongs, Podcasts, LocalFiles) are static after init.
+            if (section.Children is IEnumerable<SidebarItemModel> children)
+            {
+                foreach (var child in children)
+                {
+                    if (child.Tag is string childTag)
+                        _sidebarItemsByTag[childTag] = child;
+                }
+            }
+        }
     }
 
     private void ApplyPersistedSidebarState()
@@ -806,6 +754,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private SidebarItemModel? FindSidebarItemByTag(string tag)
     {
+        // O(1) for the static rows (top-level sections + library children);
+        // falls through to the O(n) recursive walk for dynamic rows
+        // (playlists, pinned, folder contents) that aren't in the index.
+        if (_sidebarItemsByTag.TryGetValue(tag, out var hit))
+            return hit;
         return FindSidebarItemByTag(SidebarItems, tag);
     }
 
@@ -814,7 +767,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// Accepts a bare playlist id, a Spotify URI (<c>spotify:playlist:xxx</c>), or a
     /// <see cref="ContentNavigationParameter"/> carrying either. The id segment after the
     /// last <c>:</c> is extracted before looking up the sidebar row.
-    /// Clears the selection when no sidebar row matches — e.g. a search-opened playlist
+    /// Clears the selection when no sidebar row matches â€” e.g. a search-opened playlist
     /// that isn't in the user's library.
     /// </summary>
     public void SyncSidebarSelectionToPlaylist(object? uriOrId)
@@ -828,7 +781,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         if (string.IsNullOrWhiteSpace(s))
         {
-            // Only assign if not already null — otherwise the setter still fires
+            // Only assign if not already null â€” otherwise the setter still fires
             // PropertyChanged and cascades to every realized SidebarItem.
             if (SelectedSidebarItem is not null)
                 SelectedSidebarItem = null;
@@ -853,8 +806,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // The SelectedSidebarItem setter fires PropertyChanged unconditionally, and
         // every realized SidebarItem reacts via the SidebarView.SelectedItemProperty
         // PropertyChangedCallback (running VisualStateManager.GoToState + folder
-        // glyph swaps synchronously). Without this guard, every nav — including
-        // tab-switches and re-clicks of the currently-selected playlist — produces
+        // glyph swaps synchronously). Without this guard, every nav â€” including
+        // tab-switches and re-clicks of the currently-selected playlist â€” produces
         // a visible folder-flash cascade across the entire sidebar tree.
         if (ReferenceEquals(SelectedSidebarItem, match)) return;
 
@@ -885,8 +838,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        // Folders: swap Fluent Folder (E8B7) ↔ FolderOpen (E838) so the tree glyph matches state.
-        // FontFamily re-pinned on each replacement — without it the new IconSource
+        // Folders: swap Fluent Folder (E8B7) â†” FolderOpen (E838) so the tree glyph matches state.
+        // FontFamily re-pinned on each replacement â€” without it the new IconSource
         // inherits ContentControlThemeFontFamily (a text font) and the glyph renders as tofu.
         if (group.IsFolder)
             group.IconSource = new FontIconSource
@@ -904,14 +857,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _shellSession.UpdateSidebarGroupExpansion(group.Tag!, group.IsExpanded);
     }
 
-    // ── Drag-time folder auto-expand ───────────────────────────────────────
+    // â”€â”€ Drag-time folder auto-expand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private Dictionary<string, bool>? _preDragFolderExpansion;
     private bool _suppressExpansionPersistence;
 
     private void OnGlobalDragStateChanged(bool isDragging)
     {
-        // Marshal to UI thread — SidebarItemModel changes flow into XAML bindings.
+        // Marshal to UI thread â€” SidebarItemModel changes flow into XAML bindings.
         var dq = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()
                  ?? DispatcherQueueIfAvailable();
         if (dq is null)
@@ -1064,7 +1017,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Center,
             HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Center,
             Flyout = menuFlyout,
-            // Suppress the default WinUI focus rectangle — it's a saturated
+            // Suppress the default WinUI focus rectangle â€” it's a saturated
             // accent-coloured rect that reads identically to the sidebar's
             // selected-item border, making the "+" look perpetually selected
             // after any interaction lands focus on it.
@@ -1132,7 +1085,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // inserts new ones in place, moves reordered ones, and trims removed ones.
         // Replaces the previous Clear() + walk-and-append, which made the sidebar
         // flash on every refresh even when the fresh data was identical to what
-        // was already painted (the common case after the cache→network fan-out).
+        // was already painted (the common case after the cacheâ†’network fan-out).
         var playlistsSection = SidebarItems.FirstOrDefault(x => x.Tag == "Playlists");
         if (playlistsSection?.Children is not ObservableCollection<SidebarItemModel> playlistChildren)
             return;
@@ -1153,7 +1106,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var items = await _libraryDataService.GetPinnedItemsAsync();
+            var items = await _pinService.GetPinnedItemsAsync();
             PopulatePinnedSidebar(items);
             SyncCanonicalRowsPinnedState();
         }
@@ -1178,11 +1131,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             if (row.Tag == "LikedSongs")
             {
-                row.IsPinned = _libraryDataService.IsPinned("spotify:collection");
+                row.IsPinned = _pinService.IsPinned("spotify:collection");
             }
             else if (row.Tag == "Podcasts" || row.Tag == "YourEpisodes")
             {
-                row.IsPinned = _libraryDataService.IsPinned("spotify:collection:your-episodes");
+                row.IsPinned = _pinService.IsPinned("spotify:collection:your-episodes");
             }
         }
     }
@@ -1200,11 +1153,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         if (model.ShowUnpinButton)
         {
-            // Pinned-section row — Tag IS the URI we want to unpin.
+            // Pinned-section row â€” Tag IS the URI we want to unpin.
             if (string.IsNullOrEmpty(model.Tag)) return;
             try
             {
-                var ok = await _libraryDataService.UnpinAsync(model.Tag);
+                var ok = await _pinService.UnpinAsync(model.Tag);
                 if (!ok)
                     NotifyPinFailure(unpinned: true);
             }
@@ -1218,7 +1171,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         if (!model.ShowPinToggleButton) return;
 
-        // Canonical YL row — map the row tag to its pseudo-URI.
+        // Canonical YL row â€” map the row tag to its pseudo-URI.
         var uri = model.Tag switch
         {
             "LikedSongs" => "spotify:collection",
@@ -1227,13 +1180,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         };
         if (uri is null) return;
 
-        var wasPinned = _libraryDataService.IsPinned(uri);
+        var wasPinned = _pinService.IsPinned(uri);
         if (!wasPinned)
             return;
 
         try
         {
-            var ok = await _libraryDataService.UnpinAsync(uri);
+            var ok = await _pinService.UnpinAsync(uri);
             if (!ok)
                 NotifyPinFailure(unpinned: wasPinned);
         }
@@ -1248,7 +1201,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         // Toast surfaces the rollback to the user: the optimistic local write
         // already reverted inside SpotifyLibraryService, so the sidebar shows
-        // the correct (unchanged) state — this message just explains why.
+        // the correct (unchanged) state â€” this message just explains why.
         var message = unpinned
             ? "Couldn't unpin from the sidebar. Check your connection and try again."
             : "Couldn't pin to the sidebar. Check your connection and try again.";
@@ -1261,21 +1214,30 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         if (pinnedSection?.Children is not ObservableCollection<SidebarItemModel> children)
             return;
 
-        // Flat key-based diff — same shape as DiffPlaylistCollection but without
+        // The Pinned section keeps trailing drop-zone-only rows (e.g. the pin
+        // drop placeholder) anchored at the end. Compute the data-row window
+        // so the diff below operates only on real pinned items and never
+        // mutates / truncates the placeholders.
+        int dropZoneTail = 0;
+        while (dropZoneTail < children.Count && children[children.Count - 1 - dropZoneTail].IsDropZoneOnly)
+            dropZoneTail++;
+        int dataCount = children.Count - dropZoneTail;
+
+        // Flat key-based diff â€" same shape as DiffPlaylistCollection but without
         // folder recursion. Reuses existing rows by URI so selection survives,
         // and updates Text/Image in place when an unchanged row's title comes
         // back from a fresh metadata fetch.
         for (int i = 0; i < items.Count; i++)
         {
             var t = items[i];
-            if (i < children.Count && string.Equals(children[i].Tag, t.Uri, StringComparison.Ordinal))
+            if (i < dataCount && string.Equals(children[i].Tag, t.Uri, StringComparison.Ordinal))
             {
                 UpdatePinnedRow(children[i], t);
                 continue;
             }
 
             int found = -1;
-            for (int j = i + 1; j < children.Count; j++)
+            for (int j = i + 1; j < dataCount; j++)
             {
                 if (string.Equals(children[j].Tag, t.Uri, StringComparison.Ordinal))
                 {
@@ -1292,11 +1254,17 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             else
             {
                 children.Insert(i, BuildPinnedRow(t));
+                dataCount++;
             }
         }
 
-        while (children.Count > items.Count)
-            children.RemoveAt(children.Count - 1);
+        // Trim excess data rows from the head of the drop-zone tail downward,
+        // leaving the drop-zone rows untouched.
+        while (dataCount > items.Count)
+        {
+            children.RemoveAt(items.Count);
+            dataCount--;
+        }
 
         if (_shellSession.GetSelectedSidebarTag() is { Length: > 0 } selectedTag)
         {
@@ -1332,6 +1300,32 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         };
     }
 
+    /// <summary>
+    /// Always-present, drag-only "Drop here to pin to sidebar" placeholder
+    /// at the bottom of the Pinned section. <see cref="SidebarItem"/> keeps
+    /// it collapsed until a drag whose payload matches
+    /// <see cref="SidebarItemModel.DropPredicate"/> begins, at which point it
+    /// fades in as a regular drop target. ShellPage routes drops on this row
+    /// to <see cref="IPinService.PinAsync"/> (= ylpin write).
+    /// </summary>
+    private static SidebarItemModel BuildPinDropZoneRow()
+    {
+        return new SidebarItemModel
+        {
+            Text = AppLocalization.GetString("Shell_SidebarPinDropZone"),
+            Tag = SidebarPinDropZoneTag,
+            IsDropZoneOnly = true,
+            Depth = 0,
+            IconSource = new FontIconSource { Glyph = FluentGlyphs.Pin },
+            DropPredicate = payload => payload is PlaylistDragPayload
+                                    or AlbumDragPayload
+                                    or ArtistDragPayload
+                                    or ShowDragPayload,
+        };
+    }
+
+    internal const string SidebarPinDropZoneTag = "pin-drop-zone";
+
     private static IconSource CreatePinnedIconSource(PinnedItemDto t)
     {
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(t.ImageUrl);
@@ -1347,10 +1341,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             };
         }
 
-        // No cover yet — fall back to a kind-appropriate Fluent glyph so the
+        // No cover yet â€” fall back to a kind-appropriate Fluent glyph so the
         // row reads correctly while the metadata backfill is in flight.
         // Liked Songs / Your Episodes are pseudo-URIs with no cover at all, so
-        // the glyph IS the icon — picked to match their "Your Library" siblings.
+        // the glyph IS the icon â€” picked to match their "Your Library" siblings.
         var glyph = t.Kind switch
         {
             PinnedItemKind.Artist => FluentGlyphs.Artist,
@@ -1467,7 +1461,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private void UpdatePlaylistMutableFields(SidebarItemModel current, PlaylistTargetNode t, int depth)
     {
         // SetProperty short-circuits on equality, so PropertyChanged only fires
-        // when a field actually changed — keeps unchanged rows from animating.
+        // when a field actually changed â€” keeps unchanged rows from animating.
         current.Depth = depth;
 
         if (t.IsFolder)
@@ -1535,7 +1529,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             Text = string.IsNullOrWhiteSpace(folder.Name)
                 ? AppLocalization.GetString("Shell_NewFolder")
                 : folder.Name,
-            // Pin the font explicitly — otherwise the glyph falls through to whatever
+            // Pin the font explicitly â€” otherwise the glyph falls through to whatever
             // ContentControlThemeFontFamily resolves to, which is _not_ a symbol font and
             // renders E838/E8B7 as tofu. Segoe Fluent Icons ships with Windows 11; MDL2
             // Assets is the Windows-10 fallback (both contain these codepoints).
@@ -1561,7 +1555,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Drop-eligibility predicate for sidebar folder rows. Folders accept any
     /// playlist (nest into folder) or any sibling sidebar row (reorder around
-    /// the folder). They never accept tracks directly — tracks land on
+    /// the folder). They never accept tracks directly â€” tracks land on
     /// playlists, not folders.
     /// </summary>
     private static Func<Wavee.UI.Services.DragDrop.IDragPayload, bool> FolderDropPredicate(string folderTag) =>
@@ -1607,7 +1601,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private SidebarItemModel CreatePlaylistSidebarItem(PlaylistSummaryDto playlist)
     {
-        // Capture for the DropPredicate closure — keeps the predicate stable
+        // Capture for the DropPredicate closure â€” keeps the predicate stable
         // when the row is re-bound to a fresh summary later.
         var canEdit = playlist.CanEditItems;
         var item = new SidebarItemModel
@@ -1615,7 +1609,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             Text = playlist.Name,
             IconSource = CreatePlaylistIconSource(playlist),
             Tag = playlist.Id,
-            // Captured so OnPlaylistContentsChanged can gate mosaic rebuilds —
+            // Captured so OnPlaylistContentsChanged can gate mosaic rebuilds â€”
             // only mosaic-backed (null or spotify:mosaic:...) playlists need
             // re-composition on a content change.
             ImageUrl = playlist.ImageUrl,
@@ -1623,13 +1617,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             CanEditItems = canEdit,
             BadgeCount = playlist.TrackCount,
             // Playlist rows accept:
-            //  - Tracks (add)             — only on rows the user can edit
-            //  - Album/Artist/Liked/Show  — same edit gate (resolves to add-tracks)
-            //  - PlaylistDragPayload      — same edit gate (copy source tracks)
-            //  - SidebarReorderPayload    — always allowed when source != target
+            //  - Tracks (add)             â€” only on rows the user can edit
+            //  - Album/Artist/Liked/Show  â€” same edit gate (resolves to add-tracks)
+            //  - PlaylistDragPayload      â€” same edit gate (copy source tracks)
+            //  - SidebarReorderPayload    â€” always allowed when source != target
             //                               (handler branches on drop position:
             //                                Top/Bottom = reorder, Center = copy
-            //                                — copy still respects edit gate)
+            //                                â€” copy still respects edit gate)
             DropPredicate = payload => payload switch
             {
                 Wavee.UI.Services.DragDrop.Payloads.TrackDragPayload          => canEdit,
@@ -1645,10 +1639,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             },
         };
 
-        // Spotify "custom" playlists (auto-named, e.g. "내 플레이리스트 #15") arrive either with
+        // Spotify "custom" playlists (auto-named, e.g. "ë‚´ í”Œë ˆì´ë¦¬ìŠ¤íŠ¸ #15") arrive either with
         // ImageUrl == null or ImageUrl == "spotify:mosaic:id1:id2:id3:id4". Neither is loadable
-        // as a single image — CreatePlaylistIconSource above seats the placeholder glyph, and
-        // we attach a lazy loader so PlaylistMosaicService can compose a 2×2 bitmap and replace
+        // as a single image â€” CreatePlaylistIconSource above seats the placeholder glyph, and
+        // we attach a lazy loader so PlaylistMosaicService can compose a 2Ã—2 bitmap and replace
         // IconSource the first time the row is realized.
         if (_mosaicService is { } service
             && (string.IsNullOrEmpty(playlist.ImageUrl) || SpotifyImageHelper.IsMosaicUri(playlist.ImageUrl)))
@@ -1669,13 +1663,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     ///      user-uploaded <c>spotify:image:{hex}</c>) and the sidebar row was
     ///      seated without one, swap in a real <see cref="ImageIconSource"/>.
     ///      Covers the common case of non-owned playlists whose rootlist
-    ///      decoration omits the picture — the persisted row only fills in
+    ///      decoration omits the picture â€” the persisted row only fills in
     ///      after the first full detail fetch, and the sidebar wouldn't
     ///      otherwise pick that up until the next sidebar refresh.
     ///   2. **Mosaic refresh.** If the cache still has no real cover (null /
     ///      <c>spotify:mosaic:</c>), invalidate + rebuild the composed mosaic.
     ///      Real-cover rows skip this step entirely.
-    /// Idempotent across rapid pushes — the mosaic service's in-flight cache
+    /// Idempotent across rapid pushes â€” the mosaic service's in-flight cache
     /// dedups concurrent rebuilds.
     /// </summary>
     private void OnPlaylistContentsChanged(string playlistUri)
@@ -1705,7 +1699,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                         var current = FindSidebarItemByTag(capturedUri);
                         if (current is null) return;
                         // Skip if the URL hasn't changed AND the icon is already
-                        // a loaded BitmapImage — avoids replacing a working icon
+                        // a loaded BitmapImage â€” avoids replacing a working icon
                         // and triggering needless re-decode flicker.
                         if (string.Equals(current.ImageUrl, cached.ImageUrl, StringComparison.Ordinal)
                             && current.IconSource is ImageIconSource { ImageSource: BitmapImage })
@@ -1720,7 +1714,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                                 DecodePixelWidth = 44
                             }
                         };
-                        // No further mosaic work needed — a real cover trumps
+                        // No further mosaic work needed â€” a real cover trumps
                         // any composed placeholder. Clear the lazy loader so a
                         // subsequent realization doesn't overwrite our promotion.
                         current.LazyIconSourceLoader = null;
@@ -1728,7 +1722,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                     return;
                 }
 
-                // Phase 2: mosaic refresh. Cache still has no usable URL — fall
+                // Phase 2: mosaic refresh. Cache still has no usable URL â€” fall
                 // back to rebuilding the 2x2 composed tile from track covers.
                 if (_mosaicService is null) return;
                 _mosaicService.Invalidate(capturedUri);
@@ -1753,7 +1747,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private static IconSource CreatePlaylistIconSource(PlaylistSummaryDto playlist)
     {
         // Route through SpotifyImageHelper so user-uploaded covers
-        // (spotify:image:{hex} — what the v3 cache schema produces from
+        // (spotify:image:{hex} â€” what the v3 cache schema produces from
         // attributes.Picture) render alongside the editorial pre-rendered
         // HTTPS PictureSize URLs. spotify:mosaic: still returns null and
         // falls through to the lazy mosaic loader below.
@@ -1961,7 +1955,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _appModel.SidebarDisplayMode = value;
 
         // The sidebar player widget can't render meaningfully in Compact (icon
-        // rail) or Minimal (slide-in) modes — there's no width for it. If the
+        // rail) or Minimal (slide-in) modes â€” there's no width for it. If the
         // user collapses the sidebar while the player is docked there, auto-
         // demote it back to the bottom bar so the player stays visible.
         if (value != SidebarDisplayMode.Expanded
@@ -2003,11 +1997,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         _appModel.PlayerLocation = value;
 
-        // Moving the player INTO the sidebar — make sure the sidebar is in a
+        // Moving the player INTO the sidebar â€” make sure the sidebar is in a
         // mode that can host it. Compact rail and Minimal flyout don't have
         // room. Auto-promote to Expanded; the existing SidebarWidth setting
         // is the "last known width" and the visual states use it via
-        // OpenPaneLength → PaneColumnDefinition.Width.
+        // OpenPaneLength â†’ PaneColumnDefinition.Width.
         if (value == PlayerLocation.Sidebar && SidebarDisplayMode != SidebarDisplayMode.Expanded)
         {
             SidebarDisplayMode = SidebarDisplayMode.Expanded;
@@ -2033,11 +2027,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Open the now-playing surface: ensure the sidebar player widget is
     /// visible (PlayerLocation = Sidebar) AND expanded (SidebarPlayerCollapsed = false).
-    /// Idempotent — a second call when already open does nothing because the
+    /// Idempotent â€” a second call when already open does nothing because the
     /// generated property setters short-circuit on equal values.
     ///
     /// Wired to the bottom PlayerBar's track-title click so the user always has
-    /// a discoverable path back to the now-playing surface — including videos,
+    /// a discoverable path back to the now-playing surface â€” including videos,
     /// where SidebarPlayerWidget renders the active video surface in
     /// ExpandedVideoHost.
     /// </summary>
@@ -2096,7 +2090,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Walks the sidebar tree and toggles <see cref="SidebarItemModel.IsAliasSelected"/>
     /// on rows that aren't the primary selection but represent the same logical
-    /// destination — e.g. when the pinned <c>spotify:collection</c> row is selected,
+    /// destination â€” e.g. when the pinned <c>spotify:collection</c> row is selected,
     /// the Your-Library "Liked Songs" row also lights up. Without this, only one of
     /// the two surfaces shows the selected indicator even though both point at the
     /// same page.
@@ -2289,7 +2283,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(query)) return;
 
-        // URL / URI paste — navigate straight to the entity instead of searching for
+        // URL / URI paste â€” navigate straight to the entity instead of searching for
         // the literal URL on the SearchPage. Uses whatever placeholder data we have;
         // destination pages prefill their hero from the URI.
         if (SpotifyLink.TryParse(query.Trim(), out var link))
@@ -2306,7 +2300,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Helpers.Navigation.NavigationHelpers.OpenSearch(query);
     }
 
-    public async void OnSearchTextChanged(string text)
+    public async Task OnSearchTextChangedAsync(string text)
     {
         var normalizedText = text?.Trim() ?? string.Empty;
         _activeSearchText = normalizedText;
@@ -2315,7 +2309,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             // Fast path: Spotify URL / URI paste. Replaces the normal three-section
             // search with a single "Open link" suggestion that previews the entity.
-            // Skip-ahead works regardless of current page (including SearchPage) — we
+            // Skip-ahead works regardless of current page (including SearchPage) â€” we
             // don't want to re-search for the literal URL.
             if (!string.IsNullOrWhiteSpace(normalizedText)
                 && SpotifyLink.TryParse(normalizedText, out var link))
@@ -2342,7 +2336,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
             if (string.IsNullOrWhiteSpace(normalizedText))
             {
-                // Empty → hide sectioned groups, show recent searches via flat list.
+                // Empty â†’ hide sectioned groups, show recent searches via flat list.
                 _searchDebouncer.Cancel();
                 SearchSuggestionErrorMessage = null;
                 SuggestionGroups = null;
@@ -2354,7 +2348,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                     if (recentCacheIsFresh)
                         return;
 
-                    _ = RefreshRecentSearchesSafeAsync(normalizedText);
+                    _backgroundWork.Run(_ => RefreshRecentSearchesSafeAsync(normalizedText), "ShellViewModel.RefreshRecentSearches");
                     return;
                 }
 
@@ -2368,10 +2362,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 SearchSuggestions = null; // flat list is off when sectioned mode is active
                 IsSearchSuggestionsLoading = true;
 
-                // 1) Synchronous Settings filter — always ≤ 3 items, in-memory.
+                // 1) Synchronous Settings filter â€” always â‰¤ 3 items, in-memory.
                 var settingsItems = BuildSettingsSuggestions(normalizedText);
 
-                // 2) Zero-network library quicksearch — broadened to AllCached so anything
+                // 2) Zero-network library quicksearch â€” broadened to AllCached so anything
                 //    the user has seen/played is findable, not just explicitly-saved items.
                 var libraryItems = await BuildLibrarySuggestionsAsync(normalizedText, CancellationToken.None);
 
@@ -2462,7 +2456,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             var subtitle = string.IsNullOrWhiteSpace(r.Subtitle)
                 ? "Your library"
-                : "Your library · " + r.Subtitle;
+                : "Your library Â· " + r.Subtitle;
 
             items.Add(new SearchSuggestionItem
             {
@@ -2487,10 +2481,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Composes the three sections into a flat list of groups. Empty Settings/Library
     /// sections are dropped. The Spotify section behavior depends on its argument:
-    ///   - <c>spotify == null</c> → pending state, show shimmer placeholders so the
+    ///   - <c>spotify == null</c> â†’ pending state, show shimmer placeholders so the
     ///     section is visible from frame 1 instead of popping in 300 ms later.
-    ///   - <c>spotify.Count == 0</c> → network responded with no matches, drop section.
-    ///   - <c>spotify.Count &gt; 0</c> → real items.
+    ///   - <c>spotify.Count == 0</c> â†’ network responded with no matches, drop section.
+    ///   - <c>spotify.Count &gt; 0</c> â†’ real items.
     /// </summary>
     private static List<SearchSuggestionGroup> BuildGroups(
         List<SearchSuggestionItem> settings,
@@ -2514,7 +2508,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     public void RetrySearchSuggestions()
     {
-        OnSearchTextChanged(_activeSearchText);
+        // Fire-and-forget — user-initiated retry. Exception logged inside the
+        // task so the unobserved-task crash handler stops being the only net.
+        _ = RunSearchTextChangedAsync(_activeSearchText);
+    }
+
+    private async Task RunSearchTextChangedAsync(string text)
+    {
+        try { await OnSearchTextChangedAsync(text).ConfigureAwait(false); }
+        catch (Exception ex) { _logger?.LogError(ex, "OnSearchTextChangedAsync failed"); }
     }
 
     public void OnSuggestionChosen(object? item)
@@ -2575,7 +2577,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                     NavigationHelpers.OpenYourEpisodes();
                 break;
 
-            // Omnibar Settings deep-link — reuse the in-page filter via existing
+            // Omnibar Settings deep-link â€” reuse the in-page filter via existing
             // NavigateToSearchEntry path on SettingsPage.OnNavigatedTo.
             case SearchSuggestionType.Setting:
                 if (!string.IsNullOrEmpty(suggestion.ContextTag) && !string.IsNullOrEmpty(suggestion.GroupKey))
@@ -2630,7 +2632,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// True when the active tab is hosting <see cref="Wavee.UI.WinUI.Views.VideoPlayerPage"/>.
     /// Drives both the bottom-bar suppression (the page owns the transport, no point
     /// in duplicating it) and the floating mini-player suppression (the page already
-    /// owns the video surface). Single source of truth — replaces the old per-page
+    /// owns the video surface). Single source of truth â€” replaces the old per-page
     /// SetOnVideoPage flip in VideoPlayerPage.OnNavigatedTo/From which double-fired
     /// when the same page type was also hosted in the Theatre overlay frame.
     /// </summary>
@@ -2675,16 +2677,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // depend on, AND keeps the legacy mini-VM SetOnVideoPage forward
         // working for any subscribers that still listen there.
         IsOnVideoPage = onVideo;
-        try
-        {
-            var miniVm = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-                .GetService<Wavee.UI.WinUI.ViewModels.MiniVideoPlayerViewModel>();
-            miniVm?.SetOnVideoPage(onVideo);
-        }
-        catch
-        {
-            // Mini VM might not be registered yet during early startup.
-        }
+        _miniVideoVm?.SetOnVideoPage(onVideo);
     }
 
     /// <summary>
@@ -2703,8 +2696,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _linkPreviewCts?.Cancel();
         _linkPreviewCts?.Dispose();
         _linkPreviewCts = null;
-        _libraryDataService.PlaylistsChanged -= OnPlaylistsChanged;
-        _libraryDataService.DataChanged -= OnLibraryDataChanged;
+        _changeBusPlaylistsSubscription?.Dispose();
+        _changeBusLibrarySubscription?.Dispose();
         _playlistMosaicChangesSubscription?.Dispose();
         _playlistMosaicChangesSubscription = null;
 
@@ -2713,7 +2706,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         pending?.Cancel();
         pending?.Dispose();
         _notificationService.PropertyChanged -= OnNotificationServicePropertyChanged;
-        // Match the 5 Register<T> calls in the constructor — the 4 beyond
+        // Match the 5 Register<T> calls in the constructor â€” the 4 beyond
         // ToggleRightPanelMessage were omitted, leaving each handler closure
         // pinning the ShellViewModel (captured `this`) against GC. Although
         // ShellViewModel is effectively a singleton per session so the leak
@@ -2909,7 +2902,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         SuggestionGroups = null;
     }
 
-    // ── Spotify URL / URI paste handling (omnibar fast path) ──────────────────────────
+    // â”€â”€ Spotify URL / URI paste handling (omnibar fast path) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>
     /// Replaces the omnibar suggestions with a single "Open link" card for the parsed
@@ -2936,7 +2929,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         };
 
         if (_linkPreviewService is not null)
-            _ = ResolveLinkPreviewAsync(link, rawText, _linkPreviewCts.Token);
+            _backgroundWork.Run(ct => ResolveLinkPreviewAsync(link, rawText, ct), "ShellViewModel.ResolveLinkPreview", _linkPreviewCts.Token);
     }
 
     private async Task ResolveLinkPreviewAsync(SpotifyLink link, string rawText, CancellationToken ct)
@@ -3014,7 +3007,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private static string TrimLinkForDisplay(string raw)
     {
         const int max = 64;
-        return raw.Length <= max ? raw : string.Concat(raw.AsSpan(0, max - 1), "…");
+        return raw.Length <= max ? raw : string.Concat(raw.AsSpan(0, max - 1), "â€¦");
     }
 
     /// <summary>
@@ -3078,7 +3071,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         IsSearchSuggestionsLoading = false;
 
         // Spotify leg failed. Strip its shimmer placeholders so the section doesn't keep
-        // pulsing forever. Keep partial Settings + Library groups visible — the user still
+        // pulsing forever. Keep partial Settings + Library groups visible â€” the user still
         // gets local results.
         if (SuggestionGroups is { Count: > 0 } current)
         {

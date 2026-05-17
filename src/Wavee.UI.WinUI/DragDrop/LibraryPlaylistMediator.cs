@@ -18,25 +18,27 @@ namespace Wavee.UI.WinUI.DragDrop;
 /// </summary>
 internal sealed class LibraryPlaylistMediator(
     ILibraryDataService library,
+    IPlaylistMutationService mutations,
+    IRootlistService rootlist,
     IAlbumService albumService,
     IArtistService artistService,
     IPodcastService podcastService)
     : IPlaylistDragDropMediator
 {
     public Task AddTracksAsync(string playlistUri, IReadOnlyList<string> trackUris, CancellationToken ct = default)
-        => library.AddTracksToPlaylistAsync(playlistUri, trackUris, ct);
+        => mutations.AddTracksToPlaylistAsync(playlistUri, trackUris, ct);
 
     public Task ReorderTracksAsync(string playlistUri, int fromIndex, int length, int toIndex, CancellationToken ct = default)
-        => library.ReorderTracksInPlaylistAsync(playlistUri, fromIndex, length, toIndex, ct);
+        => mutations.ReorderTracksInPlaylistAsync(playlistUri, fromIndex, length, toIndex, ct);
 
     public Task MovePlaylistInRootlistAsync(string sourceUri, string targetUri, DropPosition position, CancellationToken ct = default)
-        => library.MovePlaylistInRootlistAsync(sourceUri, targetUri, position, ct);
+        => rootlist.MovePlaylistInRootlistAsync(sourceUri, targetUri, position, ct);
 
     public Task MovePlaylistIntoFolderAsync(string playlistUri, string folderStartUri, CancellationToken ct = default)
-        => library.MovePlaylistIntoFolderAsync(playlistUri, folderStartUri, ct);
+        => rootlist.MovePlaylistIntoFolderAsync(playlistUri, folderStartUri, ct);
 
     public Task MovePlaylistOutOfFolderAsync(string playlistUri, int destinationRootIndex, CancellationToken ct = default)
-        => library.MovePlaylistOutOfFolderAsync(playlistUri, destinationRootIndex, ct);
+        => rootlist.MovePlaylistOutOfFolderAsync(playlistUri, destinationRootIndex, ct);
 
     // ── Context-track resolvers ────────────────────────────────────────────
 

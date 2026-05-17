@@ -1,15 +1,16 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
 
 /// <summary>
-/// Compact "Fans also like" pill — 40 px capsule with a 28 px circular avatar
+/// Compact "Fans also like" pill â€” 40 px capsule with a 28 px circular avatar
 /// and a name. Lives in the AlbumPage footer below the music-video strip on
-/// short releases (≤ 2 tracks). Designed to be reusable for the Search page +
+/// short releases (â‰¤ 2 tracks). Designed to be reusable for the Search page +
 /// Artist page "Related artists" surfaces later.
 /// </summary>
 public sealed partial class ArtistPillCard : UserControl
@@ -55,7 +56,7 @@ public sealed partial class ArtistPillCard : UserControl
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(e.NewValue as string);
         // PersonPicture handles its own initials fallback when ProfilePicture
         // is null, so we don't need to flip placeholder visibility. Decode at
-        // 56 px (2× the 28 px avatar) so the bitmap doesn't oversample.
+        // 56 px (2Ã— the 28 px avatar) so the bitmap doesn't oversample.
         card.Avatar.ProfilePicture = string.IsNullOrEmpty(httpsUrl)
             ? null
             : new BitmapImage(new System.Uri(httpsUrl))

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
+using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -94,7 +95,7 @@ public sealed partial class ShortsPill : UserControl
         WeakReferenceMessenger.Default.UnregisterAll(this);
 
         // CompositionImage handles its own pin release on Unload. Do NOT
-        // clear PillImage.ImageUrl here — it breaks scroll-back-up.
+        // clear PillImage.ImageUrl here â€” it breaks scroll-back-up.
     }
 
     private void OnNowPlayingChanged(object recipient, NowPlayingChangedMessage msg)
@@ -116,7 +117,7 @@ public sealed partial class ShortsPill : UserControl
     private void ApplyPlaybackSnapshot(string? contextUri, string? albumUri, bool playing)
     {
         var uri = Item?.Uri;
-        // Pill represents an item — match on its own URI against either the
+        // Pill represents an item â€” match on its own URI against either the
         // playback context or the currently-playing track's album URI.
         var isMatch = !string.IsNullOrEmpty(uri)
             && ((!string.IsNullOrEmpty(contextUri)
@@ -200,7 +201,7 @@ public sealed partial class ShortsPill : UserControl
             TitleText.ClearValue(TextBlock.ForegroundProperty);
     }
 
-    // ── Hover play button ──
+    // â”€â”€ Hover play button â”€â”€
 
     private void PillButton_PointerEntered(object sender, PointerRoutedEventArgs e)
     {

@@ -40,6 +40,7 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
 
     private readonly IPodcastService _podcastService;
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IPodcastEpisodeService _podcastEpisodeService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ILogger? _logger;
@@ -304,11 +305,13 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
     public EpisodePageViewModel(
         IPodcastService podcastService,
         ILibraryDataService libraryDataService,
+        IPodcastEpisodeService podcastEpisodeService,
         IPlaybackStateService playbackStateService,
         ILogger<EpisodePageViewModel>? logger = null)
     {
         _podcastService = podcastService ?? throw new ArgumentNullException(nameof(podcastService));
         _libraryDataService = libraryDataService ?? throw new ArgumentNullException(nameof(libraryDataService));
+        _podcastEpisodeService = podcastEpisodeService ?? throw new ArgumentNullException(nameof(podcastEpisodeService));
         _playbackStateService = playbackStateService ?? throw new ArgumentNullException(nameof(playbackStateService));
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
@@ -325,7 +328,7 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         if (_longLivedAttached) return;
         _longLivedAttached = true;
         _playbackStateService.PropertyChanged += OnPlaybackStateChanged;
-        _libraryDataService.PodcastEpisodeProgressChanged += OnPodcastEpisodeProgressChanged;
+        _podcastEpisodeService.PodcastEpisodeProgressChanged += OnPodcastEpisodeProgressChanged;
     }
 
     private void DetachLongLivedServices()
@@ -333,7 +336,7 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         if (!_longLivedAttached) return;
         _longLivedAttached = false;
         _playbackStateService.PropertyChanged -= OnPlaybackStateChanged;
-        _libraryDataService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
+        _podcastEpisodeService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
     }
 
     /// <summary>
@@ -434,7 +437,7 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
             // and neither blocks the other.
             var episodesTask = _podcastService.GetEpisodesAsync(new[] { parameter.EpisodeUri }, ct);
             var chaptersTask = _podcastService.GetEpisodeChaptersAsync(parameter.EpisodeUri, ct);
-            var detailTask = _libraryDataService.GetPodcastEpisodeDetailAsync(parameter.EpisodeUri, ct);
+            var detailTask = _podcastEpisodeService.GetPodcastEpisodeDetailAsync(parameter.EpisodeUri, ct);
 
             try
             {
@@ -593,7 +596,7 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         if (page is not null)
         {
             foreach (var comment in page.Items)
-                Comments.Add(new PodcastCommentViewModel(comment, _libraryDataService, _logger));
+                Comments.Add(new PodcastCommentViewModel(comment, _libraryDataService, _podcastEpisodeService, _logger));
 
             _commentsNextPageToken = page.NextPageToken;
             _commentsTotalCount = Math.Max(page.TotalCount, Comments.Count);
@@ -915,11 +918,10 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         CommentStatus = null;
         try
         {
-            var comment = await _libraryDataService
-                .CreatePodcastEpisodeCommentAsync(_episodeUri, text)
+            var comment = await _podcastEpisodeService .CreatePodcastEpisodeCommentAsync(_episodeUri, text)
                 .ConfigureAwait(true);
 
-            Comments.Insert(0, new PodcastCommentViewModel(comment, _libraryDataService, _logger));
+            Comments.Insert(0, new PodcastCommentViewModel(comment, _libraryDataService, _podcastEpisodeService, _logger));
             _commentsTotalCount = Math.Max(_commentsTotalCount + 1, Comments.Count);
             CommentDraft = "";
             CommentStatus = "Comment saved locally. Spotify posting is not wired yet.";
@@ -947,8 +949,7 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         CommentStatus = null;
         try
         {
-            var page = await _libraryDataService
-                .GetPodcastEpisodeCommentsPageAsync(_episodeUri, token)
+            var page = await _podcastEpisodeService .GetPodcastEpisodeCommentsPageAsync(_episodeUri, token)
                 .ConfigureAwait(true);
 
             ApplyCommentsPage(page, replace: false);

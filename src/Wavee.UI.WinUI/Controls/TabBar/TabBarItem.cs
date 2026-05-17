@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml;
@@ -8,6 +9,7 @@ using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Diagnostics;
 using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.TabBar;
 
@@ -16,13 +18,53 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     private static readonly TimeSpan NavigationGcWindow = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan PostNavigatedGcWindow = TimeSpan.FromSeconds(2);
 
-    // 5 cached pages per tab — deliberate memory-vs-UX tradeoff. Back/forward
-    // through a deep navigation stack stays instant: no page recreation, no
-    // flicker, no rebound of virtualized item containers, no palette/hero
-    // re-prefetch. Setting this to 0 made nav feel sluggish; find memory wins
-    // elsewhere (image cache pin balance, unbounded subscriptions, idle render
-    // loops) before touching this number again.
-    private const int DefaultFrameCacheSize = 5;
+    // Per-tab page cache. The "comfortable" size is 5 — keeps back / forward
+    // through a deep nav stack instant (no recreation, no flicker, no item-
+    // container rebind, no palette / hero re-prefetch). Setting this to 0
+    // made nav feel sluggish.
+    //
+    // The catch is cross-tab: 5 × N tabs is unbounded growth, and the WinRT
+    // ComWrappers + Composition tree footprint scales linearly with the
+    // total cached pages. So we adapt: stay at 5 while open tabs are few,
+    // drop to 3 when the user has more tabs open. The threshold is set so a
+    // typical "1-3 tabs" workflow keeps the full back/forward cache, while a
+    // power user with many tabs trades a bit of cache depth for headroom.
+    //
+    // Both values are tuned numbers — change them in tandem with
+    // AdaptiveTabCountThreshold.
+    private const int ComfortableFrameCacheSize = 5;
+    private const int ReducedFrameCacheSize = 3;
+    private const int AdaptiveTabCountThreshold = 3;
+
+    /// <summary>
+    /// Picks the right CacheSize for the current total tab count. Called
+    /// from the ctor of a freshly-built tab and from
+    /// <see cref="OnTabInstancesChanged"/> whenever tabs are added or removed.
+    /// </summary>
+    private static int ComputeAdaptiveCacheSize(int tabCount)
+        => tabCount > AdaptiveTabCountThreshold ? ReducedFrameCacheSize : ComfortableFrameCacheSize;
+
+    private static bool _tabInstancesSubscribed;
+    private static void EnsureTabInstancesSubscription()
+    {
+        if (_tabInstancesSubscribed) return;
+        _tabInstancesSubscribed = true;
+        ShellViewModel.TabInstances.CollectionChanged += OnTabInstancesChanged;
+    }
+
+    private static void OnTabInstancesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        var target = ComputeAdaptiveCacheSize(ShellViewModel.TabInstances.Count);
+        foreach (var tab in ShellViewModel.TabInstances)
+        {
+            // Never raise above the just-computed adaptive ceiling, but don't
+            // touch sleeping tabs (their frame is detached / CacheSize=0 by
+            // design — DiscardSleepState restores it on wake).
+            if (tab.IsSleeping) continue;
+            if (tab.ContentFrame.CacheSize != target)
+                tab.ContentFrame.CacheSize = target;
+        }
+    }
 
     public Frame ContentFrame { get; }
 
@@ -155,9 +197,14 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     public TabBarItem()
     {
+        EnsureTabInstancesSubscription();
+        // The new tab isn't in TabInstances yet — count is the existing
+        // tabs, +1 for ourselves. OnTabInstancesChanged will fire after the
+        // ShellViewModel/NavigationHelpers code adds us and re-tune every
+        // tab if the threshold has been crossed.
         ContentFrame = new Frame
         {
-            CacheSize = DefaultFrameCacheSize,
+            CacheSize = ComputeAdaptiveCacheSize(ShellViewModel.TabInstances.Count + 1),
             IsNavigationStackEnabled = true
         };
         ContentFrame.Navigating += ContentFrame_Navigating;
@@ -636,7 +683,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     private void ResetFrameForWake()
     {
-        ContentFrame.CacheSize = DefaultFrameCacheSize;
+        ContentFrame.CacheSize = ComputeAdaptiveCacheSize(ShellViewModel.TabInstances.Count);
     }
 
     private void DiscardSleepState()

@@ -19,6 +19,7 @@ using Windows.UI;
 using Wavee.Core.Playlists;
 using Wavee.Core.Session;
 using Wavee.UI.Contracts;
+using Wavee.UI.Helpers;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
@@ -53,6 +54,8 @@ public enum PlaylistLayoutMode { Banner, Cover }
 public sealed partial class PlaylistViewModel : ObservableObject, ITrackListViewModel, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IPlaylistPermissionService _playlistPermissionService;
+    private readonly IPlaylistMutationService _playlistMutationService;
     private readonly IPlaybackStateService _playbackStateService;
     private readonly PlaylistStore _playlistStore;
     private readonly ISession? _session;
@@ -522,13 +525,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
     /// <summary>
     /// Formatted follower count.
     /// </summary>
-    public string FollowerCountFormatted => FollowerCount switch
-    {
-        0 => "",
-        < 1000 => $"{FollowerCount} followers",
-        < 1_000_000 => $"{FollowerCount / 1000.0:N1}K followers",
-        _ => $"{FollowerCount / 1_000_000.0:N1}M followers"
-    };
+    public string FollowerCountFormatted => FollowerCount <= 0
+        ? string.Empty
+        : $"{Wavee.UI.Formatters.NumberFormatter.FormatFollowerCount(FollowerCount)} followers";
 
     /// <summary>
     /// Single dot-separated stats line shown under the owner row, mirroring the
@@ -629,6 +628,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
     public PlaylistViewModel(
         ILibraryDataService libraryDataService,
+        IPlaylistPermissionService playlistPermissionService,
+        IPlaylistMutationService playlistMutationService,
         IPlaybackStateService playbackStateService,
         PlaylistStore playlistStore,
         ILogger<PlaylistViewModel>? logger = null,
@@ -639,6 +640,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         Services.IMusicVideoMetadataService? musicVideoMetadata = null)
     {
         _libraryDataService = libraryDataService;
+        _playlistPermissionService = playlistPermissionService;
+        _playlistMutationService = playlistMutationService;
         _playbackStateService = playbackStateService;
         _playlistStore = playlistStore;
         _session = session;
@@ -911,7 +914,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         // Leaving the field null keeps the shimmer on until the composed mosaic
         // arrives and fades in via ImageFallbackBehavior.
         if (!string.IsNullOrEmpty(nav.ImageUrl)
-            && !Helpers.SpotifyImageHelper.IsMosaicUri(nav.ImageUrl))
+            && !SpotifyImageHelper.IsMosaicUri(nav.ImageUrl))
         {
             PlaylistImageUrl = nav.ImageUrl;
         }
@@ -1204,7 +1207,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         //    it falls back to picking 4 unique album covers from the
         //    playlist's tracks. Only place the placeholder 3-line icon when
         //    the service returns null (truly empty playlist or fetch failure).
-        if (!string.IsNullOrEmpty(detail.ImageUrl) && !Helpers.SpotifyImageHelper.IsMosaicUri(detail.ImageUrl))
+        if (!string.IsNullOrEmpty(detail.ImageUrl) && !SpotifyImageHelper.IsMosaicUri(detail.ImageUrl))
         {
             nextImageUrl = detail.ImageUrl;
         }
@@ -2272,8 +2275,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         IsFollowed = nextValue;
         try
         {
-            await _libraryDataService
-                .SetPlaylistFollowedAsync(PlaylistId, nextValue)
+            await _playlistMutationService .SetPlaylistFollowedAsync(PlaylistId, nextValue)
                 .ConfigureAwait(true);
         }
         catch (Exception ex)
@@ -2362,14 +2364,14 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         if (_allTracks.Count == 0) return;
         var trackUris = _allTracks
             .Select(t => t.Uri)
-            .Where(u => !string.IsNullOrEmpty(u) && u!.StartsWith("spotify:track:", StringComparison.Ordinal))
+            .Where(u => SpotifyUriHelper.IsKind(u, SpotifyEntityKind.Track))
             .Cast<string>()
             .ToList();
         if (trackUris.Count == 0) return;
 
         try
         {
-            await _libraryDataService.AddTracksToPlaylistAsync(destinationId, trackUris).ConfigureAwait(false);
+            await _playlistMutationService.AddTracksToPlaylistAsync(destinationId, trackUris).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -2524,8 +2526,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
 
-            var recs = await _libraryDataService
-                .GetPlaylistRecommendationsAsync(PlaylistId, skipUris, numResults: 20)
+            var recs = await _playlistMutationService .GetPlaylistRecommendationsAsync(PlaylistId, skipUris, numResults: 20)
                 .ConfigureAwait(true);
 
             _recommendedTracks.Clear();
@@ -2554,8 +2555,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         if (rec is null || string.IsNullOrEmpty(rec.Uri) || string.IsNullOrEmpty(PlaylistId)) return;
         try
         {
-            await _libraryDataService
-                .AddTracksToPlaylistAsync(PlaylistId, new[] { rec.Uri })
+            await _playlistMutationService .AddTracksToPlaylistAsync(PlaylistId, new[] { rec.Uri })
                 .ConfigureAwait(true);
             _recommendedTracks.Remove(rec);
             HasRecommendedTracks = _recommendedTracks.Count > 0;
@@ -2579,7 +2579,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         var trackIds = SelectedItems.OfType<PlaylistTrackDto>().Select(t => t.Id).ToList();
         if (trackIds.Count == 0) return;
 
-        await _libraryDataService.RemoveTracksFromPlaylistAsync(PlaylistId, trackIds);
+        await _playlistMutationService.RemoveTracksFromPlaylistAsync(PlaylistId, trackIds);
 
         var idsToRemove = trackIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         _allTracks.RemoveAll(t => idsToRemove.Contains(t.Id));
@@ -2621,8 +2621,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
             UpdateAggregates();
             ApplyFilterAndSort();
 
-            await _libraryDataService
-                .ReorderTracksInPlaylistAsync(PlaylistId, fromIndex, length, toIndex, ct)
+            await _playlistMutationService .ReorderTracksInPlaylistAsync(PlaylistId, fromIndex, length, toIndex, ct)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -2913,7 +2912,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         try
         {
-            var raw = await _libraryDataService
+            var raw = await _playlistPermissionService
                 .GetPlaylistMembersAsync(PlaylistId)
                 .ConfigureAwait(true);
 
@@ -2965,7 +2964,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         try
         {
-            await _libraryDataService
+            await _playlistPermissionService
                 .SetPlaylistMemberRoleAsync(PlaylistId, args.memberUserId, args.role)
                 .ConfigureAwait(true);
         }
@@ -2995,7 +2994,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         try
         {
-            await _libraryDataService
+            await _playlistPermissionService
                 .RemovePlaylistMemberAsync(PlaylistId, memberUserId)
                 .ConfigureAwait(true);
         }
@@ -3021,7 +3020,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         try
         {
-            LatestInviteLink = await _libraryDataService
+            LatestInviteLink = await _playlistPermissionService
                 .CreatePlaylistInviteLinkAsync(PlaylistId, PlaylistMemberRole.Contributor, ttl)
                 .ConfigureAwait(true);
         }
@@ -3043,7 +3042,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         try
         {
-            await _libraryDataService
+            await _playlistPermissionService
                 .RemovePlaylistMemberAsync(PlaylistId, CurrentUserId)
                 .ConfigureAwait(true);
         }
@@ -3084,7 +3083,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         IsRenaming = true;
         try
         {
-            await _libraryDataService.RenamePlaylistAsync(PlaylistId, trimmed).ConfigureAwait(true);
+            await _playlistMutationService.RenamePlaylistAsync(PlaylistId, trimmed).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -3119,7 +3118,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         IsUploadingCover = true;
         try
         {
-            await _libraryDataService.UpdatePlaylistCoverAsync(PlaylistId, jpegBytes).ConfigureAwait(true);
+            await _playlistMutationService.UpdatePlaylistCoverAsync(PlaylistId, jpegBytes).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -3147,7 +3146,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
 
         try
         {
-            await _libraryDataService.DeletePlaylistAsync(PlaylistId).ConfigureAwait(true);
+            await _playlistMutationService.DeletePlaylistAsync(PlaylistId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -3172,7 +3171,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         IsCollaborative = next;
         try
         {
-            await _libraryDataService.SetPlaylistCollaborativeAsync(PlaylistId, next).ConfigureAwait(true);
+            await _playlistPermissionService.SetPlaylistCollaborativeAsync(PlaylistId, next).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -3195,7 +3194,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         IsUploadingCover = true;
         try
         {
-            await _libraryDataService.RemovePlaylistCoverAsync(PlaylistId).ConfigureAwait(true);
+            await _playlistMutationService.RemovePlaylistCoverAsync(PlaylistId).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -3229,7 +3228,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, ITrackListView
         IsUpdatingDescription = true;
         try
         {
-            await _libraryDataService.UpdatePlaylistDescriptionAsync(PlaylistId, value).ConfigureAwait(true);
+            await _playlistMutationService.UpdatePlaylistDescriptionAsync(PlaylistId, value).ConfigureAwait(true);
         }
         catch (Exception ex)
         {

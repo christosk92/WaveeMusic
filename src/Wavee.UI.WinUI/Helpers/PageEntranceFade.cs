@@ -14,11 +14,14 @@ namespace Wavee.UI.WinUI.Helpers;
 /// animation on Loaded.
 ///
 /// <para>
-/// 150 ms duration matches WinUI's <c>ControlFastAnimationDuration</c> — short
-/// enough that the swap feels snappy, long enough to register as an entrance
-/// cue (above the ~215 ms human visual-reaction threshold the connected-anim
-/// work settled on for explicit motion, but this is a fade rather than a
-/// translation so the threshold doesn't apply the same way).
+/// 220 ms duration — long enough to register as an entrance cue (above the
+/// ~215 ms human visual-reaction threshold the connected-anim work settled
+/// on for explicit motion) while still feeling snappy. Bumped from 150 ms
+/// after the navigation perf pass: the heavy pages (Album / Artist / Playlist
+/// / Show / Episode) now opt into this fade too, and at 150 ms the fade
+/// finished before the UI thread had cleared <c>Bindings.Update()</c> on a
+/// big nav, so the user saw the same "page just appears" pop the fade was
+/// meant to hide.
 /// </para>
 ///
 /// <para>
@@ -28,10 +31,11 @@ namespace Wavee.UI.WinUI.Helpers;
 /// </para>
 ///
 /// <para>
-/// Skip this attached property on pages with their own composition entrance
-/// orchestration (Album / Playlist / Artist / Show / Episode use
-/// <c>ContentPageController</c> + <c>ShimmerLoadGate</c> for shimmer→content
-/// crossfade). Double-animating would fight itself.
+/// Composes safely with the <c>ShimmerLoadGate</c> crossfade on heavy pages:
+/// the page-level fade animates the whole page Visual 0→1 while a nested
+/// shimmer→content crossfade runs inside. The opacities multiply during
+/// the overlap, so the user perceives "page eases in, content inside
+/// crystallises" rather than two competing animations.
 /// </para>
 ///
 /// Usage:
@@ -43,7 +47,7 @@ namespace Wavee.UI.WinUI.Helpers;
 /// </summary>
 public static class PageEntranceFade
 {
-    private static readonly TimeSpan FadeDuration = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan FadeDuration = TimeSpan.FromMilliseconds(220);
     private static readonly Vector2 EaseCp1 = new(0.0f, 0.0f);
     private static readonly Vector2 EaseCp2 = new(0.0f, 1.0f);
 

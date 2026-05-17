@@ -156,7 +156,7 @@ public partial class App : Application
             try
             {
                 var cacheOpts = Ioc.Default.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>();
-                Wavee.UI.WinUI.Helpers.SpotifyImageHelper.LocalArtworkRoot = cacheOpts.LocalArtworkDirectory;
+                Wavee.UI.Helpers.SpotifyImageHelper.LocalArtworkRoot = cacheOpts.LocalArtworkDirectory;
 
                 var indexer = Ioc.Default.GetRequiredService<Wavee.Local.LocalIndexerHostedService>();
                 _ = indexer.StartAsync();

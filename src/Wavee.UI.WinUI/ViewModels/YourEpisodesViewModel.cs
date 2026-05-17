@@ -45,6 +45,9 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     private const int PodcastArchivePreviewLimit = 50;
 
     private readonly ILibraryDataService _libraryDataService;
+    private readonly IPodcastEpisodeService _podcastEpisodeService;
+    private readonly Wavee.UI.Services.Infra.IReloadCoordinator? _reloadCoordinator;
+    private IDisposable? _reloadRegistration;
     private readonly IPodcastService? _podcastService;
     private readonly ISettingsService? _settingsService;
     private readonly IPlaybackStateService _playbackStateService;
@@ -451,15 +454,19 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
 
     public YourEpisodesViewModel(
         ILibraryDataService libraryDataService,
+        IPodcastEpisodeService podcastEpisodeService,
         IPlaybackStateService playbackStateService,
         IPodcastService? podcastService = null,
         ISettingsService? settingsService = null,
+        Wavee.UI.Services.Infra.IReloadCoordinator? reloadCoordinator = null,
         ILogger<YourEpisodesViewModel>? logger = null)
     {
         _libraryDataService = libraryDataService;
+        _podcastEpisodeService = podcastEpisodeService;
         _podcastService = podcastService;
         _settingsService = settingsService;
         _playbackStateService = playbackStateService;
+        _reloadCoordinator = reloadCoordinator;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _podcastEpisodeScope = LoadPodcastEpisodeScopePreference();
@@ -472,16 +479,27 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     {
         if (_longLivedAttached) return;
         _longLivedAttached = true;
-        _libraryDataService.DataChanged += OnLibraryDataChanged;
-        _libraryDataService.PodcastEpisodeProgressChanged += OnPodcastEpisodeProgressChanged;
+        _podcastEpisodeService.PodcastEpisodeProgressChanged += OnPodcastEpisodeProgressChanged;
+        if (_reloadCoordinator is not null)
+        {
+            _reloadRegistration = _reloadCoordinator.RegisterReload(
+                Wavee.UI.Services.Infra.ChangeScope.Library,
+                async ct =>
+                {
+                    if (_disposed || IsLoading) return;
+                    await LoadDataAsync().ConfigureAwait(false);
+                },
+                "YourEpisodesViewModel.Reload");
+        }
     }
 
     private void DetachLongLivedServices()
     {
         if (!_longLivedAttached) return;
         _longLivedAttached = false;
-        _libraryDataService.DataChanged -= OnLibraryDataChanged;
-        _libraryDataService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
+        _podcastEpisodeService.PodcastEpisodeProgressChanged -= OnPodcastEpisodeProgressChanged;
+        _reloadRegistration?.Dispose();
+        _reloadRegistration = null;
     }
 
     [RelayCommand]
@@ -507,9 +525,9 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
 
         try
         {
-            var showsTask = _libraryDataService.GetPodcastShowsAsync();
-            var episodesTask = _libraryDataService.GetYourEpisodesAsync();
-            var recentEpisodesTask = _libraryDataService.GetRecentlyPlayedPodcastEpisodesAsync();
+            var showsTask = _podcastEpisodeService.GetPodcastShowsAsync();
+            var episodesTask = _podcastEpisodeService.GetYourEpisodesAsync();
+            var recentEpisodesTask = _podcastEpisodeService.GetRecentlyPlayedPodcastEpisodesAsync();
             await Task.WhenAll(showsTask, episodesTask, recentEpisodesTask);
 
             var shows = (await showsTask)
@@ -829,7 +847,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
     {
         try
         {
-            var detail = await _libraryDataService.GetPodcastEpisodeDetailAsync(episodeUri, ct);
+            var detail = await _podcastEpisodeService.GetPodcastEpisodeDetailAsync(episodeUri, ct);
             if (ct.IsCancellationRequested || detail is null)
                 return;
 
@@ -870,7 +888,7 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
                 if (ct.IsCancellationRequested)
                     return;
 
-                var progress = await _libraryDataService.GetPodcastEpisodeProgressAsync(episode.Uri, ct);
+                var progress = await _podcastEpisodeService.GetPodcastEpisodeProgressAsync(episode.Uri, ct);
                 if (ct.IsCancellationRequested || progress is null)
                     continue;
 
@@ -1453,17 +1471,6 @@ public sealed partial class YourEpisodesViewModel : ObservableObject, IDisposabl
 
         if (SelectedEpisode != null)
             BreadcrumbItems.Add(SelectedEpisode.Title);
-    }
-
-    private void OnLibraryDataChanged(object? sender, EventArgs e)
-    {
-        _dispatcherQueue.TryEnqueue(async () =>
-        {
-            if (_disposed || IsLoading)
-                return;
-
-            await LoadDataAsync();
-        });
     }
 
     private void OnPodcastEpisodeProgressChanged(object? sender, PodcastEpisodeProgressChangedEventArgs e)
