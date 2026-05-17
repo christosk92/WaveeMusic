@@ -273,11 +273,17 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
     {
         var width = e.NewSize.Width;
         // Thresholds:
-        //   ≥1100  WideState         — hero + WideSideRail (320 px) side-by-side
+        //   ≥900   WideState         — hero + WideSideRail (320 px) side-by-side
         //   ≥720   StackedMedium     — hero full-row + StackedShortcuts (1 big + 2 stacked)
         //   < 720  StackedNarrow     — hero full-row + StackedShortcuts (Card0 banner + 2 below)
+        //
+        // Previously the wide threshold was 1100 px — below that the side rail
+        // collapsed under the hero and the shortcuts wrapped to a new row.
+        // 900 lets the hero shrink to ~560 px (still wide enough for Klankhuis
+        // to render 2-3 word title lines without char-by-char wrapping)
+        // while the 320 px side rail keeps the shortcut cards alongside.
         string nextState;
-        if (width >= 1100)
+        if (width >= 900)
             nextState = "HeroBandWideState";
         else if (width >= 720)
             nextState = "HeroBandStackedMediumState";
@@ -287,6 +293,89 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         if (nextState == _currentHeroBandState) return;
         _currentHeroBandState = nextState;
         VisualStateManager.GoToState(this, nextState, useTransitions: false);
+    }
+
+    // Click router for Klankhuis SideCard (3 in WideSideRail + 3 in StackedShortcuts).
+    // Mirrors ContentCard.NavigateToUri's URI-prefix switch so the smaller hero-band
+    // cards land users on the same destinations as the equivalent ContentCard would.
+    // Tag is x:Bind'd to HeroAdapter.SideCardN.NavigationUri (string).
+    private void SideCard_Click(Klankhuis.Hero.Controls.SideCard sender, RoutedEventArgs e)
+    {
+        var uri = sender.Tag as string;
+        if (string.IsNullOrEmpty(uri)) return;
+
+        var parts = uri.Split(':');
+        if (parts.Length < 3) return;
+
+        var type = parts[1];
+        var openInNewTab = NavigationHelpers.IsCtrlPressed();
+        var kind = ClickIntentKindFromUri(uri);
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent(
+            "SideCard." + kind + (openInNewTab ? ".NewTab" : ""));
+
+        var title = sender.Label ?? type;
+        var imageUrl = sender.ImageUri?.ToString();
+        var param = new Data.Parameters.ContentNavigationParameter
+        {
+            Uri = uri,
+            Title = title,
+            Subtitle = sender.Eyebrow,
+            ImageUrl = imageUrl
+        };
+
+        switch (type)
+        {
+            case "collection" when uri.Contains("your-episodes", StringComparison.OrdinalIgnoreCase):
+                NavigationHelpers.OpenYourEpisodes(openInNewTab);
+                break;
+            case "collection":
+                NavigationHelpers.OpenLikedSongs(openInNewTab);
+                break;
+            case "artist":
+                NavigationHelpers.OpenArtist(param, title, openInNewTab);
+                break;
+            case "album":
+                NavigationHelpers.OpenAlbum(param, title, openInNewTab);
+                break;
+            case "playlist":
+                NavigationHelpers.OpenPlaylist(param, title, openInNewTab);
+                break;
+            case "user" when uri.Contains(":collection", StringComparison.OrdinalIgnoreCase):
+                NavigationHelpers.OpenLikedSongs(openInNewTab);
+                break;
+            case "user":
+                NavigationHelpers.OpenProfile(param, title, openInNewTab);
+                break;
+            case "page":
+            case "section":
+            case "genre":
+                NavigationHelpers.OpenBrowsePage(param, openInNewTab);
+                break;
+            case "show":
+                NavigationHelpers.OpenShowPage(param, openInNewTab);
+                break;
+            case "episode":
+                NavigationHelpers.OpenEpisodePage(uri, title, imageUrl, openInNewTab: openInNewTab);
+                break;
+        }
+    }
+
+    private static string ClickIntentKindFromUri(string uri)
+    {
+        var parts = uri.Split(':');
+        if (parts.Length < 2) return "Unknown";
+        return parts[1] switch
+        {
+            "album" => "Album",
+            "playlist" => "Playlist",
+            "artist" => "Artist",
+            "show" => "Show",
+            "episode" => "Episode",
+            "collection" => "Collection",
+            "user" => "User",
+            "page" or "section" or "genre" => "Browse",
+            _ => parts[1]
+        };
     }
 
     public void RefreshWithParameter(object? parameter)

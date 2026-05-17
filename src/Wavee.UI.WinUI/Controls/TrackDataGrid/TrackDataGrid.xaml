@@ -252,24 +252,21 @@
             </Grid>
         </Border>
 
-        <!--  Header + list. The ListView uses its OWN internal ScrollViewer
-              for both axes (horizontal = Auto, vertical = Auto) so
-              virtualization is preserved per Microsoft's guidance. The
-              HeaderHost sits OUTSIDE the ListView and stays vertically pinned;
-              TrackDataGrid.xaml.cs syncs its X translation to the ListView's
-              internal ScrollViewer.HorizontalOffset via ViewChanged.
+        <!--  Header + list. The ItemsView wraps its own ScrollView (both axes
+              Auto) so virtualization is preserved per Microsoft's guidance.
+              HeaderHost sits OUTSIDE the ItemsView and stays vertically
+              pinned; TrackDataGrid.xaml.cs syncs its X translation to the
+              ItemsView.ScrollView.HorizontalOffset via ViewChanged.
 
               Three-row layout:
                 Row 0 = column header (HeaderHost ScrollViewer)
                 Row 1 = loading-row skeleton (LoadingRowsRepeater)
-                Row 2 = real items presenter (RowsList / RowsItemsViewHost)
+                Row 2 = real items presenter (RowsItemsViewHost)
               Row 1 is Auto and collapses to 0 px when LoadingRowsRepeater is
               Collapsed (i.e. IsLoading=false). When IsLoading=true the
-              skeleton rows sit ABOVE Row 2, so the empty ListView's Footer
-              (which hosts FooterContent + the sibling FooterShimmer) lays
-              out cleanly BELOW the skeleton rows instead of overlapping
-              them — fixes the "two stacked shimmer surfaces in the same
-              pixels" repaint glitch. -->
+              skeleton rows sit ABOVE Row 2 so the FooterContent (which sits
+              inside RowsItemsViewHost below the ItemsView) lays out cleanly
+              below the skeleton rather than overlapping. -->
         <Grid Grid.Row="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -282,8 +279,8 @@
                   automatic clipping of the HeaderHost's X translation so
                   scrolled-out header content doesn't visually bleed out of
                   the page bounds. The actual horizontal offset is driven
-                  programmatically from the RowsList's internal ScrollViewer
-                  via HeaderScrollTransform.  -->
+                  programmatically from RowsItemsView.ScrollView via
+                  HeaderScrollTransform.  -->
             <ScrollViewer
                 Grid.Row="0"
                 Height="40"
@@ -295,12 +292,11 @@
                 BorderThickness="0,0,0,1">
                 <!-- HorizontalAlignment must be Stretch (NOT Left). With Left, the Grid
                      measures itself in shrink-to-content mode and any * column collapses
-                     to MinWidth — producing exactly the same misalignment as the WinUI 3
-                     ListView.Header bug (#3682), even though this Grid is OUTSIDE the
-                     ListView. Rows inside RowsList stretch to viewport width via
-                     HorizontalContentAlignment="Stretch", so their * Title column expands
-                     to its MaxWidth (640) while a Left-aligned header would stay at
-                     MinWidth (120). Stretch makes both sides resolve identically.
+                     to MinWidth. The rows inside the ItemsView's ItemContainer stretch
+                     to viewport width via HorizontalContentAlignment="Stretch", so the
+                     * Title column expands to its MaxWidth (640); a Left-aligned header
+                     would stay at MinWidth (120). Stretch makes both sides resolve
+                     identically.
 
                      Padding="8,0" mirrors TrackItem.xaml's RowRoot Padding="8,8" — without
                      it, every header column starts 8 px left of the matching row column. -->
@@ -315,88 +311,21 @@
                 </Grid>
             </ScrollViewer>
 
-            <ListView
-                x:Name="RowsList"
-                Grid.Row="2"
-                HorizontalContentAlignment="Stretch"
-                Padding="0"
-                ScrollViewer.HorizontalScrollMode="Auto"
-                ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                ScrollViewer.VerticalScrollBarVisibility="Auto"
-                KeyDown="RowsList_KeyDown"
-                SelectionMode="Extended"
-                CanDragItems="True"
-                AllowDrop="{x:Bind CanReorder, Mode=OneWay}"
-                DragItemsStarting="RowsList_DragItemsStarting"
-                DragItemsCompleted="RowsList_DragItemsCompleted"
-                DragOver="RowsList_DragOver"
-                Drop="RowsList_Drop">
-                <ListView.ItemContainerTransitions>
-                    <TransitionCollection>
-                        <AddDeleteThemeTransition/>
-                    </TransitionCollection>
-                </ListView.ItemContainerTransitions>
-                <ListView.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <ItemsStackPanel
-                            ItemsUpdatingScrollMode="KeepScrollOffset"
-                            AreStickyGroupHeadersEnabled="False"/>
-                    </ItemsPanelTemplate>
-                </ListView.ItemsPanel>
-                <ListView.GroupStyle>
-                    <GroupStyle/>
-                </ListView.GroupStyle>
-                <!--
-                    ItemContainerStyle + ItemTemplate mirror TrackListView — selection pill,
-                    hover paint, heart toggle, index/play/equalizer swap, tap-to-play, and
-                    context menu all live inside TrackItem (Row mode). This grid contributes
-                    only the toolbar + header chrome on top.
-                -->
-                <ListView.ItemContainerStyle>
-                    <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
-                        <Setter Property="Padding" Value="0" />
-                        <Setter Property="Margin" Value="0,2" />
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        <Setter Property="MinHeight" Value="0" />
-                    </Style>
-                </ListView.ItemContainerStyle>
-                <ListView.ItemTemplate>
-                    <DataTemplate x:DataType="contracts:ITrackItem">
-                        <track:TrackItem Track="{x:Bind}" Mode="Row" />
-                    </DataTemplate>
-                </ListView.ItemTemplate>
+            <!-- Items presenter. ItemsView (which wraps ItemsRepeater inside a
+                 ScrollView) has no Footer slot, so we put it + FooterContent
+                 inside a vertical StackPanel. The whole stack is one scroll
+                 region — items + footer scroll together; the footer sits
+                 naturally below the last row rather than floating as sticky.
+                 The inner ItemsRepeater still virtualizes inside the StackPanel
+                 because it hooks the nearest ScrollView/ScrollViewer ancestor
+                 (the one ItemsView wraps itself in) as its viewport.
 
-                <!-- Footer. StackPanel HorizontalAlignment=Stretch + ContentPresenter
-                     HorizontalContentAlignment=Stretch mirror the Header pattern used
-                     elsewhere: WinUI 3's implicit ListView.Footer container doesn't
-                     propagate viewport width during measure, so a bare ContentPresenter
-                     collapses to zero width.
-
-                     NOTE: pages hosting a horizontally-scrolling widget in FooterContent
-                     (e.g. a shelf) must set AllowHorizontalRowScroll="False" on the
-                     TrackDataGrid itself. Otherwise the widget's full content extent
-                     propagates upward and adds a page-level horizontal scrollbar. -->
-                <ListView.Footer>
-                    <StackPanel HorizontalAlignment="Stretch">
-                        <ContentPresenter Content="{x:Bind FooterContent, Mode=OneWay}"
-                                          HorizontalContentAlignment="Stretch"/>
-                    </StackPanel>
-                </ListView.Footer>
-            </ListView>
-
-            <!-- ItemsView path wrapper. ItemsView (unlike ListView) doesn't
-                 expose a Footer slot, so we put it + the FooterContent inside
-                 a vertical StackPanel. The whole stack is the single
-                 scrollable region — items + footer scroll together; the
-                 footer sits naturally below the last track row rather than
-                 hovering as a sticky bottom. ItemsView's internal ItemsRepeater
-                 still virtualizes inside the StackPanel because the
-                 ItemsRepeater hooks the nearest ScrollView/ScrollViewer ancestor
-                 for its viewport — which is what ItemsView wraps itself in
-                 anyway. -->
+                 Grouping (IsGrouped=true) is handled in code-behind: the
+                 visible-rows collection interleaves TrackDataGridGroupRow
+                 markers between buckets, and the ItemTemplate selector routes
+                 markers to GroupHeaderTemplate and tracks to RowTemplate. -->
             <StackPanel x:Name="RowsItemsViewHost"
                         Grid.Row="2"
-                        Visibility="Collapsed"
                         AllowDrop="{x:Bind CanReorder, Mode=OneWay}"
                         DragOver="RowsItemsViewHost_DragOver"
                         Drop="RowsItemsViewHost_Drop">
@@ -404,34 +333,42 @@
                 <ItemsView
                     x:Name="RowsItemsView"
                     SelectionMode="Extended"
-                    KeyDown="RowsList_KeyDown"
+                    KeyDown="OnRowsKeyDown"
                     SelectionChanged="RowsItemsView_SelectionChanged">
                     <ItemsView.Layout>
                         <StackLayout Orientation="Vertical" Spacing="0"/>
                     </ItemsView.Layout>
                     <ItemsView.ItemTemplate>
-                        <DataTemplate x:DataType="contracts:ITrackItem">
-                            <ItemContainer
-                                Padding="0"
-                                Margin="0,2"
-                                HorizontalContentAlignment="Stretch"
-                                VerticalContentAlignment="Stretch"
-                                MinHeight="0">
-                                <track:TrackItem
-                                    Track="{x:Bind}"
-                                    Mode="Row"
-                                    Loaded="RowsItemsViewTrackItem_Loaded"
-                                    Unloaded="RowsItemsViewTrackItem_Unloaded"/>
-                            </ItemContainer>
-                        </DataTemplate>
+                        <!-- The RowTemplate is the per-track template. The selector's
+                             GroupHeaderTemplate is plugged in from code-behind whenever
+                             the GroupHeaderTemplate DP changes (see ApplyGroupHeaderTemplate).
+                             That keeps each consumer page's existing header markup
+                             unchanged while letting ItemsView render headers inline. -->
+                        <local:TrackDataGridItemTemplateSelector x:Name="ItemTemplateSelector">
+                            <local:TrackDataGridItemTemplateSelector.RowTemplate>
+                                <DataTemplate x:DataType="contracts:ITrackItem">
+                                    <ItemContainer
+                                        Padding="0"
+                                        Margin="0,2"
+                                        HorizontalContentAlignment="Stretch"
+                                        VerticalContentAlignment="Stretch"
+                                        MinHeight="0">
+                                        <track:TrackItem
+                                            Track="{x:Bind}"
+                                            Mode="Row"
+                                            Loaded="RowsItemsViewTrackItem_Loaded"
+                                            Unloaded="RowsItemsViewTrackItem_Unloaded"/>
+                                    </ItemContainer>
+                                </DataTemplate>
+                            </local:TrackDataGridItemTemplateSelector.RowTemplate>
+                        </local:TrackDataGridItemTemplateSelector>
                     </ItemsView.ItemTemplate>
                 </ItemsView>
 
-                <!-- Footer slot for ItemsView mode. Mirrors the ListView.Footer
-                     above so consumers can bind the same FooterContent DP and
-                     get consistent rendering across both presenter modes.
-                     Lives inside the same StackPanel as the ItemsView so they
-                     share the parent's scroll region. -->
+                <!-- Footer slot. Mirrors the pre-refactor ListView.Footer
+                     pattern: lives inside the same StackPanel as the ItemsView
+                     so they share the parent's scroll region. Consumers bind
+                     the FooterContent DP as before. -->
                 <ContentPresenter Content="{x:Bind FooterContent, Mode=OneWay}"
                                   HorizontalContentAlignment="Stretch"/>
             </StackPanel>

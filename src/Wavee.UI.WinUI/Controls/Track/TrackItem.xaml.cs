@@ -1032,23 +1032,17 @@ public sealed partial class TrackItem : UserControl
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         ObserveTrack(Track);
-        // Virtualized/recycled rows can be unloaded while LazyTrackItem.Data is
-        // patched with late metadata such as artist top-track cover art. Since
-        // we stop observing on Unloaded, force a full bind from the current
-        // Track on Loaded instead of only restoring the previously-bound image
-        // URL. This keeps recycled rows from staying on placeholders until a
-        // resize or layout refresh prepares them again.
+        // Preserve the bound-image-URL cache across recycle: the dedup inside
+        // ApplyCompactAlbumArt / ApplyRowAlbumArt now short-circuits the
+        // Composition push when the recycled row's Track has the same image
+        // as before. This is the difference between buttery scroll and a
+        // visible per-row image re-flash on every fast scroll.
         //
-        // Clear the bound-image cache before rebinding so the Apply*AlbumArt
-        // dedup ("imageUrl == _bound*ImageUrl") doesn't short-circuit the
-        // re-apply. With PreserveImageOnUnload=true (artist top tracks,
-        // recommended songs), the previous track's URL was still in the
-        // cache from before Unload — recycled rows that drew a different
-        // (or no) image during the unload window would skip the re-push
-        // and stay on the wrong art. CompositionImage's own surface cache
-        // handles the actual dedup, so re-pushing an identical URL is free.
-        _boundCompactImageUrl = null;
-        _boundRowImageUrl = null;
+        // Late-metadata patches (artist top-track cover-art enrichment) still
+        // land correctly: they fire Track.PropertyChanged, which routes
+        // through OnTrackItemPropertyChanged (subscribed in ObserveTrack) and
+        // re-runs the per-property bind. The previous belt-and-braces
+        // "always re-push on Loaded" was overlapping with that path.
         RebindObservedTrack();
         UpdateBadgePlacement();
         RefreshLikedState();

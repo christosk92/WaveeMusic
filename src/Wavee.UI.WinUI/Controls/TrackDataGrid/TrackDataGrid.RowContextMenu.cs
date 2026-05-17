@@ -32,12 +32,11 @@ namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 ///   <item><description>
 ///     <b>Multi-selection right-click</b> arrives here: when the right-tapped row is part
 ///     of a multi-row selection, the bubble-phase handler installed on
-///     <see cref="RowsList"/> / <see cref="RowsItemsView"/> (with
-///     <c>handledEventsToo=true</c>) dismisses TrackItem's just-shown flyout and opens a
-///     selection-aware menu built via <see cref="BuildSelectionMenuItems"/>. The items
-///     reuse the same <see cref="ContextMenuItemModel"/> shape and
-///     <see cref="ContextMenuHost"/> presenter as the single-row case, so the visual
-///     identity stays consistent.
+///     <see cref="RowsItemsView"/> (with <c>handledEventsToo=true</c>) dismisses
+///     TrackItem's just-shown flyout and opens a selection-aware menu built via
+///     <see cref="BuildSelectionMenuItems"/>. The items reuse the same
+///     <see cref="ContextMenuItemModel"/> shape and <see cref="ContextMenuHost"/>
+///     presenter as the single-row case, so the visual identity stays consistent.
 ///   </description></item>
 /// </list>
 ///
@@ -127,13 +126,12 @@ public sealed partial class TrackDataGrid
     // Right-tap wiring
     // ──────────────────────────────────────────────────────────────────────
 
-    private RightTappedEventHandler? _rowsListRightTappedHandler;
     private RightTappedEventHandler? _rowsItemsViewRightTappedHandler;
     private bool _rightTappedHandlersWired;
 
     /// <summary>
-    /// Install the bubble-phase right-tap handlers on the two presenters. Called from
-    /// the constructor (after <c>InitializeComponent</c>) so the handlers are live
+    /// Install the bubble-phase right-tap handler on the rows presenter. Called from
+    /// the constructor (after <c>InitializeComponent</c>) so the handler is live
     /// before any row is realized. Idempotent.
     /// </summary>
     private void WireRowContextMenuHandlers()
@@ -141,14 +139,12 @@ public sealed partial class TrackDataGrid
         if (_rightTappedHandlersWired) return;
         _rightTappedHandlersWired = true;
 
-        _rowsListRightTappedHandler ??= OnRowsPresenterRightTapped;
         _rowsItemsViewRightTappedHandler ??= OnRowsPresenterRightTapped;
 
         // handledEventsToo=true is required because TrackItem marks the bubble-phase
         // RightTapped Handled=true after showing its single-row flyout. We want to
         // observe it anyway so we can override with the multi-selection menu when
         // appropriate.
-        RowsList.AddHandler(UIElement.RightTappedEvent, _rowsListRightTappedHandler, true);
         RowsItemsView.AddHandler(UIElement.RightTappedEvent, _rowsItemsViewRightTappedHandler, true);
     }
 
@@ -157,12 +153,9 @@ public sealed partial class TrackDataGrid
         if (!_rightTappedHandlersWired) return;
         _rightTappedHandlersWired = false;
 
-        if (_rowsListRightTappedHandler is not null)
-            RowsList.RemoveHandler(UIElement.RightTappedEvent, _rowsListRightTappedHandler);
         if (_rowsItemsViewRightTappedHandler is not null)
             RowsItemsView.RemoveHandler(UIElement.RightTappedEvent, _rowsItemsViewRightTappedHandler);
 
-        _rowsListRightTappedHandler = null;
         _rowsItemsViewRightTappedHandler = null;
     }
 
@@ -192,9 +185,9 @@ public sealed partial class TrackDataGrid
 
     /// <summary>
     /// Walk from the right-tap source up the visual tree to find the bound
-    /// <see cref="ITrackItem"/>. Tries the row container first (covers both
-    /// ListViewItem and ItemContainer paths) and falls back to the nearest
-    /// <see cref="Track.TrackItem"/> in case the click landed on a deeper child.
+    /// <see cref="ITrackItem"/>. Tries the row's <see cref="ItemContainer"/>
+    /// first and falls back to the nearest <see cref="Track.TrackItem"/> in
+    /// case the click landed on a deeper child.
     /// </summary>
     private static ITrackItem? ResolveClickedRow(DependencyObject? element)
     {
@@ -202,10 +195,6 @@ public sealed partial class TrackDataGrid
         {
             switch (element)
             {
-                case ListViewItem lvi when lvi.Content is ITrackItem fromListContent:
-                    return fromListContent;
-                case ListViewItem lvi when lvi.DataContext is ITrackItem fromListDc:
-                    return fromListDc;
                 case ItemContainer ic when ic.DataContext is ITrackItem fromContainer:
                     return fromContainer;
                 case Track.TrackItem ti when ti.Track is { } fromRow:
@@ -218,14 +207,7 @@ public sealed partial class TrackDataGrid
 
     private IReadOnlyList<ITrackItem> CaptureSelectionForContextMenu()
     {
-        if (UseItemsViewRows)
-        {
-            return RowsItemsView.SelectedItems
-                .OfType<ITrackItem>()
-                .ToArray();
-        }
-
-        return RowsList.SelectedItems
+        return RowsItemsView.SelectedItems
             .OfType<ITrackItem>()
             .ToArray();
     }

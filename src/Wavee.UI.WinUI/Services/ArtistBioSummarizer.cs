@@ -35,6 +35,13 @@ public sealed class ArtistBioSummarizer
     private readonly ConcurrentDictionary<string, Lazy<Task<LyricsAiResult>>> _requests =
         new(StringComparer.Ordinal);
 
+    // Per-session cache of artist URIs that previously returned BlockedByPolicy
+    // from Phi Silica. Next call for the same URI short-circuits — skips the
+    // prompt build and the Phi Silica round-trip entirely. byte value is arbitrary;
+    // ConcurrentDictionary doesn't have a Set primitive. Cleared by ClearCache.
+    private readonly ConcurrentDictionary<string, byte> _knownBlocked =
+        new(StringComparer.Ordinal);
+
     /// <summary>~80–120 words ≈ 720 characters cap with headroom.</summary>
     private const int MaxBioCharacters = 900;
 
@@ -96,7 +103,11 @@ public sealed class ArtistBioSummarizer
         return true;
     }
 
-    public void ClearCache() => _requests.Clear();
+    public void ClearCache()
+    {
+        _requests.Clear();
+        _knownBlocked.Clear();
+    }
 
     private async Task<LyricsAiResult> AwaitRequestAsync(
         Lazy<Task<LyricsAiResult>> request, string key, bool fromExistingRequest, CancellationToken ct)
@@ -151,6 +162,19 @@ public sealed class ArtistBioSummarizer
     {
         try
         {
+            // Short-circuit: if a previous call for this artist URI came back
+            // BlockedByPolicy from Phi Silica, skip the entire prompt-build +
+            // Phi Silica round-trip on subsequent calls. Avoids 1 KB+ of managed
+            // heap per call × the 5-30/min cadence the release log captured
+            // (every artist nav + hover preview hits this path).
+            if (_knownBlocked.ContainsKey(artistUri))
+            {
+                _logger?.LogDebug(
+                    "SummarizeBioAsync short-circuited: {ArtistUri} previously BlockedByPolicy.",
+                    artistUri);
+                return LyricsAiResult.Unavailable;
+            }
+
             if (!await _capabilities.EnsureLanguageModelReadyAsync())
             {
                 _logger?.LogDebug("SummarizeBioAsync unavailable: EnsureLanguageModelReadyAsync returned false. {Diagnostics}",
@@ -169,7 +193,15 @@ public sealed class ArtistBioSummarizer
             }
 
             if (response.Status != LanguageModelGeneratedTextStatus.Complete)
+            {
+                // Cache definitive policy blocks so the next visit short-circuits
+                // above. Other failure modes (Error, ContextOverflow, content
+                // moderation) may be transient or input-dependent and aren't
+                // cached — those still re-attempt on each call.
+                if (response.Status == LanguageModelGeneratedTextStatus.BlockedByPolicy)
+                    _knownBlocked.TryAdd(artistUri, 1);
                 return ToFailureResult(response, "SummarizeBioAsync");
+            }
 
             var stripped = StripBulletsAndHeadings(response.Text);
             if (string.IsNullOrWhiteSpace(stripped))
@@ -177,7 +209,11 @@ public sealed class ArtistBioSummarizer
                 _logger?.LogInformation("SummarizeBioAsync retrying after Phi Silica returned no usable text.");
                 response = await GenerateAsync(BuildBioFallbackPrompt(artistName), deltaProgress, CancellationToken.None);
                 if (response.Status != LanguageModelGeneratedTextStatus.Complete)
+                {
+                    if (response.Status == LanguageModelGeneratedTextStatus.BlockedByPolicy)
+                        _knownBlocked.TryAdd(artistUri, 1);
                     return ToFailureResult(response, "SummarizeBioAsync fallback");
+                }
 
                 stripped = StripBulletsAndHeadings(response.Text);
             }

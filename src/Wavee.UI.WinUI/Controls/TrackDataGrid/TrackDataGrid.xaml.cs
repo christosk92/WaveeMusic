@@ -44,9 +44,12 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private const int DefaultLoadingRowCount = 6;
     // Clamp ceiling so a 200-track playlist doesn't render 200 skeleton rows.
     private const int MaxLoadingRowCount = 20;
-    private readonly ObservableCollection<ITrackItem> _visibleRows = new();
-    private readonly ObservableCollection<TrackDataGridGroup> _visibleGroups = new();
-    private readonly CollectionViewSource _groupedRowsViewSource = new() { IsSourceGrouped = true };
+    // Rows the ItemsView renders. With IsGrouped=false this is a flat list of
+    // ITrackItem; with IsGrouped=true the grid interleaves TrackDataGridGroupRow
+    // markers between buckets and the ItemTemplateSelector routes each kind to
+    // the right template. Selection / sort / reorder helpers filter
+    // `is ITrackItem` so the markers are transparent to those flows.
+    private readonly ObservableCollection<object> _visibleRows = new();
     private IReadOnlyList<ITrackItem> _sourceSnapshot = Array.Empty<ITrackItem>();
     private INotifyCollectionChanged? _subscribedSource;
     private ISettingsService? _settingsService;
@@ -75,18 +78,12 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     public TrackDataGrid()
     {
         InitializeComponent();
-        _groupedRowsViewSource.ItemsPath = new PropertyPath(nameof(TrackDataGridGroup.Items));
         ApplyGroupHeaderTemplate();
-        RowsList.ItemsSource = _visibleRows;
         RowsItemsView.ItemsSource = _visibleRows;
         ApplyLoadingRowCount();
         // Centralized subscription bus (see field comment).
         _lazyItemHandler = OnAnyLazyItemPropertyChanged;
         _visibleRows.CollectionChanged += OnVisibleRowsCollectionChanged;
-        RowsList.ContainerContentChanging += RowsList_ContainerContentChanging;
-        RowsList.SelectionChanged += RowsList_SelectionChanged;
-        RowsList.Loaded += RowsList_Loaded;
-        RowsList.Unloaded += RowsList_Unloaded;
         RowsItemsView.Loaded += RowsItemsView_Loaded;
         RowsItemsView.Unloaded += RowsItemsView_Unloaded;
 
@@ -103,36 +100,16 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         SyncAddedByColumnVisibility();
         RebuildHeader();
         RebuildSortFlyout();
-        ApplyRowsPresenterMode();
+        ApplyHorizontalRowScroll();
+        ApplyVerticalRowScroll();
         WireRowContextMenuHandlers();
     }
 
-    // Sticky-header sync: the HeaderHost Grid lives outside the ListView's
-    // internal ScrollViewer so it stays vertically pinned at the top. When the
-    // user scrolls the rows horizontally (via the ListView's own Scroll*
-    // attached props configured in XAML), we translate the header to match the
-    // ListView's HorizontalOffset. Pattern documented by Microsoft as the safe
-    // alternative to wrapping ListView in an outer ScrollViewer, which has
-    // known virtualization + input-routing bugs in WinUI 3 (microsoft-ui-xaml
-    // issue #10172).
-    private ScrollViewer? _rowsListScrollViewerWinUi;
+    // Sticky-header sync: the HeaderHost Grid lives outside the ItemsView's
+    // inner ScrollView so it stays vertically pinned at the top. When the
+    // user scrolls horizontally we translate the header to match the
+    // ItemsView.ScrollView.HorizontalOffset via ViewChanged.
     private ScrollView? _rowsItemsViewScrollView;
-
-    private void RowsList_Loaded(object sender, RoutedEventArgs e)
-    {
-        HookRowsListScrollViewer();
-        ApplyHorizontalRowScroll();
-        ApplyVerticalRowScroll();
-    }
-
-    private void RowsList_Unloaded(object sender, RoutedEventArgs e)
-    {
-        if (_rowsListScrollViewerWinUi is not null)
-        {
-            _rowsListScrollViewerWinUi.ViewChanged -= RowsListScrollViewer_ViewChanged;
-            _rowsListScrollViewerWinUi = null;
-        }
-    }
 
     private void RowsItemsView_Loaded(object sender, RoutedEventArgs e)
     {
@@ -152,49 +129,18 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void ApplyHorizontalRowScroll()
     {
-        if (RowsList is null) return;
+        if (RowsItemsView?.ScrollView is not { } itemsScrollView) return;
+
         if (AllowHorizontalRowScroll)
         {
-            ScrollViewer.SetHorizontalScrollMode(RowsList, ScrollMode.Auto);
-            ScrollViewer.SetHorizontalScrollBarVisibility(RowsList, ScrollBarVisibility.Auto);
-            if (RowsItemsView.ScrollView is { } itemsScrollView)
-            {
-                itemsScrollView.HorizontalScrollMode = ScrollingScrollMode.Auto;
-                itemsScrollView.HorizontalScrollBarVisibility = ScrollingScrollBarVisibility.Auto;
-            }
+            itemsScrollView.HorizontalScrollMode = ScrollingScrollMode.Auto;
+            itemsScrollView.HorizontalScrollBarVisibility = ScrollingScrollBarVisibility.Auto;
         }
         else
         {
-            ScrollViewer.SetHorizontalScrollMode(RowsList, ScrollMode.Disabled);
-            ScrollViewer.SetHorizontalScrollBarVisibility(RowsList, ScrollBarVisibility.Disabled);
-            if (RowsItemsView.ScrollView is { } itemsScrollView)
-            {
-                itemsScrollView.HorizontalScrollMode = ScrollingScrollMode.Disabled;
-                itemsScrollView.HorizontalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
-            }
+            itemsScrollView.HorizontalScrollMode = ScrollingScrollMode.Disabled;
+            itemsScrollView.HorizontalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
         }
-    }
-
-    private void HookRowsListScrollViewer()
-    {
-        if (_rowsListScrollViewerWinUi is not null) return;
-
-        // Walk the ListView's visual tree to find its template ScrollViewer.
-        // The template exposes it as part name "ScrollViewer" on ListViewBase
-        // in WinUI 3.
-        var sv = FindDescendant<ScrollViewer>(RowsList);
-        if (sv is null) return;
-
-        _rowsListScrollViewerWinUi = sv;
-        sv.ViewChanged += RowsListScrollViewer_ViewChanged;
-        // Apply initial offset (in case the ListView scrolled before Loaded fired).
-        HeaderScrollTransform.X = -sv.HorizontalOffset;
-    }
-
-    private void RowsListScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
-    {
-        if (sender is ScrollViewer sv)
-            HeaderScrollTransform.X = -sv.HorizontalOffset;
     }
 
     private void HookRowsItemsViewScrollView()
@@ -214,19 +160,6 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         HeaderScrollTransform.X = -sender.HorizontalOffset;
     }
 
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        if (root is T match) return match;
-        int count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root);
-        for (int i = 0; i < count; i++)
-        {
-            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i);
-            var found = FindDescendant<T>(child);
-            if (found is not null) return found;
-        }
-        return null;
-    }
-
     private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
     {
         var parent = VisualTreeHelper.GetParent(child);
@@ -237,72 +170,6 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             parent = VisualTreeHelper.GetParent(parent);
         }
         return null;
-    }
-
-    /// <summary>
-    /// Per-row setup, split into phases so the first frame only does what's needed
-    /// to show the row at all; non-critical updates (column widths, date formatting)
-    /// happen in later phases scheduled via <see cref="ContainerContentChangingEventArgs.RegisterUpdateCallback"/>.
-    /// Without this, 200-track playlists blocked the UI thread for hundreds of ms on navigation.
-    /// TrackItem owns hover, selection, heart toggle, tap (TrackClickBehavior), context menu.
-    /// </summary>
-    private void RowsList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
-    {
-        if (args.ItemContainer is not ListViewItem container) return;
-        if (args.InRecycleQueue)
-        {
-            if (container.ContentTemplateRoot is Track.TrackItem recycledRow)
-                UnregisterRow(recycledRow);
-            return;
-        }
-        if (container.ContentTemplateRoot is not Track.TrackItem item) return;
-
-        args.Handled = true;
-
-        switch (args.Phase)
-        {
-            case 0:
-                // Essential + cheap: play command + alternating zebra + density.
-                if (_preferredRowHeight is double h) container.MinHeight = h;
-                container.Margin = _preferredDensity == 0 ? new Thickness(0) : new Thickness(0, 2, 0, 2);
-                item.RowDensity = _preferredDensity;
-                item.PlayCommand = PlayCommand;
-                item.ShowPopularityBadge = ShouldShowPopularityBadge(args.Item);
-                item.SetAlternatingBorder(IsAlternateRow(args.Item, args.ItemIndex), UseCardRows);
-                item.IsSelected = container.IsSelected;
-                item.IsLoading = args.Item is ITrackItem { IsLoaded: false };
-                RegisterRowForLazyItem(item, args.Item as LazyTrackItem);
-                WireContainerToggleHandlers(container);
-                args.RegisterUpdateCallback(RowsList_ContainerContentChanging);
-                break;
-
-            case 1:
-                // Column show/hide flags — batched so the setters trigger one layout pass.
-                item.BeginBatchUpdate();
-                item.ShowAlbumArt        = ColumnVisible("TrackArt");
-                item.ShowArtistColumn    = ResolveShowArtistColumn();
-                item.ShowAlbumColumn     = ColumnVisible("Album");
-                item.ShowAddedByColumn   = AddedByVisible && ColumnVisible("AddedBy");
-                item.ShowDateAdded       = ColumnVisible("DateAdded");
-                item.ShowPlayCount       = ColumnVisible("PlayCount");
-                item.ShowProgress        = ShouldShowInlineProgress();
-                item.EndBatchUpdate();
-                args.RegisterUpdateCallback(RowsList_ContainerContentChanging);
-                break;
-
-            case 2:
-                // Resizable column widths — also batched.
-                item.BeginBatchUpdate();
-                PushWidthsToRow(item);
-                item.EndBatchUpdate();
-                args.RegisterUpdateCallback(RowsList_ContainerContentChanging);
-                break;
-
-            case 3:
-                // Final trim: formatted strings are consumer-provided; do them last.
-                ApplyFormattedCells(item, args.Item);
-                break;
-        }
     }
 
     // ── Centralized LazyTrackItem subscription bus ─────────────────────────
@@ -509,13 +376,6 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void RefreshPopularityBadges()
     {
-        foreach (var item in RowsList.Items)
-        {
-            if (RowsList.ContainerFromItem(item) is not ListViewItem container) continue;
-            if (container.ContentTemplateRoot is not Track.TrackItem row) continue;
-            row.ShowPopularityBadge = ShouldShowPopularityBadge(item);
-        }
-
         foreach (var row in _itemsViewRows.ToArray())
             row.ShowPopularityBadge = ShouldShowPopularityBadge(row.Track);
     }
@@ -543,57 +403,6 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         item.ShowPopularityBadge = ShouldShowPopularityBadge(row);
     }
 
-    // Plain click on an already-selected row must deselect it. The native ListView
-    // (SelectionMode=Extended) replaces rather than toggles on plain click, so we
-    // intercept PointerPressed to remember "pressed while already selected" and
-    // Tapped to complete the toggle. Ctrl/Shift taps keep native behavior.
-    private ListViewItem? _pressedWhileSelected;
-    private PointerEventHandler? _containerPointerPressedHandler;
-    private TappedEventHandler? _containerTappedHandler;
-
-    private void WireContainerToggleHandlers(ListViewItem container)
-    {
-        _containerPointerPressedHandler ??= Container_PointerPressed;
-        _containerTappedHandler ??= Container_Tapped;
-        // handledEventsToo=true: ListViewItemPresenter marks PointerPressed/Tapped
-        // handled during its internal selection path; we still need to run toggle logic.
-        container.RemoveHandler(UIElement.PointerPressedEvent, _containerPointerPressedHandler);
-        container.AddHandler(UIElement.PointerPressedEvent, _containerPointerPressedHandler, true);
-        container.RemoveHandler(UIElement.TappedEvent, _containerTappedHandler);
-        container.AddHandler(UIElement.TappedEvent, _containerTappedHandler, true);
-    }
-
-    private void Container_PointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        if (sender is not ListViewItem lvi) return;
-
-        var (ctrl, shift) = GetCtrlShiftState();
-        if (ctrl || shift || !lvi.IsSelected || IsInteractiveElement(e.OriginalSource as DependencyObject))
-        {
-            _pressedWhileSelected = null;
-            return;
-        }
-
-        _pressedWhileSelected = lvi;
-    }
-
-    private void Container_Tapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (sender is not ListViewItem lvi) return;
-        if (_pressedWhileSelected != lvi) return;
-        _pressedWhileSelected = null;
-
-        var (ctrl, shift) = GetCtrlShiftState();
-        if (ctrl || shift) return;
-
-        var item = lvi.Content ?? lvi.DataContext;
-        if (item != null && RowsList.SelectedItems.Contains(item))
-            RowsList.SelectedItems.Remove(item);
-        lvi.IsSelected = false;
-        if (lvi.ContentTemplateRoot is Track.TrackItem ti)
-            ti.IsSelected = false;
-    }
-
     // CoreWindow.GetForCurrentThread() returns null on WinUI 3 threads that don't have a
     // CoreWindow attached (some dispatcher contexts hit this); dereferencing it crashed
     // the app. Use Microsoft.UI.Input.InputKeyboardSource — the WinUI 3 native key-state
@@ -612,17 +421,6 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         {
             return (false, false);
         }
-    }
-
-    private static bool IsInteractiveElement(DependencyObject? element)
-    {
-        while (element != null)
-        {
-            if (element is ButtonBase or HyperlinkButton)
-                return true;
-            element = VisualTreeHelper.GetParent(element);
-        }
-        return false;
     }
 
     // ------------------------------------------------------------------ DPs
@@ -756,11 +554,11 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     }
 
     /// <summary>
-    /// Derive the skeleton column geometry from the current page state. Mirrors
-    /// the real-row column visibility model in
-    /// <see cref="RowsList_ContainerContentChanging"/> so the skeleton row
-    /// matches what the real row will paint into the same column slots — no
-    /// horizontal shift when content loads.
+    /// Derive the skeleton column geometry from the current page state.
+    /// Mirrors the real-row column visibility model in
+    /// <see cref="ConfigureItemsViewRow"/> so the skeleton row matches what
+    /// the real row will paint into the same column slots — no horizontal
+    /// shift when content loads.
     /// </summary>
     private LoadingRowConfig BuildLoadingRowConfigTemplate()
     {
@@ -776,8 +574,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         var titleCol = Columns?.FirstOrDefault(c => c.Key == "Track");
 
         // AddedBy is special: the column may be present in the set but hidden
-        // by the page-level AddedByVisible toggle (non-collab playlists). Mirror
-        // RowsList_ContainerContentChanging:279.
+        // by the page-level AddedByVisible toggle (non-collab playlists).
+        // Mirrored from ConfigureItemsViewRow's ShowAddedByColumn calculation.
         var addedByWidth = AddedByVisible && addedByCol is not null
             ? addedByCol.Length
             : new GridLength(0);
@@ -906,61 +704,13 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             grid.RefreshRowCardStyles();
     }
 
-    public static readonly DependencyProperty UseItemsViewRowsProperty =
-        DependencyProperty.Register(nameof(UseItemsViewRows), typeof(bool), typeof(TrackDataGrid),
-            new PropertyMetadata(false, OnUseItemsViewRowsChanged));
-
-    public bool UseItemsViewRows
-    {
-        get => (bool)GetValue(UseItemsViewRowsProperty);
-        set => SetValue(UseItemsViewRowsProperty, value);
-    }
-
-    private static void OnUseItemsViewRowsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        if (d is TrackDataGrid grid)
-            grid.ApplyRowsPresenterMode();
-    }
-
-    private void ApplyRowsPresenterMode()
-    {
-        if (RowsList is null || RowsItemsView is null) return;
-
-        RowsList.Visibility = UseItemsViewRows ? Visibility.Collapsed : Visibility.Visible;
-        // Toggle the WRAPPER Grid so the ItemsView's footer ContentPresenter
-        // (RowsItemsViewHost row 1) also hides in ListView mode. Inner
-        // ItemsView stays at default Visibility=Visible inside the wrapper.
-        if (RowsItemsViewHost is not null)
-            RowsItemsViewHost.Visibility = UseItemsViewRows ? Visibility.Visible : Visibility.Collapsed;
-        ApplyHorizontalRowScroll();
-        ApplyVerticalRowScroll();
-        if (UseItemsViewRows)
-            HookRowsItemsViewScrollView();
-        else
-            HookRowsListScrollViewer();
-    }
-
     public void ClearSelection()
     {
-        if (UseItemsViewRows)
-            RowsItemsView.DeselectAll();
-        else
-            RowsList.SelectedItems.Clear();
+        RowsItemsView.DeselectAll();
     }
 
     private void RefreshRowCardStyles()
     {
-        foreach (var item in RowsList.Items)
-        {
-            if (RowsList.ContainerFromItem(item) is not ListViewItem container)
-                continue;
-            if (container.ContentTemplateRoot is not Track.TrackItem row)
-                continue;
-
-            var index = RowsList.IndexFromContainer(container);
-            row.SetAlternatingBorder(IsAlternateRow(item, index), UseCardRows);
-        }
-
         foreach (var row in _itemsViewRows.ToArray())
         {
             var index = row.Track is null ? -1 : _visibleRows.IndexOf(row.Track);
@@ -1099,26 +849,17 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void ApplyVerticalRowScroll()
     {
-        if (RowsList is null) return;
+        if (RowsItemsView?.ScrollView is not { } itemsScrollView) return;
+
         if (IsParentScrolling)
         {
-            ScrollViewer.SetVerticalScrollMode(RowsList, ScrollMode.Disabled);
-            ScrollViewer.SetVerticalScrollBarVisibility(RowsList, ScrollBarVisibility.Disabled);
-            if (RowsItemsView.ScrollView is { } itemsScrollView)
-            {
-                itemsScrollView.VerticalScrollMode = ScrollingScrollMode.Disabled;
-                itemsScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
-            }
+            itemsScrollView.VerticalScrollMode = ScrollingScrollMode.Disabled;
+            itemsScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
         }
         else
         {
-            ScrollViewer.SetVerticalScrollMode(RowsList, ScrollMode.Auto);
-            ScrollViewer.SetVerticalScrollBarVisibility(RowsList, ScrollBarVisibility.Auto);
-            if (RowsItemsView.ScrollView is { } itemsScrollView)
-            {
-                itemsScrollView.VerticalScrollMode = ScrollingScrollMode.Auto;
-                itemsScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Auto;
-            }
+            itemsScrollView.VerticalScrollMode = ScrollingScrollMode.Auto;
+            itemsScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Auto;
         }
     }
 
@@ -1287,9 +1028,6 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         {
             if (_visibleRows.Count > 0)
                 _visibleRows.Clear();
-            if (_visibleGroups.Count > 0)
-                _visibleGroups.Clear();
-            ApplyRowsItemsSource();
             ApplyLoadingRowsVisibility();
             return;
         }
@@ -1312,10 +1050,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
                 : pipeline.OrderByDescending(t => SortValue(t, sortKey), Comparer<object?>.Create(CompareObjects));
         }
 
-        var rows = pipeline.ToList();
-        _visibleRows.ReplaceWith(rows);
-        RebuildGroups(rows);
-        ApplyRowsItemsSource();
+        var tracks = pipeline.ToList();
+        _visibleRows.ReplaceWith(BuildFlatRowsWithHeaders(tracks));
         RestoreSelectionByKeys(selectedKeys);
         ApplyLoadingRowsVisibility();
     }
@@ -1330,50 +1066,74 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             : Visibility.Collapsed;
     }
 
-    private void ApplyRowsItemsSource()
-    {
-        if (IsGrouped && GroupKeySelector is not null)
-        {
-            if (!ReferenceEquals(_groupedRowsViewSource.Source, _visibleGroups))
-                _groupedRowsViewSource.Source = _visibleGroups;
-            if (!ReferenceEquals(RowsList.ItemsSource, _groupedRowsViewSource.View))
-                RowsList.ItemsSource = _groupedRowsViewSource.View;
-            if (!ReferenceEquals(RowsItemsView.ItemsSource, _visibleRows))
-                RowsItemsView.ItemsSource = _visibleRows;
-            return;
-        }
-
-        if (!ReferenceEquals(RowsList.ItemsSource, _visibleRows))
-            RowsList.ItemsSource = _visibleRows;
-        if (!ReferenceEquals(RowsItemsView.ItemsSource, _visibleRows))
-            RowsItemsView.ItemsSource = _visibleRows;
-    }
-
+    /// <summary>
+    /// Push the consumer-supplied <c>GroupHeaderTemplate</c> into the
+    /// <see cref="ItemTemplateSelector"/> so the ItemsView renders it for any
+    /// <see cref="TrackDataGridGroupRow"/> marker the projection produces.
+    /// Called from the ctor (after <c>InitializeComponent</c>) and from the
+    /// <c>GroupHeaderTemplate</c> DP change callback.
+    /// </summary>
     private void ApplyGroupHeaderTemplate()
     {
-        if (RowsList?.GroupStyle is null || RowsList.GroupStyle.Count == 0)
-            return;
-
-        RowsList.GroupStyle[0].HeaderTemplate = GroupHeaderTemplate;
+        if (ItemTemplateSelector is null) return;
+        ItemTemplateSelector.GroupHeaderTemplate = GroupHeaderTemplate;
     }
 
-    private void RebuildGroups(IReadOnlyList<ITrackItem> rows)
+    /// <summary>
+    /// Produces the flat row list ItemsView consumes. When the grid is grouped
+    /// (<see cref="IsGrouped"/>=true with a <see cref="GroupKeySelector"/>),
+    /// emits a <see cref="TrackDataGridGroupRow"/> marker immediately before
+    /// each bucket's first track. Markers are non-selectable in the XAML and
+    /// filtered out of every <c>ITrackItem</c>-shaped helper, so sort /
+    /// selection / drag-reorder / context-menu code is transparent to them.
+    /// </summary>
+    private List<object> BuildFlatRowsWithHeaders(IReadOnlyList<ITrackItem> tracks)
     {
-        if (_visibleGroups.Count > 0)
-            _visibleGroups.Clear();
+        if (!IsGrouped || GroupKeySelector is null || tracks.Count == 0)
+            return new List<object>(tracks);
 
-        if (!IsGrouped || GroupKeySelector is null)
-            return;
+        var keySelector = GroupKeySelector;
+        var headerSelector = GroupHeaderSelector;
+        var countFormatter = GroupCountFormatter;
 
-        foreach (var group in rows.GroupBy(
-                     item => GroupKeySelector(item)?.ToString() ?? string.Empty,
-                     StringComparer.OrdinalIgnoreCase))
+        var flat = new List<object>(tracks.Count + 4);
+        string? currentKey = null;
+        var bucket = new List<ITrackItem>(tracks.Count);
+        ITrackItem? bucketFirst = null;
+
+        void Flush()
         {
-            var items = group.ToList();
-            var header = GroupHeaderSelector?.Invoke(items[0]) ?? group.Key;
-            var countText = GroupCountFormatter?.Invoke(items.Count) ?? (items.Count == 1 ? "1 item" : $"{items.Count:N0} items");
-            _visibleGroups.Add(new TrackDataGridGroup(group.Key, header, items, countText));
+            if (bucketFirst is null || bucket.Count == 0) return;
+            var header = headerSelector?.Invoke(bucketFirst) ?? currentKey ?? string.Empty;
+            var countText = countFormatter?.Invoke(bucket.Count)
+                ?? (bucket.Count == 1 ? "1 item" : $"{bucket.Count:N0} items");
+            // Header row marker; the ItemTemplateSelector routes it to
+            // GroupHeaderTemplate.
+            flat.Add(new TrackDataGridGroupRow
+            {
+                Header = header,
+                Count = bucket.Count,
+                CountText = countText,
+            });
+            flat.AddRange(bucket);
+            bucket.Clear();
+            bucketFirst = null;
         }
+
+        for (var i = 0; i < tracks.Count; i++)
+        {
+            var t = tracks[i];
+            var key = keySelector(t)?.ToString() ?? string.Empty;
+            if (!string.Equals(currentKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                Flush();
+                currentKey = key;
+            }
+            bucket.Add(t);
+            bucketFirst ??= t;
+        }
+        Flush();
+        return flat;
     }
 
     // ------------------------------------------------------------- toolbar handlers
@@ -1426,17 +1186,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         var height = DensityRowHeights[stop];
         var outerMargin = stop == 0 ? new Thickness(0) : new Thickness(0, 2, 0, 2);
 
-        // ItemContainerStyle's MinHeight lives on every materialized ListViewItem;
-        // tweak directly so the change applies without a re-template pass. Also push
-        // RowDensity into each TrackItem so padding / album-art / subline adjust.
-        foreach (var item in RowsList.Items)
-        {
-            if (RowsList.ContainerFromItem(item) is not ListViewItem container) continue;
-            container.MinHeight = height;
-            container.Margin = outerMargin;
-            if (container.ContentTemplateRoot is Track.TrackItem ti)
-                ti.RowDensity = stop;
-        }
+        // Push RowDensity into each realized TrackItem so padding /
+        // album-art / subline adjust without a re-template pass.
         foreach (var row in _itemsViewRows.ToArray())
         {
             row.RowDensity = stop;
@@ -1458,7 +1209,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
         if (DetailsToggle.IsChecked == true)
         {
-            var track = SelectedRowItem() as ITrackItem ?? _visibleRows.FirstOrDefault();
+            var track = SelectedRowItem() as ITrackItem ?? _visibleRows.OfType<ITrackItem>().FirstOrDefault();
             if (track is null)
             {
                 DetailsToggle.IsChecked = false;
@@ -1479,51 +1230,16 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void SelectAllRows()
     {
-        if (UseItemsViewRows)
-        {
-            RowsItemsView.SelectAll();
-            SyncItemsViewRowSelectionState();
-        }
-        else
-        {
-            RowsList.SelectAll();
-            SyncListViewRowSelectionState();
-        }
+        RowsItemsView.SelectAll();
+        SyncItemsViewRowSelectionState();
     }
 
     private void InvertSelectionItem_Click(object sender, RoutedEventArgs e)
     {
-        if (UseItemsViewRows)
-        {
-            RowsItemsView.InvertSelection();
-            return;
-        }
-
-        var currentlySelected = new HashSet<object>(RowsList.SelectedItems.Cast<object>());
-        RowsList.SelectedItems.Clear();
-        foreach (var item in RowsList.Items)
-        {
-            if (!currentlySelected.Contains(item))
-                RowsList.SelectedItems.Add(item);
-        }
-        SyncListViewRowSelectionState();
+        RowsItemsView.InvertSelection();
     }
 
     private void ClearSelectionItem_Click(object sender, RoutedEventArgs e) => ClearSelection();
-
-    private void RowsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        SyncListViewRowSelectionState();
-        if (_restoringSelection)
-            return;
-
-        var selected = SelectedRowItem();
-        if (selected is ITrackItem track)
-            RowSelected?.Invoke(this, track);
-
-        if (selected is not null && SelectionChangedCommand?.CanExecute(selected) == true)
-            SelectionChangedCommand.Execute(selected);
-    }
 
     private void RowsItemsView_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs args)
     {
@@ -1539,16 +1255,11 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             SelectionChangedCommand.Execute(selected);
     }
 
-    private object? SelectedRowItem()
-        => UseItemsViewRows ? RowsItemsView.SelectedItem : RowsList.SelectedItem;
+    private object? SelectedRowItem() => RowsItemsView.SelectedItem;
 
     private HashSet<string> CaptureSelectedTrackKeys()
     {
-        var selected = UseItemsViewRows
-            ? RowsItemsView.SelectedItems.Cast<object>()
-            : RowsList.SelectedItems.Cast<object>();
-
-        return selected
+        return RowsItemsView.SelectedItems
             .OfType<ITrackItem>()
             .Select(TrackSelectionKey)
             .OfType<string>()
@@ -1563,25 +1274,13 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         _restoringSelection = true;
         try
         {
-            if (UseItemsViewRows)
+            RowsItemsView.DeselectAll();
+            for (var i = 0; i < _visibleRows.Count; i++)
             {
-                RowsItemsView.DeselectAll();
-                for (var i = 0; i < _visibleRows.Count; i++)
-                {
-                    var key = TrackSelectionKey(_visibleRows[i]);
-                    if (!string.IsNullOrEmpty(key) && selectedKeys.Contains(key))
-                        RowsItemsView.Select(i);
-                }
-            }
-            else
-            {
-                RowsList.SelectedItems.Clear();
-                foreach (var row in _visibleRows)
-                {
-                    var key = TrackSelectionKey(row);
-                    if (!string.IsNullOrEmpty(key) && selectedKeys.Contains(key))
-                        RowsList.SelectedItems.Add(row);
-                }
+                if (_visibleRows[i] is not ITrackItem track) continue;
+                var key = TrackSelectionKey(track);
+                if (!string.IsNullOrEmpty(key) && selectedKeys.Contains(key))
+                    RowsItemsView.Select(i);
             }
         }
         finally
@@ -1590,7 +1289,6 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         }
 
         SyncItemsViewRowSelectionState();
-        SyncListViewRowSelectionState();
     }
 
     private static string? TrackSelectionKey(ITrackItem item)
@@ -1602,31 +1300,16 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void SyncItemsViewRowSelectionState()
     {
-        if (!UseItemsViewRows)
-            return;
-
         var selected = new HashSet<object>(RowsItemsView.SelectedItems.Cast<object>());
         foreach (var row in _itemsViewRows.ToArray())
             row.IsSelected = row.Track is not null && selected.Contains(row.Track);
-    }
-
-    private void SyncListViewRowSelectionState()
-    {
-        if (UseItemsViewRows || RowsList.ItemsPanelRoot is null)
-            return;
-
-        foreach (var child in RowsList.ItemsPanelRoot.Children)
-        {
-            if (child is ListViewItem container && container.ContentTemplateRoot is Track.TrackItem row)
-                row.IsSelected = container.IsSelected;
-        }
     }
 
     // Tap / DoubleTap are handled inside TrackItem (respecting AppSettings.TrackClickBehavior)
     // and native Extended-mode selection — nothing to wire at this level. Enter/Space on a
     // keyboard-selected row still plays via the handler below, matching TrackListView.
 
-    private void RowsList_KeyDown(object sender, KeyRoutedEventArgs e)
+    private void OnRowsKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == VirtualKey.A && GetCtrlShiftState().ctrl)
         {
@@ -1649,11 +1332,6 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             return;
         _disposed = true;
 
-        if (_rowsListScrollViewerWinUi is not null)
-        {
-            _rowsListScrollViewerWinUi.ViewChanged -= RowsListScrollViewer_ViewChanged;
-            _rowsListScrollViewerWinUi = null;
-        }
         if (_rowsItemsViewScrollView is not null)
         {
             _rowsItemsViewScrollView.ViewChanged -= RowsItemsViewScrollView_ViewChanged;
@@ -1662,23 +1340,10 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
         UnwireRowContextMenuHandlers();
 
-        RowsList.ContainerContentChanging -= RowsList_ContainerContentChanging;
-        RowsList.SelectionChanged -= RowsList_SelectionChanged;
-        RowsList.Loaded -= RowsList_Loaded;
-        RowsList.Unloaded -= RowsList_Unloaded;
         RowsItemsView.SelectionChanged -= RowsItemsView_SelectionChanged;
         RowsItemsView.Loaded -= RowsItemsView_Loaded;
         RowsItemsView.Unloaded -= RowsItemsView_Unloaded;
 
-        foreach (var item in RowsList.Items)
-        {
-            if (RowsList.ContainerFromItem(item) is not ListViewItem container)
-                continue;
-            if (_containerPointerPressedHandler is not null)
-                container.RemoveHandler(UIElement.PointerPressedEvent, _containerPointerPressedHandler);
-            if (_containerTappedHandler is not null)
-                container.RemoveHandler(UIElement.TappedEvent, _containerTappedHandler);
-        }
         _itemsViewRows.Clear();
 
         // Tear down the centralized LazyTrackItem subscription bus.
@@ -1712,14 +1377,11 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
         HeaderHost.Children.Clear();
         HeaderHost.ColumnDefinitions.Clear();
-        RowsList.SelectedItems.Clear();
-        RowsList.ItemsSource = null;
         RowsItemsView.DeselectAll();
         RowsItemsView.ItemsSource = null;
         LoadingRowsRepeater.ItemsSource = null;
         _visibleRows.Clear();
         _sourceSnapshot = Array.Empty<ITrackItem>();
-        _pressedWhileSelected = null;
 
         ItemsSource = null;
         PlayCommand = null;
@@ -1783,38 +1445,6 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private DragStateService? ResolveDragState() =>
         _dragState ??= Ioc.Default.GetService<DragStateService>();
 
-    private void RowsList_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
-    {
-        var tracks = e.Items.OfType<ITrackItem>().ToList();
-        if (tracks.Count == 0) { e.Cancel = true; return; }
-        WriteTrackPayload(e.Data, tracks, RowsList.Items.IndexOf(tracks[0]));
-        e.Data.RequestedOperation = DataPackageOperation.Copy | DataPackageOperation.Move;
-    }
-
-    private void RowsList_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
-    {
-        ResolveDragState()?.EndDrag();
-    }
-
-    private void RowsList_DragOver(object sender, DragEventArgs e)
-    {
-        if (!CanReorder) return;
-        if (ResolveDragState()?.CurrentPayload is TrackDragPayload p
-            && !string.IsNullOrEmpty(ContextUri)
-            && string.Equals(p.SourceContextUri, ContextUri, StringComparison.Ordinal))
-        {
-            e.AcceptedOperation = DataPackageOperation.Move;
-        }
-    }
-
-    private void RowsList_Drop(object sender, DragEventArgs e)
-    {
-        if (!TryReadIntraListReorder(e, out var fromIndex, out var length)) return;
-        var toIndex = ResolveDropTargetIndex(e.OriginalSource, RowsList, _visibleRows.Count);
-        if (toIndex < 0) return;
-        TracksReorderRequested?.Invoke(fromIndex, length, toIndex);
-    }
-
     // RowsItemsView drag-source wiring lives on the inner TrackItem (per row)
     // via ManualDragAttachment in RowsItemsViewTrackItem_Loaded. ItemContainer's
     // CanDrag pipeline gets swallowed by its selection pointer handling, so the
@@ -1866,28 +1496,14 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     }
 
     /// <summary>
-    /// Walks up the visual tree from the drop point to find the nearest row
-    /// container, then returns its index. Drops below the last row fall back
-    /// to "append" (return the count).
+    /// Walk up to the dropped-on ItemContainer; its DataContext is the row's
+    /// ITrackItem. Index it in _visibleRows (the grid's only source) to get
+    /// the target slot. Drops in empty space below the last row append.
+    /// Group-header markers in _visibleRows are non-selectable, so they're
+    /// never the drop target via a real row click.
     /// </summary>
-    private static int ResolveDropTargetIndex(object originalSource, ListViewBase listView, int totalCount)
-    {
-        var element = originalSource as DependencyObject;
-        while (element is not null and not ListViewItem)
-            element = VisualTreeHelper.GetParent(element);
-        if (element is ListViewItem lvi)
-        {
-            var idx = listView.IndexFromContainer(lvi);
-            if (idx >= 0) return idx;
-        }
-        return totalCount;
-    }
-
     private int ResolveDropTargetIndex(object originalSource, ItemsView itemsView, int totalCount)
     {
-        // Walk up to the dropped-on ItemContainer; its DataContext is the row's
-        // ITrackItem. Index it in _visibleRows (the grid's only source) to get
-        // the target slot. Drops in empty space below the last row append.
         var element = originalSource as DependencyObject;
         while (element is not null and not ItemContainer)
             element = VisualTreeHelper.GetParent(element);
@@ -1899,21 +1515,4 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         }
         return totalCount;
     }
-}
-
-public sealed class TrackDataGridGroup
-{
-    public TrackDataGridGroup(string key, object header, IReadOnlyList<ITrackItem> items, string countText)
-    {
-        Key = key;
-        Header = header;
-        Items = items;
-        CountText = countText;
-    }
-
-    public string Key { get; }
-    public object Header { get; }
-    public IReadOnlyList<ITrackItem> Items { get; }
-    public int Count => Items.Count;
-    public string CountText { get; }
 }

@@ -466,19 +466,22 @@
                     </Button>
                 </Grid>
 
-                <!-- Hero band — three responsive layouts:
-                       Wide   ≥1500 px : original layout — HeroCarousel left
-                                         (full Row 0 height) + WideSideRail
-                                         right (3 cards stacked vertically,
-                                         2*/1*/1* row weights). The hero gets
-                                         the room Klankhuis was designed for
-                                         (≥1100 px text-column slack), so the
-                                         title renders without char-by-char
-                                         wrapping.
-                       Medium ≥900 px  : hero spans the full row 0; below it,
+                <!-- Hero band — three responsive layouts (thresholds in
+                     HomePage.HeroBand_SizeChanged):
+                       Wide   ≥900 px  : HeroCarousel left (Width=*, full
+                                         Row 0 height) + WideSideRail right
+                                         (320 px, 3 cards stacked vertically,
+                                         2*/1*/1* row weights). Wide kicks in
+                                         earlier than the original 1100 px so
+                                         shortcut cards stay alongside the
+                                         hero on common window+queue layouts;
+                                         hero shrinks to ~560 px text column
+                                         which Klankhuis handles with 2-3
+                                         word title lines.
+                       Medium ≥720 px  : hero spans the full row 0; below it,
                                          StackedShortcuts shows the 1-big +
                                          2-stacked layout (Image 5 reference).
-                       Narrow <900 px  : hero spans the full row 0; below it,
+                       Narrow <720 px  : hero spans the full row 0; below it,
                                          StackedShortcuts collapses Card0 to
                                          a full-width banner with Card1 +
                                          Card2 side-by-side underneath
@@ -534,17 +537,23 @@
                                        Label="{x:Bind ViewModel.HeroAdapter.SideCard0.Label, Mode=OneWay}"
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard0.Eyebrow, Mode=OneWay}"
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard0.Accent, Mode=OneWay}"
-                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard0.ImageUri, Mode=OneWay}"/>
+                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard0.ImageUri, Mode=OneWay}"
+                                       Tag="{x:Bind ViewModel.HeroAdapter.SideCard0.NavigationUri, Mode=OneWay}"
+                                       Click="SideCard_Click"/>
                         <hero:SideCard Grid.Row="1" Margin="0,6,0,6" MinHeight="0"
                                        Label="{x:Bind ViewModel.HeroAdapter.SideCard1.Label, Mode=OneWay}"
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard1.Eyebrow, Mode=OneWay}"
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard1.Accent, Mode=OneWay}"
-                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard1.ImageUri, Mode=OneWay}"/>
+                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard1.ImageUri, Mode=OneWay}"
+                                       Tag="{x:Bind ViewModel.HeroAdapter.SideCard1.NavigationUri, Mode=OneWay}"
+                                       Click="SideCard_Click"/>
                         <hero:SideCard Grid.Row="2" Margin="0,6,0,0" MinHeight="0"
                                        Label="{x:Bind ViewModel.HeroAdapter.SideCard2.Label, Mode=OneWay}"
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard2.Eyebrow, Mode=OneWay}"
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard2.Accent, Mode=OneWay}"
-                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard2.ImageUri, Mode=OneWay}"/>
+                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard2.ImageUri, Mode=OneWay}"
+                                       Tag="{x:Bind ViewModel.HeroAdapter.SideCard2.NavigationUri, Mode=OneWay}"
+                                       Click="SideCard_Click"/>
                     </Grid>
 
                     <!-- Below-hero shortcuts (Medium + Narrow). 6 columns of
@@ -582,21 +591,27 @@
                                        Label="{x:Bind ViewModel.HeroAdapter.SideCard0.Label, Mode=OneWay}"
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard0.Eyebrow, Mode=OneWay}"
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard0.Accent, Mode=OneWay}"
-                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard0.ImageUri, Mode=OneWay}"/>
+                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard0.ImageUri, Mode=OneWay}"
+                                       Tag="{x:Bind ViewModel.HeroAdapter.SideCard0.NavigationUri, Mode=OneWay}"
+                                       Click="SideCard_Click"/>
                         <hero:SideCard x:Name="StackedCard1"
                                        Grid.Row="0" Grid.Column="4" Grid.ColumnSpan="2"
                                        MinHeight="0"
                                        Label="{x:Bind ViewModel.HeroAdapter.SideCard1.Label, Mode=OneWay}"
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard1.Eyebrow, Mode=OneWay}"
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard1.Accent, Mode=OneWay}"
-                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard1.ImageUri, Mode=OneWay}"/>
+                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard1.ImageUri, Mode=OneWay}"
+                                       Tag="{x:Bind ViewModel.HeroAdapter.SideCard1.NavigationUri, Mode=OneWay}"
+                                       Click="SideCard_Click"/>
                         <hero:SideCard x:Name="StackedCard2"
                                        Grid.Row="1" Grid.Column="4" Grid.ColumnSpan="2"
                                        MinHeight="0"
                                        Label="{x:Bind ViewModel.HeroAdapter.SideCard2.Label, Mode=OneWay}"
                                        Eyebrow="{x:Bind ViewModel.HeroAdapter.SideCard2.Eyebrow, Mode=OneWay}"
                                        Accent="{x:Bind ViewModel.HeroAdapter.SideCard2.Accent, Mode=OneWay}"
-                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard2.ImageUri, Mode=OneWay}"/>
+                                       ImageUri="{x:Bind ViewModel.HeroAdapter.SideCard2.ImageUri, Mode=OneWay}"
+                                       Tag="{x:Bind ViewModel.HeroAdapter.SideCard2.NavigationUri, Mode=OneWay}"
+                                       Click="SideCard_Click"/>
 
                     </Grid>
                 </Grid>

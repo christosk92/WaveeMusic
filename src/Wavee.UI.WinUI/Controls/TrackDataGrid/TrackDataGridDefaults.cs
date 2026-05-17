@@ -3,9 +3,9 @@ using Microsoft.UI.Xaml;
 namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 
 /// <summary>
-/// Built-in column sets per page type. The column list drives the grid's header +
-/// filter + sort infrastructure AND (via <c>ContainerContentChanging</c>) the
-/// visibility flags on each <c>TrackItem</c> row. Column widths mirror
+/// Built-in column sets per page type. The column list drives the grid's
+/// header + filter + sort infrastructure AND (via <c>ConfigureItemsViewRow</c>)
+/// the visibility flags on each <c>TrackItem</c> row. Column widths mirror
 /// <c>TrackItem</c>'s internal Row-mode grid so header cells align with row cells.
 /// </summary>
 public static class TrackDataGridDefaults

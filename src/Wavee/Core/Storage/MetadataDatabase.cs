@@ -3958,23 +3958,60 @@ public sealed class MetadataDatabase : IMetadataDatabase
         // Simple size-based eviction if we're at capacity
         if (_hotCache.Count >= _maxHotCacheSize)
         {
-            // Snapshot first — enumerating a ConcurrentDictionary while other
-            // callers write can surface a KVP whose Value reads as null for
-            // an instant (bucket in the middle of a transition). OrderBy would
-            // then NRE on kvp.Value.ExpiresAt. ToArray() takes a stable view,
-            // and the explicit null-guard survives any remaining races.
-            var snapshot = _hotCache.ToArray();
-            var keysToRemove = snapshot
-                .Where(kvp => kvp.Value is not null)
-                .OrderBy(kvp => kvp.Value.ExpiresAt)
-                .Take(Math.Max(1, _maxHotCacheSize / 10))
-                .Select(kvp => kvp.Key)
-                .ToList();
+            // Single-pass bounded-buffer LRU eviction. Previously this did
+            // `_hotCache.ToArray()` + `OrderBy + Take + ToList` per eviction;
+            // with a 10K+ entry hot cache that allocated a full snapshot of
+            // every KVP and a full LINQ chain, every fill. Now we walk the
+            // dictionary once and keep only `evictCount` candidates in a
+            // bounded buffer sorted so the worst (highest ExpiresAt) sits at
+            // the end — replace it whenever we find a better (lower-ExpiresAt)
+            // candidate.
+            //
+            // Same null-guard as the old code: a concurrent write can surface
+            // a KVP whose Value is transiently null during a bucket
+            // transition; skip those rather than dereferencing.
+            var evictCount = Math.Max(1, _maxHotCacheSize / 10);
+            var candidates = new (long ExpiresAt, string Key)[evictCount];
+            var filled = 0;
+            var worstIdx = 0; // Index of the highest-ExpiresAt entry (worst candidate to keep).
+            long worstExpiresAt = long.MinValue;
 
-            foreach (var key in keysToRemove)
+            foreach (var kvp in _hotCache)
             {
-                _hotCache.TryRemove(key, out _);
+                if (kvp.Value is null)
+                    continue;
+                var entryExpires = kvp.Value.ExpiresAt;
+
+                if (filled < evictCount)
+                {
+                    candidates[filled] = (entryExpires, kvp.Key);
+                    if (entryExpires > worstExpiresAt)
+                    {
+                        worstExpiresAt = entryExpires;
+                        worstIdx = filled;
+                    }
+                    filled++;
+                    continue;
+                }
+
+                if (entryExpires >= worstExpiresAt)
+                    continue;
+
+                // Better candidate — replace the worst and recompute the new worst.
+                candidates[worstIdx] = (entryExpires, kvp.Key);
+                worstExpiresAt = long.MinValue;
+                for (var i = 0; i < filled; i++)
+                {
+                    if (candidates[i].ExpiresAt > worstExpiresAt)
+                    {
+                        worstExpiresAt = candidates[i].ExpiresAt;
+                        worstIdx = i;
+                    }
+                }
             }
+
+            for (var i = 0; i < filled; i++)
+                _hotCache.TryRemove(candidates[i].Key, out _);
         }
 
         _hotCache[cacheKey] = new CachedExtensionEntry(data, etag, expiresAt);

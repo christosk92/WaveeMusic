@@ -712,7 +712,6 @@
                 VerticalAlignment="Stretch"
                 Margin="0,0,0,0"
                 PageKey="playlist"
-                UseItemsViewRows="True"
                 IsParentScrolling="True"
                 IsLoading="{x:Bind ViewModel.TrackList.IsLoadingTracks, Mode=OneWay}"
                 LoadingRowCount="{x:Bind ViewModel.TrackList.TotalTracks, Mode=OneWay}"
