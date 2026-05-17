@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Composition;
@@ -146,6 +147,7 @@ public sealed partial class CompositionImage : UserControl
     private int _pinnedDecode;
     private bool _isAttached;
     private bool _initialized;
+    private bool _releasedForNavigationCache;
     private EventHandler? _loadCompletedHandler;
 
     // â”€â”€ Diagnostics â”€â”€
@@ -298,6 +300,7 @@ public sealed partial class CompositionImage : UserControl
     {
         DiagLog("OnLoaded:enter", $"ImageUrl={ImageUrl ?? "(null)"} decode={DecodePixelSize}");
         _isAttached = true;
+        _releasedForNavigationCache = false;
         EnsureCompositionResources();
         ImageLoadingSuspension.Changed += OnSuspensionChanged;
         // TryLoadCurrent calls AttachVisualToHost as part of its normal flow;
@@ -316,6 +319,10 @@ public sealed partial class CompositionImage : UserControl
         DiagLog("OnUnloaded:enter");
         _isAttached = false;
         ImageLoadingSuspension.Changed -= OnSuspensionChanged;
+        // Unloaded image controls must not keep a brush reference to the
+        // native LoadedImageSurface after dropping their cache pin.
+        ReleaseSurfaceReference(resetResolvedUrl: true);
+        _releasedForNavigationCache = false;
 
         // Non-destructive unload â€” drop the cache pin and unsubscribe pending
         // LoadCompleted callbacks so they don't fire while we're not visible.
@@ -335,22 +342,83 @@ public sealed partial class CompositionImage : UserControl
         //
         // For full GPU-resource teardown (memory pressure, app shutdown) call
         // ReleaseCompositionResources explicitly.
-        if (_currentCachedImage is not null && _loadCompletedHandler is not null)
-        {
-            try { _currentCachedImage.LoadCompleted -= _loadCompletedHandler; }
-            catch { }
-            _loadCompletedHandler = null;
-        }
-        if (!string.IsNullOrEmpty(_pinnedUrl))
-        {
-            try { _cache?.Unpin(_pinnedUrl, _pinnedDecode); } catch { }
-            _pinnedUrl = null;
-        }
-        _resolvedUrl = null;
-        _currentCachedImage = null;
-        _pinnedDecode = 0;
-        IsImageLoaded = false;
         DiagLog("OnUnloaded:exit");
+    }
+
+    public bool ReleaseForNavigationCache()
+    {
+        if (_releasedForNavigationCache)
+            return false;
+
+        if (_currentCachedImage is null
+            && string.IsNullOrEmpty(_pinnedUrl)
+            && _surfaceBrush?.Surface is null)
+            return false;
+
+        ReleaseSurfaceReference(resetResolvedUrl: true);
+        _releasedForNavigationCache = true;
+        DiagLog("ReleaseForNavigationCache");
+        return true;
+    }
+
+    public bool RestoreAfterNavigationCache()
+    {
+        if (!_releasedForNavigationCache)
+            return false;
+
+        _releasedForNavigationCache = false;
+        if (!_isAttached)
+            return false;
+
+        TryLoadCurrent();
+        return true;
+    }
+
+    public static int ReleaseSurfacesForNavigationCache(DependencyObject? root)
+        => VisitCompositionImages(root, static image => image.ReleaseForNavigationCache());
+
+    public static int RestoreSurfacesAfterNavigationCache(DependencyObject? root)
+        => VisitCompositionImages(root, static image => image.RestoreAfterNavigationCache());
+
+    private static int VisitCompositionImages(DependencyObject? root, Func<CompositionImage, bool> action)
+    {
+        if (root is null)
+            return 0;
+
+        var count = 0;
+        var stack = new Stack<DependencyObject>();
+        stack.Push(root);
+
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (current is CompositionImage image && action(image))
+                count++;
+
+            int childCount;
+            try
+            {
+                childCount = VisualTreeHelper.GetChildrenCount(current);
+            }
+            catch
+            {
+                continue;
+            }
+
+            for (var i = childCount - 1; i >= 0; i--)
+            {
+                try
+                {
+                    stack.Push(VisualTreeHelper.GetChild(current, i));
+                }
+                catch
+                {
+                    // Visual tree can mutate during page trim; skip that branch.
+                }
+            }
+        }
+
+        return count;
     }
 
     private void ReleaseCompositionResources()
@@ -496,6 +564,7 @@ public sealed partial class CompositionImage : UserControl
     {
         DiagLog("TryLoad:enter", $"ImageUrl={ImageUrl ?? "(null)"}");
         if (!_isAttached) { DiagLog("TryLoad:bail:notAttached"); return; }
+        _releasedForNavigationCache = false;
 
         var url = SpotifyImageHelper.ToHttpsUrl(ImageUrl);
         if (string.IsNullOrEmpty(url))
@@ -682,6 +751,21 @@ public sealed partial class CompositionImage : UserControl
         }
         _pinnedDecode = 0;
         IsImageLoaded = false;
+    }
+
+    private void ReleaseSurfaceReference(bool resetResolvedUrl)
+    {
+        ReleasePin();
+        if (resetResolvedUrl)
+            _resolvedUrl = null;
+
+        if (_surfaceBrush is not null)
+        {
+            try { _surfaceBrush.Surface = null; } catch { }
+        }
+
+        DetachVisualFromHost();
+        ResetPlaceholderOpacity();
     }
 
     /// <summary>

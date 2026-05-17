@@ -229,9 +229,6 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     private void LeftPinnedZone_SizeChanged(object sender, SizeChangedEventArgs e)
         => UpdateLeftScrollableMaxHeight();
 
-    private void LeftScrollableZone_ViewChanged(ScrollView sender, object args)
-        => UpdateLeftScrollableFadeVisibility();
-
     private void UpdateLeftScrollableMaxHeight()
     {
         if (LeftPinnedZone is null || LeftScrollableZone is null || PageScrollView is null)
@@ -244,19 +241,6 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
                         - LeftPinnedZone.ActualHeight
                         - bottomBreathingRoom;
         LeftScrollableZone.MaxHeight = System.Math.Max(minScrollableHeight, available);
-        UpdateLeftScrollableFadeVisibility();
-    }
-
-    private void UpdateLeftScrollableFadeVisibility()
-    {
-        if (LeftScrollableZone is null || LeftScrollableFade is null) return;
-
-        var sv = LeftScrollableZone;
-        var overflows = sv.ExtentHeight > sv.ViewportHeight + 0.5;
-        var atBottom = sv.VerticalOffset >= sv.ScrollableHeight - 0.5;
-        LeftScrollableFade.Visibility = (overflows && !atBottom)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
     }
 
     // ── Sticky-left composition binding ─────────────────────────────────────

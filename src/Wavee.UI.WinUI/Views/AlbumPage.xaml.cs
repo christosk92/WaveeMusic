@@ -238,9 +238,6 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
     private void LeftPinnedZone_SizeChanged(object sender, SizeChangedEventArgs e)
         => UpdateLeftScrollableMaxHeight();
 
-    private void LeftScrollableZone_ViewChanged(ScrollView sender, object args)
-        => UpdateLeftScrollableFadeVisibility();
-
     private void UpdateLeftScrollableMaxHeight()
     {
         if (LeftPinnedZone is null || LeftScrollableZone is null || PageScrollView is null)
@@ -254,19 +251,6 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
                         - LeftPinnedZone.ActualHeight
                         - bottomBreathingRoom;
         LeftScrollableZone.MaxHeight = System.Math.Max(minScrollableHeight, available);
-        UpdateLeftScrollableFadeVisibility();
-    }
-
-    private void UpdateLeftScrollableFadeVisibility()
-    {
-        if (LeftScrollableZone is null || LeftScrollableFade is null) return;
-
-        var sv = LeftScrollableZone;
-        var overflows = sv.ExtentHeight > sv.ViewportHeight + 0.5;
-        var atBottom = sv.VerticalOffset >= sv.ScrollableHeight - 0.5;
-        LeftScrollableFade.Visibility = (overflows && !atBottom)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
     }
 
     // ── Sticky left column (composition-thread) ──────────────────────────

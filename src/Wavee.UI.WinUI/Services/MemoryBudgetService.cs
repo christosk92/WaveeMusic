@@ -227,10 +227,12 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
             var svc = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<ImageCacheService>();
             if (svc is null) return Task.CompletedTask;
             var before = svc.Count;
+            var pinned = svc.PinnedCount;
             svc.Clear();
             _logger?.LogWarning(
-                "Memory budget Tier-3 emergency: hard-cleared image cache ({Before} entries)",
-                before);
+                "Memory budget Tier-3 emergency: hard-cleared image cache ({Before} entries, pinned={Pinned})",
+                before,
+                pinned);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)

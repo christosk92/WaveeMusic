@@ -5,6 +5,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Controls.PageHost;
+using Wavee.UI.WinUI.Controls.Imaging;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Diagnostics;
 using Wavee.UI.WinUI.Services;
@@ -433,6 +434,21 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             if (_pendingTrim?.Timer == s)
                 _pendingTrim = null;
 
+            if (capturedParticipant is DependencyObject root)
+            {
+                dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
+                {
+                    if (ReferenceEquals(capturedParticipant, ContentHost.ActivePage))
+                        return;
+
+                    using (NavigationDiagnostics.Instance?.StageCurrent("deferredTrim.images"))
+                    {
+                        try { CompositionImage.ReleaseSurfacesForNavigationCache(root); }
+                        catch { /* best-effort — diagnostics over correctness */ }
+                    }
+                });
+            }
+
             // Enqueue each micro-step on its own low-priority dispatcher pump
             // so rendering and input frames can interleave between them. For
             // heavy pages (AlbumPage / PlaylistPage / ArtistPage) this turns
@@ -445,6 +461,9 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
                 var capturedStep = step;
                 dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
                 {
+                    if (ReferenceEquals(capturedParticipant, ContentHost.ActivePage))
+                        return;
+
                     using (NavigationDiagnostics.Instance?.StageCurrent("deferredTrim.step"))
                     {
                         try { capturedStep(); }
@@ -478,6 +497,12 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
         if (ContentHost.ActivePage is INavigationCacheMemoryParticipant participant)
             participant.RestoreFromNavigationCache();
+
+        if (ContentHost.ActivePage is { } activePage)
+        {
+            try { CompositionImage.RestoreSurfacesAfterNavigationCache(activePage); }
+            catch { /* best-effort — page-specific restore still owns correctness */ }
+        }
     }
 
     public bool Sleep()

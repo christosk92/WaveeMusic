@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Numerics;
 using Microsoft.Graphics.Canvas.Effects;
 using Microsoft.UI;
@@ -85,6 +86,7 @@ public static class ShelfFadeMask
     private sealed class FadeRightState
     {
         private readonly Border _border;
+        private readonly List<CompositionObject> _compositionObjects = new();
         private SpriteVisual? _sprite;
         private CompositionLinearGradientBrush? _maskGradient;
 
@@ -103,10 +105,21 @@ public static class ShelfFadeMask
             _border.Loaded -= OnLoaded;
             _border.Unloaded -= OnUnloaded;
             _border.SizeChanged -= OnSizeChanged;
+            TearDownVisual();
+        }
+
+        private void TearDownVisual()
+        {
             ElementCompositionPreview.SetElementChildVisual(_border, null);
-            _sprite?.Dispose();
+
+            for (var i = _compositionObjects.Count - 1; i >= 0; i--)
+            {
+                try { _compositionObjects[i].Dispose(); }
+                catch { }
+            }
+
+            _compositionObjects.Clear();
             _sprite = null;
-            _maskGradient?.Dispose();
             _maskGradient = null;
         }
 
@@ -114,10 +127,9 @@ public static class ShelfFadeMask
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
         {
-            // Don't tear down — Unloaded fires on Frame navigation away but
-            // the page (and this Border) often reattach when the user
-            // navigates back. The Detach path runs only when FadeRight is
-            // explicitly toggled off.
+            TearDownVisual();
+            // Rebuild on load after releasing the active composition graph.
+            // Hidden cached pages should not keep backdrop blur graphs alive.
         }
 
         private void OnSizeChanged(object sender, SizeChangedEventArgs e)
@@ -142,7 +154,7 @@ public static class ShelfFadeMask
             // result is visibly softer than the unblurred content underneath,
             // which produces the "frosted right edge" effect that picks up the
             // page colours without painting a hardcoded slab.
-            var backdrop = compositor.CreateBackdropBrush();
+            var backdrop = Track(compositor.CreateBackdropBrush());
 
             using var blurEffect = new GaussianBlurEffect
             {
@@ -151,8 +163,8 @@ public static class ShelfFadeMask
                 BorderMode = EffectBorderMode.Hard,
                 Source = new CompositionEffectSourceParameter("Backdrop"),
             };
-            var effectFactory = compositor.CreateEffectFactory(blurEffect);
-            var blurredBackdrop = effectFactory.CreateBrush();
+            var effectFactory = Track(compositor.CreateEffectFactory(blurEffect));
+            var blurredBackdrop = Track(effectFactory.CreateBrush());
             blurredBackdrop.SetSourceParameter("Backdrop", backdrop);
 
             // Linear alpha gradient — transparent on left, fully opaque on
@@ -164,23 +176,30 @@ public static class ShelfFadeMask
             // earlier stops at 0.25 / 0.55 frontload the curve so the fade
             // builds up faster — content that's only halfway off-screen
             // already reads as "behind glass".
-            _maskGradient = compositor.CreateLinearGradientBrush();
+            _maskGradient = Track(compositor.CreateLinearGradientBrush());
             _maskGradient.StartPoint = new Vector2(0f, 0.5f);
             _maskGradient.EndPoint = new Vector2(1f, 0.5f);
-            _maskGradient.ColorStops.Add(compositor.CreateColorGradientStop(0f,    Color.FromArgb(0,   255, 255, 255)));
-            _maskGradient.ColorStops.Add(compositor.CreateColorGradientStop(0.25f, Color.FromArgb(96,  255, 255, 255)));
-            _maskGradient.ColorStops.Add(compositor.CreateColorGradientStop(0.55f, Color.FromArgb(210, 255, 255, 255)));
-            _maskGradient.ColorStops.Add(compositor.CreateColorGradientStop(1f,    Color.FromArgb(255, 255, 255, 255)));
+            _maskGradient.ColorStops.Add(Track(compositor.CreateColorGradientStop(0f,    Color.FromArgb(0,   255, 255, 255))));
+            _maskGradient.ColorStops.Add(Track(compositor.CreateColorGradientStop(0.25f, Color.FromArgb(96,  255, 255, 255))));
+            _maskGradient.ColorStops.Add(Track(compositor.CreateColorGradientStop(0.55f, Color.FromArgb(210, 255, 255, 255))));
+            _maskGradient.ColorStops.Add(Track(compositor.CreateColorGradientStop(1f,    Color.FromArgb(255, 255, 255, 255))));
 
-            var maskBrush = compositor.CreateMaskBrush();
+            var maskBrush = Track(compositor.CreateMaskBrush());
             maskBrush.Source = blurredBackdrop;
             maskBrush.Mask = _maskGradient;
 
-            _sprite = compositor.CreateSpriteVisual();
+            _sprite = Track(compositor.CreateSpriteVisual());
             _sprite.Brush = maskBrush;
             _sprite.Size = new Vector2((float)_border.ActualWidth, (float)_border.ActualHeight);
 
             ElementCompositionPreview.SetElementChildVisual(_border, _sprite);
+        }
+
+        private T Track<T>(T compositionObject)
+            where T : CompositionObject
+        {
+            _compositionObjects.Add(compositionObject);
+            return compositionObject;
         }
     }
 }

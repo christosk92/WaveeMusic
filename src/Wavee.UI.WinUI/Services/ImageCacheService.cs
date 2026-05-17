@@ -46,6 +46,16 @@ public sealed class ImageCacheService
         }
     }
 
+    public int PinnedCount
+    {
+        get
+        {
+            _rwLock.EnterReadLock();
+            try { return _pinCounts.Count; }
+            finally { _rwLock.ExitReadLock(); }
+        }
+    }
+
     /// <summary>
     /// Snaps a requested decode pixel size to the smallest bucket (64 / 128 / 256 / 512)
     /// that is &gt;= the request. Without bucketing, requests for 36, 40, 48, 68, 80,

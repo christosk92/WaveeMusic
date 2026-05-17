@@ -504,8 +504,7 @@
                     <ScrollView x:Name="LeftScrollableZone"
                                 VerticalScrollChainMode="Always"
                                 ZoomMode="Disabled"
-                                ContentOrientation="Vertical"
-                                ViewChanged="LeftScrollableZone_ViewChanged">
+                                ContentOrientation="Vertical">
                         <StackPanel Spacing="14">
 
                 <!-- 5b. Secondary action cluster — labeled pill buttons mirroring
@@ -675,22 +674,7 @@
                         </StackPanel>
                     </ScrollView>
 
-                    <!-- Bottom-edge fade hint — shown only while the inner
-                         scroll has more content below the viewport. Visibility
-                         toggled in code-behind from ViewChanged + size events. -->
-                    <Border x:Name="LeftScrollableFade"
-                            VerticalAlignment="Bottom"
-                            Height="32"
-                            IsHitTestVisible="False"
-                            Visibility="Collapsed">
-                        <Border.Background>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                <GradientStop Color="#00000000" Offset="0"/>
-                                <GradientStop Color="{ThemeResource SolidBackgroundFillColorBase}" Offset="1"/>
-                            </LinearGradientBrush>
-                        </Border.Background>
-                    </Border>
-                </Grid>
+                    </Grid>
                 <!-- ════ END SCROLLABLE ZONE ═════════════════════════ -->
             </StackPanel>
 
