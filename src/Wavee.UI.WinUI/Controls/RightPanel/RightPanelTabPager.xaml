@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.RightPanel.RightPanelTabPager"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-appx:///CommunityToolkit.WinUI.Controls.Segmented/Segmented/Segmented.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <!-- Tab header rail. Wrapped in a 3-column Grid so chevron pager
+         buttons can flank a horizontally-scrollable ScrollViewer.
+         Edge-fade overlays sit on top of the scroll viewport to
+         soften the cutoff when tab labels overflow (e.g. long
+         localized strings like Korean "세부 정보"). -->
+    <Grid x:Name="TabHeaderRow"
+          behaviors:DragToDetachBehavior.Panel="RightPanel">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left pager — only visible when there's content scrolled off the left. -->
+        <Button x:Name="TabPagerLeftButton"
+                Grid.Column="0"
+                Visibility="Collapsed"
+                Click="TabPagerLeft_Click"
+                Background="Transparent"
+                BorderThickness="0"
+                Padding="2"
+                Width="22" Height="28"
+                MinWidth="0" MinHeight="0"
+                VerticalAlignment="Center"
+                ToolTipService.ToolTip="Scroll tabs left">
+            <FontIcon Glyph="&#xE76B;" FontSize="11"/>
+        </Button>
+
+        <Grid Grid.Column="1">
+            <ScrollViewer x:Name="TabHeaderScroller"
+                          HorizontalScrollMode="Enabled"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollMode="Disabled"
+                          VerticalScrollBarVisibility="Disabled"
+                          ViewChanged="TabHeaderScroller_ViewChanged"
+                          SizeChanged="TabHeaderScroller_SizeChanged">
+                <controls:Segmented
+                    x:Name="TabHeader"
+                    HorizontalAlignment="Left"
+                    SelectedIndex="0"
+                    Style="{StaticResource PivotSegmentedStyle}"
+                    SelectionChanged="TabHeader_SelectionChanged">
+                    <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_1"
+                                            x:Name="QueueTabItem"
+                                            Content="Queue"
+                                            Tag="Queue"/>
+                    <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_2"
+                                            x:Name="LyricsTabItem"
+                                            Content="Lyrics"
+                                            Tag="Lyrics"/>
+                    <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_3"
+                                            x:Name="FriendsTabItem"
+                                            Content="Friends"
+                                            Tag="Friends"/>
+                    <controls:SegmentedItem x:Uid="Controls_RightPanel_RightPanelView__SegmentedItem_4"
+                                            x:Name="DetailsTabItem"
+                                            Content="Details"
+                                            Tag="Details"/>
+                    <!--
+                        Temporary "Track details" tab — invoked from TrackDataGrid's
+                        details toggle. Collapsed by default; code-behind shows it
+                        when ShellViewModel.SelectedTrackForDetails is set.
+                    -->
+                    <controls:SegmentedItem x:Name="TrackDetailsTabItem"
+                                            Content="Track"
+                                            Tag="TrackDetails"
+                                            Visibility="Collapsed"/>
+                </controls:Segmented>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- Right pager — visible when there's content cut off on the right. -->
+        <Button x:Name="TabPagerRightButton"
+                Grid.Column="2"
+                Visibility="Collapsed"
+                Click="TabPagerRight_Click"
+                Background="Transparent"
+                BorderThickness="0"
+                Padding="2"
+                Width="22" Height="28"
+                MinWidth="0" MinHeight="0"
+                VerticalAlignment="Center"
+                ToolTipService.ToolTip="Scroll tabs right">
+            <FontIcon Glyph="&#xE76C;" FontSize="11"/>
+        </Button>
+
+        <!-- Pop-out: tear the right panel into its own window. The header strip
+             carries DragToDetachBehavior too, so dragging it outside the main
+             window achieves the same. -->
+        <Button x:Name="PopOutButton"
+                Grid.Column="3"
+                Click="PopOutButton_Click"
+                Background="Transparent"
+                BorderThickness="0"
+                Padding="2"
+                Margin="2,0,0,0"
+                Width="22" Height="28"
+                MinWidth="0" MinHeight="0"
+                VerticalAlignment="Center"
+                ToolTipService.ToolTip="Pop out to window">
+            <FontIcon Glyph="&#xE8A7;" FontSize="11"/>
+        </Button>
+    </Grid>
+</UserControl>

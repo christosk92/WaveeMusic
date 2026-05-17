@@ -205,6 +205,7 @@ public sealed partial class EditorialHeroCard : UserControl
     {
         var item = Item;
         if (item is null) return;
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("EditorialHeroCard");
         HomeViewModel.NavigateToItem(item, NavigationHelpers.IsCtrlPressed());
     }
 

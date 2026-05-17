@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Navigation;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Wavee.Core.Http;
@@ -15,6 +14,7 @@ using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Controls.Cards;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Controls.Search;
 using Wavee.UI.Contracts;
@@ -28,7 +28,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigationCacheMemoryParticipant, IDisposable
+public sealed partial class SearchPage : UserControl, ITabSleepParticipant, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable
 {
     public SearchViewModel ViewModel { get; }
 
@@ -151,10 +151,9 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
         }
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
-        LoadSearchParameter(e.Parameter);
+        LoadSearchParameter(parameter);
     }
 
     /// <summary>
@@ -182,10 +181,10 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
         TryApplyPendingSleepState();
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnLeaving()
     {
-        base.OnNavigatedFrom(e);
-        TrimForNavigationCache();
+        // Trim deferred ~1 s by TabBarItem; calling sync here moves the cost
+        // off pageHostNavigating only to land in onLeaving instead.
     }
 
     private void FilterChip_Click(object sender, RoutedEventArgs e)
@@ -248,6 +247,8 @@ public sealed partial class SearchPage : Page, ITabSleepParticipant, INavigation
     {
         if (item == null)
             return;
+
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("Search." + item.Type);
 
         switch (item.Type)
         {

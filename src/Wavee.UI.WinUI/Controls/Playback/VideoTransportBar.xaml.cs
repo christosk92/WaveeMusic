@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Helpers.Playback;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Styles;
@@ -304,25 +305,14 @@ public sealed partial class VideoTransportBar : UserControl
 
         _presentation?.ExitToNormal();
 
-        // Navigate the host frame back so the tab leaves VideoPlayerPage,
+        // Navigate the host back so the tab leaves VideoPlayerPage,
         // which flips ShellViewModel.IsOnVideoPage false and lets the
         // floating mini-player take over. Falls back to Home when no back
         // history exists.
-        var hostFrame = FindAncestorFrame(this);
-        if (hostFrame is { CanGoBack: true })
-            hostFrame.GoBack();
+        var hostHost = this.FindHostingPageHost();
+        if (hostHost is { CanGoBack: true })
+            hostHost.GoBack();
         else
             Wavee.UI.WinUI.Helpers.Navigation.NavigationHelpers.OpenHome();
-    }
-
-    private static Frame? FindAncestorFrame(DependencyObject node)
-    {
-        var current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node);
-        while (current is not null)
-        {
-            if (current is Frame f) return f;
-            current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current);
-        }
-        return null;
     }
 }

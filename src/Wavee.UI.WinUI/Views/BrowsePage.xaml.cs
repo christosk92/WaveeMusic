@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -6,7 +6,7 @@ using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -22,7 +22,7 @@ namespace Wavee.UI.WinUI.Views;
 /// the shared <c>HeroBandPanel</c> and <c>SectionShelvesView</c> blocks so
 /// future feed-shaped pages reuse the same building bricks.
 /// </summary>
-public sealed partial class BrowsePage : Page, ITabBarItemContent, IDisposable
+public sealed partial class BrowsePage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable
 {
     private TabItemParameter? _tabItemParameter;
     private bool _isDisposed;
@@ -46,18 +46,14 @@ public sealed partial class BrowsePage : Page, ITabBarItemContent, IDisposable
         InitializeComponent();
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnLeaving()
     {
-        base.OnNavigatedFrom(e);
         Dispose();
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    public async void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
-
-        var parameter = e.Parameter as ContentNavigationParameter;
-        await ViewModel.LoadAsync(parameter);
+        await ViewModel.LoadAsync(parameter as ContentNavigationParameter);
         ApplyTabParameter();
     }
 

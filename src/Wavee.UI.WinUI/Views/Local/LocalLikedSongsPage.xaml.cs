@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -12,7 +12,7 @@ using Wavee.UI.WinUI.ViewModels.Local;
 
 namespace Wavee.UI.WinUI.Views.Local;
 
-public sealed partial class LocalLikedSongsPage : Page
+public sealed partial class LocalLikedSongsPage : UserControl, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware
 {
     public LocalLikedSongsViewModel ViewModel { get; }
     public LocalLikedSongsPage()
@@ -20,11 +20,11 @@ public sealed partial class LocalLikedSongsPage : Page
         ViewModel = Ioc.Default.GetService<LocalLikedSongsViewModel>() ?? new LocalLikedSongsViewModel();
         InitializeComponent();
     }
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    public async void OnEntered(object? parameter, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
         await ViewModel.LoadAsync();
     }
+    public void OnLeaving() { }
 
     private void Track_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {

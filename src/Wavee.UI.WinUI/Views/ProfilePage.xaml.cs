@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -9,8 +9,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls.HeroHeader;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Services;
@@ -21,7 +21,7 @@ using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable
+public sealed partial class ProfilePage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable
 {
     private readonly ProfileCache? _cache;
     private readonly ILogger<ProfilePage>? _logger;
@@ -176,10 +176,9 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
             ProfileAvatar.ProfilePicture = null;
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
-        LoadProfileParameter(e.Parameter);
+        LoadProfileParameter(parameter);
     }
 
     /// <summary>
@@ -200,10 +199,10 @@ public sealed partial class ProfilePage : Page, ITabBarItemContent, INavigationC
         ViewModel.Initialize(parameter as ContentNavigationParameter);
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnLeaving()
     {
-        base.OnNavigatedFrom(e);
-        TrimForNavigationCache();
+        // Trim deferred ~1 s by TabBarItem; calling sync here moves the cost
+        // off pageHostNavigating only to land in onLeaving instead.
     }
 
     public void TrimForNavigationCache()

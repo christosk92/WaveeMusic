@@ -1,12 +1,12 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class StartPage : Page
+public sealed partial class StartPage : UserControl, IPageHostAware
 {
     public StartPageViewModel ViewModel { get; } = new();
 
@@ -15,9 +15,10 @@ public sealed partial class StartPage : Page
         InitializeComponent();
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode) { }
+
+    public void OnLeaving()
     {
-        base.OnNavigatedFrom(e);
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
         // sibling does not pin this page across navigations.
         Bindings?.StopTracking();

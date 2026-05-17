@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -14,7 +14,7 @@ using Wavee.UI.WinUI.ViewModels.Local;
 
 namespace Wavee.UI.WinUI.Views.Local;
 
-public sealed partial class LocalMoviesPage : Page
+public sealed partial class LocalMoviesPage : UserControl
 {
     public LocalMoviesViewModel ViewModel { get; }
 
@@ -89,16 +89,17 @@ public sealed partial class LocalMoviesPage : Page
         await enrichment.EnqueueAllMoviesAsync(forceResync: false);
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    public async void OnEntered(object? parameter, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
         await ViewModel.LoadAsync();
     }
+
+    public void OnLeaving() { }
 
     private void MovieCard_CardClick(object? sender, EventArgs e)
     {
         if (sender is FrameworkElement fe && fe.Tag is Wavee.Local.Models.LocalMovie m)
-            Frame.Navigate(typeof(LocalMovieDetailPage), m.TrackUri);
+            Wavee.UI.WinUI.Helpers.Navigation.NavigationHelpers.OpenLocalMovieDetail(m.TrackUri);
     }
 
     private void MovieCard_CardRightTapped(Wavee.UI.WinUI.Controls.Cards.ContentCard sender, RightTappedRoutedEventArgs e)

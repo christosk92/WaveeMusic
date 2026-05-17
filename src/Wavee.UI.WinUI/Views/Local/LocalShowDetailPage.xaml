@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Page
+<UserControl
     x:Class="Wavee.UI.WinUI.Views.Local.LocalShowDetailPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -14,7 +14,7 @@
     Background="Transparent"
     waveeHelpers:PageEntranceFade.Fade="True">
 
-    <Page.Resources>
+    <UserControl.Resources>
         <!-- Shy-header morph: hero overlay panel (full hero) <-> floating
              acrylic pill (top of page once scrolled). Matched ids on the
              inner poster / title / play button interpolate between the two
@@ -40,7 +40,7 @@
             </transitions:TransitionConfig>
             <transitions:TransitionConfig Id="show-play" ScaleMode="Scale"/>
         </transitions:TransitionHelper>
-    </Page.Resources>
+    </UserControl.Resources>
 
     <Grid>
         <ScrollView x:Name="PageScrollView">
@@ -369,4 +369,4 @@
             </Grid>
         </Grid>
     </Grid>
-</Page>
+</UserControl>

@@ -48,7 +48,7 @@ public sealed partial class DebugFloatingWindow : WindowEx
 
         Closed += OnClosed;
 
-        RootFrame.Navigate(typeof(DebugPage));
+        RootHost.Navigate(typeof(DebugPage));
     }
 
     private void OnRootThemeChanged(FrameworkElement sender, object args)
@@ -62,8 +62,7 @@ public sealed partial class DebugFloatingWindow : WindowEx
         if (_disposed) return;
         _disposed = true;
 
-        (RootFrame.Content as IDisposable)?.Dispose();
-        RootFrame.Content = null;
+        RootHost.Clear();
 
         RootGrid.ActualThemeChanged -= OnRootThemeChanged;
         Closed -= OnClosed;

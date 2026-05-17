@@ -4,6 +4,7 @@ using System.Numerics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media.Animation;
+using Wavee.UI.WinUI.Diagnostics;
 
 namespace Wavee.UI.WinUI.Helpers;
 
@@ -53,10 +54,17 @@ public static class ConnectedAnimationHelper
     /// <param name="source">The source UI element to animate from</param>
     public static void PrepareAnimation(string key, UIElement source)
     {
-        var service = ConnectedAnimationService.GetForCurrentView();
-        ConfigureConnectedAnimation(service, source);
-        service.PrepareToAnimate(key, source);
-        PendingKeys.Add(key);
+        // Composition snapshot via PrepareToAnimate can stall the UI thread on
+        // cold-cache cards or large source visuals — surface it as its own stage
+        // so click→nav latency reports break it out instead of folding it into
+        // the invisible pre-nav gap.
+        using (NavigationDiagnostics.Instance?.StageCurrent("connectedAnimation.prepare"))
+        {
+            var service = ConnectedAnimationService.GetForCurrentView();
+            ConfigureConnectedAnimation(service, source);
+            service.PrepareToAnimate(key, source);
+            PendingKeys.Add(key);
+        }
     }
 
     public static bool HasPendingAnimation(string key)

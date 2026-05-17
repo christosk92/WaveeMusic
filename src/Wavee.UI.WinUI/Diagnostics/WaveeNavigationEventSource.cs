@@ -5,7 +5,7 @@ namespace Wavee.UI.WinUI.Diagnostics;
 
 /// <summary>
 /// Custom ETW <see cref="EventSource"/> that emits Start/Stop pairs around every
-/// <c>Frame.Navigate</c> call in Wavee. Consumed by the <c>scripts/analyze-trace.ps1</c>
+/// <c>PageHost.Navigate</c> call in Wavee. Consumed by the <c>scripts/analyze-trace.ps1</c>
 /// fallback pairing logic (see lines 362–381 of that script), which matches on event
 /// names containing "Navigating" / "Navigated" within the same <c>(Process, ThreadId)</c>
 /// and computes the E2E navigation duration from the time delta.
@@ -43,7 +43,7 @@ internal sealed class WaveeNavigationEventSource : EventSource
     public long NextNavId() => Interlocked.Increment(ref _nextNavId);
 
     /// <summary>
-    /// Fires immediately before <c>Frame.Navigate</c> is invoked (or before a
+    /// Fires immediately before <c>PageHost.Navigate</c> is invoked (or before a
     /// refresh-in-place is applied for the same-page/same-parameter case).
     /// </summary>
     /// <param name="navId">Correlation id from <see cref="NextNavId"/>.</param>
@@ -57,7 +57,7 @@ internal sealed class WaveeNavigationEventSource : EventSource
     }
 
     /// <summary>
-    /// Fires when the Frame finishes navigating (from <c>Frame.Navigated</c>) or
+    /// Fires when the host finishes navigating (from <c>PageHost.Navigated</c>) or
     /// when a refresh-in-place / no-op short-circuit completes.
     /// </summary>
     /// <param name="navId">Correlation id matching the preceding <see cref="Navigating"/>.</param>

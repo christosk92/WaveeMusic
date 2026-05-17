@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Numerics;
 using System.Threading;
@@ -16,13 +17,13 @@ using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
-using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.Services.DragDrop;
 using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 using Wavee.UI.WinUI.Controls.Cards;
 using Wavee.UI.WinUI.Controls.HeroHeader;
 using Wavee.UI.WinUI.DragDrop;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Controls.Track;
 using Wavee.UI.Contracts;
@@ -32,6 +33,7 @@ using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
+using Wavee.UI.WinUI.ViewModels.Artist;
 using Windows.UI;
 using Wavee.Core.Http;
 using ColorAnimation = Microsoft.UI.Xaml.Media.Animation.ColorAnimation;
@@ -54,7 +56,7 @@ namespace Wavee.UI.WinUI.Views;
 ///   * the existing <see cref="ShyHeaderController"/> / <see cref="TransitionHelper"/>
 ///     pattern to morph the hero into a pinned compact card on scroll
 /// </summary>
-public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable
+public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable
 {
     private const int ReleasePanelResizeDebounceMs = 75;
     private const int ReleasePanelExitMs = 110;
@@ -118,6 +120,15 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        // The page used to switch on a handful of parent VM properties (Artist,
+        // BioSummaryText, HasPopularReleases, HasGallery). After the
+        // ArtistViewModel decomposition those properties live on the children;
+        // hook each child's PropertyChanged into the same dispatcher so the
+        // existing per-property logic continues to fire.
+        ViewModel.Header.PropertyChanged += ViewModel_ChildPropertyChanged;
+        ViewModel.Bio.PropertyChanged += ViewModel_ChildPropertyChanged;
+        ViewModel.Discography.PropertyChanged += ViewModel_ChildPropertyChanged;
+        ViewModel.Extras.PropertyChanged += ViewModel_ChildPropertyChanged;
         ApplyPageTint();
 
         Loaded += OnLoaded;
@@ -131,10 +142,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     // Navigation
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    public async void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.onNavigatedTo");
-        base.OnNavigatedTo(e);
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.onEntered");
         _isNavigatingAway = false;
         // Restore from the trimmed (hibernated) state before we re-Initialize
         // the VM â€” matches AlbumPage’s ordering so bindings are alive again
@@ -157,12 +167,17 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
         var navigationRevision = ++_navigationRevision;
 
-        _showingContent = false;
-        _crossfadeScheduled = false;
-        ShimmerGate.Reset(() => ShimmerContainer, () => BodyContent);
+        // Cache-hit nav (Back/Forward): content already realised — skip
+        // the shimmer reset to avoid flashing skeleton over good pixels.
+        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward)
+        {
+            _showingContent = false;
+            _crossfadeScheduled = false;
+            ShimmerGate.Reset(() => ShimmerContainer, () => BodyContent);
+        }
 
-        var nav = e.Parameter as ContentNavigationParameter;
-        var uri = nav?.Uri ?? (e.Parameter as string);
+        var nav = parameter as ContentNavigationParameter;
+        var uri = nav?.Uri ?? (parameter as string);
 
         if (!string.IsNullOrEmpty(uri))
         {
@@ -266,19 +281,14 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         if (_shyHeader is not null) _shyHeader.Suppressed = false;
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnLeaving()
     {
-        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.onNavigatedFrom");
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.onLeaving");
         _isNavigatingAway = true;
         CancelResizeDebounce();
         CollapseExpandedAlbumCore();
-        base.OnNavigatedFrom(e);
-        // Trim aggressively on every nav-away. ViewModel.Hibernate unsubscribes
-        // from the PlaybackStateService PropertyChanged singleton â€” that's the
-        // strong reference that pins this page's ViewModel across Frame cache
-        // evictions and produces the visible 1â€“2 s click delay over a long
-        // session. Mirrors the AlbumPage / PlaylistPage pattern.
-        TrimForNavigationCache();
+        // Trim work is deferred ~1 s by TabBarItem's central scheduler — calling
+        // it here would move the cost from pageHostNavigating into onLeaving.
     }
 
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -289,35 +299,54 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     {
         Loaded -= OnLoaded;
 
+        // Synchronous: just the comp-Opacity zero-snap so there's no first-paint
+        // flash of the fully-opaque body between Loaded and the first composition
+        // frame. All other setup is deferred (see below) — composition-binding
+        // work (ShyHeader, parallax, section-reveal expressions, hero pulse)
+        // needs the visual tree fully realised, which under PageHost lands on
+        // the next dispatcher tick rather than synchronously inside Loaded.
         if (BodyContent is not null) BodyContent.Opacity = 0;
 
-        _shyHeader = new ShyHeaderController(
-            PageScrollView, HeroGrid, HeroOverlayPanel, ShyHeaderCard,
-            (TransitionHelper)Resources["ArtistShyHeaderTransition"],
-            ShyHeaderFade.ForHeroHeader(HeroGrid),
-            ShyHeaderPinOffset.Below(HeroGrid, 120),
-            canEvaluate: () => !_isNavigatingAway,
-            logger: _logger);
-        _shyHeader.Attach();
-        _shyHeader.Reset();
-        ForceHeroVisualsVisible();
+        // Defer the heavy composition / layout wire-up one dispatcher tick.
+        // Same pattern as AlbumPage.AttachParallax — running these inside
+        // Loaded while the page is being added to PageHost's internal panel
+        // causes a visible first-paint stall and can leave composition
+        // expressions bound against an empty ExpressionAnimationSources.
+        DispatcherQueue?.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
+            () =>
+            {
+                System.Diagnostics.Debug.WriteLine("[artist.loaded] deferred OnLoaded body running");
 
-        AttachScrollParallax();
-        AttachSectionRevealAnimations();
-        FireHeroPlayPulseOnce();
-        RebuildBioRuns();
-        AttachHeroSizeHandlers();
-        AttachHeroDragSource();
-        ApplyResponsiveHeroName();
-        UpdateResponsivePageChrome();
-        ScheduleHeroArrangeRefresh();
-        ApplyPopularReleasesColumnWidth();
-        TryShowContentNow();
-        // Seed the gallery marquee from whatever the VM already has â€” covers
-        // nav-cache restore where HasGallery was raised before this page was
-        // realized, so the ItemsSource assignment in ViewModel_PropertyChanged
-        // never saw a live GalleryMarquee element.
-        RebuildGallerySlides();
+                _shyHeader = new ShyHeaderController(
+                    PageScrollView, HeroGrid, HeroOverlayPanel, ShyHeaderCard,
+                    (TransitionHelper)Resources["ArtistShyHeaderTransition"],
+                    ShyHeaderFade.ForHeroHeader(HeroGrid),
+                    ShyHeaderPinOffset.Below(HeroGrid, 120),
+                    canEvaluate: () => !_isNavigatingAway,
+                    logger: _logger);
+                _shyHeader.Attach();
+                _shyHeader.Reset();
+                ForceHeroVisualsVisible();
+
+                AttachScrollParallax();
+                AttachSectionRevealAnimations();
+                FireHeroPlayPulseOnce();
+                RebuildBioRuns();
+                AttachHeroSizeHandlers();
+                AttachHeroDragSource();
+                ApplyResponsiveHeroName();
+                UpdateResponsivePageChrome();
+                ScheduleHeroArrangeRefresh();
+                ApplyPopularReleasesColumnWidth();
+                TryShowContentNow();
+                // Seed the gallery marquee from whatever the VM already has —
+                // covers nav-cache restore where HasGallery was raised before
+                // this page was realized, so the ItemsSource assignment in
+                // ViewModel_PropertyChanged never saw a live GalleryMarquee
+                // element.
+                RebuildGallerySlides();
+            });
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -355,7 +384,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         var id = ViewModel.ArtistId;
         if (string.IsNullOrWhiteSpace(id)) return null;
         var uri = id.StartsWith("spotify:artist:", StringComparison.Ordinal) ? id : $"spotify:artist:{id}";
-        var name = ViewModel.ArtistName ?? string.Empty;
+        var name = ViewModel.Header.ArtistName ?? string.Empty;
         return new ArtistDragPayload(uri, name);
     }
 
@@ -422,53 +451,38 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         var w = HeroPhotoBorder.ActualWidth;
         if (w <= 0) return;
 
-        // Target size scales â‰ˆ 7 % of hero width, capped 56â€“200 px.
-        var maxSize = Math.Clamp(w * 0.07, 56.0, 200.0);
-        var minSize = Math.Max(32.0, maxSize * 0.32);
-        var size = maxSize;
+        // Length-based heuristic. The old implementation ran a 24-iteration
+        // measure loop (FontSize → InvalidateMeasure → Measure on every
+        // iteration), which was measured at 50-100 ms per Loaded — the single
+        // largest cost on the entire ArtistPage entry. The heuristic below
+        // sizes from the hero width (~7%) and clamps tighter as the name
+        // length grows, with no Measure passes.
+        var name = HeroNameText.Text ?? string.Empty;
+        var len = name.Length;
 
-        // Available text-column width: hero width minus left padding (32),
-        // minus spotlight card reserve on the right when visible (~480 card
-        // + 32 padding + 24 column gap + 32 right edge). Below 960 px the
-        // VisualState collapses the card.
-        var heroWidth = HeroOverlayPanel?.ActualWidth > 0 ? HeroOverlayPanel.ActualWidth : w;
-        var spotlightVisible = SpotlightCard is { Visibility: Visibility.Visible, ActualWidth: > 0 };
-        var spotlightReserve = spotlightVisible ? SpotlightCard.ActualWidth + 32 : 0;
-        var layoutWidth = Math.Max(160, heroWidth - 64 - spotlightReserve);
+        var baseSize = Math.Clamp(w * 0.07, 56.0, 200.0);
 
-        var copyWidth = HeroCopyPanel.ActualWidth;
-        if (copyWidth <= 0 && !double.IsInfinity(HeroCopyPanel.MaxWidth))
-            copyWidth = HeroCopyPanel.MaxWidth;
-        if (copyWidth <= 0)
-            copyWidth = layoutWidth;
-
-        double availableWidth = Math.Max(160, Math.Min(layoutWidth, copyWidth));
-
-        // Step 1: keep it on ONE line. Measure with NoWrap and shrink the
-        // font size in 8 % steps until the natural width fits the available
-        // text-column width or we hit the min-size floor.
-        HeroNameText.TextWrapping = TextWrapping.NoWrap;
-        HeroNameText.TextTrimming = TextTrimming.None;
-        HeroNameText.MaxLines = 1;
-        for (int i = 0; i < 24; i++)
+        // Empirically-tuned thresholds, calibrated against the bracket the
+        // previous binary-search produced on a 1920×1080 viewport for typical
+        // artist names. Buckets keep visual scale consistent across the
+        // common length ranges; wrap-to-2-lines kicks in only for the genuinely
+        // long names that wouldn't fit even at the smallest single-line size.
+        double size = len switch
         {
-            HeroNameText.FontSize = size;
-            HeroNameText.LineHeight = size * 0.84;
-            HeroNameText.InvalidateMeasure();
-            HeroNameText.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-            if (HeroNameText.DesiredSize.Width <= availableWidth + 1) return;
-            if (size <= minSize) break;
-            size = Math.Max(minSize, size * 0.94);
-        }
+            <= 8  => baseSize,
+            <= 16 => baseSize * 0.85,
+            <= 24 => baseSize * 0.70,
+            <= 36 => baseSize * 0.55,
+            _     => baseSize * 0.45,
+        };
+        size = Math.Max(32.0, size);
 
-        // Step 2: even at min size the name overflows one line (rare â€” long
-        // multi-word names on narrow viewports). Last resort: enable wrap so
-        // a second line can absorb the overflow.
-        HeroNameText.TextWrapping = TextWrapping.WrapWholeWords;
+        var wrap = len > 36;
+        HeroNameText.TextWrapping = wrap ? TextWrapping.WrapWholeWords : TextWrapping.NoWrap;
         HeroNameText.TextTrimming = TextTrimming.None;
-        HeroNameText.MaxLines = 2;
+        HeroNameText.MaxLines = wrap ? 2 : 1;
         HeroNameText.FontSize = size;
-        HeroNameText.LineHeight = size * 0.88;
+        HeroNameText.LineHeight = size * (wrap ? 0.88 : 0.84);
     }
 
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -482,28 +496,52 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     {
         switch (e.PropertyName)
         {
-            case nameof(ArtistViewModel.Artist):
-                ApplyPageTint();
-                FireHeroPlayPulseOnce();
-                ApplyResponsiveHeroName();
-                ScheduleHeroArrangeRefresh();
-                RebuildBioRuns();
-                ApplyPopularReleasesColumnWidth();
-                TryShowContentNow();
-                break;
-            case nameof(ArtistViewModel.BioSummaryText):
-                RebuildBioRuns();
-                break;
-            case nameof(ArtistViewModel.HasPopularReleases):
-                ApplyPopularReleasesColumnWidth();
-                TryShowContentNow();
-                break;
             case nameof(ArtistViewModel.IsLoading):
                 TryShowContentNow();
                 break;
-            case nameof(ArtistViewModel.HasGallery):
+        }
+    }
+
+    private void ViewModel_ChildPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (ReferenceEquals(sender, ViewModel.Header))
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(ArtistHeaderViewModel.Artist):
+                    ApplyPageTint();
+                    FireHeroPlayPulseOnce();
+                    ApplyResponsiveHeroName();
+                    ScheduleHeroArrangeRefresh();
+                    RebuildBioRuns();
+                    ApplyPopularReleasesColumnWidth();
+                    TryShowContentNow();
+                    break;
+            }
+            return;
+        }
+
+        if (ReferenceEquals(sender, ViewModel.Bio))
+        {
+            if (e.PropertyName == nameof(ArtistBioViewModel.BioSummaryText))
+                RebuildBioRuns();
+            return;
+        }
+
+        if (ReferenceEquals(sender, ViewModel.Discography))
+        {
+            if (e.PropertyName == nameof(ArtistDiscographyViewModel.HasPopularReleases))
+            {
+                ApplyPopularReleasesColumnWidth();
+                TryShowContentNow();
+            }
+            return;
+        }
+
+        if (ReferenceEquals(sender, ViewModel.Extras))
+        {
+            if (e.PropertyName == nameof(ArtistExtrasViewModel.HasGallery))
                 RebuildGallerySlides();
-                break;
         }
     }
 
@@ -515,7 +553,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private void RebuildGallerySlides()
     {
         if (GalleryMarquee is null) return;
-        var photos = ViewModel.GalleryPhotos;
+        var photos = ViewModel.Extras.GalleryPhotos;
         if (photos is null || photos.Count == 0)
         {
             GalleryMarquee.ItemsSource = null;
@@ -548,7 +586,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         if (_showingContent
             || _crossfadeScheduled
             || ViewModel.IsLoading
-            || string.IsNullOrEmpty(ViewModel.ArtistName)
+            || string.IsNullOrEmpty(ViewModel.Header.ArtistName)
             || BodyContent is null)
             return;
 
@@ -586,7 +624,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     private void ApplyPopularReleasesColumnWidth()
     {
         if (PopularReleasesColumn is null) return;
-        bool keepOpen = ViewModel.HasPopularReleases || ViewModel.IsLoading;
+        bool keepOpen = ViewModel.Discography.HasPopularReleases || ViewModel.IsLoading;
         var compact = GetResponsiveWidth() < 900;
 
         if (PopularReleasesBorder is not null)
@@ -671,14 +709,14 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         // The About-excerpt card is gated on the on-device AI summary
         // (HasAboutExcerpt => HasBioSummary), so feed that here exclusively.
         // The full biography lives in the dedicated Biography card below.
-        var bio = FlattenBioForExcerpt(ViewModel.BioSummaryText);
+        var bio = FlattenBioForExcerpt(ViewModel.Bio.BioSummaryText);
         if (string.IsNullOrEmpty(bio)) return;
 
         var emphasize = new System.Collections.Generic.List<string>(8);
-        if (!string.IsNullOrWhiteSpace(ViewModel.ArtistName))
-            emphasize.Add(ViewModel.ArtistName!);
+        if (!string.IsNullOrWhiteSpace(ViewModel.Header.ArtistName))
+            emphasize.Add(ViewModel.Header.ArtistName!);
 
-        foreach (var track in ViewModel.TopTracks)
+        foreach (var track in ViewModel.TopTracks.Tracks)
         {
             if (track is { IsLoaded: true, Data: Wavee.UI.Contracts.ITrackItem item }
                 && !string.IsNullOrWhiteSpace(item.Title))
@@ -754,7 +792,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     private void ApplyPageTint()
     {
-        var hex = ViewModel.HeaderHeroColorHex;
+        var hex = ViewModel.Header.HeaderHeroColorHex;
         var color = ResolveTintColor(hex);
 
         if (_pageTintBrush is null)
@@ -799,7 +837,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         // is the same one the production hero scrim uses. Fall back to the
         // HeaderHeroColorHex when palette is null, then to a near-bg neutral
         // when both are missing.
-        var palette = ViewModel.Palette;
+        var palette = ViewModel.Header.Palette;
         if (palette is not null)
         {
             var tier = ActualTheme == ElementTheme.Dark
@@ -993,7 +1031,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     {
         if (_heroPulseFired) return;
         if (HeroPlayButton is null) return;
-        if (string.IsNullOrEmpty(ViewModel.ArtistName)) return;
+        if (string.IsNullOrEmpty(ViewModel.Header.ArtistName)) return;
         _heroPulseFired = true;
 
         var visual = ElementCompositionPreview.GetElementVisual(HeroPlayButton);
@@ -1018,7 +1056,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     /// RowsPerPage Ã— ColumnCount stays correct as the viewport resizes.</summary>
     private void TopTracksLayout_ColumnCountChanged(object? sender, int columns)
     {
-        ViewModel.ColumnCount = columns;
+        ViewModel.TopTracks.ColumnCount = columns;
     }
 
     private void TopTracksRepeater_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
@@ -1053,8 +1091,8 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         // featured-row tint derives directly from AccentBrush, so setting it
         // first means the highlight reads as the artist's palette colour
         // rather than the hardcoded teal default for one frame.
-        row.AccentBrush = ViewModel.SectionAccentBrush;
-        row.AccentForegroundBrush = ViewModel.PaletteAccentPillForegroundBrush;
+        row.AccentBrush = ViewModel.Header.SectionAccentBrush;
+        row.AccentForegroundBrush = ViewModel.Header.PaletteAccentPillForegroundBrush;
         row.IsFeatured = args.Index == 0;
         row.Tag = vm.Uri;
         // Self-routing DPs â€” control's internal CardButton_Click navigates
@@ -1062,7 +1100,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         // prefill) when NavigationUri is set. Subtitle feeds nav prefill.
         row.NavigationUri = vm.Uri;
         row.NavigationTotalTracks = vm.TrackCount;
-        row.Subtitle = ViewModel.ArtistName;
+        row.Subtitle = ViewModel.Header.ArtistName;
 
         var meta = new System.Collections.Generic.List<string>(3);
         if (vm.Year > 0) meta.Add(vm.Year.ToString());
@@ -1168,9 +1206,9 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
             : $"spotify:artist:{artistId}";
         NavigationHelpers.OpenArtistDiscography(
             uri,
-            ViewModel.ArtistName ?? string.Empty,
+            ViewModel.Header.ArtistName ?? string.Empty,
             groupKind,
-            ViewModel.ArtistImageUrl,
+            ViewModel.Header.ArtistImageUrl,
             NavigationHelpers.IsCtrlPressed());
     }
 
@@ -1187,7 +1225,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         if (item?.IsLoaded != true || item.Data is null)
             return;
 
-        if (ViewModel.ExpandedAlbum?.Id == item.Id)
+        if (ViewModel.Discography.ExpandedAlbum?.Id == item.Id)
         {
             // User clicked the already-expanded album â†’ animate the close.
             await CollapseExpandedAlbumAsync(animate: true);
@@ -1219,7 +1257,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         _activeDetailPanel = new AlbumDetailPanel
         {
             Album = item.Data,
-            Tracks = ViewModel.ExpandedAlbumTracks
+            Tracks = ViewModel.Discography.ExpandedAlbumTracks
         };
         _closeRequestedHandler = async (_, _) => await CollapseExpandedAlbumAsync(animate: true);
         _activeDetailPanel.CloseRequested += _closeRequestedHandler;
@@ -1239,7 +1277,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         });
 
         _ = FetchAlbumColorAsync(item.Data, _activeDetailPanel);
-        ViewModel.ExpandAlbumCommand.Execute(item);
+        ViewModel.Discography.ExpandAlbumCommand.Execute(item);
     }
 
     private LazyReleaseItem? ResolveReleaseItemFromRepeaterClick(
@@ -1372,7 +1410,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         => _activeDetailPanel is not null
            || _splitRepeaterAfter is not null
            || _originalRepeater is not null
-           || ViewModel.ExpandedAlbum is not null;
+           || ViewModel.Discography.ExpandedAlbum is not null;
 
     private async Task CollapseExpandedAlbumAsync(bool animate)
     {
@@ -1408,7 +1446,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         var hadExpansion = _activeDetailPanel is not null
             || _splitRepeaterAfter is not null
             || _originalRepeater is not null
-            || ViewModel.ExpandedAlbum is not null;
+            || ViewModel.Discography.ExpandedAlbum is not null;
 
         CancelResizeDebounce();
 
@@ -1442,7 +1480,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
         _expandedItemIndex = -1;
 
         if (hadExpansion)
-            ViewModel.CollapseAlbumCommand.Execute(null);
+            ViewModel.Discography.CollapseAlbumCommand.Execute(null);
     }
 
     private async Task FetchAlbumColorAsync(Wavee.UI.WinUI.ViewModels.ArtistReleaseVm album, AlbumDetailPanel panel)
@@ -1537,8 +1575,10 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     {
         if (sender is MediaCard card && card.Tag is string uri && !string.IsNullOrEmpty(uri))
         {
-            var navParam = new ContentNavigationParameter { Uri = uri, Title = card.Title };
-            this.Frame?.Navigate(typeof(PlaylistPage), navParam);
+            NavigationHelpers.OpenPlaylist(
+                new ContentNavigationParameter { Uri = uri, Title = card.Title },
+                card.Title ?? "Playlist",
+                openInNewTab: NavigationHelpers.IsCtrlPressed());
         }
     }
 
@@ -1588,7 +1628,7 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
     private void OpenGalleryLightboxAt(int index)
     {
-        var photos = ViewModel.GalleryPhotos;
+        var photos = ViewModel.Extras.GalleryPhotos;
         if (photos is null || photos.Count == 0) return;
         if (index < 0 || index >= photos.Count) index = 0;
         GalleryFlip.SelectedIndex = index;
@@ -1702,20 +1742,37 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
     // INavigationCacheMemoryParticipant
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+    // Micro-step trim — see AlbumPage equivalent for the rationale.
+    IEnumerable<Action> INavigationCacheMemoryParticipant.GetTrimMicroSteps()
+    {
+        if (_trimmedForNavigationCache)
+            yield break;
+
+        yield return () =>
+        {
+            _trimmedForNavigationCache = true;
+            _lastRestoredArtistId = ViewModel.ArtistId;
+        };
+        yield return () => HeroGrid?.ReleaseSurface();
+        yield return () => ViewModel.Hibernate();
+        yield return () => Bindings?.StopTracking();
+    }
+
     public void TrimForNavigationCache()
     {
         if (_trimmedForNavigationCache) return;
         _trimmedForNavigationCache = true;
         _lastRestoredArtistId = ViewModel.ArtistId;
         HeroGrid?.ReleaseSurface();
-        // Stop the scroll-driven ExpressionAnimations. OnUnloaded also calls
-        // this, but under NavigationCacheMode=Enabled the page sits in the
-        // Frame's cache while invisible and Unloaded doesn't reliably fire
-        // on navigate-away — leaving composition-thread animations evaluating
-        // against the now-detached ScrollView for every cached page. The
-        // AttachScrollParallax call in OnNavigatedTo re-establishes them on
-        // re-entry; the guard inside makes both directions idempotent.
-        DetachScrollParallax();
+        // NOTE: do NOT DetachScrollParallax here. Under PageHost the page is
+        // kept rooted with Visibility=Collapsed on leave (not detached from
+        // the visual tree like Frame did) — the composition ExpressionAnimations
+        // can safely keep evaluating against the still-rooted ScrollView while
+        // the page is hidden. Detaching here would break sticky / parallax on
+        // the next cache-hit re-entry because Loaded does NOT re-fire under
+        // PageHost (page Visibility flips but it never leaves the tree), so
+        // OnLoaded's AttachScrollParallax call never gets a second chance.
+        // DetachScrollParallax stays in OnUnloaded + Dispose for true teardown.
         // Hibernate releases the bound discography / related-artist / video /
         // merch collections AND unsubscribes the VM from singleton services.
         // Without this, the cached page's VM stays rooted by
@@ -1759,6 +1816,10 @@ public sealed partial class ArtistPage : Page, ITabBarItemContent, INavigationCa
 
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        ViewModel.Header.PropertyChanged -= ViewModel_ChildPropertyChanged;
+        ViewModel.Bio.PropertyChanged -= ViewModel_ChildPropertyChanged;
+        ViewModel.Discography.PropertyChanged -= ViewModel_ChildPropertyChanged;
+        ViewModel.Extras.PropertyChanged -= ViewModel_ChildPropertyChanged;
 
         if (ViewModel is IDisposable d)
             d.Dispose();

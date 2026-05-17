@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -11,7 +11,7 @@ using Wavee.UI.WinUI.ViewModels.Local;
 
 namespace Wavee.UI.WinUI.Views.Local;
 
-public sealed partial class LocalPersonDetailPage : Page
+public sealed partial class LocalPersonDetailPage : UserControl, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware
 {
     public LocalPersonDetailViewModel ViewModel { get; }
 
@@ -31,10 +31,9 @@ public sealed partial class LocalPersonDetailPage : Page
     /// <see cref="LocalPersonNavigationParameter"/> carrying a seed name + image
     /// so the hero renders something while the TMDB fetch resolves.
     /// </summary>
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    public async void OnEntered(object? parameter, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
-        switch (e.Parameter)
+        switch (parameter)
         {
             case LocalPersonNavigationParameter p:
                 ViewModel.Prefill(p.SeedName, p.SeedImageUri);
@@ -46,6 +45,8 @@ public sealed partial class LocalPersonDetailPage : Page
                 break;
         }
     }
+
+    public void OnLeaving() { }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -125,13 +126,13 @@ public sealed partial class LocalPersonDetailPage : Page
     private void ShowCard_CardClick(object? sender, EventArgs e)
     {
         if (sender is FrameworkElement fe && fe.Tag is string showId)
-            Frame.Navigate(typeof(LocalShowDetailPage), showId);
+            Wavee.UI.WinUI.Helpers.Navigation.NavigationHelpers.OpenLocalShowDetail(showId);
     }
 
     private void MovieCard_CardClick(object? sender, EventArgs e)
     {
         if (sender is FrameworkElement fe && fe.Tag is string trackUri)
-            Frame.Navigate(typeof(LocalMovieDetailPage), trackUri);
+            Wavee.UI.WinUI.Helpers.Navigation.NavigationHelpers.OpenLocalMovieDetail(trackUri);
     }
 
     public static string FormatShowMeta(int seasonCount, int episodeCount)

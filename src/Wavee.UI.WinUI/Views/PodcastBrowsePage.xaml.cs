@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading.Tasks;
@@ -6,7 +6,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -15,7 +15,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDisposable
+public sealed partial class PodcastBrowsePage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable
 {
 
     private TabItemParameter? _tabItemParameter;
@@ -32,19 +32,14 @@ public sealed partial class PodcastBrowsePage : Page, ITabBarItemContent, IDispo
         InitializeComponent();
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnLeaving()
     {
-        base.OnNavigatedFrom(e);
-        //Bindings?.StopTracking();
         Dispose();
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    public async void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
-
-        var parameter = e.Parameter as ContentNavigationParameter;
-        await ViewModel.LoadAsync(parameter);
+        await ViewModel.LoadAsync(parameter as ContentNavigationParameter);
         ApplyTabParameter();
     }
 

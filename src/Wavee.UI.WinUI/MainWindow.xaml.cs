@@ -62,8 +62,8 @@ public sealed partial class MainWindow : WindowEx
         // leaving it null causes white glyphs on a light app (or vice-versa) whenever
         // the app and system themes disagree. ActualThemeChanged fires both at load
         // and on every runtime theme switch.
-        RootFrame.ActualThemeChanged += OnRootThemeChanged;
-        Helpers.Application.TitleBarHelper.ApplyCaptionButtonColors(AppWindow, RootFrame.ActualTheme);
+        RootHost.ActualThemeChanged += OnRootThemeChanged;
+        Helpers.Application.TitleBarHelper.ApplyCaptionButtonColors(AppWindow, RootHost.ActualTheme);
 
         // Subscribe to now-playing presentation so we can swap the AppWindow
         // presenter between Overlapped (Normal / Theatre) and FullScreen.
@@ -142,7 +142,7 @@ public sealed partial class MainWindow : WindowEx
         VisibilityChanged -= OnVisibilityChangedForMemoryRelease;
         AppWindow.Changed -= OnAppWindowChangedForMemoryRelease;
         AppWindow.Closing -= OnAppWindowClosing;
-        RootFrame.ActualThemeChanged -= OnRootThemeChanged;
+        RootHost.ActualThemeChanged -= OnRootThemeChanged;
         if (_presentation is not null)
             _presentation.PropertyChanged -= OnPresentationPropertyChanged;
         if (_memoryReleaseTimer != null)
@@ -210,13 +210,13 @@ public sealed partial class MainWindow : WindowEx
 
     private async Task ConfirmCloseAsync(IShellSessionService shellSession)
     {
-        if (RootFrame.XamlRoot == null)
+        if (RootHost.XamlRoot == null)
             return;
 
         CloseTabsDialogResult result;
         try
         {
-            result = await CloseTabsDialog.ShowAsync(RootFrame.XamlRoot, shellSession.AskBeforeClosingTabs);
+            result = await CloseTabsDialog.ShowAsync(RootHost.XamlRoot, shellSession.AskBeforeClosingTabs);
         }
         catch
         {
@@ -364,29 +364,29 @@ public sealed partial class MainWindow : WindowEx
 
         // Initialize color service (before theme, so brushes are cached early)
         var colorService = Ioc.Default.GetRequiredService<ThemeColorService>();
-        colorService.Initialize(RootFrame);
+        colorService.Initialize(RootHost);
 
         // Initialize theme service
         var themeService = Ioc.Default.GetRequiredService<IThemeService>();
-        themeService.Initialize(RootFrame);
+        themeService.Initialize(RootHost);
 
         // Always navigate to ShellPage (app works without Spotify login).
-        // Hand off from BootSplash → ShellPage on Frame.Navigated, deferred
+        // Hand off from BootSplash → ShellPage on PageHost.Navigated, deferred
         // one Low-priority dispatcher tick so ShellPage's first layout pass
         // completes before the fade animation starts. Otherwise the splash
-        // dissolves into a still-empty frame for one frame.
+        // dissolves into a still-empty host for one frame.
         if (Splash is { } splash)
         {
-            void OnNavigated(object _, Microsoft.UI.Xaml.Navigation.NavigationEventArgs __)
+            void OnNavigated(object? _, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigatedEventArgs __)
             {
-                RootFrame.Navigated -= OnNavigated;
+                RootHost.Navigated -= OnNavigated;
                 DispatcherQueue.TryEnqueue(
                     Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
                     () => _ = splash.FadeOutAsync());
             }
-            RootFrame.Navigated += OnNavigated;
+            RootHost.Navigated += OnNavigated;
         }
-        RootFrame.Navigate(typeof(ShellPage));
+        RootHost.Navigate(typeof(ShellPage));
 
         // Restore tear-off panel windows from persisted state. Must run AFTER
         // the shell exists so the floating windows have a XamlRoot baseline

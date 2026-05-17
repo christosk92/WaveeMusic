@@ -1,5 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Page
+﻿<?xml version="1.0" encoding="utf-8"?>
+<UserControl
     x:Class="Wavee.UI.WinUI.Views.ArtistPage"
     x:Name="ArtistPageRoot"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -25,10 +25,13 @@
     xmlns:gallery="using:Wavee.UI.WinUI.Controls.Gallery"
     waveeHelpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
-    NavigationCacheMode="Enabled"
     Background="Transparent">
-
-    <Page.Resources>
+    <UserControl.Transitions>
+        <TransitionCollection>
+            <EntranceThemeTransition />
+        </TransitionCollection>
+    </UserControl.Transitions>
+    <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark">
@@ -124,7 +127,7 @@
                 <transitions:TransitionConfig Id="artist-follow" ScaleMode="Scale"/>
             </transitions:TransitionHelper>
         </ResourceDictionary>
-    </Page.Resources>
+    </UserControl.Resources>
 
     <Grid>
         <!-- Page tint wash — palette gradient over the hero region.
@@ -155,8 +158,8 @@
                         <Grid x:Name="HeroPhotoLayer"
                               MinHeight="420">
                             <hero:HeroHeader x:Name="HeroGrid"
-                                             ImageUrl="{x:Bind ViewModel.HeaderImageUrl, Mode=OneWay}"
-                                             ColorHex="{x:Bind ViewModel.HeaderHeroColorHex, Mode=OneWay}"
+                                             ImageUrl="{x:Bind ViewModel.Header.HeaderImageUrl, Mode=OneWay}"
+                                             ColorHex="{x:Bind ViewModel.Header.HeaderHeroColorHex, Mode=OneWay}"
                                              MinHeight="420"
                                              InitialScale="1.0"
                                              FinalScale="1.05"
@@ -164,142 +167,142 @@
                                              FadeStart="0.62"
                                              FadeEnd="1.0"
                                              IntenseScrim="True"/>
-                                    <!-- The HeroHeader's built-in composition scrim
+                            <!-- The HeroHeader's built-in composition scrim
                                          (IntenseScrim mode, alpha 0 ? 235 top?bottom)
                                          covers the full hero with a smooth gradient,
                                          so this overlay panel only carries the
                                          positioning + content — no layered Rectangle
                                          scrims that would create a hard top seam where
                                          this panel (VerticalAlignment=Bottom) begins. -->
-                                    <Grid x:Name="HeroOverlayPanel"
+                            <Grid x:Name="HeroOverlayPanel"
                                           MinHeight="420"
                                           HorizontalAlignment="Stretch"
                                           VerticalAlignment="Stretch">
-                                        <Border transitions:TransitionHelper.Id="card-shell"
+                                <Border transitions:TransitionHelper.Id="card-shell"
                                                 Background="Transparent"
                                                 HorizontalAlignment="Stretch"
                                                 VerticalAlignment="Stretch"/>
-                                        <!-- 2-column hero overlay: copy on the left
+                                <!-- 2-column hero overlay: copy on the left
                                              (anchored to the page's 32-px left gutter),
                                              spotlight card pinned to the hero's right
                                              edge. AdaptiveTrigger collapses the card
                                              below 960 px so text isn't squeezed. -->
-                                        <Grid x:Name="HeroOverlayContentGrid"
+                                <Grid x:Name="HeroOverlayContentGrid"
                                               HorizontalAlignment="Stretch"
                                               Padding="32,34,32,30"
                                               VerticalAlignment="Stretch"
                                               ColumnSpacing="24">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <VisualStateManager.VisualStateGroups>
-                                                <VisualStateGroup x:Name="HeroAdaptiveStates">
-                                                    <VisualState x:Name="HeroWide">
-                                                        <VisualState.StateTriggers>
-                                                            <AdaptiveTrigger MinWindowWidth="960"/>
-                                                        </VisualState.StateTriggers>
-                                                    </VisualState>
-                                                    <VisualState x:Name="HeroNarrow">
-                                                        <VisualState.StateTriggers>
-                                                            <AdaptiveTrigger MinWindowWidth="0"/>
-                                                        </VisualState.StateTriggers>
-                                                        <VisualState.Setters>
-                                                            <Setter Target="SpotlightCard.Visibility" Value="Collapsed"/>
-                                                        </VisualState.Setters>
-                                                    </VisualState>
-                                                </VisualStateGroup>
-                                            </VisualStateManager.VisualStateGroups>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <VisualStateManager.VisualStateGroups>
+                                        <VisualStateGroup x:Name="HeroAdaptiveStates">
+                                            <VisualState x:Name="HeroWide">
+                                                <VisualState.StateTriggers>
+                                                    <AdaptiveTrigger MinWindowWidth="960"/>
+                                                </VisualState.StateTriggers>
+                                            </VisualState>
+                                            <VisualState x:Name="HeroNarrow">
+                                                <VisualState.StateTriggers>
+                                                    <AdaptiveTrigger MinWindowWidth="0"/>
+                                                </VisualState.StateTriggers>
+                                                <VisualState.Setters>
+                                                    <Setter Target="SpotlightCard.Visibility" Value="Collapsed"/>
+                                                </VisualState.Setters>
+                                            </VisualState>
+                                        </VisualStateGroup>
+                                    </VisualStateManager.VisualStateGroups>
 
-                                            <StackPanel x:Name="HeroCopyPanel"
+                                    <StackPanel x:Name="HeroCopyPanel"
                                                         Grid.Column="0"
                                                         HorizontalAlignment="Left"
                                                         MaxWidth="1040"
                                                         Spacing="8"
                                                         VerticalAlignment="Bottom">
-                                                <!-- Eyebrow row: trait pill + world rank pill, side-by-side. -->
-                                                <StackPanel x:Name="HeroBadgePanel"
+                                        <!-- Eyebrow row: trait pill + world rank pill, side-by-side. -->
+                                        <StackPanel x:Name="HeroBadgePanel"
                                                             Orientation="Horizontal"
                                                             Spacing="8"
                                                             HorizontalAlignment="Left"
                                                             transitions:TransitionHelper.Id="artist-badge">
-                                                    <!-- World rank pill — same dark-glass treatment as the trait pill;
+                                            <!-- World rank pill — same dark-glass treatment as the trait pill;
                                                          only renders when the artist has a populated world-rank stat. -->
-                                                    <Border CornerRadius="13"
+                                            <Border CornerRadius="13"
                                                             Height="26"
                                                             Padding="12,0"
                                                             Background="{ThemeResource WorldRankBadgeBackgroundBrush}"
                                                             BorderBrush="{ThemeResource WorldRankBadgeBorderBrush}"
                                                             BorderThickness="1"
                                                             VerticalAlignment="Center"
-                                                            Visibility="{x:Bind ViewModel.HasWorldRank, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                                            <TextBlock Text="WORLD RANK"
+                                                            Visibility="{x:Bind ViewModel.Header.HasWorldRank, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                    <TextBlock Text="WORLD RANK"
                                                                        FontSize="10"
                                                                        FontWeight="Bold"
                                                                        CharacterSpacing="140"
                                                                        Foreground="{ThemeResource WorldRankBadgeForegroundBrush}"/>
-                                                            <TextBlock Text="{x:Bind ViewModel.WorldRankNumberText, Mode=OneWay}"
+                                                    <TextBlock Text="{x:Bind ViewModel.Header.WorldRankNumberText, Mode=OneWay}"
                                                                        FontSize="11"
                                                                        FontWeight="Bold"
                                                                        Foreground="{ThemeResource AccentFillColorDefaultBrush}"/>
-                                                        </StackPanel>
-                                                    </Border>
-                                                <!-- Trait pill: verified / registered variants, mutually exclusive. -->
-                                                <Grid VerticalAlignment="Center"
-                                                      Visibility="{x:Bind ViewModel.HasArtistTrait, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                    <!-- Verified variant. Dark glass pill so the text reads against any
+                                                </StackPanel>
+                                            </Border>
+                                            <!-- Trait pill: verified / registered variants, mutually exclusive. -->
+                                            <Grid VerticalAlignment="Center"
+                                                      Visibility="{x:Bind ViewModel.Header.HasArtistTrait, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <!-- Verified variant. Dark glass pill so the text reads against any
                                                          hero photo (cloudy / bright / dark). Accent only on the
                                                          blue-check splash — the label itself is white for contrast. -->
-                                                    <Border CornerRadius="13"
+                                                <Border CornerRadius="13"
                                                             Height="26"
                                                             Padding="6,0,12,0"
                                                             Background="{ThemeResource WorldRankBadgeBackgroundBrush}"
                                                             BorderBrush="{ThemeResource WorldRankBadgeBorderBrush}"
                                                             BorderThickness="1"
-                                                            Visibility="{x:Bind ViewModel.IsVerified, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                        <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                                                            <Grid Width="16" Height="16" VerticalAlignment="Center">
-                                                                <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}"/>
-                                                                <FontIcon Glyph="&#xE73E;"
+                                                            Visibility="{x:Bind ViewModel.Header.IsVerified, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                                        <Grid Width="16" Height="16" VerticalAlignment="Center">
+                                                            <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}"/>
+                                                            <FontIcon Glyph="&#xE73E;"
                                                                           FontSize="10"
                                                                           Foreground="#0A0A0C"
                                                                           HorizontalAlignment="Center"
                                                                           VerticalAlignment="Center"/>
-                                                            </Grid>
-                                                            <TextBlock Text="VERIFIED ARTIST"
+                                                        </Grid>
+                                                        <TextBlock Text="VERIFIED ARTIST"
                                                                        FontSize="11"
                                                                        FontWeight="Bold"
                                                                        CharacterSpacing="140"
                                                                        Foreground="{ThemeResource WorldRankBadgeForegroundBrush}"/>
-                                                        </StackPanel>
-                                                    </Border>
-                                                    <!-- Registered-only variant. Same dark glass treatment; person glyph
+                                                    </StackPanel>
+                                                </Border>
+                                                <!-- Registered-only variant. Same dark glass treatment; person glyph
                                                          instead of the blue check, no accent splash. -->
-                                                    <Border CornerRadius="13"
+                                                <Border CornerRadius="13"
                                                             Height="26"
                                                             Padding="10,0,12,0"
                                                             Background="{ThemeResource WorldRankBadgeBackgroundBrush}"
                                                             BorderBrush="{ThemeResource WorldRankBadgeBorderBrush}"
                                                             BorderThickness="1"
-                                                            Visibility="{x:Bind ViewModel.IsRegisteredOnly, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                        <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                                                            <FontIcon Glyph="&#xE77B;"
+                                                            Visibility="{x:Bind ViewModel.Header.IsRegisteredOnly, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                                        <FontIcon Glyph="&#xE77B;"
                                                                       FontSize="12"
                                                                       Foreground="{ThemeResource WorldRankBadgeForegroundBrush}"
                                                                       VerticalAlignment="Center"/>
-                                                            <TextBlock Text="ARTIST PROFILE"
+                                                        <TextBlock Text="ARTIST PROFILE"
                                                                        FontSize="11"
                                                                        FontWeight="Bold"
                                                                        CharacterSpacing="140"
                                                                        Foreground="{ThemeResource WorldRankBadgeForegroundBrush}"/>
-                                                        </StackPanel>
-                                                    </Border>
-                                                </Grid>
-                                                </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </Grid>
+                                        </StackPanel>
 
-                                                <Grid HorizontalAlignment="Stretch">
-                                                    <!-- TextLineBounds=Tight removes the giant ascender/descender
+                                        <Grid HorizontalAlignment="Stretch">
+                                            <!-- TextLineBounds=Tight removes the giant ascender/descender
                                                          padding huge display fonts otherwise add. LineHeight from
                                                          code-behind + BlockLineHeight strategy keep the baseline
                                                          stable.
@@ -311,13 +314,13 @@
                                                          "h" etc.) at display sizes (~96-120 px) bleed roughly
                                                          size * 0.12-0.16 = ~14-18 px above the box top. Without this
                                                          margin those glyphs touch / overlap the badge row above. -->
-                                                    <!-- TextLineBounds=TrimToCapHeight trims excess ascender space
+                                            <!-- TextLineBounds=TrimToCapHeight trims excess ascender space
                                                          (so the name sits close under the badge) but its reserved
                                                          descender box is too tall for this hero layout. Tight bounds
                                                          keep the real glyph extents without the extra display-font
                                                          line-box gap. -->
-                                                    <TextBlock x:Name="HeroNameText"
-                                                               Text="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
+                                            <TextBlock x:Name="HeroNameText"
+                                                               Text="{x:Bind ViewModel.Header.ArtistName, Mode=OneWay}"
                                                                FontWeight="Black"
                                                                CharacterSpacing="-40"
                                                                Foreground="{ThemeResource HeroNameForegroundBrush}"
@@ -329,18 +332,18 @@
                                                                LineStackingStrategy="BlockLineHeight"
                                                                Margin="0,18,0,16"
                                                                transitions:TransitionHelper.Id="artist-name"
-                                                               Visibility="{x:Bind ViewModel.ArtistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                                                        <TextBlock.Shadow>
-                                                            <ThemeShadow/>
-                                                        </TextBlock.Shadow>
-                                                    </TextBlock>
-                                                    <controls:Shimmer Width="520" Height="120"
+                                                               Visibility="{x:Bind ViewModel.Header.ArtistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                                                <TextBlock.Shadow>
+                                                    <ThemeShadow/>
+                                                </TextBlock.Shadow>
+                                            </TextBlock>
+                                            <controls:Shimmer Width="520" Height="120"
                                                                       HorizontalAlignment="Left"
-                                                                      Visibility="{x:Bind ViewModel.ArtistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                                </Grid>
+                                                                      Visibility="{x:Bind ViewModel.Header.ArtistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                        </Grid>
 
-                                                <TextBlock x:Name="HeroBioText"
-                                                           Text="{x:Bind ViewModel.HeroBioLine, Mode=OneWay}"
+                                        <TextBlock x:Name="HeroBioText"
+                                                           Text="{x:Bind ViewModel.Bio.HeroBioLine, Mode=OneWay}"
                                                            TextWrapping="Wrap"
                                                            MaxLines="2"
                                                            TextTrimming="CharacterEllipsis"
@@ -350,108 +353,112 @@
                                                            MaxWidth="540"
                                                            HorizontalAlignment="Left"
                                                            Foreground="{ThemeResource HeroBioForegroundBrush}"
-                                                           Visibility="{x:Bind ViewModel.HasHeroBioLine, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                                           Visibility="{x:Bind ViewModel.Bio.HasHeroBioLine, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
-                                                <Grid x:Name="HeroMetaPanel"
+                                        <Grid x:Name="HeroMetaPanel"
                                                       transitions:TransitionHelper.Id="artist-meta">
-                                                    <!-- Stat numbers use bright primary white so the figures pop; the
+                                            <!-- Stat numbers use bright primary white so the figures pop; the
                                                          label words + separators stay at the dim hero meta colour so the
                                                          eye lands on the numbers first. -->
-                                                    <TextBlock FontSize="13"
+                                            <TextBlock FontSize="13"
                                                                Foreground="{ThemeResource HeroMetaLabelForegroundBrush}"
                                                                TextTrimming="CharacterEllipsis"
                                                                MaxLines="1"
-                                                               Visibility="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
-                                                        <Run Text="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}" Foreground="{ThemeResource HeroMetaNumberForegroundBrush}" FontWeight="SemiBold"/><Run Text=" monthly listeners"/>
+                                                               Visibility="{x:Bind ViewModel.Header.MonthlyListeners, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                                                        <Run Text="{x:Bind ViewModel.Header.MonthlyListeners, Mode=OneWay}" Foreground="{ThemeResource HeroMetaNumberForegroundBrush}" FontWeight="SemiBold"/><Run Text=" monthly listeners"/>
                                                         <Run Text="  ·  "/>
-                                                        <Run Text="{x:Bind ViewModel.FollowersFormatted, Mode=OneWay}" Foreground="{ThemeResource HeroMetaNumberForegroundBrush}" FontWeight="SemiBold"/><Run Text=" followers"/>
+                                                        <Run Text="{x:Bind ViewModel.Header.FollowersFormatted, Mode=OneWay}" Foreground="{ThemeResource HeroMetaNumberForegroundBrush}" FontWeight="SemiBold"/><Run Text=" followers"/>
                                                         <Run Text="  ·  "/>
-                                                        <Run Text="{x:Bind ViewModel.AlbumsTotalCount, Mode=OneWay}" Foreground="{ThemeResource HeroMetaNumberForegroundBrush}" FontWeight="SemiBold"/><Run Text=" albums"/>
+                                                        <Run Text="{x:Bind ViewModel.Discography.AlbumsTotalCount, Mode=OneWay}" Foreground="{ThemeResource HeroMetaNumberForegroundBrush}" FontWeight="SemiBold"/><Run Text=" albums"/>
                                                         <Run Text="  ·  "/>
-                                                        <Run Text="{x:Bind ViewModel.SinglesTotalCount, Mode=OneWay}" Foreground="{ThemeResource HeroMetaNumberForegroundBrush}" FontWeight="SemiBold"/><Run Text=" singles"/>
-                                                    </TextBlock>
-                                                    <controls:Shimmer Width="320" Height="14"
+                                                        <Run Text="{x:Bind ViewModel.Discography.SinglesTotalCount, Mode=OneWay}" Foreground="{ThemeResource HeroMetaNumberForegroundBrush}" FontWeight="SemiBold"/><Run Text=" singles"/>
+                                            </TextBlock>
+                                            <controls:Shimmer Width="320" Height="14"
                                                                       HorizontalAlignment="Left"
-                                                                      Visibility="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                                </Grid>
+                                                                      Visibility="{x:Bind ViewModel.Header.MonthlyListeners, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                        </Grid>
 
-                                                <StackPanel Orientation="Horizontal" Spacing="10"
+                                        <StackPanel Orientation="Horizontal" Spacing="10"
                                                             VerticalAlignment="Center"
                                                             Margin="0,18,0,0">
-                                                    <Button x:Name="HeroPlayButton"
+                                            <Button x:Name="HeroPlayButton"
                                                             Style="{StaticResource AccentButtonStyle}"
-                                                            Background="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
-                                                            Foreground="{x:Bind ViewModel.PaletteAccentPillForegroundBrush, Mode=OneWay}"
-                                                            Command="{x:Bind ViewModel.PlayTopTracksCommand}"
+                                                            Background="{x:Bind ViewModel.Header.PaletteAccentPillBrush, Mode=OneWay}"
+                                                            Foreground="{x:Bind ViewModel.Header.PaletteAccentPillForegroundBrush, Mode=OneWay}"
+                                                            Command="{x:Bind ViewModel.TopTracks.PlayTopTracksCommand}"
                                                             Height="52"
                                                             Padding="26,0"
                                                             CornerRadius="26"
                                                             transitions:TransitionHelper.Id="artist-play">
-                                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                                            <waveePlayback:PlaybackActionContent IconSize="17"
+                                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                    <waveePlayback:PlaybackActionContent IconSize="17"
                                                                                                  SpinnerSize="17"
-                                                                                                 IsPlaying="{x:Bind ViewModel.IsArtistContextPlaying, Mode=OneWay}"
-                                                                                                 IsPending="{x:Bind ViewModel.IsPlayPending, Mode=OneWay}"
-                                                                                                 ActionForeground="{x:Bind ViewModel.PaletteAccentPillForegroundBrush, Mode=OneWay}"/>
-                                                            <TextBlock Text="{x:Bind ViewModel.ArtistPlayButtonText, Mode=OneWay}"
+                                                                                                 IsPlaying="{x:Bind ViewModel.TopTracks.IsArtistContextPlaying, Mode=OneWay}"
+                                                                                                 IsPending="{x:Bind ViewModel.TopTracks.IsPlayPending, Mode=OneWay}"
+                                                                                                 ActionForeground="{x:Bind ViewModel.Header.PaletteAccentPillForegroundBrush, Mode=OneWay}"/>
+                                                    <TextBlock Text="{x:Bind ViewModel.TopTracks.ArtistPlayButtonText, Mode=OneWay}"
                                                                        FontSize="16"
                                                                        FontWeight="SemiBold"/>
-                                                        </StackPanel>
-                                                    </Button>
+                                                </StackPanel>
+                                            </Button>
 
-                                                    <Button x:Name="HeroFollowButton"
+                                            <Button x:Name="HeroFollowButton"
                                                             Command="{x:Bind ViewModel.ToggleFollowCommand}"
                                                             Height="44"
                                                             Padding="18,0"
                                                             CornerRadius="22"
                                                             transitions:TransitionHelper.Id="artist-follow">
-                                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                                            <FontIcon Glyph="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowGlyphConverter}}" FontSize="13"/>
-                                                            <TextBlock Text="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowTextConverter}}"/>
-                                                        </StackPanel>
-                                                    </Button>
+                                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                    <FontIcon Glyph="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowGlyphConverter}}" FontSize="13"/>
+                                                    <TextBlock Text="{x:Bind ViewModel.IsFollowing, Mode=OneWay, Converter={StaticResource BoolToFollowTextConverter}}"/>
+                                                </StackPanel>
+                                            </Button>
 
-                                                    <Button Command="{x:Bind ViewModel.PlayArtistRadioCommand}"
+                                            <Button Command="{x:Bind ViewModel.PlayArtistRadioCommand}"
                                                             Style="{StaticResource SubtleButtonStyle}"
                                                             Height="44"
                                                             Padding="18,0"
                                                             CornerRadius="22">
-                                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                                            <FontIcon Glyph="&#xEC05;" FontSize="13"/>
-                                                            <TextBlock Text="Artist radio"/>
-                                                        </StackPanel>
-                                                    </Button>
+                                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                    <FontIcon Glyph="&#xEC05;" FontSize="13"/>
+                                                    <TextBlock Text="Artist radio"/>
+                                                </StackPanel>
+                                            </Button>
 
-                                                    <Button Style="{StaticResource SubtleButtonStyle}"
+                                            <Button Style="{StaticResource SubtleButtonStyle}"
                                                             Width="44" Height="44"
                                                             Padding="0"
                                                             CornerRadius="22"
                                                             ToolTipService.ToolTip="Share"
                                                             Click="ShareArtist_Click">
-                                                        <FontIcon Glyph="&#xE72D;" FontSize="13"/>
-                                                    </Button>
+                                                <FontIcon Glyph="&#xE72D;" FontSize="13"/>
+                                            </Button>
 
-                                                    <Button Style="{StaticResource SubtleButtonStyle}"
+                                            <Button Style="{StaticResource SubtleButtonStyle}"
                                                             Width="44" Height="44"
                                                             Padding="0"
                                                             CornerRadius="22"
                                                             ToolTipService.ToolTip="More">
-                                                        <FontIcon Glyph="&#xE712;" FontSize="13"/>
-                                                        <Button.Flyout>
-                                                            <MenuFlyout>
-                                                                <MenuFlyoutItem Text="Copy link to artist" Click="CopyArtistLink_Click">
-                                                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE71B;"/></MenuFlyoutItem.Icon>
-                                                                </MenuFlyoutItem>
-                                                                <MenuFlyoutItem Text="Open in Spotify" Click="OpenInSpotify_Click">
-                                                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A7;"/></MenuFlyoutItem.Icon>
-                                                                </MenuFlyoutItem>
-                                                            </MenuFlyout>
-                                                        </Button.Flyout>
-                                                    </Button>
-                                                </StackPanel>
-                                            </StackPanel>
+                                                <FontIcon Glyph="&#xE712;" FontSize="13"/>
+                                                <Button.Flyout>
+                                                    <MenuFlyout>
+                                                        <MenuFlyoutItem Text="Copy link to artist" Click="CopyArtistLink_Click">
+                                                            <MenuFlyoutItem.Icon>
+                                                                <FontIcon Glyph="&#xE71B;"/>
+                                                            </MenuFlyoutItem.Icon>
+                                                        </MenuFlyoutItem>
+                                                        <MenuFlyoutItem Text="Open in Spotify" Click="OpenInSpotify_Click">
+                                                            <MenuFlyoutItem.Icon>
+                                                                <FontIcon Glyph="&#xE8A7;"/>
+                                                            </MenuFlyoutItem.Icon>
+                                                        </MenuFlyoutItem>
+                                                    </MenuFlyout>
+                                                </Button.Flyout>
+                                            </Button>
+                                        </StackPanel>
+                                    </StackPanel>
 
-                                            <cards:SpotlightReleaseCard x:Name="SpotlightCard"
+                                    <cards:SpotlightReleaseCard x:Name="SpotlightCard"
                                                                         Grid.Column="1"
                                                                         HorizontalAlignment="Right"
                                                                         VerticalAlignment="Bottom"
@@ -462,15 +469,15 @@
                                                                         Subtitle="{x:Bind ViewModel.SpotlightReleaseSubtitle, Mode=OneWay}"
                                                                         Comment="{x:Bind ViewModel.SpotlightCommentText, Mode=OneWay}"
                                                                         CoverImageUrl="{x:Bind ViewModel.SpotlightReleaseImageUrl, Mode=OneWay}"
-                                                                        AccentBrush="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
+                                                                        AccentBrush="{x:Bind ViewModel.Header.PaletteAccentPillBrush, Mode=OneWay}"
                                                                         NavigationUri="{x:Bind ViewModel.SpotlightReleaseUri, Mode=OneWay}"
                                                                         NavigationTotalTracks="{x:Bind ViewModel.SpotlightReleaseTrackCount, Mode=OneWay}"
                                                                         Visibility="{x:Bind ViewModel.HasSpotlightRelease, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                                                         PlayClick="SpotlightPlay_Click"
                                                                         SaveClick="SpotlightSave_Click"
                                                                         ShareClick="SpotlightShare_Click"/>
-                                        </Grid>
-                                    </Grid>
+                                </Grid>
+                            </Grid>
                         </Grid>
                     </Border>
 
@@ -490,93 +497,93 @@
                      in over the shimmer rather than collapsing it under stale
                      content. -->
                 <Grid x:Name="BodyHost">
-                <StackPanel x:Name="BodyContent"
+                    <StackPanel x:Name="BodyContent"
                             Padding="32,40,32,40"
                             Spacing="40"
                             HorizontalAlignment="Stretch"
                             VerticalAlignment="Top">
 
-                <StackPanel x:Name="TopBandSection" Spacing="20">
-                    <!-- Header: title on the left, top-track pager on the right
+                        <StackPanel x:Name="TopBandSection" Spacing="20">
+                            <!-- Header: title on the left, top-track pager on the right
                          (right-aligned in column 1). The pager used to sit under
                          the track grid; moving it inline with the title saves a
                          row of vertical space and puts the paging affordance
                          where the user is already looking when scanning the
                          section title. -->
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0"
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0"
                                     Orientation="Horizontal" Spacing="10"
                                     VerticalAlignment="Center" HorizontalAlignment="Left">
-                            <Border Width="3" MinHeight="22" CornerRadius="1.5"
+                                    <Border Width="3" MinHeight="22" CornerRadius="1.5"
                                     VerticalAlignment="Stretch"
-                                    Background="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                            <TextBlock Text="Top tracks &amp; popular releases"
+                                    Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                    <TextBlock Text="Top tracks &amp; popular releases"
                                        Style="{StaticResource SubtitleTextBlockStyle}"
                                        FontWeight="SemiBold"
                                        VerticalAlignment="Center"/>
-                            <Border CornerRadius="6"
+                                    <Border CornerRadius="6"
                                     Padding="6,1"
                                     Background="{ThemeResource SubtleFillColorTertiaryBrush}"
                                     Visibility="{x:Bind ViewModel.IsDebugMode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <TextBlock Text="topTracks + popularReleasesAlbums"
+                                        <TextBlock Text="topTracks + popularReleasesAlbums"
                                            FontSize="10"
                                            FontFamily="Consolas"
                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                            </Border>
-                        </StackPanel>
-                        <PipsPager x:Name="TopTracksPipsPager"
+                                    </Border>
+                                </StackPanel>
+                                <PipsPager x:Name="TopTracksPipsPager"
                                    Grid.Column="1"
                                    HorizontalAlignment="Right"
                                    VerticalAlignment="Center"
-                                   NumberOfPages="{x:Bind ViewModel.TotalPages, Mode=OneWay}"
-                                   SelectedPageIndex="{x:Bind ViewModel.CurrentPage, Mode=TwoWay}"
-                                   Visibility="{x:Bind ViewModel.HasMultiplePages, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                   NumberOfPages="{x:Bind ViewModel.TopTracks.TotalPages, Mode=OneWay}"
+                                   SelectedPageIndex="{x:Bind ViewModel.TopTracks.CurrentPage, Mode=TwoWay}"
+                                   Visibility="{x:Bind ViewModel.TopTracks.HasMultiplePages, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                    PreviousButtonVisibility="Visible"
                                    NextButtonVisibility="Visible"/>
-                    </Grid>
+                            </Grid>
 
-                    <Grid x:Name="TopTracksBandGrid" ColumnSpacing="24" RowSpacing="20">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="2*"/>
-                            <ColumnDefinition x:Name="PopularReleasesColumn" Width="*"/>
-                        </Grid.ColumnDefinitions>
+                            <Grid x:Name="TopTracksBandGrid" ColumnSpacing="24" RowSpacing="20">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*"/>
+                                    <ColumnDefinition x:Name="PopularReleasesColumn" Width="*"/>
+                                </Grid.ColumnDefinitions>
 
-                        <!-- Dense top-tracks list — bare container; VerticalAlignment=Top
+                                <!-- Dense top-tracks list — bare container; VerticalAlignment=Top
                              so the rows hug the section top edge rather than centering
                              in the cell vacated by the taller popular column. -->
-                        <Border Grid.Row="0"
+                                <Border Grid.Row="0"
                                 Grid.Column="0"
                                 CornerRadius="8"
                                 Padding="0"
                                 VerticalAlignment="Top">
-                            <Grid VerticalAlignment="Top">
-                                <ItemsRepeater x:Name="TopTracksRepeater"
+                                    <Grid VerticalAlignment="Top">
+                                        <ItemsRepeater x:Name="TopTracksRepeater"
                                                VerticalAlignment="Top"
-                                               ItemsSource="{x:Bind ViewModel.PagedTopTracks, Mode=OneWay}"
+                                               ItemsSource="{x:Bind ViewModel.TopTracks.PagedTopTracks, Mode=OneWay}"
                                                ElementPrepared="TopTracksRepeater_ElementPrepared">
-                                    <ItemsRepeater.Layout>
-                                        <!-- Column-first compact grid, matching the legacy ArtistPage.
+                                            <ItemsRepeater.Layout>
+                                                <!-- Column-first compact grid, matching the legacy ArtistPage.
                                              MaxRows=4, MinItemWidth=280 ? typically 3 cols × 4 rows = 12
                                              items per page in the band's 2* slot. ColumnCount is
                                              reported back to the VM via ColumnCountChanged so
                                              pagination math stays accurate. -->
-                                        <layouts:ColumnsFirstGridLayout x:Name="TopTracksLayout"
+                                                <layouts:ColumnsFirstGridLayout x:Name="TopTracksLayout"
                                                                         MaxRows="4" MinItemWidth="280"
                                                                         ItemHeight="56"
                                                                         RowSpacing="4" ColumnSpacing="8"
                                                                         ColumnCountChanged="TopTracksLayout_ColumnCountChanged"/>
-                                    </ItemsRepeater.Layout>
-                                    <ItemsRepeater.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:LazyTrackItem">
-                                            <track:TrackItem
+                                            </ItemsRepeater.Layout>
+                                            <ItemsRepeater.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:LazyTrackItem">
+                                                    <track:TrackItem
                                                 Mode="Compact"
                                                 Track="{x:Bind Mode=OneWay}"
                                                 PreserveImageOnUnload="True"
@@ -584,147 +591,147 @@
                                                 IsSelected="{x:Bind IsSelected, Mode=OneWay}"
                                                 ShowPlayCount="True"
                                                 PlayCountText="{x:Bind PlayCountFormatted, Mode=OneWay}"
-                                                PlayCommand="{Binding ViewModel.PlayTrackCommand, ElementName=ArtistPageRoot}"/>
-                                        </DataTemplate>
-                                    </ItemsRepeater.ItemTemplate>
-                                </ItemsRepeater>
+                                                PlayCommand="{Binding ViewModel.TopTracks.PlayTrackCommand, ElementName=ArtistPageRoot}"/>
+                                                </DataTemplate>
+                                            </ItemsRepeater.ItemTemplate>
+                                        </ItemsRepeater>
 
-                                <!-- PipsPager moved to the section title row above.
+                                        <!-- PipsPager moved to the section title row above.
                                      (No per-section shimmer here — the unified
                                      ShimmerContainer below BodyContent covers the
                                      band's placeholder via the x:Bind ShimmerGate flow.) -->
-                            </Grid>
-                        </Border>
+                                    </Grid>
+                                </Border>
 
-                        <!-- Popular releases list -->
-                        <Border x:Name="PopularReleasesBorder"
+                                <!-- Popular releases list -->
+                                <Border x:Name="PopularReleasesBorder"
                                 Grid.Row="0"
                                 Grid.Column="1"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 Padding="0"
-                                Visibility="{x:Bind views:ArtistPage.ShowPopularColumnArea(ViewModel.HasPopularReleases, ViewModel.IsLoading), Mode=OneWay}">
-                            <Grid>
-                                <ItemsRepeater x:Name="PopularReleasesRepeater"
+                                Visibility="{x:Bind views:ArtistPage.ShowPopularColumnArea(ViewModel.Discography.HasPopularReleases, ViewModel.IsLoading), Mode=OneWay}">
+                                    <Grid>
+                                        <ItemsRepeater x:Name="PopularReleasesRepeater"
                                                ItemsSource="{x:Bind ViewModel.PopularReleasesDisplayed, Mode=OneWay}"
                                                ElementPrepared="PopularReleasesRepeater_ElementPrepared">
-                                    <ItemsRepeater.Layout>
-                                        <StackLayout Orientation="Vertical" Spacing="2"/>
-                                    </ItemsRepeater.Layout>
-                                    <ItemsRepeater.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:LazyReleaseItem">
-                                            <!-- Row self-routes via internal CardButton_Click; data wired imperatively in PopularReleasesRepeater_ElementPrepared. -->
-                                            <cards:PopularReleaseRow/>
-                                        </DataTemplate>
-                                    </ItemsRepeater.ItemTemplate>
-                                </ItemsRepeater>
+                                            <ItemsRepeater.Layout>
+                                                <StackLayout Orientation="Vertical" Spacing="2"/>
+                                            </ItemsRepeater.Layout>
+                                            <ItemsRepeater.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:LazyReleaseItem">
+                                                    <!-- Row self-routes via internal CardButton_Click; data wired imperatively in PopularReleasesRepeater_ElementPrepared. -->
+                                                    <cards:PopularReleaseRow/>
+                                                </DataTemplate>
+                                            </ItemsRepeater.ItemTemplate>
+                                        </ItemsRepeater>
 
-                                <!-- (No per-section shimmer — ShimmerContainer handles it.) -->
+                                        <!-- (No per-section shimmer — ShimmerContainer handles it.) -->
+                                    </Grid>
+                                </Border>
                             </Grid>
-                        </Border>
-                    </Grid>
-                </StackPanel>
+                        </StackPanel>
 
-                <!--  ════════════════════════════════════════════════════════
+                        <!--  ════════════════════════════════════════════════════════
                       [3] ABOUT EXCERPT
                       ════════════════════════════════════════════════════════ -->
-                <Grid x:Name="AboutExcerptSection"
-                      Visibility="{x:Bind ViewModel.HasAboutExcerpt, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="0"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
+                        <Grid x:Name="AboutExcerptSection"
+                      Visibility="{x:Bind ViewModel.Bio.HasAboutExcerpt, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="0"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
-                    <!-- Accent left stripe -->
-                    <Border Grid.Column="0"
+                            <!-- Accent left stripe -->
+                            <Border Grid.Column="0"
                             Width="4"
                             CornerRadius="2"
-                            Background="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
+                            Background="{x:Bind ViewModel.Header.PaletteAccentPillBrush, Mode=OneWay}"
                             HorizontalAlignment="Left"
                             Visibility="Collapsed"/>
 
-                    <!-- Card -->
-                    <Border Grid.Column="1"
+                            <!-- Card -->
+                            <Border Grid.Column="1"
                             CornerRadius="14"
                             Padding="22,18"
                             Margin="0"
                             BorderBrush="#2E5090B8"
                             BorderThickness="1">
-                        <Border.Background>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                <GradientStop Color="#171B333C" Offset="0"/>
-                                <GradientStop Color="#1014141A" Offset="0.72"/>
-                            </LinearGradientBrush>
-                        </Border.Background>
-                        <StackPanel Spacing="8">
-                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                <TextBlock Text="ABOUT THIS ARTIST"
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#171B333C" Offset="0"/>
+                                        <GradientStop Color="#1014141A" Offset="0.72"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <StackPanel Spacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <TextBlock Text="ABOUT THIS ARTIST"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            FontSize="10"
                                            FontWeight="Bold"
                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                            CharacterSpacing="140"/>
-                                <ic:SymbolIcon Symbol="Sparkle"
+                                        <ic:SymbolIcon Symbol="Sparkle"
                                                IconVariant="Filled"
                                                FontSize="14"
                                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                                ToolTipService.ToolTip="On-device summary — generated by Phi Silica from artist signals"
-                                               Visibility="{x:Bind ViewModel.IsBioFromAi, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                            </StackPanel>
-                            <TextBlock x:Name="BioExcerptTextBlock"
+                                               Visibility="{x:Bind ViewModel.Bio.IsBioFromAi, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="BioExcerptTextBlock"
                                        TextWrapping="Wrap"
                                        MaxLines="4"
                                        TextTrimming="CharacterEllipsis"
                                        LineHeight="20"
                                        FontSize="14"
                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
-                            <HyperlinkButton Content="Read full biography ?"
+                                    <HyperlinkButton Content="Read full biography ?"
                                              FontSize="12"
                                              Padding="0,2"
                                              Click="ReadFullBioLink_Click"/>
-                        </StackPanel>
-                    </Border>
-                </Grid>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
 
-                <!--  ════════════════════════════════════════════════════════
+                        <!--  ════════════════════════════════════════════════════════
                       [4] DISCOGRAPHY
                       Albums / Singles / Compilations subsections only — the
                       "Discography" parent header was redundant with the
                       sub-band titles, so it's removed and the section pulls
                       up to sit closer to the band above.
                       ════════════════════════════════════════════════════════ -->
-                <StackPanel x:Name="DiscographySection"
+                        <StackPanel x:Name="DiscographySection"
                             Margin="0,-16,0,0"
                             Spacing="20">
-                    <!-- Albums grid -->
-                    <StackPanel Spacing="12"
-                                Visibility="{x:Bind ViewModel.HasAlbums, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <Border Width="3" MinHeight="20" CornerRadius="1.5"
+                            <!-- Albums grid -->
+                            <StackPanel Spacing="12"
+                                Visibility="{x:Bind ViewModel.Discography.HasAlbums, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                    <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                     VerticalAlignment="Stretch"
-                                    Background="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                            <TextBlock Text="Albums"
+                                    Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                    <TextBlock Text="Albums"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        FontSize="16"
                                        VerticalAlignment="Center"/>
-                            <TextBlock Text="{x:Bind ViewModel.AlbumsTotalCount, Mode=OneWay}"
+                                    <TextBlock Text="{x:Bind ViewModel.Discography.AlbumsTotalCount, Mode=OneWay}"
                                        FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                        VerticalAlignment="Center"/>
-                        </StackPanel>
+                                </StackPanel>
 
-                        <ItemsRepeater x:Name="AlbumsRepeater"
-                                       ItemsSource="{x:Bind ViewModel.AlbumsCapped, Mode=OneWay}"
+                                <ItemsRepeater x:Name="AlbumsRepeater"
+                                       ItemsSource="{x:Bind ViewModel.Discography.AlbumsCapped, Mode=OneWay}"
                                        ElementClearing="DiscographyRepeater_ElementClearing">
-                            <ItemsRepeater.Layout>
-                                <UniformGridLayout MinItemWidth="160"
+                                    <ItemsRepeater.Layout>
+                                        <UniformGridLayout MinItemWidth="160"
                                                    MinItemHeight="220"
                                                    MinRowSpacing="20" MinColumnSpacing="16"
                                                    ItemsStretch="Uniform"/>
-                            </ItemsRepeater.Layout>
-                            <ItemsRepeater.ItemTemplate>
-                                <DataTemplate x:DataType="vm:LazyReleaseItem">
-                                    <cards:ContentCard
+                                    </ItemsRepeater.Layout>
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:LazyReleaseItem">
+                                            <cards:ContentCard
                                         IsCircularImage="False"
                                         Subtitle="{x:Bind Data.SubtitleDetail, Mode=OneWay, FallbackValue=''}"
                                         Title="{x:Bind Data.Name, Mode=OneWay, FallbackValue=''}"
@@ -736,16 +743,16 @@
                                         SecondaryActionTooltip="Open album page"
                                         Tag="{x:Bind Data.Uri, Mode=OneWay}"
                                         CardClick="AlbumCard_Click"/>
-                                </DataTemplate>
-                            </ItemsRepeater.ItemTemplate>
-                        </ItemsRepeater>
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
 
-                        <!-- See-all-albums tile. Only appears when the artist has more
+                                <!-- See-all-albums tile. Only appears when the artist has more
                              than 100 albums (capped grid above shows 30); routes to the
                              dedicated ArtistDiscographyPage so the user gets a full
                              paginatable view + breadcrumb without bloating this page. -->
-                        <Button x:Name="AlbumsSeeAllTile"
-                                Visibility="{x:Bind ViewModel.ShowAlbumsSeeAllTile, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                <Button x:Name="AlbumsSeeAllTile"
+                                Visibility="{x:Bind ViewModel.Discography.ShowAlbumsSeeAllTile, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                 HorizontalAlignment="Stretch"
                                 HorizontalContentAlignment="Stretch"
                                 Padding="20,14"
@@ -754,54 +761,54 @@
                                 BorderThickness="1"
                                 CornerRadius="8"
                                 Click="AlbumsSeeAll_Click">
-                            <Grid HorizontalAlignment="Stretch">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0"
-                                           Text="{x:Bind ViewModel.AlbumsSeeAllLabel, Mode=OneWay}"
+                                    <Grid HorizontalAlignment="Stretch">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0"
+                                           Text="{x:Bind ViewModel.Discography.AlbumsSeeAllLabel, Mode=OneWay}"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            VerticalAlignment="Center"/>
-                                <FontIcon Grid.Column="1"
+                                        <FontIcon Grid.Column="1"
                                           FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                           Glyph="&#xE76C;"
                                           FontSize="14"
                                           VerticalAlignment="Center"
                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            </Grid>
-                        </Button>
-                    </StackPanel>
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
 
-                    <!-- Singles grid -->
-                    <StackPanel Spacing="12"
-                                Visibility="{x:Bind ViewModel.HasSingles, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <Border Width="3" MinHeight="20" CornerRadius="1.5"
+                            <!-- Singles grid -->
+                            <StackPanel Spacing="12"
+                                Visibility="{x:Bind ViewModel.Discography.HasSingles, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                    <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                     VerticalAlignment="Stretch"
-                                    Background="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                            <TextBlock Text="Singles &amp; EPs"
+                                    Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                    <TextBlock Text="Singles &amp; EPs"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        FontSize="16"
                                        VerticalAlignment="Center"/>
-                            <TextBlock Text="{x:Bind ViewModel.SinglesTotalCount, Mode=OneWay}"
+                                    <TextBlock Text="{x:Bind ViewModel.Discography.SinglesTotalCount, Mode=OneWay}"
                                        FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                        VerticalAlignment="Center"/>
-                        </StackPanel>
+                                </StackPanel>
 
-                        <ItemsRepeater x:Name="SinglesRepeater"
-                                       ItemsSource="{x:Bind ViewModel.SinglesCapped, Mode=OneWay}"
+                                <ItemsRepeater x:Name="SinglesRepeater"
+                                       ItemsSource="{x:Bind ViewModel.Discography.SinglesCapped, Mode=OneWay}"
                                        ElementClearing="DiscographyRepeater_ElementClearing">
-                            <ItemsRepeater.Layout>
-                                <UniformGridLayout MinItemWidth="160"
+                                    <ItemsRepeater.Layout>
+                                        <UniformGridLayout MinItemWidth="160"
                                                    MinItemHeight="220"
                                                    MinRowSpacing="20" MinColumnSpacing="16"
                                                    ItemsStretch="Uniform"/>
-                            </ItemsRepeater.Layout>
-                            <ItemsRepeater.ItemTemplate>
-                                <DataTemplate x:DataType="vm:LazyReleaseItem">
-                                    <cards:ContentCard
+                                    </ItemsRepeater.Layout>
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:LazyReleaseItem">
+                                            <cards:ContentCard
                                         IsCircularImage="False"
                                         Subtitle="{x:Bind Data.SubtitleDetail, Mode=OneWay, FallbackValue=''}"
                                         Title="{x:Bind Data.Name, Mode=OneWay, FallbackValue=''}"
@@ -813,13 +820,13 @@
                                         SecondaryActionTooltip="Open album page"
                                         Tag="{x:Bind Data.Uri, Mode=OneWay}"
                                         CardClick="AlbumCard_Click"/>
-                                </DataTemplate>
-                            </ItemsRepeater.ItemTemplate>
-                        </ItemsRepeater>
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
 
-                        <!-- See-all-singles tile (mirror of AlbumsSeeAllTile above). -->
-                        <Button x:Name="SinglesSeeAllTile"
-                                Visibility="{x:Bind ViewModel.ShowSinglesSeeAllTile, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                <!-- See-all-singles tile (mirror of AlbumsSeeAllTile above). -->
+                                <Button x:Name="SinglesSeeAllTile"
+                                Visibility="{x:Bind ViewModel.Discography.ShowSinglesSeeAllTile, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                 HorizontalAlignment="Stretch"
                                 HorizontalContentAlignment="Stretch"
                                 Padding="20,14"
@@ -828,50 +835,50 @@
                                 BorderThickness="1"
                                 CornerRadius="8"
                                 Click="SinglesSeeAll_Click">
-                            <Grid HorizontalAlignment="Stretch">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0"
-                                           Text="{x:Bind ViewModel.SinglesSeeAllLabel, Mode=OneWay}"
+                                    <Grid HorizontalAlignment="Stretch">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0"
+                                           Text="{x:Bind ViewModel.Discography.SinglesSeeAllLabel, Mode=OneWay}"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            VerticalAlignment="Center"/>
-                                <FontIcon Grid.Column="1"
+                                        <FontIcon Grid.Column="1"
                                           FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                           Glyph="&#xE76C;"
                                           FontSize="14"
                                           VerticalAlignment="Center"
                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            </Grid>
-                        </Button>
-                    </StackPanel>
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
 
-                    <!-- Appears on shelf -->
-                    <StackPanel Spacing="12"
-                                Visibility="{x:Bind ViewModel.HasAppearsOn, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <Border Width="3" MinHeight="20" CornerRadius="1.5"
+                            <!-- Appears on shelf -->
+                            <StackPanel Spacing="12"
+                                Visibility="{x:Bind ViewModel.Discography.HasAppearsOn, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                    <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                     VerticalAlignment="Stretch"
-                                    Background="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                            <TextBlock Text="Appears on"
+                                    Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                    <TextBlock Text="Appears on"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        FontSize="16"
                                        VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <ScrollViewer HorizontalScrollMode="Auto"
+                                </StackPanel>
+                                <ScrollViewer HorizontalScrollMode="Auto"
                                       HorizontalScrollBarVisibility="Auto"
                                       VerticalScrollMode="Disabled"
                                       VerticalScrollBarVisibility="Disabled">
-                            <ItemsRepeater x:Name="AppearsOnRepeater"
-                                           ItemsSource="{x:Bind ViewModel.AppearsOn, Mode=OneWay}"
+                                    <ItemsRepeater x:Name="AppearsOnRepeater"
+                                           ItemsSource="{x:Bind ViewModel.Discography.AppearsOn, Mode=OneWay}"
                                            ElementClearing="DiscographyRepeater_ElementClearing">
-                                <ItemsRepeater.Layout>
-                                    <StackLayout Orientation="Horizontal" Spacing="14"/>
-                                </ItemsRepeater.Layout>
-                                <ItemsRepeater.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:LazyReleaseItem">
-                                        <cards:ContentCard
+                                        <ItemsRepeater.Layout>
+                                            <StackLayout Orientation="Horizontal" Spacing="14"/>
+                                        </ItemsRepeater.Layout>
+                                        <ItemsRepeater.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:LazyReleaseItem">
+                                                <cards:ContentCard
                                             Width="170"
                                             IsCircularImage="False"
                                             Subtitle="{x:Bind Data.SubtitleDetail, Mode=OneWay, FallbackValue=''}"
@@ -879,141 +886,141 @@
                                             ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
                                             NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
                                             NavigationTotalTracks="{x:Bind Data.TrackCount, Mode=OneWay}"/>
-                                    </DataTemplate>
-                                </ItemsRepeater.ItemTemplate>
-                            </ItemsRepeater>
-                        </ScrollViewer>
-                    </StackPanel>
-                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
+                                </ScrollViewer>
+                            </StackPanel>
+                        </StackPanel>
 
-                <!--  ════════════════════════════════════════════════════════
+                        <!--  ════════════════════════════════════════════════════════
                       [5] RHYTHM BREAK — On Tour Now
                       ════════════════════════════════════════════════════════ -->
-                <waveeControls:RhythmBreakBanner x:Name="TourBanner"
-                                                 Eyebrow="{x:Bind ViewModel.TourBannerEyebrow, Mode=OneWay}"
-                                                 Headline="{x:Bind ViewModel.TourBannerHeadline, Mode=OneWay}"
-                                                 Subline="{x:Bind ViewModel.TourBannerSubline, Mode=OneWay}"
-                                                 IsLive="{x:Bind ViewModel.TourBannerIsLive, Mode=OneWay}"
-                                                 IconGlyph="{x:Bind ViewModel.TourBannerIconGlyph, Mode=OneWay}"
-                                                 AccentBrush="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
-                                                 Visibility="{x:Bind ViewModel.HasConcerts, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                        <waveeControls:RhythmBreakBanner x:Name="TourBanner"
+                                                 Eyebrow="{x:Bind ViewModel.Header.TourBannerEyebrow, Mode=OneWay}"
+                                                 Headline="{x:Bind ViewModel.Header.TourBannerHeadline, Mode=OneWay}"
+                                                 Subline="{x:Bind ViewModel.Header.TourBannerSubline, Mode=OneWay}"
+                                                 IsLive="{x:Bind ViewModel.Header.TourBannerIsLive, Mode=OneWay}"
+                                                 IconGlyph="{x:Bind ViewModel.Header.TourBannerIconGlyph, Mode=OneWay}"
+                                                 AccentBrush="{x:Bind ViewModel.Header.PaletteAccentPillBrush, Mode=OneWay}"
+                                                 Visibility="{x:Bind ViewModel.Extras.HasConcerts, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                                  CardClick="TourBanner_Click"/>
 
-                <!--  ════════════════════════════════════════════════════════
+                        <!--  ════════════════════════════════════════════════════════
                       [6] MUSIC VIDEOS — horizontal 16:9 shelf
                       ════════════════════════════════════════════════════════ -->
-                <shelf:SectionShelf Title="Music videos"
-                                    ItemsSource="{x:Bind ViewModel.MusicVideos, Mode=OneWay}"
+                        <shelf:SectionShelf Title="Music videos"
+                                    ItemsSource="{x:Bind ViewModel.Extras.MusicVideos, Mode=OneWay}"
                                     MinItemWidth="280" MaxItemWidth="280" Spacing="14"
-                                    Visibility="{x:Bind ViewModel.HasMusicVideos, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <shelf:SectionShelf.ItemTemplate>
-                        <DataTemplate x:DataType="vm:MusicVideoVm">
-                            <cards:ContentCard AspectMode="Wide"
+                                    Visibility="{x:Bind ViewModel.Extras.HasMusicVideos, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <shelf:SectionShelf.ItemTemplate>
+                                <DataTemplate x:DataType="vm:MusicVideoVm">
+                                    <cards:ContentCard AspectMode="Wide"
                                                PlaceholderGlyph="&#xE714;"
                                                ImageUrl="{x:Bind ThumbnailUrl}"
                                                Title="{x:Bind Title}"
                                                Subtitle="{x:Bind DurationFormatted}"
                                                Tag="{x:Bind TrackUri}"
                                                CardClick="MusicVideoCard_Click"/>
-                        </DataTemplate>
-                    </shelf:SectionShelf.ItemTemplate>
-                </shelf:SectionShelf>
+                                </DataTemplate>
+                            </shelf:SectionShelf.ItemTemplate>
+                        </shelf:SectionShelf>
 
-                <!--  ════════════════════════════════════════════════════════
+                        <!--  ════════════════════════════════════════════════════════
                       [7] PLAYLISTS & DISCOVERY
                       ════════════════════════════════════════════════════════ -->
-                <shelf:SectionShelf Title="Playlists and discovery"
-                                    ItemsSource="{x:Bind ViewModel.Playlists, Mode=OneWay}"
+                        <shelf:SectionShelf Title="Playlists and discovery"
+                                    ItemsSource="{x:Bind ViewModel.Extras.Playlists, Mode=OneWay}"
                                     MinItemWidth="170" MaxItemWidth="190" Spacing="14"
-                                    Visibility="{x:Bind ViewModel.HasPlaylists, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <shelf:SectionShelf.ItemTemplate>
-                        <DataTemplate x:DataType="vm:ArtistPlaylistVm">
-                            <cards:ContentCard
+                                    Visibility="{x:Bind ViewModel.Extras.HasPlaylists, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <shelf:SectionShelf.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ArtistPlaylistVm">
+                                    <cards:ContentCard
                                 ImageUrl="{x:Bind ImageUrl}"
                                 Title="{x:Bind Name}"
                                 Subtitle="{x:Bind Subtitle}"
                                 PlaceholderGlyph="&#xE142;"
                                 NavigationUri="{x:Bind Uri}"
                                 NavigationTitle="{x:Bind Name}"/>
-                        </DataTemplate>
-                    </shelf:SectionShelf.ItemTemplate>
-                </shelf:SectionShelf>
+                                </DataTemplate>
+                            </shelf:SectionShelf.ItemTemplate>
+                        </shelf:SectionShelf>
 
-                <!--  ════════════════════════════════════════════════════════
+                        <!--  ════════════════════════════════════════════════════════
                       [8] TOUR & MERCH — two-column
                       ════════════════════════════════════════════════════════ -->
-                <!-- Upcoming concerts — horizontal row of TicketStub cards so a
+                        <!-- Upcoming concerts — horizontal row of TicketStub cards so a
                      long tour stays compact instead of growing a tall vertical list. -->
-                <Border x:Name="ConcertsSection"
+                        <Border x:Name="ConcertsSection"
                         CornerRadius="12"
                         Padding="20"
                         Background="{ThemeResource LayerFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                         BorderThickness="1"
-                        Visibility="{x:Bind ViewModel.HasConcerts, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <StackPanel Spacing="12">
-                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <Border Width="3" MinHeight="20" CornerRadius="1.5"
+                        Visibility="{x:Bind ViewModel.Extras.HasConcerts, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel Spacing="12">
+                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                    <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                     VerticalAlignment="Stretch"
-                                    Background="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                            <TextBlock Text="Upcoming concerts"
+                                    Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                    <TextBlock Text="Upcoming concerts"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        FontSize="16"
                                        VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <ScrollViewer HorizontalScrollMode="Auto"
+                                </StackPanel>
+                                <ScrollViewer HorizontalScrollMode="Auto"
                                       HorizontalScrollBarVisibility="Auto"
                                       VerticalScrollMode="Disabled"
                                       VerticalScrollBarVisibility="Disabled">
-                            <ItemsRepeater x:Name="ConcertsRepeater"
-                                           ItemsSource="{x:Bind ViewModel.Concerts, Mode=OneWay}"
+                                    <ItemsRepeater x:Name="ConcertsRepeater"
+                                           ItemsSource="{x:Bind ViewModel.Extras.Concerts, Mode=OneWay}"
                                            ElementPrepared="ConcertsRepeater_ElementPrepared">
-                                <ItemsRepeater.Layout>
-                                    <StackLayout Orientation="Horizontal" Spacing="14"/>
-                                </ItemsRepeater.Layout>
-                                <ItemsRepeater.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:ConcertVm">
-                                        <cards:TicketStub Width="240"
+                                        <ItemsRepeater.Layout>
+                                            <StackLayout Orientation="Horizontal" Spacing="14"/>
+                                        </ItemsRepeater.Layout>
+                                        <ItemsRepeater.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:ConcertVm">
+                                                <cards:TicketStub Width="240"
                                                           CardClick="ConcertStub_Click"
                                                           ViewClick="ConcertStub_ViewClick"
                                                           BuyClick="ConcertStub_BuyClick"/>
-                                    </DataTemplate>
-                                </ItemsRepeater.ItemTemplate>
-                            </ItemsRepeater>
-                        </ScrollViewer>
-                    </StackPanel>
-                </Border>
+                                            </DataTemplate>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
+                                </ScrollViewer>
+                            </StackPanel>
+                        </Border>
 
-                <!-- Merch (own row, full width) -->
-                <Border x:Name="MerchSection"
+                        <!-- Merch (own row, full width) -->
+                        <Border x:Name="MerchSection"
                         CornerRadius="12"
                         Padding="20"
                         Background="{ThemeResource LayerFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                         BorderThickness="1"
-                        Visibility="{x:Bind ViewModel.HasMerch, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <StackPanel Spacing="12">
-                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <Border Width="3" MinHeight="20" CornerRadius="1.5"
+                        Visibility="{x:Bind ViewModel.Extras.HasMerch, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel Spacing="12">
+                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                    <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                     VerticalAlignment="Stretch"
-                                    Background="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                            <TextBlock Text="Merch"
+                                    Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                    <TextBlock Text="Merch"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        FontSize="16"
                                        VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <ScrollViewer HorizontalScrollMode="Auto"
+                                </StackPanel>
+                                <ScrollViewer HorizontalScrollMode="Auto"
                                       HorizontalScrollBarVisibility="Auto"
                                       VerticalScrollMode="Disabled"
                                       VerticalScrollBarVisibility="Disabled">
-                            <ItemsRepeater x:Name="MerchRepeater"
-                                           ItemsSource="{x:Bind ViewModel.Merch, Mode=OneWay}">
-                                <ItemsRepeater.Layout>
-                                    <StackLayout Orientation="Horizontal" Spacing="14"/>
-                                </ItemsRepeater.Layout>
-                                <ItemsRepeater.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:MerchItemVm">
-                                        <cards:MerchCard
+                                    <ItemsRepeater x:Name="MerchRepeater"
+                                           ItemsSource="{x:Bind ViewModel.Extras.Merch, Mode=OneWay}">
+                                        <ItemsRepeater.Layout>
+                                            <StackLayout Orientation="Horizontal" Spacing="14"/>
+                                        </ItemsRepeater.Layout>
+                                        <ItemsRepeater.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:MerchItemVm">
+                                                <cards:MerchCard
                                             ImageUrl="{x:Bind ImageUrl}"
                                             Price="{x:Bind Price}"
                                             Title="{x:Bind Name}"
@@ -1021,198 +1028,200 @@
                                             Tag="{x:Bind ShopUrl}"
                                             CardClick="MerchCard_Click"
                                             BuyClick="MerchCard_BuyClick"/>
-                                    </DataTemplate>
-                                </ItemsRepeater.ItemTemplate>
-                            </ItemsRepeater>
-                        </ScrollViewer>
-                    </StackPanel>
-                </Border>
+                                            </DataTemplate>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
+                                </ScrollViewer>
+                            </StackPanel>
+                        </Border>
 
-                <!--  ════════════════════════════════════════════════════════
+                        <!--  ════════════════════════════════════════════════════════
                       [9] ABOUT & LINKS — two-column
                       ════════════════════════════════════════════════════════ -->
-                <Grid x:Name="AboutLinksSection"
+                        <Grid x:Name="AboutLinksSection"
                       ColumnSpacing="20"
-                      Visibility="{x:Bind ViewModel.HasBiography, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="3*"/>
-                        <ColumnDefinition Width="2*"/>
-                    </Grid.ColumnDefinitions>
+                      x:Load="{x:Bind ViewModel.Bio.HasBiography, Mode=OneWay}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3*"/>
+                                <ColumnDefinition Width="2*"/>
+                            </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0"
+                            <Border Grid.Column="0"
                             CornerRadius="12"
                             Padding="22,18"
                             Background="{ThemeResource LayerFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                             BorderThickness="1">
-                        <StackPanel Spacing="14">
-                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                                <Border Width="3" MinHeight="20" CornerRadius="1.5"
+                                <StackPanel Spacing="14">
+                                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                        <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                         VerticalAlignment="Stretch"
-                                        Background="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                                <TextBlock Text="Biography"
+                                        Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                        <TextBlock Text="Biography"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            FontSize="16"
                                            VerticalAlignment="Center"/>
-                            </StackPanel>
-                            <waveeControls:HtmlTextBlock Text="{x:Bind ViewModel.Biography, Mode=OneWay}"
+                                    </StackPanel>
+                                    <waveeControls:HtmlTextBlock Text="{x:Bind ViewModel.Bio.Biography, Mode=OneWay}"
                                                          Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
 
-                            <!-- External link pills -->
-                            <ItemsRepeater x:Name="ExternalLinksRepeater"
-                                           ItemsSource="{x:Bind ViewModel.ExternalLinks, Mode=OneWay}"
-                                           Visibility="{x:Bind ViewModel.HasExternalLinks, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <ItemsRepeater.Layout>
-                                    <UniformGridLayout MinItemWidth="130" MinItemHeight="36"
+                                    <!-- External link pills -->
+                                    <ItemsRepeater x:Name="ExternalLinksRepeater"
+                                           ItemsSource="{x:Bind ViewModel.Extras.ExternalLinks, Mode=OneWay}"
+                                           x:Load="{x:Bind ViewModel.Extras.HasExternalLinks, Mode=OneWay}">
+                                        <ItemsRepeater.Layout>
+                                            <UniformGridLayout MinItemWidth="130" MinItemHeight="36"
                                                        MinRowSpacing="8" MinColumnSpacing="8"
                                                        ItemsStretch="None"/>
-                                </ItemsRepeater.Layout>
-                                <ItemsRepeater.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:ArtistSocialLinkVm">
-                                        <HyperlinkButton NavigateUri="{x:Bind Url}"
+                                        </ItemsRepeater.Layout>
+                                        <ItemsRepeater.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:ArtistSocialLinkVm">
+                                                <HyperlinkButton NavigateUri="{x:Bind Url}"
                                                          Padding="14,6"
                                                          CornerRadius="16">
-                                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                                <fa:SvgAwesome Icon="{x:Bind Icon}"
+                                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                        <fa:SvgAwesome Icon="{x:Bind Icon}"
                                                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                                                Width="14" Height="14"/>
-                                                <TextBlock Text="{x:Bind Name}" FontSize="12" FontWeight="SemiBold"/>
-                                            </StackPanel>
-                                        </HyperlinkButton>
-                                    </DataTemplate>
-                                </ItemsRepeater.ItemTemplate>
-                            </ItemsRepeater>
+                                                        <TextBlock Text="{x:Bind Name}" FontSize="12" FontWeight="SemiBold"/>
+                                                    </StackPanel>
+                                                </HyperlinkButton>
+                                            </DataTemplate>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
 
-                            <!-- Listened to most in -->
-                            <StackPanel Spacing="6"
-                                        Visibility="{x:Bind ViewModel.HasTopCities, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <TextBlock Text="Listened to most in"
+                                    <!-- Listened to most in -->
+                                    <StackPanel x:Name="StackPanel23" Spacing="6"
+                                        x:Load="{x:Bind ViewModel.Extras.HasTopCities, Mode=OneWay}">
+                                        <TextBlock Text="Listened to most in"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            FontWeight="SemiBold"
                                            CharacterSpacing="60"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            Margin="0,6,0,2"/>
-                                <ItemsRepeater ItemsSource="{x:Bind ViewModel.TopCities, Mode=OneWay}">
-                                    <ItemsRepeater.Layout>
-                                        <StackLayout Orientation="Vertical" Spacing="6"/>
-                                    </ItemsRepeater.Layout>
-                                    <ItemsRepeater.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:ArtistTopCityVm">
-                                            <Grid ColumnSpacing="10" Padding="0,2">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0"
+                                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.Extras.TopCities, Mode=OneWay}">
+                                            <ItemsRepeater.Layout>
+                                                <StackLayout Orientation="Vertical" Spacing="6"/>
+                                            </ItemsRepeater.Layout>
+                                            <ItemsRepeater.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:ArtistTopCityVm">
+                                                    <Grid ColumnSpacing="10" Padding="0,2">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0"
                                                            Text="{x:Bind City}"
                                                            TextTrimming="CharacterEllipsis"
                                                            MaxLines="1"/>
-                                                <TextBlock Grid.Column="1"
+                                                        <TextBlock Grid.Column="1"
                                                            Text="{x:Bind DisplayCount}"
                                                            FontFamily="Consolas"
                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsRepeater.ItemTemplate>
-                                </ItemsRepeater>
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsRepeater.ItemTemplate>
+                                        </ItemsRepeater>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
 
-                    <!-- Profile facts -->
-                    <Border Grid.Column="1"
+                            <!-- Profile facts -->
+                            <Border Grid.Column="1"
                             CornerRadius="12"
                             Padding="22,18"
                             Background="{ThemeResource LayerFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                             BorderThickness="1">
-                        <StackPanel Spacing="14">
-                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                                <Border Width="3" MinHeight="20" CornerRadius="1.5"
+                                <StackPanel Spacing="14">
+                                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                        <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                         VerticalAlignment="Stretch"
-                                        Background="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                                <TextBlock Text="Profile facts"
+                                        Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                        <TextBlock Text="Profile facts"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            FontSize="16"
                                            VerticalAlignment="Center"/>
-                            </StackPanel>
-                            <Grid x:Name="StatGrid" ColumnSpacing="10" RowSpacing="10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <cards:StatCard Grid.Row="0" Grid.Column="0"
-                                                Number="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay, FallbackValue=''}"
+                                    </StackPanel>
+                                    <Grid x:Name="StatGrid" ColumnSpacing="10" RowSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <cards:StatCard Grid.Row="0" Grid.Column="0"
+                                                Number="{x:Bind ViewModel.Header.MonthlyListeners, Mode=OneWay, FallbackValue=''}"
                                                 Label="monthly listeners"
-                                                AccentBrush="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                                <cards:StatCard Grid.Row="0" Grid.Column="1"
-                                                Number="{x:Bind ViewModel.FollowersFormatted, Mode=OneWay, FallbackValue=''}"
+                                                AccentBrush="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                        <cards:StatCard Grid.Row="0" Grid.Column="1"
+                                                Number="{x:Bind ViewModel.Header.FollowersFormatted, Mode=OneWay, FallbackValue=''}"
                                                 Label="followers"
-                                                AccentBrush="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                                <cards:StatCard Grid.Row="1" Grid.Column="0"
-                                                Number="{x:Bind ViewModel.AlbumsTotalCount, Mode=OneWay}"
+                                                AccentBrush="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                        <cards:StatCard Grid.Row="1" Grid.Column="0"
+                                                Number="{x:Bind ViewModel.Discography.AlbumsTotalCount, Mode=OneWay}"
                                                 Label="albums"
-                                                AccentBrush="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                                <cards:StatCard Grid.Row="1" Grid.Column="1"
-                                                Number="{x:Bind ViewModel.SinglesTotalCount, Mode=OneWay}"
+                                                AccentBrush="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                        <cards:StatCard Grid.Row="1" Grid.Column="1"
+                                                Number="{x:Bind ViewModel.Discography.SinglesTotalCount, Mode=OneWay}"
                                                 Label="singles &amp; EPs"
-                                                AccentBrush="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                                <cards:StatCard Grid.Row="2" Grid.Column="0"
-                                                Number="{x:Bind ViewModel.ConcertCount, Mode=OneWay}"
+                                                AccentBrush="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                        <cards:StatCard Grid.Row="2" Grid.Column="0"
+                                                Number="{x:Bind ViewModel.Header.ConcertCount, Mode=OneWay}"
                                                 Label="upcoming concerts"
-                                                AccentBrush="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                                <cards:StatCard Grid.Row="2" Grid.Column="1"
-                                                Number="{x:Bind ViewModel.RelatedArtists.Count, Mode=OneWay}"
+                                                AccentBrush="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                        <cards:StatCard Grid.Row="2" Grid.Column="1"
+                                                Number="{x:Bind ViewModel.RelatedArtists.RelatedArtists.Count, Mode=OneWay}"
                                                 Label="related artists"
-                                                AccentBrush="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-                </Grid>
+                                                AccentBrush="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
 
-                <!--  ════════════════════════════════════════════════════════
+                        <!--  ════════════════════════════════════════════════════════
                       [10] GALLERY
                       ════════════════════════════════════════════════════════ -->
-                <StackPanel Spacing="12"
-                            Visibility="{x:Bind ViewModel.HasGallery, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                        <Border Width="3" MinHeight="22" CornerRadius="1.5"
+                        <StackPanel Spacing="12"
+                            x:Name="StackPanel2"
+                            x:Load="{x:Bind ViewModel.Extras.HasGallery, Mode=OneWay}">
+                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <Border Width="3" MinHeight="22" CornerRadius="1.5"
                                 VerticalAlignment="Stretch"
-                                Background="{x:Bind ViewModel.SectionAccentBrush, Mode=OneWay}"/>
-                        <TextBlock Text="Gallery"
+                                Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
+                                <TextBlock Text="Gallery"
                                    Style="{StaticResource SubtitleTextBlockStyle}"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"/>
-                    </StackPanel>
-                    <!-- Compact continuous marquee. Same source as the old hero band
+                            </StackPanel>
+                            <!-- Compact continuous marquee. Same source as the old hero band
                          (ViewModel.GalleryPhotos) but rendered as an infinitely
                          auto-scrolling rail of square tiles. Pauses on hover; tap
                          on a tile opens the existing FlipView lightbox at the tapped
                          original-list index via GalleryMarquee_ItemTapped. -->
-                    <gallery:MarqueeGalleryStrip x:Name="GalleryMarquee"
+                            <gallery:MarqueeGalleryStrip x:Name="GalleryMarquee"
                                                   Height="172"
                                                   ItemSize="160"
                                                   ItemSpacing="12"
                                                   SpeedPxPerSec="28"
                                                   EdgeFadeWidth="64"
                                                   ItemTapped="GalleryMarquee_ItemTapped"/>
-                </StackPanel>
+                        </StackPanel>
 
-                <!--  ════════════════════════════════════════════════════════
+                        <!--  ════════════════════════════════════════════════════════
                       [11] FANS ALSO LIKE
                       ════════════════════════════════════════════════════════ -->
-                <shelf:SectionShelf Title="Fans also like"
-                                    ItemsSource="{x:Bind ViewModel.RelatedArtists, Mode=OneWay}"
+                        <shelf:SectionShelf Title="Fans also like"
+                                    x:Name="FansAlsoLike"
+                                    ItemsSource="{x:Bind ViewModel.RelatedArtists.RelatedArtists, Mode=OneWay}"
                                     MinItemWidth="140"
-                                    Visibility="{x:Bind ViewModel.HasRelatedArtists, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <shelf:SectionShelf.ItemTemplate>
-                        <DataTemplate x:DataType="vm:RelatedArtistVm">
-                            <cards:ContentCard
+                                    x:Load="{x:Bind ViewModel.RelatedArtists.HasRelatedArtists, Mode=OneWay}">
+                            <shelf:SectionShelf.ItemTemplate>
+                                <DataTemplate x:DataType="vm:RelatedArtistVm">
+                                    <cards:ContentCard
                                 ImageUrl="{x:Bind ImageUrl}"
                                 Title="{x:Bind Name}"
                                 Subtitle="Artist"
@@ -1221,168 +1230,171 @@
                                 CenterText="True"
                                 NavigationUri="{x:Bind Uri}"
                                 NavigationTitle="{x:Bind Name}"/>
-                        </DataTemplate>
-                    </shelf:SectionShelf.ItemTemplate>
-                </shelf:SectionShelf>
+                                </DataTemplate>
+                            </shelf:SectionShelf.ItemTemplate>
+                        </shelf:SectionShelf>
 
-                </StackPanel><!-- /BodyContent -->
+                    </StackPanel>
+                    <!-- /BodyContent -->
 
-                <!-- Unified shimmer skeleton. Shares BodyHost's single Grid
+                    <!-- Unified shimmer skeleton. Shares BodyHost's single Grid
                      cell with BodyContent above so the two overlap rather
                      than stack — collapsing this on load doesn't reflow
                      anything, and content can't flash through under the
                      skeleton. x:Load unrealises the subtree once
                      ShimmerGate.IsLoaded flips false, freeing peer memory. -->
-                <StackPanel x:Name="ShimmerContainer"
+                    <StackPanel x:Name="ShimmerContainer"
                             x:Load="{x:Bind ShimmerGate.IsLoaded, Mode=OneWay}"
                             Padding="32,40,56,40"
                             Spacing="40"
                             HorizontalAlignment="Stretch"
                             VerticalAlignment="Top">
 
-                    <!-- Top tracks band header + 2-column band: 3×4 track grid + 3 popular rows. -->
-                    <StackPanel Spacing="20">
-                        <controls:Shimmer Width="240" Height="22" HorizontalAlignment="Left" CornerRadius="6"/>
-                        <Grid ColumnSpacing="24">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="2*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <!-- Left: 3×4 grid mirroring the live ColumnsFirstGridLayout. -->
-                            <Grid Grid.Column="0" ColumnSpacing="8" RowSpacing="4" VerticalAlignment="Top">
+                        <!-- Top tracks band header + 2-column band: 3×4 track grid + 3 popular rows. -->
+                        <StackPanel Spacing="20">
+                            <controls:Shimmer Width="240" Height="22" HorizontalAlignment="Left" CornerRadius="6"/>
+                            <Grid ColumnSpacing="24">
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*"/>
                                     <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <!-- Left: 3×4 grid mirroring the live ColumnsFirstGridLayout. -->
+                                <Grid Grid.Column="0" ColumnSpacing="8" RowSpacing="4" VerticalAlignment="Top">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="56"/>
+                                        <RowDefinition Height="56"/>
+                                        <RowDefinition Height="56"/>
+                                        <RowDefinition Height="56"/>
+                                    </Grid.RowDefinitions>
+                                    <controls:Shimmer Grid.Row="0" Grid.Column="0" CornerRadius="6"/>
+                                    <controls:Shimmer Grid.Row="0" Grid.Column="1" CornerRadius="6"/>
+                                    <controls:Shimmer Grid.Row="0" Grid.Column="2" CornerRadius="6"/>
+                                    <controls:Shimmer Grid.Row="1" Grid.Column="0" CornerRadius="6"/>
+                                    <controls:Shimmer Grid.Row="1" Grid.Column="1" CornerRadius="6"/>
+                                    <controls:Shimmer Grid.Row="1" Grid.Column="2" CornerRadius="6"/>
+                                    <controls:Shimmer Grid.Row="2" Grid.Column="0" CornerRadius="6"/>
+                                    <controls:Shimmer Grid.Row="2" Grid.Column="1" CornerRadius="6"/>
+                                    <controls:Shimmer Grid.Row="2" Grid.Column="2" CornerRadius="6"/>
+                                    <controls:Shimmer Grid.Row="3" Grid.Column="0" CornerRadius="6"/>
+                                    <controls:Shimmer Grid.Row="3" Grid.Column="1" CornerRadius="6"/>
+                                    <controls:Shimmer Grid.Row="3" Grid.Column="2" CornerRadius="6"/>
+                                </Grid>
+                                <!-- Right: 3 stacked popular-row placeholders. -->
+                                <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Top">
+                                    <controls:Shimmer Height="76" CornerRadius="6"/>
+                                    <controls:Shimmer Height="76" CornerRadius="6"/>
+                                    <controls:Shimmer Height="76" CornerRadius="6"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- Discography header + Albums grid + Singles grid (4 tiles each). -->
+                        <StackPanel Spacing="20">
+                            <controls:Shimmer Width="180" Height="22" HorizontalAlignment="Left" CornerRadius="6"/>
+                            <StackPanel Spacing="12">
+                                <controls:Shimmer Width="100" Height="16" HorizontalAlignment="Left" CornerRadius="4"/>
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Spacing="8">
+                                        <controls:Shimmer Height="160" CornerRadius="8"/>
+                                        <controls:Shimmer Width="120" Height="14" HorizontalAlignment="Left"/>
+                                        <controls:Shimmer Width="60" Height="12" HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="8">
+                                        <controls:Shimmer Height="160" CornerRadius="8"/>
+                                        <controls:Shimmer Width="100" Height="14" HorizontalAlignment="Left"/>
+                                        <controls:Shimmer Width="50" Height="12" HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Spacing="8">
+                                        <controls:Shimmer Height="160" CornerRadius="8"/>
+                                        <controls:Shimmer Width="140" Height="14" HorizontalAlignment="Left"/>
+                                        <controls:Shimmer Width="70" Height="12" HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="3" Spacing="8">
+                                        <controls:Shimmer Height="160" CornerRadius="8"/>
+                                        <controls:Shimmer Width="110" Height="14" HorizontalAlignment="Left"/>
+                                        <controls:Shimmer Width="55" Height="12" HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                            <StackPanel Spacing="12">
+                                <controls:Shimmer Width="120" Height="16" HorizontalAlignment="Left" CornerRadius="4"/>
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Spacing="8">
+                                        <controls:Shimmer Height="160" CornerRadius="8"/>
+                                        <controls:Shimmer Width="130" Height="14" HorizontalAlignment="Left"/>
+                                        <controls:Shimmer Width="55" Height="12" HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="8">
+                                        <controls:Shimmer Height="160" CornerRadius="8"/>
+                                        <controls:Shimmer Width="100" Height="14" HorizontalAlignment="Left"/>
+                                        <controls:Shimmer Width="50" Height="12" HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Spacing="8">
+                                        <controls:Shimmer Height="160" CornerRadius="8"/>
+                                        <controls:Shimmer Width="120" Height="14" HorizontalAlignment="Left"/>
+                                        <controls:Shimmer Width="65" Height="12" HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="3" Spacing="8">
+                                        <controls:Shimmer Height="160" CornerRadius="8"/>
+                                        <controls:Shimmer Width="140" Height="14" HorizontalAlignment="Left"/>
+                                        <controls:Shimmer Width="60" Height="12" HorizontalAlignment="Left"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Biography + Profile facts 2-column band. -->
+                        <Grid ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3*"/>
+                                <ColumnDefinition Width="2*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Spacing="10">
+                                <controls:Shimmer Width="120" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
+                                <controls:Shimmer Height="14" CornerRadius="3"/>
+                                <controls:Shimmer Height="14" CornerRadius="3"/>
+                                <controls:Shimmer Height="14" CornerRadius="3"/>
+                                <controls:Shimmer Width="240" Height="14" HorizontalAlignment="Left" CornerRadius="3"/>
+                            </StackPanel>
+                            <Grid Grid.Column="1" ColumnSpacing="10" RowSpacing="10">
+                                <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="56"/>
-                                    <RowDefinition Height="56"/>
-                                    <RowDefinition Height="56"/>
-                                    <RowDefinition Height="56"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
-                                <controls:Shimmer Grid.Row="0" Grid.Column="0" CornerRadius="6"/>
-                                <controls:Shimmer Grid.Row="0" Grid.Column="1" CornerRadius="6"/>
-                                <controls:Shimmer Grid.Row="0" Grid.Column="2" CornerRadius="6"/>
-                                <controls:Shimmer Grid.Row="1" Grid.Column="0" CornerRadius="6"/>
-                                <controls:Shimmer Grid.Row="1" Grid.Column="1" CornerRadius="6"/>
-                                <controls:Shimmer Grid.Row="1" Grid.Column="2" CornerRadius="6"/>
-                                <controls:Shimmer Grid.Row="2" Grid.Column="0" CornerRadius="6"/>
-                                <controls:Shimmer Grid.Row="2" Grid.Column="1" CornerRadius="6"/>
-                                <controls:Shimmer Grid.Row="2" Grid.Column="2" CornerRadius="6"/>
-                                <controls:Shimmer Grid.Row="3" Grid.Column="0" CornerRadius="6"/>
-                                <controls:Shimmer Grid.Row="3" Grid.Column="1" CornerRadius="6"/>
-                                <controls:Shimmer Grid.Row="3" Grid.Column="2" CornerRadius="6"/>
+                                <controls:Shimmer Grid.Row="0" Grid.Column="0" Height="68" CornerRadius="12"/>
+                                <controls:Shimmer Grid.Row="0" Grid.Column="1" Height="68" CornerRadius="12"/>
+                                <controls:Shimmer Grid.Row="1" Grid.Column="0" Height="68" CornerRadius="12"/>
+                                <controls:Shimmer Grid.Row="1" Grid.Column="1" Height="68" CornerRadius="12"/>
+                                <controls:Shimmer Grid.Row="2" Grid.Column="0" Height="68" CornerRadius="12"/>
+                                <controls:Shimmer Grid.Row="2" Grid.Column="1" Height="68" CornerRadius="12"/>
                             </Grid>
-                            <!-- Right: 3 stacked popular-row placeholders. -->
-                            <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Top">
-                                <controls:Shimmer Height="76" CornerRadius="6"/>
-                                <controls:Shimmer Height="76" CornerRadius="6"/>
-                                <controls:Shimmer Height="76" CornerRadius="6"/>
-                            </StackPanel>
                         </Grid>
                     </StackPanel>
-
-                    <!-- Discography header + Albums grid + Singles grid (4 tiles each). -->
-                    <StackPanel Spacing="20">
-                        <controls:Shimmer Width="180" Height="22" HorizontalAlignment="Left" CornerRadius="6"/>
-                        <StackPanel Spacing="12">
-                            <controls:Shimmer Width="100" Height="16" HorizontalAlignment="Left" CornerRadius="4"/>
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Spacing="8">
-                                    <controls:Shimmer Height="160" CornerRadius="8"/>
-                                    <controls:Shimmer Width="120" Height="14" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="60" Height="12" HorizontalAlignment="Left"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1" Spacing="8">
-                                    <controls:Shimmer Height="160" CornerRadius="8"/>
-                                    <controls:Shimmer Width="100" Height="14" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="50" Height="12" HorizontalAlignment="Left"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="2" Spacing="8">
-                                    <controls:Shimmer Height="160" CornerRadius="8"/>
-                                    <controls:Shimmer Width="140" Height="14" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="70" Height="12" HorizontalAlignment="Left"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="3" Spacing="8">
-                                    <controls:Shimmer Height="160" CornerRadius="8"/>
-                                    <controls:Shimmer Width="110" Height="14" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="55" Height="12" HorizontalAlignment="Left"/>
-                                </StackPanel>
-                            </Grid>
-                        </StackPanel>
-                        <StackPanel Spacing="12">
-                            <controls:Shimmer Width="120" Height="16" HorizontalAlignment="Left" CornerRadius="4"/>
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Spacing="8">
-                                    <controls:Shimmer Height="160" CornerRadius="8"/>
-                                    <controls:Shimmer Width="130" Height="14" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="55" Height="12" HorizontalAlignment="Left"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1" Spacing="8">
-                                    <controls:Shimmer Height="160" CornerRadius="8"/>
-                                    <controls:Shimmer Width="100" Height="14" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="50" Height="12" HorizontalAlignment="Left"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="2" Spacing="8">
-                                    <controls:Shimmer Height="160" CornerRadius="8"/>
-                                    <controls:Shimmer Width="120" Height="14" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="65" Height="12" HorizontalAlignment="Left"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="3" Spacing="8">
-                                    <controls:Shimmer Height="160" CornerRadius="8"/>
-                                    <controls:Shimmer Width="140" Height="14" HorizontalAlignment="Left"/>
-                                    <controls:Shimmer Width="60" Height="12" HorizontalAlignment="Left"/>
-                                </StackPanel>
-                            </Grid>
-                        </StackPanel>
-                    </StackPanel>
-
-                    <!-- Biography + Profile facts 2-column band. -->
-                    <Grid ColumnSpacing="20">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="3*"/>
-                            <ColumnDefinition Width="2*"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Spacing="10">
-                            <controls:Shimmer Width="120" Height="20" HorizontalAlignment="Left" CornerRadius="4"/>
-                            <controls:Shimmer Height="14" CornerRadius="3"/>
-                            <controls:Shimmer Height="14" CornerRadius="3"/>
-                            <controls:Shimmer Height="14" CornerRadius="3"/>
-                            <controls:Shimmer Width="240" Height="14" HorizontalAlignment="Left" CornerRadius="3"/>
-                        </StackPanel>
-                        <Grid Grid.Column="1" ColumnSpacing="10" RowSpacing="10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-                            <controls:Shimmer Grid.Row="0" Grid.Column="0" Height="68" CornerRadius="12"/>
-                            <controls:Shimmer Grid.Row="0" Grid.Column="1" Height="68" CornerRadius="12"/>
-                            <controls:Shimmer Grid.Row="1" Grid.Column="0" Height="68" CornerRadius="12"/>
-                            <controls:Shimmer Grid.Row="1" Grid.Column="1" Height="68" CornerRadius="12"/>
-                            <controls:Shimmer Grid.Row="2" Grid.Column="0" Height="68" CornerRadius="12"/>
-                            <controls:Shimmer Grid.Row="2" Grid.Column="1" Height="68" CornerRadius="12"/>
-                        </Grid>
-                    </Grid>
-                </StackPanel><!-- /ShimmerContainer -->
-                </Grid><!-- /BodyHost -->
+                    <!-- /ShimmerContainer -->
+                </Grid>
+                <!-- /BodyHost -->
             </StackPanel>
         </ScrollView>
 
@@ -1394,16 +1406,16 @@
                             HorizontalAlignment="Center"
                             VerticalAlignment="Top"
                             Margin="0,12,0,0"
-                            ArtistImageUrl="{x:Bind ViewModel.ArtistImageUrl, Mode=OneWay}"
-                            ArtistName="{x:Bind ViewModel.ArtistName, Mode=OneWay}"
-                            MonthlyListenersText="{x:Bind ViewModel.MonthlyListeners, Mode=OneWay}"
-                            IsArtistContextPlaying="{x:Bind ViewModel.IsArtistContextPlaying, Mode=OneWay}"
-                            IsPlayPending="{x:Bind ViewModel.IsPlayPending, Mode=OneWay}"
+                            ArtistImageUrl="{x:Bind ViewModel.Header.ArtistImageUrl, Mode=OneWay}"
+                            ArtistName="{x:Bind ViewModel.Header.ArtistName, Mode=OneWay}"
+                            MonthlyListenersText="{x:Bind ViewModel.Header.MonthlyListeners, Mode=OneWay}"
+                            IsArtistContextPlaying="{x:Bind ViewModel.TopTracks.IsArtistContextPlaying, Mode=OneWay}"
+                            IsPlayPending="{x:Bind ViewModel.TopTracks.IsPlayPending, Mode=OneWay}"
                             IsFollowing="{x:Bind ViewModel.IsFollowing, Mode=OneWay}"
-                            ArtistPlayButtonText="{x:Bind ViewModel.ArtistPlayButtonText, Mode=OneWay}"
-                            PaletteAccentPillBrush="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
-                            PaletteAccentPillForegroundBrush="{x:Bind ViewModel.PaletteAccentPillForegroundBrush, Mode=OneWay}"
-                            PlayCommand="{x:Bind ViewModel.PlayTopTracksCommand}"
+                            ArtistPlayButtonText="{x:Bind ViewModel.TopTracks.ArtistPlayButtonText, Mode=OneWay}"
+                            PaletteAccentPillBrush="{x:Bind ViewModel.Header.PaletteAccentPillBrush, Mode=OneWay}"
+                            PaletteAccentPillForegroundBrush="{x:Bind ViewModel.Header.PaletteAccentPillForegroundBrush, Mode=OneWay}"
+                            PlayCommand="{x:Bind ViewModel.TopTracks.PlayTopTracksCommand}"
                             ToggleFollowCommand="{x:Bind ViewModel.ToggleFollowCommand}"/>
 
         <!--  ════════════════════════════════════════════════════════════════
@@ -1421,7 +1433,7 @@
               Tapped="GalleryLightbox_BackdropTapped"
               KeyDown="GalleryLightbox_KeyDown">
             <FlipView x:Name="GalleryFlip"
-                      ItemsSource="{x:Bind ViewModel.GalleryPhotos, Mode=OneWay}"
+                      ItemsSource="{x:Bind ViewModel.Extras.GalleryPhotos, Mode=OneWay}"
                       Background="Transparent"
                       Margin="48"
                       MaxWidth="1800">
@@ -1453,4 +1465,4 @@
             </Button>
         </Grid>
     </Grid>
-</Page>
+</UserControl>

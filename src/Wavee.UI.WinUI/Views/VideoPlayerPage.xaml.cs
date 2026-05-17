@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -25,6 +25,7 @@ using Windows.Media.Playback;
 using Windows.Storage;
 using Microsoft.Extensions.Logging;
 using Wavee.UI.WinUI.Controls.MiniVideoPlayer;
+using Wavee.UI.WinUI.Controls.PageHost;
 
 namespace Wavee.UI.WinUI.Views;
 
@@ -43,12 +44,23 @@ namespace Wavee.UI.WinUI.Views;
 /// over the video. Queue, lyrics, and details remain owned by the shell
 /// right panel rather than an inline dock.</para>
 /// </summary>
-public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
+public sealed partial class VideoPlayerPage : UserControl, IMediaSurfaceConsumer, IPageHostAware
 {
     // Highest priority — the fullscreen page outranks the floating Mini and
     // the sidebar widgets so a stray Mini.AcquireSurface during nav-in can't
     // steal the surface back. See ActiveVideoSurfaceService.AcquireSurface.
     int IMediaSurfaceConsumer.OwnerPriority => 10;
+
+    // ── IPageHostAware ──────────────────────────────────────────────────
+    // Per-nav lifecycle work lives in Loaded/Unloaded handlers (surface
+    // acquisition, presentation hookup); these are no-ops by design.
+    public void OnEntered(object? parameter, PageHostNavigationMode mode) { }
+    public void OnLeaving() { }
+
+    // Opt out of PageHost's LRU cache — the MediaPlayer surface MUST be
+    // released between Theatre sessions, not kept warm. PageHost will
+    // dispose this page on leave and ctor a fresh instance on re-entry.
+    public bool ShouldCacheInHost => false;
 
     private const int ScrimIdleHideMs = 1500;
     // Hard cap on how long the hover-pin can keep the chrome alive without
@@ -117,9 +129,9 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _logger?.LogInformation(
-            "[VideoPlayerPage.OnLoaded] instance={Hash} hostedInTheatreFrame={InTheatre}",
+            "[VideoPlayerPage.OnLoaded] instance={Hash} hostedInTheatreHost={InTheatre}",
             GetHashCode(),
-            Frame is { } f && f.Name == "TheatreFrame");
+            this.FindHostingPageHost()?.Name == "TheatreHost");
         EnsureHideTimer();
         SubscribeEvents();
 
@@ -257,16 +269,16 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
         {
             DispatcherQueue?.TryEnqueue(() =>
             {
-                var hostFrame = Frame;
-                var hostFrameName = hostFrame?.Name ?? "<no-frame>";
-                var isInTheatreFrame = string.Equals(hostFrameName, "TheatreFrame", StringComparison.Ordinal);
+                var hostHost = this.FindHostingPageHost();
+                var hostName = hostHost?.Name ?? "<no-host>";
+                var isInTheatreFrame = string.Equals(hostName, "TheatreHost", StringComparison.Ordinal);
                 _logger?.LogInformation(
-                    "[VideoPlayerPage.OnPresentation] instance={Hash} presentation={Presentation} isLoaded={IsLoaded} ownsSurface={Owns} hostFrame={Frame}",
+                    "[VideoPlayerPage.OnPresentation] instance={Hash} presentation={Presentation} isLoaded={IsLoaded} ownsSurface={Owns} host={Host}",
                     GetHashCode(),
                     _presentationService?.Presentation,
                     IsLoaded,
                     _surface.IsOwnedBy(this),
-                    hostFrameName);
+                    hostName);
 
                 // Always restore the cursor when leaving an expanded
                 // mode, regardless of where this instance lives. The
@@ -276,20 +288,19 @@ public sealed partial class VideoPlayerPage : Page, IMediaSurfaceConsumer
                 if (_presentationService is { IsNormal: true })
                     RestoreCursor();
 
-                // When Theatre/Fullscreen exits, the TheatreFrame's
-                // VideoPlayerPage instance is about to be torn down (its
-                // host frame's Content was just set to null). Its
+                // When Theatre/Fullscreen exits, the TheatreHost's
+                // VideoPlayerPage instance is about to be torn down (TheatreHost.Clear()
+                // disposes it because NavigationCacheMode.Disabled). Its
                 // presentation handler still fires because the event
                 // subscription only drops on Unloaded — but it MUST NOT
-                // re-acquire the surface because the host Frame is
-                // collapsed (size 0×0) and any attach there is wasted, AND
-                // its imminent Unload would then release the surface
-                // leaving no owner at all. The tab's instance is the only
-                // one that should reclaim ownership on presentation→Normal.
+                // re-acquire the surface because the host is collapsed
+                // and the imminent Unload would release the surface leaving
+                // no owner at all. The tab's instance is the only one that
+                // should reclaim ownership on presentation→Normal.
                 if (isInTheatreFrame)
                 {
                     _logger?.LogDebug(
-                        "[VideoPlayerPage] skip re-acquire — TheatreFrame instance is being torn down (instance={Hash})",
+                        "[VideoPlayerPage] skip re-acquire — TheatreHost instance is being torn down (instance={Hash})",
                         GetHashCode());
                     return;
                 }

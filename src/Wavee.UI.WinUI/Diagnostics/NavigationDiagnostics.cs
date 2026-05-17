@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -35,6 +36,11 @@ internal sealed class NavigationDiagnostics
     private int _recentNavsHead;
     private int _recentNavsCount;
 
+    private const int RecentGcRingSize = 32;
+    private readonly GcSummary[] _recentGcs = new GcSummary[RecentGcRingSize];
+    private int _recentGcsHead;
+    private int _recentGcsCount;
+
     private MemoryReleaseRecord? _lastRelease;
 
     private long _nextNavId;
@@ -45,9 +51,37 @@ internal sealed class NavigationDiagnostics
     // stage into this nav so its total time is broken down on the [nav] line.
     private long _activeNavIdSoftThreadLocal;
 
+    // Last stage that ran (any nav). Captured for [gc] rows so each GC line can
+    // say "what was on the UI thread when this GC fired". UI-thread-only so a
+    // plain string is enough.
+    private string _lastStageForGc = "<none>";
+
+    // Click-intent latch. A click handler that's about to dispatch a navigation
+    // calls RecordClickIntent("Surface.Kind") to drop a timestamp here; the
+    // next BeginNav consumes it and records the elapsed gap as a "preNav.click→begin"
+    // stage. UI thread is single-threaded so the static + plain field is safe.
+    // Latches older than 1 s are stale (user clicked something that did not
+    // turn into a navigation) and ignored.
+    private static long _pendingClickTimestamp;
+    private static string? _pendingClickSource;
+
     public NavigationDiagnostics(ILogger? logger = null)
     {
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Drops a "user clicked, navigation about to start" timestamp + source label
+    /// into the static latch. The next <see cref="BeginNav"/> call consumes it
+    /// and surfaces the gap as the first stage on the nav summary. Safe to call
+    /// from any click / pointer handler on the UI thread.
+    /// </summary>
+    /// <param name="source">Short surface label, e.g. "ContentCard.Album",
+    /// "Sidebar.Playlist", "Omnibar.Artist".</param>
+    public static void RecordClickIntent(string source)
+    {
+        _pendingClickTimestamp = Stopwatch.GetTimestamp();
+        _pendingClickSource = source;
     }
 
     /// <summary>
@@ -58,11 +92,31 @@ internal sealed class NavigationDiagnostics
     {
         var navId = Interlocked.Increment(ref _nextNavId);
 
+        // Drain the click-intent latch if a recent click is pending. Stale
+        // entries (>1 s old) belong to clicks that never reached navigation —
+        // discard so they don't contaminate the next real nav.
+        string? clickSource = null;
+        double clickToBeginMs = 0;
+        var pendingTs = _pendingClickTimestamp;
+        var pendingSource = _pendingClickSource;
+        if (pendingTs != 0 && pendingSource != null)
+        {
+            var elapsedMs = (Stopwatch.GetTimestamp() - pendingTs) * 1000.0 / Stopwatch.Frequency;
+            if (elapsedMs <= 1000)
+            {
+                clickSource = pendingSource;
+                clickToBeginMs = elapsedMs;
+            }
+            _pendingClickTimestamp = 0;
+            _pendingClickSource = null;
+        }
+
         var rec = new NavInProgress
         {
             NavId = navId,
             Target = target ?? string.Empty,
             Source = source ?? string.Empty,
+            ClickSource = clickSource,
             StartTimestamp = Stopwatch.GetTimestamp(),
             LastStageTimestamp = Stopwatch.GetTimestamp(),
             Gen0Start = GC.CollectionCount(0),
@@ -74,6 +128,15 @@ internal sealed class NavigationDiagnostics
             PageFaultsStart = SafePageFaultCount(),
             ThreadId = Environment.CurrentManagedThreadId,
         };
+
+        // If we captured a click intent, record it as stage 0 so the report
+        // shows the click→BeginNav gap inline with the other stages. Routed
+        // through RecordStage so it also shows up in UiOperationProfiler.
+        if (clickSource != null)
+        {
+            rec.Stages.Add(("preNav.click→begin", clickToBeginMs));
+            UiOperationProfiler.Instance?.RecordOperation("nav.preNav.click→begin", clickToBeginMs);
+        }
 
         lock (_lock)
         {
@@ -102,6 +165,7 @@ internal sealed class NavigationDiagnostics
     internal void RecordStage(long navId, string name, double ms)
     {
         UiOperationProfiler.Instance?.RecordOperation("nav." + name, ms);
+        _lastStageForGc = name;
 
         lock (_lock)
         {
@@ -140,7 +204,7 @@ internal sealed class NavigationDiagnostics
         var pageFaultsDelta = unchecked(SafePageFaultCount() - rec.PageFaultsStart);
 
         var summary = new NavSummary(
-            rec.NavId, rec.Target, rec.Source,
+            rec.NavId, rec.Target, rec.Source, rec.ClickSource,
             totalMs, gen0, gen1, gen2,
             managedDelta, wsDelta, pbDelta, pageFaultsDelta,
             DateTime.UtcNow,
@@ -155,11 +219,11 @@ internal sealed class NavigationDiagnostics
 
         // One line per nav. Compact key=value style so it greps and parses cleanly.
         _logger?.LogInformation(
-            "[nav] id={NavId} target={Target} src={Source} totalMs={TotalMs:F1} " +
+            "[nav] id={NavId} target={Target} src={Source} click={ClickSource} totalMs={TotalMs:F1} " +
             "gen0={Gen0} gen1={Gen1} gen2={Gen2} mgdDeltaMb={MgdMb:+0.0;-0.0;0} " +
             "wsDeltaMb={WsMb:+0.0;-0.0;0} pbDeltaMb={PbMb:+0.0;-0.0;0} " +
             "pageFaultsDelta={PfDelta} stages=[{Stages}]",
-            rec.NavId, rec.Target, rec.Source, totalMs,
+            rec.NavId, rec.Target, rec.Source, rec.ClickSource ?? "<none>", totalMs,
             gen0, gen1, gen2,
             managedDelta / 1048576.0, wsDelta / 1048576.0, pbDelta / 1048576.0,
             pageFaultsDelta, summary.Stages);
@@ -193,6 +257,46 @@ internal sealed class NavigationDiagnostics
             gen2Before, gen2After,
             managedBefore / 1048576.0, managedAfter / 1048576.0,
             wsBefore / 1048576.0, wsAfter / 1048576.0);
+    }
+
+    /// <summary>
+    /// Records that <c>GC.CollectionCount(gen)</c> incremented since the last
+    /// sample. Called from <see cref="UiHealthMonitor"/>'s 16 ms tick whenever a
+    /// per-gen delta is observed. Carries the runtime <see cref="GCLatencyMode"/>
+    /// at observation time so the report can distinguish Gen2s fired with
+    /// <c>SustainedLowLatency</c> still active vs after the navigation window
+    /// closed.
+    /// </summary>
+    public void RecordGc(int generation, double allocSinceMb)
+    {
+        GCLatencyMode mode;
+        try
+        {
+            mode = GCSettings.LatencyMode;
+        }
+        catch
+        {
+            mode = GCLatencyMode.Interactive;
+        }
+
+        var rec = new GcSummary(
+            generation,
+            mode,
+            NavigationGcCoordinator.IsNavigationCritical,
+            _lastStageForGc,
+            allocSinceMb,
+            DateTime.UtcNow);
+
+        lock (_lock)
+        {
+            _recentGcs[_recentGcsHead] = rec;
+            _recentGcsHead = (_recentGcsHead + 1) % RecentGcRingSize;
+            if (_recentGcsCount < RecentGcRingSize) _recentGcsCount++;
+        }
+
+        _logger?.LogInformation(
+            "[gc] gen={Gen} latency={Latency} navCritical={NavCritical} lastStage={LastStage} allocSinceMb={AllocMb:F2}",
+            generation, mode, rec.NavCritical, rec.LastStage, allocSinceMb);
     }
 
     /// <summary>
@@ -269,13 +373,21 @@ internal sealed class NavigationDiagnostics
         sb.Append("Working set: ").Append(SafeWorkingSet() / 1048576).Append(" MB    ");
         sb.Append("Private bytes: ").Append(SafePrivateBytes() / 1048576).Append(" MB    ");
         sb.Append("Page faults: ").Append(SafePageFaultCount()).AppendLine();
+        GCLatencyMode currentMode;
+        try { currentMode = GCSettings.LatencyMode; }
+        catch { currentMode = GCLatencyMode.Interactive; }
+        sb.Append("GC LatencyMode: ").Append(currentMode)
+          .Append("    NavigationGcCoordinator.IsNavigationCritical: ").Append(NavigationGcCoordinator.IsNavigationCritical)
+          .AppendLine();
 
         sb.AppendLine();
         sb.AppendLine("--- Recent navigations (oldest first) ---");
 
         NavSummary[] navsCopy;
+        GcSummary[] gcsCopy;
         MemoryReleaseRecord? releaseCopy;
         int navCount;
+        int gcCount;
         lock (_lock)
         {
             navsCopy = new NavSummary[_recentNavsCount];
@@ -283,6 +395,13 @@ internal sealed class NavigationDiagnostics
             for (int i = 0; i < _recentNavsCount; i++)
                 navsCopy[i] = _recentNavs[(start + i) % RecentNavRingSize];
             navCount = _recentNavsCount;
+
+            gcsCopy = new GcSummary[_recentGcsCount];
+            int gcStart = (_recentGcsHead - _recentGcsCount + RecentGcRingSize) % RecentGcRingSize;
+            for (int i = 0; i < _recentGcsCount; i++)
+                gcsCopy[i] = _recentGcs[(gcStart + i) % RecentGcRingSize];
+            gcCount = _recentGcsCount;
+
             releaseCopy = _lastRelease;
         }
 
@@ -297,7 +416,10 @@ internal sealed class NavigationDiagnostics
                 var s = navsCopy[i];
                 sb.Append("  #").Append(s.NavId).Append("  ")
                   .Append(s.CompletedUtc.ToLocalTime().ToString("HH:mm:ss.fff")).Append("  ")
-                  .Append(s.Target).Append(" via ").Append(s.Source).AppendLine();
+                  .Append(s.Target).Append(" via ").Append(s.Source);
+                if (!string.IsNullOrEmpty(s.ClickSource))
+                    sb.Append(" ← ").Append(s.ClickSource);
+                sb.AppendLine();
                 sb.Append("      total=").Append(s.TotalMs.ToString("F1")).Append("ms  ")
                   .Append("gen0=").Append(s.Gen0).Append(" gen1=").Append(s.Gen1).Append(" gen2=").Append(s.Gen2)
                   .Append("  managedΔ=").Append((s.ManagedDelta / 1048576.0).ToString("+0.0;-0.0;0")).Append("MB")
@@ -305,6 +427,28 @@ internal sealed class NavigationDiagnostics
                   .Append("  pageFaultsΔ=").Append(s.PageFaultsDelta).AppendLine();
                 if (!string.IsNullOrEmpty(s.Stages))
                     sb.Append("      stages: ").Append(s.Stages).AppendLine();
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("--- Recent GCs (oldest first) ---");
+        if (gcCount == 0)
+        {
+            sb.AppendLine("  (no GC collections observed since UiHealthMonitor started)");
+        }
+        else
+        {
+            for (int i = 0; i < gcCount; i++)
+            {
+                var g = gcsCopy[i];
+                sb.Append("  ")
+                  .Append(g.CompletedUtc.ToLocalTime().ToString("HH:mm:ss.fff"))
+                  .Append("  gen=").Append(g.Generation)
+                  .Append("  latency=").Append(g.LatencyMode)
+                  .Append("  navCritical=").Append(g.NavCritical)
+                  .Append("  lastStage=").Append(g.LastStage)
+                  .Append("  allocSinceMb=").Append(g.AllocSinceMb.ToString("F2"))
+                  .AppendLine();
             }
         }
 
@@ -434,6 +578,7 @@ internal sealed class NavigationDiagnostics
         public long NavId;
         public string Target = string.Empty;
         public string Source = string.Empty;
+        public string? ClickSource;
         public long StartTimestamp;
         public long LastStageTimestamp;
         public int Gen0Start, Gen1Start, Gen2Start;
@@ -446,13 +591,21 @@ internal sealed class NavigationDiagnostics
     }
 
     private readonly record struct NavSummary(
-        long NavId, string Target, string Source,
+        long NavId, string Target, string Source, string? ClickSource,
         double TotalMs,
         int Gen0, int Gen1, int Gen2,
         long ManagedDelta, long WorkingSetDelta, long PrivateBytesDelta,
         uint PageFaultsDelta,
         DateTime CompletedUtc,
         string Stages);
+
+    private readonly record struct GcSummary(
+        int Generation,
+        GCLatencyMode LatencyMode,
+        bool NavCritical,
+        string LastStage,
+        double AllocSinceMb,
+        DateTime CompletedUtc);
 
     private readonly record struct MemoryReleaseRecord(
         string Reason, int ThreadId, double DurationMs,

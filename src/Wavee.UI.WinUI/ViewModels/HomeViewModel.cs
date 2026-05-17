@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,44 +22,28 @@ using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Windows.UI;
 using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.ViewModels.Home;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
+/// <summary>
+/// Thin composer that owns three child VMs (<see cref="Feed"/>,
+/// <see cref="Recommendations"/>, <see cref="Greeting"/>), the page-level
+/// hero palette / page-bleed pipeline, and the home-page navigation
+/// lifecycle (load / hibernate / resume / dispose).
+///
+/// <para>The decomposition replaces the previous ~2,540-line "god ViewModel"
+/// that owned every home concern. Each child has a single responsibility
+/// (feed composition / recommendation enrichment / greeting + user identity);
+/// they communicate via the parent — no direct child-to-child references.</para>
+/// </summary>
 public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
     private readonly IHomeFeedService? _homeFeedService;
-    private readonly ISettingsService? _settingsService;
-    private readonly Services.HomeFeedCache? _homeFeedCache;
-
-    /// <summary>
-    /// Active chip facet driving the home feed (e.g. <c>"music-chip"</c>,
-    /// <c>"podcasts-chip"</c>, <c>"audiobooks-chip"</c>, or null/empty for
-    /// the default unfaceted view). Exposed so adapters like
-    /// <c>HomeHeroAdapter</c> can decide whether to filter podcast
-    /// sections out of the hero on music-tab views.
-    /// </summary>
-    public string? CurrentFacet => _homeFeedCache?.CurrentFacet;
-    private readonly Services.RecentlyPlayedService? _recentlyPlayedService;
-    private readonly Services.HomeResponseParserFactory _parserFactory;
-    private readonly IAuthState? _authState;
-    private readonly Wavee.Local.ILocalLibraryService? _localLibrary;
-    private readonly ILogger? _logger;
+    private readonly HomeFeedCache? _homeFeedCache;
     private readonly DispatcherQueue _dispatcherQueue;
-    private CancellationTokenSource? _baselineEnrichmentCts;
-    private int _baselineEnrichmentVersion;
-    private IDisposable? _localProgressSub;
+    private readonly ILogger? _logger;
     private bool _isDisposed;
-    private const string LocalSectionUri = "wavee:local:home";
-    private const int LocalSectionMaxItems = 20;
-
-    /// <summary>
-    /// Sentinel chip id for the synthetic, client-side "Local files" chip.
-    /// Lives outside the Spotify chip-id namespace (id strings from the
-    /// real API are short slugs like "music-chip" / "podcasts-chip") so
-    /// SelectChipAsync can short-circuit to local-only display mode
-    /// without touching Pathfinder.
-    /// </summary>
-    private const string LocalChipId = "wavee:chip:local";
 
     [ObservableProperty]
     private bool _isLoading;
@@ -72,37 +55,29 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     private string? _errorMessage;
 
     [ObservableProperty]
-    private string _greeting = "Good morning";
-
-    [ObservableProperty]
-    private ObservableCollection<HomeSection> _sections = [];
-
-    [ObservableProperty]
-    private ObservableCollection<HomeSectionPref> _sectionPreferences = [];
-
-    [ObservableProperty]
-    private int _newSectionCount;
-
-    [ObservableProperty]
     private bool _isCustomizeFlyoutOpen;
 
-    /// <summary>The chips currently displayed in the single row.</summary>
-    [ObservableProperty]
-    private ObservableCollection<HomeChipViewModel> _displayedChips = [];
+    // ── Children — constructor-initialised, never replaced ──────────────────
 
-    /// <summary>
-    /// True while the synthetic "Local files" chip is selected. Drives the
-    /// region adapter to drop every non-local band and the hero band to
-    /// collapse — so the page reads as a focused local-only view without
-    /// rebuilding the underlying section collection.
-    /// </summary>
-    [ObservableProperty]
-    private bool _isLocalChipActive;
+    /// <summary>Greeting band state — text, subtitle, current-user identity.
+    /// Constructor-initialized.</summary>
+    public HomeGreetingViewModel Greeting { get; }
+
+    /// <summary>Home-feed surface — sections collection, chips, local-files
+    /// shelf, customization preferences, chip facet selection.
+    /// Constructor-initialized.</summary>
+    public HomeFeedViewModel Feed { get; }
+
+    /// <summary>Recommendation enrichment — baseline preview tracks /
+    /// canvases, recently-played hand-off, featured-item tracking.
+    /// Constructor-initialized.</summary>
+    public HomeRecommendationsViewModel Recommendations { get; }
 
     /// <summary>
     /// Adapter feeding the redesigned hero band + side rail + region buckets.
     /// Lives in <c>ViewModels/Home/HomeHeroAdapter.cs</c>; subscribes to
-    /// <see cref="Sections"/> + <see cref="FeaturedItem"/> changes.
+    /// <see cref="Feed"/>'s Sections and <see cref="Recommendations"/>'s
+    /// FeaturedItem via the parent (HostPropertyChanged proxy events).
     /// </summary>
     public ViewModels.Home.HomeHeroAdapter HeroAdapter { get; }
 
@@ -110,17 +85,6 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     // Mirrors the album/playlist palette pipeline so the hero feels like a
     // sibling of those pages — backdrop wash is derived from the featured
     // item's cover art and theme-aware via ApplyTheme.
-
-    /// <summary>Most-recently-played item promoted to the hero card slot
-    /// on the right of the greeting band. Drives the palette fetch too.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasFeaturedItem))]
-    private HomeSectionItem? _featuredItem;
-
-    /// <summary>True when there's a "Pick up where you left off" item to render.
-    /// Drives the FeaturedItem card's `x:Load` so users without a featured item
-    /// never instantiate the card subtree (Phase 7.3).</summary>
-    public bool HasFeaturedItem => FeaturedItem != null;
 
     /// <summary>Subtle page-wash brush tinted toward the featured item's color.
     /// Null when no palette is available (cold start, fetch failure).</summary>
@@ -148,16 +112,6 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     [ObservableProperty]
     private Brush? _pageBleedBrush;
 
-    /// <summary>Greeting subtitle line under the time-of-day greeting.
-    /// Populated from a small canned set; refreshed on theme/time change.</summary>
-    [ObservableProperty]
-    private string _greetingSubtitle = "What do you feel like?";
-
-    /// <summary>Resolved current-user display name + avatar, surfaced from
-    /// IAuthState so the greeting can render without re-fetching the profile.</summary>
-    public string? CurrentUserName => _authState?.DisplayName ?? _authState?.Username;
-    public string? CurrentUserAvatarUrl => _authState?.ProfileImageUrl;
-
     private bool _isDarkTheme;
 
     /// <summary>
@@ -166,12 +120,6 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     /// progress bar (and its auto-close).
     /// </summary>
     private bool _homeFeedLoadedFired;
-
-    /// <summary>The original main chips (preserved for reverting from sub-chips).</summary>
-    private List<HomeChipViewModel>? _mainChips;
-
-    /// <summary>Currently active parent chip when showing sub-chips (null = showing main chips).</summary>
-    private HomeChipViewModel? _activeParentChip;
 
     public TabItemParameter? TabItemParameter { get; private set; }
 
@@ -188,34 +136,95 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         Wavee.Local.ILocalLibraryService? localLibrary = null)
     {
         _homeFeedService = homeFeedService;
-        _settingsService = settingsService;
         _homeFeedCache = homeFeedCache;
-        _recentlyPlayedService = recentlyPlayedService;
-        _parserFactory = parserFactory ?? new Services.HomeResponseParserFactory();
-        _authState = authState;
-        _localLibrary = localLibrary;
         _logger = logger;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
-        // Subscribe to scan-progress so the Local Files shelf refreshes as
-        // the indexer materialises content during a scan, and once when the
-        // scan completes (CurrentPath == null tick).
-        if (_localLibrary is not null)
-            _localProgressSub = _localLibrary.SyncProgress.Subscribe(OnLocalSyncProgress);
+        var resolvedParserFactory = parserFactory ?? new Services.HomeResponseParserFactory();
 
-        // Long-lived singleton subscriptions are attached lazily through a helper so
-        // they have a single matching Detach point (called from Dispose). HomePage
-        // is Enabled-cached so only one HomeViewModel exists at a time, but routing
-        // through the helper keeps the pattern consistent across all VMs.
+        Greeting = new HomeGreetingViewModel(authState);
+
+        Feed = new HomeFeedViewModel(
+            homeFeedService,
+            settingsService,
+            homeFeedCache,
+            resolvedParserFactory,
+            localLibrary,
+            logger,
+            isDarkThemeProvider: () => _isDarkTheme,
+            greetingSetter: g => Greeting.ApplyGreetingFromSnapshot(g));
+
+        Recommendations = new HomeRecommendationsViewModel(
+            homeFeedService,
+            homeFeedCache,
+            recentlyPlayedService,
+            logger,
+            sectionsProvider: () => Feed.Sections);
+
+        // ── Cross-child wiring ──────────────────────────────────────────────
+        // Feed.SectionsApplied → recommendations fans out baseline enrichment
+        // and the recents-service hand-off; parent refreshes the page-level
+        // palette wash from the new section colours. Children stay decoupled
+        // — the parent is the single fan-out point.
+        Feed.SectionsApplied += (_, ordered) =>
+        {
+            Recommendations.BeginBaselineEnrichment();
+            Recommendations.DispatchRecentsToService(ordered);
+            // Refresh page-level bleed now that Sections is populated. ApplyTheme
+            // reads Sections[0].Items[0].ColorHex to source the glow color.
+            ApplyTheme(_isDarkTheme);
+        };
+
+        // Feed.FacetRefetchStateChanged → mirror into the parent's top-level
+        // IsLoading / HasError flags so the page's loading scrim tracks chip
+        // presses without the child holding page-lifecycle flags itself. The
+        // begin-tick also cancels any in-flight baseline enrichment so the
+        // previous chip's preview-track fetch doesn't keep racing the new
+        // chip's load (was an explicit step in the old RefetchWithFacet).
+        Feed.FacetRefetchStateChanged += (_, args) =>
+        {
+            IsLoading = args.IsLoading;
+            if (args.IsLoading)
+            {
+                HasError = false;
+                ErrorMessage = null;
+                Recommendations.CancelBaselineEnrichment();
+            }
+        };
+        Feed.FacetRefetchFailed += (_, ex) =>
+        {
+            HasError = true;
+            ErrorMessage = ex.Message;
+        };
+
+        // Recommendations.FeaturedItemChanged → parent re-derives the hero
+        // palette from the new featured cover. (HeroAdapter listens via the
+        // adapter's own host-property-changed proxy so we re-raise from here
+        // when the feature changes.)
+        Recommendations.FeaturedItemChanged += (_, _) =>
+        {
+            _heroBaseColor = TryParseHex(Recommendations.FeaturedItem?.ColorHex);
+            ApplyTheme(_isDarkTheme);
+            // HeroAdapter listens for HostPropertyChanged(nameof(FeaturedItem))
+            // — re-raise on the parent so the adapter rebuilds its slide row.
+            OnPropertyChanged(nameof(FeaturedItem));
+            OnPropertyChanged(nameof(HasFeaturedItem));
+        };
+
+        // Subscribe Greeting + Recommendations to their long-lived services
+        // through a helper so they have a single matching Detach point
+        // (called from Dispose). HomePage is Enabled-cached so only one
+        // HomeViewModel exists at a time, but routing through the helper
+        // keeps the pattern consistent across all VMs.
         AttachLongLivedServices();
 
         WeakReferenceMessenger.Default.Register<HomeLocalFilesVisibilityChangedMessage>(this, (r, m) =>
         {
             var vm = (HomeViewModel)r;
             if (m.Value)
-                _ = vm.RefreshLocalSectionAsync();
+                _ = vm.Feed.RefreshLocalSectionAsync();
             else
-                vm._dispatcherQueue.TryEnqueue(vm.RemoveLocalSection);
+                vm.Feed.RemoveLocalSectionOnDispatcher();
         });
 
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Home, null)
@@ -223,19 +232,65 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             Title = "Home"
         };
 
-        // Hero adapter must subscribe AFTER Sections is initialised — the
-        // [ObservableProperty] field initializer runs before the ctor body, so
-        // _sections is non-null by the time we reach here.
+        // Hero adapter must subscribe AFTER Feed.Sections is initialised —
+        // both children are constructed above, so the adapter can safely
+        // observe the bound collection through the parent's proxy properties.
         HeroAdapter = new ViewModels.Home.HomeHeroAdapter(this);
 
         Diagnostics.LiveInstanceTracker.Register(this);
     }
 
+    // ── Proxy properties — preserved for HomeHeroAdapter, XAML, and external
+    //    callers that still observe these as top-level VM properties. The
+    //    real state lives on the children; the proxies re-raise when the
+    //    children's underlying values mutate. ─────────────────────────────
+
+    /// <summary>Bound collection of home feed sections. Proxies to
+    /// <see cref="HomeFeedViewModel.Sections"/> for compatibility with
+    /// <see cref="HomeHeroAdapter"/> and the few code-behind paths still
+    /// reading <c>ViewModel.Sections</c> directly.</summary>
+    public ObservableCollection<HomeSection> Sections => Feed.Sections;
+
+    /// <summary>True while the synthetic "Local files" chip is selected.
+    /// Proxies <see cref="HomeFeedViewModel.IsLocalChipActive"/>.</summary>
+    public bool IsLocalChipActive => Feed.IsLocalChipActive;
+
+    /// <summary>Most-recently-played item promoted to the hero card slot.
+    /// Proxies <see cref="HomeRecommendationsViewModel.FeaturedItem"/>.</summary>
+    public HomeSectionItem? FeaturedItem => Recommendations.FeaturedItem;
+
+    /// <summary>True when there's a "Pick up where you left off" item to render.
+    /// Drives the FeaturedItem card's `x:Load` so users without a featured item
+    /// never instantiate the card subtree.</summary>
+    public bool HasFeaturedItem => FeaturedItem != null;
+
+    /// <summary>Active chip facet driving the home feed. Proxies
+    /// <see cref="HomeFeedViewModel.CurrentFacet"/>.</summary>
+    public string? CurrentFacet => Feed.CurrentFacet;
+
+    // Re-raise child property changes as parent property changes so XAML
+    // bindings rooted at the parent observe child state without the user
+    // having to know the decomposition.
+    private void OnFeedPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(HomeFeedViewModel.Sections):
+                OnPropertyChanged(nameof(Sections));
+                break;
+            case nameof(HomeFeedViewModel.IsLocalChipActive):
+                OnPropertyChanged(nameof(IsLocalChipActive));
+                break;
+        }
+    }
+
+    // ── Load orchestration ──────────────────────────────────────────────────
+
     [RelayCommand]
     private async Task LoadAsync()
     {
         if (IsLoading) return;
-        CancelBaselineEnrichment();
+        Recommendations.CancelBaselineEnrichment();
         IsLoading = true;
         HasError = false;
         ErrorMessage = null;
@@ -244,7 +299,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         {
             if (_homeFeedService is null || !_homeFeedService.IsAvailable)
             {
-                UpdateGreeting();
+                Greeting.UpdateGreetingFromTimeOfDay();
                 return;
             }
 
@@ -254,26 +309,8 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                 var snapshot = _homeFeedCache.GetCached();
                 if (snapshot != null)
                 {
-                    Greeting = snapshot.Greeting ?? Greeting;
-                    var ordered = ApplyPreferences(snapshot.Sections);
-                    var localSection = ExtractLocalSection();
-                    if (Sections.Count == 0)
-                        await PopulateSectionsChunkedAsync(ordered);
-                    else
-                        Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting, s => s.ApplyTheme(_isDarkTheme));
-                    RestoreLocalSection(localSection);
-                    ApplyChips(snapshot.Chips);
-                    BeginBaselineEnrichment();
-                    DispatchRecentsToService(ordered);
-                    await RefreshLocalSectionAsync();
-                    if (!_homeFeedLoadedFired && Sections.Count > 0)
-                    {
-                        _homeFeedLoadedFired = true;
-                        var totalItems = 0;
-                        foreach (var s in Sections) totalItems += s.Items?.Count ?? 0;
-                        WeakReferenceMessenger.Default.Send(
-                            new Data.Messages.HomeFeedLoadedMessage(Sections.Count, totalItems));
-                    }
+                    await Feed.ApplyCacheSnapshotAsync(snapshot);
+                    MaybeFireHomeFeedLoaded();
                     return;
                 }
             }
@@ -282,20 +319,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             if (_homeFeedCache != null)
             {
                 var snapshot = await _homeFeedCache.FetchFreshAsync();
-                Greeting = snapshot.Greeting ?? Greeting;
-                var ordered = ApplyPreferences(snapshot.Sections);
-
-                var localSection = ExtractLocalSection();
-                if (Sections.Count == 0)
-                    await PopulateSectionsChunkedAsync(ordered);
-                else
-                    Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting, s => s.ApplyTheme(_isDarkTheme));
-                RestoreLocalSection(localSection);
-
-                ApplyChips(snapshot.Chips);
-                BeginBaselineEnrichment();
-                DispatchRecentsToService(ordered);
-                await RefreshLocalSectionAsync();
+                await Feed.ApplyFreshSnapshotAsync(snapshot);
 
                 // Start background refresh
                 _homeFeedCache.StartBackgroundRefresh();
@@ -307,32 +331,16 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                     ? null
                     : await _homeFeedService.GetHomeAsync(sectionItemsLimit: 10).ConfigureAwait(false);
                 if (response is null) return;
-                var result = await Task.Run(() => _parserFactory.Parse(response));
-                Greeting = result.Greeting ?? Greeting;
-                var ordered = ApplyPreferences(result.Sections);
-                var localSection = ExtractLocalSection();
-                await PopulateSectionsChunkedAsync(ordered);
-                RestoreLocalSection(localSection);
-                ApplyChips(result.Chips);
-                BeginBaselineEnrichment();
-                DispatchRecentsToService(ordered);
-                await RefreshLocalSectionAsync();
+                await Feed.ApplyDirectFetchAsync(response);
             }
 
-            if (string.IsNullOrEmpty(Greeting))
-                UpdateGreeting();
+            if (string.IsNullOrEmpty(Greeting.Text))
+                Greeting.UpdateGreetingFromTimeOfDay();
 
             // First successful home render — drives the sign-in dialog's
             // auto-close. Fires at most once per VM instance; subsequent
             // tab switches / refreshes are no-ops.
-            if (!_homeFeedLoadedFired && Sections.Count > 0)
-            {
-                _homeFeedLoadedFired = true;
-                var totalItems = 0;
-                foreach (var s in Sections) totalItems += s.Items?.Count ?? 0;
-                WeakReferenceMessenger.Default.Send(
-                    new Data.Messages.HomeFeedLoadedMessage(Sections.Count, totalItems));
-            }
+            MaybeFireHomeFeedLoaded();
         }
         catch (Exception ex)
         {
@@ -346,9 +354,16 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         }
     }
 
-    /// <summary>
-    /// Called by HomePage when background refresh completes. Applies diff on UI thread.
-    /// </summary>
+    private void MaybeFireHomeFeedLoaded()
+    {
+        if (_homeFeedLoadedFired || Sections.Count == 0) return;
+        _homeFeedLoadedFired = true;
+        var totalItems = 0;
+        foreach (var s in Sections) totalItems += s.Items?.Count ?? 0;
+        WeakReferenceMessenger.Default.Send(
+            new Data.Messages.HomeFeedLoadedMessage(Sections.Count, totalItems));
+    }
+
     /// <summary>
     /// Pause the 5-minute background refresh. Call from the page's
     /// OnNavigatedFrom so the timer doesn't keep hammering Pathfinder
@@ -378,7 +393,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     public void HibernateForNavigation()
     {
         SuspendBackgroundRefresh();
-        CancelBaselineEnrichment();
+        Recommendations.CancelBaselineEnrichment();
         // Pin the local-files shelf across hibernation. It is small (capped
         // by LocalSectionMaxItems) and is sourced separately from the
         // Spotify feed, so the Extract→ApplyDiff→Restore pattern that
@@ -418,423 +433,21 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         }
 
         ApplyTheme(_isDarkTheme);
-        BeginBaselineEnrichment();
+        Recommendations.BeginBaselineEnrichment();
     }
 
     public void ApplyBackgroundRefresh(Services.HomeFeedSnapshot snapshot)
     {
-        CancelBaselineEnrichment();
-        var ordered = ApplyPreferences(snapshot.Sections);
-        var localSection = ExtractLocalSection();
-        Services.HomeFeedCache.ApplyDiff(Sections, ordered, g => Greeting = g ?? Greeting, snapshot.Greeting, s => s.ApplyTheme(_isDarkTheme));
-        RestoreLocalSection(localSection);
-        ApplyChips(snapshot.Chips);
-        BeginBaselineEnrichment();
-        DispatchRecentsToService(ordered);
-        _ = RefreshLocalSectionAsync();
-    }
-
-    // ── Local files Home section ────────────────────────────────────────
-    //
-    // Materialise a "Local files" shelf at the bottom of Home whenever the
-    // indexer has at least one local album. The section is generated from
-    // ILocalLibraryService.GetAllTracksAsync grouped by album_uri; cards
-    // route to LocalLibraryPage on click and the section header carries a
-    // ViewAllUri that the page-level click handler maps to the same target.
-    // Refreshes on every scan-progress event so adding/removing folders
-    // updates the shelf without needing a Home reload.
-
-    public async Task RefreshLocalSectionAsync()
-    {
-        if (_isDisposed || _localLibrary is null) return;
-        if (_settingsService?.Settings.ShowLocalFilesOnHome == false)
-        {
-            RemoveLocalSectionOnDispatcher();
-            return;
-        }
-
-        IReadOnlyList<Wavee.Local.LocalTrackRow> rows;
-        try
-        {
-            rows = await _localLibrary.GetAllTracksAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogDebug(ex, "Local section refresh: GetAllTracksAsync failed");
-            return;
-        }
-
-        if (rows.Count == 0)
-        {
-            // GetAllTracksAsync can transiently observe zero rows mid-scan
-            // or during a DB write. Don't flicker the existing shelf out;
-            // ShowLocalFilesOnHome=false is the authoritative remove signal
-            // and is already handled above.
-            return;
-        }
-
-        // Split rows into "has real album metadata" (group as albums) and
-        // "no metadata, scanner used Unknown fallback" (show per-file as
-        // individual track cards). The scanner stores the literal strings
-        // "Unknown Album" / "Unknown Artist" when tags are blank, and
-        // LocalNormalize.AlbumUri hashes those fallback strings into a
-        // single deterministic URI — so without this split, every untagged
-        // file (videos, .mp3s with no ID3, etc.) collapses into one fake
-        // "Unknown Album" card. Treating them as per-file track cards lets
-        // the shelf surface them with their filename-derived Title instead.
-        bool IsSyntheticAlbum(Wavee.Local.LocalTrackRow r) =>
-            r.Album == "Unknown Album"
-            && (r.AlbumArtist is null or "Unknown Artist")
-            && (r.Artist is null or "Unknown Artist");
-
-        var realAlbums = rows
-            .Where(r => r.AlbumUri != null && !IsSyntheticAlbum(r))
-            .GroupBy(r => r.AlbumUri!)
-            .Select(g =>
-            {
-                var first = g.First();
-                return new HomeSectionItem
-                {
-                    Uri = g.Key,
-                    Title = first.Album ?? first.Title ?? "Untitled",
-                    Subtitle = first.AlbumArtist ?? first.Artist,
-                    ImageUrl = g.FirstOrDefault(t => t.ArtworkUri != null)?.ArtworkUri,
-                    ContentType = HomeContentType.Album,
-                };
-            });
-
-        var orphanFiles = rows
-            .Where(r => r.AlbumUri == null || IsSyntheticAlbum(r))
-            .Select(r => new HomeSectionItem
-            {
-                Uri = r.TrackUri,
-                Title = r.Title ?? Path.GetFileNameWithoutExtension(r.FilePath) ?? "Untitled",
-                // Don't show "Unknown Artist" — leave the subtitle blank so
-                // an untagged file reads as a single line (filename) rather
-                // than filename+placeholder.
-                Subtitle = (r.AlbumArtist == "Unknown Artist" ? null : r.AlbumArtist)
-                           ?? (r.Artist == "Unknown Artist" ? null : r.Artist),
-                ImageUrl = r.ArtworkUri,
-                ContentType = HomeContentType.Album,
-            });
-
-        var albums = realAlbums
-            .Concat(orphanFiles)
-            .Take(LocalSectionMaxItems)
-            .ToList();
-
-        void ApplyLocalSection()
-        {
-            if (_isDisposed) return;
-            UpsertLocalSection(albums);
-        }
-
-        if (_dispatcherQueue.HasThreadAccess)
-            ApplyLocalSection();
-        else
-            _dispatcherQueue.TryEnqueue(ApplyLocalSection);
-    }
-
-    private void UpsertLocalSection(List<HomeSectionItem> items)
-    {
-        var existing = Sections.FirstOrDefault(s => s.SectionUri == LocalSectionUri);
-        if (existing != null)
-        {
-            existing.Items.Clear();
-            foreach (var item in items) existing.Items.Add(item);
-            MoveLocalSectionToPreferredPosition(existing);
-            EnsureLocalChipPresent();
-            return;
-        }
-
-        var section = new HomeSection
-        {
-            Title = "Local files",
-            // No Subtitle — the LocalFiles region band already carries the
-            // "ON THIS PC" eyebrow, so repeating it inside the inner section
-            // header reads as visual duplication.
-            SectionType = HomeSectionType.Generic,
-            SectionUri = LocalSectionUri,
-            ViewAllUri = "wavee:local:library",
-        };
-        foreach (var item in items) section.Items.Add(item);
-        section.ApplyTheme(_isDarkTheme);
-        Sections.Insert(GetLocalSectionInsertIndex(), section);
-        EnsureLocalChipPresent();
-    }
-
-    private int GetLocalSectionInsertIndex()
-    {
-        if (Sections.Count == 0) return 0;
-
-        var index = 1;
-        if (Sections.Count > 1
-            && Sections[0].SectionType == HomeSectionType.Shorts
-            && Sections[1].SectionType == HomeSectionType.RecentlyPlayed)
-        {
-            index = 2;
-        }
-
-        return Math.Min(index, Sections.Count);
-    }
-
-    private void MoveLocalSectionToPreferredPosition(HomeSection section)
-    {
-        var currentIndex = Sections.IndexOf(section);
-        if (currentIndex < 0) return;
-
-        Sections.RemoveAt(currentIndex);
-        Sections.Insert(GetLocalSectionInsertIndex(), section);
-    }
-
-    private HomeSection? ExtractLocalSection()
-    {
-        for (int i = Sections.Count - 1; i >= 0; i--)
-        {
-            if (Sections[i].SectionUri == LocalSectionUri)
-            {
-                var section = Sections[i];
-                Sections.RemoveAt(i);
-                return section;
-            }
-        }
-
-        return null;
-    }
-
-    private void RestoreLocalSection(HomeSection? section)
-    {
-        if (section is null) return;
-        if (_settingsService?.Settings.ShowLocalFilesOnHome == false) return;
-        if (Sections.Any(s => s.SectionUri == LocalSectionUri)) return;
-
-        section.ApplyTheme(_isDarkTheme);
-        Sections.Insert(GetLocalSectionInsertIndex(), section);
-    }
-
-    private void RemoveLocalSection()
-    {
-        _ = ExtractLocalSection();
-        RemoveLocalChip();
+        Recommendations.CancelBaselineEnrichment();
+        Feed.ApplyBackgroundRefresh(snapshot);
     }
 
     /// <summary>
-    /// Insert the synthetic "Local files" chip after the "All" chip in
-    /// <see cref="DisplayedChips"/>. No-op when the chip is already present,
-    /// when no chips have arrived yet (the chip can only ride alongside
-    /// real Spotify chips — it never seeds an empty row), or when the user
-    /// is currently in a sub-chip morphed view (don't fight the morph).
+    /// Refresh the synthetic "Local files" home shelf. Forwarded straight to
+    /// the feed child — kept here as a convenience so HomePage's
+    /// OnNavigatedTo doesn't need to know the child topology.
     /// </summary>
-    private void EnsureLocalChipPresent()
-    {
-        if (_isDisposed) return;
-        if (DisplayedChips.Count == 0) return;
-        if (_activeParentChip is not null) return;
-        if (DisplayedChips.Any(c => c.Id == LocalChipId)) return;
-
-        var chip = new HomeChipViewModel
-        {
-            Id = LocalChipId,
-            Label = "Local files",
-            IsSelected = IsLocalChipActive,
-        };
-
-        // Insert after "All" (the empty-id chip at the front) so the new
-        // chip reads as a peer of "Music" / "Podcasts" rather than a
-        // trailing afterthought. If "All" isn't at index 0 (unexpected),
-        // just append.
-        var insertAt = DisplayedChips.Count > 0 && string.IsNullOrEmpty(DisplayedChips[0].Id) ? 1 : DisplayedChips.Count;
-        DisplayedChips.Insert(insertAt, chip);
-
-        // Mirror into _mainChips so morph→back-chip→revert keeps the local
-        // chip visible. _mainChips is the canonical row that
-        // <see cref="SelectChipAsync"/> restores from on back-chip click.
-        if (_mainChips is not null && !_mainChips.Any(c => c.Id == LocalChipId))
-        {
-            var mainInsertAt = _mainChips.Count > 0 && string.IsNullOrEmpty(_mainChips[0].Id) ? 1 : _mainChips.Count;
-            _mainChips.Insert(mainInsertAt, chip);
-        }
-    }
-
-    private void RemoveLocalChip()
-    {
-        if (_isDisposed) return;
-
-        for (int i = DisplayedChips.Count - 1; i >= 0; i--)
-        {
-            if (DisplayedChips[i].Id == LocalChipId)
-                DisplayedChips.RemoveAt(i);
-        }
-
-        if (_mainChips is not null)
-        {
-            for (int i = _mainChips.Count - 1; i >= 0; i--)
-            {
-                if (_mainChips[i].Id == LocalChipId)
-                    _mainChips.RemoveAt(i);
-            }
-        }
-
-        // If the local chip was the active filter, drop the filter too so
-        // the page doesn't sit on an empty "local-only" view after the
-        // last local folder is removed mid-session.
-        if (IsLocalChipActive)
-            IsLocalChipActive = false;
-    }
-
-    private void RemoveLocalSectionOnDispatcher()
-    {
-        if (_dispatcherQueue.HasThreadAccess)
-            RemoveLocalSection();
-        else
-            _dispatcherQueue.TryEnqueue(RemoveLocalSection);
-    }
-
-    private void OnLocalSyncProgress(Wavee.Local.LocalSyncProgress p)
-    {
-        // Refresh on the final tick (CurrentPath == null) AND periodically while
-        // a scan is in flight so the user sees the shelf grow as files come in.
-        // Throttle: only refresh on every Nth tick to keep SQLite reads low.
-        if (p.CurrentPath is null || p.ProcessedFiles % 50 == 0)
-        {
-            _ = RefreshLocalSectionAsync();
-        }
-    }
-
-    /// <summary>
-    /// Populates the bound <see cref="Sections"/> collection in small chunks, yielding
-    /// to the dispatcher between chunks so the layout engine can paint each chunk's cards
-    /// and handle input (scroll, click) before the next batch lands.
-    ///
-    /// <para>
-    /// Without this, assigning a 31-section collection in one shot triggers a single
-    /// massive layout pass that realizes all ~4,650 card elements before the UI thread
-    /// yields — the root cause of the "heavy" navigation feel. Yielding every
-    /// <paramref name="chunkSize"/> sections spreads that work across several frames
-    /// so the user sees content stream in progressively.
-    /// </para>
-    ///
-    /// <para>
-    /// Uses <see cref="Task.Yield"/> rather than <c>DispatcherQueue.TryEnqueue</c> because
-    /// an async method resumed on the UI thread via <c>Task.Yield</c> posts a continuation
-    /// at normal dispatcher priority — equivalent to a message-pump tick — which is exactly
-    /// what we need to let WinUI paint between chunks.
-    /// </para>
-    /// </summary>
-    private async Task PopulateSectionsChunkedAsync(IList<HomeSection> ordered, int chunkSize = 4)
-    {
-        // Start from empty: we only call this when Sections.Count == 0, but guard anyway.
-        if (Sections.Count > 0) Sections.Clear();
-
-        for (int i = 0; i < ordered.Count; i++)
-        {
-            // Build the per-section accent brushes for the current theme just
-            // before adding to the bound collection, so x:Bind picks them up
-            // on the first realization (no second pass needed).
-            ordered[i].ApplyTheme(_isDarkTheme);
-            Sections.Add(ordered[i]);
-
-            // Yield back to the dispatcher every chunkSize items so realization cost
-            // is spread across multiple frames instead of a single 4,650-element burst.
-            if ((i + 1) % chunkSize == 0 && i + 1 < ordered.Count)
-                await Task.Yield();
-        }
-
-        // Refresh page-level bleed now that Sections is populated. ApplyTheme
-        // reads Sections[0].Items[0].ColorHex to source the glow color.
-        ApplyTheme(_isDarkTheme);
-    }
-
-    private void ApplyChips(List<HomeChipViewModel>? chips)
-    {
-        // Only update chips when we receive them (unfaceted responses)
-        if (chips == null || chips.Count == 0 || DisplayedChips.Count > 0) return;
-
-        // Spotify's chip API doesn't include an "All" entry — prepend one
-        // synthetically so the bar always leads with the unfaceted view.
-        // SelectChipAsync already handles `string.IsNullOrEmpty(chip.Id)` as
-        // the unfaceted refetch path (lines ~1462), and the back-chip handler
-        // restores selection to the empty-Id chip, so a single empty-Id entry
-        // at the head is all the wiring needs.
-        if (!chips.Any(c => string.IsNullOrEmpty(c.Id)))
-        {
-            chips.Insert(0, new HomeChipViewModel
-            {
-                Id = string.Empty,
-                Label = "All"
-            });
-        }
-
-        _mainChips = chips;
-        _activeParentChip = null;
-
-        // "All" chip (empty Id) starts selected — every other chip clears.
-        foreach (var c in chips) c.IsSelected = string.IsNullOrEmpty(c.Id);
-        DisplayedChips = new ObservableCollection<HomeChipViewModel>(chips);
-
-        // If the local section already materialised before the Spotify chips
-        // arrived, surface the local chip alongside them. Without this the
-        // first scan's chip would be silently swallowed by the row swap.
-        if (Sections.Any(s => s.SectionUri == LocalSectionUri))
-            EnsureLocalChipPresent();
-    }
-
-    private void OnRecentlyPlayedItemsChanged()
-    {
-        if (_isDisposed || _recentlyPlayedService == null) return;
-
-        // Must dispatch to UI thread — this event can fire from background threads
-        // and ObservableCollection mutations must happen on the UI thread.
-        _dispatcherQueue.TryEnqueue(() =>
-        {
-            if (_isDisposed) return;
-
-            var items = _recentlyPlayedService.Items;
-            if (items.Count == 0) return;
-
-            // Promote the most-recently-played item to the hero card slot.
-            // FeaturedItem's setter triggers LoadHeroPaletteAsync via the
-            // partial-method hook below, which derives the hero backdrop
-            // wash from the cover (album/playlist Pathfinder palette route).
-            FeaturedItem = items[0];
-
-            // ── Note: we DO NOT mutate the Recents section in `Sections`
-            // here anymore. The parser owns that section now (built from
-            // HomeRecentlyPlayedSectionData on every Home parse), and
-            // HomeFeedCache.ApplyDiff keeps its items current via its
-            // SectionUri-keyed diff. Touching Sections here was racing with
-            // ApplyDiff on nav-back and producing the symptom where the
-            // Recents row briefly showed items from a different section.
-            // The standalone StartPage carousel + the FeaturedItem hero
-            // both still get fed from the service via this same event.
-            return;
-
-            // (legacy fallback retained as dead code below for reference,
-            // never hit because of the early return above.)
-            var existing = Sections.FirstOrDefault(s => s.SectionType == HomeSectionType.RecentlyPlayed);
-            if (existing != null)
-            {
-                existing.Items.Clear();
-                foreach (var item in items)
-                    existing.Items.Add(item);
-            }
-            else
-            {
-                var section = new HomeSection
-                {
-                    Title = "Recently played",
-                    SectionType = HomeSectionType.RecentlyPlayed,
-                    SectionUri = "recently-played"
-                };
-                foreach (var item in items)
-                    section.Items.Add(item);
-
-                // Insert after Shorts if present, otherwise at index 0
-                var insertIdx = Sections.Count > 0 && Sections[0].SectionType == HomeSectionType.Shorts ? 1 : 0;
-                Sections.Insert(insertIdx, section);
-            }
-        });
-    }
+    public Task RefreshLocalSectionAsync() => Feed.RefreshLocalSectionAsync();
 
     [RelayCommand]
     private async Task RetryAsync()
@@ -844,18 +457,60 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         await LoadAsync();
     }
 
-    private void UpdateGreeting()
+    [RelayCommand]
+    private async Task RefreshAsync()
     {
-        var hour = DateTime.Now.Hour;
-        Greeting = hour switch
-        {
-            < 12 => "Good morning",
-            < 18 => "Good afternoon",
-            _ => "Good evening"
-        };
+        // Force cache to be stale so LoadAsync fetches fresh data
+        var cache = _homeFeedCache;
+        cache?.Invalidate();
+        await LoadAsync();
+    }
+
+    // ── Chip selection (parent shim that routes into the feed child) ────────
+
+    [RelayCommand]
+    private Task SelectChipAsync(HomeChipViewModel? chip) => Feed.SelectChipAsync(chip);
+
+    // ── Bound proxies for the chip / section preferences XAML surfaces ──────
+    // Forwarded so existing XAML bindings (and the code-behind handlers in
+    // HomePage.xaml.cs) keep working through the parent VM root.
+
+    public ObservableCollection<HomeChipViewModel> DisplayedChips => Feed.DisplayedChips;
+    public ObservableCollection<HomeSectionPref> SectionPreferences => Feed.SectionPreferences;
+    public int NewSectionCount => Feed.NewSectionCount;
+
+    /// <summary>
+    /// Sets a section's visibility to a specific value (not a toggle).
+    /// Called from the checkbox Checked/Unchecked events to avoid double-toggle bugs.
+    /// </summary>
+    public void SetSectionVisibility(string sectionUri, bool visible)
+        => Feed.SetSectionVisibility(sectionUri, visible);
+
+    [RelayCommand]
+    private void ToggleSectionVisibility(string sectionUri) => Feed.ToggleSectionVisibility(sectionUri);
+
+    [RelayCommand]
+    private void ToggleSectionPin(string sectionUri) => Feed.ToggleSectionPin(sectionUri);
+
+    [RelayCommand]
+    private void MoveSectionUp(string sectionUri) => Feed.MoveSectionUp(sectionUri);
+
+    [RelayCommand]
+    private void MoveSectionDown(string sectionUri) => Feed.MoveSectionDown(sectionUri);
+
+    [RelayCommand]
+    private async Task ResetSectionPreferencesAsync()
+    {
+        Feed.ResetSectionPreferences();
+        await LoadAsync();
     }
 
     // ── Section mapping ──
+    // Kept on the parent — these are pure static parsers shared by both
+    // HomeResponseParserV1 / V2 paths. Moving them off the type would force
+    // call sites to know about a HomeViewModelStaticHelpers class for no
+    // gain; the cost of leaving them is one more line in the file (they're
+    // already static).
 
     internal static List<HomeSection> MapSectionsFromResponse(HomeResponse response)
     {
@@ -1231,349 +886,6 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         };
     }
 
-    // ── Section preferences ──
-
-    /// <summary>
-    /// Hand the parsed Recents section's items to <see cref="RecentlyPlayedService"/>.
-    /// Called from every code path that produces section data (cache hit, fresh
-    /// fetch, direct fetch, refetch-with-facet) so the carousel + featured-item
-    /// hero stay in sync with whatever the freshest Home response carried.
-    /// Safe to call with sections that have no Recents entry — no-ops in that case.
-    /// </summary>
-    private void DispatchRecentsToService(List<HomeSection> sections)
-    {
-        if (_recentlyPlayedService == null) return;
-        var recents = sections.FirstOrDefault(s => s.SectionType == HomeSectionType.RecentlyPlayed);
-        if (recents == null) return;
-        _recentlyPlayedService.ApplyHomeRecents(recents.Items);
-    }
-
-    private List<HomeSection> ApplyPreferences(List<HomeSection> apiSections)
-    {
-        // Customization removed — pass through directly
-        return apiSections;
-
-        var settings = _settingsService;
-        if (settings == null) return apiSections;
-
-        var homeSettings = settings.Settings.HomeSettings;
-
-        if (!homeSettings.Initialized)
-        {
-            // First load: seed all sections as visible
-            homeSettings.Sections = apiSections.Select(s => new HomeSectionPref
-            {
-                SectionUri = s.SectionUri,
-                Title = s.Title,
-                IsVisible = true
-            }).ToList();
-            homeSettings.Initialized = true;
-            settings.Update(a => a.HomeSettings = homeSettings);
-
-            SectionPreferences = new ObservableCollection<HomeSectionPref>(homeSettings.Sections);
-            NewSectionCount = 0;
-            return apiSections;
-        }
-
-        // Check for new sections not in preferences
-        var knownUris = new HashSet<string>(homeSettings.Sections.Select(s => s.SectionUri));
-        var newSections = apiSections.Where(s => !knownUris.Contains(s.SectionUri)).ToList();
-        NewSectionCount = newSections.Count;
-
-        // Add new sections to preferences as hidden
-        foreach (var ns in newSections)
-        {
-            homeSettings.Sections.Add(new HomeSectionPref
-            {
-                SectionUri = ns.SectionUri,
-                Title = ns.Title,
-                IsVisible = false
-            });
-        }
-
-        if (newSections.Count > 0)
-            settings.Update(a => a.HomeSettings = homeSettings);
-
-        SectionPreferences = new ObservableCollection<HomeSectionPref>(homeSettings.Sections);
-
-        // Build lookup from API sections
-        var apiLookup = apiSections.ToDictionary(s => s.SectionUri);
-
-        // Order by preferences, pinned first (after shorts)
-        var result = new List<HomeSection>();
-
-        // Shorts always come first, regardless of preferences
-        var shorts = apiSections.Where(s => s.SectionType == HomeSectionType.Shorts).ToList();
-        result.AddRange(shorts);
-
-        // Then pinned sections
-        foreach (var pref in homeSettings.Sections.Where(p => p.IsPinned && p.IsVisible))
-        {
-            if (apiLookup.TryGetValue(pref.SectionUri, out var section) && section.SectionType != HomeSectionType.Shorts)
-                result.Add(section);
-        }
-
-        // Then remaining visible sections in preference order
-        foreach (var pref in homeSettings.Sections.Where(p => !p.IsPinned && p.IsVisible))
-        {
-            if (apiLookup.TryGetValue(pref.SectionUri, out var section) && section.SectionType != HomeSectionType.Shorts)
-                result.Add(section);
-        }
-
-        return result;
-    }
-
-    // ── Customization commands ──
-
-    /// <summary>
-    /// Sets a section's visibility to a specific value (not a toggle).
-    /// Called from the checkbox Checked/Unchecked events to avoid double-toggle bugs.
-    /// </summary>
-    public void SetSectionVisibility(string sectionUri, bool visible)
-    {
-        var settings = _settingsService;
-        if (settings == null) return;
-
-        var pref = settings.Settings.HomeSettings.Sections.FirstOrDefault(s => s.SectionUri == sectionUri);
-        if (pref == null || pref.IsVisible == visible) return;
-
-        pref.IsVisible = visible;
-        settings.Update(a => { });
-
-        if (!visible)
-        {
-            var matching = Sections.FirstOrDefault(s => s.SectionUri == sectionUri);
-            if (matching != null)
-                Sections.Remove(matching);
-        }
-        else
-        {
-            // Re-add from cache at the correct position
-            var cache = _homeFeedCache;
-            var cachedSections = cache?.GetCached()?.Sections;
-            if (cachedSections != null)
-            {
-                var section = cachedSections.FirstOrDefault(s => s.SectionUri == sectionUri);
-                if (section != null)
-                {
-                    var prefOrder = settings.Settings.HomeSettings.Sections
-                        .Where(p => p.IsVisible)
-                        .Select(p => p.SectionUri)
-                        .ToList();
-                    var targetIdx = prefOrder.IndexOf(sectionUri);
-                    var insertAt = Math.Min(Math.Max(0, targetIdx), Sections.Count);
-                    Sections.Insert(insertAt, section);
-                }
-            }
-        }
-    }
-
-    [RelayCommand]
-    private void ToggleSectionVisibility(string sectionUri)
-    {
-        var settings = _settingsService;
-        var pref = settings?.Settings.HomeSettings.Sections.FirstOrDefault(s => s.SectionUri == sectionUri);
-        if (pref != null)
-            SetSectionVisibility(sectionUri, !pref.IsVisible);
-    }
-
-    [RelayCommand]
-    private void ToggleSectionPin(string sectionUri)
-    {
-        var settings = _settingsService;
-        if (settings == null) return;
-
-        var pref = settings.Settings.HomeSettings.Sections.FirstOrDefault(s => s.SectionUri == sectionUri);
-        if (pref != null)
-        {
-            pref.IsPinned = !pref.IsPinned;
-            settings.Update(a => { });
-            SectionPreferences = new ObservableCollection<HomeSectionPref>(settings.Settings.HomeSettings.Sections);
-        }
-    }
-
-    [RelayCommand]
-    private void MoveSectionUp(string sectionUri)
-    {
-        var settings = _settingsService;
-        if (settings == null) return;
-
-        var list = settings.Settings.HomeSettings.Sections;
-        var idx = list.FindIndex(s => s.SectionUri == sectionUri);
-        if (idx > 0)
-        {
-            (list[idx], list[idx - 1]) = (list[idx - 1], list[idx]);
-            settings.Update(a => { });
-            SectionPreferences = new ObservableCollection<HomeSectionPref>(list);
-        }
-    }
-
-    [RelayCommand]
-    private void MoveSectionDown(string sectionUri)
-    {
-        var settings = _settingsService;
-        if (settings == null) return;
-
-        var list = settings.Settings.HomeSettings.Sections;
-        var idx = list.FindIndex(s => s.SectionUri == sectionUri);
-        if (idx >= 0 && idx < list.Count - 1)
-        {
-            (list[idx], list[idx + 1]) = (list[idx + 1], list[idx]);
-            settings.Update(a => { });
-            SectionPreferences = new ObservableCollection<HomeSectionPref>(list);
-        }
-    }
-
-    [RelayCommand]
-    private async Task ResetSectionPreferencesAsync()
-    {
-        var settings = _settingsService;
-        if (settings == null) return;
-
-        settings.Settings.HomeSettings = new HomeSectionSettings();
-        settings.Update(a => { });
-        await LoadAsync();
-    }
-
-    [RelayCommand]
-    private async Task RefreshAsync()
-    {
-        // Force cache to be stale so LoadAsync fetches fresh data
-        var cache = _homeFeedCache;
-        cache?.Invalidate();
-        await LoadAsync();
-    }
-
-    // ── Chip selection ──
-
-    [RelayCommand]
-    private async Task SelectChipAsync(HomeChipViewModel? chip)
-    {
-        if (chip == null) return;
-
-        System.Diagnostics.Debug.WriteLine($"[SelectChipAsync] chip={chip.Label}, id={chip.Id}, isBack={chip.IsBackChip}");
-
-        // Synthetic "Local files" chip — purely client-side. Flip the
-        // local-only filter, mark the chip as the lone selection, and
-        // skip the Pathfinder refetch (there's no Spotify facet to send).
-        if (chip.Id == LocalChipId)
-        {
-            _activeParentChip = null;
-            foreach (var c in DisplayedChips) c.IsSelected = c == chip;
-            IsLocalChipActive = true;
-            return;
-        }
-
-        // Back chip → revert to main chips, refetch with no facet
-        if (chip.IsBackChip)
-        {
-            _activeParentChip = null;
-            IsLocalChipActive = false;
-            if (_mainChips != null)
-            {
-                // Select "All" chip
-                foreach (var c in _mainChips) c.IsSelected = string.IsNullOrEmpty(c.Id);
-                DisplayedChips = new ObservableCollection<HomeChipViewModel>(_mainChips);
-            }
-            await RefetchWithFacet(null);
-            return;
-        }
-
-        // "All" chip → refetch with no facet, stay on main chips
-        if (string.IsNullOrEmpty(chip.Id))
-        {
-            _activeParentChip = null;
-            IsLocalChipActive = false;
-            foreach (var c in DisplayedChips) c.IsSelected = c == chip;
-            await RefetchWithFacet(null);
-            return;
-        }
-
-        // Parent chip with sub-chips → morph into sub-chips row
-        if (chip.SubChips is { Count: > 0 })
-        {
-            _activeParentChip = chip;
-            IsLocalChipActive = false;
-
-            // Build morphed row: [✕ Parent] [Sub1] [Sub2] ...
-            var backChip = new HomeChipViewModel
-            {
-                Id = chip.Id,
-                Label = chip.Label,
-                IsBackChip = true,
-                IsSelected = true
-            };
-
-            var morphed = new ObservableCollection<HomeChipViewModel> { backChip };
-            foreach (var sc in chip.SubChips)
-            {
-                sc.IsSelected = false;
-                morphed.Add(sc);
-            }
-
-            DisplayedChips = morphed;
-            await RefetchWithFacet(chip.Id);
-            return;
-        }
-
-        // Regular chip (no sub-chips) → select it, refetch
-        IsLocalChipActive = false;
-        foreach (var c in DisplayedChips) c.IsSelected = c == chip;
-        await RefetchWithFacet(chip.Id);
-    }
-
-    private async Task RefetchWithFacet(string? facet)
-    {
-        if (_homeFeedCache == null || _homeFeedService is null || !_homeFeedService.IsAvailable) return;
-
-        CancelBaselineEnrichment();
-        _homeFeedCache.CurrentFacet = string.IsNullOrEmpty(facet) ? null : facet;
-        _homeFeedCache.Invalidate();
-
-        System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] facet={facet ?? "(null)"}, cache invalidated, about to fetch");
-        _logger?.LogDebug("Refetching home with facet: {Facet}", facet ?? "(none)");
-
-        // Manage IsLoading directly — bypasses LoadAsync's guard to ensure the refetch always runs
-        IsLoading = true;
-        HasError = false;
-        ErrorMessage = null;
-
-        try
-        {
-            var snapshot = await _homeFeedCache.FetchFreshAsync();
-            System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] Got {snapshot.Sections.Count} sections, greeting={snapshot.Greeting}");
-            Greeting = snapshot.Greeting ?? Greeting;
-            var ordered = ApplyPreferences(snapshot.Sections);
-
-            var localSection = ExtractLocalSection();
-            if (Sections.Count == 0)
-                Sections = new ObservableCollection<HomeSection>(ordered);
-            else
-                Services.HomeFeedCache.ApplyDiff(Sections, ordered,
-                    g => Greeting = g ?? Greeting, snapshot.Greeting, s => s.ApplyTheme(_isDarkTheme));
-            RestoreLocalSection(localSection);
-
-            System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] After diff: {Sections.Count} sections displayed");
-            BeginBaselineEnrichment();
-            DispatchRecentsToService(ordered);
-            await RefreshLocalSectionAsync();
-
-            if (string.IsNullOrEmpty(Greeting))
-                UpdateGreeting();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[RefetchWithFacet] ERROR: {ex.Message}");
-            HasError = true;
-            ErrorMessage = ex.Message;
-            _logger?.LogError(ex, "Failed to refetch with facet {Facet}", facet);
-        }
-        finally
-        {
-            IsLoading = false;
-        }
-    }
-
     // ── Navigation helpers (called from code-behind) ──
 
     public static void NavigateToItem(HomeSectionItem item, bool openInNewTab = false)
@@ -1622,16 +934,6 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         }
     }
 
-    // ── Baseline enrichment ──
-
-    private void CancelBaselineEnrichment()
-    {
-        _baselineEnrichmentVersion++;
-        _baselineEnrichmentCts?.Cancel();
-        _baselineEnrichmentCts?.Dispose();
-        _baselineEnrichmentCts = null;
-    }
-
     // ── Hero palette pipeline ──
     // The featured item already carries a `ColorHex` populated by the home
     // feed parser (Spotify ships pre-extracted dark/light/raw colours for
@@ -1640,12 +942,6 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     // backdrop brush against the right alpha per theme.
 
     private Color? _heroBaseColor;
-
-    partial void OnFeaturedItemChanged(HomeSectionItem? value)
-    {
-        _heroBaseColor = TryParseHex(value?.ColorHex);
-        ApplyTheme(_isDarkTheme);
-    }
 
     /// <summary>
     /// Theme-aware backdrop refresh for the hero band. Called by the page on
@@ -1678,8 +974,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         }
 
         // Propagate to per-section accents so each shelf header re-tints.
-        foreach (var section in Sections)
-            section.ApplyTheme(isDark);
+        Feed.ApplyThemeToSections(isDark);
 
         // Page bleed — a soft radial glow at the top-left of the page,
         // tinted from the first card's visual identity (or the first section
@@ -1782,23 +1077,6 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         }
     }
 
-    private void OnAuthStatePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (_isDisposed) return;
-        if (e.PropertyName is nameof(IAuthState.CurrentUser)
-                           or nameof(IAuthState.DisplayName)
-                           or nameof(IAuthState.Username)
-                           or nameof(IAuthState.ProfileImageUrl))
-        {
-            _dispatcherQueue.TryEnqueue(() =>
-            {
-                if (_isDisposed) return;
-                OnPropertyChanged(nameof(CurrentUserName));
-                OnPropertyChanged(nameof(CurrentUserAvatarUrl));
-            });
-        }
-    }
-
     public void Dispose()
     {
         if (_isDisposed) return;
@@ -1807,9 +1085,9 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         DetachLongLivedServices();
         WeakReferenceMessenger.Default.Unregister<HomeLocalFilesVisibilityChangedMessage>(this);
 
-        _localProgressSub?.Dispose();
-
-        CancelBaselineEnrichment();
+        Greeting.Dispose();
+        Recommendations.Dispose();
+        Feed.Dispose();
 
         HeroAdapter.Dispose();
     }
@@ -1832,208 +1110,18 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
     {
         if (_longLivedAttached) return;
         _longLivedAttached = true;
-        if (_recentlyPlayedService != null)
-            _recentlyPlayedService.ItemsChanged += OnRecentlyPlayedItemsChanged;
-        // Surface auth-state changes (display name + avatar) into the hero greeting.
-        if (_authState is not null)
-            _authState.PropertyChanged += OnAuthStatePropertyChanged;
+        Recommendations.AttachRecentlyPlayedListener();
+        Greeting.AttachAuthListener();
+        Feed.PropertyChanged += OnFeedPropertyChanged;
     }
 
     private void DetachLongLivedServices()
     {
         if (!_longLivedAttached) return;
         _longLivedAttached = false;
-        if (_recentlyPlayedService != null)
-            _recentlyPlayedService.ItemsChanged -= OnRecentlyPlayedItemsChanged;
-        if (_authState is not null)
-            _authState.PropertyChanged -= OnAuthStatePropertyChanged;
-    }
-
-    private void BeginBaselineEnrichment()
-    {
-        if (_homeFeedService is null || !_homeFeedService.IsAvailable) return;
-
-        CancelBaselineEnrichment();
-
-        var baselineItems = Sections
-            .Where(section => section.SectionType == HomeSectionType.Baseline)
-            .SelectMany(section => section.Items)
-            .Where(item => !item.HasBaselinePreview
-                           && !string.IsNullOrWhiteSpace(item.Uri)
-                           && item.ContentType is HomeContentType.Playlist or HomeContentType.Album)
-            .ToList();
-
-        if (baselineItems.Count == 0)
-        {
-            ClearLoadingForBaselineItems(Sections);
-            return;
-        }
-
-        foreach (var item in baselineItems)
-            item.IsBaselineLoading = true;
-
-        var uris = baselineItems
-            .Select(item => item.Uri!)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-
-        var version = ++_baselineEnrichmentVersion;
-        var cts = new CancellationTokenSource();
-        _baselineEnrichmentCts = cts;
-        _ = EnrichBaselineItemsAsync(uris, version, cts.Token);
-    }
-
-    private async Task EnrichBaselineItemsAsync(List<string> uris, int version, CancellationToken ct)
-    {
-        try
-        {
-            if (_homeFeedService is null) return;
-            var response = await _homeFeedService.GetFeedBaselineLookupAsync(uris, ct).ConfigureAwait(false);
-            if (response is null) return;
-            var lookup = BuildBaselineEnrichmentLookup(response);
-
-            _dispatcherQueue.TryEnqueue(() =>
-            {
-                if (ct.IsCancellationRequested || version != _baselineEnrichmentVersion)
-                    return;
-
-                ApplyBaselineEnrichment(Sections, lookup);
-
-                var cached = _homeFeedCache?.GetCached();
-                if (cached != null)
-                    ApplyBaselineEnrichment(cached.Sections, lookup);
-            });
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Failed to enrich home baseline sections");
-            _dispatcherQueue.TryEnqueue(() =>
-            {
-                if (version == _baselineEnrichmentVersion)
-                    ClearLoadingForBaselineItems(Sections);
-            });
-        }
-    }
-
-    private static Dictionary<string, HomeBaselineEnrichment> BuildBaselineEnrichmentLookup(
-        FeedBaselineLookupResponse response)
-    {
-        var result = new Dictionary<string, HomeBaselineEnrichment>(StringComparer.Ordinal);
-        var entries = response.Data?.Lookup;
-        if (entries == null) return result;
-
-        foreach (var entry in entries)
-        {
-            var previewItems = entry.TypeName switch
-            {
-                "PlaylistResponseWrapper" => entry.GetPlaylistData()?.PreviewItems,
-                "AlbumResponseWrapper" => entry.GetAlbumData()?.PreviewItems,
-                _ => null
-            };
-
-            var tracks = previewItems?.Items?
-                .Select(wrapper => wrapper.Data)
-                .Where(track => track != null)
-                .Select(track => MapBaselinePreviewTrack(track!))
-                .Where(track => !string.IsNullOrWhiteSpace(track.Uri) || !string.IsNullOrWhiteSpace(track.Name))
-                .ToList() ?? [];
-
-            var uri = entry.TypeName switch
-            {
-                "PlaylistResponseWrapper" => entry.GetPlaylistData()?.Uri ?? entry.Uri,
-                "AlbumResponseWrapper" => entry.GetAlbumData()?.Uri ?? entry.Uri,
-                _ => entry.Uri
-            };
-
-            if (string.IsNullOrWhiteSpace(uri))
-                continue;
-
-            var primary = tracks.FirstOrDefault();
-            result[uri] = new HomeBaselineEnrichment(
-                uri,
-                tracks,
-                primary?.CanvasThumbnailUrl ?? primary?.CoverArtUrl,
-                primary?.ColorHex,
-                primary?.CanvasUrl,
-                primary?.CanvasThumbnailUrl,
-                primary?.AudioPreviewUrl);
-        }
-
-        return result;
-    }
-
-    private static HomeBaselinePreviewTrack MapBaselinePreviewTrack(FeedBaselineTrackData track)
-    {
-        var cover = track.AlbumOfTrack?.CoverArt;
-        var coverUrl = cover?.Sources?
-            .OrderByDescending(source => source.Width ?? 0)
-            .FirstOrDefault()?.Url;
-
-        var canvasThumbnail = PickCanvasThumbnail(track.Canvas?.Thumbnail?.Sources);
-
-        return new HomeBaselinePreviewTrack
-        {
-            Uri = track.Uri,
-            Name = track.Name,
-            CoverArtUrl = coverUrl,
-            ColorHex = cover?.ExtractedColors?.ColorDark?.Hex,
-            CanvasUrl = track.Canvas?.Url,
-            CanvasThumbnailUrl = canvasThumbnail,
-            AudioPreviewUrl = track.Previews?.AudioPreviews?.Items?.FirstOrDefault()?.Url
-        };
-    }
-
-    private static string? PickCanvasThumbnail(IReadOnlyList<FeedBaselineCanvasThumbnailSource>? sources)
-    {
-        if (sources == null || sources.Count == 0) return null;
-
-        return sources.FirstOrDefault(source =>
-                   source.Url?.Contains("288x512", StringComparison.OrdinalIgnoreCase) == true)?.Url
-               ?? sources.LastOrDefault(source => !string.IsNullOrWhiteSpace(source.Url))?.Url
-               ?? sources.FirstOrDefault()?.Url;
-    }
-
-    private static void ApplyBaselineEnrichment(
-        IEnumerable<HomeSection> sections,
-        IReadOnlyDictionary<string, HomeBaselineEnrichment> lookup)
-    {
-        foreach (var item in sections
-                     .Where(section => section.SectionType == HomeSectionType.Baseline)
-                     .SelectMany(section => section.Items))
-        {
-            if (item.Uri != null && lookup.TryGetValue(item.Uri, out var enrichment))
-            {
-                item.PreviewTracks = enrichment.PreviewTracks;
-                item.HeroImageUrl = enrichment.HeroImageUrl ?? item.ImageUrl;
-                item.HeroColorHex = enrichment.HeroColorHex ?? item.ColorHex;
-                item.CanvasUrl = enrichment.CanvasUrl;
-                item.CanvasThumbnailUrl = enrichment.CanvasThumbnailUrl;
-                item.AudioPreviewUrl = enrichment.AudioPreviewUrl;
-                item.HasBaselinePreview = enrichment.PreviewTracks.Count > 0;
-            }
-            else
-            {
-                item.HeroImageUrl ??= item.ImageUrl;
-                item.HeroColorHex ??= item.ColorHex;
-            }
-
-            item.IsBaselineLoading = false;
-        }
-    }
-
-    private static void ClearLoadingForBaselineItems(IEnumerable<HomeSection> sections)
-    {
-        foreach (var item in sections
-                     .Where(section => section.SectionType == HomeSectionType.Baseline)
-                     .SelectMany(section => section.Items))
-        {
-            item.HeroImageUrl ??= item.ImageUrl;
-            item.HeroColorHex ??= item.ColorHex;
-            item.IsBaselineLoading = false;
-        }
+        Recommendations.DetachRecentlyPlayedListener();
+        Greeting.DetachAuthListener();
+        Feed.PropertyChanged -= OnFeedPropertyChanged;
     }
 }
 

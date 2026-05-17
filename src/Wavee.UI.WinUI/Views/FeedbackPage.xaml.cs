@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
@@ -9,16 +9,16 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
-using Microsoft.UI.Xaml.Navigation;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class FeedbackPage : Page, ITabBarItemContent
+public sealed partial class FeedbackPage : UserControl, ITabBarItemContent, IPageHostAware
 {
     private static readonly Brush AccentBrush = (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"];
     private static readonly Brush ErrorBrush = new SolidColorBrush(Colors.Red);
@@ -42,9 +42,10 @@ public sealed partial class FeedbackPage : Page, ITabBarItemContent
         Unloaded += OnUnloaded;
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode) { }
+
+    public void OnLeaving()
     {
-        base.OnNavigatedFrom(e);
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
         // sibling does not pin this page across navigations.
         Bindings?.StopTracking();

@@ -1,6 +1,8 @@
 using System;
 using System.Windows.Input;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -31,6 +33,9 @@ public sealed class ShelfScroller : Control
     private bool _hasItemsSourceIdentity;
     private bool _pendingIdentityRecycleReset;
     private bool _identityRecycleResetPosted;
+
+    private static readonly ILogger? _logger =
+        Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger("ShelfScroller");
 
     public ShelfScroller()
     {
@@ -200,6 +205,8 @@ public sealed class ShelfScroller : Control
         if (_repeater is not null)
         {
             _repeater.SizeChanged -= OnScrollSizeChanged;
+            _repeater.ElementPrepared -= OnRepeaterElementPrepared;
+            _repeater.ElementClearing -= OnRepeaterElementClearing;
         }
 
         _scroll = GetTemplateChild(PartScroll) as ScrollView;
@@ -208,6 +215,8 @@ public sealed class ShelfScroller : Control
         if (_repeater is not null)
         {
             _repeater.SizeChanged += OnScrollSizeChanged;
+            _repeater.ElementPrepared += OnRepeaterElementPrepared;
+            _repeater.ElementClearing += OnRepeaterElementClearing;
             _repeater.ItemTemplate = (object?)ItemTemplateSelector ?? ItemTemplate;
             _repeater.ItemsSource = ItemsSource;
             SyncLayoutProperties();
@@ -219,6 +228,23 @@ public sealed class ShelfScroller : Control
         }
 
         UpdatePagingState();
+    }
+
+    // [home-scroll] inner-shelf card realize/recycle. Phase 1 instrumentation:
+    // confirms whether shelf cards are simply not being realized yet, or being
+    // realized then immediately cleared, when the visible area looks blank.
+    private void OnRepeaterElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
+    {
+        _logger?.LogDebug(
+            "[home-scroll] shelf.prepare id={Identity} idx={Index}",
+            ItemsSourceIdentity?.ToString() ?? "<no-id>", args.Index);
+    }
+
+    private void OnRepeaterElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
+    {
+        _logger?.LogDebug(
+            "[home-scroll] shelf.clearing id={Identity}",
+            ItemsSourceIdentity?.ToString() ?? "<no-id>");
     }
 
     // ── DP change callbacks ────────────────────────────────────────────────
@@ -331,6 +357,8 @@ public sealed class ShelfScroller : Control
         if (_repeater is not null)
         {
             _repeater.SizeChanged -= OnScrollSizeChanged;
+            _repeater.ElementPrepared -= OnRepeaterElementPrepared;
+            _repeater.ElementClearing -= OnRepeaterElementClearing;
             // Drop the old repeater's ItemsSource so it releases its
             // collection-changed subscription before being detached.
             _repeater.ItemsSource = null;
@@ -345,6 +373,8 @@ public sealed class ShelfScroller : Control
         _scroll.Content = fresh;
         _repeater = fresh;
         _repeater.SizeChanged += OnScrollSizeChanged;
+        _repeater.ElementPrepared += OnRepeaterElementPrepared;
+        _repeater.ElementClearing += OnRepeaterElementClearing;
         SyncLayoutProperties();
         _repeater.ItemsSource = newItemsSource;
     }

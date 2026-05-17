@@ -7,11 +7,9 @@ namespace Wavee.UI.WinUI.Helpers;
 
 /// <summary>
 /// Lightweight per-page entrance animation, applied via an attached property
-/// on the page root. Pairs with the global suppression of Frame's built-in
-/// <c>DrillInNavigationTransitionInfo</c> in <see cref="Controls.TabBar.TabBarItem"/>:
-/// the Frame swaps pages instantly (no slide/fade choreography), and the
-/// destination page's content fades in via a single composition opacity
-/// animation on Loaded.
+/// on the page root. <see cref="Controls.PageHost.PageHost"/> does not run any
+/// built-in navigation transition — the destination page's content fades in
+/// via a single composition opacity animation on Loaded.
 ///
 /// <para>
 /// 220 ms duration — long enough to register as an entrance cue (above the

@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Page
+<UserControl
     x:Class="Wavee.UI.WinUI.Views.AlbumPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -22,15 +22,18 @@
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     helpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
-    NavigationCacheMode="Enabled"
     Background="Transparent">
-
-    <Page.Resources>
+    <UserControl.Transitions>
+        <TransitionCollection>
+            <EntranceThemeTransition />
+        </TransitionCollection>
+    </UserControl.Transitions>
+    <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True"/>
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
         <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True"/>
-    </Page.Resources>
+    </UserControl.Resources>
 
     <Grid>
         <!-- Palette-tinted page wash sitting on top of the window's Mica.
@@ -129,6 +132,14 @@
                                 Spacing="14"
                                 VerticalAlignment="Top">
 
+                            <!-- ════ PINNED ZONE — never scrolls ═════════════════
+                                 Cover + title + primary CTAs stay at the top of
+                                 the sticky left column. Everything below moves
+                                 to LeftScrollableContainer further down. -->
+                            <StackPanel x:Name="LeftPinnedZone"
+                                        Spacing="14"
+                                        SizeChanged="LeftPinnedZone_SizeChanged">
+
                             <!-- Cover art (square, AttachedCardShadow). Height = ActualWidth wired
                          in code-behind so the cover stays square as the splitter resizes. -->
                             <Grid HorizontalAlignment="Stretch">
@@ -146,9 +157,11 @@
                                         <FontIcon Glyph="&#xE93C;" FontSize="64" Opacity="0.3"
                                           HorizontalAlignment="Center" VerticalAlignment="Center"
                                           Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                        <Image Source="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
-                                       Stretch="UniformToFill"
-                                       Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                        <imaging:CompositionImage
+                                            ImageUrl="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay}"
+                                            DecodePixelSize="280"
+                                            Stretch="UniformToFill"
+                                            Visibility="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                                     </Grid>
                                 </Border>
                             </Grid>
@@ -321,6 +334,24 @@
                                 </Button>
                             </StackPanel>
 
+                            </StackPanel>
+                            <!-- ════ END PINNED ZONE ═════════════════════════════ -->
+
+                            <!-- ════ SCROLLABLE ZONE — overflows in place ════════
+                                 MaxHeight is set in code-behind to
+                                 (PageScrollView.ActualHeight − LeftPinnedZone.ActualHeight − 24)
+                                 so this region scrolls inside the sticky column
+                                 rather than getting clipped. VerticalScrollChainMode=Always
+                                 routes wheel events to PageScrollView once we hit
+                                 the inner top/bottom edge. -->
+                            <Grid x:Name="LeftScrollableContainer">
+                                <ScrollView x:Name="LeftScrollableZone"
+                                            VerticalScrollChainMode="Always"
+                                            ZoomMode="Disabled"
+                                            ContentOrientation="Vertical"
+                                            ViewChanged="LeftScrollableZone_ViewChanged">
+                                    <StackPanel Spacing="14">
+
                             <!-- Secondary action cluster — labeled pill buttons matching the
                                  prototype's `.action-cluster` (36 px, transparent bg,
                                  1 px divider stroke). WrapPanel so the row spills to a
@@ -488,6 +519,28 @@
                                     </Grid>
                                 </StackPanel>
                             </Border>
+
+                                    </StackPanel>
+                                </ScrollView>
+
+                                <!-- Bottom-edge fade hint — shown only while the inner
+                                     scroll has more content below the viewport. Visibility
+                                     toggled in code-behind from ViewChanged + size events. -->
+                                <Border x:Name="LeftScrollableFade"
+                                        VerticalAlignment="Bottom"
+                                        Height="32"
+                                        IsHitTestVisible="False"
+                                        Visibility="Collapsed">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Color="#00000000" Offset="0"/>
+                                            <GradientStop Color="{ThemeResource SolidBackgroundFillColorBase}" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                </Border>
+                            </Grid>
+                            <!-- ════ END SCROLLABLE ZONE ═════════════════════════ -->
+
                         </StackPanel>
 
                         <!-- Loading skeleton overlay — same Padding/Spacing/element heights
@@ -1219,4 +1272,4 @@
         </Grid>
         </ScrollView>
     </Grid>
-</Page>
+</UserControl>

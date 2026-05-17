@@ -344,6 +344,8 @@ public sealed partial class AlbumDetailPanel : UserControl
         // Helpers.ConnectedAnimationHelper.PrepareAnimation(
         //     Helpers.ConnectedAnimationHelper.AlbumArt, ImageArea);
 
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("AlbumDetailPanel.ViewAlbum");
+
         var param = new ContentNavigationParameter
         {
             Uri = Album.Uri ?? Album.Id,

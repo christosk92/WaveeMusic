@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Page
+<UserControl
     x:Class="Wavee.UI.WinUI.Views.ShowPage"
     x:Name="PageRoot"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -21,17 +21,16 @@
     xmlns:helpers="using:Wavee.UI.WinUI.Helpers"
     helpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
-    NavigationCacheMode="Enabled"
     Background="Transparent">
 
-    <Page.Resources>
+    <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True"/>
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
         <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True"/>
         <converters:BoolToFollowGlyphConverter x:Key="BoolToFollowGlyphConverter"/>
         <converters:BoolToFollowTextConverter x:Key="BoolToFollowTextConverter"/>
-    </Page.Resources>
+    </UserControl.Resources>
 
     <Grid>
         <!-- Palette wash sitting on top of Mica. Brush is a SolidColorBrush
@@ -645,4 +644,4 @@
                        MaxWidth="400"/>
         </StackPanel>
     </Grid>
-</Page>
+</UserControl>

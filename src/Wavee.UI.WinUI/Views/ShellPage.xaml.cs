@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.DependencyInjection;
+﻿using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Input;
@@ -33,12 +33,11 @@ using Windows.UI.Popups;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ShellPage : Page
+public sealed partial class ShellPage : UserControl
 {
     private readonly ILogger? _logger;
     private readonly IAuthState? _authState;
     private readonly ISettingsService? _settingsService;
-    private readonly IConnectivityService? _connectivity;
     private readonly IPlaybackStateService? _playbackState;
     private readonly IActiveVideoSurfaceService? _videoSurface;
     private readonly MiniVideoPlayerViewModel? _miniVideoViewModel;
@@ -67,7 +66,6 @@ public sealed partial class ShellPage : Page
         _logger = Ioc.Default.GetService<ILogger<ShellPage>>();
         _authState = Ioc.Default.GetService<IAuthState>();
         _settingsService = Ioc.Default.GetService<ISettingsService>();
-        _connectivity = Ioc.Default.GetService<IConnectivityService>();
         _playbackState = Ioc.Default.GetService<IPlaybackStateService>();
         _videoSurface = Ioc.Default.GetService<IActiveVideoSurfaceService>();
         _miniVideoViewModel = Ioc.Default.GetService<MiniVideoPlayerViewModel>();
@@ -103,30 +101,6 @@ public sealed partial class ShellPage : Page
         _dragStateService = Ioc.Default.GetService<DragStateService>();
         if (_dragStateService != null)
             _dragStateService.DragStateChanged += OnDragStateChanged;
-
-        // Subscribe to connectivity state for overlay
-        WeakReferenceMessenger.Default.Register<Data.Messages.ConnectivityChangedMessage>(this, (r, m) =>
-        {
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                if (m.Value)
-                {
-                    // Connected — hide overlay
-                    ConnectionOverlay.Visibility = Visibility.Collapsed;
-                }
-                else
-                {
-                    // Disconnected — show overlay
-                    var isReconnecting = _connectivity?.IsReconnecting ?? false;
-                    ReconnectingRing.IsActive = isReconnecting;
-                    ReconnectingRing.Visibility = isReconnecting ? Visibility.Visible : Visibility.Collapsed;
-                    ConnectionOverlayText.Text = isReconnecting
-                        ? "Reconnecting to Spotify..."
-                        : "Connection lost";
-                    ConnectionOverlay.Visibility = Visibility.Visible;
-                }
-            });
-        });
 
         // Subscribe to auth state for User button display name
         WeakReferenceMessenger.Default.Register<AuthStatusChangedMessage>(this, (r, m) =>
@@ -285,45 +259,38 @@ public sealed partial class ShellPage : Page
         if (e.PropertyName == nameof(ShellViewModel.IsOnSearchPage))
             NavToolbar.SuppressSearchFlyout = ViewModel.IsOnSearchPage;
         else if (e.PropertyName == nameof(ShellViewModel.IsExpandedPresentation))
-            SyncTheatreFrame();
+            SyncTheatreHost();
     }
 
     /// <summary>
-    /// Navigate the TheatreFrame to VideoPlayerPage when entering an expanded
-    /// presentation, clear it when returning to Normal. The frame lives at
+    /// Navigate the TheatreHost to VideoPlayerPage when entering an expanded
+    /// presentation, clear it when returning to Normal. The host lives at
     /// RowSpan=4 / ZIndex=10 so it covers the entire shell — the user only
-    /// sees the player while expanded.
+    /// sees the player while expanded. IsNavigationStackEnabled=False — no
+    /// back-stack to manage.
     /// </summary>
-    private void SyncTheatreFrame()
+    private void SyncTheatreHost()
     {
         _logger?.LogInformation(
-            "[ShellPage.SyncTheatreFrame] expanded={Expanded} fullscreen={Fullscreen} currentSourcePageType={Current} hasContent={HasContent}",
+            "[ShellPage.SyncTheatreHost] expanded={Expanded} fullscreen={Fullscreen} currentSourcePageType={Current} hasContent={HasContent}",
             ViewModel.IsExpandedPresentation,
             ViewModel.IsFullscreenPresentation,
-            TheatreFrame.CurrentSourcePageType?.Name ?? "<none>",
-            TheatreFrame.Content is not null);
+            TheatreHost.SourcePageType?.Name ?? "<none>",
+            TheatreHost.ActivePage is not null);
         if (ViewModel.IsExpandedPresentation)
         {
-            // Check `Content` not `CurrentSourcePageType`. After
-            // `Content = null` (our exit path) the Frame keeps the
-            // CurrentSourcePageType in its back-stack metadata, so the
-            // type-check returned true and the Navigate was skipped — but
-            // the visual tree was empty. Net effect: a black overlay with
-            // no content. Checking the live Content reference avoids the
-            // stale-metadata trap.
-            if (TheatreFrame.Content is not VideoPlayerPage)
+            if (TheatreHost.ActivePage is not VideoPlayerPage)
             {
-                _logger?.LogInformation("[ShellPage] TheatreFrame.Navigate(VideoPlayerPage)");
-                TheatreFrame.Navigate(typeof(VideoPlayerPage));
+                _logger?.LogInformation("[ShellPage] TheatreHost.Navigate(VideoPlayerPage)");
+                TheatreHost.Navigate(typeof(VideoPlayerPage));
             }
         }
         else
         {
-            // Clearing the BackStack avoids the VideoPlayerPage holding a
-            // reference to the MediaPlayer surface while invisible.
-            _logger?.LogInformation("[ShellPage] TheatreFrame.Content = null (exit expanded)");
-            TheatreFrame.Content = null;
-            TheatreFrame.BackStack.Clear();
+            // Clear() disposes the VideoPlayerPage (NavigationCacheMode.Disabled)
+            // and releases the MediaPlayer surface in one call.
+            _logger?.LogInformation("[ShellPage] TheatreHost.Clear() (exit expanded)");
+            TheatreHost.Clear();
         }
     }
 
@@ -483,6 +450,11 @@ public sealed partial class ShellPage : Page
 
         // FPS overlay — always available, toggled with Ctrl+Shift+F
         _uiHealthMonitor = new Services.UiHealthMonitor(DispatcherQueue, Ioc.Default.GetService<ILogger<Services.UiHealthMonitor>>());
+        // Start the monitor unconditionally so the 16 ms tick observes GC
+        // collections even when the overlay is hidden — required for
+        // NavigationDiagnostics' [gc] log ring to fill. The visible overlay is
+        // still gated on Ctrl+Shift+F; this just keeps the sampler alive.
+        _uiHealthMonitor.Start();
 
         _uiHealthOverlay = new Controls.Diagnostics.UiHealthOverlay();
         _uiHealthOverlay.Attach(_uiHealthMonitor);
@@ -655,7 +627,7 @@ public sealed partial class ShellPage : Page
 
     private void NavToolbar_SearchQuerySubmitted(NavigationToolbar sender, string queryText)
     {
-        ViewModel.Search(queryText);
+        ViewModel.Omnibar.Search(queryText);
     }
 
     private async void NavToolbar_SearchTextChanged(NavigationToolbar sender, string text)
@@ -663,23 +635,23 @@ public sealed partial class ShellPage : Page
         // Async-void boundary: this is a WinUI event handler, the standard
         // place for it. The VM method is Task-returning so it can be unit-
         // tested and the await flows back here.
-        try { await ViewModel.OnSearchTextChangedAsync(text); }
+        try { await ViewModel.Omnibar.OnSearchTextChangedAsync(text); }
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[ShellPage] OnSearchTextChanged failed: {ex}"); }
     }
 
     private void NavToolbar_SearchSuggestionChosen(NavigationToolbar sender, object item)
     {
-        ViewModel.OnSuggestionChosen(item);
+        ViewModel.Omnibar.OnSuggestionChosen(item);
     }
 
     private void NavToolbar_SearchRetryRequested(NavigationToolbar sender, RoutedEventArgs args)
     {
-        ViewModel.RetrySearchSuggestions();
+        ViewModel.Omnibar.RetrySearchSuggestions();
     }
 
     private void NavToolbar_SearchActionButtonClicked(NavigationToolbar sender, Wavee.UI.Contracts.SearchSuggestionItem item)
     {
-        ViewModel.OnSuggestionActionClicked(item);
+        ViewModel.Omnibar.OnSuggestionActionClicked(item);
     }
 
     private async void SidebarControl_PinButtonClicked(object? sender, Controls.Sidebar.SidebarItemModel model)
@@ -697,10 +669,18 @@ public sealed partial class ShellPage : Page
         var openInNewTab = NavigationHelpers.IsCtrlPressed() ||
                            e.PointerUpdateKind == PointerUpdateKind.MiddleButtonReleased;
 
+        // Diagnostic click-intent latch for the navigation-health report.
+        // Tag is the most specific label we have (e.g. "Library", "Playlist",
+        // or a spotify:* pinned URI); fall back to display text. Any surface
+        // this handler reaches eventually calls NavigationHelpers.Open*.
+        var clickLabel = string.IsNullOrEmpty(model.Tag) ? (model.Text ?? "Unknown") : model.Tag;
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent(
+            "Sidebar." + clickLabel + (openInNewTab ? ".NewTab" : ""));
+
         if (model.Tag is string tag)
         {
             // Check if we're already on LibraryPage for library sub-items
-            var currentPage = ViewModel.SelectedTabItem?.ContentFrame?.Content;
+            var currentPage = ViewModel.SelectedTabItem?.ContentHost?.ActivePage;
             var isOnLibraryPage = currentPage is LibraryPage;
 
             switch (tag)
@@ -857,16 +837,13 @@ public sealed partial class ShellPage : Page
     {
         if (_uiHealthOverlay == null) return;
 
-        if (_uiHealthOverlay.Visibility == Visibility.Collapsed)
-        {
-            _uiHealthMonitor?.Start();
-            _uiHealthOverlay.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            _uiHealthOverlay.Visibility = Visibility.Collapsed;
-            _uiHealthMonitor?.Stop();
-        }
+        // Monitor runs always (see ctor) so the [gc] log keeps capturing
+        // collections when the overlay is hidden. The hotkey only toggles
+        // visibility of the render layer.
+        _uiHealthOverlay.Visibility =
+            _uiHealthOverlay.Visibility == Visibility.Collapsed
+                ? Visibility.Visible
+                : Visibility.Collapsed;
         args.Handled = true;
     }
 

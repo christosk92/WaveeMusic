@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -17,9 +17,9 @@ using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
-using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.AvatarStack;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.HeroHeader;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
@@ -34,10 +34,11 @@ using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
+using Wavee.UI.WinUI.ViewModels.Playlist;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipant, IDisposable, IContentPageHost
+public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IContentPageHost
 {
     private const int PlaylistCoverDecodeSize = 280;
 
@@ -86,7 +87,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     FrameworkLayer IContentPageHost.CrossfadeLayer => FrameworkLayer.Composition;
     string IContentPageHost.PageIdForLogging => $"playlist:{XfadeLog.Tag(ViewModel.PlaylistId)}";
     bool IContentPageHost.IsLoading => ViewModel.IsLoading;
-    bool IContentPageHost.HasContent => !string.IsNullOrEmpty(ViewModel.PlaylistName);
+    bool IContentPageHost.HasContent => !string.IsNullOrEmpty(ViewModel.Header.PlaylistName);
 
     public PlaylistPage()
     {
@@ -118,14 +119,14 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         // row content from rendering during a binding-propagation race.
         TrackGrid.AddedByFormatter = item =>
         {
-            if (!ViewModel.ShouldShowAddedByColumn) return Controls.TrackDataGrid.AddedByCellInfo.Empty;
+            if (!ViewModel.Header.ShouldShowAddedByColumn) return Controls.TrackDataGrid.AddedByCellInfo.Empty;
 
             var dto = item is PlaylistTrackDto direct
                 ? direct
                 : (item is LazyTrackItem lz ? lz.Data as PlaylistTrackDto : null);
             if (dto is null || string.IsNullOrEmpty(dto.AddedBy)) return Controls.TrackDataGrid.AddedByCellInfo.Empty;
 
-            var hasProfile = ViewModel.TryGetAddedByProfile(dto.AddedBy, out var profile);
+            var hasProfile = ViewModel.Header.TryGetAddedByProfile(dto.AddedBy, out var profile);
             var label = hasProfile && !string.IsNullOrWhiteSpace(profile?.DisplayName)
                 ? profile.DisplayName
                 : "@" + dto.AddedBy;
@@ -140,10 +141,10 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             var items = PlaylistContextMenuBuilder.Build(new PlaylistMenuContext
             {
                 PlaylistId = ViewModel.PlaylistId,
-                PlaylistName = ViewModel.PlaylistName ?? string.Empty,
-                IsOwner = ViewModel.IsOwner,
-                PlayCommand = ViewModel.PlayAllCommand,
-                ShuffleCommand = ViewModel.ShuffleCommand
+                PlaylistName = ViewModel.Header.PlaylistName ?? string.Empty,
+                IsOwner = ViewModel.Header.IsOwner,
+                PlayCommand = ViewModel.TrackList.PlayAllCommand,
+                ShuffleCommand = ViewModel.TrackList.ShuffleCommand
             });
             ContextMenuHost.Show(LeftColumnHost, items, e.GetPosition(LeftColumnHost));
             e.Handled = true;
@@ -160,16 +161,23 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         // Editorial / radio playlists don't carry added-at timestamps — hide the whole
         // Date Added column when the loaded tracks have none. Also watch HeaderImageUrl
         // so the composition backdrop reloads when the ViewModel's detail arrives.
+        // After the decomposition, the per-VM PropertyChanged streams fork: the parent
+        // owns IsLoading / HasError, the header owns the envelope-projected properties
+        // (Name, Image, HeaderImageUrl, LayoutMode, Description), the track list owns
+        // HasAnyAddedAt. Each subscription only listens for the properties that live
+        // on the corresponding child.
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        ViewModel.Header.PropertyChanged += ViewModel_Header_PropertyChanged;
+        ViewModel.TrackList.PropertyChanged += ViewModel_TrackList_PropertyChanged;
         // Rebuild the avatar stack visual whenever the resolved Collaborators
         // collection mutates (full clear / refill on each load completion).
-        ViewModel.Collaborators.CollectionChanged += Collaborators_CollectionChanged;
+        ViewModel.Header.Collaborators.CollectionChanged += Collaborators_CollectionChanged;
 
         // Re-push AddedBy cell content onto realized rows once the VM finishes
         // resolving display names + avatars. Without this hook the cells stay
         // on the bare-id "@…" fallback because the imperative formatter only
         // runs at row materialization, not when the source DTO mutates.
-        ViewModel.AddedByResolved += ViewModel_AddedByResolved;
+        ViewModel.Header.AddedByResolved += ViewModel_AddedByResolved;
         ApplyDateAddedColumnVisibility();
         RebuildDescriptionInlines();
 
@@ -180,7 +188,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         // Seed the VM with the current theme so palette brushes are correct as
         // soon as the data lands. ActualThemeChanged keeps them in sync from
         // there. Mirrors AlbumPage.
-        ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
+        ViewModel.Header.ApplyTheme(ActualTheme == ElementTheme.Dark);
     }
 
     // ── Crossfade ──
@@ -189,6 +197,11 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     {
         AttachParallax();
         AttachShyHeader();
+
+        // Left-column overflow handling — see AlbumPage for the full rationale.
+        if (PageScrollView is not null)
+            PageScrollView.SizeChanged += PageScrollView_SizeChangedForLeftScroll;
+        UpdateLeftScrollableMaxHeight();
     }
 
     private void PlaylistPage_Unloaded(object sender, RoutedEventArgs e)
@@ -196,8 +209,54 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         PageController.IsNavigatingAway = true;
         DetachShyHeader();
         DetachParallax();
+        if (PageScrollView is not null)
+            PageScrollView.SizeChanged -= PageScrollView_SizeChangedForLeftScroll;
         _heroImageSurface?.Dispose();
         _heroImageSurface = null;
+    }
+
+    // ── Left-column overflow: sticky top + scrollable bottom ─────────────────
+    //
+    // Mirrors AlbumPage. LeftPinnedZone (cover + title + owner/meta + primary
+    // CTAs) is always visible. Everything below it lives inside
+    // LeftScrollableZone, whose MaxHeight caps at viewport − pinned − padding
+    // so it scrolls in place rather than getting clipped by the sticky parallax
+    // region.
+
+    private void PageScrollView_SizeChangedForLeftScroll(object sender, SizeChangedEventArgs e)
+        => UpdateLeftScrollableMaxHeight();
+
+    private void LeftPinnedZone_SizeChanged(object sender, SizeChangedEventArgs e)
+        => UpdateLeftScrollableMaxHeight();
+
+    private void LeftScrollableZone_ViewChanged(ScrollView sender, object args)
+        => UpdateLeftScrollableFadeVisibility();
+
+    private void UpdateLeftScrollableMaxHeight()
+    {
+        if (LeftPinnedZone is null || LeftScrollableZone is null || PageScrollView is null)
+            return;
+
+        const double bottomBreathingRoom = 24;
+        const double minScrollableHeight = 120;
+
+        var available = PageScrollView.ActualHeight
+                        - LeftPinnedZone.ActualHeight
+                        - bottomBreathingRoom;
+        LeftScrollableZone.MaxHeight = System.Math.Max(minScrollableHeight, available);
+        UpdateLeftScrollableFadeVisibility();
+    }
+
+    private void UpdateLeftScrollableFadeVisibility()
+    {
+        if (LeftScrollableZone is null || LeftScrollableFade is null) return;
+
+        var sv = LeftScrollableZone;
+        var overflows = sv.ExtentHeight > sv.ViewportHeight + 0.5;
+        var atBottom = sv.VerticalOffset >= sv.ScrollableHeight - 0.5;
+        LeftScrollableFade.Visibility = (overflows && !atBottom)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     // ── Sticky-left composition binding ─────────────────────────────────────
@@ -387,31 +446,41 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         if (_isDisposed)
             return;
 
-        if (ev.PropertyName == nameof(PlaylistViewModel.HasAnyAddedAt))
-            ApplyDateAddedColumnVisibility();
-        else if (ev.PropertyName == nameof(PlaylistViewModel.HeaderImageUrl))
+        // Parent only owns IsLoading + HasError + ErrorMessage + PlaylistId. The
+        // envelope-projected properties (Name, Image, HeaderImageUrl, LayoutMode,
+        // Description) moved to the header VM and are handled by
+        // ViewModel_Header_PropertyChanged below. HasAnyAddedAt moved to the
+        // track list VM and is handled by ViewModel_TrackList_PropertyChanged.
+        if (ev.PropertyName == nameof(PlaylistViewModel.IsLoading))
+            PageController.OnIsLoadingChanged();
+    }
+
+    private void ViewModel_Header_PropertyChanged(object? sender, PropertyChangedEventArgs ev)
+    {
+        if (_isDisposed)
+            return;
+
+        if (ev.PropertyName == nameof(PlaylistHeaderViewModel.HeaderImageUrl))
         {
             ApplyHeaderBackground();
-            if (!string.IsNullOrEmpty(ViewModel.HeaderImageUrl))
+            if (!string.IsNullOrEmpty(ViewModel.Header.HeaderImageUrl))
                 QueueVisualSettlingPass();
         }
-        else if (ev.PropertyName == nameof(PlaylistViewModel.LayoutMode))
+        else if (ev.PropertyName == nameof(PlaylistHeaderViewModel.LayoutMode))
             OnLayoutModeChanged();
-        else if (ev.PropertyName == nameof(PlaylistViewModel.PlaylistImageUrl))
+        else if (ev.PropertyName == nameof(PlaylistHeaderViewModel.PlaylistImageUrl))
         {
             _retriedCoverImageUrl = null;
             _logger?.LogDebug(
                 "Playlist cover URL changed: playlist={PlaylistId}, image={ImageUrl}, header={HeaderImageUrl}, layout={LayoutMode}",
                 ViewModel.PlaylistId,
-                ViewModel.PlaylistImageUrl ?? "<null>",
-                ViewModel.HeaderImageUrl ?? "<null>",
-                ViewModel.LayoutMode);
+                ViewModel.Header.PlaylistImageUrl ?? "<null>",
+                ViewModel.Header.HeaderImageUrl ?? "<null>",
+                ViewModel.Header.LayoutMode);
         }
-        else if (ev.PropertyName == nameof(PlaylistViewModel.PlaylistDescription))
+        else if (ev.PropertyName == nameof(PlaylistHeaderViewModel.PlaylistDescription))
             RebuildDescriptionInlines();
-        else if (ev.PropertyName == nameof(PlaylistViewModel.IsLoading))
-            PageController.OnIsLoadingChanged();
-        else if (ev.PropertyName == nameof(PlaylistViewModel.PlaylistName))
+        else if (ev.PropertyName == nameof(PlaylistHeaderViewModel.PlaylistName))
         {
             // Warm-cache / fresh-create path: PlaylistStore emits Ready directly,
             // IsLoading never transitions false→true→false, OnIsLoadingChanged
@@ -421,9 +490,18 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             // Re-attempt the schedule the moment the name lands — at this point
             // HasContent is true, IsLoading is false, and ScheduleCrossfade fades
             // out the stuck outer shimmer.
-            if (!string.IsNullOrEmpty(ViewModel.PlaylistName))
+            if (!string.IsNullOrEmpty(ViewModel.Header.PlaylistName))
                 PageController.TryShowContentNow();
         }
+    }
+
+    private void ViewModel_TrackList_PropertyChanged(object? sender, PropertyChangedEventArgs ev)
+    {
+        if (_isDisposed)
+            return;
+
+        if (ev.PropertyName == nameof(Wavee.UI.WinUI.ViewModels.Playlist.PlaylistTrackListViewModel.HasAnyAddedAt))
+            ApplyDateAddedColumnVisibility();
     }
 
     private void Collaborators_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -456,15 +534,15 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         if (string.Equals(_retriedCoverImageUrl, url, StringComparison.Ordinal))
             _retriedCoverImageUrl = null;
 
-        if (ViewModel.LayoutMode == PlaylistLayoutMode.Cover)
+        if (ViewModel.Header.LayoutMode == PlaylistLayoutMode.Cover)
             CoverHeroBlock.Opacity = 1;
 
         _logger?.LogDebug(
             "Playlist cover image loaded: playlist={PlaylistId}, url={Url}, header={HeaderImageUrl}, layout={LayoutMode}",
             ViewModel.PlaylistId,
             url ?? "<null>",
-            ViewModel.HeaderImageUrl ?? "<null>",
-            ViewModel.LayoutMode);
+            ViewModel.Header.HeaderImageUrl ?? "<null>",
+            ViewModel.Header.LayoutMode);
     }
 
     private void CoverImage_ImageFailed(object sender, ExceptionRoutedEventArgs e)
@@ -476,10 +554,10 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         _logger?.LogWarning(
             "Playlist cover image failed: playlist={PlaylistId}, rawUrl={RawUrl}, resolvedUrl={Url}, header={HeaderImageUrl}, layout={LayoutMode}, error={Error}",
             ViewModel.PlaylistId,
-            ViewModel.PlaylistImageUrl ?? "<null>",
+            ViewModel.Header.PlaylistImageUrl ?? "<null>",
             url ?? "<null>",
-            ViewModel.HeaderImageUrl ?? "<null>",
-            ViewModel.LayoutMode,
+            ViewModel.Header.HeaderImageUrl ?? "<null>",
+            ViewModel.Header.LayoutMode,
             string.IsNullOrWhiteSpace(e.ErrorMessage) ? "<no message>" : e.ErrorMessage);
 
         if (string.IsNullOrWhiteSpace(url) ||
@@ -518,7 +596,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
     private string? ResolveCurrentCoverImageUrl()
     {
-        var raw = ViewModel.PlaylistImageUrl;
+        var raw = ViewModel.Header.PlaylistImageUrl;
         return SpotifyImageHelper.ToHttpsUrl(raw) ?? raw;
     }
 
@@ -530,8 +608,10 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         Loaded -= PlaylistPage_Loaded;
         Unloaded -= PlaylistPage_Unloaded;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
-        ViewModel.Collaborators.CollectionChanged -= Collaborators_CollectionChanged;
-        ViewModel.AddedByResolved -= ViewModel_AddedByResolved;
+        ViewModel.Header.PropertyChanged -= ViewModel_Header_PropertyChanged;
+        ViewModel.TrackList.PropertyChanged -= ViewModel_TrackList_PropertyChanged;
+        ViewModel.Header.Collaborators.CollectionChanged -= Collaborators_CollectionChanged;
+        ViewModel.Header.AddedByResolved -= ViewModel_AddedByResolved;
         CoverImage.ImageFailed -= CoverImage_ImageFailed;
         CoverImage.ImageOpened -= CoverImage_ImageOpened;
         HeaderBackgroundHost.Loaded -= HeaderBackgroundHost_Loaded;
@@ -561,7 +641,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         // Re-derive the palette brushes (and BannerPrimary/AccentColor) for
         // the new theme so AnimatedHeroBackground can re-pick its
         // tier-appropriate colors.
-        ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
+        ViewModel.Header.ApplyTheme(ActualTheme == ElementTheme.Dark);
     }
 
     /// <summary>
@@ -606,7 +686,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         if (TrackGrid.Columns is null) return;
         var dateCol = TrackGrid.Columns.FirstOrDefault(c => c.Key == "DateAdded");
         if (dateCol is null) return;
-        dateCol.IsVisible = ViewModel.HasAnyAddedAt;
+        dateCol.IsVisible = ViewModel.TrackList.HasAnyAddedAt;
     }
 
     private bool TryHandlePendingPlaylistArtConnectedAnimation()
@@ -619,7 +699,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         // has nowhere to land. Cancel + fall through to standard crossfade.
         // Banner→banner card-to-banner stretchy animation is a future
         // enhancement; this path keeps the page render clean today.
-        if (ViewModel.LayoutMode != PlaylistLayoutMode.Cover)
+        if (ViewModel.Header.LayoutMode != PlaylistLayoutMode.Cover)
         {
             ConnectedAnimationHelper.CancelPending();
             _logger?.LogDebug(
@@ -633,28 +713,33 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         PageController.MarkContentShownDirectly();
         TwoColumnGrid.Opacity = 1;
 
-        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.playlist.updateLayout"))
+        // Defer TryStartAnimation to the next render frame instead of forcing a
+        // synchronous PlaylistArtContainer.UpdateLayout() pass (~50-70 ms on
+        // cross-playlist navs because PrefillFrom just invalidated the hero).
+        // Layout completes naturally between this turn and CompositionTarget.Rendering;
+        // destination rect is then accurate without forced measure+arrange.
+        // One-frame slip (~16 ms at 60 Hz) is absorbed by the 250 ms morph.
+        var capturedContainer = PlaylistArtContainer;
+        var capturedPlaylistId = ViewModel.PlaylistId;
+        EventHandler<object>? onNextFrame = null;
+        onNextFrame = (_, _) =>
         {
-            // Element-scoped UpdateLayout: walks up the parent chain to lay
-            // out enough to position PlaylistArtContainer for the connected
-            // animation, but skips siblings (side rail, action buttons,
-            // description, TrackDataGrid).
-            PlaylistArtContainer.UpdateLayout();
-        }
-        var started = ConnectedAnimationHelper.TryStartAnimation(
-            ConnectedAnimationHelper.PlaylistArt,
-            PlaylistArtContainer);
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= onNextFrame;
+            var started = ConnectedAnimationHelper.TryStartAnimation(
+                ConnectedAnimationHelper.PlaylistArt,
+                capturedContainer);
+            _logger?.LogDebug(
+                "[xfade][playlist:{Id}] connected.playlistArt action={Action}",
+                XfadeLog.Tag(capturedPlaylistId), started ? "started-deferred" : "miss-deferred");
+        };
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += onNextFrame;
 
-        _logger?.LogDebug(
-            "[xfade][playlist:{Id}] connected.playlistArt action={Action}",
-            XfadeLog.Tag(ViewModel.PlaylistId), started ? "started" : "miss");
         return true;
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.playlist.onNavigatedTo");
-        base.OnNavigatedTo(e);
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.playlist.onEntered");
 
         // Suppress the shy-header evaluator through the entire navigation
         // reset. Without this, ScrollView.ViewChanged events queued by the
@@ -671,7 +756,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
         var navigationRevision = ++_navigationRevision;
 
-        LoadParameter(e.Parameter);
+        LoadParameter(parameter, mode);
 
         // Scroll to top on every nav. Without this, navigating from a
         // deep-scrolled playlist A to playlist B would leave the user mid-
@@ -698,9 +783,9 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     // instead. Without this override, clicking a different playlist from the
     // player bar / sidebar / search while PlaylistPage is the active tab content
     // silently drops the new parameter.
-    public void RefreshWithParameter(object? parameter) => LoadParameter(parameter);
+    public void RefreshWithParameter(object? parameter) => LoadParameter(parameter, PageHostNavigationMode.Refresh);
 
-    private async void LoadParameter(object? parameter)
+    private async void LoadParameter(object? parameter, PageHostNavigationMode mode = PageHostNavigationMode.New)
     {
         // Snapshot the nav revision so a follow-on navigation that re-enters
         // LoadParameter can supersede this one cleanly at the Task.Yield()
@@ -732,10 +817,14 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         // Reset shimmer / content visual state for the fresh load — mirrors
         // ArtistPage / AlbumPage so the next playlist fades in cleanly instead
         // of inheriting the previous playlist's already-shown content layer.
+        // On cache-hit (Back/Forward), the visual tree is already realised and
+        // populated — skip the shimmer reset to avoid flashing a skeleton over
+        // good pixels.
         var hasPendingPlaylistArtAnimation =
             ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.PlaylistArt);
 
-        PageController.ResetForNewLoad();
+        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward)
+            PageController.ResetForNewLoad();
 
         // Yield once between the shimmer flip and the Activate / PrefillFrom
         // / data-fetch chain below. The framework runs OnNavigatedTo →
@@ -771,7 +860,12 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             else
             {
                 ViewModel.Activate(nav.Uri);
-                ViewModel.PrefillFrom(nav);
+                // clearMissing: true → if nav lacks ImageUrl/Subtitle those
+                // fields go null/empty rather than keeping the previous
+                // playlist's values. Prevents stale-cover-with-new-tracks
+                // bleed-through when navigating between two playlists whose
+                // source cards don't carry every prefill field.
+                ViewModel.PrefillFrom(nav, clearMissing: true);
             }
         }
         else if (parameter is string rawId && !string.IsNullOrWhiteSpace(rawId))
@@ -851,16 +945,12 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         sb.Begin();
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnLeaving()
     {
-        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.playlist.onNavigatedFrom");
-        base.OnNavigatedFrom(e);
-        // Hibernate also releases FilteredTracks / Collaborators / SessionControlChips
-        // — bound collections that keep realized item containers alive while this
-        // cached page sits invisible in the Frame cache. Activate's isNewPlaylist
-        // branch (gated on _tracksLoadedFor, which Hibernate reset) re-seeds the
-        // shimmer placeholders before the warm PlaylistStore value lands.
-        TrimForNavigationCache();
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.playlist.onLeaving");
+        // Trim work (Hibernate + bound-collection release + Bindings.StopTracking)
+        // is deferred ~1 s by TabBarItem's central scheduler — calling it here
+        // would move the cost from pageHostNavigating into onLeaving.
     }
 
     public void TrimForNavigationCache()
@@ -872,23 +962,39 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         _lastRestoredPlaylistId = ViewModel.PlaylistId;
         ViewModel.Hibernate();
         ReleaseHeaderBackgroundSurface();
-        // Stop the sticky-column ExpressionAnimation. PlaylistPage_Unloaded
-        // also calls this, but under NavigationCacheMode=Enabled the page
-        // sits in the Frame's cache while invisible and Unloaded doesn't
-        // reliably fire on navigate-away — leaving the composition-thread
-        // animation evaluating against the now-detached ScrollView until the
-        // page is finally evicted. AttachParallax is idempotent and runs
-        // again from PlaylistPage_Loaded on re-entry.
-        DetachParallax();
+        // NOTE: do NOT DetachParallax here. Under PageHost the page is kept
+        // rooted with Visibility=Collapsed on leave (not detached from the
+        // visual tree like Frame did) — the composition ExpressionAnimation
+        // can safely keep evaluating against the still-rooted ScrollView while
+        // the page is hidden. Detaching here would break sticky on the next
+        // cache-hit re-entry because Loaded does NOT re-fire under PageHost
+        // (page Visibility flips but it never leaves the tree). DetachParallax
+        // stays in PlaylistPage_Unloaded for true teardown.
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
         // sibling is no longer rooted by the (singleton-store-subscribed) VM —
         // without this the entire page tree is pinned across navigations.
         Bindings?.StopTracking();
     }
 
+    // Micro-step trim — see AlbumPage equivalent for the rationale.
+    IEnumerable<Action> INavigationCacheMemoryParticipant.GetTrimMicroSteps()
+    {
+        if (_trimmedForNavigationCache)
+            yield break;
+
+        yield return () =>
+        {
+            _trimmedForNavigationCache = true;
+            _lastRestoredPlaylistId = ViewModel.PlaylistId;
+        };
+        yield return () => ViewModel.Hibernate();
+        yield return ReleaseHeaderBackgroundSurface;
+        yield return () => Bindings?.StopTracking();
+    }
+
     public void RestoreFromNavigationCache()
     {
-        // No-op by design. OnNavigatedTo fires next on the same Frame.Navigate
+        // No-op by design. OnEntered fires next on the same PageHost.Navigate
         // dispatch with the authoritative parameter and routes through LoadParameter,
         // which re-attaches bindings (Bindings.Update at its top, guarded by
         // _trimmedForNavigationCache) and runs Activate. Calling LoadParameter here
@@ -936,7 +1042,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     {
         if (_isDisposed) return;
 
-        FrameworkElement? target = ViewModel.LayoutMode switch
+        FrameworkElement? target = ViewModel.Header.LayoutMode switch
         {
             PlaylistLayoutMode.Banner => HeroBannerRow,
             PlaylistLayoutMode.Cover  => CoverHeroBlock,
@@ -1107,7 +1213,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     {
         if (_heroSurfaceBrush == null || _heroCompositor == null) return;
 
-        var url = ViewModel.HeaderImageUrl;
+        var url = ViewModel.Header.HeaderImageUrl;
 
         // No-op if the URL hasn't changed — PropertyChanged can fire redundantly
         // when the ViewModel re-assigns the same value during a refresh cycle.
@@ -1162,7 +1268,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         // notification flips AnimatedHeroBackground.Visibility on via its
         // existing InverseBoolToVisibility binding — user gets the palette
         // gradient instead of a blank banner.
-        ViewModel.HeaderImageUrl = null;
+        ViewModel.Header.HeaderImageUrl = null;
     }
 
     private void PlaylistSplitter_ResizeCompleted(object? sender, GridSplitterResizeCompletedEventArgs e)
@@ -1229,7 +1335,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         if (DescriptionMoreLabel != null) DescriptionMoreLabel.Text = "More...";
 
         DescriptionRichText.Blocks.Clear();
-        var html = ViewModel?.PlaylistDescription;
+        var html = ViewModel?.Header.PlaylistDescription;
         if (string.IsNullOrEmpty(html)) return;
 
         var paragraph = new Paragraph();
@@ -1275,14 +1381,14 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
     private void PlaylistTitleEditor_Committed(object? sender, string newName)
     {
-        if (ViewModel.RenameCommand.CanExecute(newName))
-            ViewModel.RenameCommand.Execute(newName);
+        if (ViewModel.Mutations.RenameCommand.CanExecute(newName))
+            ViewModel.Mutations.RenameCommand.Execute(newName);
     }
 
     private void PlaylistDescriptionEditor_Committed(object? sender, string newDescription)
     {
-        if (ViewModel.UpdateDescriptionCommand.CanExecute(newDescription))
-            ViewModel.UpdateDescriptionCommand.Execute(newDescription);
+        if (ViewModel.Mutations.UpdateDescriptionCommand.CanExecute(newDescription))
+            ViewModel.Mutations.UpdateDescriptionCommand.Execute(newDescription);
     }
 
     // ── Cover photo edit (Cover layout mode only) ────────────────────────────
@@ -1301,7 +1407,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     private async void CoverEditOverlay_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
         // Don't fade away while an upload is in flight — the spinner needs to stay visible.
-        if (ViewModel.IsUploadingCover) return;
+        if (ViewModel.Mutations.IsUploadingCover) return;
         await CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
             .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(120))
             .StartAsync(CoverEditOverlay);
@@ -1310,7 +1416,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     private async void CoverEditOverlay_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
         e.Handled = true;
-        if (!ViewModel.IsOwner || ViewModel.IsUploadingCover) return;
+        if (!ViewModel.Header.IsOwner || ViewModel.Mutations.IsUploadingCover) return;
 
         var file = await PickCoverFileAsync();
         if (file is null) return;
@@ -1342,7 +1448,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
                 return;
             }
 
-            await ViewModel.ChangeCoverCommand.ExecuteAsync(jpegBytes);
+            await ViewModel.Mutations.ChangeCoverCommand.ExecuteAsync(jpegBytes);
         }
         catch
         {
@@ -1358,7 +1464,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     private void CoverEditOverlay_RightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
     {
         e.Handled = true;
-        if (!ViewModel.IsOwner) return;
+        if (!ViewModel.Header.IsOwner) return;
 
         var flyout = new MenuFlyout();
         var remove = new MenuFlyoutItem
@@ -1369,8 +1475,8 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         remove.Click += (_, _) =>
         {
             ClearCoverPreview();
-            if (ViewModel.RemoveCoverCommand.CanExecute(null))
-                ViewModel.RemoveCoverCommand.Execute(null);
+            if (ViewModel.Mutations.RemoveCoverCommand.CanExecute(null))
+                ViewModel.Mutations.RemoveCoverCommand.Execute(null);
         };
         flyout.Items.Add(remove);
         flyout.ShowAt((FrameworkElement)sender, e.GetPosition((FrameworkElement)sender));
@@ -1398,22 +1504,22 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
     private void OwnerOverflowButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement fe || !ViewModel.HasOverflowItems) return;
+        if (sender is not FrameworkElement fe || !ViewModel.Header.HasOverflowItems) return;
 
         var flyout = new MenuFlyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom };
         var addedAny = false;
 
-        if (ViewModel.CanEditCollaborative)
+        if (ViewModel.Header.CanEditCollaborative)
         {
             var toggleCollab = new MenuFlyoutItem
             {
-                Text = ViewModel.IsCollaborative ? "Make solo" : "Make collaborative",
+                Text = ViewModel.Header.IsCollaborative ? "Make solo" : "Make collaborative",
                 Icon = new FontIcon { Glyph = "" }
             };
             toggleCollab.Click += (_, _) =>
             {
-                if (ViewModel.ToggleCollaborativeCommand.CanExecute(null))
-                    ViewModel.ToggleCollaborativeCommand.Execute(null);
+                if (ViewModel.Mutations.ToggleCollaborativeCommand.CanExecute(null))
+                    ViewModel.Mutations.ToggleCollaborativeCommand.Execute(null);
             };
             flyout.Items.Add(toggleCollab);
 
@@ -1427,7 +1533,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             addedAny = true;
         }
 
-        if (ViewModel.CanAdministratePermissions && ViewModel.HasCollaborators)
+        if (ViewModel.Header.CanAdministratePermissions && ViewModel.Header.HasCollaborators)
         {
             var manage = new MenuFlyoutItem
             {
@@ -1439,7 +1545,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             addedAny = true;
         }
 
-        if (ViewModel.CanCancelMembership)
+        if (ViewModel.Header.CanCancelMembership)
         {
             if (addedAny) flyout.Items.Add(new MenuFlyoutSeparator());
             var leave = new MenuFlyoutItem
@@ -1452,7 +1558,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             addedAny = true;
         }
 
-        if (ViewModel.CanDelete)
+        if (ViewModel.Header.CanDelete)
         {
             if (addedAny) flyout.Items.Add(new MenuFlyoutSeparator());
             var delete = new MenuFlyoutItem
@@ -1477,7 +1583,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         // List the user's playlists; skip THIS one (copying a playlist to
         // itself is pointless). Rebuilt on every open so renames / creates /
         // deletes are picked up while the page sits in the nav cache.
-        foreach (var destination in ViewModel.Playlists)
+        foreach (var destination in ViewModel.TrackList.Playlists)
         {
             if (string.IsNullOrEmpty(destination.Id)) continue;
             if (string.Equals(destination.Id, ViewModel.PlaylistId, StringComparison.Ordinal)) continue;
@@ -1490,7 +1596,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             };
             mi.Click += (s, args) =>
             {
-                _ = ViewModel.AddPlaylistToOtherPlaylistCommand.ExecuteAsync(captured);
+                _ = ViewModel.TrackList.AddPlaylistToOtherPlaylistCommand.ExecuteAsync(captured);
                 Ioc.Default.GetService<INotificationService>()?.Show(
                     $"Added to {captured.Name ?? "playlist"}",
                     NotificationSeverity.Success,
@@ -1517,7 +1623,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
         CollaboratorStackHost.Children.Clear();
 
-        var members = ViewModel.Collaborators;
+        var members = ViewModel.Header.Collaborators;
         if (members.Count == 0) return;
 
         var visible = Math.Min(members.Count, MaxVisible);
@@ -1544,7 +1650,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         string labelText;
         if (members.Count >= 2)
             labelText = $"{members.Count} collaborators";
-        else if (ViewModel.IsCollaborative)
+        else if (ViewModel.Header.IsCollaborative)
             labelText = "Open to collaboration";
         else
             labelText = string.Empty;
@@ -1583,7 +1689,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         // avatars rather than the outer hover-pill (which has padding).
         var anchor = (FrameworkElement?)CollaboratorStackHost ?? (sender as FrameworkElement);
         if (anchor is null) return;
-        ShowMembersFlyout(anchor, adminMode: ViewModel.CanAdministratePermissions);
+        ShowMembersFlyout(anchor, adminMode: ViewModel.Header.CanAdministratePermissions);
         e.Handled = true;
     }
 
@@ -1612,11 +1718,11 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         var content = new StackPanel { Spacing = 8, MinWidth = 300 };
         content.Children.Add(new TextBlock
         {
-            Text = $"Members ({ViewModel.Collaborators.Count})",
+            Text = $"Members ({ViewModel.Header.Collaborators.Count})",
             Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"]
         });
 
-        foreach (var m in ViewModel.Collaborators)
+        foreach (var m in ViewModel.Header.Collaborators)
             content.Children.Add(BuildMemberRow(m, adminMode));
 
         flyout.Content = content;
@@ -1706,8 +1812,8 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
                 var captured = role;
                 item.Click += (_, _) =>
                 {
-                    if (ViewModel.SetMemberRoleCommand.CanExecute(null))
-                        ViewModel.SetMemberRoleCommand.Execute((member.UserId, captured));
+                    if (ViewModel.Header.SetMemberRoleCommand.CanExecute(null))
+                        ViewModel.Header.SetMemberRoleCommand.Execute((member.UserId, captured));
                 };
                 memberMenu.Items.Add(item);
             }
@@ -1719,8 +1825,8 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
             };
             remove.Click += (_, _) =>
             {
-                if (ViewModel.RemoveMemberCommand.CanExecute(member.UserId))
-                    ViewModel.RemoveMemberCommand.Execute(member.UserId);
+                if (ViewModel.Header.RemoveMemberCommand.CanExecute(member.UserId))
+                    ViewModel.Header.RemoveMemberCommand.Execute(member.UserId);
             };
             memberMenu.Items.Add(remove);
             more.Flyout = memberMenu;
@@ -1769,7 +1875,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
 
         FrameworkElement BuildContent()
         {
-            var link = ViewModel.LatestInviteLink;
+            var link = ViewModel.Header.LatestInviteLink;
             var inner = new StackPanel { Spacing = 8 };
 
             if (link is null)
@@ -1782,7 +1888,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
                 };
                 generate.Click += async (_, _) =>
                 {
-                    await ViewModel.CreateInviteLinkCommand.ExecuteAsync(TimeSpan.FromDays(7));
+                    await ViewModel.Header.CreateInviteLinkCommand.ExecuteAsync(TimeSpan.FromDays(7));
                     contentSlot.Content = BuildContent();
                 };
                 inner.Children.Add(generate);
@@ -1831,7 +1937,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
                 var regen = new HyperlinkButton { Content = "Regenerate", Padding = new Thickness(0) };
                 regen.Click += async (_, _) =>
                 {
-                    await ViewModel.CreateInviteLinkCommand.ExecuteAsync(TimeSpan.FromDays(7));
+                    await ViewModel.Header.CreateInviteLinkCommand.ExecuteAsync(TimeSpan.FromDays(7));
                     contentSlot.Content = BuildContent();
                 };
                 meta.Children.Add(regen);
@@ -1852,7 +1958,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         var dialog = new ContentDialog
         {
             Title = "Leave playlist?",
-            Content = $"You'll lose access to \"{ViewModel.PlaylistName}\". You can rejoin if the owner shares a new invite link.",
+            Content = $"You'll lose access to \"{ViewModel.Header.PlaylistName}\". You can rejoin if the owner shares a new invite link.",
             PrimaryButtonText = "Leave",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
@@ -1861,9 +1967,9 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         var result = await dialog.ShowAsync();
         if (result != ContentDialogResult.Primary) return;
 
-        if (ViewModel.LeavePlaylistCommand.CanExecute(null))
+        if (ViewModel.Header.LeavePlaylistCommand.CanExecute(null))
         {
-            await ViewModel.LeavePlaylistCommand.ExecuteAsync(null);
+            await ViewModel.Header.LeavePlaylistCommand.ExecuteAsync(null);
             NavigationHelpers.OpenHome();
         }
     }
@@ -1876,7 +1982,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
     private async void TrackGrid_TracksReorderRequested(int fromIndex, int length, int toIndex)
     {
         if (ViewModel is null) return;
-        await ViewModel.ReorderTracksAsync(fromIndex, length, toIndex);
+        await ViewModel.TrackList.ReorderTracksAsync(fromIndex, length, toIndex);
     }
 
     private async System.Threading.Tasks.Task ConfirmAndDeletePlaylistAsync()
@@ -1884,7 +1990,7 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         var dialog = new ContentDialog
         {
             Title = "Delete playlist?",
-            Content = $"\"{ViewModel.PlaylistName}\" will be removed from your library. This cannot be undone.",
+            Content = $"\"{ViewModel.Header.PlaylistName}\" will be removed from your library. This cannot be undone.",
             PrimaryButtonText = "Delete",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
@@ -1896,9 +2002,9 @@ public sealed partial class PlaylistPage : Page, INavigationCacheMemoryParticipa
         var result = await dialog.ShowAsync();
         if (result != ContentDialogResult.Primary) return;
 
-        if (ViewModel.DeletePlaylistCommand.CanExecute(null))
+        if (ViewModel.Mutations.DeletePlaylistCommand.CanExecute(null))
         {
-            await ViewModel.DeletePlaylistCommand.ExecuteAsync(null);
+            await ViewModel.Mutations.DeletePlaylistCommand.ExecuteAsync(null);
             // Take the user back to a safe surface — Home — after the delete lands.
             NavigationHelpers.OpenHome();
         }

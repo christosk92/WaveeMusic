@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -7,8 +7,8 @@ using CommunityToolkit.WinUI.Animations;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls.HeroHeader;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -16,7 +16,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ConcertPage : Page, ITabBarItemContent
+public sealed partial class ConcertPage : UserControl, ITabBarItemContent, IPageHostAware
 {
     private readonly ILogger? _logger;
     private bool _showingContent;
@@ -81,12 +81,11 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
         _shyHeader = null;
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnLeaving()
     {
-        base.OnNavigatedFrom(e);
+        _isNavigatingAway = true;
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
-        // sibling does not pin this page across navigations. NavCacheMode is
-        // Disabled — page is destroyed on nav-away, no Update() partner needed.
+        // sibling does not pin this page across navigations.
         Bindings?.StopTracking();
     }
 
@@ -135,10 +134,9 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
         }
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
-        _ = LoadParameterAsync(e.Parameter);
+        _ = LoadParameterAsync(parameter);
     }
 
     // Same-tab navigation between two concerts reuses this Page instance and
@@ -170,11 +168,6 @@ public sealed partial class ConcertPage : Page, ITabBarItemContent
         }
     }
 
-    protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)
-    {
-        _isNavigatingAway = true;
-        base.OnNavigatingFrom(e);
-    }
 
     // ── Click handlers ─────────────────────────────────────────────────────────
 

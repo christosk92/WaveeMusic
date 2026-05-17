@@ -465,7 +465,7 @@ public sealed partial class DebugViewModel : ObservableObject
             {
                 ExtensionKind.TrackV4 => Track.Parser.ParseFrom(bytes),
                 ExtensionKind.AlbumV4 => Album.Parser.ParseFrom(bytes),
-                ExtensionKind.ArtistV4 => Artist.Parser.ParseFrom(bytes),
+                ExtensionKind.ArtistV4 => Protocol.Metadata.Artist.Parser.ParseFrom(bytes),
                 ExtensionKind.ShowV4 => Show.Parser.ParseFrom(bytes),
                 ExtensionKind.ShowV5 => Show.Parser.ParseFrom(bytes),
                 ExtensionKind.ShowV4Base => Show.Parser.ParseFrom(bytes),

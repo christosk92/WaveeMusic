@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -16,7 +16,7 @@ using Wavee.UI.WinUI.ViewModels.Local;
 
 namespace Wavee.UI.WinUI.Views.Local;
 
-public sealed partial class LocalMovieDetailPage : Page
+public sealed partial class LocalMovieDetailPage : UserControl
 {
     public LocalMovieDetailViewModel ViewModel { get; }
 
@@ -176,12 +176,13 @@ public sealed partial class LocalMovieDetailPage : Page
         await enrichment.EnqueueAsync(uri);
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    public async void OnEntered(object? parameter, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
-        if (e.Parameter is string uri)
+        if (parameter is string uri)
             await ViewModel.LoadAsync(uri);
     }
+
+    public void OnLeaving() { }
 
     private void CastMember_CardClick(object? sender, EventArgs e)
     {

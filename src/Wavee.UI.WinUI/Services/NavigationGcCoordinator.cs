@@ -1,6 +1,7 @@
 using System;
 using System.Runtime;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace Wavee.UI.WinUI.Services;
@@ -129,6 +130,8 @@ public static class NavigationGcCoordinator
 
     private static void EndCriticalWindow(string reason)
     {
+        bool shouldDrainGc = false;
+
         lock (Gate)
         {
             if (_activeWindows > 0)
@@ -168,6 +171,33 @@ public static class NavigationGcCoordinator
                 _deferredReason = null;
                 _deferredLogger = null;
             }
+
+            shouldDrainGc = true;
+        }
+
+        // Proactive post-window Gen2 drain. Under SustainedLowLatency the
+        // runtime suppresses Gen2 (and in practice Gen0/Gen1 here too — the
+        // navigation report showed 100% of collections become Gen2 once the
+        // window closes). Without this drain the catch-up Gen2 lands on the
+        // thread that allocates next — usually the UI thread mid-click,
+        // costing ~100 ms (nav #9 in the original report was 206 ms vs ~120
+        // typical because of exactly this).
+        //
+        // - Task.Run: off the UI thread, off the Timer callback thread.
+        // - Gen2 + Optimized: the runtime decides whether the heap state
+        //   warrants the work; if not, this is a no-op. Avoids the "60 forced
+        //   compacts per session" failure mode that motivated removing earlier
+        //   blocking compacting calls in MemoryReleaseHelper.
+        // - blocking=false: Server+Background GC marks concurrently; only the
+        //   brief ephemeral suspension blocks, and it happens NOW (user is
+        //   idle just past the nav) rather than on the next click.
+        if (shouldDrainGc)
+        {
+            Task.Run(static () =>
+            {
+                try { GC.Collect(2, GCCollectionMode.Optimized, blocking: false); }
+                catch { /* best-effort */ }
+            });
         }
     }
 

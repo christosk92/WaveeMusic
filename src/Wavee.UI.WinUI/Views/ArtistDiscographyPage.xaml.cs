@@ -1,9 +1,9 @@
-using System;
+﻿using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -28,7 +28,7 @@ public sealed record DiscographyBreadcrumbItem(string Label, string? ArtistUri);
 /// each Pathfinder page is cached one layer down (HotCache), so the
 /// second visit to the same group hydrates instantly.
 /// </summary>
-public sealed partial class ArtistDiscographyPage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant
+public sealed partial class ArtistDiscographyPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware
 {
     private readonly ILogger? _logger;
     private bool _trimmedForNavigationCache;
@@ -49,12 +49,13 @@ public sealed partial class ArtistDiscographyPage : Page, ITabBarItemContent, IN
 
     public bool ReuseForParameterNavigation => true;
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
         _trimmedForNavigationCache = false;
-        LoadParameter(e.Parameter);
+        LoadParameter(parameter);
     }
+
+    public void OnLeaving() { }
 
     /// <summary>
     /// Same-tab cross-discography nav (Album → Single switch on the same
@@ -110,8 +111,10 @@ public sealed partial class ArtistDiscographyPage : Page, ITabBarItemContent, IN
         if (args.Item is not DiscographyBreadcrumbItem item) return;
         if (string.IsNullOrWhiteSpace(item.ArtistUri)) return;
 
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("Breadcrumb.Artist");
+
         // Route through NavigationHelpers so the Artist tab title / icon
-        // get re-seated correctly (rather than relying on Frame.GoBack, which
+        // get re-seated correctly (rather than relying on PageHost.GoBack, which
         // would also work for the same-tab case but doesn't handle out-of-
         // band entries like tab-restore).
         NavigationHelpers.OpenArtist(item.ArtistUri, item.Label);

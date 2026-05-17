@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Page
+<UserControl
     x:Class="Wavee.UI.WinUI.Views.PlaylistPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -15,6 +15,7 @@
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
     xmlns:winUi="using:CommunityToolkit.WinUI"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:playlistVm="using:Wavee.UI.WinUI.ViewModels.Playlist"
     xmlns:home="using:Wavee.UI.WinUI.ViewModels.Home"
     xmlns:homeViews="using:Wavee.UI.WinUI.Views.Home"
     xmlns:contracts="using:Wavee.UI.Contracts"
@@ -25,10 +26,9 @@
     x:Name="PageRoot"
     helpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
-    NavigationCacheMode="Enabled"
     Background="Transparent">
 
-    <Page.Resources>
+    <UserControl.Resources>
         <DataTemplate x:Key="EmptyPlaylistGenreChipTemplate" x:DataType="home:BrowseAllItem">
             <homeViews:BrowseChip Item="{x:Bind}"/>
         </DataTemplate>
@@ -61,7 +61,7 @@
                 </transitions:TransitionConfig.CustomScalingCalculator>
             </transitions:TransitionConfig>
         </transitions:TransitionHelper>
-    </Page.Resources>
+    </UserControl.Resources>
 
     <Grid x:Name="RootGrid" SizeChanged="RootGrid_SizeChanged">
         <!-- Responsive: driven by SizeChanged in code-behind. Loading is bound to
@@ -90,7 +90,7 @@
              Mirrors AlbumPage so playlist / album feel like the same surface.
              Opacity is baked into the brush itself; null brush ⇒ nothing renders. -->
         <Border IsHitTestVisible="False"
-                Background="{x:Bind ViewModel.PaletteBackdropBrush, Mode=OneWay}"/>
+                Background="{x:Bind ViewModel.Header.PaletteBackdropBrush, Mode=OneWay}"/>
 
         <!-- Unified page-level scroller. Wraps the banner row + the two-column
              content so the banner, left sidebar, and track table all scroll
@@ -145,7 +145,7 @@
                   Grid.Row="0"
                   Grid.ColumnSpan="3"
                   Height="280"
-                  Visibility="{x:Bind ViewModel.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeBannerVisibilityConverter}}">
+                  Visibility="{x:Bind ViewModel.Header.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeBannerVisibilityConverter}}">
 
                 <!-- Procedural fallback (BACK layer). Visible only when
                      HeaderImageUrl is null — most user-created playlists, plus
@@ -156,9 +156,9 @@
                      the cover-extracted AlbumPalette via the VM. -->
                 <cards:AnimatedHeroBackground
                     x:Name="HeroBannerFallback"
-                    PrimaryColor="{x:Bind ViewModel.BannerPrimaryColor, Mode=OneWay}"
-                    AccentColor="{x:Bind ViewModel.BannerAccentColor, Mode=OneWay}"
-                    Visibility="{x:Bind ViewModel.HasHeaderImage, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                    PrimaryColor="{x:Bind ViewModel.Header.BannerPrimaryColor, Mode=OneWay}"
+                    AccentColor="{x:Bind ViewModel.Header.BannerAccentColor, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.Header.HasHeaderImage, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
 
                 <!-- Composition image surface (FRONT layer). ALWAYS visible
                      inside the banner row — no per-element Visibility binding.
@@ -201,28 +201,28 @@
                             <Grid MinHeight="48" HorizontalAlignment="Stretch">
                                 <controls1:InlineEditableText
                                     x:Name="BannerTitleEditor"
-                                    Text="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
-                                    ToolTipService.ToolTip="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
-                                    IsEditable="{x:Bind ViewModel.CanEditName, Mode=OneWay}"
-                                    IsBusy="{x:Bind ViewModel.IsRenaming, Mode=OneWay}"
+                                    Text="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay}"
+                                    IsEditable="{x:Bind ViewModel.Header.CanEditName, Mode=OneWay}"
+                                    IsBusy="{x:Bind ViewModel.Mutations.IsRenaming, Mode=OneWay}"
                                     MaxLength="100"
                                     MaxLines="2"
-                                    FontSize="{x:Bind helpers:TitleFontSizer.Hero(ViewModel.PlaylistName), Mode=OneWay}"
+                                    FontSize="{x:Bind helpers:TitleFontSizer.Hero(ViewModel.Header.PlaylistName), Mode=OneWay}"
                                     FontWeight="Bold"
                                     TextAlignment="Left"
                                     HorizontalContentAlignment="Stretch"
                                     Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                     Committed="PlaylistTitleEditor_Committed"
-                                    Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                                    Visibility="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                                     transitions:TransitionHelper.Id="playlist-name"/>
                                 <controls:Shimmer Width="480" Height="40" CornerRadius="6" HorizontalAlignment="Left"
-                                                  Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                                  Visibility="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                             </Grid>
-                            <TextBlock Text="{x:Bind ViewModel.OwnerName, Mode=OneWay}"
+                            <TextBlock Text="{x:Bind ViewModel.Header.OwnerName, Mode=OneWay}"
                                        FontSize="14"
                                        FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       Visibility="{x:Bind ViewModel.OwnerName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                                       Visibility="{x:Bind ViewModel.Header.OwnerName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                                        transitions:TransitionHelper.Id="playlist-owner"/>
                         </StackPanel>
                     </Grid>
@@ -249,7 +249,7 @@
                      banner row above). Owner + stats + Play/Shuffle + 5-pill
                      cluster shimmer. Geometry mirrors the loaded layout exactly. -->
                 <StackPanel Spacing="14"
-                            Visibility="{x:Bind ViewModel.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeBannerVisibilityConverter}}">
+                            Visibility="{x:Bind ViewModel.Header.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeBannerVisibilityConverter}}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <controls:Shimmer Width="24" Height="24" CornerRadius="12"/>
                         <controls:Shimmer Width="120" Height="16" VerticalAlignment="Center"/>
@@ -275,7 +275,7 @@
                      stats + Play/Shuffle + 5-pill cluster. Matches the loaded
                      state so the swap is opacity-only. -->
                 <StackPanel Spacing="14"
-                            Visibility="{x:Bind ViewModel.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeCoverVisibilityConverter}}">
+                            Visibility="{x:Bind ViewModel.Header.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeCoverVisibilityConverter}}">
                     <controls:Shimmer Height="220" CornerRadius="8" HorizontalAlignment="Stretch"/>
                     <!-- Hero-scale title bar -->
                     <controls:Shimmer Width="260" Height="44" HorizontalAlignment="Left" CornerRadius="6"/>
@@ -315,6 +315,15 @@
                         Padding="16,20,8,20" Spacing="14" HorizontalAlignment="Stretch"
                         VerticalAlignment="Top">
 
+                <!-- ════ PINNED ZONE — never scrolls ═════════════════
+                     Cover + title + owner/meta + primary CTAs stay at
+                     the top of the sticky left column. Secondary
+                     actions, description, chips, collaborators go to
+                     LeftScrollableContainer below. -->
+                <StackPanel x:Name="LeftPinnedZone"
+                            Spacing="14"
+                            SizeChanged="LeftPinnedZone_SizeChanged">
+
                 <!-- 1. Cover art (Cover mode only). Square; SizeChanged keeps it
                      square as the panel resizes. Hidden in Banner mode — the
                      hero banner row above carries the visual identity instead.
@@ -323,7 +332,7 @@
                      fade-in in code-behind can target this surface independent
                      of the rest of WidePlaylistPanel which is already visible. -->
                 <Grid x:Name="CoverHeroBlock" HorizontalAlignment="Stretch"
-                      Visibility="{x:Bind ViewModel.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeCoverVisibilityConverter}}">
+                      Visibility="{x:Bind ViewModel.Header.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeCoverVisibilityConverter}}">
                     <winUi:Effects.Shadow>
                         <ui:AttachedCardShadow BlurRadius="32" Offset="0,12" Opacity="0.28" Color="Black" CornerRadius="8" InnerContentClipMode="CompositionMaskBrush"/>
                     </winUi:Effects.Shadow>
@@ -342,9 +351,9 @@
                                           VerticalAlignment="Center"/>
                             </Grid>
                             <Image x:Name="CoverImage"
-                                   Source="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
+                                   Source="{x:Bind ViewModel.Header.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='280'}"
                                    Stretch="UniformToFill"
-                                   Visibility="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                                   Visibility="{x:Bind ViewModel.Header.PlaylistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
                                    behaviors:ImageFallbackBehavior.HideOnError="True"
                                    behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
                                    behaviors:ImageFallbackBehavior.DecodePixelWidth="280"/>
@@ -356,7 +365,7 @@
                             <Grid x:Name="CoverEditOverlay"
                                   Background="#80000000"
                                   Opacity="0"
-                                  IsHitTestVisible="{x:Bind ViewModel.CanEditPicture, Mode=OneWay}"
+                                  IsHitTestVisible="{x:Bind ViewModel.Header.CanEditPicture, Mode=OneWay}"
                                   PointerEntered="CoverEditOverlay_PointerEntered"
                                   PointerExited="CoverEditOverlay_PointerExited"
                                   Tapped="CoverEditOverlay_Tapped"
@@ -390,39 +399,39 @@
                      mode — the banner overlay's BannerTitleEditor handles the
                      title up there. Both wire to the same Committed handler. -->
                 <Grid x:Name="CoverTitleBlock" MinHeight="44" HorizontalAlignment="Stretch"
-                      Visibility="{x:Bind ViewModel.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeCoverVisibilityConverter}}">
+                      Visibility="{x:Bind ViewModel.Header.LayoutMode, Mode=OneWay, Converter={StaticResource PlaylistLayoutModeCoverVisibilityConverter}}">
                     <controls1:InlineEditableText
                         x:Name="PlaylistTitleEditor"
-                        Text="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
-                        ToolTipService.ToolTip="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
-                        IsEditable="{x:Bind ViewModel.CanEditName, Mode=OneWay}"
-                        IsBusy="{x:Bind ViewModel.IsRenaming, Mode=OneWay}"
+                        Text="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay}"
+                        ToolTipService.ToolTip="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay}"
+                        IsEditable="{x:Bind ViewModel.Header.CanEditName, Mode=OneWay}"
+                        IsBusy="{x:Bind ViewModel.Mutations.IsRenaming, Mode=OneWay}"
                         MaxLength="100"
                         MaxLines="3"
-                        FontSize="{x:Bind helpers:TitleFontSizer.Hero(ViewModel.PlaylistName), Mode=OneWay}"
+                        FontSize="{x:Bind helpers:TitleFontSizer.Hero(ViewModel.Header.PlaylistName), Mode=OneWay}"
                         FontWeight="Black"
                         TextAlignment="Left"
                         HorizontalContentAlignment="Stretch"
                         Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                         Committed="PlaylistTitleEditor_Committed"
-                        Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                        Visibility="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
                     <controls:Shimmer Width="260" Height="44" HorizontalAlignment="Left" CornerRadius="6"
-                                      Visibility="{x:Bind ViewModel.PlaylistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                      Visibility="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
                 </Grid>
 
                 <!-- 3. Owner row — small avatar + linked name. Clicking the row
                      opens the owner's profile (ProfilePage). PersonPicture handles
                      image / initials / glyph fallback; HyperlinkButton's Command
-                     binds to PlaylistViewModel.OpenOwnerProfileCommand which is
+                     binds to PlaylistHeaderViewModel.OpenOwnerProfileCommand which is
                      a no-op when OwnerId is missing. -->
                 <HyperlinkButton Padding="0"
-                                 Command="{x:Bind ViewModel.OpenOwnerProfileCommand}"
-                                 Visibility="{x:Bind ViewModel.OwnerName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                                 Command="{x:Bind ViewModel.Header.OpenOwnerProfileCommand}"
+                                 Visibility="{x:Bind ViewModel.Header.OwnerName, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <PersonPicture Width="24" Height="24"
-                                       DisplayName="{x:Bind ViewModel.OwnerName, Mode=OneWay}"
-                                       ProfilePicture="{x:Bind ViewModel.OwnerAvatarUrl, Mode=OneWay, Converter={StaticResource SpotifyImageConverter}, ConverterParameter='48'}"/>
-                        <TextBlock Text="{x:Bind ViewModel.OwnerName, Mode=OneWay}"
+                                       DisplayName="{x:Bind ViewModel.Header.OwnerName, Mode=OneWay}"
+                                       ProfilePicture="{x:Bind ViewModel.Header.OwnerAvatarUrl, Mode=OneWay, Converter={StaticResource SpotifyImageConverter}, ConverterParameter='48'}"/>
+                        <TextBlock Text="{x:Bind ViewModel.Header.OwnerName, Mode=OneWay}"
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"/>
@@ -432,15 +441,15 @@
                 <!-- 4. Inline stats line: "242 songs · 11 hr 18 min · 95K followers".
                      Single TextBlock fed by MetaInlineLine (computed VM property);
                      omits empty segments so the line grows as values resolve. -->
-                <TextBlock Text="{x:Bind ViewModel.MetaInlineLine, Mode=OneWay}"
+                <TextBlock Text="{x:Bind ViewModel.Header.MetaInlineLine, Mode=OneWay}"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            TextWrapping="Wrap"/>
 
                 <!-- 4b. Chart sub-stat line — only shown for chart-format playlists.
                      "Updated May 1 · 8 new entries". Empty / collapsed otherwise. -->
-                <TextBlock Text="{x:Bind ViewModel.ChartHeaderLine, Mode=OneWay}"
-                           Visibility="{x:Bind ViewModel.IsChart, Mode=OneWay,
+                <TextBlock Text="{x:Bind ViewModel.Header.ChartHeaderLine, Mode=OneWay}"
+                           Visibility="{x:Bind ViewModel.Header.IsChart, Mode=OneWay,
                                Converter={StaticResource BoolToVisibilityConverter}}"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -453,7 +462,7 @@
                      32×32 style so the three secondary actions read as a coherent cluster. -->
                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0" VerticalAlignment="Center">
                     <Button Style="{StaticResource AccentButtonStyle}"
-                            Command="{x:Bind ViewModel.PlayAllCommand}"
+                            Command="{x:Bind ViewModel.TrackList.PlayAllCommand}"
                             Padding="18,10" CornerRadius="20"
                             ToolTipService.ToolTip="Play">
                         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -461,17 +470,17 @@
                             <TextBlock Text="Play" FontSize="13" FontWeight="SemiBold"/>
                         </StackPanel>
                     </Button>
-                    <Button Command="{x:Bind ViewModel.ShuffleCommand}"
+                    <Button Command="{x:Bind ViewModel.TrackList.ShuffleCommand}"
                             Width="40" Height="40" CornerRadius="20" Padding="0"
                             Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                             BorderThickness="0"
                             ToolTipService.ToolTip="Shuffle play">
                         <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
                     </Button>
-                    <controls1:HeartButton IsLiked="{x:Bind ViewModel.IsFollowed, Mode=OneWay}"
-                                           Command="{x:Bind ViewModel.ToggleFollowCommand}"
+                    <controls1:HeartButton IsLiked="{x:Bind ViewModel.Header.IsFollowed, Mode=OneWay}"
+                                           Command="{x:Bind ViewModel.Header.ToggleFollowCommand}"
                                            VerticalAlignment="Center"
-                                           Visibility="{x:Bind ViewModel.IsOwner, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                           Visibility="{x:Bind ViewModel.Header.IsOwner, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
                     <Button Command="{x:Bind ViewModel.SharePlaylistCommand}"
                             Width="32" Height="32" CornerRadius="16" Padding="0"
                             Background="Transparent"
@@ -481,6 +490,23 @@
                         <FontIcon Glyph="&#xE72D;" FontSize="14"/>
                     </Button>
                 </StackPanel>
+
+                </StackPanel>
+                <!-- ════ END PINNED ZONE ═════════════════════════════ -->
+
+                <!-- ════ SCROLLABLE ZONE — overflows in place ════════
+                     MaxHeight is set in code-behind to
+                     (PageScrollView.ActualHeight − LeftPinnedZone.ActualHeight − 24)
+                     so secondary actions, description, session chips and
+                     collaborators remain reachable even when the sticky
+                     column would otherwise clip past the viewport. -->
+                <Grid x:Name="LeftScrollableContainer">
+                    <ScrollView x:Name="LeftScrollableZone"
+                                VerticalScrollChainMode="Always"
+                                ZoomMode="Disabled"
+                                ContentOrientation="Vertical"
+                                ViewChanged="LeftScrollableZone_ViewChanged">
+                        <StackPanel Spacing="14">
 
                 <!-- 5b. Secondary action cluster — labeled pill buttons mirroring
                      AlbumPage's `.action-cluster`. WrapPanel so the row spills to a
@@ -508,7 +534,7 @@
                         </StackPanel>
                     </Button>
                     <!-- Add to queue -->
-                    <Button Command="{x:Bind ViewModel.AddPlaylistToQueueCommand}"
+                    <Button Command="{x:Bind ViewModel.TrackList.AddPlaylistToQueueCommand}"
                             Height="36" Padding="14,0" CornerRadius="18"
                             Background="Transparent"
                             BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
@@ -520,7 +546,7 @@
                         </StackPanel>
                     </Button>
                     <!-- Start radio -->
-                    <Button Command="{x:Bind ViewModel.StartPlaylistRadioCommand}"
+                    <Button Command="{x:Bind ViewModel.TrackList.StartPlaylistRadioCommand}"
                             Height="36" Padding="14,0" CornerRadius="18"
                             Background="Transparent"
                             BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
@@ -539,7 +565,7 @@
                             BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             ToolTipService.ToolTip="Delete playlist"
-                            Visibility="{x:Bind ViewModel.IsOwner, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            Visibility="{x:Bind ViewModel.Header.IsOwner, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <FontIcon Glyph="&#xE74D;" FontSize="12"
                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
@@ -555,7 +581,7 @@
                             BorderThickness="1"
                             ToolTipService.ToolTip="More"
                             Click="OwnerOverflowButton_Click"
-                            Visibility="{x:Bind ViewModel.HasOverflowItems, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            Visibility="{x:Bind ViewModel.Header.HasOverflowItems, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <FontIcon Glyph="&#xE712;" FontSize="12"/>
                     </Button>
                 </controls:WrapPanel>
@@ -565,7 +591,7 @@
                      page's release/copyright block. -->
                 <StackPanel Spacing="4"
                             Margin="0,4,0,0"
-                            Visibility="{x:Bind ViewModel.IsDescriptionViewerCardVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            Visibility="{x:Bind ViewModel.Header.IsDescriptionViewerCardVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <RichTextBlock x:Name="DescriptionRichText"
                                    FontSize="12"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -589,9 +615,9 @@
                      placeholder when empty. No surrounding card. -->
                 <controls1:InlineEditableText
                     x:Name="PlaylistDescriptionEditor"
-                    Text="{x:Bind ViewModel.PlaylistDescription, Mode=OneWay}"
-                    IsEditable="{x:Bind ViewModel.CanEditDescription, Mode=OneWay}"
-                    IsBusy="{x:Bind ViewModel.IsUpdatingDescription, Mode=OneWay}"
+                    Text="{x:Bind ViewModel.Header.PlaylistDescription, Mode=OneWay}"
+                    IsEditable="{x:Bind ViewModel.Header.CanEditDescription, Mode=OneWay}"
+                    IsBusy="{x:Bind ViewModel.Mutations.IsUpdatingDescription, Mode=OneWay}"
                     AcceptsReturn="True"
                     MaxLength="300"
                     MaxLines="6"
@@ -602,21 +628,21 @@
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Placeholder="Edit description..."
                     Committed="PlaylistDescriptionEditor_Committed"
-                    x:Load="{x:Bind ViewModel.CanEditDescription, Mode=OneWay}"/>
+                    x:Load="{x:Bind ViewModel.Header.CanEditDescription, Mode=OneWay}"/>
 
                 <!-- 7. Session control chips: editorial / algorithmic playlists ship
                      a session_control_display group; chip row re-personalises the
                      playlist on click. Now left-aligned to match panel direction. -->
                 <Grid HorizontalAlignment="Left" Margin="0,8,0,0"
                       x:Name="TokenViewPanel"
-                      x:Load="{x:Bind ViewModel.HasSessionControlChips, Mode=OneWay}">
+                      x:Load="{x:Bind ViewModel.TrackList.HasSessionControlChips, Mode=OneWay}">
                     <sessionTokens:SessionTokenView
                         IsWrapped="True"
                         CanRemoveTokens="False"
-                        ItemsSource="{x:Bind ViewModel.SessionControlChips, Mode=OneWay}"
-                        SelectedItem="{x:Bind ViewModel.SelectedSessionControlChip, Mode=TwoWay}">
+                        ItemsSource="{x:Bind ViewModel.TrackList.SessionControlChips, Mode=OneWay}"
+                        SelectedItem="{x:Bind ViewModel.TrackList.SelectedSessionControlChip, Mode=TwoWay}">
                         <sessionTokens:SessionTokenView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:SessionControlChipViewModel">
+                            <DataTemplate x:DataType="playlistVm:SessionControlChipViewModel">
                                 <TextBlock Text="{x:Bind Label}" FontSize="13"/>
                             </DataTemplate>
                         </sessionTokens:SessionTokenView.ItemTemplate>
@@ -639,12 +665,33 @@
                                            Tapped="CollaboratorStackHost_Tapped"
                                            PointerEntered="CollaboratorStackHostFrame_PointerEntered"
                                            PointerExited="CollaboratorStackHostFrame_PointerExited"
-                                           Visibility="{x:Bind ViewModel.HasCollaborators, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                           Visibility="{x:Bind ViewModel.Header.HasCollaborators, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <StackPanel x:Name="CollaboratorStackHost"
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center"
                                 Spacing="8"/>
                 </controls1:ClickableBorder>
+
+                        </StackPanel>
+                    </ScrollView>
+
+                    <!-- Bottom-edge fade hint — shown only while the inner
+                         scroll has more content below the viewport. Visibility
+                         toggled in code-behind from ViewChanged + size events. -->
+                    <Border x:Name="LeftScrollableFade"
+                            VerticalAlignment="Bottom"
+                            Height="32"
+                            IsHitTestVisible="False"
+                            Visibility="Collapsed">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#00000000" Offset="0"/>
+                                <GradientStop Color="{ThemeResource SolidBackgroundFillColorBase}" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                </Grid>
+                <!-- ════ END SCROLLABLE ZONE ═════════════════════════ -->
             </StackPanel>
 
             <controls1:GridSplitter
@@ -667,21 +714,21 @@
                 PageKey="playlist"
                 UseItemsViewRows="True"
                 IsParentScrolling="True"
-                IsLoading="{x:Bind ViewModel.IsLoadingTracks, Mode=OneWay}"
-                LoadingRowCount="{x:Bind ViewModel.TotalTracks, Mode=OneWay}"
-                AddedByVisible="{x:Bind ViewModel.ShouldShowAddedByColumn, Mode=OneWay}"
+                IsLoading="{x:Bind ViewModel.TrackList.IsLoadingTracks, Mode=OneWay}"
+                LoadingRowCount="{x:Bind ViewModel.TrackList.TotalTracks, Mode=OneWay}"
+                AddedByVisible="{x:Bind ViewModel.Header.ShouldShowAddedByColumn, Mode=OneWay}"
                 ContextUri="{x:Bind ViewModel.PlaylistId, Mode=OneWay}"
-                CanReorder="{x:Bind ViewModel.CanReorderTracks, Mode=OneWay}"
+                CanReorder="{x:Bind ViewModel.TrackList.CanReorderTracks, Mode=OneWay}"
                 TracksReorderRequested="TrackGrid_TracksReorderRequested"
-                ItemsSource="{x:Bind ViewModel.FilteredTracks, Mode=OneWay}"
-                PlayCommand="{x:Bind ViewModel.PlayTrackCommand}">
+                ItemsSource="{x:Bind ViewModel.TrackList.FilteredTracks, Mode=OneWay}"
+                PlayCommand="{x:Bind ViewModel.TrackList.PlayTrackCommand}">
                 <tdg:TrackDataGrid.FilterBarContent>
                     <ToggleButton
                         MinHeight="32"
                         Padding="10,4"
                         CornerRadius="16"
-                        IsChecked="{x:Bind ViewModel.ShowOnlyVideoTracks, Mode=TwoWay}"
-                        Visibility="{x:Bind ViewModel.HasVideoTracks, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                        IsChecked="{x:Bind ViewModel.TrackList.ShowOnlyVideoTracks, Mode=TwoWay}"
+                        Visibility="{x:Bind ViewModel.TrackList.HasVideoTracks, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                         ToolTipService.ToolTip="Show only tracks with music videos">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <FontIcon
@@ -690,7 +737,7 @@
                                 Glyph="&#xE714;" />
                             <TextBlock
                                 VerticalAlignment="Center"
-                                Text="{x:Bind ViewModel.VideoTrackFilterLabel, Mode=OneWay}" />
+                                Text="{x:Bind ViewModel.TrackList.VideoTrackFilterLabel, Mode=OneWay}" />
                         </StackPanel>
                     </ToggleButton>
                 </tdg:TrackDataGrid.FilterBarContent>
@@ -715,7 +762,7 @@
                     <StackPanel Padding="16,24,16,32"
                                 x:Name="FooterTracks"
                                 Spacing="16"
-                                Visibility="{x:Bind ViewModel.CanShowRecommendations, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                Visibility="{x:Bind ViewModel.Header.CanShowRecommendations, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -749,7 +796,7 @@
                                  the user can swap the batch with a single click whenever
                                  they don't like the current set. -->
                             <Button Grid.Column="2"
-                                    Command="{x:Bind ViewModel.FindRecommendedTracksCommand}"
+                                    Command="{x:Bind ViewModel.Mutations.FindRecommendedTracksCommand}"
                                     Height="32" Padding="12,0" CornerRadius="16"
                                     Background="Transparent"
                                     BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
@@ -766,7 +813,7 @@
                              Independent of HasRecommendedTracks so a refresh failure
                              after an earlier successful load shows the error card
                              alongside the existing rows (recovery doesn't lose work). -->
-                        <Border Visibility="{x:Bind ViewModel.RecommendationsLoadFailed, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                        <Border Visibility="{x:Bind ViewModel.Mutations.RecommendationsLoadFailed, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
@@ -792,7 +839,7 @@
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
                                 <Button Grid.Column="2"
-                                        Command="{x:Bind ViewModel.FindRecommendedTracksCommand}"
+                                        Command="{x:Bind ViewModel.Mutations.FindRecommendedTracksCommand}"
                                         Height="32" Padding="12,0" CornerRadius="16"
                                         Background="Transparent"
                                         BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
@@ -812,8 +859,8 @@
                              right adds the track directly to THIS playlist. The
                              template-local DataContext is the RecommendedTrackResult
                              itself, so the page commands route via ElementName=PageRoot. -->
-                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.RecommendedTracks, Mode=OneWay}"
-                                       Visibility="{x:Bind ViewModel.HasRecommendedTracks, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.Mutations.RecommendedTracks, Mode=OneWay}"
+                                       Visibility="{x:Bind ViewModel.Mutations.HasRecommendedTracks, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                             <ItemsRepeater.Layout>
                                 <StackLayout Orientation="Vertical" Spacing="2"/>
                             </ItemsRepeater.Layout>
@@ -840,7 +887,7 @@
                                                          ShowAddedByColumn="False"
                                                          ShowPlayCount="False"
                                                          PreserveImageOnUnload="True"
-                                                         PlayCommand="{Binding ElementName=PageRoot, Path=ViewModel.PlayTrackCommand}"/>
+                                                         PlayCommand="{Binding ElementName=PageRoot, Path=ViewModel.TrackList.PlayTrackCommand}"/>
 
                                         <Button Grid.Column="1"
                                                 Width="32" Height="32" CornerRadius="16" Padding="0"
@@ -849,7 +896,7 @@
                                                 BorderThickness="1"
                                                 VerticalAlignment="Center"
                                                 Margin="8,0,0,0"
-                                                Command="{Binding ElementName=PageRoot, Path=ViewModel.AddRecommendationCommand}"
+                                                Command="{Binding ElementName=PageRoot, Path=ViewModel.Mutations.AddRecommendationCommand}"
                                                 CommandParameter="{x:Bind}"
                                                 ToolTipService.ToolTip="Add to this playlist">
                                             <FontIcon Glyph="&#xE710;" FontSize="14"/>
@@ -868,7 +915,7 @@
                 Margin="24,104,24,24"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
-                Visibility="{x:Bind ViewModel.ShowEmptyPlaylistState, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                Visibility="{x:Bind ViewModel.TrackList.ShowEmptyPlaylistState, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                 <StackPanel
                     MaxWidth="640"
                     HorizontalAlignment="Center"
@@ -912,7 +959,7 @@
                             Padding="16,10" CornerRadius="20"
                             Margin="0,4,0,0"
                             Click="EmptyStateFindSongsButton_Click"
-                            Visibility="{x:Bind ViewModel.CanEditItems, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            Visibility="{x:Bind ViewModel.Header.CanEditItems, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
                             <FontIcon Glyph="&#xE721;" FontSize="14"/>
                             <TextBlock Text="Find songs to add" FontSize="13" FontWeight="SemiBold"/>
@@ -924,16 +971,16 @@
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                         TextAlignment="Center"
                         Margin="0,8,0,0"
-                        Visibility="{x:Bind ViewModel.ShowEmptyPlaylistGenreGrid, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        Visibility="{x:Bind ViewModel.TrackList.ShowEmptyPlaylistGenreGrid, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     <browseControls:BrowseGrid
                         x:Name="EmptyStateBrowseGrid"
-                        ItemsSource="{x:Bind ViewModel.EmptyPlaylistGenreItems, Mode=OneWay}"
+                        ItemsSource="{x:Bind ViewModel.TrackList.EmptyPlaylistGenreItems, Mode=OneWay}"
                         ItemTemplate="{StaticResource EmptyPlaylistGenreChipTemplate}"
                         MinItemWidth="120"
                         Margin="0,4,0,0"
                         HorizontalAlignment="Stretch"
                         Tapped="EmptyStateBrowseGrid_Tapped"
-                        Visibility="{x:Bind ViewModel.ShowEmptyPlaylistGenreGrid, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        Visibility="{x:Bind ViewModel.TrackList.ShowEmptyPlaylistGenreGrid, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </StackPanel>
             </Grid>
 
@@ -957,11 +1004,11 @@
             VerticalAlignment="Top"
             Margin="0,12,0,0"
             Visibility="Collapsed"
-            PlaylistImageUrl="{x:Bind ViewModel.PlaylistImageUrl, Mode=OneWay}"
-            PlaylistName="{x:Bind ViewModel.PlaylistName, Mode=OneWay}"
-            OwnerName="{x:Bind ViewModel.OwnerName, Mode=OneWay}"
-            PaletteAccentPillBrush="{x:Bind ViewModel.PaletteAccentPillBrush, Mode=OneWay}"
-            PaletteAccentPillForegroundBrush="{x:Bind ViewModel.PaletteAccentPillForegroundBrush, Mode=OneWay}"
-            PlayCommand="{x:Bind ViewModel.PlayAllCommand}"/>
+            PlaylistImageUrl="{x:Bind ViewModel.Header.PlaylistImageUrl, Mode=OneWay}"
+            PlaylistName="{x:Bind ViewModel.Header.PlaylistName, Mode=OneWay}"
+            OwnerName="{x:Bind ViewModel.Header.OwnerName, Mode=OneWay}"
+            PaletteAccentPillBrush="{x:Bind ViewModel.Header.PaletteAccentPillBrush, Mode=OneWay}"
+            PaletteAccentPillForegroundBrush="{x:Bind ViewModel.Header.PaletteAccentPillForegroundBrush, Mode=OneWay}"
+            PlayCommand="{x:Bind ViewModel.TrackList.PlayAllCommand}"/>
     </Grid>
-</Page>
+</UserControl>

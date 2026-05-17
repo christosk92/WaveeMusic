@@ -155,12 +155,12 @@ public sealed partial class MemoryDiagnosticsViewModel : ObservableObject, IDisp
         {
             try
             {
-                var f = tab.ContentFrame;
-                var prior = f.CacheSize;
-                f.CacheSize = 0;
+                var h = tab.ContentHost;
+                var prior = h.CacheSize;
+                h.CacheSize = 0;
                 // Restoring the size doesn't bring back the dropped pages — they were
                 // evicted on the cycle. Set it back so future navigations cache as before.
-                f.CacheSize = prior;
+                h.CacheSize = prior;
                 dropped++;
             }
             catch { /* best-effort */ }

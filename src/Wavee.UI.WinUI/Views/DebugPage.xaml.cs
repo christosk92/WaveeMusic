@@ -1,16 +1,16 @@
-using System;
+﻿using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class DebugPage : Page, ITabBarItemContent
+public sealed partial class DebugPage : UserControl, ITabBarItemContent, IPageHostAware
 {
     public DebugViewModel ViewModel { get; }
     public TabItemParameter? TabItemParameter => null;
@@ -22,9 +22,10 @@ public sealed partial class DebugPage : Page, ITabBarItemContent
         InitializeComponent();
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode) { }
+
+    public void OnLeaving()
     {
-        base.OnNavigatedFrom(e);
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
         // sibling does not pin this page across navigations.
         Bindings?.StopTracking();

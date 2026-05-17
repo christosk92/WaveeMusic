@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -12,7 +12,7 @@ using Wavee.UI.WinUI.ViewModels.Local;
 
 namespace Wavee.UI.WinUI.Views.Local;
 
-public sealed partial class LocalMusicVideosPage : Page
+public sealed partial class LocalMusicVideosPage : UserControl, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware
 {
     public LocalMusicVideosViewModel ViewModel { get; }
     public LocalMusicVideosPage()
@@ -20,11 +20,11 @@ public sealed partial class LocalMusicVideosPage : Page
         ViewModel = Ioc.Default.GetService<LocalMusicVideosViewModel>() ?? new LocalMusicVideosViewModel();
         InitializeComponent();
     }
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    public async void OnEntered(object? parameter, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
         await ViewModel.LoadAsync();
     }
+    public void OnLeaving() { }
     private void Item_CardClick(object? sender, EventArgs e)
     {
         if (sender is FrameworkElement fe && fe.Tag is Wavee.Local.Models.LocalMusicVideo mv)

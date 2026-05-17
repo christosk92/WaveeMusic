@@ -1,5 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Page
+﻿<?xml version="1.0" encoding="utf-8"?>
+<UserControl
     x:Class="Wavee.UI.WinUI.Views.ShellPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -20,13 +20,14 @@
     xmlns:notifications="using:Wavee.UI.WinUI.Controls.Notifications"
     xmlns:addtoplaylist="using:Wavee.UI.WinUI.Controls.AddToPlaylist"
     xmlns:minivideo="using:Wavee.UI.WinUI.Controls.MiniVideoPlayer"
+    xmlns:host="using:Wavee.UI.WinUI.Controls.PageHost"
     mc:Ignorable="d"
     Background="Transparent">
 
-    <Page.Resources>
+    <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:StringToImageSourceConverter x:Key="StringToImageSourceConverter" />
-    </Page.Resources>
+    </UserControl.Resources>
 
     <!-- F12 debug shortcut removed — use Settings > Diagnostics instead -->
 
@@ -67,8 +68,8 @@
             CanGoForward="{x:Bind ViewModel.CanGoForward, Mode=OneWay}"
             IsOnHomePage="{x:Bind ViewModel.IsOnHomePage, Mode=OneWay}"
             IsOnProfilePage="{x:Bind ViewModel.IsOnProfilePage, Mode=OneWay}"
-            SearchSuggestionsLoading="{x:Bind ViewModel.IsSearchSuggestionsLoading, Mode=OneWay}"
-            SearchSuggestionsErrorMessage="{x:Bind ViewModel.SearchSuggestionErrorMessage, Mode=OneWay}"
+            SearchSuggestionsLoading="{x:Bind ViewModel.Omnibar.IsSearchSuggestionsLoading, Mode=OneWay}"
+            SearchSuggestionsErrorMessage="{x:Bind ViewModel.Omnibar.SearchSuggestionErrorMessage, Mode=OneWay}"
             BackRequested="NavToolbar_BackRequested"
             ForwardRequested="NavToolbar_ForwardRequested"
             HomeRequested="NavToolbar_HomeRequested"
@@ -77,8 +78,8 @@
             SearchSuggestionChosen="NavToolbar_SearchSuggestionChosen"
             SearchRetryRequested="NavToolbar_SearchRetryRequested"
             SearchActionButtonClicked="NavToolbar_SearchActionButtonClicked"
-            SearchSuggestions="{x:Bind ViewModel.SearchSuggestions, Mode=OneWay}"
-            SuggestionGroups="{x:Bind ViewModel.SuggestionGroups, Mode=OneWay}"
+            SearchSuggestions="{x:Bind ViewModel.Omnibar.SearchSuggestions, Mode=OneWay}"
+            SuggestionGroups="{x:Bind ViewModel.Omnibar.SuggestionGroups, Mode=OneWay}"
             FriendsRequested="NavToolbar_FriendsRequested"
             SignInRequested="NavToolbar_SignInRequested"/>
 
@@ -124,25 +125,6 @@
             HorizontalAlignment="Center"
             Margin="0,0,0,16"/>
 
-        <!-- Connection overlay — blocks interaction while disconnected -->
-        <Border
-            x:Name="ConnectionOverlay"
-            Grid.Row="2"
-            Canvas.ZIndex="2"
-            Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
-            Opacity="0.85"
-            IsHitTestVisible="True"
-            Visibility="Collapsed">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
-                <ProgressRing x:Name="ReconnectingRing" IsActive="True" Width="36" Height="36"/>
-                <TextBlock x:Uid="Views_ShellPage__TextBlock_3" x:Name="ConnectionOverlayText"
-                           Text="Reconnecting to Spotify..."
-                           Style="{StaticResource SubtitleTextBlockStyle}"
-                           HorizontalAlignment="Center"
-                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
-            </StackPanel>
-        </Border>
-
         <!-- Row 2: Main content area with sidebar.
              Collapses entirely when the player enters Theatre / Fullscreen —
              the TheatrePlayerHost below takes over the whole window. -->
@@ -153,8 +135,8 @@
             DisplayMode="{x:Bind ViewModel.SidebarDisplayMode, Mode=TwoWay}"
             IsPaneOpen="{x:Bind ViewModel.IsSidebarPaneOpen, Mode=TwoWay}"
             OpenPaneLength="{x:Bind ViewModel.SidebarWidth, Mode=TwoWay}"
-            MenuItemsSource="{x:Bind ViewModel.SidebarItems}"
-            SelectedItem="{x:Bind ViewModel.SelectedSidebarItem, Mode=TwoWay}"
+            MenuItemsSource="{x:Bind ViewModel.Sidebar.SidebarItems}"
+            SelectedItem="{x:Bind ViewModel.Sidebar.SelectedSidebarItem, Mode=TwoWay}"
             ItemInvoked="SidebarControl_ItemInvoked"
             PinButtonClicked="SidebarControl_PinButtonClicked">
 
@@ -176,7 +158,7 @@
                                 CornerRadius="8">
                             <ContentPresenter
                                 x:Name="TabContentPresenter"
-                                Content="{x:Bind ViewModel.SelectedTabItem.ContentFrame, Mode=OneWay}"
+                                Content="{x:Bind ViewModel.SelectedTabItem.ContentHost, Mode=OneWay}"
                                 HorizontalAlignment="Stretch"
                                 VerticalAlignment="Stretch"/>
                         </Border>
@@ -293,7 +275,7 @@
             Canvas.ZIndex="10"
             Background="Black"
             Visibility="{x:Bind ViewModel.IsExpandedPresentation, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-            <Frame x:Name="TheatreFrame" Background="Transparent" />
+            <host:PageHost x:Name="TheatreHost" IsNavigationStackEnabled="False" Background="Transparent" />
         </Border>
 
         <Border
@@ -327,4 +309,4 @@
 
     </Grid>
     </controls:ZoomContentControl>
-</Page>
+</UserControl>

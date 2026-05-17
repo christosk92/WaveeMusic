@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using CommunityToolkit.Mvvm.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Foundation;
@@ -44,12 +46,16 @@ public sealed class SectionStackLayout : VirtualizingLayout
 
     /// <summary>
     /// Extra pixels on top and bottom of <see cref="VirtualizingLayoutContext.RealizationRect"/>
-    /// in which we still keep items realized. Roughly +1 viewport-page in each
-    /// direction on a typical desktop window — gives wheel scrolling enough
-    /// runway that the next shelf has fully realized before it enters view,
-    /// without holding more than a couple of pages of decoded images at once.
+    /// in which we still keep items realized. Roughly +2 viewport-pages in each
+    /// direction on a typical desktop window — the previous 1280 px (≈1 page) was
+    /// outrun by fast scrollbar drags on HomePage, leaving the visible region as
+    /// an unrealized <see cref="EstimatedItemHeight"/> placeholder slot (header
+    /// painted by the outer region wrapper but the inner shelf blank until scroll
+    /// settled). 2560 px gives the inner ShelfScroller a full extra viewport of
+    /// runway to complete its first realization pass before the user can scroll
+    /// past, validated against [home-scroll] outer.measure logs.
     /// </summary>
-    private const double RealizationBufferPx = 1280.0;
+    private const double RealizationBufferPx = 2560.0;
 
     public static readonly DependencyProperty SpacingProperty =
         DependencyProperty.Register(nameof(Spacing), typeof(double), typeof(SectionStackLayout),
@@ -80,6 +86,13 @@ public sealed class SectionStackLayout : VirtualizingLayout
     private int _lastItemCount = -1;
     private double _lastAvailableWidth = double.NaN;
 
+    // [home-scroll] state-change gate so MeasureOverride's outer.measure log
+    // doesn't flood per-frame during continuous scroll.
+    private readonly ILogger? _logger = Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger("SectionStackLayout");
+    private int _lastLoggedFirstRealized = -2;
+    private int _lastLoggedLastRealized = -2;
+    private int _lastLoggedSkipped = -1;
+
     public void ResetCache()
     {
         _heights.Clear();
@@ -87,6 +100,9 @@ public sealed class SectionStackLayout : VirtualizingLayout
         _identities.Clear();
         _lastItemCount = -1;
         _lastAvailableWidth = double.NaN;
+        _lastLoggedFirstRealized = -2;
+        _lastLoggedLastRealized = -2;
+        _lastLoggedSkipped = -1;
         InvalidateMeasure();
     }
 
@@ -132,6 +148,12 @@ public sealed class SectionStackLayout : VirtualizingLayout
             double y = 0;
             var measureSize = new Size(width, double.PositiveInfinity);
 
+            // [home-scroll] track which indices we realize this pass so we can
+            // emit a single state-change log at the end.
+            int firstRealized = -1;
+            int lastRealized = -1;
+            int skipped = 0;
+
             for (int i = 0; i < count; i++)
             {
                 _offsets[i] = y;
@@ -175,6 +197,10 @@ public sealed class SectionStackLayout : VirtualizingLayout
                 // section just to warm the height cache.
                 if (inRealization)
                 {
+                    if (firstRealized < 0) firstRealized = i;
+                    lastRealized = i;
+
+                    var wasNaN = double.IsNaN(cached);
                     var child = context.GetOrCreateElementAt(i);
                     child.Measure(measureSize);
                     var desired = child.DesiredSize.Height;
@@ -184,15 +210,34 @@ public sealed class SectionStackLayout : VirtualizingLayout
                     // First measurement or a real change — update the cache.
                     // Deltas within epsilon are ignored to break the oscillation
                     // path described in the fix plan.
-                    if (double.IsNaN(cached) || Math.Abs(desired - cached) > CacheEpsilon)
+                    if (wasNaN || Math.Abs(desired - cached) > CacheEpsilon)
                     {
                         _heights[i] = desired;
                         height = desired;
                     }
+
+                    if (wasNaN)
+                        _logger?.LogDebug("[home-scroll] outer.firstMeasure i={I} desired={Desired:F0}", i, desired);
+                }
+                else
+                {
+                    skipped++;
                 }
 
                 y += height;
                 if (i < count - 1) y += spacing;
+            }
+
+            if (firstRealized != _lastLoggedFirstRealized
+                || lastRealized != _lastLoggedLastRealized
+                || skipped != _lastLoggedSkipped)
+            {
+                _lastLoggedFirstRealized = firstRealized;
+                _lastLoggedLastRealized = lastRealized;
+                _lastLoggedSkipped = skipped;
+                _logger?.LogDebug(
+                    "[home-scroll] outer.measure rect=({Top:F0},{Bottom:F0}) realized=[{First}..{Last}] count={Count} skipped={Skipped}",
+                    realization.Top, realization.Bottom, firstRealized, lastRealized, count, skipped);
             }
 
             return new Size(width, y);

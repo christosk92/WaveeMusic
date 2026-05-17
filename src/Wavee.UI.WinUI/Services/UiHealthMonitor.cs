@@ -58,6 +58,12 @@ internal sealed class UiHealthMonitor : IDisposable
     private int _gcGen0Total, _gcGen1Total, _gcGen2Total;
     private int _gen2DuringStallCount; // Gen2 collections that coincided with stalls
 
+    // Managed heap size at the previous tick — diff is reported into the
+    // NavigationDiagnostics [gc] line as an allocation-since-last-tick proxy
+    // (signed: negative deltas mean a Gen0/Gen1 fired between this tick and the
+    // previous one and reclaimed bytes).
+    private long _lastManagedBytes;
+
     public UiHealthMonitor(DispatcherQueue dispatcherQueue, ILogger? logger = null)
     {
         _dispatcherQueue = dispatcherQueue ?? throw new ArgumentNullException(nameof(dispatcherQueue));
@@ -65,6 +71,7 @@ internal sealed class UiHealthMonitor : IDisposable
         _lastGen0 = GC.CollectionCount(0);
         _lastGen1 = GC.CollectionCount(1);
         _lastGen2 = GC.CollectionCount(2);
+        _lastManagedBytes = GC.GetTotalMemory(false);
     }
 
     public void Start()
@@ -151,6 +158,25 @@ internal sealed class UiHealthMonitor : IDisposable
             _lastGen0 = g0;
             _lastGen1 = g1;
             _lastGen2 = g2;
+
+            // Per-collection [gc] line into NavigationDiagnostics. Sampling at
+            // 16 ms can coalesce multiple collections of the same gen into one
+            // delta entry — we report each observed delta as a single record
+            // for that gen (the actual count is preserved in _gcGen*Total).
+            if (gen0Delta > 0 || gen1Delta > 0 || gen2Delta > 0)
+            {
+                var managedNow = GC.GetTotalMemory(false);
+                var allocSinceMb = (managedNow - _lastManagedBytes) / 1048576.0;
+                _lastManagedBytes = managedNow;
+
+                var nav = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance;
+                if (nav != null)
+                {
+                    if (gen0Delta > 0) nav.RecordGc(0, allocSinceMb);
+                    if (gen1Delta > 0) nav.RecordGc(1, allocSinceMb);
+                    if (gen2Delta > 0) nav.RecordGc(2, allocSinceMb);
+                }
+            }
 
             if (elapsedMs > CriticalThresholdMs)
             {
@@ -337,6 +363,7 @@ internal sealed class UiHealthMonitor : IDisposable
             _lastGen0 = GC.CollectionCount(0);
             _lastGen1 = GC.CollectionCount(1);
             _lastGen2 = GC.CollectionCount(2);
+            _lastManagedBytes = GC.GetTotalMemory(false);
         }
         UiOperationProfiler.Instance?.Reset();
     }

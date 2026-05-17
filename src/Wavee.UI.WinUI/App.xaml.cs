@@ -122,6 +122,11 @@ public partial class App : Application
         _host = AppLifecycleHelper.ConfigureHost();
         Ioc.Default.ConfigureServices(_host.Services);
 
+        // Register page factories for PageHost. Must happen before any
+        // PageHost.Navigate fires (MainWindow's RootHost navigates to
+        // ShellPage during Activate).
+        Wavee.UI.WinUI.Controls.PageHost.PageRegistration.RegisterAll();
+
         // Force-resolve MetadataDatabase up-front so any schema migration
         // runs *before* the main UI comes up. On failure we surface a
         // blocking error window instead of silently dropping caches — users

@@ -1,32 +1,25 @@
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
-using CommunityToolkit.WinUI.Animations;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.Contracts;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.Helpers;
+using Wavee.UI.Models;
 using Wavee.UI.Services;
+using Wavee.UI.WinUI.Behaviors.Track;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
-using Wavee.UI.Models;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Messages;
-using Wavee.UI.WinUI.Helpers;
-using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.Playback;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Styles;
@@ -48,6 +41,16 @@ public enum TrackItemDisplayMode
 /// Unified track display control with consistent behavior across all contexts.
 /// Supports Compact mode (grid cells) and Row mode (table lists).
 /// Handles hover play button, now-playing indicator, click-to-play, and context menu.
+///
+/// Split across several partials for source clarity (every partial still
+/// participates in the same compiled class — virtualized rows pay no extra
+/// realize / recycle cost):
+///   * <c>TrackItem.xaml.cs</c>           — DPs, ctor, lifecycle, track binding
+///   * <c>TrackItem.ModeAndLoading.cs</c> — Compact/Row switching + loading shimmer
+///   * <c>TrackItem.Hover.cs</c>          — pointer-enter reveal + selection backgrounds
+///   * <c>TrackItem.Playback.cs</c>       — now-playing / buffering overlay state machine
+///   * <c>TrackItem.Click.cs</c>          — tap-to-play, heart, artist / album links
+///   * <c>TrackItem.AddToPlaylist.cs</c>  — app-wide "+ / check" affordance
 /// </summary>
 public sealed partial class TrackItem : UserControl
 {
@@ -505,10 +508,9 @@ public sealed partial class TrackItem : UserControl
     private bool _useCardRow;
     private readonly ThemeColorService? _themeColors = Ioc.Default.GetService<ThemeColorService>();
     private readonly ITrackLikeService? _likeService = Ioc.Default.GetService<ITrackLikeService>();
-    private readonly Microsoft.Extensions.Logging.ILogger? _logger = Ioc.Default.GetService<Microsoft.Extensions.Logging.ILogger<TrackItem>>();
+    private readonly ILogger? _logger = Ioc.Default.GetService<ILogger<TrackItem>>();
     private readonly IPlaybackStateService? _playbackStateService = Ioc.Default.GetService<IPlaybackStateService>();
     private readonly IMusicVideoMetadataService? _musicVideoMetadata = Ioc.Default.GetService<IMusicVideoMetadataService>();
-    private readonly Wavee.UI.Services.ITrackColorHintService? _colorHintService = Ioc.Default.GetService<Wavee.UI.Services.ITrackColorHintService>();
     private static ISettingsService? _cachedSettingsService;
     private bool _isThisTrackPlaying;
     private bool _isThisTrackPaused;
@@ -517,20 +519,10 @@ public sealed partial class TrackItem : UserControl
     private string? _localBufferingTimeoutTrackId;
     private string? _boundCompactImageUrl;
     private string? _boundRowImageUrl;
-    // URL we've already retried once after ImageFailed. Prevents infinite retry loops
-    // on a genuinely broken URL. Reset when the URL changes.
-    private string? _retriedCompactUrl;
-    private string? _retriedRowUrl;
     private ITrackItem? _observedTrack;
     private bool _isMessengerRegistered;
     private bool _isSaveStateSubscribed;
     private string? _rowArtistsSignature;
-    private string? _boundColorHintUrl;
-
-    // Guards against stale color-hint applies after a virtualized row is recycled.
-    // Incremented on every ResolveImageColorHint invocation; an awaiting continuation
-    // only applies its result if this counter hasn't advanced since it started.
-    private int _colorHintVersion;
 
     #endregion
 
@@ -600,6 +592,8 @@ public sealed partial class TrackItem : UserControl
     }
 
     // ── Lazy realize: inactive-mode CompositionImage subtree ──
+    // Subscription latch is per-element in TrackImageRetryBehavior; these
+    // booleans guard against re-wiring within the same realized subtree.
 
     private bool _compactAlbumArtSubscribed;
     private bool _rowAlbumArtSubscribed;
@@ -614,7 +608,10 @@ public sealed partial class TrackItem : UserControl
         if (CompactAlbumArt is null) FindName(nameof(CompactAlbumArt));
         if (!_compactAlbumArtSubscribed && CompactAlbumArt is not null)
         {
-            CompactAlbumArt.ImageFailed += OnCompactAlbumArtFailed;
+            // Single-retry-per-URL semantics live in the behavior; the
+            // callback re-enters this control's Apply* path so cache invalidation
+            // and dedup re-run.
+            TrackImageRetryBehavior.Attach(CompactAlbumArt, _ => ApplyCompactAlbumArt(_boundCompactImageUrl));
             _compactAlbumArtSubscribed = true;
         }
     }
@@ -625,78 +622,10 @@ public sealed partial class TrackItem : UserControl
         if (RowAlbumArt is null) FindName(nameof(RowAlbumArt));
         if (!_rowAlbumArtSubscribed && RowAlbumArt is not null)
         {
-            RowAlbumArt.ImageFailed += OnRowAlbumArtFailed;
+            TrackImageRetryBehavior.Attach(RowAlbumArt, _ => ApplyRowAlbumArt(_boundRowImageUrl));
             _rowAlbumArtSubscribed = true;
         }
     }
-
-    #region Mode Switching
-
-    private static void OnModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        var item = (TrackItem)d;
-        // Drive x:Load on the inactive mode's whole subtree. Setting these
-        // BEFORE ApplyMode/BindTrackData ensures the right subtree is realized
-        // by the time we try to set its ImageUrl.
-        var compact = item.Mode == TrackItemDisplayMode.Compact;
-
-        // Reset the wired flag for the side we're leaving — x:Load unloads
-        // that subtree and a future Mode flip back will create fresh element
-        // instances that need fresh handlers.
-        if (compact) item._rowHandlersWired = false;
-        else item._compactHandlersWired = false;
-
-        item.IsCompactMode = compact;
-        item.IsRowMode = !compact;
-
-        // x:Load binding propagates on the next layout pass, but the imperative
-        // calls below (BindTrackData, ApplyLoadingVisualState, etc.) need the
-        // named fields populated NOW. Force the active subtree to realize
-        // synchronously via FindName — this both wires up the generated x:Name
-        // fields and triggers x:Load loading of the deferred element.
-        if (compact)
-        {
-            if (item.CompactBorder is null) item.FindName(nameof(CompactBorder));
-        }
-        else
-        {
-            if (item.RowRoot is null) item.FindName(nameof(RowRoot));
-        }
-
-        // Wire the newly-active mode's event handlers. Each Wire* method is
-        // idempotent, so re-firing for the same mode is a no-op.
-        if (compact) item.WireCompactHandlers();
-        else item.WireRowHandlers();
-
-        item.ApplyMode();
-        item.ResetHoverVisualState();
-        item.SyncLoadingStateFromTrack();
-        item.BindTrackData();
-        item.UpdateOverlayState();
-    }
-
-    private void ApplyMode()
-    {
-        // CompactBorder / RowRoot Visibility is set declaratively in XAML and
-        // gated by x:Load on IsCompactMode / IsRowMode — only the active mode's
-        // subtree exists, so the inactive side is null. Don't toggle Visibility
-        // here; let x:Load handle realization.
-        if (Mode != TrackItemDisplayMode.Compact)
-        {
-            ApplyRowDensityPadding();
-            ApplyRowColumnVisibility();
-        }
-
-        // RowPopularityBadge lives inside RowRoot, which is null when Mode==Compact.
-        if (RowPopularityBadge is not null)
-        {
-            RowPopularityBadge.Visibility = ShowPopularityBadge && Mode == TrackItemDisplayMode.Row
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-        }
-    }
-
-    #endregion
 
     #region Track Changed
 
@@ -983,7 +912,7 @@ public sealed partial class TrackItem : UserControl
 
         bool urlChanged = imageUrl != _boundCompactImageUrl;
         _boundCompactImageUrl = imageUrl;
-        if (urlChanged) _retriedCompactUrl = null;
+        if (urlChanged) TrackImageRetryBehavior.Reset(CompactAlbumArt);
         CompactAlbumArt.Visibility = Visibility.Visible;
 
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
@@ -1021,7 +950,7 @@ public sealed partial class TrackItem : UserControl
 
         bool urlChanged = imageUrl != _boundRowImageUrl;
         _boundRowImageUrl = imageUrl;
-        if (urlChanged) _retriedRowUrl = null;
+        if (urlChanged) TrackImageRetryBehavior.Reset(RowAlbumArt);
 
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
         if (string.IsNullOrEmpty(httpsUrl))
@@ -1040,41 +969,9 @@ public sealed partial class TrackItem : UserControl
         RowAlbumArt.Visibility = Visibility.Visible;
     }
 
-    private void OnCompactAlbumArtFailed(object? sender, EventArgs e)
-    {
-        var url = _boundCompactImageUrl;
-        if (string.IsNullOrEmpty(url)) return;
-        var alreadyRetried = url == _retriedCompactUrl;
-        _retriedCompactUrl = url;
-
-        CompactAlbumArt.ImageUrl = null;
-        CompactAlbumArt.Visibility = Visibility.Visible;
-        CompactAlbumArt.Opacity = 1;
-        if (alreadyRetried) return;
-
-        // CompositionImage already invalidated the cache entry. Re-set the URL
-        // to trigger a fresh GetOrCreate.
-        DispatcherQueue?.TryEnqueue(() => ApplyCompactAlbumArt(_boundCompactImageUrl));
-    }
-
-    private void OnRowAlbumArtFailed(object? sender, EventArgs e)
-    {
-        var url = _boundRowImageUrl;
-        if (string.IsNullOrEmpty(url)) return;
-        var alreadyRetried = url == _retriedRowUrl;
-        _retriedRowUrl = url;
-
-        RowAlbumArt.ImageUrl = null;
-        RowAlbumArt.Visibility = Visibility.Visible;
-        RowAlbumArt.Opacity = 1;
-        if (alreadyRetried) return;
-
-        DispatcherQueue?.TryEnqueue(() => ApplyRowAlbumArt(_boundRowImageUrl));
-    }
-
     private void ApplyPlaceholderColor(string? hex)
     {
-        var fallback = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
+        var fallback = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
         if (string.IsNullOrEmpty(hex))
         {
             if (CompactAlbumArtBorder != null) CompactAlbumArtBorder.Background = fallback;
@@ -1092,72 +989,19 @@ public sealed partial class TrackItem : UserControl
     /// <summary>
     /// When <see cref="UseImageColorHint"/> is true and no explicit
     /// <see cref="PlaceholderColorHex"/> was provided, resolves the per-track dominant
-    /// color via <see cref="ITrackColorHintService"/> and applies it as the placeholder
-    /// tint. Safe across virtualized-row recycling: each invocation bumps a version
-    /// counter and the async continuation only applies its result if the row is still
-    /// bound to the same track image.
+    /// color via <see cref="Wavee.UI.Services.ITrackColorHintService"/> and applies it
+    /// as the placeholder tint. Safe across virtualized-row recycling: the behavior
+    /// holds a per-instance version counter and only the latest async continuation
+    /// gets to paint.
     /// </summary>
     private void ResolveImageColorHint()
     {
-        // Explicit PlaceholderColorHex wins — if a page set it (e.g. an album page
-        // using a single album tint), don't override with a per-track hint.
-        if (!string.IsNullOrEmpty(PlaceholderColorHex)) return;
-        if (!UseImageColorHint) return;
-        if (_colorHintService == null) return;
-
-        var rawUrl = Track?.ImageUrl;
-        if (string.IsNullOrWhiteSpace(rawUrl))
-        {
-            _boundColorHintUrl = null;
-            ApplyPlaceholderColor(null);
-            return;
-        }
-
-        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(rawUrl);
-        if (string.IsNullOrWhiteSpace(httpsUrl))
-        {
-            _boundColorHintUrl = null;
-            ApplyPlaceholderColor(null);
-            return;
-        }
-
-        if (string.Equals(_boundColorHintUrl, httpsUrl, StringComparison.Ordinal))
-            return;
-        _boundColorHintUrl = httpsUrl;
-
-        var version = System.Threading.Interlocked.Increment(ref _colorHintVersion);
-
-        // Fast path: synchronous cache hit — apply inline, no async hop.
-        if (_colorHintService.TryGet(httpsUrl, out var cachedHex))
-        {
-            ApplyPlaceholderColor(cachedHex);
-            return;
-        }
-
-        // Apply neutral immediately so the row doesn't flash a stale previous color
-        // while the background worker resolves this URL's color.
-        ApplyPlaceholderColor(null);
-
-        _ = ResolveImageColorHintAsync(httpsUrl, version);
-    }
-
-    private async Task ResolveImageColorHintAsync(string httpsUrl, int version)
-    {
-        try
-        {
-            var hex = await _colorHintService!.GetOrResolveAsync(httpsUrl).ConfigureAwait(true);
-            // Row recycled to a different track while we were waiting: drop the result.
-            if (_colorHintVersion != version) return;
-            ApplyPlaceholderColor(hex);
-        }
-        catch (OperationCanceledException)
-        {
-            // Row was unloaded or cancelled — fine, nothing to do.
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogDebug(ex, "Color-hint resolution failed for {Url}", httpsUrl);
-        }
+        TrackColorHintBehavior.Resolve(
+            this,
+            Track?.ImageUrl,
+            PlaceholderColorHex,
+            UseImageColorHint,
+            ApplyPlaceholderColor);
     }
 
     private static Windows.UI.Color ParseHexColor(string hex)
@@ -1178,461 +1022,12 @@ public sealed partial class TrackItem : UserControl
         };
     }
 
-    private void RebindAlbumArtIfNeeded()
-    {
-        if (Mode == TrackItemDisplayMode.Compact)
-        {
-            if (!string.IsNullOrEmpty(_boundCompactImageUrl) && string.IsNullOrEmpty(CompactAlbumArt?.ImageUrl))
-                ApplyCompactAlbumArt(_boundCompactImageUrl);
-        }
-        else
-        {
-            if (!string.IsNullOrEmpty(_boundRowImageUrl) && string.IsNullOrEmpty(RowAlbumArt?.ImageUrl))
-                ApplyRowAlbumArt(_boundRowImageUrl);
-        }
-    }
-
     // Expose RowIndex TextBlock for external access (used by the internal name)
     // RowIndexText is the x:Name from XAML - no alias needed
 
     #endregion
 
-    #region Row Properties Changed
-
-    private static void OnRowIndexChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        var item = (TrackItem)d;
-        if (item.Mode == TrackItemDisplayMode.Row)
-        {
-            var track = item.Track;
-            var idx = (int)e.NewValue;
-            item.RowIndexText.Text = (track?.OriginalIndex > 0)
-                ? track.OriginalIndex.ToString()
-                : idx > 0 ? idx.ToString() : "";
-        }
-    }
-
-    private static void OnColumnVisibilityChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        var item = (TrackItem)d;
-        if (item.Mode == TrackItemDisplayMode.Row && item._batchUpdateDepth == 0)
-            item.ApplyRowColumnVisibility();
-    }
-
-    private static void OnShowPlayCountChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        var item = (TrackItem)d;
-        if (item.Mode == TrackItemDisplayMode.Row && item._batchUpdateDepth == 0)
-            item.ApplyRowColumnVisibility();
-        item.UpdateCompactSubtitleText();
-    }
-
-    private static void OnDateAddedTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        var item = (TrackItem)d;
-        // RowDateAdded lives inside RowRoot, which is x:Load-deferred. Skip
-        // when Mode is Compact; BindRowData repopulates this when the row
-        // realizes if needed.
-        if (item.RowDateAdded is not null)
-            item.RowDateAdded.Text = (string?)e.NewValue ?? "";
-    }
-
-    private static void OnPlayCountTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        var item = (TrackItem)d;
-        // RowPlayCount lives inside the x:Load-deferred RowRoot subtree.
-        if (item.RowPlayCount is not null)
-            item.RowPlayCount.Text = (string?)e.NewValue ?? "";
-        item.UpdateCompactSubtitleText();
-    }
-
-    private static void OnShowPopularityBadgeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        var item = (TrackItem)d;
-        // RowPopularityBadge lives inside the x:Load-deferred RowRoot subtree.
-        if (item.RowPopularityBadge is null) return;
-        item.RowPopularityBadge.Visibility = (bool)e.NewValue && item.Mode == TrackItemDisplayMode.Row
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-    }
-
-    private static void OnAddedByTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        var item = (TrackItem)d;
-        // RowAddedByText / RowAddedByAvatar / RowAddedByCell live inside the
-        // x:Load-deferred RowRoot subtree — skip when Compact-mode hosts set
-        // the DP before / without ever realizing the Row subtree.
-        if (item.RowAddedByText is null) return;
-        var text = (string?)e.NewValue ?? "";
-        item.RowAddedByText.Text = text;
-        // Feed the same text to PersonPicture so it can derive initials when
-        // the avatar URL is missing — without DisplayName, PersonPicture
-        // falls back to a generic person glyph instead of the user's initial.
-        item.RowAddedByAvatar.DisplayName = text;
-        // Empty text → collapse the cell entirely so empty rows don't
-        // reserve space for a placeholder avatar + label.
-        item.RowAddedByCell.Visibility = string.IsNullOrEmpty(text)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-    }
-
-    private static void OnAddedByAvatarUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        var item = (TrackItem)d;
-        // RowAddedByAvatar lives inside the x:Load-deferred RowRoot subtree.
-        if (item.RowAddedByAvatar is null) return;
-        var url = (string?)e.NewValue;
-        if (string.IsNullOrEmpty(url))
-        {
-            // Clear the photo so PersonPicture renders its initials / glyph fallback.
-            item.RowAddedByAvatar.ProfilePicture = null;
-            return;
-        }
-
-        // The resolver may return either a direct https URL or a Spotify
-        // internal `spotify:image:{hex}` reference; route both through the
-        // helper so PersonPicture always gets a loadable URI.
-        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url) ?? url;
-        if (!Uri.TryCreate(httpsUrl, UriKind.Absolute, out var avatarUri))
-        {
-            item.RowAddedByAvatar.ProfilePicture = null;
-            return;
-        }
-        item.RowAddedByAvatar.ProfilePicture = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(avatarUri)
-        {
-            DecodePixelWidth = 40
-        };
-    }
-
-    private static void OnIsCompactRowChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        var item = (TrackItem)d;
-        if (item.Mode == TrackItemDisplayMode.Row)
-        {
-            var compact = (bool)e.NewValue;
-            item.RowRoot.Padding = compact ? new Thickness(4, 4, 4, 4) : new Thickness(8, 8, 8, 8);
-            item.RowIndexColDef.Width = compact ? new GridLength(30) : new GridLength(40);
-        }
-    }
-
-    /// <summary>
-    /// Applies alternating row styling: border + tinted background on odd rows.
-    /// </summary>
-    private static readonly Brush DefaultBackground = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-
-    public void SetAlternatingBorder(bool isAlternate, bool useCardRow = false)
-    {
-        _isAlternateRow = isAlternate;
-        _useCardRow = useCardRow;
-        ApplyRowBackground();
-    }
-
-    private const int RowDurationColumnIndex = 9;
-    private readonly List<ColumnDefinition> _customColDefs = [];
-    private readonly List<UIElement> _customColElements = [];
-
-    /// <summary>
-    /// Populates custom column values (e.g. Plays) by inserting TextBlocks into the row grid.
-    /// Called from TrackListView.ContainerContentChanging with pre-computed values.
-    /// </summary>
-    public void SetCustomColumnValues(string[] values, IList<TrackList.TrackListColumnDefinition> columns)
-    {
-        // Clear previous custom columns
-        foreach (var el in _customColElements)
-            RowContentGrid.Children.Remove(el);
-        _customColElements.Clear();
-
-        foreach (var cd in _customColDefs)
-            RowContentGrid.ColumnDefinitions.Remove(cd);
-        _customColDefs.Clear();
-
-        // Reset duration column to base position
-        Grid.SetColumn(RowDuration, RowDurationColumnIndex);
-
-        for (int i = 0; i < values.Length; i++)
-        {
-            // Insert column definition before Duration
-            var colDef = new ColumnDefinition { Width = columns[i].Width };
-            RowContentGrid.ColumnDefinitions.Insert(RowDurationColumnIndex + i, colDef);
-            _customColDefs.Add(colDef);
-
-            var tb = new Microsoft.UI.Xaml.Controls.TextBlock
-            {
-                Text = values[i],
-                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                Foreground = _themeColors?.TextSecondary ?? (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = columns[i].TextAlignment,
-            };
-            Grid.SetColumn(tb, RowDurationColumnIndex + i);
-            RowContentGrid.Children.Add(tb);
-            _customColElements.Add(tb);
-        }
-
-        // Shift duration column right
-        Grid.SetColumn(RowDuration, RowDurationColumnIndex + values.Length);
-    }
-
-    private void ApplyRowColumnVisibility()
-    {
-        var density = Math.Clamp(RowDensity, 0, RowDensityArtSizes.Length - 1);
-        var artSize = RowDensityArtSizes[density];
-        // XS (density 0) force-hides the album art regardless of ShowAlbumArt — the
-        // whole point of XS is "image off + tight padding".
-        var effectiveShowArt = ShowAlbumArt && artSize > 0;
-
-        RowArtColDef.Width        = effectiveShowArt   ? new GridLength(artSize + 8)         : new GridLength(0);
-        RowTitleColDef.MaxWidth   = ResolveColumnMaxWidth(TitleColumnMaxWidth, RowTitleColDef.MinWidth);
-        RowAlbumColDef.Width      = ShowAlbumColumn    ? new GridLength(AlbumColumnWidth)     : new GridLength(0);
-        RowAddedByColDef.Width    = ShowAddedByColumn  ? new GridLength(AddedByColumnWidth)   : new GridLength(0);
-        RowDateColDef.Width       = ShowDateAdded      ? new GridLength(DateAddedColumnWidth) : new GridLength(0);
-        RowPlayCountColDef.Width  = ShowPlayCount      ? new GridLength(PlayCountColumnWidth)
-            : new GridLength(0);
-        RowDurationColDef.Width   = new GridLength(DurationColumnWidth);
-        RowPlayCount.Visibility = ShowPlayCount ? Visibility.Visible : Visibility.Collapsed;
-        RowProgressCell.Visibility = ShowProgress ? Visibility.Visible : Visibility.Collapsed;
-
-        // Collapsing the column to Width=0 alone isn't enough: RowAlbumArtBorder
-        // has a fixed Width/Height in XAML and would still render into the next
-        // column. Toggle visibility and resize to match the current density step.
-        if (RowAlbumArtBorder is not null)
-        {
-            RowAlbumArtBorder.Visibility = effectiveShowArt ? Visibility.Visible : Visibility.Collapsed;
-            if (effectiveShowArt)
-            {
-                RowAlbumArtBorder.Width = artSize;
-                RowAlbumArtBorder.Height = artSize;
-            }
-        }
-
-        // Artist subline is hidden at XS too — single-line rows are how we hit the
-        // 32-px target height.
-        RowArtistsHost.Visibility = (ShowArtistColumn && density > 0 && !ShowProgress) ? Visibility.Visible : Visibility.Collapsed;
-
-        // Keep the shimmer overlay's columns in sync so loading rows align with the
-        // real row layout (and with the column headers above).
-        ShimArtColDef.Width       = RowArtColDef.Width;
-        ShimTitleColDef.MaxWidth  = RowTitleColDef.MaxWidth;
-        ShimAlbumColDef.Width     = RowAlbumColDef.Width;
-        ShimAddedByColDef.Width   = RowAddedByColDef.Width;
-        ShimDateColDef.Width      = RowDateColDef.Width;
-        ShimPlayCountColDef.Width = RowPlayCountColDef.Width;
-        ShimDurationColDef.Width  = RowDurationColDef.Width;
-
-        // Subline visibility just changed (artist link) — re-evaluate whether the
-        // explicit/video badges should sit on the subline or inline beside the title.
-        UpdateBadgePlacement();
-    }
-
-    private static double ResolveColumnMaxWidth(double value, double minWidth)
-        => double.IsNaN(value) || double.IsInfinity(value)
-            ? double.PositiveInfinity
-            : Math.Max(minWidth, value);
-
-    private void ApplyRowDensityPadding()
-    {
-        var density = Math.Clamp(RowDensity, 0, RowDensityPaddings.Length - 1);
-        RowRoot.Padding = RowDensityPaddings[density];
-    }
-
-    private static void OnRowDensityChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        var item = (TrackItem)d;
-        if (item.Mode != TrackItemDisplayMode.Row) return;
-        item.ApplyRowDensityPadding();
-        if (item._batchUpdateDepth == 0)
-            item.ApplyRowColumnVisibility();
-    }
-
-    #endregion
-
-    #region Loading State
-
-    private static void OnIsLoadingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        var item = (TrackItem)d;
-        item.ApplyLoadingVisualState((bool)e.NewValue);
-        item.UpdatePendingBeam();
-    }
-
-    private void SyncLoadingStateFromTrack()
-    {
-        var loading = Track is { IsLoaded: false };
-        if (IsLoading != loading)
-            IsLoading = loading;
-        else
-            ApplyLoadingVisualState(loading);
-    }
-
-    private void ApplyLoadingVisualState(bool loading)
-    {
-        if (Mode == TrackItemDisplayMode.Compact)
-        {
-            // CompactAlbumArt is x:Load-deferred behind IsCompactMode. When
-            // the LazyTrackItem fires IsLoading before x:Bind has propagated
-            // the realize, the named field can still be null on the very
-            // first state apply. Force-realize, then guard.
-            EnsureCompactAlbumArtRealized();
-            if (CompactAlbumArt != null)
-                CompactAlbumArt.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
-            CompactArtShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
-            CompactInfoPanel.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
-            CompactInfoShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
-            CompactDuration.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
-        }
-        else
-        {
-            RowContentGrid.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
-            RowShimmerOverlay.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
-        }
-    }
-
-    #endregion
-
-    #region Hover
-
-    private void OnPointerEntered(object sender, PointerRoutedEventArgs e)
-    {
-        _isHovered = true;
-
-        if (Mode == TrackItemDisplayMode.Compact)
-        {
-            ApplyCompactBackground();
-        }
-        else
-        {
-            ApplyRowBackground();
-        }
-
-        UpdateOverlayState();
-    }
-
-    private void OnPointerExited(object sender, PointerRoutedEventArgs e)
-    {
-        ResetHoverVisualState();
-        UpdateOverlayState();
-    }
-
-    private void ResetHoverVisualState()
-    {
-        _isHovered = false;
-
-        if (Mode == TrackItemDisplayMode.Compact)
-        {
-            ApplyCompactBackground();
-        }
-        else
-        {
-            ApplyRowBackground();
-        }
-    }
-
-    private void ApplyCompactBackground()
-    {
-        if (CompactBorder == null) return;
-
-        if (IsSelected)
-        {
-            CompactBorder.Background = _isHovered
-                ? (_themeColors?.GetBrush("ListViewItemBackgroundSelectedPointerOver")
-                   ?? (Brush)Application.Current.Resources["ListViewItemBackgroundSelectedPointerOver"])
-                : (_themeColors?.GetBrush("ListViewItemBackgroundSelected")
-                   ?? (Brush)Application.Current.Resources["ListViewItemBackgroundSelected"]);
-            CompactBorder.BorderBrush = _themeColors?.AccentFill
-                ?? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"];
-            CompactBorder.BorderThickness = new Thickness(1.5);
-        }
-        else if (_isHovered)
-        {
-            CompactBorder.Background = _themeColors?.CardBackground
-                ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
-            CompactBorder.BorderBrush = _themeColors?.GetBrush("CardStrokeColorDefaultBrush")
-                ?? (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
-            CompactBorder.BorderThickness = new Thickness(1);
-        }
-        else
-        {
-            CompactBorder.Background = TransparentBrush;
-            CompactBorder.BorderBrush = TransparentBrush;
-            CompactBorder.BorderThickness = new Thickness(1);
-        }
-    }
-
-    private void ApplyRowBackground()
-    {
-        if (RowRoot == null) return;
-
-        bool nativePillShowing = IsSelected || _isHovered;
-
-        // Opt-in hover-tint: paint the configured hover brush and short-circuit.
-        // Border collapses to invisible so the hover slab reads as a single block.
-        if (_isHovered && !IsSelected && RowHoverBackgroundBrush is not null)
-        {
-            RowRoot.Background = RowHoverBackgroundBrush;
-            RowRoot.BorderThickness = new Thickness(1);
-            RowRoot.BorderBrush = TransparentBrush;
-            return;
-        }
-
-        if (!nativePillShowing && (_useCardRow || _isAlternateRow))
-        {
-            // CardBackground (Fluent card tint) gives visible alternating-row
-            // striping in both light and dark. The boxed-in-light-mode look
-            // users previously complained about was driven by the per-row
-            // drop shadow — that's been removed, and the card fill alone
-            // reads cleanly in both themes.
-            RowRoot.Background = _useCardRow
-                ? (_isAlternateRow
-                    ? (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"]
-                    : DefaultBackground)
-                : _themeColors?.CardBackground
-                  ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
-        }
-        else
-        {
-            RowRoot.Background = DefaultBackground;
-        }
-
-        // BorderThickness is always 1 — only the BorderBrush colour changes
-        // between visible (alternating-row card stroke) and invisible
-        // (transparent). Toggling the THICKNESS instead would add / remove
-        // 2 px from the row's outer bounds on hover, shifting every cell's
-        // inner content by 1 px and producing the visible flicker the user
-        // reported. Keep the geometry stable; only repaint.
-        RowRoot.BorderThickness = new Thickness(1);
-        if (!nativePillShowing && _isAlternateRow)
-        {
-            RowRoot.BorderBrush = _themeColors?.CardStroke
-                ?? (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
-        }
-        else
-        {
-            RowRoot.BorderBrush = TransparentBrush;
-        }
-    }
-
-    // Cached transparent brush — reused across hover transitions so we don't
-    // allocate a new SolidColorBrush on every PointerEntered / PointerExited.
-    private static readonly Brush TransparentBrush =
-        new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-
-    private void UpdateSelectionVisualState()
-    {
-        if (CompactSelectionIndicator != null)
-            CompactSelectionIndicator.Opacity = IsSelected ? 1 : 0;
-
-        if (RowSelectionIndicator != null)
-            RowSelectionIndicator.Opacity = IsSelected ? 1 : 0;
-
-        if (Mode == TrackItemDisplayMode.Compact)
-            ApplyCompactBackground();
-        else
-            ApplyRowBackground();
-    }
-
-    #endregion
-
-    #region Playback State
+    #region Loaded / Unloaded — wiring + per-row playback rehydration
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -1655,7 +1050,6 @@ public sealed partial class TrackItem : UserControl
         _boundCompactImageUrl = null;
         _boundRowImageUrl = null;
         RebindObservedTrack();
-        RepinVisibleAlbumArt();
         UpdateBadgePlacement();
         RefreshLikedState();
 
@@ -1685,38 +1079,6 @@ public sealed partial class TrackItem : UserControl
         }
 
         HookAddToPlaylistSession();
-    }
-
-    private void OnPlaybackStateChanged()
-    {
-        // Cheap pre-check on the calling thread: skip the dispatch when this
-        // row's effective playback state can't have flipped. Across the four
-        // events that PlaybackStateChanged fans (CurrentTrackId, IsPlaying,
-        // IsBuffering, BufferingTrackId), only the previously-active row, the
-        // newly-active row, and the buffering row need to update — every
-        // other realized TrackItem is a no-op. At 500 visible rows that's a
-        // ~1 ms-per-event drop to a handful of µs. The reads below are
-        // lock-free statics + plain instance fields, safe on any thread.
-        var track = Track;
-        if (track == null) return;
-
-        var trackId = track.Id;
-        var isThisTrack = trackId == TrackStateBehavior.CurrentTrackId;
-        var nowPlaying = isThisTrack && TrackStateBehavior.IsCurrentlyPlaying;
-        var nowPaused = isThisTrack && !TrackStateBehavior.IsCurrentlyPlaying;
-        var nowBuffering = trackId == TrackStateBehavior.BufferingTrackId
-                           && TrackStateBehavior.IsCurrentlyBuffering;
-
-        if (nowPlaying == _isThisTrackPlaying
-            && nowPaused == _isThisTrackPaused
-            && nowBuffering == _isBuffering)
-            return;
-
-        DispatcherQueue?.TryEnqueue(() =>
-        {
-            RefreshPlaybackState();
-            UpdateOverlayState();
-        });
     }
 
     private void OnSaveStateChanged()
@@ -1772,387 +1134,6 @@ public sealed partial class TrackItem : UserControl
         expectedTrack.IsLiked = isLiked;
     }
 
-    /// <summary>
-    /// Refresh playback state from TrackStateBehavior. Can be called externally
-    /// by TrackListView for optimized per-row updates.
-    /// </summary>
-    public void RefreshPlaybackState()
-    {
-        var track = Track;
-        if (track == null)
-        {
-            _isThisTrackPlaying = false;
-            _isThisTrackPaused = false;
-            _isBuffering = false;
-            CancelLocalBufferingTimeout();
-            StopPendingBeam();
-            return;
-        }
-
-        var wasBuffering = _isBuffering;
-        var isThisTrack = track.Id == TrackStateBehavior.CurrentTrackId;
-        _isThisTrackPlaying = isThisTrack && TrackStateBehavior.IsCurrentlyPlaying;
-        _isThisTrackPaused = isThisTrack && !TrackStateBehavior.IsCurrentlyPlaying;
-        _isBuffering = track.Id == TrackStateBehavior.BufferingTrackId
-                       && TrackStateBehavior.IsCurrentlyBuffering;
-
-        if (!_isBuffering)
-            CancelLocalBufferingTimeout();
-
-        if (wasBuffering && !_isBuffering && isThisTrack)
-            ResetHoverVisualState();
-
-        // Title accent color. In Light mode, AccentTextFillColorPrimaryBrush
-        // resolves to a saturated bright accent (red on default Windows accent),
-        // which overpowers neighboring rows. Use the secondary variant in Light
-        // for de-emphasis; Dark keeps primary so the active row still pops.
-        var accentResource = ActualTheme == ElementTheme.Light
-            ? "AccentTextFillColorSecondaryBrush"
-            : "AccentTextFillColorPrimaryBrush";
-        var accentBrush = _themeColors?.AccentText ?? (Brush)Application.Current.Resources[accentResource];
-        var normalBrush = _themeColors?.TextPrimary ?? (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
-
-        if (Mode == TrackItemDisplayMode.Compact)
-        {
-            CompactTitle.Foreground = (isThisTrack || _isBuffering) ? accentBrush : normalBrush;
-        }
-        else
-        {
-            RowTitle.Foreground = (isThisTrack || _isBuffering) ? accentBrush : normalBrush;
-        }
-    }
-
-    private void UpdateOverlayState()
-    {
-        if (Track == null)
-        {
-            StopPendingBeam();
-            return;
-        }
-
-        if (Mode == TrackItemDisplayMode.Compact)
-            UpdateCompactOverlay();
-        else
-            UpdateRowOverlay();
-
-        UpdatePendingBeam();
-    }
-
-    private void UpdateCompactOverlay()
-    {
-        if (_isBuffering)
-        {
-            CompactPlayButton.Opacity = 0;
-            CompactPlayButton.Visibility = Visibility.Collapsed;
-            CompactPlayButton.IsHitTestVisible = false;
-
-            CompactNowPlaying.Visibility = Visibility.Collapsed;
-            SetCompactEqualizer(false, false);
-            CompactBufferingRing.IsActive = true;
-            CompactBufferingRing.Visibility = Visibility.Visible;
-        }
-        else if (_isHovered)
-        {
-            CompactNowPlaying.Visibility = Visibility.Collapsed;
-            SetCompactEqualizer(false, false);
-            CompactBufferingRing.IsActive = false;
-            CompactBufferingRing.Visibility = Visibility.Collapsed;
-            if (CompactPlayContent != null)
-                CompactPlayContent.IsPlaying = _isThisTrackPlaying;
-
-            CompactPlayButton.Visibility = Visibility.Visible;
-            CompactPlayButton.IsHitTestVisible = true;
-            if (CompactPlayButton.Opacity < 0.99)
-            {
-                AnimationBuilder.Create()
-                    .Opacity(to: 1, duration: TimeSpan.FromMilliseconds(100))
-                    .Start(CompactPlayButton);
-            }
-        }
-        else
-        {
-            CompactPlayButton.IsHitTestVisible = false;
-            if (CompactPlayButton.Visibility == Visibility.Visible && CompactPlayButton.Opacity > 0.01)
-            {
-                AnimationBuilder.Create()
-                    .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(85))
-                    .Start(CompactPlayButton);
-                _ = CollapseCompactPlayButtonAfterDelayAsync(90);
-            }
-            else
-            {
-                CompactPlayButton.Opacity = 0;
-                CompactPlayButton.Visibility = Visibility.Collapsed;
-            }
-
-            if (_isThisTrackPlaying)
-            {
-                CompactBufferingRing.IsActive = false;
-                CompactBufferingRing.Visibility = Visibility.Collapsed;
-                CompactNowPlaying.Visibility = Visibility.Visible;
-                CompactNowPlaying.Opacity = 1.0;
-                SetCompactEqualizer(true, true);
-            }
-            else if (_isThisTrackPaused)
-            {
-                CompactBufferingRing.IsActive = false;
-                CompactBufferingRing.Visibility = Visibility.Collapsed;
-                CompactNowPlaying.Visibility = Visibility.Visible;
-                CompactNowPlaying.Opacity = 0.7;
-                SetCompactEqualizer(true, false);
-            }
-            else
-            {
-                SetCompactEqualizer(false, false);
-                CompactBufferingRing.IsActive = false;
-                CompactBufferingRing.Visibility = Visibility.Collapsed;
-                CompactNowPlaying.Visibility = Visibility.Collapsed;
-            }
-        }
-    }
-
-    private async Task CollapseCompactPlayButtonAfterDelayAsync(int delayMs)
-    {
-        await Task.Delay(delayMs);
-        if (!_isHovered && !_isBuffering && CompactPlayButton.Opacity <= 0.05)
-        {
-            CompactPlayButton.Opacity = 0;
-            CompactPlayButton.Visibility = Visibility.Collapsed;
-            CompactPlayButton.IsHitTestVisible = false;
-        }
-    }
-
-    private void UpdateRowOverlay()
-    {
-        if (_isBuffering)
-        {
-            RowIndexText.Visibility = Visibility.Collapsed;
-            RowPlayButton.Visibility = Visibility.Collapsed;
-            SetRowEqualizer(false, false);
-            RowBufferingRing.IsActive = true;
-            RowBufferingRing.Visibility = Visibility.Visible;
-        }
-        else if (_isHovered)
-        {
-            RowIndexText.Visibility = Visibility.Collapsed;
-            SetRowEqualizer(false, false);
-            RowBufferingRing.IsActive = false;
-            RowBufferingRing.Visibility = Visibility.Collapsed;
-            RowPlayButton.Visibility = Visibility.Visible;
-            if (RowPlayContent != null)
-                RowPlayContent.IsPlaying = _isThisTrackPlaying;
-        }
-        else if (_isThisTrackPlaying)
-        {
-            RowIndexText.Visibility = Visibility.Collapsed;
-            RowPlayButton.Visibility = Visibility.Collapsed;
-            RowBufferingRing.IsActive = false;
-            RowBufferingRing.Visibility = Visibility.Collapsed;
-            SetRowEqualizer(true, true);
-        }
-        else if (_isThisTrackPaused)
-        {
-            RowIndexText.Visibility = Visibility.Collapsed;
-            RowPlayButton.Visibility = Visibility.Collapsed;
-            RowBufferingRing.IsActive = false;
-            RowBufferingRing.Visibility = Visibility.Collapsed;
-            SetRowEqualizer(true, false);
-        }
-        else
-        {
-            RowIndexText.Visibility = Visibility.Visible;
-            SetRowEqualizer(false, false);
-            RowPlayButton.Visibility = Visibility.Collapsed;
-            RowBufferingRing.IsActive = false;
-            RowBufferingRing.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private void SetCompactEqualizer(bool visible, bool active)
-    {
-        if (visible && CompactNowPlayingEqualizer == null)
-            FindName("CompactNowPlayingEqualizer");
-        if (CompactNowPlayingEqualizer == null) return;
-
-        CompactNowPlayingEqualizer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        CompactNowPlayingEqualizer.IsActive = visible && active;
-    }
-
-    private void SetRowEqualizer(bool visible, bool active)
-    {
-        if (visible && RowNowPlayingEqualizer == null)
-            FindName("RowNowPlayingEqualizer");
-        if (RowNowPlayingEqualizer == null) return;
-
-        RowNowPlayingEqualizer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        RowNowPlayingEqualizer.IsActive = visible && active;
-    }
-
-    private void UpdatePendingBeam()
-    {
-        if (_isBuffering && !IsLoading)
-            StartPendingBeam();
-        else
-            StopPendingBeam();
-    }
-
-    private void StartPendingBeam()
-    {
-        if (PlaybackPendingBeam == null)
-            this.FindName("PlaybackPendingBeam");
-        PlaybackPendingBeam?.Start();
-    }
-
-    private void StopPendingBeam()
-    {
-        PlaybackPendingBeam?.Stop();
-    }
-
-    private void StartLocalBufferingTimeout(string trackId)
-    {
-        CancelLocalBufferingTimeout();
-
-        var cts = new CancellationTokenSource();
-        _localBufferingTimeoutCts = cts;
-        _localBufferingTimeoutTrackId = trackId;
-        _ = ClearLocalBufferingAfterTimeoutAsync(trackId, cts.Token);
-    }
-
-    private async Task ClearLocalBufferingAfterTimeoutAsync(string trackId, CancellationToken ct)
-    {
-        try
-        {
-            await Task.Delay(OptimisticPlayPendingTimeoutMs, ct);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-
-        DispatcherQueue?.TryEnqueue(() =>
-        {
-            if (ct.IsCancellationRequested
-                || !_isBuffering
-                || !string.Equals(_localBufferingTimeoutTrackId, trackId, StringComparison.Ordinal)
-                || !string.Equals(Track?.Id, trackId, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            if (TrackStateBehavior.IsCurrentlyBuffering
-                && string.Equals(TrackStateBehavior.BufferingTrackId, trackId, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            CancelLocalBufferingTimeout();
-            _isBuffering = false;
-            UpdateOverlayState();
-        });
-    }
-
-    private void CancelLocalBufferingTimeout()
-    {
-        var cts = _localBufferingTimeoutCts;
-        _localBufferingTimeoutCts = null;
-        _localBufferingTimeoutTrackId = null;
-
-        if (cts is null)
-            return;
-
-        try { cts.Cancel(); }
-        catch (ObjectDisposedException) { }
-        cts.Dispose();
-    }
-
-    #endregion
-
-    #region Click / Play
-
-    private void OnPlayButtonClick(object sender, RoutedEventArgs e)
-    {
-        var track = Track;
-        if (track == null) return;
-
-        if (track.Id == TrackStateBehavior.CurrentTrackId)
-        {
-            _playbackStateService?.PlayPause();
-        }
-        else
-        {
-            ExecutePlayCommandWithPending(track);
-        }
-    }
-
-    private void OnHeartClicked()
-        => _ = OnHeartClickedAsync();
-
-    private async Task OnHeartClickedAsync()
-    {
-        var track = Track;
-        if (track == null)
-        {
-            _logger?.LogWarning("HeartButton clicked but no track is bound");
-            return;
-        }
-        if (_likeService == null)
-        {
-            _logger?.LogWarning("HeartButton clicked but ITrackLikeService is not available");
-            return;
-        }
-
-        var uri = IsCurrentPlaybackVideoTrack(track)
-            ? await PlaybackSaveTargetResolver
-                .ResolveTrackUriAsync(_playbackStateService, _musicVideoMetadata)
-                .ConfigureAwait(true)
-            : GetImmediateSaveTargetUri(track);
-        if (string.IsNullOrEmpty(uri))
-            return;
-
-        var wasLiked = _likeService.IsSaved(SavedItemType.Track, uri);
-        _logger?.LogInformation("HeartButton: ToggleSave uri={Uri}, currentlyLiked={IsLiked}", uri, wasLiked);
-
-        // Just tell the service - it updates the cache, fires SaveStateChanged,
-        // and ALL hearts across the app react via OnSaveStateChanged.
-        _likeService.ToggleSave(SavedItemType.Track, uri, wasLiked);
-    }
-
-    private string? GetImmediateSaveTargetUri(ITrackItem track)
-    {
-        if (IsCurrentPlaybackVideoTrack(track))
-            return PlaybackSaveTargetResolver.GetTrackUri(_playbackStateService);
-
-        if (IsSpotifyEpisodeUri(track.Uri))
-            return null;
-
-        if (!string.IsNullOrEmpty(track.Uri))
-            return track.Uri;
-
-        return string.IsNullOrEmpty(track.Id)
-            ? null
-            : SpotifyUriHelper.ToUri(SpotifyEntityKind.Track, track.Id);
-    }
-
-    private static bool IsSpotifyEpisodeUri(string? uri)
-        => SpotifyUriHelper.IsKind(uri, SpotifyEntityKind.Episode);
-
-    private bool IsCurrentPlaybackVideoTrack(ITrackItem track)
-    {
-        if (_playbackStateService?.CurrentTrackIsVideo != true)
-            return false;
-
-        var currentTrackId = _playbackStateService.CurrentTrackId;
-        if (string.IsNullOrEmpty(currentTrackId))
-            return false;
-
-        var currentTrackUri = currentTrackId.Contains(':', StringComparison.Ordinal)
-            ? currentTrackId
-            : SpotifyUriHelper.ToUri(SpotifyEntityKind.Track, currentTrackId);
-
-        return string.Equals(track.Id, currentTrackId, StringComparison.Ordinal)
-               || string.Equals(track.Uri, currentTrackUri, StringComparison.Ordinal);
-    }
-
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         ObserveTrack(null);
@@ -2192,6 +1173,10 @@ public sealed partial class TrackItem : UserControl
 
         UnhookAddToPlaylistSession();
 
+        // Reset the color-hint latch so a recycled row can't paint a stale
+        // hex from a previous track's in-flight async continuation.
+        TrackColorHintBehavior.Reset(this);
+
         if (PreserveImageOnUnload)
             return;
 
@@ -2201,12 +1186,6 @@ public sealed partial class TrackItem : UserControl
         // with surfaces, leaving ImageUrl intact lets the inner Composition
         // visual repaint immediately on re-attach since the cache still
         // holds the surface for any URL that was visible recently.
-    }
-
-    private void RepinVisibleAlbumArt()
-    {
-        // CompositionImage manages its own pin lifecycle via OnLoaded/OnUnloaded,
-        // so this method is a no-op in the surface-backed pipeline.
     }
 
     private void ObserveTrack(ITrackItem? track)
@@ -2434,202 +1413,11 @@ public sealed partial class TrackItem : UserControl
         }
     }
 
-    private void OnTapped(object sender, TappedRoutedEventArgs e)
-    {
-        // Don't handle taps on interactive elements (buttons, links)
-        if (IsInteractiveElement(e.OriginalSource as DependencyObject))
-            return;
-        if (IsCtrlOrShiftDown())
-            return;
-
-        var settings = TryGetSettings();
-        if (settings?.Settings.TrackClickBehavior != "SingleTap") return;
-
-        HandleTrackPlay();
-        e.Handled = true;
-    }
-
-    private void OnDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
-    {
-        // Don't handle double-taps on interactive elements
-        if (IsInteractiveElement(e.OriginalSource as DependencyObject))
-            return;
-        if (IsCtrlOrShiftDown())
-            return;
-
-        var settings = TryGetSettings();
-        if (settings?.Settings.TrackClickBehavior == "SingleTap") return;
-
-        HandleTrackPlay();
-        e.Handled = true;
-    }
-
-    private void HandleTrackPlay()
-    {
-        var track = Track;
-        if (track == null) return;
-        ExecutePlayCommandWithPending(track);
-    }
-
-    private void ExecutePlayCommandWithPending(ITrackItem track)
-    {
-        if (PlayCommand?.CanExecute(track) != true) return;
-
-        if (track.Id != TrackStateBehavior.CurrentTrackId)
-        {
-            _playbackStateService?.NotifyBuffering(track.Id);
-            ResetHoverVisualState();
-            _isThisTrackPlaying = false;
-            _isThisTrackPaused = false;
-            _isBuffering = true;
-            StartLocalBufferingTimeout(track.Id);
-            UpdateOverlayState();
-        }
-
-        PlayCommand.Execute(track);
-    }
-
-    private static bool IsCtrlOrShiftDown()
-    {
-        try
-        {
-            var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control);
-            var shiftState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift);
-            const Windows.UI.Core.CoreVirtualKeyStates down = Windows.UI.Core.CoreVirtualKeyStates.Down;
-            return (ctrlState & down) == down || (shiftState & down) == down;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    #endregion
-
-    #region Navigation Links (Row mode)
-
-    private void OnArtistLinkClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is HyperlinkButton link && link.Tag is string artistId && !string.IsNullOrEmpty(artistId))
-        {
-            // Pull the visible artist name from the inner TextBlock so navigation
-            // labels match what was clicked rather than the row's flattened
-            // ArtistName string (which may comma-join multiple names).
-            var displayName = (link.Content as TextBlock)?.Text
-                ?? link.Content as string
-                ?? "";
-            ArtistClicked?.Invoke(this, artistId);
-            NavigationHelpers.OpenArtist(artistId, displayName);
-        }
-    }
-
-    /// <summary>
-    /// Rebuild the per-artist hyperlink stack inside <see cref="RowArtistsHost"/>.
-    /// Renders one HyperlinkButton per artist with comma separators between them
-    /// when the track carries a rich <see cref="ITrackItem.Artists"/> list; falls
-    /// back to a single link from <c>(ArtistName, ArtistId)</c> for legacy DTOs
-    /// (LikedSongDto, PlaylistTrackDto, …) that haven't been upgraded yet.
-    /// </summary>
-    private void RebuildArtistsSubline(ITrackItem track)
-    {
-        var signature = BuildArtistsSignature(track);
-        if (string.Equals(signature, _rowArtistsSignature, StringComparison.Ordinal))
-            return;
-
-        _rowArtistsSignature = signature;
-        RowArtistsHost.Children.Clear();
-
-        var captionStyle = (Microsoft.UI.Xaml.Style)Application.Current.Resources["CaptionTextBlockStyle"];
-        var subduedBrush = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
-
-        var artists = track.Artists;
-        if (artists == null || artists.Count == 0)
-        {
-            // Single-link fallback. Empty ArtistId is fine — OnArtistLinkClick
-            // checks for empty before navigating, matching the legacy behaviour.
-            var name = track.ArtistName ?? "";
-            if (string.IsNullOrEmpty(name)) return;
-            RowArtistsHost.Children.Add(BuildArtistLink(name, track.ArtistId ?? "", captionStyle, subduedBrush));
-            return;
-        }
-
-        for (var i = 0; i < artists.Count; i++)
-        {
-            if (i > 0)
-            {
-                RowArtistsHost.Children.Add(new TextBlock
-                {
-                    Text = ", ",
-                    Style = captionStyle,
-                    Foreground = subduedBrush,
-                    VerticalAlignment = VerticalAlignment.Center,
-                });
-            }
-            var a = artists[i];
-            RowArtistsHost.Children.Add(BuildArtistLink(a.Name, a.Uri, captionStyle, subduedBrush));
-        }
-    }
-
-    private static string BuildArtistsSignature(ITrackItem track)
-    {
-        var artists = track.Artists;
-        if (artists == null || artists.Count == 0)
-            return $"{track.ArtistName}|{track.ArtistId}";
-
-        var sb = new StringBuilder(artists.Count * 32);
-        for (var i = 0; i < artists.Count; i++)
-        {
-            if (i > 0) sb.Append('|');
-            sb.Append(artists[i].Name).Append('@').Append(artists[i].Uri);
-        }
-        return sb.ToString();
-    }
-
-    private HyperlinkButton BuildArtistLink(
-        string name,
-        string artistTag,
-        Microsoft.UI.Xaml.Style captionStyle,
-        Brush subduedBrush)
-    {
-        var link = new HyperlinkButton
-        {
-            Padding = new Thickness(0),
-            Margin = new Thickness(0),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Tag = artistTag,
-            Content = new TextBlock
-            {
-                Text = name,
-                Style = captionStyle,
-                Foreground = subduedBrush,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                MaxLines = 1,
-            }
-        };
-        link.Click += OnArtistLinkClick;
-        return link;
-    }
-
-    private void OnAlbumLinkClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is HyperlinkButton link && link.Tag is string albumId && !string.IsNullOrEmpty(albumId))
-        {
-            AlbumClicked?.Invoke(this, albumId);
-            var param = new Data.Parameters.ContentNavigationParameter
-            {
-                Uri = albumId,
-                Title = link.Content as string ?? "",
-                ImageUrl = Track?.ImageUrl
-            };
-            NavigationHelpers.OpenAlbum(param, param.Title);
-        }
-    }
-
     #endregion
 
     #region Context Menu
 
-    private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
+    private void OnRightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
     {
         var track = Track;
         if (track == null) return;
@@ -2638,7 +1426,7 @@ public sealed partial class TrackItem : UserControl
         e.Handled = true;
     }
 
-    private void OnHolding(object sender, HoldingRoutedEventArgs e)
+    private void OnHolding(object sender, Microsoft.UI.Xaml.Input.HoldingRoutedEventArgs e)
     {
         if (e.HoldingState != Microsoft.UI.Input.HoldingState.Started) return;
 
@@ -2671,33 +1459,10 @@ public sealed partial class TrackItem : UserControl
 
     #region Cleanup
 
-    // Unsubscribe handled inline: Unloaded event removes save-state listener
-    // to prevent leaks when TrackItem is recycled by ItemsRepeater/ListView.
-
-    #endregion
-
-    #region Helpers
-
-    /// <summary>
-    /// Checks if a visual tree element is an interactive control (button, link)
-    /// that should not trigger row-level tap-to-play.
-    /// </summary>
-    private static bool IsInteractiveElement(DependencyObject? element)
-    {
-        while (element != null)
-        {
-            if (element is Button or HyperlinkButton) return true;
-            element = VisualTreeHelper.GetParent(element);
-        }
-        return false;
-    }
-
-    private static ISettingsService? TryGetSettings()
-    {
-        if (_cachedSettingsService != null) return _cachedSettingsService;
-        try { return _cachedSettingsService = Ioc.Default.GetService<ISettingsService>(); }
-        catch (Exception ex) { Debug.WriteLine($"Failed to resolve ISettingsService: {ex.Message}"); return null; }
-    }
+    // Unsubscribe handled inline in OnUnloaded: messenger, save-state listener,
+    // add-to-playlist session subscription. TrackImageRetryBehavior and
+    // TrackColorHintBehavior keep their per-element state in a
+    // ConditionalWeakTable so it's collected with the control automatically.
 
     #endregion
 }

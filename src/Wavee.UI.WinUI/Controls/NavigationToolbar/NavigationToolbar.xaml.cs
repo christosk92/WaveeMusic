@@ -303,16 +303,19 @@ public sealed partial class NavigationToolbar : UserControl
 
     private void BackButton_Click(object sender, RoutedEventArgs e)
     {
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("NavToolbar.Back");
         BackRequested?.Invoke(this, e);
     }
 
     private void ForwardButton_Click(object sender, RoutedEventArgs e)
     {
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("NavToolbar.Forward");
         ForwardRequested?.Invoke(this, e);
     }
 
     private void HomeButton_Click(object sender, RoutedEventArgs e)
     {
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("NavToolbar.Home");
         HomeRequested?.Invoke(this, e);
     }
 

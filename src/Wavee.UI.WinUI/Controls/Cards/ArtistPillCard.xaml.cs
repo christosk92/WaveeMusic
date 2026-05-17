@@ -71,6 +71,8 @@ public sealed partial class ArtistPillCard : UserControl
         var uri = ArtistUri;
         if (string.IsNullOrEmpty(uri)) return;
         var openInNewTab = NavigationHelpers.IsCtrlPressed();
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent(
+            "ArtistPillCard.Artist" + (openInNewTab ? ".NewTab" : ""));
         NavigationHelpers.OpenArtist(uri, ArtistName ?? "Artist", openInNewTab);
     }
 }

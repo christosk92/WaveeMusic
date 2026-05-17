@@ -1708,9 +1708,6 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Views_ShellPage__InfoBar_1.Title" xml:space="preserve">
     <value>Connection failed</value>
   </data>
-  <data name="Views_ShellPage__TextBlock_3.Text" xml:space="preserve">
-    <value>Reconnecting to Spotify...</value>
-  </data>
   <data name="Views_StartPage__AutoSuggestBox_2.PlaceholderText" xml:space="preserve">
     <value>Search songs, artists, albums...</value>
   </data>

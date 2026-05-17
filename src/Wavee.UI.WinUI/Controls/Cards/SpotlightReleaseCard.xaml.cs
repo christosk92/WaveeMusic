@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.Helpers;
+using Wavee.UI.Services.Artists;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
@@ -307,6 +308,7 @@ public sealed partial class SpotlightReleaseCard : UserControl
         var uri = NavigationUri;
         if (!string.IsNullOrEmpty(uri))
         {
+            Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("SpotlightReleaseCard.Album");
             AlbumNavigationHelper.NavigateToAlbum(
                 uri,
                 title: Title,

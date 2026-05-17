@@ -171,11 +171,10 @@ public sealed class MemoryDiagnosticsService
         {
             try
             {
-                var f = t.ContentFrame;
-                // Currently-active page + back stack + forward stack approximates retained pages.
-                if (f.Content != null) totalCachedPages++;
-                totalCachedPages += f.BackStack.Count;
-                totalCachedPages += f.ForwardStack.Count;
+                var h = t.ContentHost;
+                // PageHost holds all cached pages as Children of its internal panel —
+                // active + collapsed in a single count.
+                totalCachedPages += h.CachedPageCount;
             }
             catch { /* TabBarItem may be in transition */ }
         }

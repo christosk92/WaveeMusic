@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Page
+<UserControl
     x:Class="Wavee.UI.WinUI.Views.Local.LocalMovieDetailPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -12,7 +12,7 @@
     Background="Transparent"
     waveeHelpers:PageEntranceFade.Fade="True">
 
-    <Page.Resources>
+    <UserControl.Resources>
         <transitions:TransitionHelper x:Key="LocalMovieShyHeaderTransition"
                                       Duration="0:0:0.36"
                                       ReverseDuration="0:0:0.30"
@@ -32,7 +32,7 @@
             </transitions:TransitionConfig>
             <transitions:TransitionConfig Id="movie-play" ScaleMode="Scale"/>
         </transitions:TransitionHelper>
-    </Page.Resources>
+    </UserControl.Resources>
 
     <Grid>
         <ScrollView x:Name="PageScrollView">
@@ -322,4 +322,4 @@
             </Grid>
         </Grid>
     </Grid>
-</Page>
+</UserControl>

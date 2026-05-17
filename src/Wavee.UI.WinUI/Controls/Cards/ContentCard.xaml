@@ -11,8 +11,11 @@
     xmlns:local="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:imaging="using:Wavee.UI.WinUI.Controls.Imaging"
     xmlns:playback="using:Wavee.UI.WinUI.Controls.Playback"
+    xmlns:cardb="using:Wavee.UI.WinUI.Behaviors.Card"
     mc:Ignorable="d"
     Background="Transparent"
+    cardb:CardPassivePointerBehavior.IsAttached="True"
+    cardb:CardEffectiveViewportBehavior.IsAttached="True"
     PointerEntered="Card_PointerEntered"
     PointerExited="Card_PointerExited"
     PointerPressed="Card_PointerPressed"
@@ -70,6 +73,7 @@
                     <imaging:CompositionImage x:Name="SquareImage"
                                               Stretch="UniformToFill"
                                               Opacity="0"
+                                              cardb:CardImageRetryBehavior.Enable="True"
                                               ImageOpened="SquareImage_ImageOpened"
                                               ImageFailed="SquareImage_ImageFailed"/>
 

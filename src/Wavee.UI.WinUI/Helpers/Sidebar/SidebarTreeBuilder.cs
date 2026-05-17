@@ -14,7 +14,7 @@ namespace Wavee.UI.WinUI.Helpers.Sidebar;
 /// playlist / pinned rows are populated separately by <c>ShellViewModel</c>
 /// once the library data is loaded; this builder only lays the scaffolding.
 ///
-/// <para>Extracted out of <c>ShellViewModel.InitializeSidebarItems</c>
+/// <para>Extracted out of <c>SidebarViewModel.InitializeSidebarItems</c>
 /// (audit D2: long-method smell) so the VM keeps the wiring + lifecycle and
 /// the markup-style construction lives next to the other sidebar helpers.</para>
 /// </summary>

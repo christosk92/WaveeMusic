@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Page
+<UserControl
     x:Class="Wavee.UI.WinUI.Views.Local.LocalCollectionDetailPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -52,4 +52,4 @@
             </ItemsRepeater>
         </StackPanel>
     </ScrollViewer>
-</Page>
+</UserControl>

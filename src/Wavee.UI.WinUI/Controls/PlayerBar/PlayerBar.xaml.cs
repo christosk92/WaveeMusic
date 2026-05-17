@@ -444,9 +444,14 @@ public sealed partial class PlayerBar : UserControl
         e.Handled = true;
     }
 
-    private void TrackTitle_Click(object sender, RoutedEventArgs e) => NavigateToAlbum();
+    private void TrackTitle_Click(object sender, RoutedEventArgs e)
+    {
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("PlayerBar.TrackTitle");
+        NavigateToAlbum();
+    }
     private void TrackTitle_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("PlayerBar.TrackTitle");
         NavigateToAlbum();
         e.Handled = true;
     }

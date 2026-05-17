@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -14,7 +14,7 @@ using Wavee.UI.WinUI.ViewModels.Local;
 
 namespace Wavee.UI.WinUI.Views.Local;
 
-public sealed partial class LocalShowsPage : Page
+public sealed partial class LocalShowsPage : UserControl
 {
     public LocalShowsViewModel ViewModel { get; }
 
@@ -45,16 +45,17 @@ public sealed partial class LocalShowsPage : Page
         HookTokenStore();
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    public async void OnEntered(object? parameter, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
         await ViewModel.LoadAsync();
     }
+
+    public void OnLeaving() { }
 
     private void ShowCard_CardClick(object? sender, EventArgs e)
     {
         if (sender is FrameworkElement fe && fe.Tag is string showId)
-            Frame.Navigate(typeof(LocalShowDetailPage), showId);
+            Wavee.UI.WinUI.Helpers.Navigation.NavigationHelpers.OpenLocalShowDetail(showId);
     }
 
     public static string FormatShowMeta(int seasonCount, int episodeCount)

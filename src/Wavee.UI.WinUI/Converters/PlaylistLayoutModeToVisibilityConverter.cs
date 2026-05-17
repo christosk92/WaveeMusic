@@ -1,12 +1,12 @@
 using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
-using Wavee.UI.WinUI.ViewModels;
+using Wavee.UI.WinUI.ViewModels.Playlist;
 
 namespace Wavee.UI.WinUI.Converters;
 
 /// <summary>
-/// Visible when <see cref="PlaylistViewModel.LayoutMode"/> equals
+/// Visible when <c>PlaylistHeaderViewModel.LayoutMode</c> equals
 /// <see cref="PlaylistLayoutMode.Banner"/>; <see cref="Visibility.Collapsed"/>
 /// otherwise. Drives the visibility of the hero banner row in
 /// <c>PlaylistPage.xaml</c>.
@@ -25,7 +25,7 @@ public sealed class PlaylistLayoutModeBannerVisibilityConverter : IValueConverte
 }
 
 /// <summary>
-/// Visible when <see cref="PlaylistViewModel.LayoutMode"/> equals
+/// Visible when <c>PlaylistHeaderViewModel.LayoutMode</c> equals
 /// <see cref="PlaylistLayoutMode.Cover"/>; <see cref="Visibility.Collapsed"/>
 /// otherwise. Drives the visibility of the square-cover Grid + the
 /// left-column title block in <c>PlaylistPage.xaml</c>.

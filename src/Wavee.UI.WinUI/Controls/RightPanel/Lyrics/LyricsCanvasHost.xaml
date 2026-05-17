@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.RightPanel.Lyrics.LyricsCanvasHost"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:sidebarplayer="using:Wavee.UI.WinUI.Controls.SidebarPlayer"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    SizeChanged="LyricsContent_SizeChanged">
+
+    <Grid>
+        <!-- Transparent overlay for mouse interaction (seek, scroll) -->
+        <Border
+            x:Name="LyricsInteractionOverlay"
+            Background="Transparent"
+            PointerEntered="LyricsOverlay_PointerEntered"
+            PointerExited="LyricsOverlay_PointerExited"
+            PointerMoved="LyricsOverlay_PointerMoved"
+            PointerPressed="LyricsOverlay_PointerPressed"
+            PointerReleased="LyricsOverlay_PointerReleased"
+            PointerWheelChanged="LyricsOverlay_PointerWheelChanged"/>
+
+        <!-- Sync button (visible when user scrolls away) -->
+        <Button
+            x:Name="LyricsSyncButton"
+            Content="&#xE72C;"
+            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+            Click="LyricsSyncButton_Click"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Margin="0,0,0,12"
+            Padding="12,6"
+            CornerRadius="16"
+            Visibility="Collapsed"/>
+
+        <!-- Loading indicator -->
+        <ProgressRing
+            x:Name="LyricsLoadingRing"
+            IsActive="False"
+            Width="24" Height="24"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Visibility="Collapsed"/>
+
+        <!-- Loading shimmer placeholder -->
+        <StackPanel
+            x:Name="LyricsLoadingShimmer"
+            Visibility="Collapsed"
+            IsHitTestVisible="False"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Center"
+            Margin="14,0,14,0"
+            Spacing="10">
+            <controls:Shimmer Height="14" Width="210" CornerRadius="7" HorizontalAlignment="Left"/>
+            <controls:Shimmer Height="14" Width="248" CornerRadius="7" HorizontalAlignment="Left"/>
+            <controls:Shimmer Height="14" Width="186" CornerRadius="7" HorizontalAlignment="Left"/>
+            <controls:Shimmer Height="14" Width="230" CornerRadius="7" HorizontalAlignment="Left"/>
+            <controls:Shimmer Height="14" Width="170" CornerRadius="7" HorizontalAlignment="Left"/>
+        </StackPanel>
+
+        <!-- No lyrics fallback -->
+        <TextBlock x:Uid="Controls_RightPanel_RightPanelView__TextBlock_5"
+            x:Name="NoLyricsText"
+            Text="No lyrics available for this track"
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            VerticalAlignment="Center"
+            HorizontalAlignment="Center"
+            TextWrapping="WrapWholeWords"
+            FontSize="13"
+            Visibility="Collapsed"/>
+
+        <!-- Debug info button (DEBUG builds only) -->
+        <Button
+            x:Name="LyricsDebugButton"
+            Content="&#xEBE8;"
+            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+            Click="LyricsDebugButton_Click"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Margin="0,4,4,0"
+            Padding="6"
+            MinWidth="0" MinHeight="0"
+            CornerRadius="4"
+            FontSize="12"
+            Opacity="0.5"
+            Background="Transparent"
+            Visibility="Collapsed"/>
+
+        <sidebarplayer:LyricsAiPanel
+            x:Name="LyricsAi"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            Margin="0,4,0,0"
+            Canvas.ZIndex="4" />
+    </Grid>
+</UserControl>

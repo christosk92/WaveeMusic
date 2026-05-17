@@ -1,9 +1,9 @@
-using System;
+﻿using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Navigation;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Controls;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -12,7 +12,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepParticipant, INavigationCacheMemoryParticipant, IDisposable
+public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabSleepParticipant, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable
 {
     private const int MaxDeferredShowTabAttempts = 3;
     private static readonly Thickness DefaultContentPadding = new(24, 8, 24, 0);
@@ -82,24 +82,16 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         ShowTab(itemToSelect);
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
         if (_disposed) return;
-        // Re-attach compiled x:Bind to VM.PropertyChanged. Idempotent; this also
-        // covers the back/forward early-return path below — bindings are detached
-        // on every nav-from regardless of whether the visual content was trimmed.
-        //Bindings?.Update();
 
-        var navigationParameter = UnwrapNavigationParameter(e.Parameter);
+        var navigationParameter = UnwrapNavigationParameter(parameter);
 
         // Back/forward navigation needs to honour the parameter — the
-        // Segmented bar now pushes tab changes into the Frame back stack
+        // Segmented bar pushes tab changes into the PageHost back stack
         // (see SelectorBar_SelectionChanged), so Back to Library/"albums"
-        // from Library/"artists" must actually re-select Albums. Previously
-        // this early-returned when ContentHost.Content was non-null, which
-        // worked back when tab switches lived outside the Frame stack — it
-        // would now leave the wrong tab visible after a back-nav.
+        // from Library/"artists" must actually re-select Albums.
         //
         // SetSelectedItemSilently and ShowTab both no-op when the target
         // tab is already showing, so falling through to the standard path
@@ -122,15 +114,11 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         TryApplyPendingSleepState();
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnLeaving()
     {
-        base.OnNavigatedFrom(e);
         if (_disposed) return;
-
-        TrimForNavigationCache();
-        // Detach compiled x:Bind from VM.PropertyChanged so the cached page
-        // does not keep its bindings live while the user is on another tab.
-        //Bindings?.StopTracking();
+        // Trim deferred ~1 s by TabBarItem; calling sync here moves the cost
+        // off pageHostNavigating only to land in onLeaving instead.
     }
 
     private void SelectorBar_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -343,11 +331,11 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
         // pseudo-URI for the same destination (e.g. spotify:collection for Liked
         // Songs), keep that row selected. Without this guard, the Your-Library
         // canonical row below grabs the highlight back from the pinned row.
-        var currentTag = (shellViewModel.SelectedSidebarItem as Controls.Sidebar.SidebarItemModel)?.Tag;
+        var currentTag = (shellViewModel.Sidebar.SelectedSidebarItem as Controls.Sidebar.SidebarItemModel)?.Tag;
         if (currentTag is not null && IsEquivalentSidebarTag(tag, currentTag))
             return;
 
-        foreach (var item in shellViewModel.SidebarItems)
+        foreach (var item in shellViewModel.Sidebar.SidebarItems)
         {
             if (item.Children is System.Collections.IEnumerable children)
             {
@@ -355,14 +343,14 @@ public sealed partial class LibraryPage : Page, ITabBarItemContent, ITabSleepPar
                 {
                     if (child is Controls.Sidebar.SidebarItemModel sidebarChild && sidebarChild.Tag == tag)
                     {
-                        shellViewModel.SelectedSidebarItem = sidebarChild;
+                        shellViewModel.Sidebar.SelectedSidebarItem = sidebarChild;
                         return;
                     }
                 }
             }
             if (item.Tag as string == tag)
             {
-                shellViewModel.SelectedSidebarItem = item;
+                shellViewModel.Sidebar.SelectedSidebarItem = item;
                 return;
             }
         }

@@ -1,11 +1,10 @@
 using System;
 using System.Collections.Specialized;
-using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media.Animation;
-using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Diagnostics;
 using Wavee.UI.WinUI.Services;
@@ -15,20 +14,26 @@ namespace Wavee.UI.WinUI.Controls.TabBar;
 
 public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposable
 {
+    // Single GC critical window per user-initiated navigation. Covers the
+    // entire nav lifecycle (Navigate → Navigating → Navigated → deferredTrim
+    // 1 s later → trim work). One window per nav — no longer stacks three.
+    // Previously: 4 s nav + 4 s page-host-navigating + 2 s page-host-navigated
+    // opened three separate windows; with rapid back-and-forth nav (2-3 s
+    // cadence) the refcount never returned to 0, so the post-window Gen2
+    // drain in NavigationGcCoordinator.EndCriticalWindow never fired.
     private static readonly TimeSpan NavigationGcWindow = TimeSpan.FromSeconds(4);
-    private static readonly TimeSpan PostNavigatedGcWindow = TimeSpan.FromSeconds(2);
 
-    // Per-tab page cache. The "comfortable" size is 5 — keeps back / forward
-    // through a deep nav stack instant (no recreation, no flicker, no item-
-    // container rebind, no palette / hero re-prefetch). Setting this to 0
-    // made nav feel sluggish.
+    // Per-tab page cache. "Comfortable" = 5 — keeps back/forward through a
+    // deep nav stack instant (no recreation, no flicker, no item-container
+    // rebind, no palette / hero re-prefetch). Setting this to 0 made nav feel
+    // sluggish.
     //
-    // The catch is cross-tab: 5 × N tabs is unbounded growth, and the WinRT
-    // ComWrappers + Composition tree footprint scales linearly with the
-    // total cached pages. So we adapt: stay at 5 while open tabs are few,
-    // drop to 3 when the user has more tabs open. The threshold is set so a
-    // typical "1-3 tabs" workflow keeps the full back/forward cache, while a
-    // power user with many tabs trades a bit of cache depth for headroom.
+    // The catch is cross-tab: 5 × N tabs is unbounded growth, and the
+    // composition tree footprint scales linearly with the total cached pages.
+    // So we adapt: stay at 5 while tabs are few, drop to 3 when the user has
+    // more tabs open. The threshold is set so a typical "1-3 tabs" workflow
+    // keeps the full back/forward cache, while a power user with many tabs
+    // trades a bit of cache depth for headroom.
     //
     // Both values are tuned numbers — change them in tandem with
     // AdaptiveTabCountThreshold.
@@ -58,17 +63,17 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         foreach (var tab in ShellViewModel.TabInstances)
         {
             // Never raise above the just-computed adaptive ceiling, but don't
-            // touch sleeping tabs (their frame is detached / CacheSize=0 by
+            // touch sleeping tabs (their host is detached / CacheSize=0 by
             // design — DiscardSleepState restores it on wake).
             if (tab.IsSleeping) continue;
-            if (tab.ContentFrame.CacheSize != target)
-                tab.ContentFrame.CacheSize = target;
+            if (tab.ContentHost.CacheSize != target)
+                tab.ContentHost.CacheSize = target;
         }
     }
 
-    public Frame ContentFrame { get; }
+    public PageHost.PageHost ContentHost { get; }
 
-    public event EventHandler<Microsoft.UI.Xaml.Navigation.NavigationEventArgs>? Navigated;
+    public event EventHandler<PageHostNavigatedEventArgs>? Navigated;
     public event EventHandler<TabItemParameter>? ContentChanged;
 
     [ObservableProperty]
@@ -133,20 +138,29 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     public double TabOpacity => IsSleeping ? 0.72 : 1.0;
 
     private ITabBarItemContent? _previousContent;
-    private IDisposable? _contentPendingDisposal;
     private const int MaxBackStackSize = 20;
     private TabSleepSnapshot? _sleepSnapshot;
     private object? _pendingSleepRestoreState;
     private Type? _pendingSleepRestorePageType;
 
     // Correlates Start/Stop ETW pairs for a single navigation. Set inside Navigate()
-    // (or the NavigationParameter setter) right before ContentFrame.Navigate, read
-    // from ContentFrame_Navigated to emit the Stop event with the matching nav id.
+    // (or the NavigationParameter setter) right before ContentHost.Navigate, read
+    // from ContentHost_Navigated to emit the Stop event with the matching nav id.
     // A plain field is safe because all navigations on a given tab's UI thread are
     // sequential — no interleaving possible.
     private long _pendingNavId;
     private string? _pendingPageName;
     private bool _skipNextNavigationCacheTrim;
+
+    // Deferred trim: when the user navigates AWAY from a page, we don't tear
+    // down its bindings synchronously on the critical-path. Instead we schedule
+    // `participant.TrimForNavigationCache()` ~1 s later via a DispatcherQueueTimer
+    // and cancel if the user returns to that page first. Holding the
+    // participant reference (not just ContentHost.ActivePage) means the timer
+    // fires for the right page even if it's evicted from the cache mid-wait.
+    // UI-thread-only field; no locking needed.
+    private static readonly TimeSpan DeferredTrimDelay = TimeSpan.FromSeconds(1);
+    private (INavigationCacheMemoryParticipant Participant, DispatcherQueueTimer Timer)? _pendingTrim;
 
     // Parallel correlation id for NavigationDiagnostics (per-stage timing + GC
     // / page-fault / memory-release correlation). Independent of the ETW navId
@@ -175,25 +189,24 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
                         _navigationParameter.InitialPageType.Name, "Restore") ?? 0;
                     _pendingDiagNavId = restoreDiagNavId;
 
-                    using (NavigationDiagnostics.Instance?.Stage(restoreDiagNavId, "frameNavigate"))
+                    using (NavigationDiagnostics.Instance?.Stage(restoreDiagNavId, "pageHostNavigate"))
                     {
-                        TryNavigateFrame(
+                        TryNavigatePageHost(
                             _navigationParameter.InitialPageType,
-                            _navigationParameter.NavigationParameter,
-                            new SuppressNavigationTransitionInfo());
+                            _navigationParameter.NavigationParameter);
                     }
                     if (restoreDiagNavId != 0)
                         NavigationDiagnostics.Instance?.EndNav(restoreDiagNavId);
                 }
                 else
                 {
-                    ContentFrame.Content = null;
+                    ContentHost.Clear();
                 }
             }
         }
     }
 
-    public ITabBarItemContent? TabItemContent => ContentFrame.Content as ITabBarItemContent;
+    public ITabBarItemContent? TabItemContent => ContentHost.ActivePage as ITabBarItemContent;
 
     public TabBarItem()
     {
@@ -202,39 +215,36 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         // tabs, +1 for ourselves. OnTabInstancesChanged will fire after the
         // ShellViewModel/NavigationHelpers code adds us and re-tune every
         // tab if the threshold has been crossed.
-        ContentFrame = new Frame
+        ContentHost = new PageHost.PageHost
         {
             CacheSize = ComputeAdaptiveCacheSize(ShellViewModel.TabInstances.Count + 1),
             IsNavigationStackEnabled = true
         };
-        ContentFrame.Navigating += ContentFrame_Navigating;
-        ContentFrame.Navigated += ContentFrame_Navigated;
-        ContentFrame.NavigationFailed += ContentFrame_NavigationFailed;
+        ContentHost.Navigating += ContentHost_Navigating;
+        ContentHost.Navigated += ContentHost_Navigated;
+        ContentHost.NavigationFailed += ContentHost_NavigationFailed;
     }
 
-    private void ContentFrame_NavigationFailed(object sender, Microsoft.UI.Xaml.Navigation.NavigationFailedEventArgs e)
+    private void ContentHost_NavigationFailed(object? sender, PageHostNavigationFailedEventArgs e)
     {
         e.Handled = true;
         ShowNavigationError(
-            e.SourcePageType,
+            e.PageType,
             _navigationParameter?.NavigationParameter,
             e.Exception);
     }
 
-    private bool TryNavigateFrame(
-        Type pageType,
-        object? parameter,
-        NavigationTransitionInfo transition)
+    private bool TryNavigatePageHost(Type pageType, object? parameter)
     {
         try
         {
-            var navigated = ContentFrame.Navigate(pageType, parameter, transition);
+            var navigated = ContentHost.Navigate(pageType, parameter);
             if (!navigated)
             {
                 ShowNavigationError(
                     pageType,
                     parameter,
-                    new InvalidOperationException($"Frame rejected navigation to {pageType.Name}."));
+                    new InvalidOperationException($"PageHost rejected navigation to {pageType.Name}."));
             }
 
             return navigated;
@@ -271,56 +281,12 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             _previousContent = null;
         }
 
-        var oldContent = ContentFrame.Content;
-        var pendingContent = _contentPendingDisposal;
-        _contentPendingDisposal = null;
-
-        ContentFrame.Content = CreateNavigationErrorContent(pageType, parameter, exception);
-
-        if (pendingContent != null && !ReferenceEquals(pendingContent, ContentFrame.Content))
-            pendingContent.Dispose();
-
-        if (oldContent is IDisposable disposableOld
-            && !ReferenceEquals(oldContent, pendingContent)
-            && !ReferenceEquals(oldContent, ContentFrame.Content))
-        {
-            disposableOld.Dispose();
-        }
-    }
-
-    private UIElement CreateNavigationErrorContent(Type? pageType, object? parameter, Exception? exception)
-    {
-        var title = pageType is null
-            ? "Couldn't open this page"
-            : $"Couldn't open {GetReadablePageName(pageType)}";
-        var message = exception is null
-            ? "Navigation failed before the page could be loaded."
-            : $"{exception.GetType().Name}: {exception.Message}";
-
-        var error = new Wavee.UI.WinUI.Controls.ErrorStateView
-        {
-            Title = title,
-            Message = message,
-            RetryButtonText = "Try again",
-            RetryCommand = pageType is null
-                ? null
-                : new RelayCommand(() => Navigate(pageType, parameter))
-        };
-
-        return new Grid
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            Children = { error }
-        };
-    }
-
-    private static string GetReadablePageName(Type pageType)
-    {
-        var name = pageType.Name;
-        return name.EndsWith("Page", StringComparison.Ordinal)
-            ? name[..^4]
-            : name;
+        // PageHost can't host arbitrary UIElement content — the error
+        // surface goes in the tab's chrome alongside ContentHost via the
+        // template, not inside it. We just log; the active page stays as-is
+        // (which may be a stale prior page or empty).
+        // Future refinement: introduce an explicit "error overlay" surface
+        // in the tab content template that observes a NavigationError property.
     }
 
     public void Navigate(Type pageType, object? parameter = null, bool suppressTransition = false)
@@ -330,11 +296,11 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         if (IsSleeping)
         {
             DiscardSleepState();
-            ResetFrameForWake();
+            ResetHostForWake();
         }
 
         // Open the ETW navigation pair for this hop. We emit Navigating unconditionally
-        // so every user-perceived navigation gets a row in Navigation_Metrics.csv —
+        // so every user-perceived navigation gets a row in the diagnostics log —
         // including the same-page no-op and the refresh-in-place cases, which are both
         // closed with an immediate Navigated below.
         var navId = WaveeNavigationEventSource.Log.NextNavId();
@@ -354,24 +320,24 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         };
 
         // If the current page is already the target type, reuse it instead of
-        // destroying and recreating the entire visual tree (expensive XAML parsing).
-        if (ContentFrame.Content?.GetType() == pageType)
+        // re-realising the visual tree.
+        if (ContentHost.ActivePage?.GetType() == pageType)
         {
             var currentUri = GetParameterUri(oldParameter?.NavigationParameter);
             var newUri = GetParameterUri(parameter);
 
             if (string.Equals(currentUri, newUri, StringComparison.Ordinal))
             {
-                // Same page, same parameter — no Frame.Navigate will fire, so close the pair now.
+                // Same page, same parameter — no navigation will fire, so close the pair now.
                 WaveeNavigationEventSource.Log.Navigated(navId, pageType.Name);
                 NavigationDiagnostics.Instance?.EndNav(diagNavId);
                 return;
             }
 
             // Different parameter — most pages can refresh in-place, but pages
-            // with heavy scroll/transition state can opt into a real Frame
-            // navigation so the outgoing page is not visibly mutated.
-            if (ContentFrame.Content is ITabBarItemContent refreshable)
+            // with heavy scroll/transition state can opt into a real navigation
+            // so the outgoing page is not visibly mutated.
+            if (ContentHost.ActivePage is ITabBarItemContent refreshable)
             {
                 if (refreshable.ReuseForParameterNavigation)
                 {
@@ -397,41 +363,28 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
                 }
             }
 
-            // Fall through to a normal Frame.Navigate. This preserves the old
+            // Fall through to a normal Navigate. This preserves the old
             // page as a back-stack entry and gives the new parameter a fresh
             // visual tree.
         }
 
-        // Real Frame.Navigate path — stash the nav id so ContentFrame_Navigated can close the pair.
+        // Real Navigate path — stash the nav id so ContentHost_Navigated can close the pair.
         _pendingNavId = navId;
         _pendingPageName = pageType.Name;
         _pendingDiagNavId = diagNavId;
 
-        // Frame's built-in navigation transition (DrillInNavigationTransitionInfo)
-        // is the documented perf hot-spot in WinUI 3 nav — Microsoft's own
-        // microsoft-ui-xaml#2707 traces the visible nav lag to the transition
-        // choreography, not the page swap itself. We suppress globally and let
-        // each page handle its own entrance: simple pages use the lightweight
-        // PageEntranceFade attached property (~150 ms composition opacity fade);
-        // heavy detail pages (Album / Playlist / Artist / Show / Episode) already
-        // orchestrate a shimmer→content crossfade via ContentPageController +
-        // ShimmerLoadGate.
-        //
-        // The `suppressTransition` parameter is preserved for signature stability
+        // `suppressTransition` parameter preserved for signature stability
         // (NavigationHelpers.Navigate still computes it for connected-animation
-        // paths) but is now effectively a no-op for the transition itself —
-        // both branches produce SuppressNavigationTransitionInfo. It still drives
-        // `_skipNextNavigationCacheTrim` below which is a separate concern.
-        var transition = (NavigationTransitionInfo)new SuppressNavigationTransitionInfo();
+        // paths) — it now only drives `_skipNextNavigationCacheTrim`.
         _skipNextNavigationCacheTrim = suppressTransition;
-        using (NavigationDiagnostics.Instance?.Stage(diagNavId, "frameNavigate"))
+        using (NavigationDiagnostics.Instance?.Stage(diagNavId, "pageHostNavigate"))
         {
-            if (!TryNavigateFrame(pageType, parameter, transition))
+            if (!TryNavigatePageHost(pageType, parameter))
                 _skipNextNavigationCacheTrim = false;
         }
         MarkActivated();
         // Close the diagnostics nav AFTER the Stage scope above has disposed.
-        // ContentFrame_Navigated ran synchronously inside TryNavigateFrame and
+        // ContentHost_Navigated ran synchronously inside TryNavigatePageHost and
         // already added its own stages; we now stamp the final summary line.
         if (diagNavId != 0)
             NavigationDiagnostics.Instance?.EndNav(diagNavId);
@@ -444,8 +397,78 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         if (IsSleeping)
             return;
 
-        if (ContentFrame.Content is INavigationCacheMemoryParticipant participant)
-            participant.TrimForNavigationCache();
+        if (ContentHost.ActivePage is not INavigationCacheMemoryParticipant participant)
+            return;
+
+        // Defer the actual trim by ~1 s. Two reasons:
+        //   1. The 96-listener Bindings.StopTracking + Hibernate work for a
+        //      typical detail page (Album / Playlist / Artist) is ~100 ms
+        //      synchronous CPU; running it inline blocks the new page's first
+        //      frame from rendering.
+        //   2. If the user navigates back to the same page (e.g. tap-through
+        //      album → home → album), the trim is cancelled and bindings stay
+        //      live — no re-bind cost, no flicker.
+        // CancelPendingTrim drops any prior schedule (for any participant) so
+        // we never end up with multiple competing timers on the same tab.
+        CancelPendingTrim();
+
+        var dispatcher = DispatcherQueue.GetForCurrentThread();
+        if (dispatcher is null)
+        {
+            // No dispatcher (shouldn't happen on the UI thread, but be safe) —
+            // fall back to synchronous trim.
+            try { participant.TrimForNavigationCache(); }
+            catch { /* best-effort */ }
+            return;
+        }
+
+        var timer = dispatcher.CreateTimer();
+        timer.Interval = DeferredTrimDelay;
+        timer.IsRepeating = false;
+        var capturedParticipant = participant;
+        timer.Tick += (s, _) =>
+        {
+            // Clear field BEFORE invoking so a re-schedule inside the trim
+            // doesn't trip over a stale entry.
+            if (_pendingTrim?.Timer == s)
+                _pendingTrim = null;
+
+            // Enqueue each micro-step on its own low-priority dispatcher pump
+            // so rendering and input frames can interleave between them. For
+            // heavy pages (AlbumPage / PlaylistPage / ArtistPage) this turns
+            // a ~120 ms blocking burst into several ~30-50 ms chunks; pages
+            // that didn't override GetTrimMicroSteps still get a single chunk
+            // matching the old behaviour (default impl yields the legacy
+            // TrimForNavigationCache as one step).
+            foreach (var step in capturedParticipant.GetTrimMicroSteps())
+            {
+                var capturedStep = step;
+                dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
+                {
+                    using (NavigationDiagnostics.Instance?.StageCurrent("deferredTrim.step"))
+                    {
+                        try { capturedStep(); }
+                        catch { /* best-effort — diagnostics over correctness */ }
+                    }
+                });
+            }
+        };
+        _pendingTrim = (participant, timer);
+        timer.Start();
+    }
+
+    /// <summary>
+    /// Drops any pending deferred trim for this tab. Called when the user
+    /// re-enters the page whose trim was scheduled (so its bindings stay
+    /// alive), and on <see cref="Dispose"/> so timers don't leak.
+    /// </summary>
+    private void CancelPendingTrim()
+    {
+        if (_pendingTrim is { } pending)
+        {
+            pending.Timer.Stop();
+            _pendingTrim = null;
+        }
     }
 
     public void RestoreActiveContentFromNavigationCache()
@@ -453,31 +476,21 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         if (IsSleeping)
             return;
 
-        if (ContentFrame.Content is INavigationCacheMemoryParticipant participant)
+        if (ContentHost.ActivePage is INavigationCacheMemoryParticipant participant)
             participant.RestoreFromNavigationCache();
     }
 
     public bool Sleep()
     {
-        if (IsSleeping || ContentFrame.Content is null)
+        if (IsSleeping || ContentHost.ActivePage is null)
             return false;
 
         object? activePageState = null;
-        var activePageType = ContentFrame.Content.GetType();
-        if (ContentFrame.Content is ITabSleepParticipant sleepParticipant)
+        var activePageType = ContentHost.ActivePage.GetType();
+        if (ContentHost.ActivePage is ITabSleepParticipant sleepParticipant)
             activePageState = sleepParticipant.CaptureSleepState();
 
-        string? navigationState = null;
-        try
-        {
-            navigationState = ContentFrame.GetNavigationState();
-        }
-        catch
-        {
-            // Best effort: route fallback below still allows waking.
-        }
-
-        _sleepSnapshot = new TabSleepSnapshot(navigationState, activePageType, activePageState);
+        _sleepSnapshot = new TabSleepSnapshot(activePageType, activePageState);
         ClearLiveContent();
         IsSleeping = true;
         return true;
@@ -488,28 +501,14 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         if (!IsSleeping)
             return false;
 
-        ResetFrameForWake();
+        ResetHostForWake();
         IsSleeping = false;
 
         var snapshot = _sleepSnapshot;
         _pendingSleepRestoreState = snapshot?.ActivePageState;
         _pendingSleepRestorePageType = _pendingSleepRestoreState != null ? snapshot?.ActivePageType : null;
 
-        var restoredFromNavigationState = false;
-        if (!string.IsNullOrWhiteSpace(snapshot?.NavigationState))
-        {
-            try
-            {
-                ContentFrame.SetNavigationState(snapshot.NavigationState);
-                restoredFromNavigationState = true;
-            }
-            catch
-            {
-                restoredFromNavigationState = false;
-            }
-        }
-
-        if (!restoredFromNavigationState && _navigationParameter?.InitialPageType != null)
+        if (_navigationParameter?.InitialPageType != null)
         {
             _pendingNavId = WaveeNavigationEventSource.Log.NextNavId();
             _pendingPageName = _navigationParameter.InitialPageType.Name;
@@ -517,12 +516,11 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             var wakeDiagNavId = NavigationDiagnostics.Instance?.BeginNav(
                 _pendingPageName, "WakeFallback") ?? 0;
             _pendingDiagNavId = wakeDiagNavId;
-            using (NavigationDiagnostics.Instance?.Stage(wakeDiagNavId, "frameNavigate"))
+            using (NavigationDiagnostics.Instance?.Stage(wakeDiagNavId, "pageHostNavigate"))
             {
-                TryNavigateFrame(
+                TryNavigatePageHost(
                     _navigationParameter.InitialPageType,
-                    _navigationParameter.NavigationParameter,
-                    new SuppressNavigationTransitionInfo());
+                    _navigationParameter.NavigationParameter);
             }
             if (wakeDiagNavId != 0)
                 NavigationDiagnostics.Instance?.EndNav(wakeDiagNavId);
@@ -541,40 +539,37 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         _ => null
     };
 
-    private void ContentFrame_Navigating(object sender, Microsoft.UI.Xaml.Navigation.NavigatingCancelEventArgs e)
+    private void ContentHost_Navigating(object? sender, PageHostNavigatingEventArgs e)
     {
-        NavigationGcCoordinator.BeginCriticalWindow(NavigationGcWindow, "frame-navigating");
+        // GC critical window opened once in Navigate() / NavigationParameter setter
+        // / Wake fallback — covers the entire nav including this event. Don't open
+        // another window here (it would stack, preventing the post-nav Gen2 drain
+        // in NavigationGcCoordinator from ever firing under rapid back-and-forth).
 
-        // This handler runs synchronously inside ContentFrame.Navigate, BEFORE
-        // the new page is realized and BEFORE OnNavigatedFrom on the outgoing
-        // page. The Trim call below invokes Hibernate + Bindings.StopTracking
-        // on the outgoing page — large pages with many bound properties spend
-        // real time here. Bracket so it shows up on the [nav] line.
-        using (NavigationDiagnostics.Instance?.Stage(_pendingDiagNavId, "frameNavigating"))
+        // Runs synchronously inside PageHost.Navigate, BEFORE the new page is
+        // realised / made visible. The Trim call below invokes Hibernate +
+        // Bindings.StopTracking on the outgoing page — large pages with many
+        // bound properties spend real time here. Bracket so it shows up on the
+        // [nav] line.
+        using (NavigationDiagnostics.Instance?.Stage(_pendingDiagNavId, "pageHostNavigating"))
         {
             if (_skipNextNavigationCacheTrim)
                 _skipNextNavigationCacheTrim = false;
             else
                 TrimActiveContentForNavigationCache();
-
-            _contentPendingDisposal = ShouldDisposeAfterNavigation(ContentFrame.Content)
-                ? ContentFrame.Content as IDisposable
-                : null;
         }
     }
 
-    private void ContentFrame_Navigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+    private void ContentHost_Navigated(object? sender, PageHostNavigatedEventArgs e)
     {
-        NavigationGcCoordinator.BeginCriticalWindow(PostNavigatedGcWindow, "frame-navigated");
+        // GC critical window already covers this stage — see ContentHost_Navigating comment.
 
         // Close the ETW navigation pair opened in Navigate() / NavigationParameter setter.
-        // _pendingNavId == 0 means this callback fired without a preceding Start (shouldn't
-        // happen in practice, but guard so we never emit a Stop without a Start).
         if (_pendingNavId != 0)
         {
             WaveeNavigationEventSource.Log.Navigated(
                 _pendingNavId,
-                _pendingPageName ?? e.SourcePageType?.Name ?? "Unknown");
+                _pendingPageName ?? e.PageType.Name);
             _pendingNavId = 0;
             _pendingPageName = null;
         }
@@ -582,7 +577,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         var navIdForDiag = _pendingDiagNavId;
         _pendingDiagNavId = 0;
 
-        using (NavigationDiagnostics.Instance?.Stage(navIdForDiag, "frameNavigated"))
+        using (NavigationDiagnostics.Instance?.Stage(navIdForDiag, "pageHostNavigated"))
         {
             // Forward navigation event for external subscribers
             Navigated?.Invoke(this, e);
@@ -592,14 +587,19 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
                 RestoreActiveContentFromNavigationCache();
             }
 
+            // If a deferred trim was scheduled for the page the user is now
+            // returning to, drop it — its bindings should stay live. Same
+            // applies when a cached page is reused with a different parameter
+            // (Album1 → Album2 reuses the same AlbumPage instance).
+            if (_pendingTrim?.Participant is INavigationCacheMemoryParticipant pending
+                && ReferenceEquals(pending, ContentHost.ActivePage))
+            {
+                CancelPendingTrim();
+            }
+
             // Unsubscribe from previous page's ContentChanged to prevent leak
             if (_previousContent != null)
                 _previousContent.ContentChanged -= TabItemContent_ContentChanged;
-
-            var contentToDispose = _contentPendingDisposal;
-            _contentPendingDisposal = null;
-            if (contentToDispose != null && !ReferenceEquals(contentToDispose, ContentFrame.Content))
-                contentToDispose.Dispose();
 
             _previousContent = TabItemContent;
 
@@ -608,8 +608,8 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
             if (_pendingSleepRestoreState != null
                 && _pendingSleepRestorePageType != null
-                && e.SourcePageType == _pendingSleepRestorePageType
-                && ContentFrame.Content is ITabSleepParticipant sleepParticipant)
+                && e.PageType == _pendingSleepRestorePageType
+                && ContentHost.ActivePage is ITabSleepParticipant sleepParticipant)
             {
                 sleepParticipant.RestoreSleepState(_pendingSleepRestoreState);
                 _pendingSleepRestoreState = null;
@@ -617,15 +617,14 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             }
 
             // Cap BackStack to prevent unbounded growth
-            while (ContentFrame.BackStack.Count > MaxBackStackSize)
-                ContentFrame.BackStack.RemoveAt(0);
+            while (ContentHost.BackStack.Count > MaxBackStackSize)
+                ContentHost.BackStack.RemoveAt(0);
         }
 
-        // EndNav is NOT called here. ContentFrame_Navigated runs synchronously
-        // inside the originating Frame.Navigate call; the entry-point method
+        // EndNav is NOT called here. ContentHost_Navigated runs synchronously
+        // inside the originating Navigate call; the entry-point method
         // (Navigate / NavigationParameter setter / Wake fallback) calls EndNav
-        // after its own surrounding Stage scopes have closed, so frameNavigate +
-        // frameNavigated + restoreFromNavCache all land in the per-nav summary.
+        // after its own surrounding Stage scopes have closed.
     }
 
     private void TabItemContent_ContentChanged(object? sender, TabItemParameter e)
@@ -634,56 +633,36 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         ContentChanged?.Invoke(this, e);
     }
 
-    private static bool ShouldDisposeAfterNavigation(object? content)
-    {
-        // The Frame can keep pages with Enabled/Required navigation caching alive in
-        // its cache/back stack. Disposing those pages here leaves the cached instance
-        // present but unusable when the user navigates back to it.
-        return content is not Page { NavigationCacheMode: not NavigationCacheMode.Disabled };
-    }
-
     public void Dispose()
     {
-        ContentFrame.Navigating -= ContentFrame_Navigating;
-        ContentFrame.Navigated -= ContentFrame_Navigated;
-        ContentFrame.NavigationFailed -= ContentFrame_NavigationFailed;
+        ContentHost.Navigating -= ContentHost_Navigating;
+        ContentHost.Navigated -= ContentHost_Navigated;
+        ContentHost.NavigationFailed -= ContentHost_NavigationFailed;
         DiscardSleepState();
+        CancelPendingTrim();
 
         ClearLiveContent();
-        ContentFrame.CacheSize = 0;
+        ContentHost.CacheSize = 0;
     }
 
     private void ClearLiveContent()
     {
-        var activeContent = ContentFrame.Content;
-        var previousContent = _previousContent;
-        var pendingContent = _contentPendingDisposal;
-        _previousContent = null;
-        _contentPendingDisposal = null;
-
-        if (previousContent != null)
+        // Unsubscribe from page's ContentChanged event first to prevent leaks.
+        if (_previousContent != null)
         {
-            previousContent.ContentChanged -= TabItemContent_ContentChanged;
-            if (!ReferenceEquals(previousContent, activeContent) && previousContent is IDisposable previousDisposable)
-                previousDisposable.Dispose();
+            _previousContent.ContentChanged -= TabItemContent_ContentChanged;
+            _previousContent = null;
         }
 
-        if (pendingContent != null && !ReferenceEquals(pendingContent, activeContent))
-            pendingContent.Dispose();
-
-        if (activeContent is IDisposable disposable)
-            disposable.Dispose();
-
-        ContentFrame.BackStack.Clear();
-        ContentFrame.ForwardStack.Clear();
-        ContentFrame.Content = null;
-        ContentFrame.CacheSize = 0;
+        // PageHost.Clear disposes every cached page (active + collapsed) that
+        // implements IDisposable, and tears down both stacks.
+        ContentHost.Clear();
         _navigationParameter = null;
     }
 
-    private void ResetFrameForWake()
+    private void ResetHostForWake()
     {
-        ContentFrame.CacheSize = ComputeAdaptiveCacheSize(ShellViewModel.TabInstances.Count);
+        ContentHost.CacheSize = ComputeAdaptiveCacheSize(ShellViewModel.TabInstances.Count);
     }
 
     private void DiscardSleepState()
@@ -695,7 +674,6 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     }
 
     private sealed record TabSleepSnapshot(
-        string? NavigationState,
         Type? ActivePageType,
         object? ActivePageState);
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -16,7 +16,7 @@ using Wavee.UI.WinUI.ViewModels.Local;
 
 namespace Wavee.UI.WinUI.Views.Local;
 
-public sealed partial class LocalShowDetailPage : Page
+public sealed partial class LocalShowDetailPage : UserControl
 {
     public LocalShowDetailViewModel ViewModel { get; }
 
@@ -122,12 +122,13 @@ public sealed partial class LocalShowDetailPage : Page
     public static Visibility VisibilityIfMultiple(int count) =>
         count > 1 ? Visibility.Visible : Visibility.Collapsed;
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    public async void OnEntered(object? parameter, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
-        if (e.Parameter is string showId)
+        if (parameter is string showId)
             await ViewModel.LoadAsync(showId);
     }
+
+    public void OnLeaving() { }
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {

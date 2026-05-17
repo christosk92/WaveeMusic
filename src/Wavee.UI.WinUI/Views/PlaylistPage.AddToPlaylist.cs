@@ -56,12 +56,12 @@ public sealed partial class PlaylistPage
         // someone else's empty playlist and only discover the failure on
         // Submit. The empty-state CTA is also Visibility-gated on the same
         // flag in XAML; this guard covers the genre-chip intercept path.
-        if (!vm.CanEditItems) return false;
+        if (!vm.Header.CanEditItems) return false;
 
         session.Begin(
             playlistId: vm.PlaylistId!,
-            playlistName: vm.PlaylistName ?? string.Empty,
-            playlistImageUrl: vm.PlaylistImageUrl);
+            playlistName: vm.Header.PlaylistName ?? string.Empty,
+            playlistImageUrl: vm.Header.PlaylistImageUrl);
         return true;
     }
 

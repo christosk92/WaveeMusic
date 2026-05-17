@@ -1,8 +1,8 @@
-using System;
+﻿using System;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -10,7 +10,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class CreatePlaylistPage : Page, ITabBarItemContent
+public sealed partial class CreatePlaylistPage : UserControl, ITabBarItemContent, IPageHostAware
 {
     public CreatePlaylistViewModel ViewModel { get; }
 
@@ -41,15 +41,13 @@ public sealed partial class CreatePlaylistPage : Page, ITabBarItemContent
         NameTextBox.Focus(FocusState.Programmatic);
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
-
-        if (e.Parameter is CreatePlaylistParameter parameter)
+        if (parameter is CreatePlaylistParameter cp)
         {
-            ViewModel.Initialize(parameter);
+            ViewModel.Initialize(cp);
         }
-        else if (e.Parameter is bool isFolder)
+        else if (parameter is bool isFolder)
         {
             // Backward compatibility
             ViewModel.Initialize(new CreatePlaylistParameter { IsFolder = isFolder });
@@ -61,9 +59,8 @@ public sealed partial class CreatePlaylistPage : Page, ITabBarItemContent
         }
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnLeaving()
     {
-        base.OnNavigatedFrom(e);
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
         // sibling does not pin this page across navigations. NavCacheMode is
         // Disabled — page is destroyed on nav-away, no Update() partner needed.

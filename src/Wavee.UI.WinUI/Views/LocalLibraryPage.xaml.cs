@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Wavee.UI.WinUI.Data.Contracts;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,7 +15,7 @@ using Wavee.UI.WinUI.ViewModels.Local;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class LocalLibraryPage : Page, INavigationCacheMemoryParticipant
+public sealed partial class LocalLibraryPage : UserControl, INavigationCacheMemoryParticipant, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware
 {
     public LocalLandingViewModel ViewModel { get; }
 
@@ -26,11 +26,12 @@ public sealed partial class LocalLibraryPage : Page, INavigationCacheMemoryParti
         InitializeComponent();
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    public async void OnEntered(object? parameter, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
         await ViewModel.LoadAsync();
     }
+
+    public void OnLeaving() { }
 
     private bool _trimmedForNavigationCache;
     public void TrimForNavigationCache()
@@ -59,20 +60,20 @@ public sealed partial class LocalLibraryPage : Page, INavigationCacheMemoryParti
         Helpers.Navigation.NavigationHelpers.OpenLocalMusic();
 
     private void SeeAllOthers_Click(object sender, RoutedEventArgs e) =>
-        Frame.Navigate(typeof(Local.LocalOtherPage));
+        Helpers.Navigation.NavigationHelpers.OpenLocalOther();
 
     // ── ContentCard CardClick routing (rails now use cards:ContentCard, see XAML) ──
 
     private void ShowCard_CardClick(object? sender, EventArgs e)
     {
         if (sender is FrameworkElement fe && fe.Tag is string showId)
-            Frame.Navigate(typeof(Local.LocalShowDetailPage), showId);
+            Helpers.Navigation.NavigationHelpers.OpenLocalShowDetail(showId);
     }
 
     private void MovieCard_CardClick(object? sender, EventArgs e)
     {
         if (sender is FrameworkElement fe && fe.Tag is string trackUri)
-            Frame.Navigate(typeof(Local.LocalMovieDetailPage), trackUri);
+            Helpers.Navigation.NavigationHelpers.OpenLocalMovieDetail(trackUri);
     }
 
     private void MusicVideoCard_CardClick(object? sender, EventArgs e)

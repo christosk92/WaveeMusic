@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Diagnostics;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Styles;
@@ -145,6 +146,18 @@ public static class NavigationHelpers
 
         Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalMusicVideosPage), null, "Music videos",
             CreateIconSource(typeof(Wavee.UI.WinUI.Views.Local.LocalMusicVideosPage), null), openInNewTab);
+    }
+
+    /// <summary>
+    /// Drill-in target for the "Other files" tile inside LocalLibraryPage.
+    /// No dedicated sidebar entry — this is a sub-navigation surface.
+    /// </summary>
+    public static void OpenLocalOther(bool openInNewTab = false)
+    {
+        if (!AppFeatureFlags.LocalFilesEnabled) return;
+
+        Navigate(typeof(Wavee.UI.WinUI.Views.Local.LocalOtherPage), null, "Other files",
+            CreateIconSource(typeof(LocalLibraryPage), null), openInNewTab);
     }
 
     /// <summary>
@@ -473,14 +486,23 @@ public static class NavigationHelpers
 
     private static void Navigate(Type pageType, object? parameter, string header, IconSource icon, bool openInNewTab)
     {
-        // Always open in new tab if no tabs exist
-        if (openInNewTab || ShellViewModel.TabInstances.Count == 0)
+        // Wrap the dispatch in a Stage scope so the cost from "NavigationHelpers
+        // entry" to "TabBarItem.Navigate entry" (sidebar selection prep, tab
+        // resolution, AddNewTab vs NavigateInCurrentTab branching) shows up in
+        // UiOperationProfiler. BeginNav hasn't fired yet so this won't appear as
+        // an inline stage on the per-nav row — but it will show up in the
+        // "Top UI operations" report under `nav.navHelpers.dispatch`.
+        using (NavigationDiagnostics.Instance?.StageCurrent("navHelpers.dispatch"))
         {
-            AddNewTab(pageType, parameter, header, icon);
-        }
-        else
-        {
-            NavigateInCurrentTab(pageType, parameter, header, icon);
+            // Always open in new tab if no tabs exist
+            if (openInNewTab || ShellViewModel.TabInstances.Count == 0)
+            {
+                AddNewTab(pageType, parameter, header, icon);
+            }
+            else
+            {
+                NavigateInCurrentTab(pageType, parameter, header, icon);
+            }
         }
 
         FocusMainWindow();
@@ -514,7 +536,7 @@ public static class NavigationHelpers
                     if (!string.IsNullOrEmpty(uri))
                         _shellViewModel.SyncSidebarSelectionToTag(uri);
                     else
-                        _shellViewModel.SelectedSidebarItem = null;
+                        _shellViewModel.Sidebar.SelectedSidebarItem = null;
                 }
                 else if (pageType == typeof(PodcastBrowsePage))
                 {
@@ -526,7 +548,7 @@ public static class NavigationHelpers
                 }
                 else if (pageType != typeof(LibraryPage))
                 {
-                    _shellViewModel.SelectedSidebarItem = null;
+                    _shellViewModel.Sidebar.SelectedSidebarItem = null;
                 }
             }
         });
@@ -607,11 +629,37 @@ public static class NavigationHelpers
         currentTab.Navigate(pageType, parameter, suppressTransition);
     }
 
+    private static bool _prewarmScheduled;
+
     private static void AddNewTab(Type pageType, object? parameter, string header, IconSource icon)
     {
+        var isFirstTab = ShellViewModel.TabInstances.Count == 0;
         var tab = CreateTab(pageType, parameter, header, icon);
         ShellViewModel.TabInstances.Add(tab);
         _shellViewModel!.SelectTab(ShellViewModel.TabInstances.Count - 1);
+
+        // Schedule a one-shot prewarm for the most-visited pages into the
+        // initial tab's PageHost. Cost lands during idle after first paint;
+        // first user nav to Library / Search becomes a cache hit instead of
+        // paying ~80-200ms of XAML realisation cost on click.
+        if (isFirstTab && !_prewarmScheduled)
+        {
+            _prewarmScheduled = true;
+            Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                () =>
+                {
+                    try
+                    {
+                        tab.ContentHost.Prewarm(typeof(LibraryPage));
+                        tab.ContentHost.Prewarm(typeof(SearchPage));
+                    }
+                    catch
+                    {
+                        // Prewarm is best-effort; missing cache hit later is the only impact.
+                    }
+                });
+        }
     }
 
     public static TabBarItem CreateTab(

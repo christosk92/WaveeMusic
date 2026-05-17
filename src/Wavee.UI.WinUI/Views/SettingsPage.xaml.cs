@@ -1,10 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.Settings;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.Contracts;
@@ -15,7 +15,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
+public sealed partial class SettingsPage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable
 {
     private const int MaxDeferredShowSectionAttempts = 3;
 
@@ -110,15 +110,13 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
         ShowSection("general");
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
-
         // Omnibar Settings result deep-link: reuse the existing in-page search
         // selection path so chrome ("Showing settings for ...") and the
         // ISettingsSearchFilter group filter behave identically to picking the
         // entry through the in-page AutoSuggestBox.
-        if (e.Parameter is SettingsNavigationParameter param)
+        if (parameter is SettingsNavigationParameter param)
         {
             var normalizedTag = NormalizeTag(param.SectionTag);
             _activeSearchSectionTag = normalizedTag;
@@ -138,14 +136,13 @@ public sealed partial class SettingsPage : Page, ITabBarItemContent, IDisposable
         }
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnLeaving()
     {
         Dispose();
         // Detach compiled x:Bind from VM.PropertyChanged after Dispose; the page
         // is destroyed on nav-away (NavCacheMode default = Disabled), no Update()
         // partner needed.
         Bindings?.StopTracking();
-        base.OnNavigatedFrom(e);
     }
 
     public void Dispose()

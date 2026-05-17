@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Page
+<UserControl
     x:Class="Wavee.UI.WinUI.Views.ConcertPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -17,7 +17,7 @@
     Background="Transparent"
     waveeHelpers:PageEntranceFade.Fade="True">
 
-    <Page.Resources>
+    <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True"/>
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
@@ -49,7 +49,7 @@
             <transitions:TransitionConfig Id="concert-image" ScaleMode="Scale"/>
             <transitions:TransitionConfig Id="concert-title" ScaleMode="Scale"/>
         </transitions:TransitionHelper>
-    </Page.Resources>
+    </UserControl.Resources>
 
     <Grid>
         <!-- NarrowLayout removed: the hero is now a single landscape feature tile that
@@ -1049,4 +1049,4 @@
             </Grid>
         </Grid>
     </Grid>
-</Page>
+</UserControl>

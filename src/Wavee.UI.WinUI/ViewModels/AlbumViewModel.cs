@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -117,10 +117,20 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         private set
         {
             if (EqualityComparer<AlbumView?>.Default.Equals(_album, value))
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[diag-album-vm] Album.set EQUAL — no change. " +
+                    $"oldId={(_album?.Id ?? "<null>")} oldName={(_album?.Name ?? "<null>")} oldImage={(_album?.ImageUrl ?? "<null>")}");
                 return;
+            }
 
             var old = _album;
             _album = value;
+            System.Diagnostics.Debug.WriteLine(
+                $"[diag-album-vm] Album.set CHANGED " +
+                $"oldId={(old?.Id ?? "<null>")} → newId={(value?.Id ?? "<null>")} | " +
+                $"oldName={(old?.Name ?? "<null>")} → newName={(value?.Name ?? "<null>")} | " +
+                $"oldImage={(old?.ImageUrl ?? "<null>")} → newImage={(value?.ImageUrl ?? "<null>")}");
             var paletteChanged = !Equals(old?.Palette, value?.Palette);
             var shareChanged = !string.Equals(old?.ShareUrl, value?.ShareUrl, StringComparison.Ordinal);
 
@@ -764,6 +774,11 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     {
         AttachLongLivedServices();
         var branch = AlbumId != albumId ? "reset" : "same";
+        var imageBefore = AlbumImageUrl ?? "<null>";
+        var nameBefore = AlbumName ?? "<null>";
+        System.Diagnostics.Debug.WriteLine(
+            $"[diag-album-vm] Initialize.enter incoming={albumId} current={AlbumId} branch={branch} " +
+            $"preserveHeaderPrefill={preserveHeaderPrefill} imageBefore={imageBefore} nameBefore={nameBefore}");
         _logger?.LogDebug(
             "[xfade][album-vm:{Id}] init incoming={Incoming} current={Current} branch={Branch}",
             XfadeLog.Tag(albumId), XfadeLog.Tag(albumId), XfadeLog.Tag(AlbumId), branch);
@@ -861,6 +876,9 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
             UpdateTabTitle();
 
         RefreshSaveState();
+        System.Diagnostics.Debug.WriteLine(
+            $"[diag-album-vm] Initialize.exit AlbumId={AlbumId} AlbumName={(AlbumName ?? "<null>")} " +
+            $"AlbumImageUrl={(AlbumImageUrl ?? "<null>")} IsLoading={IsLoading}");
     }
 
     /// <summary>
@@ -893,7 +911,7 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     /// Heavy-state release for cached pages going off-screen. Drops the track grid,
     /// More-by-artist, alternate releases, and merch — those are the bound
     /// collections that cost the most composition memory while the page sits
-    /// invisible in the Frame cache. Lightweight identity (AlbumId, AlbumName,
+    /// invisible in the PageHost cache. Lightweight identity (AlbumId, AlbumName,
     /// AlbumImageUrl, palette brushes) is preserved so the hero still renders
     /// correctly during the brief window between re-Activate and the
     /// AlbumStore's BehaviorSubject re-emitting the cached value.
@@ -1294,6 +1312,11 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     {
         var current = Album ?? EmptyAlbumEnvelope();
         var prefillTracks = nav.TotalTracks ?? 0;
+        System.Diagnostics.Debug.WriteLine(
+            $"[diag-album-vm] PrefillFrom.enter clearMissing={clearMissing} " +
+            $"nav.Uri={nav.Uri} nav.Title={(nav.Title ?? "<null>")} nav.ImageUrl={(nav.ImageUrl ?? "<null>")} " +
+            $"nav.Subtitle={(nav.Subtitle ?? "<null>")} nav.TotalTracks={nav.TotalTracks} " +
+            $"current.Name={(current.Name ?? "<null>")} current.ImageUrl={(current.ImageUrl ?? "<null>")}");
         Album = current with
         {
             Id = !string.IsNullOrEmpty(nav.Uri) ? nav.Uri : current.Id,

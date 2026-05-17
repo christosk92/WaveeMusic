@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -9,8 +10,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -23,7 +24,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable, IContentPageHost
+public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IContentPageHost
 {
     private readonly ILogger? _logger;
     private readonly INotificationService? _notificationService;
@@ -178,7 +179,36 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         // warm-cache navigation path where ApplyDetail runs before the page is
         // fully constructed and PropertyChanged finds HeaderArtistsText null.
         RebuildHeaderArtistsText();
-        AttachParallax();
+
+        // Defer parallax wire-up one dispatcher tick. Under PageHost, the page
+        // is added to the host's internal panel programmatically; Loaded fires
+        // synchronously inside that add but `PageScrollView.ExpressionAnimationSources`
+        // can be silently empty until the ScrollView's composition is fully
+        // realised, which lands on the next frame. Without this defer the
+        // sticky expression starts up bound to an empty source and never
+        // updates as the user scrolls.
+        DispatcherQueue?.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
+            () =>
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[album.parallax] AttachParallax (deferred). " +
+                    $"PageScrollView={(PageScrollView is null ? "NULL" : "ok")} " +
+                    $"LeftColumnHost={(LeftColumnHost is null ? "NULL" : "ok")} " +
+                    $"already-attached={_parallaxAttached}");
+                AttachParallax();
+
+                // Left-column overflow handling: dynamic MaxHeight on the inner
+                // ScrollView keeps secondary metadata reachable when the sticky
+                // column would otherwise clip below the viewport. Wire the page
+                // ScrollView's SizeChanged so the inner cap recomputes on window
+                // resize; LeftPinnedZone.SizeChanged in XAML covers the case
+                // where the title wraps to more/fewer lines and changes the
+                // pinned-zone height.
+                if (PageScrollView is not null)
+                    PageScrollView.SizeChanged += PageScrollView_SizeChangedForLeftScroll;
+                UpdateLeftScrollableMaxHeight();
+            });
     }
 
     private void AlbumPage_Unloaded(object sender, RoutedEventArgs e)
@@ -189,6 +219,54 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         // leave the cached page deaf to the next IsLoading=false transition.
         PageController.IsNavigatingAway = true;
         DetachParallax();
+        if (PageScrollView is not null)
+            PageScrollView.SizeChanged -= PageScrollView_SizeChangedForLeftScroll;
+    }
+
+    // ── Left-column overflow: sticky top + scrollable bottom ─────────────────
+    //
+    // LeftPinnedZone (cover/title/CTAs) is always visible. Everything below it
+    // lives inside LeftScrollableZone, a Microsoft.UI.Xaml.Controls.ScrollView
+    // whose MaxHeight is capped at (PageScrollView.ActualHeight − pinned.ActualHeight
+    // − 24) so it scrolls in place instead of overflowing into the void below
+    // the sticky parallax region. VerticalScrollChainMode=Always (set in XAML)
+    // routes wheel through to PageScrollView once we hit the inner edge.
+
+    private void PageScrollView_SizeChangedForLeftScroll(object sender, SizeChangedEventArgs e)
+        => UpdateLeftScrollableMaxHeight();
+
+    private void LeftPinnedZone_SizeChanged(object sender, SizeChangedEventArgs e)
+        => UpdateLeftScrollableMaxHeight();
+
+    private void LeftScrollableZone_ViewChanged(ScrollView sender, object args)
+        => UpdateLeftScrollableFadeVisibility();
+
+    private void UpdateLeftScrollableMaxHeight()
+    {
+        if (LeftPinnedZone is null || LeftScrollableZone is null || PageScrollView is null)
+            return;
+
+        const double bottomBreathingRoom = 24; // matches ContentContainer bottom padding
+        const double minScrollableHeight = 120; // never collapse fully; user can still
+                                                // reach the rest by scrolling the page
+
+        var available = PageScrollView.ActualHeight
+                        - LeftPinnedZone.ActualHeight
+                        - bottomBreathingRoom;
+        LeftScrollableZone.MaxHeight = System.Math.Max(minScrollableHeight, available);
+        UpdateLeftScrollableFadeVisibility();
+    }
+
+    private void UpdateLeftScrollableFadeVisibility()
+    {
+        if (LeftScrollableZone is null || LeftScrollableFade is null) return;
+
+        var sv = LeftScrollableZone;
+        var overflows = sv.ExtentHeight > sv.ViewportHeight + 0.5;
+        var atBottom = sv.VerticalOffset >= sv.ScrollableHeight - 0.5;
+        LeftScrollableFade.Visibility = (overflows && !atBottom)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     // ── Sticky left column (composition-thread) ──────────────────────────
@@ -220,6 +298,10 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
     private void AttachParallax()
     {
+        System.Diagnostics.Debug.WriteLine(
+            $"[diag-album] AttachParallax.enter parallaxAttached={_parallaxAttached} " +
+            $"pageScrollView={(PageScrollView is null ? "NULL" : "ok")} " +
+            $"leftColumnHost={(LeftColumnHost is null ? "NULL" : "ok")}");
         if (_parallaxAttached) return;
         if (PageScrollView is null || LeftColumnHost is null) return;
         _parallaxAttached = true;
@@ -270,6 +352,8 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
 
     private void DetachParallax()
     {
+        System.Diagnostics.Debug.WriteLine(
+            $"[diag-album] DetachParallax.enter parallaxAttached={_parallaxAttached} stack={new System.Diagnostics.StackTrace(1, false).ToString().Replace("\n", " | ").Substring(0, Math.Min(300, new System.Diagnostics.StackTrace(1, false).ToString().Length))}");
         if (!_parallaxAttached) return;
         _parallaxAttached = false;
 
@@ -343,48 +427,62 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         // Skip the standard crossfade — connected animation paints content directly.
         PageController.MarkContentShownDirectly();
 
-        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.updateLayout"))
+        // Defer TryStartAnimation to the next render frame instead of forcing a
+        // synchronous AlbumArtContainer.UpdateLayout() pass (which was ~70 ms on
+        // cross-album navs because PrefillFrom just invalidated the hero column).
+        // Layout completes naturally between this turn and CompositionTarget.Rendering;
+        // the destination rect is then accurate without any forced measure+arrange.
+        //
+        // One-frame delay (~16 ms at 60 Hz) sits well below the human reaction
+        // threshold (~215 ms), and the 250 ms morph absorbs the slip. If TryStart
+        // misses (rare — only when the destination has been detached in the
+        // intervening frame), the user sees a hard cut to the new album, which
+        // is the same fallback the original sync path had on miss.
+        var capturedContainer = AlbumArtContainer;
+        var capturedAlbumId = ViewModel.AlbumId;
+        EventHandler<object>? onNextFrame = null;
+        onNextFrame = (_, _) =>
         {
-            // Element-scoped: see PlaylistPage for the rationale. Lays out
-            // the AlbumArtContainer's parent chain only so connected
-            // animation can read its destination rect — siblings (track
-            // list, more-by-artist, merch shelf) settle one frame later.
-            AlbumArtContainer.UpdateLayout();
-        }
-        var started = ConnectedAnimationHelper.TryStartAnimation(
-            ConnectedAnimationHelper.AlbumArt,
-            AlbumArtContainer);
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= onNextFrame;
+            var started = ConnectedAnimationHelper.TryStartAnimation(
+                ConnectedAnimationHelper.AlbumArt,
+                capturedContainer);
+            _logger?.LogDebug(
+                "[xfade][album:{Id}] connected.albumArt action={Action}",
+                XfadeLog.Tag(capturedAlbumId), started ? "started-deferred" : "miss-deferred");
+        };
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += onNextFrame;
 
-        _logger?.LogDebug(
-            "[xfade][album:{Id}] connected.albumArt action={Action}",
-            XfadeLog.Tag(ViewModel.AlbumId), started ? "started" : "miss");
         return true;
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.album.onNavigatedTo");
-        var incomingId = e.Parameter is ContentNavigationParameter nav ? nav.Uri
-                       : e.Parameter as string;
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.album.onEntered");
+        var incomingNav = parameter as ContentNavigationParameter;
+        var incomingId = incomingNav?.Uri ?? parameter as string;
         var sameId = !string.IsNullOrEmpty(incomingId) && string.Equals(incomingId, ViewModel.AlbumId, StringComparison.Ordinal);
+        System.Diagnostics.Debug.WriteLine(
+            $"[diag-album] OnEntered mode={mode} incoming.uri={incomingId} incoming.title={incomingNav?.Title} " +
+            $"incoming.imageUrl={(incomingNav?.ImageUrl ?? "<null>")} sameId={sameId} " +
+            $"vm.AlbumId={ViewModel.AlbumId} vm.AlbumName={ViewModel.AlbumName} vm.AlbumImageUrl={(ViewModel.AlbumImageUrl ?? "<null>")}");
         _logger?.LogDebug(
             "[xfade][album:{Id}] nav.to mode={Mode} incoming={Incoming} sameId={SameId}",
-            XfadeLog.Tag(ViewModel.AlbumId), e.NavigationMode, XfadeLog.Tag(incomingId), sameId);
-        base.OnNavigatedTo(e);
-        LoadNewContent(e.Parameter);
+            XfadeLog.Tag(ViewModel.AlbumId), mode, XfadeLog.Tag(incomingId), sameId);
+        LoadNewContent(parameter, mode);
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnLeaving()
     {
-        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.album.onNavigatedFrom");
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.album.onLeaving");
+        System.Diagnostics.Debug.WriteLine(
+            $"[diag-album] OnLeaving vm.AlbumId={ViewModel.AlbumId} parallaxAttached={_parallaxAttached}");
         _logger?.LogDebug("[xfade][album:{Id}] nav.from", XfadeLog.Tag(ViewModel.AlbumId));
-        base.OnNavigatedFrom(e);
-        // Hibernate also releases FilteredTracks / MoreByArtist / AlternateReleases /
-        // Merch — the bound collections that pin the most realized item containers
-        // while this cached page sits invisible in the Frame cache. Activate's
-        // _appliedDetailFor reset (cleared in Hibernate) makes the next subscribe
-        // re-apply the warm AlbumStore value.
-        TrimForNavigationCache();
+        // Trim work (Hibernate + Bindings.StopTracking) is deferred ~1 s by
+        // TabBarItem's central scheduler — calling it synchronously here
+        // moves the 100+ ms hit from pageHostNavigating into page.album.onLeaving
+        // (same cost, different label). The deferred trim cancels if the user
+        // returns to this page first.
     }
 
     public void TrimForNavigationCache()
@@ -395,18 +493,38 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         _trimmedForNavigationCache = true;
         _lastRestoredAlbumId = ViewModel.AlbumId;
         ViewModel.Hibernate();
-        // Detach the sticky-column ExpressionAnimation. AlbumPage_Unloaded
-        // also calls this, but under NavigationCacheMode=Enabled the page
-        // sits in the Frame's cache while invisible and Unloaded doesn't
-        // reliably fire on navigate-away — leaving the composition-thread
-        // animation evaluating against the now-detached ScrollView until the
-        // page is finally evicted. AttachParallax is idempotent and runs
-        // again from AlbumPage_Loaded on re-entry.
-        DetachParallax();
+        // NOTE: do NOT DetachParallax here. Under PageHost the page is kept
+        // rooted with Visibility=Collapsed on leave (not detached from the
+        // visual tree like Frame did) — the composition ExpressionAnimation
+        // can safely keep evaluating against the still-rooted ScrollView
+        // while the page is hidden. Detaching here would break sticky on the
+        // next cache-hit re-entry because Loaded does NOT re-fire under
+        // PageHost (page Visibility flips but it never leaves the tree), so
+        // there's no chance to re-attach. DetachParallax stays in
+        // AlbumPage_Unloaded for true teardown (cache eviction).
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
         // sibling is no longer rooted by the (singleton-store-subscribed) VM —
         // without this the entire page tree is pinned across navigations.
         Bindings?.StopTracking();
+    }
+
+    // Micro-step trim: each `yield return` lands on its own
+    // DispatcherQueuePriority.Low pump (see TabBarItem). Splits the ~120 ms
+    // single-shot trim into 3 chunks of ~30-50 ms so rendering and input can
+    // interleave between them. Idempotent — first step early-exits the
+    // sequence if the page has already been trimmed.
+    IEnumerable<Action> INavigationCacheMemoryParticipant.GetTrimMicroSteps()
+    {
+        if (_trimmedForNavigationCache)
+            yield break;
+
+        yield return () =>
+        {
+            _trimmedForNavigationCache = true;
+            _lastRestoredAlbumId = ViewModel.AlbumId;
+        };
+        yield return () => ViewModel.Hibernate();
+        yield return () => Bindings?.StopTracking();
     }
 
     public void RestoreFromNavigationCache()
@@ -427,7 +545,7 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             // shimmer / pre-update state) and the synchronous binding sweep
             // that would otherwise hog the UI thread immediately. Without
             // this defer, the user sees the page "just appear" fully rendered
-            // — Frame.Navigate calls this sync, Bindings.Update runs sync,
+            // — PageHost.Navigate calls this sync, Bindings.Update runs sync,
             // and the post-nav PageEntranceFade never gets a render frame to
             // animate against. Update is still synchronous within the queued
             // delegate; the trick is just yielding once between the nav swap
@@ -461,22 +579,50 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
         _logger?.LogDebug(
             "[xfade][album:{Id}] refresh incoming={Incoming} sameId={SameId}",
             XfadeLog.Tag(ViewModel.AlbumId), XfadeLog.Tag(incomingId), sameId);
-        LoadNewContent(parameter);
+        LoadNewContent(parameter, PageHostNavigationMode.Refresh);
     }
 
-    private async void LoadNewContent(object? parameter)
+    private async void LoadNewContent(object? parameter, PageHostNavigationMode mode = PageHostNavigationMode.New)
     {
+        // If we were trimmed since the last LoadNewContent, the x:Bind graph is
+        // currently detached (TrimForNavigationCache called Bindings.StopTracking).
+        // Re-attach BEFORE the PrefillFrom / Activate / ApplyDetail chain below
+        // fires its PropertyChanged events, otherwise the hero cover, title,
+        // About-the-artist card etc. sit deaf and the view freezes on whatever
+        // was bound before the trim. Mirrors PlaylistPage.LoadParameter.
+        var wasTrimmed = _trimmedForNavigationCache;
         _trimmedForNavigationCache = false;
+        if (wasTrimmed)
+        {
+            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.bindingsUpdate"))
+            {
+                Bindings?.Update();
+            }
+        }
+        System.Diagnostics.Debug.WriteLine(
+            $"[diag-album] LoadNewContent.enter mode={mode} wasTrimmed={wasTrimmed} vm.AlbumId={ViewModel.AlbumId} " +
+            $"vm.AlbumName={ViewModel.AlbumName} vm.AlbumImageUrl={(ViewModel.AlbumImageUrl ?? "<null>")} " +
+            $"vm.IsLoading={ViewModel.IsLoading} parallaxAttached={_parallaxAttached}");
         _logger?.LogDebug(
             "[xfade][album:{Id}] load.enter",
             XfadeLog.Tag(ViewModel.AlbumId));
 
-        // Reset shimmer/content visual state for the fresh load.
-        PageController.ResetForNewLoad();
-        ResetScrollPositionForNavigation();
-        _footerRevealed = false;
-        _footerRevealGeneration++;
-        FooterShimmerGate.Reset(() => FooterShimmer, () => FooterContent);
+        // Cache-hit nav (Back/Forward): content visual tree is already realised
+        // and bindings live; skip shimmer reset to avoid flashing skeleton over
+        // already-good pixels. Only New entry needs the full reset.
+        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward)
+        {
+            System.Diagnostics.Debug.WriteLine($"[diag-album] LoadNewContent.runReset mode={mode}");
+            PageController.ResetForNewLoad();
+            ResetScrollPositionForNavigation();
+            _footerRevealed = false;
+            _footerRevealGeneration++;
+            FooterShimmerGate.Reset(() => FooterShimmer, () => FooterContent);
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine($"[diag-album] LoadNewContent.skipReset mode={mode} (cache-hit Back/Forward)");
+        }
 
         var hasPendingAlbumArtAnimation =
             ConnectedAnimationHelper.HasPendingAnimation(ConnectedAnimationHelper.AlbumArt);
@@ -501,7 +647,12 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
             else
             {
                 ViewModel.Activate(nav.Uri);
-                ViewModel.PrefillFrom(nav);
+                // clearMissing: true → if nav lacks ImageUrl/Subtitle/TotalTracks
+                // those fields go null/empty rather than keeping the previous
+                // album's values. Prevents stale-cover-with-new-tracks bleed-through
+                // when navigating between two albums whose source cards don't
+                // carry every prefill field.
+                ViewModel.PrefillFrom(nav, clearMissing: true);
             }
         }
         else if (parameter is string rawId && !string.IsNullOrWhiteSpace(rawId))
@@ -523,6 +674,23 @@ public sealed partial class AlbumPage : Page, ITabBarItemContent, INavigationCac
                     ViewModel.Activate(uri, preserveHeaderPrefill: true);
             }
 
+            // Warm-cache crossfade: the connected-anim path doesn't fall through
+            // to the SettleAlbumLayoutAsync + TryShowContentNow + TryRevealFooterAsync
+            // block below. On a warm-cache nav, IsLoading was already false going in
+            // and stays false through Activate, so the IsLoading-flip trigger that
+            // normally hides the shimmer never fires — and the just-armed shimmer
+            // would stay painted on top of the (correct) content forever (both the
+            // main page shimmer AND the footer shimmer). Force BOTH crossfades
+            // explicitly here so neither shimmer gets stuck.
+            System.Diagnostics.Debug.WriteLine(
+                "[diag-album] connectedAnim warm-cache: forcing TryShowContentNow + TryRevealFooterAsync");
+            await Task.Yield();
+            if (!PageController.IsNavigatingAway)
+            {
+                PageController.TryShowContentNow();
+                if (ViewModel.IsContentReady)
+                    _ = TryRevealFooterAsync();
+            }
             return;
         }
 

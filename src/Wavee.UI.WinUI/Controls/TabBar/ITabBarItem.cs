@@ -8,6 +8,6 @@ public interface ITabBarItem
     string? Header { get; }
     IconSource? IconSource { get; }
     string? ToolTipText { get; }
-    Frame ContentFrame { get; }
+    PageHost.PageHost ContentHost { get; }
     TabItemParameter? NavigationParameter { get; set; }
 }

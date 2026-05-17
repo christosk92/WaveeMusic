@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -13,7 +13,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Navigation;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Controls.Layouts;
 using Wavee.UI.Contracts;
@@ -27,7 +27,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepParticipant, INavigationCacheMemoryParticipant, IDisposable
+public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSleepParticipant, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable
 {
     private readonly ILogger? _logger;
     private readonly HomeFeedCache? _cache;
@@ -36,10 +36,8 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
     private bool _trimmedForNavigationCache;
     private bool _sectionsDetachedForNavigationCache;
     private bool _isNavigatedAway;
-    private DispatcherQueueTimer? _navigationTrimTimer;
     private HomePageSleepState? _pendingSleepState;
 
-    private const int NavigationCacheTrimDelaySeconds = 45;
     private const int ScrollRestoreMaxAttempts = 12;
     private const int ScrollRestoreRetryDelayMs = 16;
     // Safety net for ImageLoadingSuspension. If BeginScrollRestore runs but
@@ -298,16 +296,18 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
             _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    public async void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
         // Bracket only the synchronous prefix — the using-scope disposes BEFORE
         // the first await so the per-nav stage time excludes async work that
-        // runs after Frame.Navigate has returned.
-        using (Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.home.onNavigatedTo"))
+        // runs after navigation has returned.
+        using (Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.home.onEntered"))
         {
-            base.OnNavigatedTo(e);
             _isNavigatedAway = false;
-            CancelNavigationCacheTrim();
+            // The deferred trim (scheduled by TabBarItem on the previous leave)
+            // is cancelled by TabBarItem itself in ContentHost_Navigated when
+            // the user returns to this page — no per-page cancel needed here.
+
             // Re-attach compiled x:Bind to VM.PropertyChanged before any rehydrate
             // path runs. Idempotent; safe on first entry too.
             using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.home.bindingsUpdate"))
@@ -322,72 +322,34 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
             }
 
             // Rehydrate rebuilds Sections + Chips from the cached home-feed
-            // response — paired with HibernateForNavigation on OnNavigatedFrom.
+            // response — paired with HibernateForNavigation on OnLeaving.
             // Cheap (no network); avoids holding the parsed tree while away.
-            if (!restoredFromTrim)
+            // On Back/Forward cache-hit the visual tree is still live and
+            // re-running ResumeFromNavigationCache is wasted work; skip it.
+            if (mode == PageHostNavigationMode.New && !restoredFromTrim)
                 ViewModel.ResumeFromNavigationCache();
         }
         await ViewModel.RefreshLocalSectionAsync();
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnLeaving()
     {
-        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.home.onNavigatedFrom");
-        base.OnNavigatedFrom(e);
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.home.onLeaving");
         _isNavigatedAway = true;
         CancelScrollRestore();
 
-        // Stop background feed work immediately, but delay tearing down the
-        // visual tree. Quick page hops can then reuse the navigation-cached
-        // Home surface instead of re-instantiating every visible shelf.
+        // Stop background feed work immediately; visual-tree teardown is now
+        // scheduled centrally by TabBarItem (~1 s after the leave). HomePage's
+        // TrimForNavigationCache below is what TabBarItem fires on that timer.
         ViewModel.SuspendBackgroundRefresh();
-        ScheduleNavigationCacheTrim();
         // Detach compiled x:Bind from VM.PropertyChanged so the cached page
         // does not keep its bindings live while the user is on another page.
         Bindings?.StopTracking();
     }
 
-    private void ScheduleNavigationCacheTrim()
-    {
-        if (_isDisposed || _trimmedForNavigationCache)
-            return;
-
-        var timer = _navigationTrimTimer;
-        if (timer is null)
-        {
-            timer = DispatcherQueue.CreateTimer();
-            timer.IsRepeating = false;
-            timer.Tick += NavigationTrimTimer_Tick;
-            _navigationTrimTimer = timer;
-        }
-
-        timer.Stop();
-        timer.Interval = TimeSpan.FromSeconds(NavigationCacheTrimDelaySeconds);
-        timer.Start();
-    }
-
-    private void CancelNavigationCacheTrim()
-    {
-        _navigationTrimTimer?.Stop();
-    }
-
-    private void NavigationTrimTimer_Tick(DispatcherQueueTimer sender, object args)
-    {
-        sender.Stop();
-        if (_isDisposed || _trimmedForNavigationCache)
-            return;
-
-        TrimForNavigationCacheNow();
-    }
-
     public void TrimForNavigationCache()
     {
-        ScheduleNavigationCacheTrim();
-    }
-
-    private void TrimForNavigationCacheNow()
-    {
-        if (_trimmedForNavigationCache)
+        if (_isDisposed || _trimmedForNavigationCache)
             return;
 
         _trimmedForNavigationCache = true;
@@ -402,7 +364,8 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
 
     public void RestoreFromNavigationCache()
     {
-        CancelNavigationCacheTrim();
+        // The deferred-trim timer is owned by TabBarItem and cancelled there
+        // when the user re-enters this page — no per-page cancel needed.
         if (!_trimmedForNavigationCache)
             return;
 
@@ -433,13 +396,6 @@ public sealed partial class HomePage : Page, ITabBarItemContent, ITabSleepPartic
         if (_isDisposed) return;
         _isDisposed = true;
         CancelScrollRestore();
-
-        if (_navigationTrimTimer is not null)
-        {
-            _navigationTrimTimer.Stop();
-            _navigationTrimTimer.Tick -= NavigationTrimTimer_Tick;
-            _navigationTrimTimer = null;
-        }
 
         Loaded -= HomePage_Loaded;
         Unloaded -= HomePage_Unloaded;

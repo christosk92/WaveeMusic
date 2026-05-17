@@ -329,6 +329,7 @@ public sealed partial class EpisodeCard : UserControl
         // on ContentCard's dispatch.
         if (uri.Contains(":episode:", StringComparison.Ordinal))
         {
+            Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("EpisodeCard.Episode");
             NavigationHelpers.OpenEpisodePage(
                 uri,
                 item?.Title,
@@ -337,6 +338,7 @@ public sealed partial class EpisodeCard : UserControl
         }
         else if (uri.Contains(":show:", StringComparison.Ordinal))
         {
+            Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("EpisodeCard.Show");
             NavigationHelpers.OpenShowPage(uri, item?.Title ?? string.Empty, openInNewTab: NavigationHelpers.IsCtrlPressed());
         }
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -12,7 +12,7 @@ using Wavee.UI.WinUI.ViewModels.Local;
 
 namespace Wavee.UI.WinUI.Views.Local;
 
-public sealed partial class LocalOtherPage : Page
+public sealed partial class LocalOtherPage : UserControl, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware
 {
     public LocalOtherViewModel ViewModel { get; }
     public LocalOtherPage()
@@ -20,11 +20,11 @@ public sealed partial class LocalOtherPage : Page
         ViewModel = Ioc.Default.GetService<LocalOtherViewModel>() ?? new LocalOtherViewModel();
         InitializeComponent();
     }
-    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    public async void OnEntered(object? parameter, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigationMode mode)
     {
-        base.OnNavigatedTo(e);
         await ViewModel.LoadAsync();
     }
+    public void OnLeaving() { }
 
     private void Other_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {

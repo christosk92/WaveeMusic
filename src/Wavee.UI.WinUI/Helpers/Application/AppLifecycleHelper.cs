@@ -544,6 +544,10 @@ public static class AppLifecycleHelper
                 .AddSingleton<IUserProfileResolver, UserProfileResolver>()
                 .AddSingleton(sp => new ImageCacheService(cacheCapacities.ImageCacheMaxSize))
                 .AddSingleton<PlaylistMosaicService>()
+                // WinUI palette → brush composer. Stateless, reusable by
+                // ArtistHeaderViewModel (and future header VMs that share the
+                // same palette→accent/hero-gradient/pill-brush mapping).
+                .AddSingleton<PaletteGradientCompositor>()
                 .AddSingleton<IPreviewAudioPlaybackEngine, PreviewAudioGraphService>()
                 .AddSingleton<PreviewAudioGraphService>(sp => (PreviewAudioGraphService)sp.GetRequiredService<IPreviewAudioPlaybackEngine>())
                 // IUiDispatcher abstraction: lets services in the plain-C# Wavee.UI library marshal
@@ -686,6 +690,16 @@ public static class AppLifecycleHelper
                 .AddSingleton<Wavee.UI.Contracts.IRootlistService, Data.Contexts.RootlistService>()
                 .AddSingleton<Wavee.UI.Contracts.IPodcastEpisodeService, Data.Contexts.PodcastEpisodeService>()
                 .AddSingleton<Wavee.UI.Contracts.IPlaylistMutationService, Data.Contexts.PlaylistMutationService>()
+                // Framework-neutral playlist track filter/sort pipeline — stateless,
+                // singleton. Consumed by PlaylistTrackListViewModel.
+                .AddSingleton<Wavee.UI.Services.Playlists.PlaylistTrackFilterSorter>()
+                // Framework-neutral artist discography pagination math + page
+                // fetcher. Consumed by ArtistDiscographyViewModel + Artist
+                // discography page; stateless, safe as a shared singleton.
+                .AddSingleton<Wavee.UI.Services.Artists.DiscographyPaginationService>()
+                // Framework-neutral hero-spotlight picker — folds pinned item /
+                // latest release / popular releases into a single decision.
+                .AddSingleton<Wavee.UI.Services.Artists.SpotlightSelectionService>()
                 .AddSingleton<ILibraryDataService, Data.Contexts.LibraryDataService>()
                 // App-wide "Add to playlist" modal session — shared singleton so
                 // the floating bar in ShellPage, TrackItem '+' affordances, and
@@ -719,6 +733,11 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<Wavee.Core.Http.IExtendedMetadataClient>()))
                 .AddSingleton<IPodcastService, Data.Contexts.PodcastService>()
                 .AddSingleton<ISearchService, Data.Contexts.SearchService>()
+                // Omnibar suggestion plumbing — stateless ranker + LRU cache used
+                // by the shell's OmnibarViewModel. Singletons so the cache survives
+                // ShellViewModel reconstruction (sign-out/in cycles).
+                .AddSingleton<Wavee.UI.Services.Search.OmnibarSuggestionRanker>()
+                .AddSingleton<Wavee.UI.Services.Search.OmnibarSuggestionCache>()
                 .AddSingleton<Services.ISpotifyLinkPreviewService, Services.SpotifyLinkPreviewService>()
                 .AddSingleton<ITrackDescriptorFetcher, Data.Contexts.TrackDescriptorFetcher>()
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using System.ComponentModel;
@@ -10,9 +10,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Navigation;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.Cards;
+using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.ShowEpisode;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.Models;
@@ -24,7 +24,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCacheMemoryParticipant, IDisposable, IContentPageHost
+public sealed partial class ShowPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IContentPageHost
 {
     private readonly ILogger? _logger;
     private readonly INotificationService? _notificationService;
@@ -74,16 +74,11 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
         ViewModel.ApplyTheme(ActualTheme == ElementTheme.Dark);
     }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    public void OnLeaving()
     {
-        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.show.onNavigatedFrom");
-        base.OnNavigatedFrom(e);
-        // Run TrimForNavigationCache eagerly on every nav-away so the VM's
-        // singleton subscriptions release immediately, not only when the
-        // page falls out of the Frame cache pool. Matches the AlbumPage /
-        // PlaylistPage / ArtistPage pattern; needed to keep cross-type
-        // navigations snappy over a long session.
-        TrimForNavigationCache();
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.show.onLeaving");
+        // Trim deferred ~1 s by TabBarItem; calling sync here moves the cost
+        // off pageHostNavigating only to land in onLeaving instead.
     }
 
     private bool _trimmedForNavigationCache;
@@ -106,7 +101,7 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
         _trimmedForNavigationCache = false;
         // Defer Bindings.Update to the next dispatcher tick so DWM gets a
         // paint frame between the page reattaching and the synchronous
-        // binding sweep. Frame.Navigate runs this method sync, so without
+        // binding sweep. PageHost.Navigate runs this method sync, so without
         // the defer the user sees the page pop in fully rendered before the
         // PageEntranceFade ever animates.
         DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
@@ -163,25 +158,43 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
 
     // ── Navigation ──────────────────────────────────────────────────────────
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.show.onNavigatedTo");
-        base.OnNavigatedTo(e);
-        LoadNewContent(e.Parameter);
+        using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.show.onEntered");
+        LoadNewContent(parameter, mode);
     }
 
     public void RefreshWithParameter(object? parameter)
     {
         // Same-tab navigation between two different shows reuses this Page
-        // instance and never fires OnNavigatedTo - TabBarItem.Navigate routes
-        // through this method instead. Without it, tapping a different show
-        // from a recommendation card silently drops the new parameter.
-        LoadNewContent(parameter);
+        // instance — TabBarItem.Navigate routes through this method instead
+        // of triggering an OnEntered/cache fetch.
+        LoadNewContent(parameter, PageHostNavigationMode.Refresh);
     }
 
-    private async void LoadNewContent(object? parameter)
+    private async void LoadNewContent(object? parameter, PageHostNavigationMode mode = PageHostNavigationMode.New)
     {
-        PageController.ResetForNewLoad();
+        // If we were trimmed since the last LoadNewContent, the x:Bind graph is
+        // currently detached (TrimForNavigationCache called Bindings.StopTracking).
+        // Re-attach BEFORE the Activate / PrefillFrom chain below fires its
+        // PropertyChanged events, otherwise the hero cover, title etc. sit deaf
+        // and the view freezes on whatever was bound before the trim. The
+        // RestoreFromNavigationCache deferred Update fires too late on warm-cache
+        // cross-show navs. Mirrors PlaylistPage / AlbumPage.
+        var wasTrimmed = _trimmedForNavigationCache;
+        _trimmedForNavigationCache = false;
+        if (wasTrimmed)
+        {
+            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.show.bindingsUpdate"))
+            {
+                Bindings?.Update();
+            }
+        }
+
+        // Cache-hit nav (Back/Forward): content already realised — skip the
+        // shimmer reset to avoid flashing skeleton over good pixels.
+        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward)
+            PageController.ResetForNewLoad();
 
         // Yield once between the shimmer flip and the synchronous Activate
         // / PrefillFrom chain. Without this, OnNavigatedTo runs the whole
@@ -225,15 +238,22 @@ public sealed partial class ShowPage : Page, ITabBarItemContent, INavigationCach
         }
 
         PageController.MarkContentShownDirectly();
-        using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.show.updateLayout"))
+
+        // Defer TryStartAnimation to the next render frame — see AlbumPage for
+        // the rationale. Layout completes naturally before the frame fires,
+        // sparing us the ~50-70 ms forced UpdateLayout pass on cold show navs.
+        var capturedContainer = CoverContainer;
+        EventHandler<object>? onNextFrame = null;
+        onNextFrame = (_, _) =>
         {
-            // Element-scoped: see PlaylistPage for the rationale. Lays
-            // out the CoverContainer's parent chain only.
-            CoverContainer.UpdateLayout();
-        }
-        return ConnectedAnimationHelper.TryStartAnimation(
-            ConnectedAnimationHelper.PodcastArt,
-            CoverContainer);
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= onNextFrame;
+            ConnectedAnimationHelper.TryStartAnimation(
+                ConnectedAnimationHelper.PodcastArt,
+                capturedContainer);
+        };
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += onNextFrame;
+
+        return true;
     }
 
     // ── Left-panel sizing ───────────────────────────────────────────────────

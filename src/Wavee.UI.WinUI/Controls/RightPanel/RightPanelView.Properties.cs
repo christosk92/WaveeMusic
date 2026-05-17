@@ -30,7 +30,16 @@ public sealed partial class RightPanelView
     public RightPanelMode SelectedMode
     {
         get => (RightPanelMode)GetValue(SelectedModeProperty);
-        set => SetValue(SelectedModeProperty, value);
+        // Short-circuit equal writes: TwoWay bindings still propagate writes
+        // even when the value matches, so a chained binding (ShellVM ↔
+        // RightPanelView ↔ TabPager) bounces an equal value through every
+        // setter until the stack blows. Refusing SetValue for an equal value
+        // cuts the cycle at this layer too.
+        set
+        {
+            if ((RightPanelMode)GetValue(SelectedModeProperty) == value) return;
+            SetValue(SelectedModeProperty, value);
+        }
     }
     public static readonly DependencyProperty SelectedModeProperty =
         DependencyProperty.Register(nameof(SelectedMode), typeof(RightPanelMode), typeof(RightPanelView),
@@ -92,7 +101,12 @@ public sealed partial class RightPanelView
             var isOpen = (bool)e.NewValue;
             view._isOpenCached = isOpen;
             view.Visibility = isOpen ? Visibility.Visible : Visibility.Collapsed;
-            view.UpdateTimerState();
+            // Propagate visibility into both sub-hosts so they can gate their timers.
+            if (view.LyricsContent != null)
+                view.LyricsContent.IsPanelVisible = isOpen;
+            if (view.DetailsContent != null)
+                view.DetailsContent.IsPanelVisible = isOpen;
+
             if (isOpen)
             {
                 view.UpdateContentVisibility();
@@ -122,8 +136,26 @@ public sealed partial class RightPanelView
 
     private static void OnSelectedModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is RightPanelView view)
+        // Re-entry guard: the TwoWay binding chain
+        // ShellViewModel.RightPanelMode ↔ RightPanelView.SelectedMode ↔
+        // RightPanelTabPager.SelectedMode can bounce through async
+        // SelectionChanged firings during initial load and tab switches.
+        // UpdateContentVisibility itself calls TabPager.SyncVisualState which
+        // can synchronously fire SelectionChanged → write back to TabPager's
+        // SelectedMode → push back through the inner binding → reach here
+        // again. Short-circuit at the callback so SetValue never recurses.
+        if (d is not RightPanelView view || view._inSelectedModeChange)
+            return;
+
+        view._inSelectedModeChange = true;
+        try
+        {
             view.UpdateContentVisibility();
+        }
+        finally
+        {
+            view._inSelectedModeChange = false;
+        }
     }
 
     private static void OnIsTabHeaderVisibleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -158,8 +190,11 @@ public sealed partial class RightPanelView
         if (BackgroundOverlayHost != null && IsEmbeddedChromeTransparent)
             BackgroundOverlayHost.Visibility = Visibility.Collapsed;
 
-        if (DetailsCanvasImage != null && IsEmbeddedChromeTransparent)
-            DetailsCanvasImage.Visibility = Visibility.Collapsed;
+        // DetailsTabHost owns the canvas image; propagate the embedded-chrome
+        // flag so it can collapse the image when appropriate. The host's DP
+        // change handler re-applies its internal visibility.
+        if (DetailsContent != null)
+            DetailsContent.IsEmbeddedChromeTransparent = IsEmbeddedChromeTransparent;
 
         if (TabContentFadeHost != null)
             TabContentFadeHost.Height = IsEmbeddedChromeTransparent ? 160 : 140;

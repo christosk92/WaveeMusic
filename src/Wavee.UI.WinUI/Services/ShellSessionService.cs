@@ -212,7 +212,7 @@ public sealed class ShellSessionService : IShellSessionService
 
     private static TabSessionState? CreateTabState(TabBarItem tab)
     {
-        var pageType = tab.NavigationParameter?.InitialPageType ?? tab.ContentFrame.Content?.GetType();
+        var pageType = tab.NavigationParameter?.InitialPageType ?? tab.ContentHost.ActivePage?.GetType();
         if (pageType == null || string.IsNullOrWhiteSpace(pageType.FullName))
             return null;
 

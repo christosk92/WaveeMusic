@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Page
+<UserControl
     x:Class="Wavee.UI.WinUI.Views.ProfilePage"
     x:Name="ProfilePageRoot"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -15,10 +15,9 @@
     xmlns:transitions="using:CommunityToolkit.WinUI"
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
-    NavigationCacheMode="Enabled"
     Background="Transparent"
     waveeHelpers:PageEntranceFade.Fade="True">
-    <Page.Resources>
+    <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark">
@@ -68,7 +67,7 @@
                 <transitions:TransitionConfig Id="profile-follow" ScaleMode="Scale"/>
             </transitions:TransitionHelper>
         </ResourceDictionary>
-    </Page.Resources>
+    </UserControl.Resources>
 
     <Grid>
         <!-- Page bleed — top-left anchored radial wash tinted from the
@@ -471,4 +470,4 @@
             </Grid>
         </Grid>
     </Grid>
-</Page>
+</UserControl>

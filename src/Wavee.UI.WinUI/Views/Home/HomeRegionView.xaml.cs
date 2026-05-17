@@ -1,3 +1,5 @@
+using CommunityToolkit.Mvvm.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.ViewModels.Home;
@@ -14,9 +16,33 @@ namespace Wavee.UI.WinUI.Views.Home;
 /// </summary>
 public sealed partial class HomeRegionView : UserControl
 {
+    private static readonly ILogger? _logger =
+        Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger("HomeRegionView");
+
     public HomeRegionView()
     {
         InitializeComponent();
+
+        // [home-scroll] inner SectionsRepeater realize/recycle. Phase 1
+        // instrumentation: confirms whether the inner StackLayout-backed
+        // repeater is producing/recycling section containers in lockstep with
+        // the outer SectionStackLayout realization, or lagging by a frame.
+        SectionsRepeater.ElementPrepared += OnSectionsRepeaterElementPrepared;
+        SectionsRepeater.ElementClearing += OnSectionsRepeaterElementClearing;
+    }
+
+    private void OnSectionsRepeaterElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
+    {
+        _logger?.LogDebug(
+            "[home-scroll] region.prepare header=\"{Header}\" idx={Index}",
+            Region?.Header ?? string.Empty, args.Index);
+    }
+
+    private void OnSectionsRepeaterElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
+    {
+        _logger?.LogDebug(
+            "[home-scroll] region.clearing header=\"{Header}\"",
+            Region?.Header ?? string.Empty);
     }
 
     public static readonly DependencyProperty RegionProperty = DependencyProperty.Register(

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contexts;
 using Wavee.UI.WinUI.Data.Parameters;
 
 namespace Wavee.UI.WinUI.ViewModels;

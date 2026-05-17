@@ -241,6 +241,8 @@ public sealed partial class ArtistSummaryCard : UserControl
 
         if (string.IsNullOrEmpty(ArtistUri)) return;
         var openInNewTab = NavigationHelpers.IsCtrlPressed();
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent(
+            "ArtistSummaryCard.Artist" + (openInNewTab ? ".NewTab" : ""));
         NavigationHelpers.OpenArtist(ArtistUri, ArtistName ?? "Artist", openInNewTab);
         e.Handled = true;
     }
