@@ -908,8 +908,11 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private async Task PlayArtistRadioAsync()
     {
         if (string.IsNullOrEmpty(ArtistId)) return;
+        var uri = ArtistId.StartsWith("spotify:artist:", StringComparison.Ordinal)
+            ? ArtistId
+            : $"spotify:artist:{ArtistId}";
         var name = Header.ArtistName is { Length: > 0 } n ? $"{n} Radio" : "Artist Radio";
-        await _playbackStateService.StartRadioAsync(ArtistId, name);
+        await _playbackStateService.StartRadioAsync(uri, name);
     }
 
     private void UpdateTabTitle(string? value)

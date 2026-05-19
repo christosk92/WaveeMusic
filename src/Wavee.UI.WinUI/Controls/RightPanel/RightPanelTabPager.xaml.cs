@@ -93,6 +93,31 @@ public sealed partial class RightPanelTabPager : UserControl
             new PropertyMetadata(false, OnIsTrackDetailsTabVisibleChanged));
 
     /// <summary>
+    /// Label shown on the lyrics tab — flips between "Lyrics" and "Transcript"
+    /// depending on whether the currently-playing item is a music track or a
+    /// podcast episode. The parent <see cref="RightPanelView"/> writes this in
+    /// response to <c>LyricsViewModel.IsEpisode</c> changes. Default mirrors the
+    /// XAML literal so first paint never shows an empty tab.
+    /// </summary>
+    public string LyricsTabContent
+    {
+        get => (string)GetValue(LyricsTabContentProperty);
+        set => SetValue(LyricsTabContentProperty, value);
+    }
+    public static readonly DependencyProperty LyricsTabContentProperty =
+        DependencyProperty.Register(
+            nameof(LyricsTabContent),
+            typeof(string),
+            typeof(RightPanelTabPager),
+            new PropertyMetadata("Lyrics", OnLyricsTabContentChanged));
+
+    private static void OnLyricsTabContentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is RightPanelTabPager pager && pager.LyricsTabItem != null)
+            pager.LyricsTabItem.Content = e.NewValue as string ?? "Lyrics";
+    }
+
+    /// <summary>
     /// Raised after the user clicks the pop-out button. The parent listens and
     /// dispatches to <c>IPanelDockingService.Detach</c>; this control stays
     /// service-agnostic.

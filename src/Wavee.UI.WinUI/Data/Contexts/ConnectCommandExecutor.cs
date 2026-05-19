@@ -27,6 +27,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
     private readonly ILogger? _logger;
     private IPlaybackEngine? _localEngine;
     private Wavee.AudioIpc.AudioPipelineProxy? _audioPipelineProxy;
+    private Wavee.AudioIpc.AudioProcessManager? _audioProcessManager;
 
     /// <summary>
     /// Enables local playback routing through the given engine.
@@ -38,6 +39,26 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
         if (engine is Wavee.AudioIpc.AudioPipelineProxy proxy)
             _audioPipelineProxy = proxy;
     }
+
+    /// <summary>
+    /// Attaches the audio-host process manager so the executor can demand-trigger
+    /// a restart at play-time when the local engine's pipe has died. Called once
+    /// at startup from AppLifecycleHelper. The reference is stable for the
+    /// session — restarts replace the proxy via <c>EnableLocalPlayback</c>, not
+    /// this manager.
+    /// </summary>
+    internal void AttachAudioProcessManager(Wavee.AudioIpc.AudioProcessManager mgr)
+        => _audioProcessManager = mgr ?? throw new ArgumentNullException(nameof(mgr));
+
+    /// <summary>
+    /// True when the local engine reference is non-null and any underlying IPC
+    /// proxy is still connected. Used to detect stale references between pipe
+    /// death and the ProxyRestarted rewire so the play path can trigger recovery
+    /// instead of routing into a dead engine.
+    /// </summary>
+    private bool IsLocalEngineHealthy()
+        => _localEngine is not null
+           && (_audioPipelineProxy is null || _audioPipelineProxy.IsConnected);
 
     /// <summary>
     /// Wires live audio-pipeline controls. Playback commands route through
@@ -265,7 +286,27 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
             if (ShouldBlockLocalSpotifyPlayback(endpoint, typedPlayCommand, data, out var blockedUri))
                 return LocalSpotifyPlaybackDisabledResult(endpoint, blockedUri);
 
-            if (_localEngine != null)
+            // Self-healing: if the engine reference is null OR its underlying IPC
+            // proxy is disconnected (pipe died between our last command and now),
+            // demand a restart and wait up to 5s for it. AudioProcessManager
+            // coalesces concurrent restart triggers; this is safe under contention.
+            if (!IsLocalEngineHealthy() && _audioProcessManager is not null)
+            {
+                _logger?.LogInformation(
+                    "[Executor] {Endpoint}: local engine unhealthy (engine={HasEngine}, proxyConnected={ProxyConnected}) — attempting silent recovery",
+                    endpoint,
+                    _localEngine is not null,
+                    _audioPipelineProxy?.IsConnected);
+                var recovered = await _audioProcessManager
+                    .EnsureConnectedAsync(TimeSpan.FromSeconds(5), ct)
+                    .ConfigureAwait(false);
+                if (recovered)
+                    _logger?.LogInformation("[Executor] {Endpoint}: recovery succeeded", endpoint);
+                else
+                    _logger?.LogWarning("[Executor] {Endpoint}: recovery timed out or failed", endpoint);
+            }
+
+            if (IsLocalEngineHealthy())
             {
                 _logger?.LogInformation("[Executor] {Endpoint}: routing LOCAL (target={Target}, self={Self})",
                     endpoint, target ?? "<none>", selfId);
@@ -277,7 +318,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
                     {
                         _logger?.LogDebug("[Executor] play → typed PlayCommand: context={Context}, track={Track}, index={Index}",
                             typedPlayCommand.ContextUri ?? "<none>", typedPlayCommand.TrackUri ?? "<none>", typedPlayCommand.SkipToIndex);
-                        await Task.Run(async () => await _localEngine.PlayAsync(typedPlayCommand, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
+                        await Task.Run(async () => await _localEngine!.PlayAsync(typedPlayCommand, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
                         _logger?.LogInformation("[Executor] play OK (local engine accepted)");
                         return PlaybackResult.Success();
                     }
@@ -288,7 +329,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
                     }
                 }
 
-                var localResult = await RouteToLocalEngineAsync(_localEngine, endpoint, data, ct).ConfigureAwait(false);
+                var localResult = await RouteToLocalEngineAsync(_localEngine!, endpoint, data, ct).ConfigureAwait(false);
                 if (localResult.IsSuccess)
                     _logger?.LogInformation("[Executor] {Endpoint} OK (local engine accepted)", endpoint);
                 else
@@ -296,7 +337,7 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
                 return localResult;
             }
 
-            _logger?.LogWarning("[Executor] {Endpoint}: no local engine and no active device — command dropped!", endpoint);
+            _logger?.LogWarning("[Executor] {Endpoint}: no local engine after recovery attempt — command dropped", endpoint);
             return PlaybackResult.Failure(PlaybackErrorKind.DeviceUnavailable,
                 "No active device and no local playback engine available.");
         }
@@ -349,6 +390,10 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
 
     private static bool IsLocalUri(string? uri)
         => uri?.StartsWith("wavee:local:", StringComparison.Ordinal) == true;
+
+    private static bool IsInfiniteContextUri(string? uri)
+        => !string.IsNullOrEmpty(uri)
+           && (uri.Contains(":station:") || uri.Contains(":radio:") || uri.Contains(":autoplay:"));
 
     private static TimeSpan GetAckTimeout(string endpoint) => endpoint switch
     {
@@ -857,36 +902,42 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
                                 "[Executor] resume: queue empty — seeding from cluster: context={Context}, track={Track}, pos={Pos}ms (enginePos={EPos}ms, clusterPos={CPos}ms)",
                                 seedContext, seedTrack, seedPos, enginePos, clusterState?.PositionMs ?? 0);
 
-                            // For contexts that cannot be resolved from Spotify, rebuild the page from
-                            // the restored cluster queue. This preserves local episode/show ordering after
-                            // app restart: prev + current + next becomes the orchestrator's in-memory queue.
+                            // Rebuild the page from the restored cluster queue whenever the
+                            // cluster has any prev/next tracks (or we're on the synthetic
+                            // internal-queue context). This preserves user-queued items + the
+                            // exact ordering across restart for ALL context kinds — station /
+                            // radio / playlist / album / local. Provider is derived from
+                            // TrackReference.IsUserQueued + whether the context is infinite, so
+                            // the queue UI's per-track Provider check labels each section
+                            // correctly (Queue / Autoplay / Next Up).
                             List<Wavee.Connect.Commands.PageTrack>? pageTracks = null;
                             int? skipToIndex = null;
 
                             var seedIsInternalQueue = seedContext == "spotify:internal:queue";
-                            var seedIsLocalContext = IsLocalUri(seedContext);
-                            if (seedIsInternalQueue || seedIsLocalContext)
+                            var prevTracks = clusterState?.PrevTracks ?? [];
+                            var nextTracks = clusterState?.NextTracks ?? [];
+
+                            if (seedIsInternalQueue || prevTracks.Count > 0 || nextTracks.Count > 0)
                             {
-                                var prevTracks = clusterState?.PrevTracks ?? [];
-                                var nextTracks = clusterState?.NextTracks ?? [];
+                                var seedIsInfinite = IsInfiniteContextUri(seedContext);
+                                string ProviderFor(Wavee.Connect.TrackReference t) =>
+                                    t.IsUserQueued ? "queue" : (seedIsInfinite ? "autoplay" : "context");
 
-                                if (seedIsInternalQueue || prevTracks.Count > 0 || nextTracks.Count > 0)
-                                {
-                                    // Build a flat track list: prevTracks (oldest first) + current + nextTracks
-                                    pageTracks = [];
-                                    foreach (var t in prevTracks)
-                                        pageTracks.Add(new Wavee.Connect.Commands.PageTrack(t.Uri, t.Uid));
+                                pageTracks = [];
+                                foreach (var t in prevTracks)
+                                    pageTracks.Add(new Wavee.Connect.Commands.PageTrack(t.Uri, t.Uid, ProviderFor(t)));
 
-                                    skipToIndex = pageTracks.Count; // current track lands here
-                                    pageTracks.Add(new Wavee.Connect.Commands.PageTrack(seedTrack, seedUid ?? ""));
+                                skipToIndex = pageTracks.Count; // current track lands here
+                                pageTracks.Add(new Wavee.Connect.Commands.PageTrack(
+                                    seedTrack, seedUid ?? "",
+                                    seedIsInfinite ? "autoplay" : "context"));
 
-                                    foreach (var t in nextTracks)
-                                        pageTracks.Add(new Wavee.Connect.Commands.PageTrack(t.Uri, t.Uid));
+                                foreach (var t in nextTracks)
+                                    pageTracks.Add(new Wavee.Connect.Commands.PageTrack(t.Uri, t.Uid, ProviderFor(t)));
 
-                                    _logger?.LogInformation(
-                                        "[Executor] resume: rebuilt restored queue for {Context}: prev={Prev}, current=@{Idx}, next={Next}, total={Total}",
-                                        seedContext, prevTracks.Count, skipToIndex, nextTracks.Count, pageTracks.Count);
-                                }
+                                _logger?.LogInformation(
+                                    "[Executor] resume: rebuilt restored queue for {Context}: prev={Prev}, current=@{Idx}, next={Next}, total={Total}, infinite={Infinite}",
+                                    seedContext, prevTracks.Count, skipToIndex, nextTracks.Count, pageTracks.Count, seedIsInfinite);
                             }
 
                             var seedCmd = new Wavee.Connect.Commands.PlayCommand

@@ -243,6 +243,9 @@
   <data name="Controls_RightPanel_RightPanelView__SegmentedItem_2.Content" xml:space="preserve">
     <value>Lyrics</value>
   </data>
+  <data name="Controls_RightPanel_RightPanelView__SegmentedItem_2_Transcript.Content" xml:space="preserve">
+    <value>Transcript</value>
+  </data>
   <data name="Controls_RightPanel_RightPanelView__SegmentedItem_3.Content" xml:space="preserve">
     <value>Friends</value>
   </data>
@@ -260,6 +263,9 @@
   </data>
   <data name="Controls_RightPanel_RightPanelView__TextBlock_5.Text" xml:space="preserve">
     <value>No lyrics available for this track</value>
+  </data>
+  <data name="Controls_RightPanel_RightPanelView__TextBlock_5_Transcript.Text" xml:space="preserve">
+    <value>No transcript available for this episode</value>
   </data>
   <data name="Controls_RightPanel_RightPanelView__TextBlock_7.Text" xml:space="preserve">
     <value>Lyrics</value>
@@ -1079,11 +1085,14 @@ the music you previously queued?</value>
   <data name="TrackMenu_AlbumRadio" xml:space="preserve">
     <value>Album radio</value>
   </data>
-  <data name="TrackMenu_PlayNext" xml:space="preserve">
-    <value>Play next</value>
+  <data name="TrackMenu_AddToQueue" xml:space="preserve">
+    <value>Add to queue</value>
   </data>
-  <data name="TrackMenu_PlayAfter" xml:space="preserve">
-    <value>Play after</value>
+  <data name="TrackMenu_PlayNext_Tooltip" xml:space="preserve">
+    <value>Plays right after the current track.</value>
+  </data>
+  <data name="TrackMenu_AddToQueue_Tooltip" xml:space="preserve">
+    <value>Plays after the current list ends.</value>
   </data>
   <data name="TrackMenu_ViewCredits" xml:space="preserve">
     <value>View credits</value>

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Wavee.UI.WinUI.Controls.HeroHeader;
+using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -16,7 +17,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ConcertPage : UserControl, ITabBarItemContent, IPageHostAware
+public sealed partial class ConcertPage : UserControl, ITabBarItemContent, IPageHostAware, IRedirectsCtrlFToOmnibar
 {
     private readonly ILogger? _logger;
     private bool _showingContent;

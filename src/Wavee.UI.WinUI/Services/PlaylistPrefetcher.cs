@@ -6,8 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.Protocol.ExtendedMetadata;
+using Wavee.UI.Helpers;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Stores;
 
@@ -24,9 +24,8 @@ namespace Wavee.UI.WinUI.Services;
 /// <see cref="ListMetadataV2"/> protobuf into a partial
 /// <see cref="PlaylistDetailDto"/> (name, description, cover, header banner,
 /// primary color), and seeds <see cref="PlaylistStore"/> via
-/// <see cref="PlaylistStore.HintPartial"/>. As a side effect it kicks the WinUI
-/// BitmapImage cache for the cover + header URLs so the hero paints with
-/// already-decoded bytes when <c>PlaylistPage</c> activates.
+/// <see cref="PlaylistStore.HintPartial"/>. As a side effect it warms the
+/// bounded <see cref="ImageCacheService"/> for the cover + header URLs.
 /// </summary>
 public interface IPlaylistMetadataPrefetcher
 {
@@ -46,6 +45,7 @@ public sealed class PlaylistMetadataPrefetcher : IPlaylistMetadataPrefetcher, ID
 
     private readonly ExtendedMetadataStore _metadataStore;
     private readonly PlaylistStore _playlistStore;
+    private readonly ImageCacheService? _imageCache;
     private readonly ILogger? _logger;
 
     // Single-fire guard: once a URI's prefetch has been kicked off this session,
@@ -61,10 +61,12 @@ public sealed class PlaylistMetadataPrefetcher : IPlaylistMetadataPrefetcher, ID
     public PlaylistMetadataPrefetcher(
         ExtendedMetadataStore metadataStore,
         PlaylistStore playlistStore,
+        ImageCacheService? imageCache = null,
         ILogger<PlaylistMetadataPrefetcher>? logger = null)
     {
         _metadataStore = metadataStore ?? throw new ArgumentNullException(nameof(metadataStore));
         _playlistStore = playlistStore ?? throw new ArgumentNullException(nameof(playlistStore));
+        _imageCache = imageCache;
         _logger = logger;
     }
 
@@ -207,34 +209,53 @@ public sealed class PlaylistMetadataPrefetcher : IPlaylistMetadataPrefetcher, ID
             IsPartial = true,
             // primaryColor is captured but PlaylistDetailDto has no slot for it
             // today — when the page palette pipeline grows a hex hint field,
-            // wire it through here. For now the BitmapImage warm-up below is
-            // the side benefit that matters.
+            // wire it through here.
         };
     }
 
     private void WarmImageCache(string? coverUrl, string? headerUrl)
     {
-        // BitmapImage decode triggers WinUI's image cache to fetch + cache the
-        // bytes. Has to run on the UI thread because BitmapImage is a XAML type
-        // and the constructor / UriSource setter both touch DispatcherQueue.
-        // Fire-and-forget — discard the BitmapImage; the cache is keyed by URI.
-        var dq = MainWindow.Instance?.DispatcherQueue;
-        if (dq is null) return;
+        var cache = _imageCache;
+        if (cache is null)
+            return;
 
-        dq.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        var dispatcher = MainWindow.Instance.DispatcherQueue;
+        if (dispatcher is null)
+            return;
+
+        if (dispatcher.HasThreadAccess)
+        {
+            WarmAll();
+        }
+        else
+        {
+            dispatcher.TryEnqueue(DispatcherQueuePriority.Low, WarmAll);
+        }
+
+        void WarmAll()
         {
             try
             {
-                if (!string.IsNullOrEmpty(coverUrl) && Uri.TryCreate(coverUrl, UriKind.Absolute, out var coverUri))
-                    _ = new BitmapImage(coverUri);
-                if (!string.IsNullOrEmpty(headerUrl) && Uri.TryCreate(headerUrl, UriKind.Absolute, out var headerUri))
-                    _ = new BitmapImage(headerUri);
+                WarmOne(coverUrl, 512);
+                WarmOne(headerUrl, 512);
             }
             catch (Exception ex)
             {
                 _logger?.LogDebug(ex, "PlaylistMetadataPrefetcher: image cache warm-up failed");
             }
-        });
+        }
+
+        void WarmOne(string? rawUrl, int decodeSize)
+        {
+            var url = SpotifyImageHelper.ToHttpsUrl(rawUrl) ?? rawUrl;
+            if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out _))
+                return;
+
+            // Viewport prefetches are deliberately not pinned. The shared LRU
+            // can evict them under pressure.
+            cache.GetOrCreate(url, decodeSize, pin: false);
+        }
+
     }
 
     public void Dispose()

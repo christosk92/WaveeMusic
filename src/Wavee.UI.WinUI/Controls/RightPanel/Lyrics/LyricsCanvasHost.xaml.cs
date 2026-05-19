@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Media;
 using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 using Windows.UI;
 
@@ -270,6 +271,7 @@ public sealed partial class LyricsCanvasHost : UserControl
             case nameof(LyricsViewModel.CurrentSongInfo):
             case nameof(LyricsViewModel.HasLyrics):
             case nameof(LyricsViewModel.IsLoading):
+            case nameof(LyricsViewModel.IsEpisode):
                 ApplyCurrentLyricsState();
                 LyricsStateChanged?.Invoke(this, EventArgs.Empty);
                 break;
@@ -321,6 +323,20 @@ public sealed partial class LyricsCanvasHost : UserControl
         LyricsLoadingRing.Visibility = Visibility.Collapsed;
         LyricsLoadingShimmer.Visibility = showLoadingShimmer ? Visibility.Visible : Visibility.Collapsed;
         NoLyricsText.Visibility = showNoLyrics ? Visibility.Visible : Visibility.Collapsed;
+        if (showNoLyrics)
+        {
+            // Podcasts get a transcript, not lyrics — make the empty-state copy
+            // match the labelled tab so the panel reads consistently.
+            var emptyStateKey = _lyricsVm.IsEpisode
+                ? "Controls_RightPanel_RightPanelView__TextBlock_5_Transcript.Text"
+                : "Controls_RightPanel_RightPanelView__TextBlock_5.Text";
+            var emptyText = AppLocalization.GetString(emptyStateKey);
+            if (string.IsNullOrEmpty(emptyText) || emptyText == emptyStateKey)
+                emptyText = _lyricsVm.IsEpisode
+                    ? "No transcript available for this episode"
+                    : "No lyrics available for this track";
+            NoLyricsText.Text = emptyText;
+        }
         LyricsInteractionOverlay.Visibility = showCanvas ? Visibility.Visible : Visibility.Collapsed;
         if (!showCanvas)
             LyricsSyncButton.Visibility = Visibility.Collapsed;

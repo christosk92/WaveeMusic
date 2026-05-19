@@ -163,6 +163,9 @@ public sealed class CompositionProgressBar : UserControl
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         SizeChanged += (_, _) => Resync();
+        // Live theme switches need to retint the rails — the brush is computed
+        // from ActualTheme and isn't a ThemeResource lookup, so we update by hand.
+        ActualThemeChanged += OnActualThemeChanged;
         PointerEntered += OnPointerEntered;
         PointerExited += OnPointerExited;
         PointerPressed += OnPointerPressed;
@@ -315,15 +318,33 @@ public sealed class CompositionProgressBar : UserControl
         if (_templateApplied) BindFillVisuals();
     }
 
-    // Lifted-white track — sits on dark Mica or palette wash and stays visible
-    // regardless of show colour. Theme-aware ControlFillColorTertiaryBrush
-    // collapses against saturated palettes (we saw this on a red/orange wash).
-    private static readonly Brush TrackBrush =
-        new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
+    // Theme-aware "lifted" track that contrasts BOTH dark Mica and light/tinted
+    // palette washes. Dark theme keeps the legacy white-25% which reads cleanly
+    // off mica + saturated palettes (the previous static value). Light theme
+    // inverts to soft-black at ~33% so the rail stays visible against the
+    // pink/cream wash the playerbar adopts from cover-art palettes — without
+    // this, the segment-boundary gaps blend into the wash and become invisible.
+    // Recreated on ActualThemeChanged so live theme switches re-tint immediately.
+    private Brush _trackBrush = null!;
+
+    private static Brush CreateTrackBrush(ElementTheme theme) => theme == ElementTheme.Light
+        ? new SolidColorBrush(Color.FromArgb(0x55, 0x00, 0x00, 0x00))
+        : new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
+
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+    {
+        _trackBrush = CreateTrackBrush(ActualTheme);
+        foreach (var track in _trackBorders)
+            track.Background = _trackBrush;
+    }
 
     private void AddSegmentVisuals(int columnIndex, EpisodeChapterVm? chapter)
     {
         var height = _isHovering || _isDragging ? TrackHeightHover : TrackHeight;
+
+        // Lazy-init: RebuildSegments runs in the constructor before ActualTheme
+        // is settled on the visual tree, so resolve on first use.
+        _trackBrush ??= CreateTrackBrush(ActualTheme);
 
         var track = new Border
         {
@@ -331,7 +352,7 @@ public sealed class CompositionProgressBar : UserControl
             CornerRadius = new CornerRadius(CornerRadiusValue),
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            Background = TrackBrush,
+            Background = _trackBrush,
         };
         var fill = new Border
         {

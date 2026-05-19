@@ -56,6 +56,9 @@ public sealed partial class TrackItem : UserControl
 {
     private const int OptimisticPlayPendingTimeoutMs = 8000;
 
+    [System.Diagnostics.Conditional("WAVEE_COMPACT_TRACK_DIAGNOSTICS")]
+    private static void CompactDiag(string message) => System.Diagnostics.Debug.WriteLine(message);
+
     #region Dependency Properties
 
     public static readonly DependencyProperty TrackProperty =
@@ -519,6 +522,8 @@ public sealed partial class TrackItem : UserControl
     private string? _localBufferingTimeoutTrackId;
     private string? _boundCompactImageUrl;
     private string? _boundRowImageUrl;
+    private string? _lastNonEmptyCompactImageUrl;
+    private string? _lastNonEmptyRowImageUrl;
     private ITrackItem? _observedTrack;
     private bool _isMessengerRegistered;
     private bool _isSaveStateSubscribed;
@@ -611,7 +616,11 @@ public sealed partial class TrackItem : UserControl
             // Single-retry-per-URL semantics live in the behavior; the
             // callback re-enters this control's Apply* path so cache invalidation
             // and dedup re-run.
-            TrackImageRetryBehavior.Attach(CompactAlbumArt, _ => ApplyCompactAlbumArt(_boundCompactImageUrl));
+            TrackImageRetryBehavior.Attach(CompactAlbumArt, failedUrl =>
+            {
+                _boundCompactImageUrl = null;
+                ApplyCompactAlbumArt(_lastNonEmptyCompactImageUrl ?? failedUrl);
+            });
             _compactAlbumArtSubscribed = true;
         }
     }
@@ -622,7 +631,11 @@ public sealed partial class TrackItem : UserControl
         if (RowAlbumArt is null) FindName(nameof(RowAlbumArt));
         if (!_rowAlbumArtSubscribed && RowAlbumArt is not null)
         {
-            TrackImageRetryBehavior.Attach(RowAlbumArt, _ => ApplyRowAlbumArt(_boundRowImageUrl));
+            TrackImageRetryBehavior.Attach(RowAlbumArt, failedUrl =>
+            {
+                _boundRowImageUrl = null;
+                ApplyRowAlbumArt(_lastNonEmptyRowImageUrl ?? failedUrl);
+            });
             _rowAlbumArtSubscribed = true;
         }
     }
@@ -668,7 +681,13 @@ public sealed partial class TrackItem : UserControl
             UpdateBadgePlacement();
             CompactHeartButton.IsLiked = GetTrackLikedState(track);
             CompactHeartButton.Visibility = Visibility.Visible;
-            ApplyCompactAlbumArt(track.ImageSmallUrl ?? track.ImageUrl);
+            var artUrl = track.ImageSmallUrl ?? track.ImageUrl;
+            CompactDiag(
+                $"[CompactDiag] BindCompactData id={track.Id} title={track.Title ?? "(null)"} "
+                + $"smallUrl={(track.ImageSmallUrl ?? "(null)")} url={(track.ImageUrl ?? "(null)")} "
+                + $"isLoadedFE={IsLoaded} attached={(CompactAlbumArt is null ? "(null-art)" : CompactAlbumArt.IsLoaded.ToString())} "
+                + $"boundUrl={_boundCompactImageUrl ?? "(null)"} compactImageDp={(CompactAlbumArt?.ImageUrl ?? "(null)")}");
+            ApplyCompactAlbumArt(artUrl);
             UpdateCompactSubtitleText();
         }
         else
@@ -874,11 +893,14 @@ public sealed partial class TrackItem : UserControl
 
     private void ApplyCompactAlbumArt(string? imageUrl)
     {
+        if (string.IsNullOrEmpty(imageUrl) && PreserveImageOnUnload)
+            imageUrl = _lastNonEmptyCompactImageUrl;
+
         // Diagnostic: trace null-URL invocations on already-loaded rows
         // (the broken-tile pattern). Filter on "[TrackItem.compactArt]".
         if (imageUrl is null && !string.IsNullOrEmpty(_boundCompactImageUrl))
         {
-            System.Diagnostics.Debug.WriteLine(
+            CompactDiag(
                 $"[TrackItem.compactArt] NULL URL passed while previously bound={_boundCompactImageUrl}; "
                 + $"trackId={Track?.Id ?? "(null)"} title={Track?.Title ?? "(null)"} "
                 + $"trackHasImg={Track?.ImageSmallUrl ?? Track?.ImageUrl ?? "(null)"} "
@@ -887,14 +909,23 @@ public sealed partial class TrackItem : UserControl
 
         // Lazy-realize the compact-mode CompositionImage on first use.
         EnsureCompactAlbumArtRealized();
+        CompactDiag(
+            $"[CompactDiag] ApplyCompactAlbumArt enter url={imageUrl ?? "(null)"} "
+            + $"boundUrl={_boundCompactImageUrl ?? "(null)"} "
+            + $"compactArtNull={CompactAlbumArt is null} "
+            + $"compactArtImageUrl={(CompactAlbumArt?.ImageUrl ?? "(null)")} "
+            + $"compactArtFEIsLoaded={(CompactAlbumArt?.IsLoaded.ToString() ?? "(null)")} "
+            + $"compactArtVisibility={(CompactAlbumArt?.Visibility.ToString() ?? "(null)")}");
         if (CompactAlbumArt is null) return;
 
         if (imageUrl == _boundCompactImageUrl &&
             !string.IsNullOrEmpty(CompactAlbumArt.ImageUrl) &&
             CompactAlbumArt.Visibility == Visibility.Visible)
         {
+            CompactDiag($"[CompactDiag] ApplyCompactAlbumArt dedup-hit url={imageUrl ?? "(null)"}");
             CompactAlbumArt.Visibility = Visibility.Visible;
             CompactAlbumArt.Opacity = 1;
+            CompactAlbumArt.RefreshCurrentImage();
             return;
         }
 
@@ -918,17 +949,26 @@ public sealed partial class TrackItem : UserControl
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
         if (string.IsNullOrEmpty(httpsUrl))
         {
-            CompactAlbumArt.ImageUrl = null;
+            if (!PreserveImageOnUnload)
+                CompactAlbumArt.ImageUrl = null;
             return;
         }
 
+        _lastNonEmptyCompactImageUrl = imageUrl;
+
         // CompositionImage handles pin/unpin and the LRU race internally.
+        var existingImageUrl = CompactAlbumArt.ImageUrl;
         CompactAlbumArt.ImageUrl = httpsUrl;
         CompactAlbumArt.Opacity = 1;
+        if (string.Equals(existingImageUrl, httpsUrl, StringComparison.Ordinal))
+            CompactAlbumArt.RefreshCurrentImage();
     }
 
     private void ApplyRowAlbumArt(string? imageUrl)
     {
+        if (string.IsNullOrEmpty(imageUrl) && PreserveImageOnUnload)
+            imageUrl = _lastNonEmptyRowImageUrl;
+
         EnsureRowAlbumArtRealized();
         if (RowAlbumArt is null) return;
 
@@ -944,6 +984,7 @@ public sealed partial class TrackItem : UserControl
         {
             RowAlbumArt.Visibility = Visibility.Visible;
             RowAlbumArt.Opacity = 1;
+            RowAlbumArt.RefreshCurrentImage();
             RowArtPlaceholder.Visibility = Visibility.Visible;
             return;
         }
@@ -955,18 +996,24 @@ public sealed partial class TrackItem : UserControl
         var httpsUrl = SpotifyImageHelper.ToHttpsUrl(imageUrl);
         if (string.IsNullOrEmpty(httpsUrl))
         {
-            RowAlbumArt.ImageUrl = null;
+            if (!PreserveImageOnUnload)
+                RowAlbumArt.ImageUrl = null;
             RowAlbumArt.Visibility = Visibility.Collapsed;
             RowArtPlaceholder.Visibility = Visibility.Visible;
             return;
         }
 
+        _lastNonEmptyRowImageUrl = imageUrl;
+
         // Placeholder stays visible behind the image; CompositionImage fades
         // its own placeholder out as the surface loads.
         RowArtPlaceholder.Visibility = Visibility.Visible;
+        var existingImageUrl = RowAlbumArt.ImageUrl;
         RowAlbumArt.ImageUrl = httpsUrl;
         RowAlbumArt.Opacity = 1;
         RowAlbumArt.Visibility = Visibility.Visible;
+        if (string.Equals(existingImageUrl, httpsUrl, StringComparison.Ordinal))
+            RowAlbumArt.RefreshCurrentImage();
     }
 
     private void ApplyPlaceholderColor(string? hex)
@@ -1043,6 +1090,27 @@ public sealed partial class TrackItem : UserControl
         // through OnTrackItemPropertyChanged (subscribed in ObserveTrack) and
         // re-runs the per-property bind. The previous belt-and-braces
         // "always re-push on Loaded" was overlapping with that path.
+        CompactDiag(
+            $"[CompactDiag] TrackItem.OnLoaded mode={Mode} trackId={Track?.Id ?? "(null)"} "
+            + $"boundUrl={_boundCompactImageUrl ?? "(null)"} "
+            + $"compactArtNull={CompactAlbumArt is null} "
+            + $"compactArtImageUrl={(CompactAlbumArt?.ImageUrl ?? "(null)")} "
+            + $"compactArtIsLoaded={(CompactAlbumArt is null ? "(null)" : CompactAlbumArt.IsLoaded.ToString())} "
+            + $"compactArtIsImageLoaded={(CompactAlbumArt?.IsImageLoaded.ToString() ?? "(null)")}");
+
+        // Compact mode (artist top tracks) lives in a NonVirtualizingLayout
+        // and pushes ApplyCompactAlbumArt during OnTrackChanged — BEFORE the
+        // x:Load-deferred CompactAlbumArt is actually attached to the live
+        // tree. CompositionImage.TryLoadCurrent bails at that point
+        // (!_isAttached) and the load is supposed to retry from
+        // CompactAlbumArt.OnLoaded. Clear the bound-URL latch here so the
+        // RebindObservedTrack call below pushes a fresh URL through the
+        // dedup check rather than short-circuiting — covers the case where
+        // CompactAlbumArt's Loaded never fires or fires before the URL is
+        // assigned. Row mode keeps the cache intact because the recycle
+        // perf win there is real (playlist scrolling).
+        if (Mode == TrackItemDisplayMode.Compact)
+            _boundCompactImageUrl = null;
         RebindObservedTrack();
         UpdateBadgePlacement();
         RefreshLikedState();

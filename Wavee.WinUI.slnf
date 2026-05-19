@@ -2,6 +2,7 @@
   "solution": {
     "path": "Wavee.slnx",
     "projects": [
+      "..\\..\\Users\\ChristosKarapasias\\test\\Klankhuis\\src\\Klankhuis.Hero\\Klankhuis.Hero.csproj",
       "src\\Wavee.AudioHost\\Wavee.AudioHost.csproj",
       "src\\Wavee.Controls.Lyrics\\Wavee.Controls.Lyrics.csproj",
       "src\\Wavee.Local\\Wavee.Local.csproj",

@@ -10,6 +10,9 @@ Component-specific, LLM-friendly guides live in `.agents/guides/`. Read the rele
 - `.agents/guides/connect-state.md` — Spotify Connect: dealer WebSocket, this-device announce (PutState), cluster state, remote commands (Play/Pause/Seek/Transfer/SetVolume/Queue), device picker / volume / now-playing UI.
 - `.agents/guides/library-and-sync.md` — User library lifecycle: collection sync (tracks / albums / artists / shows / pins / listen-later), playlist cache, dealer-driven incremental updates, save / pin / follow write paths, library and pinned UI surfaces.
 - `.agents/guides/playback.md` — Playback runtime: orchestrator, queue + context, track resolution, AudioHost IPC, decode / decrypt / DSP / EQ, prefetch, local-file playback, video playback, UI playback service.
+- `.agents/guides/queue.md` — Queue subsystem: `PlaybackQueue` three buckets (user queue, context, post-context), cursor + shuffle + repeat, `NeedsMoreTracks` pagination signal, autoplay rollover, orchestrator queue ops, cluster sync (PutState prev/next + `QueueRevision`, `SetQueue` / `AddToQueue` dealer commands), right-panel `QueueControl`, drag-drop, context-menu Play next / Add to queue.
+- `.agents/guides/composition-image.md` — CompositionImage: GPU-resident image primitive, cache lifecycle, LoadedImageSurface, suspension gate, retry behaviors, every `<imaging:CompositionImage>` consumer.
+- `.agents/guides/content-card.md` — ContentCard: reusable shelf / grid card across Home / Search / Browse / Library / Artist / Album / Show / Concert / Profile / Local-media; modes, viewport gating, attached behaviors.
 
 When adding a new component guide, follow the frontmatter, Quick-find table, and authoring conventions in `AGENTS.md` (single source of truth), and update the index in both `AGENTS.md` and this file.
 

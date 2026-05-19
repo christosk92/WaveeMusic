@@ -34,6 +34,7 @@ public sealed partial class VideoSurfaceHost : UserControl
 
     private const float PosterBlurAmount = 24f;
     private const float PosterScale = 1.08f;
+    private const int FallbackArtworkDecodeSize = 640;
 
     // Composition pieces owned for the lifetime of the control. Disposed
     // on Unloaded so we don't leak GPU-side resources when the host is
@@ -167,6 +168,7 @@ public sealed partial class VideoSurfaceHost : UserControl
         // Release the Win2D-backed brush + LoadedImageSurface (this already
         // existed). Sets _posterEffectBrush / _posterSurfaceBrush / _posterSurface to null.
         DisposePosterResources();
+        AlbumArtLayer.Source = null;
 
         // Finally drop the SpriteVisual itself. Null _compositor so the next
         // OnLoaded sees a fresh slate (idempotent EnsureComposition will rebuild).
@@ -265,7 +267,11 @@ public sealed partial class VideoSurfaceHost : UserControl
         }
         try
         {
-            AlbumArtLayer.Source = new BitmapImage(new Uri(url));
+            AlbumArtLayer.Source = new BitmapImage(new Uri(url))
+            {
+                DecodePixelWidth = ComputeArtworkDecodeSize(),
+                DecodePixelType = DecodePixelType.Logical
+            };
         }
         catch
         {
@@ -291,7 +297,10 @@ public sealed partial class VideoSurfaceHost : UserControl
 
         try
         {
-            _posterSurface = LoadedImageSurface.StartLoadFromUri(new Uri(url));
+            var decode = ComputeArtworkDecodeSize();
+            _posterSurface = LoadedImageSurface.StartLoadFromUri(
+                new Uri(url),
+                new Windows.Foundation.Size(decode, decode));
         }
         catch
         {
@@ -328,6 +337,14 @@ public sealed partial class VideoSurfaceHost : UserControl
         _posterSurfaceBrush = null;
         _posterSurface?.Dispose();
         _posterSurface = null;
+    }
+
+    private int ComputeArtworkDecodeSize()
+    {
+        var width = ActualWidth > 0 ? ActualWidth : FallbackArtworkDecodeSize / 2.0;
+        var height = ActualHeight > 0 ? ActualHeight : FallbackArtworkDecodeSize / 2.0;
+        var target = (int)Math.Ceiling(Math.Max(width, height) * 2.0);
+        return Math.Clamp(target, 256, 1024);
     }
 
     // ── State driver ─────────────────────────────────────────────────────

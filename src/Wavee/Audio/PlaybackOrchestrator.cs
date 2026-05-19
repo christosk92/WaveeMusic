@@ -709,11 +709,22 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         if (context.Tracks.Count == 0)
             throw new InvalidOperationException("The resolved context did not contain any tracks.");
 
-        var startIndex = ContextResolver.FindTrackIndex(
+        // When the playing track IS in the new context (classic song-radio: seed
+        // sits at radio[0]), park the cursor on its index — MoveNext on track-end
+        // advances past it. When it ISN'T (album/artist radio: current track is
+        // unrelated to the radio playlist), park the cursor at -1 so MoveNext
+        // lands on radio[0] instead of silently skipping it.
+        var resolvedIndex = ContextResolver.FindTrackIndex(
             context.Tracks,
             activeTrackUri,
             state.TrackUid,
-            fallbackIndex: 0);
+            fallbackIndex: null);
+        var hasCurrentInContext = context.Tracks.Any(t =>
+            (!string.IsNullOrEmpty(activeTrackUri)
+                && string.Equals(t.Uri, activeTrackUri, StringComparison.Ordinal))
+            || (!string.IsNullOrEmpty(state.TrackUid)
+                && string.Equals(t.Uid, state.TrackUid, StringComparison.Ordinal)));
+        var startIndex = hasCurrentInContext ? resolvedIndex : -1;
 
         _queue.Clear();
         _queue.SetContext(contextUri, context.IsInfinite, context.TotalCount);
@@ -1721,7 +1732,8 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             if (!string.IsNullOrEmpty(pageUrl))
             {
                 _logger?.LogInformation("Queue needs more tracks — fetching next page {Url}", pageUrl);
-                var result = await _contextResolver.LoadNextPageAsync(pageUrl);
+                var result = await _contextResolver.LoadNextPageAsync(
+                    pageUrl, isInfinite: IsInfiniteContextUri(_originalContextUri));
 
                 if (result.Tracks.Count > 0)
                 {
@@ -1745,6 +1757,15 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             _loadMoreLock.Release();
         }
     }
+
+    /// <summary>
+    /// True for station / radio / autoplay context URIs — these are infinite
+    /// algo-driven contexts that paginate themselves and that don't trigger
+    /// autoplay fallback at end-of-context (they ARE autoplay).
+    /// </summary>
+    private static bool IsInfiniteContextUri(string? uri) =>
+        !string.IsNullOrEmpty(uri) &&
+        (uri.Contains(":station:") || uri.Contains(":radio:") || uri.Contains(":autoplay:"));
 
     /// <summary>
     /// Projects <paramref name="nextTracks"/> into an <c>IQueueItem</c> list,
@@ -1802,9 +1823,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
 
         // Don't autoplay out of an already-radio/station/autoplay context.
         // Those are infinite and paginate themselves via LoadNextPageAsync.
-        if (_originalContextUri.Contains(":station:") ||
-            _originalContextUri.Contains(":radio:") ||
-            _originalContextUri.Contains(":autoplay:"))
+        if (IsInfiniteContextUri(_originalContextUri))
             return Task.CompletedTask;
 
         _autoplayTriggered = true;
@@ -2116,7 +2135,9 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
     {
         var md = t.Metadata;
         if (md is null || md.Count == 0)
-            return new QueueTrack(t.Uri, t.Uid);
+            return new QueueTrack(t.Uri, t.Uid,
+                IsUserQueued: t.Provider == "queue",
+                Provider: t.Provider);
 
         string? Get(string key) =>
             md.TryGetValue(key, out var v) && !string.IsNullOrEmpty(v) ? v : null;
@@ -2143,6 +2164,8 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             ArtistUri: Get("wavee.artist_uri"),
             DurationMs: durationMs,
             IsExplicit: isExplicit,
+            IsUserQueued: t.Provider == "queue",
+            Provider: t.Provider,
             ImageUrl: Get("wavee.image_url"))
         { Metadata = md };
     }

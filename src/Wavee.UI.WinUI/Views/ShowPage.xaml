@@ -11,7 +11,6 @@
     xmlns:ui="using:CommunityToolkit.WinUI.Media"
     xmlns:winUi="using:CommunityToolkit.WinUI"
     xmlns:appControls="using:Wavee.UI.WinUI.Controls"
-    xmlns:cfx="using:Wavee.UI.WinUI.Helpers.Composition"
     xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:shelf="using:Wavee.UI.WinUI.Controls.Shelf"
     xmlns:dtos="using:Wavee.UI.Models"
@@ -391,6 +390,10 @@
                     </Grid.RowDefinitions>
 
                     <!-- Filter / sort / search row. Compact, fits in 56 px. -->
+                    <!-- Episode-archive filter strip. The dedicated AutoSuggestBox
+                         for free-text episode search was retired in favour of the
+                         shell-level Ctrl+F overlay; the status filter combo + sort
+                         combo stay since they're filter accessories, not search. -->
                     <Grid Grid.Row="0"
                           Padding="20,16,20,8"
                           ColumnSpacing="12">
@@ -398,7 +401,6 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="300"/>
                         </Grid.ColumnDefinitions>
 
                         <ComboBox x:Name="FilterCombo"
@@ -425,11 +427,6 @@
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    VerticalAlignment="Center"
                                    Margin="8,0,0,0"/>
-
-                        <AutoSuggestBox Grid.Column="3"
-                                        PlaceholderText="Search episodes"
-                                        QueryIcon="Find"
-                                        Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay}"/>
                     </Grid>
 
                     <!-- Episode list. ScrollView wraps the ItemsRepeater so it can

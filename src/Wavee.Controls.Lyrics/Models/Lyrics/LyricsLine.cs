@@ -24,6 +24,15 @@ namespace Wavee.Controls.Lyrics.Models.Lyrics
 
         public bool IsPrimaryHasRealSyllableInfo { get; set; } = false;
 
+        /// <summary>
+        /// True when this line is a section/chapter header rather than a
+        /// regular sentence. Used by podcast transcripts where the wire format
+        /// interleaves chapter titles with sentences. Renderers should typeset
+        /// header lines distinctly (larger, semibold, extra spacing) and skip
+        /// the per-syllable progress effect since headers have no syllables.
+        /// </summary>
+        public bool IsSectionHeader { get; set; } = false;
+
         public LyricsLine()
         {
             for (int charStartIndex = 0; charStartIndex < PrimaryText.Length; charStartIndex++)

@@ -19,6 +19,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.AvatarStack;
+using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.HeroHeader;
 using Wavee.UI.WinUI.Controls.ContextMenu;
@@ -38,8 +39,17 @@ using Wavee.UI.WinUI.ViewModels.Playlist;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IContentPageHost
+public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
 {
+    // ── IInPageFilterable ───────────────────────────────────────────────
+    string IInPageFilterable.FilterQuery
+    {
+        get => ViewModel?.TrackList?.SearchQuery ?? string.Empty;
+        set { if (ViewModel?.TrackList is { } tl) tl.SearchQuery = value ?? string.Empty; }
+    }
+    string IInPageFilterable.FilterPlaceholder => "Filter tracks…";
+    bool IInPageFilterable.CanFilter => ViewModel?.TrackList is not null;
+
     private const int PlaylistCoverDecodeSize = 280;
 
     private readonly ILogger? _logger;

@@ -205,6 +205,16 @@ public interface ISpClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Fetches the syllable-synced read-along transcript for a podcast episode.
+    /// Returns null when the episode has no transcript (404).
+    /// </summary>
+    /// <param name="episodeId">Episode ID in base62 format.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<Wavee.Core.Http.Transcripts.TranscriptResponse?> GetEpisodeTranscriptAsync(
+        string episodeId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Fetches the next page of tracks using the page URL from a ContextPage.
     /// </summary>
     /// <remarks>

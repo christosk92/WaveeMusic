@@ -14,6 +14,7 @@ using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.WinUI.Controls.Cards;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
+using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Controls.Search;
@@ -28,7 +29,7 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class SearchPage : UserControl, ITabSleepParticipant, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable
+public sealed partial class SearchPage : UserControl, ITabSleepParticipant, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
     public SearchViewModel ViewModel { get; }
 

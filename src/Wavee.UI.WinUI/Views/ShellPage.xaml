@@ -19,6 +19,7 @@
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
     xmlns:notifications="using:Wavee.UI.WinUI.Controls.Notifications"
     xmlns:addtoplaylist="using:Wavee.UI.WinUI.Controls.AddToPlaylist"
+    xmlns:inpf="using:Wavee.UI.WinUI.Controls.InPageFilter"
     xmlns:minivideo="using:Wavee.UI.WinUI.Controls.MiniVideoPlayer"
     xmlns:host="using:Wavee.UI.WinUI.Controls.PageHost"
     mc:Ignorable="d"
@@ -124,6 +125,17 @@
             VerticalAlignment="Bottom"
             HorizontalAlignment="Center"
             Margin="0,0,0,16"/>
+
+        <!-- Ctrl+F in-page filter overlay. Floats top-right of the content
+             area. Mounted once at shell level; the controller binds it to
+             whatever page is currently active. -->
+        <inpf:InPageFilterOverlay
+            x:Name="InPageFilterOverlayControl"
+            Grid.Row="2"
+            Canvas.ZIndex="5"
+            VerticalAlignment="Top"
+            HorizontalAlignment="Right"
+            Margin="0,16,16,0"/>
 
         <!-- Row 2: Main content area with sidebar.
              Collapses entirely when the player enters Theatre / Fullscreen —

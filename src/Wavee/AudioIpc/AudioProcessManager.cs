@@ -53,6 +53,14 @@ public sealed class AudioProcessManager : IAsyncDisposable
     private int _restartInProgress; // 0 = idle, 1 = restarting (guards against double-trigger)
     private Timer? _heartbeatTimer;
 
+    // Demand-driven readiness gate. EnsureConnectedAsync awaits this TCS so callers
+    // (e.g. ConnectCommandExecutor at play-time) can join an in-flight restart and
+    // proceed as soon as the new proxy is wired in. Replaced with a fresh TCS each
+    // time the previous one completes; protected by _readinessLock so concurrent
+    // EnsureConnectedAsync calls share the same Task.
+    private TaskCompletionSource<bool>? _readinessTcs;
+    private readonly object _readinessLock = new();
+
     // Credentials cached for auto-restart
     private string? _username;
     private byte[]? _storedCredential;
@@ -442,6 +450,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
             var friendlyMessage = TryReadProvisioningFailureMessage()
                 ?? "Audio engine needs first-run setup. Check your connection and click Retry.";
             SetState(AudioProcessState.Failed, friendlyMessage);
+            SignalReadiness(false);
             return;
         }
 
@@ -531,6 +540,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
         {
             Interlocked.Exchange(ref _restartInProgress, 0);
             SetState(AudioProcessState.Failed, "Cannot restart — no cached credentials");
+            SignalReadiness(false);
             return;
         }
 
@@ -540,6 +550,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
             _logger?.LogError("Audio host exceeded max restart attempts ({Max})", MaxRestartAttempts);
             SetState(AudioProcessState.Failed,
                 $"Audio engine failed after {MaxRestartAttempts} restart attempts. Restart the app to try again.");
+            SignalReadiness(false);
             return;
         }
 
@@ -574,6 +585,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
 
             // Re-wire the proxy into the executor (it has a new proxy instance)
             ProxyRestarted?.Invoke(_proxy!);
+            SignalReadiness(true);
         }
         catch (Exception ex)
         {
@@ -592,6 +604,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
                 Interlocked.Exchange(ref _restartInProgress, 0);
                 SetState(AudioProcessState.Failed,
                     "Audio engine failed to restart. Restart the app to try again.");
+                SignalReadiness(false);
             }
         }
     }
@@ -601,6 +614,55 @@ public sealed class AudioProcessManager : IAsyncDisposable
     /// The UI layer should re-wire the new proxy into ConnectCommandExecutor and PlaybackStateManager.
     /// </summary>
     public event Action<AudioPipelineProxy>? ProxyRestarted;
+
+    /// <summary>
+    /// Demand-driven readiness gate. Returns true iff a connected proxy exists
+    /// within <paramref name="timeout"/>. If a restart is already in flight (kicked
+    /// by <see cref="OnProcessExited"/>, <see cref="OnProxyDisconnected"/>, or a
+    /// concurrent caller), all waiters share the same completion. If nothing is in
+    /// flight and the proxy is dead, idempotently kicks one (TryRestartAsync is
+    /// guarded by <c>_restartInProgress</c> so concurrent calls don't pile up).
+    /// Returns false on terminal failure (provisioning, no creds, max attempts).
+    /// </summary>
+    public async Task<bool> EnsureConnectedAsync(TimeSpan timeout, CancellationToken ct = default)
+    {
+        if (_proxy is { IsConnected: true }) return true;
+
+        Task<bool> readiness;
+        lock (_readinessLock)
+        {
+            if (_readinessTcs is null || _readinessTcs.Task.IsCompleted)
+                _readinessTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            readiness = _readinessTcs.Task;
+        }
+
+        // If a restart is already in progress, _restartInProgress guards the second
+        // call and it no-ops. Otherwise this kicks the recovery cycle that will
+        // ultimately call SignalReadiness(true|false).
+        _ = TryRestartAsync();
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(timeout);
+        try
+        {
+            return await readiness.WaitAsync(cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Timeout or external cancellation. The restart task continues in the
+            // background and will signal whichever TCS is current at completion;
+            // future EnsureConnectedAsync calls will see the eventual outcome.
+            return false;
+        }
+    }
+
+    private void SignalReadiness(bool success)
+    {
+        lock (_readinessLock)
+        {
+            _readinessTcs?.TrySetResult(success);
+        }
+    }
 
     // ── Helpers ──
 

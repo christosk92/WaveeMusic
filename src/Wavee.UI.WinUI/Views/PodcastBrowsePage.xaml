@@ -1,10 +1,13 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <UserControl
     x:Class="Wavee.UI.WinUI.Views.PodcastBrowsePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:shared="using:Wavee.UI.WinUI.Views.Shared"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     mc:Ignorable="d"
     Background="Transparent"
@@ -12,4 +15,85 @@
     Unloaded="Page_Unloaded"
     waveeHelpers:PageEntranceFade.Fade="True">
 
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <converters:NullToVisibilityConverter x:Key="NullToCollapsedConverter"/>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <ScrollView x:Name="RootScrollViewer"
+                HorizontalScrollMode="Disabled"
+                VerticalScrollBarVisibility="Auto"
+                Padding="0">
+        <Grid>
+            <!-- Real content. Initial Opacity=0 set in code-behind on Loaded so
+                 it doesn't paint until the crossfade reveals it; mirrors
+                 BrowsePage's shimmer pattern. Padding tracks the music browse
+                 page so HomeRegion-style sections (if ever added) bleed cleanly. -->
+            <StackPanel x:Name="ContentContainer"
+                        Padding="32,28,32,40"
+                        Spacing="0">
+                <TextBlock Text="PODCASTS"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Opacity="0.78"
+                           CharacterSpacing="140"
+                           Margin="0,0,0,4"/>
+                <TextBlock Text="{x:Bind ViewModel.Title, Mode=OneWay}"
+                           FontSize="44"
+                           FontWeight="SemiBold"
+                           LineHeight="48"
+                           Margin="0,0,0,0"/>
+                <TextBlock Text="{x:Bind ViewModel.Subtitle, Mode=OneWay}"
+                           Visibility="{x:Bind ViewModel.Subtitle, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"
+                           FontSize="14"
+                           Opacity="0.75"
+                           Margin="0,8,0,0"/>
+
+                <!-- Section shelves. SectionShelvesView is the shared layout used
+                     by BrowsePage too; each HomeSection renders as title + a
+                     horizontal ShelfScroller of ContentCards bound to
+                     HomeSectionItem. -->
+                <shared:SectionShelvesView
+                    Sections="{x:Bind ViewModel.Sections, Mode=OneWay}"
+                    Margin="0,24,0,0"/>
+
+                <!-- Error state — sits inside ContentContainer so it shares the
+                     crossfade. Mutually exclusive with Sections; if HasError is
+                     true the VM clears Sections first. -->
+                <StackPanel Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                            HorizontalAlignment="Center"
+                            Margin="0,40,0,40"
+                            Spacing="8">
+                    <TextBlock Text="Couldn't load this topic"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                               FontSize="13"
+                               Opacity="0.7"
+                               HorizontalAlignment="Center"
+                               TextWrapping="Wrap"
+                               MaxWidth="480"/>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Loading skeleton — overlays the same vertical real estate as
+                 ContentContainer. Padding mirrors the content StackPanel so
+                 there's no edge jump on swap. Crossfaded out + Children cleared
+                 in code-behind once data arrives. -->
+            <StackPanel x:Name="ShimmerContainer"
+                        Padding="32,28,32,40"
+                        Spacing="0"
+                        IsHitTestVisible="False">
+                <controls:Shimmer Width="80" Height="11" CornerRadius="3"
+                                  HorizontalAlignment="Left"
+                                  Margin="0,0,0,4"/>
+                <controls:Shimmer Width="280" Height="44" CornerRadius="6"
+                                  HorizontalAlignment="Left"
+                                  Margin="0,0,0,24"/>
+                <shared:SectionShelvesShimmer/>
+            </StackPanel>
+        </Grid>
+    </ScrollView>
 </UserControl>

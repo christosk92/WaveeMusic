@@ -276,6 +276,13 @@ public sealed partial class NavigationToolbar : UserControl
         set { if (SearchOmnibar != null) SearchOmnibar.SuppressFlyout = value; }
     }
 
+    /// <summary>
+    /// Move keyboard focus into the Omnibar search input. Used by the
+    /// Ctrl+F handler on pages that don't have a primary list to filter —
+    /// the global search bar is the obvious target.
+    /// </summary>
+    public void FocusSearch() => SearchOmnibar?.FocusSearchInput();
+
     #endregion
 
     #region Events

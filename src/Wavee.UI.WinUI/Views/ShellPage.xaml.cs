@@ -59,6 +59,9 @@ public sealed partial class ShellPage : UserControl
     private Services.UiHealthMonitor? _uiHealthMonitor;
     private Controls.Diagnostics.UiHealthOverlay? _uiHealthOverlay;
 
+    private Services.InPageFilterController? _inPageFilter;
+    private TabBarItem? _observedTabForFilter;
+
     public ShellPage()
     {
         ViewModel = Ioc.Default.GetRequiredService<ShellViewModel>();
@@ -145,6 +148,11 @@ public sealed partial class ShellPage : UserControl
         }
         if (_dragStateService != null)
             _dragStateService.DragStateChanged -= OnDragStateChanged;
+        if (_observedTabForFilter is not null)
+        {
+            _observedTabForFilter.Navigated -= OnFilterTabNavigated;
+            _observedTabForFilter = null;
+        }
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
 
         // ShellPage_Unloaded can fire AFTER App.ShutdownHostCoreAsync has
@@ -260,6 +268,85 @@ public sealed partial class ShellPage : UserControl
             NavToolbar.SuppressSearchFlyout = ViewModel.IsOnSearchPage;
         else if (e.PropertyName == nameof(ShellViewModel.IsExpandedPresentation))
             SyncTheatreHost();
+        else if (e.PropertyName == nameof(ShellViewModel.SelectedTabItem))
+            ObserveFilterTab(ViewModel.SelectedTabItem);
+    }
+
+    /// <summary>
+    /// Resolves the active page off the selected tab's <c>PageHost</c> and
+    /// routes Ctrl+F appropriately:
+    /// <list type="bullet">
+    /// <item>If the page implements <see cref="Controls.InPageFilter.IRedirectsCtrlFToOmnibar"/>,
+    /// focus the global Omnibar in the toolbar (Home / Browse / Profile /
+    /// Concert / Episode / Artist / ArtistDiscography / LocalLibrary /
+    /// Search — pages without a single obvious list to narrow).</item>
+    /// <item>Else if the page implements <see cref="Controls.InPageFilter.IInPageFilterable"/>
+    /// with <c>CanFilter == true</c>, reveal the floating in-page filter bar.</item>
+    /// <item>Else: no-op.</item>
+    /// </list>
+    /// </summary>
+    private bool TryRequestInPageFilter()
+    {
+        var activePage = ViewModel.SelectedTabItem?.ContentHost?.ActivePage;
+
+        // Redirect path wins — used by pages that don't host a single
+        // primary list and want Ctrl+F to fall through to global search.
+        if (activePage is Controls.InPageFilter.IRedirectsCtrlFToOmnibar)
+        {
+            NavToolbar?.FocusSearch();
+            return true;
+        }
+
+        var controller = ResolveInPageFilterController();
+        if (controller is null) return false;
+
+        var filterable = activePage as Controls.InPageFilter.IInPageFilterable;
+        controller.OnPageChanged(filterable);
+        if (filterable is null || !filterable.CanFilter) return false;
+
+        controller.RequestFilter();
+        return true;
+    }
+
+    private Services.InPageFilterController? ResolveInPageFilterController()
+    {
+        if (_inPageFilter is not null) return _inPageFilter;
+        try { _inPageFilter = Ioc.Default.GetService<Services.InPageFilterController>(); }
+        catch (ObjectDisposedException) { return null; }
+        return _inPageFilter;
+    }
+
+    /// <summary>
+    /// Switch the InPageFilter subscription onto a different tab's PageHost.
+    /// Called when the user switches tabs; each tab has its own back-stack
+    /// and active page, so the controller needs to follow nav within
+    /// whichever tab is in front.
+    /// </summary>
+    private void ObserveFilterTab(TabBarItem? tab)
+    {
+        if (ReferenceEquals(_observedTabForFilter, tab)) return;
+
+        if (_observedTabForFilter is not null)
+            _observedTabForFilter.Navigated -= OnFilterTabNavigated;
+
+        _observedTabForFilter = tab;
+
+        if (_observedTabForFilter is not null)
+            _observedTabForFilter.Navigated += OnFilterTabNavigated;
+
+        // Tab switch is itself a "page changed" event — push the new
+        // active page into the controller so a subsequent Ctrl+F targets
+        // the right page, and an already-open bar gets cleared/hidden.
+        var controller = ResolveInPageFilterController();
+        controller?.OnPageChanged(tab?.ContentHost?.ActivePage as Controls.InPageFilter.IInPageFilterable);
+    }
+
+    private void OnFilterTabNavigated(object? sender, Wavee.UI.WinUI.Controls.PageHost.PageHostNavigatedEventArgs e)
+    {
+        var controller = ResolveInPageFilterController();
+        if (controller is null) return;
+        var filterable = (sender as TabBarItem)?.ContentHost?.ActivePage as Controls.InPageFilter.IInPageFilterable;
+        controller.OnPageChanged(filterable);
     }
 
     /// <summary>
@@ -447,6 +534,10 @@ public sealed partial class ShellPage : UserControl
             if (ShellViewModel.TabInstances.Count > 0)
                 ViewModel.SelectedTabItem = ShellViewModel.TabInstances[ViewModel.SelectedTabIndex];
         }
+
+        // Hook the in-page filter controller onto the currently selected
+        // tab. Subsequent tab switches go through OnViewModelPropertyChanged.
+        ObserveFilterTab(ViewModel.SelectedTabItem);
 
         // FPS overlay — always available, toggled with Ctrl+Shift+F
         _uiHealthMonitor = new Services.UiHealthMonitor(DispatcherQueue, Ioc.Default.GetService<ILogger<Services.UiHealthMonitor>>());
@@ -1108,6 +1199,12 @@ public sealed partial class ShellPage : UserControl
                 case VirtualKey.Number0:
                     ApplyZoom(1.0);
                     args.Handled = true;
+                    return;
+
+                // Ctrl+F → in-page filter overlay. Resolves the controller
+                // lazily so it can't deadlock the ctor path.
+                case VirtualKey.F:
+                    if (TryRequestInPageFilter()) args.Handled = true;
                     return;
             }
         }

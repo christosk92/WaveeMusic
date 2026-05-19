@@ -30,6 +30,14 @@ public sealed class PlaybackQueue : IDisposable
     // Position state
     private int _currentIndex = -1;
     private int _userQueuePlayedCount;  // How many user queue items have been played
+    // When MoveNext drains from _userQueue or _postContextQueue, the popped track
+    // becomes "current" — but _currentIndex still points at the last context track
+    // (so the *next* MoveNext keeps advancing the context correctly). Without this
+    // field, GetCurrentInternal would re-read the stale context track and the
+    // orchestrator's PlayCurrentTrackAsync would resolve the wrong URI after a
+    // PlayNext-then-skip sequence. Cleared whenever the cursor moves through the
+    // context (MoveNext-context-branch, MovePrevious, SkipTo, SetTracks, Clear).
+    private QueueTrack? _currentNonContextTrack;
     private int _queueUidCounter;  // Counter for q# UIDs (q0, q1, q2...)
     private int _postContextUidCounter;  // Counter for p# UIDs (post-context bucket)
 
@@ -283,6 +291,7 @@ public sealed class PlaybackQueue : IDisposable
             _contextTracks.Clear();
             _contextTracks.AddRange(tracks.Select(StampContextUri));
             _currentIndex = Math.Min(startIndex, Math.Max(0, _contextTracks.Count - 1));
+            _currentNonContextTrack = null;
             _needsMoreTracksRequested = false;
 
             // Regenerate shuffle if enabled
@@ -350,6 +359,7 @@ public sealed class PlaybackQueue : IDisposable
             _postContextQueue.Clear();
             _shuffledIndices = null;
             _currentIndex = -1;
+            _currentNonContextTrack = null;
             _userQueuePlayedCount = 0;
             _contextUri = null;
             _isInfinite = false;
@@ -384,6 +394,7 @@ public sealed class PlaybackQueue : IDisposable
                 result = _userQueue[0];
                 _userQueue.RemoveAt(0);
                 _userQueuePlayedCount++;
+                _currentNonContextTrack = result;  // Mark as the live "current" — Current must return this, not _contextTracks[_currentIndex].
 
                 _logger?.LogDebug("Playing from user queue: {Uri}", result.Uri);
             }
@@ -391,6 +402,7 @@ public sealed class PlaybackQueue : IDisposable
             else if (HasNextContextInternal())
             {
                 _currentIndex++;
+                _currentNonContextTrack = null;  // Back to a real context cursor; let GetCurrentInternal read the index.
                 result = GetCurrentInternal();
 
                 _logger?.LogDebug("Moved to next: index={Index}, uri={Uri}",
@@ -404,6 +416,7 @@ public sealed class PlaybackQueue : IDisposable
             {
                 result = _postContextQueue[0];
                 _postContextQueue.RemoveAt(0);
+                _currentNonContextTrack = result;  // Same reason as user-queue branch above.
 
                 _logger?.LogDebug("Playing from post-context queue: {Uri}, remaining={Remaining}",
                     result.Uri, _postContextQueue.Count);
@@ -441,6 +454,7 @@ public sealed class PlaybackQueue : IDisposable
             }
 
             _currentIndex--;
+            _currentNonContextTrack = null;  // Going back to context — drop any user-queue/post-context "current" marker.
             result = GetCurrentInternal();
 
             _logger?.LogDebug("Moved to previous: index={Index}, uri={Uri}",
@@ -471,6 +485,7 @@ public sealed class PlaybackQueue : IDisposable
             }
 
             _currentIndex = index;
+            _currentNonContextTrack = null;  // Direct jump to a context track — drop any user-queue/post-context "current" marker.
             result = GetCurrentInternal();
 
             _logger?.LogDebug("Skipped to index: {Index}, uri={Uri}",
@@ -834,6 +849,12 @@ public sealed class PlaybackQueue : IDisposable
 
     private QueueTrack? GetCurrentInternal()
     {
+        // When the live cursor was advanced into the user-queue or post-context queue,
+        // _currentIndex still points at the last context track so the *next* MoveNext
+        // resumes the context cleanly — but "current" right now is the popped track.
+        if (_currentNonContextTrack is { } nonContext)
+            return nonContext;
+
         if (_currentIndex < 0)
             return null;
 

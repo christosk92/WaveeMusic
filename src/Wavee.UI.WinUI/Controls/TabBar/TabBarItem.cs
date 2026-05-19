@@ -24,22 +24,22 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     // drain in NavigationGcCoordinator.EndCriticalWindow never fired.
     private static readonly TimeSpan NavigationGcWindow = TimeSpan.FromSeconds(4);
 
-    // Per-tab page cache. "Comfortable" = 5 — keeps back/forward through a
+    // Per-tab page cache. "Comfortable" = 3 keeps back/forward through a
     // deep nav stack instant (no recreation, no flicker, no item-container
     // rebind, no palette / hero re-prefetch). Setting this to 0 made nav feel
     // sluggish.
     //
     // The catch is cross-tab: 5 × N tabs is unbounded growth, and the
     // composition tree footprint scales linearly with the total cached pages.
-    // So we adapt: stay at 5 while tabs are few, drop to 3 when the user has
+    // So we adapt: stay at 3 while tabs are few, drop to 2 when the user has
     // more tabs open. The threshold is set so a typical "1-3 tabs" workflow
     // keeps the full back/forward cache, while a power user with many tabs
     // trades a bit of cache depth for headroom.
     //
     // Both values are tuned numbers — change them in tandem with
     // AdaptiveTabCountThreshold.
-    private const int ComfortableFrameCacheSize = 5;
-    private const int ReducedFrameCacheSize = 3;
+    private const int ComfortableFrameCacheSize = 3;
+    private const int ReducedFrameCacheSize = 2;
     private const int AdaptiveTabCountThreshold = 3;
 
     /// <summary>
@@ -434,20 +434,21 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             if (_pendingTrim?.Timer == s)
                 _pendingTrim = null;
 
-            if (capturedParticipant is DependencyObject root)
-            {
-                dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
-                {
-                    if (ReferenceEquals(capturedParticipant, ContentHost.ActivePage))
-                        return;
-
-                    using (NavigationDiagnostics.Instance?.StageCurrent("deferredTrim.images"))
-                    {
-                        try { CompositionImage.ReleaseSurfacesForNavigationCache(root); }
-                        catch { /* best-effort — diagnostics over correctness */ }
-                    }
-                });
-            }
+            // NOTE: the indiscriminate CompositionImage tree-walk release that
+            // used to live here was removed. It released every cover surface on
+            // every cached page (TrackItem rows, ContentCard shelves, popular-
+            // release rows, etc.). Restore relied on the LRU still holding the
+            // entry, but ReleasePin unpinned each entry first — under any
+            // memory pressure the LRU evicted the unpinned cache entry between
+            // release and the user's return, the post-Back tree-walk peek
+            // missed, TryLoadCurrent fell into the cold-load path that nulls
+            // the brush surface, and rows flickered on then stayed on the
+            // placeholder glyph. Page-level micro-steps below still release
+            // the heavy GPU consumers (HeroHeader surfaces, backdrop blur
+            // graphs) per-page where the page actually knows what's safe to
+            // drop. If a future memory pass needs broader release, it should
+            // go through MemoryBudgetService's tiered eviction (which respects
+            // pins) rather than the visual-tree walk that ran here.
 
             // Enqueue each micro-step on its own low-priority dispatcher pump
             // so rendering and input frames can interleave between them. For

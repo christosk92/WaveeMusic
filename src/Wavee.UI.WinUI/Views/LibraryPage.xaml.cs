@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.WinUI.Controls;
+using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Enums;
@@ -12,8 +13,25 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabSleepParticipant, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable
+public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabSleepParticipant, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IInPageFilterable
 {
+    // ── IInPageFilterable ───────────────────────────────────────────────
+    // LibraryPage hosts four child views (Albums/Artists/LikedSongs/YourEpisodes)
+    // via a ContentControl. Ctrl+F routes through the currently active child.
+    private IInPageFilterable? ActiveFilterableChild
+        => ContentHost?.Content as IInPageFilterable;
+    string IInPageFilterable.FilterQuery
+    {
+        get => ActiveFilterableChild?.FilterQuery ?? string.Empty;
+        set { if (ActiveFilterableChild is { } c) c.FilterQuery = value ?? string.Empty; }
+    }
+    string IInPageFilterable.FilterPlaceholder
+        => ActiveFilterableChild?.FilterPlaceholder ?? "Filter…";
+    bool IInPageFilterable.CanFilter
+        => ActiveFilterableChild?.CanFilter ?? false;
+    void IInPageFilterable.OnFilterClosed()
+        => ActiveFilterableChild?.OnFilterClosed();
+
     private const int MaxDeferredShowTabAttempts = 3;
     private static readonly Thickness DefaultContentPadding = new(24, 8, 24, 0);
 
@@ -255,6 +273,11 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
         if (!ReferenceEquals(ContentHost.Content, view))
         {
             ContentHost.Content = view;
+            // The active filterable child changed under LibraryPage —
+            // close the Ctrl+F filter bar (if open) so the user starts
+            // fresh on the new sub-tab. The bar can be re-opened with
+            // another Ctrl+F press and will target the new child.
+            Ioc.Default.GetService<Services.InPageFilterController>()?.Hide();
         }
 
         UpdateSidebarSelection(selectedItem);

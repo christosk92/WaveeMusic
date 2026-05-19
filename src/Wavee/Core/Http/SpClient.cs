@@ -1086,6 +1086,60 @@ public sealed class SpClient : ISpClient
     }
 
     /// <summary>
+    /// Fetches the syllable-synced read-along transcript for a podcast episode
+    /// from Spotify's <c>transcript-read-along/v2</c> endpoint. Returns null
+    /// when the episode has no transcript (404). Auth + headers mirror
+    /// <see cref="GetLyricsAsync"/> — bearer token + Android platform marker.
+    /// </summary>
+    /// <param name="episodeId">Episode ID in base62 format (e.g. "5AFgHrYKjHZBULaD1RmG5U").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task<Wavee.Core.Http.Transcripts.TranscriptResponse?> GetEpisodeTranscriptAsync(
+        string episodeId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(episodeId);
+
+        var url = $"{_baseUrl}/transcript-read-along/v2/episode/{episodeId}?format=json&maxSentenceLength=500&excludeCC=true";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+        var accessToken = await _session.GetAccessTokenAsync(cancellationToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        // Same Android platform marker the lyrics endpoint expects — the
+        // transcript service shares the read-along infra with color-lyrics on
+        // the spclient side.
+        request.Headers.TryAddWithoutValidation("app-platform", "Android");
+        request.Headers.TryAddWithoutValidation("spotify-app-version", SpotifyClientIdentity.AppVersionHeader);
+
+        var response = await SendWithRetryAsync(request, cancellationToken);
+
+        // 404 = no transcript available for this episode (the common case for
+        // user-uploaded podcasts that never enrolled in read-along).
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            _logger?.LogDebug("No transcript available for episode {EpisodeId}", episodeId);
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        var transcript = JsonSerializer.Deserialize(
+            json,
+            Wavee.Core.Http.Transcripts.TranscriptJsonContext.Default.TranscriptResponse);
+
+        _logger?.LogDebug(
+            "Fetched transcript for episode {EpisodeId}: syncStatus={SyncStatus}, sections={SectionCount}",
+            episodeId,
+            transcript?.TimeSyncedStatus ?? "none",
+            transcript?.Sections.Count ?? 0);
+
+        return transcript;
+    }
+
+    /// <summary>
     /// Fetches the next page of tracks using the page URL from a ContextPage.
     /// </summary>
     /// <remarks>

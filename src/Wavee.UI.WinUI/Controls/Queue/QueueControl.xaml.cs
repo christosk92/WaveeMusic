@@ -234,7 +234,7 @@ public sealed partial class QueueControl : UserControl
         PostContextSection.Visibility = postContext.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (postContext.Count > 0)
         {
-            PostContextHeader.Text = $"QUEUED LATER Â· {postContext.Count}";
+            PostContextHeader.Text = $"QUEUED LATER · {postContext.Count}";
             PostContextRepeater.ItemsSource = postContext;
         }
         else
@@ -421,7 +421,7 @@ public sealed partial class QueueControl : UserControl
     {
         if (_playbackService == null) return;
         var desired = ShuffleButton.IsChecked == true;
-        _logger?.LogInformation("Queue pill: shuffle â†’ {State}", desired);
+        _logger?.LogInformation("Queue pill: shuffle → {State}", desired);
         _playbackService.SetShuffle(desired);
     }
 
@@ -435,7 +435,7 @@ public sealed partial class QueueControl : UserControl
             RepeatMode.Track => RepeatMode.Off,
             _ => RepeatMode.Off,
         };
-        _logger?.LogInformation("Queue pill: repeat â†’ {Mode}", next);
+        _logger?.LogInformation("Queue pill: repeat → {Mode}", next);
         _playbackService.SetRepeatMode(next);
     }
 
@@ -457,7 +457,10 @@ public sealed partial class QueueControl : UserControl
             var shift = InputKeyboardSource
                 .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift)
                 .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
-            e.DragUIOverride.Caption = shift ? "Play next" : "Add to queue";
+            // Hint the modifier in the non-shift caption so first-time users can
+            // discover the alternate route without reading docs. The ⇧ glyph is in
+            // the base Unicode plane so it round-trips fine through XAML/code.
+            e.DragUIOverride.Caption = shift ? "Play next" : "Add to queue   ⇧ for Play next";
             e.DragUIOverride.IsCaptionVisible = true;
             e.DragUIOverride.IsGlyphVisible = true;
         }
@@ -493,7 +496,7 @@ public sealed partial class QueueControl : UserControl
         if (_settingsService == null) return;
         var current = _settingsService.Settings.AutoplayEnabled;
         var desired = !current;
-        _logger?.LogInformation("Queue pill: autoplay â†’ {State}", desired);
+        _logger?.LogInformation("Queue pill: autoplay → {State}", desired);
         _settingsService.Update(s => s.AutoplayEnabled = desired);
         InfiniteButton.IsChecked = desired;
         WeakReferenceMessenger.Default.Send(new AutoplayEnabledChangedMessage(desired));

@@ -49,10 +49,22 @@ internal sealed class AudioHostService : IAsyncDisposable
 
     // Windows CoreAudio endpoint change watcher + debouncer. Multiple events arrive
     // in bursts during a Bluetooth connect (added, default-changed, property-changed),
-    // so we collapse them to a single refresh ~300ms after the last event.
+    // so we collapse them to a single action ~300ms after the last event. Within a
+    // single debounce window we keep the highest-priority action requested: a
+    // FollowDefault request "sticks" and cannot be demoted by a later cheap refresh,
+    // which fixes the race where the BT default-change was being eaten by the trailing
+    // device-list refresh event that fires in the same MMDevice burst.
     private WindowsAudioDeviceWatcher? _deviceWatcher;
     private Timer? _deviceRefreshDebounceTimer;
     private readonly object _deviceRefreshLock = new();
+    private PendingDeviceAction _pendingDeviceAction;
+
+    private enum PendingDeviceAction
+    {
+        None = 0,
+        CheapRefresh = 1,
+        FollowDefault = 2,
+    }
 
     // PlayPlay AES-key derivation (lazy — constructed on first request, kept
     // alive while the active pack id matches; rebuilt if the UI side ever sends
@@ -664,28 +676,52 @@ internal sealed class AudioHostService : IAsyncDisposable
         _logger.LogDebug("[AudioHost] MMDevice event → debouncing device list refresh (300ms)");
         lock (_deviceRefreshLock)
         {
-            _deviceRefreshDebounceTimer?.Dispose();
-            _deviceRefreshDebounceTimer = new Timer(
-                _ => PerformDeviceRefresh(),
-                null,
-                TimeSpan.FromMilliseconds(300),
-                Timeout.InfiniteTimeSpan);
+            if (_pendingDeviceAction < PendingDeviceAction.CheapRefresh)
+                _pendingDeviceAction = PendingDeviceAction.CheapRefresh;
+            ScheduleDeviceActionLocked();
         }
     }
 
     private void OnWindowsDefaultOutputDeviceChanged()
     {
         // Windows changed the system default output (e.g. Bluetooth headphones auto-selected).
-        // Debounce then refresh PortAudio AND switch the stream to the new default device.
+        // Upgrade & stick the pending action to FollowDefault — a later cheap refresh in the
+        // same debounce window must not demote this back to a plain device-list refresh, or
+        // we'd reopen on the old device by name and never actually move audio to the new default.
         _logger.LogInformation("[AudioHost] MMDevice: default OUTPUT changed → debouncing FollowDefault switch (300ms)");
         lock (_deviceRefreshLock)
         {
-            _deviceRefreshDebounceTimer?.Dispose();
-            _deviceRefreshDebounceTimer = new Timer(
-                _ => _ = PerformDefaultDeviceSwitchAsync(),
-                null,
-                TimeSpan.FromMilliseconds(300),
-                Timeout.InfiniteTimeSpan);
+            _pendingDeviceAction = PendingDeviceAction.FollowDefault;
+            ScheduleDeviceActionLocked();
+        }
+    }
+
+    private void ScheduleDeviceActionLocked()
+    {
+        _deviceRefreshDebounceTimer?.Dispose();
+        _deviceRefreshDebounceTimer = new Timer(
+            _ => FireDeviceAction(),
+            null,
+            TimeSpan.FromMilliseconds(300),
+            Timeout.InfiniteTimeSpan);
+    }
+
+    private void FireDeviceAction()
+    {
+        PendingDeviceAction action;
+        lock (_deviceRefreshLock)
+        {
+            action = _pendingDeviceAction;
+            _pendingDeviceAction = PendingDeviceAction.None;
+        }
+        switch (action)
+        {
+            case PendingDeviceAction.FollowDefault:
+                _ = PerformDefaultDeviceSwitchAsync();
+                break;
+            case PendingDeviceAction.CheapRefresh:
+                PerformDeviceRefresh();
+                break;
         }
     }
 

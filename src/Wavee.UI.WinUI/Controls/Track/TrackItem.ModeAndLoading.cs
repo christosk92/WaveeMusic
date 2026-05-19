@@ -114,7 +114,11 @@ public sealed partial class TrackItem
             // first state apply. Force-realize, then guard.
             EnsureCompactAlbumArtRealized();
             if (CompactAlbumArt != null)
+            {
                 CompactAlbumArt.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+                if (!loading)
+                    CompactAlbumArt.RefreshCurrentImage();
+            }
             CompactArtShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
             CompactInfoPanel.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
             CompactInfoShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;

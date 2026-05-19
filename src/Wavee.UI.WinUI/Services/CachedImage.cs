@@ -21,6 +21,9 @@ public sealed class CachedImage : IDisposable
 {
     private bool _disposed;
 
+    [System.Diagnostics.Conditional("WAVEE_IMAGE_DIAGNOSTICS")]
+    private static void DiagLog(string message) => System.Diagnostics.Debug.WriteLine(message);
+
     /// <summary>
     /// The GPU-backed surface. Pass to <c>compositor.CreateSurfaceBrush(surface)</c>
     /// to bind it to a <c>SpriteVisual</c>.
@@ -86,15 +89,17 @@ public sealed class CachedImage : IDisposable
             LoadFailed = true;
         }
 
+#if WAVEE_IMAGE_DIAGNOSTICS
         var subs = LoadCompleted?.GetInvocationList()?.Length ?? 0;
         var urlTail = Url.Length > 18 ? "…" + Url[^18..] : Url;
-        System.Diagnostics.Debug.WriteLine(
+        DiagLog(
             $"[CachedImg] LoadCompleted status={args.Status} subscribers={subs} url={urlTail}");
+#endif
 
         try { LoadCompleted?.Invoke(this, EventArgs.Empty); }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[CachedImg] LoadCompleted invoke threw: {ex.GetType().Name}: {ex.Message}");
+            DiagLog($"[CachedImg] LoadCompleted invoke threw: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

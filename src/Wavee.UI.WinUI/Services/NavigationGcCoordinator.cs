@@ -172,10 +172,13 @@ public static class NavigationGcCoordinator
                 _deferredLogger = null;
             }
 
-            shouldDrainGc = true;
+            // Do not induce a post-window Gen2. Even non-blocking Server GC
+            // has stop-the-world suspension phases, and recent traces showed
+            // this "drain" surfacing as a 100 ms UI stall after navigation.
+            shouldDrainGc = false;
         }
 
-        // Proactive post-window Gen2 drain. Under SustainedLowLatency the
+        // Disabled post-window Gen2 drain. Under SustainedLowLatency the
         // runtime suppresses Gen2 (and in practice Gen0/Gen1 here too — the
         // navigation report showed 100% of collections become Gen2 once the
         // window closes). Without this drain the catch-up Gen2 lands on the
@@ -191,6 +194,8 @@ public static class NavigationGcCoordinator
         // - blocking=false: Server+Background GC marks concurrently; only the
         //   brief ephemeral suspension blocks, and it happens NOW (user is
         //   idle just past the nav) rather than on the next click.
+        // Kept behind shouldDrainGc only for local experiments; normal path
+        // leaves it false so CollectionCount deltas reflect runtime decisions.
         if (shouldDrainGc)
         {
             Task.Run(static () =>

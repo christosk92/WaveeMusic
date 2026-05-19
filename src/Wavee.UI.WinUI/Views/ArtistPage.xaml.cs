@@ -22,6 +22,7 @@ using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 using Wavee.UI.WinUI.Controls.Cards;
 using Wavee.UI.WinUI.Controls.HeroHeader;
+using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.DragDrop;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
@@ -56,7 +57,7 @@ namespace Wavee.UI.WinUI.Views;
 ///   * the existing <see cref="ShyHeaderController"/> / <see cref="TransitionHelper"/>
 ///     pattern to morph the hero into a pinned compact card on scroll
 /// </summary>
-public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable
+public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
     private const int ReleasePanelResizeDebounceMs = 75;
     private const int ReleasePanelExitMs = 110;
@@ -151,31 +152,6 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         // by the time the new artist’s data starts flowing.
         RestoreFromNavigationCache();
 
-        // Suppress the shy-header evaluator through the entire navigation
-        // reset. Without this, ScrollView.ViewChanged events queued by the
-        // ScrollTo(0) below can fire while _isPinned still reads true from
-        // the previous artist’s deep scroll â€” the controller then calls
-        // _transition.ReverseAsync() to morph the pill back to the hero
-        // overlay, the matched-IDs interpolate scale 1â†’hero scale over the
-        // 300 ms reverse duration, and the user sees the shy pill visibly
-        // inflate to fill the hero band before snapping out. We unsuppress
-        // on a dispatcher tick after Stop+Reset have landed.
-        if (_shyHeader is not null) _shyHeader.Suppressed = true;
-        // Belt-and-braces: even if the TransitionHelper’s internal Reset is
-        // laggy, the pill is forced invisible from frame one of the new nav.
-        if (ShyHeaderCard is not null) ShyHeaderCard.Visibility = Visibility.Collapsed;
-
-        var navigationRevision = ++_navigationRevision;
-
-        // Cache-hit nav (Back/Forward): content already realised — skip
-        // the shimmer reset to avoid flashing skeleton over good pixels.
-        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward)
-        {
-            _showingContent = false;
-            _crossfadeScheduled = false;
-            ShimmerGate.Reset(() => ShimmerContainer, () => BodyContent);
-        }
-
         var nav = parameter as ContentNavigationParameter;
         var uri = nav?.Uri ?? (parameter as string);
 
@@ -191,6 +167,47 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
             {
                 ViewModel.IsDebugMode = false;
             }
+        }
+
+        // Back/Forward to the artist we’re already showing (e.g. Back from
+        // “All singles” or any other child page on the same artist):
+        // preserve the user’s scroll position and shy-header state. The
+        // ScrollTo(0) + shy-header reset block below is what was clobbering
+        // it. Hibernate deliberately preserves ViewModel.ArtistId, so this
+        // comparison is reliable even on trimmed cache-hits. When we skip
+        // the scroll reset we also have no reason to run the shy-header
+        // suppression dance (the whole reason that exists is to mask the
+        // ScrollTo(0) below).
+        var samePageCacheHit = (mode == PageHostNavigationMode.Back || mode == PageHostNavigationMode.Forward)
+                               && !string.IsNullOrEmpty(uri)
+                               && string.Equals(uri, ViewModel.ArtistId, StringComparison.Ordinal);
+
+        if (!samePageCacheHit)
+        {
+            // Suppress the shy-header evaluator through the entire navigation
+            // reset. Without this, ScrollView.ViewChanged events queued by the
+            // ScrollTo(0) below can fire while _isPinned still reads true from
+            // the previous artist’s deep scroll â€” the controller then calls
+            // _transition.ReverseAsync() to morph the pill back to the hero
+            // overlay, the matched-IDs interpolate scale 1â†’hero scale over the
+            // 300 ms reverse duration, and the user sees the shy pill visibly
+            // inflate to fill the hero band before snapping out. We unsuppress
+            // on a dispatcher tick after Stop+Reset have landed.
+            if (_shyHeader is not null) _shyHeader.Suppressed = true;
+            // Belt-and-braces: even if the TransitionHelper’s internal Reset is
+            // laggy, the pill is forced invisible from frame one of the new nav.
+            if (ShyHeaderCard is not null) ShyHeaderCard.Visibility = Visibility.Collapsed;
+        }
+
+        var navigationRevision = ++_navigationRevision;
+
+        // Cache-hit nav (Back/Forward): content already realised — skip
+        // the shimmer reset to avoid flashing skeleton over good pixels.
+        if (mode != PageHostNavigationMode.Back && mode != PageHostNavigationMode.Forward)
+        {
+            _showingContent = false;
+            _crossfadeScheduled = false;
+            ShimmerGate.Reset(() => ShimmerContainer, () => BodyContent);
         }
 
         // Yield once between the shimmer flip and the heavy VM-init /
@@ -231,35 +248,39 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         UpdateResponsivePageChrome();
         AttachHeroSizeHandlers();
         AttachScrollParallax();
-        ForceHeroVisualsVisible();
-        ScheduleHeroArrangeRefresh();
 
-        try
+        if (!samePageCacheHit)
         {
-            PageScrollView?.ScrollTo(
-                0, 0,
-                new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogDebug(ex, "ArtistPage scroll-to-top on navigation failed.");
-        }
+            ForceHeroVisualsVisible();
+            ScheduleHeroArrangeRefresh();
 
-        _shyHeader?.Stop();
-        _shyHeader?.Reset();
-        ForceHeroVisualsVisible();
-        ScheduleHeroArrangeRefresh();
+            try
+            {
+                PageScrollView?.ScrollTo(
+                    0, 0,
+                    new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "ArtistPage scroll-to-top on navigation failed.");
+            }
 
-        // Drain the dispatcher AND wait an additional settle window before
-        // re-enabling the shy-header evaluator. One TryEnqueue tick wasn't
-        // enough â€” the ScrollViewer continues firing ViewChanged events
-        // through several frames after ScrollTo(0), and the user-visible
-        // symptom was the shy pill "inflating" into the hero band when the
-        // user scrolled up immediately after an artistâ†’artist nav. Chain
-        // two dispatcher ticks + a short Task.Delay so the queued events
-        // (and any composition reflow) have actually finished before the
-        // evaluator wakes up.
-        _ = ReleaseShyHeaderSuppressionAsync(navigationRevision);
+            _shyHeader?.Stop();
+            _shyHeader?.Reset();
+            ForceHeroVisualsVisible();
+            ScheduleHeroArrangeRefresh();
+
+            // Drain the dispatcher AND wait an additional settle window before
+            // re-enabling the shy-header evaluator. One TryEnqueue tick wasn’t
+            // enough â€” the ScrollViewer continues firing ViewChanged events
+            // through several frames after ScrollTo(0), and the user-visible
+            // symptom was the shy pill “inflating” into the hero band when the
+            // user scrolled up immediately after an artistâ†’artist nav. Chain
+            // two dispatcher ticks + a short Task.Delay so the queued events
+            // (and any composition reflow) have actually finished before the
+            // evaluator wakes up.
+            _ = ReleaseShyHeaderSuppressionAsync(navigationRevision);
+        }
 
         ProbeWarmCacheReveal(navigationRevision, uri);
     }
@@ -1106,7 +1127,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         if (vm.Year > 0) meta.Add(vm.Year.ToString());
         if (!string.IsNullOrEmpty(vm.Type)) meta.Add(ToTitleCase(vm.Type));
         if (vm.TrackCount > 0) meta.Add($"{vm.TrackCount} tracks");
-        row.Meta = string.Join(" Â· ", meta);
+        row.Meta = string.Join(" · ", meta);
 
         Wavee.UI.WinUI.Behaviors.CardHoverScaleBehavior.SetEnable(row, true);
     }
@@ -1631,6 +1652,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         var photos = ViewModel.Extras.GalleryPhotos;
         if (photos is null || photos.Count == 0) return;
         if (index < 0 || index >= photos.Count) index = 0;
+        GalleryFlip.ItemsSource = photos;
         GalleryFlip.SelectedIndex = index;
         GalleryLightbox.Visibility = Visibility.Visible;
         // Focus so the KeyDown handler can receive Esc.
@@ -1641,6 +1663,11 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     {
         if (GalleryLightbox is null) return;
         GalleryLightbox.Visibility = Visibility.Collapsed;
+        if (GalleryFlip is not null)
+        {
+            GalleryFlip.SelectedIndex = -1;
+            GalleryFlip.ItemsSource = null;
+        }
     }
 
     private void GalleryLightbox_BackdropTapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
@@ -1754,6 +1781,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
             _lastRestoredArtistId = ViewModel.ArtistId;
         };
         yield return () => HeroGrid?.ReleaseSurface();
+        yield return CloseGalleryLightbox;
         yield return () => ViewModel.Hibernate();
         yield return () => Bindings?.StopTracking();
     }
@@ -1764,6 +1792,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         _trimmedForNavigationCache = true;
         _lastRestoredArtistId = ViewModel.ArtistId;
         HeroGrid?.ReleaseSurface();
+        CloseGalleryLightbox();
         // NOTE: do NOT DetachScrollParallax here. Under PageHost the page is
         // kept rooted with Visibility=Collapsed on leave (not detached from
         // the visual tree like Frame did) — the composition ExpressionAnimations
@@ -1791,10 +1820,24 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         HeroGrid?.RestoreSurface();
         if (!_trimmedForNavigationCache) return;
         _trimmedForNavigationCache = false;
-        // No Bindings.Update() here â€” OnNavigatedTo handles it AFTER
-        // ViewModel.Initialize(uri) so the artist-changed comparison sees the
-        // new target URI. Doing it here misfired on cross-artist navs because
-        // ViewModel.ArtistId is still the previous artist at restore time.
+
+        // Re-attach compiled x:Bind. Trim's Bindings.StopTracking micro-step
+        // detached the binding graph and ViewModel.Hibernate null'd
+        // Header.Artist.HeaderImageUrl (texture-release path). On same-artist
+        // Back returns OnEntered skips Bindings.Update() because
+        // artistChanged=false, so without this re-attach the URL push from
+        // EnsureHeroUrls (called by ApplyOverviewState's same-artist Ready
+        // branch) never reaches the HeroHeader.ImageUrl DP and the hero image
+        // stays blank. Deferred to the next dispatcher tick so DWM gets a
+        // paint frame between the page reattaching and the synchronous
+        // binding sweep â€” mirrors AlbumPage.RestoreFromNavigationCache.
+        DispatcherQueue?.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
+            () =>
+            {
+                if (_isDisposed) return;
+                Bindings?.Update();
+            });
     }
 
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

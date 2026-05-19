@@ -19,7 +19,11 @@ internal sealed record CachedLyricsLineDto(
     string? TertiaryText,
     bool HasSyllableSync,
     List<CachedSyllableDto>? PrimarySyllables,
-    List<CachedSyllableDto>? SecondarySyllables);
+    List<CachedSyllableDto>? SecondarySyllables,
+    // Optional, positional-last so legacy cached JSON without the field
+    // still deserialises (System.Text.Json fills missing positional params
+    // with the parameter default). Only podcast transcripts set this.
+    bool IsSectionHeader = false);
 
 internal sealed record CachedSyllableDto(
     int StartMs,
@@ -47,7 +51,8 @@ internal static class LyricsCacheConverter
                 : null,
             SecondarySyllables: line.SecondarySyllables.Count > 0
                 ? line.SecondarySyllables.Select(s => new CachedSyllableDto(s.StartMs, s.EndMs, s.Text, s.StartIndex)).ToList()
-                : null
+                : null,
+            IsSectionHeader: line.IsSectionHeader
         )).ToList();
 
         return new CachedLyricsDto(lines, data.LanguageCode);
@@ -65,6 +70,7 @@ internal static class LyricsCacheConverter
                 SecondaryText = l.SecondaryText ?? "",
                 TertiaryText = l.TertiaryText ?? "",
                 IsPrimaryHasRealSyllableInfo = l.HasSyllableSync,
+                IsSectionHeader = l.IsSectionHeader,
             };
 
             if (l.PrimarySyllables != null)

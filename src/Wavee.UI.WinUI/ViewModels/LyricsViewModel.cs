@@ -56,6 +56,16 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private LyricsSearchDiagnostics? _lastDiagnostics;
 
+    /// <summary>
+    /// True when the currently-playing item is a podcast episode. Drives the
+    /// "Lyrics" → "Transcript" tab-label flip in the right-panel pager so the
+    /// surface honestly describes what's about to render. Updated synchronously
+    /// from <see cref="IPlaybackStateService.CurrentTrackId"/>; the actual
+    /// transcript fetch is gated behind <see cref="LoadLyricsAsync"/>.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isEpisode;
+
     public LyricsWindowStatus WindowStatus { get; }
 
     public IPlaybackStateService PlaybackState => _playbackState;
@@ -81,6 +91,9 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         WindowStatus = CreateSidebarWindowStatus();
         CapturePlaybackPositionSnapshot();
 
+        IsEpisode = SpotifyUriHelper.IsKind(_playbackState.CurrentTrackId, SpotifyEntityKind.Episode);
+        ApplyStyleForCurrentItem();
+
         _playbackState.PropertyChanged += OnPlaybackStateChanged;
     }
 
@@ -90,6 +103,12 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         {
             case nameof(IPlaybackStateService.CurrentTrackId):
                 CapturePlaybackPositionSnapshot();
+                {
+                    var wasEpisode = IsEpisode;
+                    IsEpisode = SpotifyUriHelper.IsKind(_playbackState.CurrentTrackId, SpotifyEntityKind.Episode);
+                    if (wasEpisode != IsEpisode)
+                        ApplyStyleForCurrentItem();
+                }
                 if (HasActiveConsumers)
                     _ = DeferredLoadLyricsAsync();
                 else
@@ -210,8 +229,12 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Episode URIs are handled by the transcript path inside LyricsService.
+        // Anything else with a colon that isn't a Track URI (album/show/etc.)
+        // has no lyrics surface — short-circuit to the empty state.
         if (trackId.Contains(':', StringComparison.Ordinal)
-            && !SpotifyUriHelper.IsKind(trackId, SpotifyEntityKind.Track))
+            && !SpotifyUriHelper.IsKind(trackId, SpotifyEntityKind.Track)
+            && !SpotifyUriHelper.IsKind(trackId, SpotifyEntityKind.Episode))
         {
             _loadedTrackId = trackId;
             _loadedTrackSucceeded = true;
@@ -310,6 +333,56 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         CurrentPalette = null;
         LastDiagnostics = null;
         CurrentSongInfo = new SongInfo { Title = "", Artist = "", Album = "" };
+    }
+
+    /// <summary>
+    /// Push the right style+effect bundle into the shared
+    /// <see cref="WindowStatus"/> based on whether the current item is a song or
+    /// a podcast episode. Lyrics get dynamic sizing + breathing/glow/scale
+    /// effects — those work because lyric lines are 4-10 words. Transcripts are
+    /// prose sentences that wrap badly at the same font, and the per-syllable
+    /// effects look noisy on long sentences, so we drop into a fixed smaller
+    /// font with effects off.
+    /// </summary>
+    private void ApplyStyleForCurrentItem()
+    {
+        var style = WindowStatus.LyricsStyleSettings;
+        var effects = WindowStatus.LyricsEffectSettings;
+
+        if (IsEpisode)
+        {
+            // Prose-specific typography: fixed mid-size font (dynamic sizing
+            // is tuned for 4-10-word lyric lines and overshoots on 30-word
+            // sentences), comfortable line spacing, and the current line
+            // anchored higher up so several upcoming sentences stay visible.
+            style.IsDynamicLyricsFontSize = false;
+            style.OriginalLyricsFontSize = 18;
+            style.PlayingLineTopOffset = 30;
+            style.LyricsLineSpacingFactor = 0.55;
+
+            // All per-syllable / per-line effects off for podcasts. Blur is
+            // the big one — for lyrics it visually defocuses surrounding
+            // lines, but for transcripts the user wants to read ahead, so
+            // surrounding sentences should stay crisp. The existing
+            // 1.0×/0.75× line-scale animator still provides the focus cue
+            // (current sentence is visibly larger than its neighbours).
+            effects.IsLyricsBlurEffectEnabled = false;
+            effects.IsLyricsGlowEffectEnabled = false;
+            effects.IsLyricsScaleEffectEnabled = false;
+            effects.IsLyricsFloatAnimationEnabled = false;
+        }
+        else
+        {
+            style.IsDynamicLyricsFontSize = true;
+            style.OriginalLyricsFontSize = 20;
+            style.PlayingLineTopOffset = 35;
+            style.LyricsLineSpacingFactor = 0.6;
+
+            effects.IsLyricsBlurEffectEnabled = true;
+            effects.IsLyricsGlowEffectEnabled = true;
+            effects.IsLyricsScaleEffectEnabled = true;
+            effects.IsLyricsFloatAnimationEnabled = true;
+        }
     }
 
     private static LyricsWindowStatus CreateSidebarWindowStatus()

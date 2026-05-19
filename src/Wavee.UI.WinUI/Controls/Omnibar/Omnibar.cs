@@ -101,6 +101,26 @@ public sealed partial class Omnibar : Control
         }
     }
 
+    /// <summary>
+    /// Programmatically move keyboard focus to the search input and select
+    /// any existing text so the user can immediately start typing or
+    /// replace what's there. Used by the Ctrl+F handler on pages that
+    /// redirect to global search instead of opening the in-page filter.
+    /// </summary>
+    public void FocusSearchInput()
+    {
+        if (_searchTextBox is { } tb)
+        {
+            tb.Focus(FocusState.Programmatic);
+            tb.SelectAll();
+            return;
+        }
+        // Template hasn't applied yet (or running before first measure) —
+        // fall back to focusing the AutoSuggestBox wrapper, which will
+        // forward focus to the inner TextBox once it's realised.
+        _searchBox?.Focus(FocusState.Programmatic);
+    }
+
     private void TextBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (_popup == null || !_popup.IsOpen || _flyoutPanel == null) return;

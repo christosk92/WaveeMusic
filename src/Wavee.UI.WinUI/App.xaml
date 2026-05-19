@@ -98,6 +98,12 @@
                             <Color x:Key="ArtistHeroFallbackShadowTopColor">#00000000</Color>
                             <Color x:Key="ArtistHeroFallbackShadowMidColor">#06000000</Color>
                             <Color x:Key="ArtistHeroFallbackShadowBottomColor">#18000000</Color>
+
+                            <!-- Shelf right-edge fade. Matches SolidBackgroundFillColorBase so
+                                 the fade blends into the page surface; same RGB at both stops
+                                 keeps the mid-gradient from interpolating through grey. -->
+                            <Color x:Key="ShelfFadeStartColor">#00F3F3F3</Color>
+                            <Color x:Key="ShelfFadeEndColor">#FFF3F3F3</Color>
                         </ResourceDictionary>
 
                         <ResourceDictionary x:Key="Dark">
@@ -166,6 +172,12 @@
                             <Color x:Key="ArtistHeroFallbackShadowTopColor">#00000000</Color>
                             <Color x:Key="ArtistHeroFallbackShadowMidColor">#12000000</Color>
                             <Color x:Key="ArtistHeroFallbackShadowBottomColor">#54000000</Color>
+
+                            <!-- Shelf right-edge fade. Matches SolidBackgroundFillColorBase so
+                                 the fade blends into the page surface; same RGB at both stops
+                                 keeps the mid-gradient from interpolating through grey. -->
+                            <Color x:Key="ShelfFadeStartColor">#00202020</Color>
+                            <Color x:Key="ShelfFadeEndColor">#FF202020</Color>
                         </ResourceDictionary>
 
                         <ResourceDictionary x:Key="HighContrast">
@@ -224,6 +236,10 @@
                             <Color x:Key="ArtistHeroFallbackShadowTopColor">{StaticResource SystemColorWindowColor}</Color>
                             <Color x:Key="ArtistHeroFallbackShadowMidColor">{StaticResource SystemColorWindowColor}</Color>
                             <Color x:Key="ArtistHeroFallbackShadowBottomColor">{StaticResource SystemColorWindowColor}</Color>
+
+                            <!-- Shelf right-edge fade. -->
+                            <Color x:Key="ShelfFadeStartColor">#00000000</Color>
+                            <Color x:Key="ShelfFadeEndColor">{StaticResource SystemColorWindowColor}</Color>
                         </ResourceDictionary>
                     </ResourceDictionary.ThemeDictionaries>
                 </ResourceDictionary>

@@ -23,6 +23,20 @@ Read the relevant guide before changing that area:
 - **Playback runtime** — orchestrator, queue + context, track resolution,
   AudioHost IPC, decode / decrypt / DSP / EQ, prefetch, local-file playback,
   video playback, UI playback service. `.agents/guides/playback.md`
+- **Queue** — `PlaybackQueue` three buckets (user queue, context,
+  post-context), cursor + shuffle + repeat, `NeedsMoreTracks` pagination
+  signal, autoplay rollover, orchestrator queue ops, cluster sync
+  (PutState prev/next + `QueueRevision`, `SetQueue` / `AddToQueue`
+  commands), right-panel `QueueControl`, drag-drop, context-menu Play
+  next / Add to queue. `.agents/guides/queue.md`
+- **CompositionImage** — GPU-resident image primitive, cache (ImageCacheService
+  + CachedImage), LoadedImageSurface lifecycle, suspension gate, retry
+  behaviors, every consumer of `<imaging:CompositionImage>`.
+  `.agents/guides/composition-image.md`
+- **ContentCard** — reusable shelf / grid card across Home, Search, Browse,
+  Library, Artist, Album, Show, Concert, Profile, Local-media. Card chrome,
+  modes (square / circle / Tall / Wide / Backdrop), viewport gating, attached
+  behaviors. `.agents/guides/content-card.md`
 
 ## How To Add A New Component Guide
 

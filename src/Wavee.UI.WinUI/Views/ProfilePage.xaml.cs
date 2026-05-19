@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Controls.HeroHeader;
+using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -21,7 +22,7 @@ using Wavee.UI.WinUI.Helpers;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ProfilePage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable
+public sealed partial class ProfilePage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
     private readonly ProfileCache? _cache;
     private readonly ILogger<ProfilePage>? _logger;

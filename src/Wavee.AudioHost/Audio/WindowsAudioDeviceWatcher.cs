@@ -217,23 +217,31 @@ internal sealed class WindowsAudioDeviceWatcher : IDisposable
 
         public int OnDefaultDeviceChanged(int flow, int role, string? pwstrDefaultDeviceId)
         {
-            // flow=0 is eRender (output), role=0 is eConsole (default multimedia output).
-            // We only care about the render/console change — that's what affects playback.
-            if (flow == 0 && role == 0)
+            // flow=0 is eRender (output). For role we treat eConsole (0) and eMultimedia (1)
+            // identically: Windows fires both back-to-back when the system default changes
+            // (BT connect, manual Settings switch), and a music app that doesn't pin a role
+            // gets eMultimedia. Triggering on both is robust to either firing first and the
+            // host-side debounce coalesces the duplicate FollowDefault into one switch.
+            //
+            // We deliberately do NOT also fire _onChange() in the follow-default branch:
+            // the host's FollowDefault handler does its own Pa_Terminate/Pa_Initialize and
+            // pushes a state snapshot, and a trailing _onChange() would race the shared
+            // debounce timer slot and demote FollowDefault back to a cheap refresh.
+            if (flow == 0 && (role == 0 || role == 1))
             {
+                var roleStr = role == 0 ? "eConsole" : "eMultimedia";
                 _logger?.LogInformation(
-                    "[MMDevice] Default OUTPUT device changed (eRender/eConsole): id={Id} — will follow new default",
-                    pwstrDefaultDeviceId ?? "<null>");
+                    "[MMDevice] Default OUTPUT device changed (eRender/{Role}): id={Id} — will follow new default",
+                    roleStr, pwstrDefaultDeviceId ?? "<null>");
                 _onDefaultChanged();
+                return 0;
             }
-            else
-            {
-                var flowStr = flow == 0 ? "eRender" : flow == 1 ? "eCapture" : $"flow={flow}";
-                var roleStr = role == 0 ? "eConsole" : role == 1 ? "eMultimedia" : role == 2 ? "eCommunications" : $"role={role}";
-                _logger?.LogDebug(
-                    "[MMDevice] Default device changed ({Flow}/{Role}): id={Id} — not output/console, ignoring for auto-switch",
-                    flowStr, roleStr, pwstrDefaultDeviceId ?? "<null>");
-            }
+
+            var flowStrIgnored = flow == 0 ? "eRender" : flow == 1 ? "eCapture" : $"flow={flow}";
+            var roleStrIgnored = role == 2 ? "eCommunications" : $"role={role}";
+            _logger?.LogDebug(
+                "[MMDevice] Default device changed ({Flow}/{Role}): id={Id} — not output/console-or-multimedia, ignoring for auto-switch",
+                flowStrIgnored, roleStrIgnored, pwstrDefaultDeviceId ?? "<null>");
             _onChange();
             return 0;
         }

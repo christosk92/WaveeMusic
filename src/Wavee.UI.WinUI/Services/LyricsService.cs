@@ -12,7 +12,9 @@ using Lyricify.Lyrics.Searchers;
 using Lyricify.Lyrics.Searchers.Helpers;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Http.Lyrics;
+using Wavee.Core.Http.Transcripts;
 using Wavee.Core.Session;
+using Wavee.UI.Helpers;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.Services;
 using Wavee.UI.Contracts;
@@ -47,6 +49,8 @@ public sealed class LyricsService : ILyricsService
     private static readonly TimeSpan ProviderTimeout = TimeSpan.FromSeconds(10);
     private const string LyricsCacheVersion = "syllable-v3";
     private const string PreviousLyricsCacheVersion = "timing-v2";
+    private const string TranscriptCacheVersion = "transcript-v1";
+    private const string TranscriptProviderName = "Spotify-Transcript";
     private static readonly Regex CollapseWhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
     private static readonly Regex PunctuationRegex = new(@"[\p{P}\p{S}]", RegexOptions.Compiled);
 
@@ -73,6 +77,13 @@ public sealed class LyricsService : ILyricsService
         string trackId, string? title, string? artist,
         double durationMs, string? imageUrl, CancellationToken ct = default)
     {
+        // Episode short-circuit. Podcasts have read-along transcripts, not
+        // lyrics, and never participate in the music-provider race; they
+        // get their own cache namespace + diagnostic source label so the
+        // debug page accurately reflects which path served the request.
+        if (SpotifyUriHelper.IsKind(trackId, SpotifyEntityKind.Episode))
+            return await GetEpisodeTranscriptInternalAsync(trackId, title, artist, durationMs, ct);
+
         // 1. Check in-memory cache
         if (_memoryCache.TryGetValue(trackId, out var cached))
         {
@@ -380,8 +391,154 @@ public sealed class LyricsService : ILyricsService
     private static string BuildLegacyLyricsCacheKey(string trackId)
         => $"spotify:track:{trackId}";
 
+    // Episode transcripts live in a separate cache namespace so they never
+    // collide with a track id that happened to base62-match an episode id,
+    // and so cache invalidation/clear can target one or the other independently.
+    private static string BuildTranscriptCacheKey(string episodeId)
+        => $"{episodeId}#{TranscriptCacheVersion}";
+
+    // CurrentTrackId for episodes is the full URI ("spotify:episode:xxx"). The
+    // Spotify transcript endpoint wants the bare base62 component, so trim the
+    // prefix exactly the way SpotifyUriHelper.TryParse would.
+    private static string ExtractEpisodeId(string trackIdOrUri)
+    {
+        const string prefix = "spotify:episode:";
+        return trackIdOrUri.StartsWith(prefix, StringComparison.Ordinal)
+            ? trackIdOrUri[prefix.Length..]
+            : trackIdOrUri;
+    }
+
+    /// <summary>
+    /// Resolve a podcast read-along transcript through the same return shape as
+    /// the music-lyrics path so callers stay oblivious. Two-tier cache + 404 →
+    /// empty result so the UI surfaces a "no transcript" affordance rather than
+    /// a spinner.
+    /// </summary>
+    private async Task<(ControlsLyricsData? Lyrics, LyricsSearchDiagnostics Diagnostics)> GetEpisodeTranscriptInternalAsync(
+        string trackIdOrUri, string? title, string? artist, double durationMs, CancellationToken ct)
+    {
+        var episodeId = ExtractEpisodeId(trackIdOrUri);
+        var cacheKey = BuildTranscriptCacheKey(episodeId);
+
+        // 1. In-memory cache hit.
+        if (_memoryCache.TryGetValue(cacheKey, out var cached))
+        {
+            _logger?.LogDebug("Transcript cache hit (memory) for episode {EpisodeId}", episodeId);
+            return (cached.Data, BuildCachedDiagnostics(trackIdOrUri, title, artist, durationMs, cached.Provider));
+        }
+
+        // 2. SQLite cache hit.
+        if (_db != null)
+        {
+            try
+            {
+                var dbResult = await _db.GetLyricsCacheAsync(cacheKey, ct);
+                if (dbResult != null)
+                {
+                    var dto = JsonSerializer.Deserialize(dbResult.Value.JsonData, LyricsCacheJsonContext.Default.CachedLyricsDto);
+                    if (dto != null)
+                    {
+                        var data = LyricsCacheConverter.FromDto(dto);
+                        var provider = dbResult.Value.Provider ?? TranscriptProviderName;
+                        _memoryCache[cacheKey] = (data, provider);
+                        _logger?.LogDebug("Transcript cache hit (SQLite) for episode {EpisodeId}", episodeId);
+                        return (data, BuildCachedDiagnostics(trackIdOrUri, title, artist, durationMs, provider));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to read transcript from SQLite cache for episode {EpisodeId}", episodeId);
+            }
+        }   
+
+        // 3. Fetch from Spotify.
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var providerDiags = new List<ProviderDiagnostic>();
+
+        TranscriptResponse? response;
+        try
+        {
+            response = await _session.SpClient.GetEpisodeTranscriptAsync(episodeId, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            _logger?.LogWarning(ex, "Failed to fetch transcript for episode {EpisodeId}", episodeId);
+            providerDiags.Add(new ProviderDiagnostic
+            {
+                Name = TranscriptProviderName,
+                Status = ProviderStatus.Error,
+                Error = ex.Message,
+            });
+            return (null, BuildDiagnostics(trackIdOrUri, title, artist, durationMs, providerDiags, null, "Transcript fetch failed", sw.Elapsed));
+        }
+
+        sw.Stop();
+
+        if (response == null || response.Sections.Count == 0)
+        {
+            providerDiags.Add(new ProviderDiagnostic
+            {
+                Name = TranscriptProviderName,
+                Status = ProviderStatus.NoResult,
+                LineCount = 0,
+            });
+            return (null, BuildDiagnostics(trackIdOrUri, title, artist, durationMs, providerDiags, null, "No transcript available", sw.Elapsed));
+        }
+
+        var mapped = TranscriptToLyricsMapper.ToLyricsData(response);
+        var hasSyllableSync = mapped.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo);
+
+        providerDiags.Add(new ProviderDiagnostic
+        {
+            Name = TranscriptProviderName,
+            Status = ProviderStatus.Success,
+            LineCount = mapped.LyricsLines.Count,
+            HasSyllableSync = hasSyllableSync,
+            RawPreview = string.Join("\n", mapped.LyricsLines.Take(5).Select(l => l.PrimaryText)),
+        });
+
+        // Persist both tiers under the transcript namespace.
+        _memoryCache[cacheKey] = (mapped, TranscriptProviderName);
+        if (_db != null)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var dto = LyricsCacheConverter.ToDto(mapped);
+                    var json = JsonSerializer.Serialize(dto, LyricsCacheJsonContext.Default.CachedLyricsDto);
+                    await _db.SetLyricsCacheAsync(cacheKey, TranscriptProviderName, json, hasSyllableSync);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to persist transcript to SQLite for episode {EpisodeId}", episodeId);
+                }
+            });
+        }
+
+        return (mapped, BuildDiagnostics(trackIdOrUri, title, artist, durationMs, providerDiags, TranscriptProviderName, response.TimeSyncedStatus ?? "transcript", sw.Elapsed));
+    }
+
     public async Task ClearCacheForTrackAsync(string trackId, CancellationToken ct = default)
     {
+        // Episode-style URI: clear the transcript namespace; nothing else
+        // touches that key.
+        if (SpotifyUriHelper.IsKind(trackId, SpotifyEntityKind.Episode))
+        {
+            var episodeId = ExtractEpisodeId(trackId);
+            var transcriptKey = BuildTranscriptCacheKey(episodeId);
+            _memoryCache.TryRemove(transcriptKey, out _);
+            if (_db != null)
+                await _db.DeleteLyricsCacheAsync(transcriptKey, ct);
+            return;
+        }
+
         _memoryCache.TryRemove(trackId, out _);
 
         if (_db != null)

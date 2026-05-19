@@ -151,18 +151,16 @@ public sealed partial class CompositionImage : UserControl
     private EventHandler? _loadCompletedHandler;
 
     // â”€â”€ Diagnostics â”€â”€
-    // Flip to false (or wire to a service flag) once the intermittent blank-
-    // tile bug is fully traced. Trace level is verbose â€” every CompositionImage
-    // logs its full load lifecycle.
-    private static bool s_diagEnabled = true;
+    // Opt-in with WAVEE_IMAGE_DIAGNOSTICS. The call sites pass interpolated
+    // strings on hot paths, so compile-time gating avoids hidden allocations.
     private static int s_nextDiagId;
     private readonly int _diagId = System.Threading.Interlocked.Increment(ref s_nextDiagId);
 
+    [System.Diagnostics.Conditional("WAVEE_IMAGE_DIAGNOSTICS")]
     private void DiagLog(string stage, string? extra = null)
     {
-        if (!s_diagEnabled) return;
         var urlTail = _resolvedUrl is null ? "(null)" :
-            _resolvedUrl.Length > 18 ? "â€¦" + _resolvedUrl[^18..] : _resolvedUrl;
+            _resolvedUrl.Length > 18 ? "…" + _resolvedUrl[^18..] : _resolvedUrl;
         var hasBrush = _surfaceBrush is not null ? "B" : "-";
         var hasVis = _spriteVisual is not null ? "V" : "-";
         var hasCached = _currentCachedImage is not null ? "C" : "-";
@@ -303,13 +301,38 @@ public sealed partial class CompositionImage : UserControl
         _releasedForNavigationCache = false;
         EnsureCompositionResources();
         ImageLoadingSuspension.Changed += OnSuspensionChanged;
-        // TryLoadCurrent calls AttachVisualToHost as part of its normal flow;
-        // calling it twice produced a duplicate "AttachVisualToHost:done" log
-        // per row with no functional benefit (SetElementChildVisual is
-        // idempotent). The noUrl:clear path inside TryLoadCurrent does not
-        // attach, which is correct â€” there's nothing to paint yet, and the
-        // next OnImageUrlChanged drives a fresh TryLoadCurrent that does
-        // attach.
+
+        // Re-attach the SpriteVisual eagerly. If LoadCompleted fired while we
+        // were unloaded (subscription kept alive across OnUnloaded — see the
+        // comment there), the handler will have assigned cached.Surface to
+        // _surfaceBrush but the visual is still detached. TryLoadCurrent's
+        // same-url bail-out below short-circuits before AttachVisualToHost,
+        // so without this explicit attach the cached surface never paints
+        // and the row stays on placeholder. SetElementChildVisual is
+        // idempotent — duplicate logs are accepted as the cost of
+        // correctness.
+        AttachVisualToHost();
+
+        // If the LoadCompleted handler ran during unload and the cached
+        // image is now loaded, refresh the brush.Surface (OnUnloaded
+        // cleared it to surface-null for the placeholder pass-through).
+        if (_currentCachedImage is { IsLoaded: true, Surface: not null } cached
+            && _surfaceBrush is not null
+            && _surfaceBrush.Surface is null)
+        {
+            try
+            {
+                _surfaceBrush.Surface = cached.Surface;
+                IsImageLoaded = true;
+                FadeOutPlaceholder();
+                DiagLog("OnLoaded:reAssignSurfaceFromInFlightLoad");
+            }
+            catch (Exception ex)
+            {
+                DiagLog("OnLoaded:reAssignEX", ex.GetType().Name);
+            }
+        }
+
         TryLoadCurrent();
         DiagLog("OnLoaded:exit");
     }
@@ -319,29 +342,38 @@ public sealed partial class CompositionImage : UserControl
         DiagLog("OnUnloaded:enter");
         _isAttached = false;
         ImageLoadingSuspension.Changed -= OnSuspensionChanged;
-        // Unloaded image controls must not keep a brush reference to the
-        // native LoadedImageSurface after dropping their cache pin.
-        ReleaseSurfaceReference(resetResolvedUrl: true);
-        _releasedForNavigationCache = false;
 
-        // Non-destructive unload â€” drop the cache pin and unsubscribe pending
-        // LoadCompleted callbacks so they don't fire while we're not visible.
-        // Keep _surfaceBrush.Surface, the sprite visual attached to SurfaceHost,
-        // and PlaceholderHost.Opacity intact: when the page is restored from
-        // the nav cache, the visual is already painting the cached image, so
-        // there is no flicker / re-load animation. If the cache happens to
-        // evict the entry during the trim window the brush keeps a dangling
-        // surface reference; per the Composition contract that just renders
-        // transparent and OnLoaded â†’ TryLoadCurrent re-fetches a fresh surface
-        // via the cold-load path.
+        // Drop the cache pin (release memory pressure on the LRU) and detach
+        // the SpriteVisual so the placeholder shows through while we're not
+        // visible. But DO NOT unsubscribe from CachedImage.LoadCompleted and
+        // DO NOT clear _currentCachedImage / _loadCompletedHandler.
         //
-        // We DO clear _resolvedUrl / _currentCachedImage / _pinnedDecode so
-        // TryLoadCurrent's same-url bail-out doesn't trip on stale state. The
-        // peek fast-path in TryLoadCurrent will hit the cache and re-assign
-        // the same surface atomically â€” the visual stays identical.
-        //
-        // For full GPU-resource teardown (memory pressure, app shutdown) call
-        // ReleaseCompositionResources explicitly.
+        // Why: WinRT's LoadedImageSurface.LoadCompleted is a ONE-SHOT event.
+        // When a TrackItem row is recycled while its image is still loading
+        // (very common for artist top-tracks under nav-cache trim + extended-
+        // tracks fetch), if we unsubscribe in OnUnloaded the in-flight load
+        // completes with zero subscribers — surface is loaded in the cache,
+        // but our handler never assigns it to _surfaceBrush. When the row
+        // re-loads, TryLoadCurrent's same-url bail-out short-circuits and
+        // the visual stays blank forever. Keeping the subscription alive
+        // means the handler runs on completion, assigns the surface to the
+        // brush, and the next OnLoaded sees the surface ready.
+        if (!string.IsNullOrEmpty(_pinnedUrl))
+        {
+            try { _cache?.Unpin(_pinnedUrl, _pinnedDecode); } catch { }
+        }
+        _pinnedUrl = null;
+        _pinnedDecode = 0;
+
+        if (_surfaceBrush is not null)
+        {
+            try { _surfaceBrush.Surface = null; } catch { }
+        }
+        DetachVisualFromHost();
+        ResetPlaceholderOpacity();
+        IsImageLoaded = false;
+
+        _releasedForNavigationCache = false;
         DiagLog("OnUnloaded:exit");
     }
 
@@ -355,7 +387,26 @@ public sealed partial class CompositionImage : UserControl
             && _surfaceBrush?.Surface is null)
             return false;
 
-        ReleaseSurfaceReference(resetResolvedUrl: true);
+        // Light release: drop the brush surface and detach the sprite so the
+        // image stops painting while the page sits hidden, but KEEP the LRU
+        // pin (_pinnedUrl), the cached-entry reference (_currentCachedImage),
+        // the LoadCompleted subscription, and the _resolvedUrl marker. The
+        // earlier implementation went through ReleaseSurfaceReference, which
+        // unpinned the LRU entry — under memory pressure the cache would
+        // evict it, and on the return tree-walk TryLoadCurrent's peek would
+        // miss and fall into the cold-load path that nulls the surface and
+        // waits on a network fetch. With the pin preserved the entry stays
+        // resident and RestoreAfterNavigationCache becomes a cheap atomic
+        // re-attach. Trade-off: a few MB of GPU memory held per cached page,
+        // which is the explicit point of the nav-cache (snappy back/forward).
+        if (_surfaceBrush is not null)
+        {
+            try { _surfaceBrush.Surface = null; } catch { }
+        }
+        DetachVisualFromHost();
+        ResetPlaceholderOpacity();
+        IsImageLoaded = false;
+
         _releasedForNavigationCache = true;
         DiagLog("ReleaseForNavigationCache");
         return true;
@@ -366,9 +417,39 @@ public sealed partial class CompositionImage : UserControl
         if (!_releasedForNavigationCache)
             return false;
 
-        _releasedForNavigationCache = false;
         if (!_isAttached)
+        {
+            // Item hasn't realized yet (e.g. ItemsRepeater hasn't materialized
+            // this row). Leave the flag set so OnLoaded picks it up — clearing
+            // it now would leave the row stuck on placeholder until the next
+            // URL change or scroll re-realization.
             return false;
+        }
+
+        _releasedForNavigationCache = false;
+
+        // Fast path: cache pin survived, surface still in memory. Atomic
+        // brush re-assign + sprite re-attach — no peek, no cold load, no
+        // race window for OnUnloaded to clobber the freshly-loaded surface.
+        if (_currentCachedImage is { IsLoaded: true, Surface: not null } cached
+            && _surfaceBrush is not null
+            && _surfaceBrush.Surface is null
+            && !string.IsNullOrEmpty(_resolvedUrl))
+        {
+            try
+            {
+                EnsureCompositionResources();
+                AttachVisualToHost();
+                _surfaceBrush.Surface = cached.Surface;
+                IsImageLoaded = true;
+                FadeOutPlaceholder();
+                return true;
+            }
+            catch
+            {
+                // Fall through to the standard load path.
+            }
+        }
 
         TryLoadCurrent();
         return true;
@@ -560,7 +641,12 @@ public sealed partial class CompositionImage : UserControl
         });
     }
 
-    private void TryLoadCurrent()
+    public void RefreshCurrentImage()
+    {
+        TryLoadCurrent(forceReapply: true);
+    }
+
+    private void TryLoadCurrent(bool forceReapply = false)
     {
         DiagLog("TryLoad:enter", $"ImageUrl={ImageUrl ?? "(null)"}");
         if (!_isAttached) { DiagLog("TryLoad:bail:notAttached"); return; }
@@ -584,6 +670,24 @@ public sealed partial class CompositionImage : UserControl
             && _currentCachedImage is not null)
         {
             DiagLog("TryLoad:bail:sameUrl");
+            EnsureCompositionResources();
+            AttachVisualToHost();
+
+            if (_currentCachedImage is { IsLoaded: true, Surface: not null } cachedx
+                && _surfaceBrush is not null
+                && (forceReapply || _surfaceBrush.Surface is null || !IsImageLoaded))
+            {
+                try
+                {
+                    _surfaceBrush.Surface = cachedx.Surface;
+                    IsImageLoaded = true;
+                    FadeOutPlaceholder();
+                }
+                catch
+                {
+                    // Best effort. The next URL change or load completion will retry.
+                }
+            }
             return;
         }
 

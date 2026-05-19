@@ -2798,10 +2798,13 @@ public sealed partial class DetailsTabHost : UserControl
 
     private static void DisposeCanvasImageSource(CanvasImageSource? source)
     {
+        // CanvasImageSource is not IDisposable in this Win2D projection.
+        // Callers detach Image.Source before dropping the reference.
     }
 
     private static void DisposeCanvasImageSource(ref CanvasImageSource? source)
     {
+        DisposeCanvasImageSource(source);
         source = null;
     }
 }

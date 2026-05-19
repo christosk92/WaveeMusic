@@ -88,6 +88,8 @@ public sealed class ColumnsFirstGridLayout : NonVirtualizingLayout
 
     private int _columns;
     private int _computedColumnCount = 1;
+    private int _lastFiredColumnCount = -1;
+    private bool _pendingFireScheduled;
     private double _itemWidth;
 
     protected override Size MeasureOverride(NonVirtualizingLayoutContext context, Size availableSize)
@@ -96,22 +98,55 @@ public sealed class ColumnsFirstGridLayout : NonVirtualizingLayout
         var count = children.Count;
         if (count == 0) return new Size(0, 0);
 
-        var width = availableSize.Width;
-        if (double.IsInfinity(width) || width <= 0) width = 1000;
+        var rawWidth = availableSize.Width;
+        var isFallbackWidth = double.IsInfinity(rawWidth) || rawWidth <= 0;
+        var width = isFallbackWidth ? 1000 : rawWidth;
 
         // Compute columns from available width
         _columns = Math.Max(1, (int)Math.Floor((width + ColumnSpacing) / (MinItemWidth + ColumnSpacing)));
         _itemWidth = (width - (_columns - 1) * ColumnSpacing) / _columns;
+        _computedColumnCount = _columns;
 
-        // Report column count change AFTER layout completes (deferred)
-        // Firing during MeasureOverride would cause ItemsSource to change mid-layout → COMException
-        if (_computedColumnCount != _columns)
+        // Report column count change AFTER layout completes (deferred). Firing
+        // during MeasureOverride would cause ItemsSource to change mid-layout
+        // → COMException.
+        //
+        // Two guards stack to prevent ItemsRepeater churn on nav-cache restore:
+        //
+        //  1. Fallback-width measures (rawWidth 0 / ∞ / NaN, the "use 1000"
+        //     branch above) DO NOT fire. The transient pre-layout pass that
+        //     happens when the page flips from Visibility=Collapsed back to
+        //     Visible can hand us a fallback width while the real layout is
+        //     still settling.
+        //
+        //  2. We coalesce rapid measure flutter. During a Collapsed→Visible
+        //     transition the host may measure us with several intermediate
+        //     widths before the final stable width lands (e.g. 400 → 800).
+        //     Each transient width would otherwise enqueue its own
+        //     ColumnCountChanged fire, the VM would flip ColumnCount through
+        //     1 → 2, NotifyPaginationChanged would clear and rebuild the
+        //     PagedTopTracks slice on each flip, every TrackItem in the
+        //     ItemsRepeater would OnUnload + OnLoad once per flip, the
+        //     unpin on Unload would drop the LRU pin, and any cache entry
+        //     evicted between the unpin and the next OnLoad lands the row
+        //     on the placeholder glyph for the rest of the session.
+        //
+        //     Instead: keep a single pending fire scheduled. The fire reads
+        //     `_columns` at execution time, so any bouncing widths in the
+        //     same dispatcher slice collapse into one fire with the final
+        //     value.
+        if (!isFallbackWidth && _columns != _lastFiredColumnCount && !_pendingFireScheduled)
         {
-            _computedColumnCount = _columns;
-            var cols = _columns;
+            _pendingFireScheduled = true;
             Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()?.TryEnqueue(
                 Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                () => ColumnCountChanged?.Invoke(this, cols));
+                () =>
+                {
+                    _pendingFireScheduled = false;
+                    if (_columns == _lastFiredColumnCount) return;
+                    _lastFiredColumnCount = _columns;
+                    ColumnCountChanged?.Invoke(this, _columns);
+                });
         }
 
         // Visible items = min(count, maxRows × columns)

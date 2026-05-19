@@ -236,6 +236,13 @@ public interface IPlaybackStateService : INotifyPropertyChanged
     void PlayNext(string trackId);
 
     /// <summary>
+    /// "Play Next" (multi) — inserts each track in order at the head of the user
+    /// queue so the first track plays right after the current track, the second
+    /// after that, and so on. Implementations iterate in reverse internally.
+    /// </summary>
+    void PlayNext(IEnumerable<string> trackIds);
+
+    /// <summary>
     /// Replaces the queue, sets the playback context, and loads the track at startIndex as current.
     /// </summary>
     void LoadQueue(IReadOnlyList<QueueItem> items, PlaybackContextInfo context, int startIndex = 0);

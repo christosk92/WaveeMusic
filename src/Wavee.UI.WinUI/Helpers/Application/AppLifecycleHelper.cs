@@ -404,6 +404,7 @@ public static class AppLifecycleHelper
                 .AddSingleton(_ => Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread())
 
                 // App state services
+                .AddSingleton<Services.InPageFilterController>()
                 .AddSingleton<INotificationService, NotificationService>()
                 .AddSingleton<IUpdateService, UpdateService>()
                 .AddSingleton<IPlaybackStateService, PlaybackStateService>()
@@ -981,6 +982,7 @@ public static class AppLifecycleHelper
 
                 // Image cache cleanup adapter
                 .AddSingleton<ICleanableCache, ImageCacheCleanupAdapter>()
+                .AddSingleton<ICleanableCache, PageHostCacheCleanupAdapter>()
                 .AddSingleton<MemoryBudgetService>()
 
                 // Rich-type detail-page hot caches. Wired into ArtistStore /
@@ -1264,6 +1266,11 @@ public static class AppLifecycleHelper
             var executor = Ioc.Default.GetService<IPlaybackCommandExecutor>() as ConnectCommandExecutor;
             executor?.EnableLocalPlayback(orchestrator);
             executor?.EnableAudioPipelineControl(proxy);
+            // Hand the process manager to the executor so play-time can demand a
+            // restart when the IPC pipe has died (the existing ProxyRestarted
+            // handler still rewires EnableLocalPlayback after the restart succeeds).
+            if (_audioProcessManager is not null)
+                executor?.AttachAudioProcessManager(_audioProcessManager);
 
             // Force-resolve LocalPlaybackProgressTracker so it subscribes to the
             // media-player state stream. Without this the singleton stays unbuilt

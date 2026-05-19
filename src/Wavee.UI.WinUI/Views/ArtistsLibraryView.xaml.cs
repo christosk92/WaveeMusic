@@ -6,6 +6,7 @@ using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
@@ -13,8 +14,17 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ArtistsLibraryView : UserControl, IDisposable
+public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPageFilterable
 {
+    // ── IInPageFilterable ───────────────────────────────────────────────
+    string IInPageFilterable.FilterQuery
+    {
+        get => ViewModel?.SearchQuery ?? string.Empty;
+        set { if (ViewModel is { } vm) vm.SearchQuery = value ?? string.Empty; }
+    }
+    string IInPageFilterable.FilterPlaceholder => "Filter artists…";
+    bool IInPageFilterable.CanFilter => ViewModel is not null;
+
     private const double NarrowLayoutBreakpoint = 680;
     private bool _hasInitializedLayoutMode;
     private bool _disposed;

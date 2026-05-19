@@ -80,10 +80,6 @@ public static class TrackImageRetryBehavior
         var alreadyRetried = string.Equals(state.RetriedUrl, url, StringComparison.Ordinal);
         state.RetriedUrl = url;
 
-        // Reset the surface so the placeholder shows through while we retry (or
-        // give up). Matches the legacy behaviour where the host always reset
-        // the image's visibility/opacity before deciding whether to dispatch.
-        image.ImageUrl = null;
         image.Visibility = Visibility.Visible;
         image.Opacity = 1;
         if (alreadyRetried) return;

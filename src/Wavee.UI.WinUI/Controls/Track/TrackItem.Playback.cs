@@ -82,6 +82,16 @@ public sealed partial class TrackItem
         _isBuffering = track.Id == TrackStateBehavior.BufferingTrackId
                        && TrackStateBehavior.IsCurrentlyBuffering;
 
+        if (Mode == TrackItemDisplayMode.Compact)
+        {
+            CompactDiag(
+                $"[CompactDiag] RefreshPlaybackState trackId={track.Id} title={track.Title} "
+                + $"isThisTrack={isThisTrack} isPlaying={_isThisTrackPlaying} isPaused={_isThisTrackPaused} "
+                + $"isBuffering={_isBuffering} (svc.CurrentTrackId={TrackStateBehavior.CurrentTrackId ?? "(null)"} "
+                + $"svc.BufferingTrackId={TrackStateBehavior.BufferingTrackId ?? "(null)"} "
+                + $"svc.IsPlaying={TrackStateBehavior.IsCurrentlyPlaying} svc.IsBuffering={TrackStateBehavior.IsCurrentlyBuffering})");
+        }
+
         if (!_isBuffering)
             CancelLocalBufferingTimeout();
 

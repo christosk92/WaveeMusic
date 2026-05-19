@@ -6,6 +6,7 @@ using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
+using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Enums;
@@ -22,7 +23,7 @@ namespace Wavee.UI.WinUI.Views;
 /// the shared <c>HeroBandPanel</c> and <c>SectionShelvesView</c> blocks so
 /// future feed-shaped pages reuse the same building bricks.
 /// </summary>
-public sealed partial class BrowsePage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable
+public sealed partial class BrowsePage : UserControl, ITabBarItemContent, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
     private TabItemParameter? _tabItemParameter;
     private bool _isDisposed;

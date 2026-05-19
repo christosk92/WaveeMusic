@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Data.Enums;
@@ -28,7 +29,7 @@ public sealed record DiscographyBreadcrumbItem(string Label, string? ArtistUri);
 /// each Pathfinder page is cached one layer down (HotCache), so the
 /// second visit to the same group hydrates instantly.
 /// </summary>
-public sealed partial class ArtistDiscographyPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware
+public sealed partial class ArtistDiscographyPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IRedirectsCtrlFToOmnibar
 {
     private readonly ILogger? _logger;
     private bool _trimmedForNavigationCache;

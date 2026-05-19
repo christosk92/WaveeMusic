@@ -588,6 +588,7 @@
                         <ColumnDefinition x:Name="ShimPlayCountColDef" Width="0"/>
                         <ColumnDefinition x:Name="ShimDurationColDef" Width="60"/>
                     </Grid.ColumnDefinitions>
+                    <controls1:Shimmer Grid.Column="0" Width="14" Height="12" CornerRadius="2" HorizontalAlignment="Center"/>
                     <controls1:Shimmer Grid.Column="2" Width="34" Height="34" CornerRadius="4" HorizontalAlignment="Left"/>
                     <StackPanel Grid.Column="3" Spacing="6" VerticalAlignment="Center" Margin="12,0,8,0">
                         <controls1:Shimmer Width="180" Height="14" HorizontalAlignment="Left"/>

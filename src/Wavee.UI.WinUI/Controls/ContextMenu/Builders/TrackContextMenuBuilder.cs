@@ -82,7 +82,7 @@ public static class TrackContextMenuBuilder
 
         items.Add(new ContextMenuItemModel
         {
-            Text = AppLocalization.GetString("TrackMenu_PlayAfter"),
+            Text = AppLocalization.GetString("TrackMenu_AddToQueue"),
             Glyph = FluentGlyphs.AddToQueue,
             AccentIconStyleKey = "App.AccentIcons.Media.PlayAfter",
             Command = ctx.AddToQueueCommand,

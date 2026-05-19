@@ -10,12 +10,13 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
 using Wavee.Local.Models;
+using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.ViewModels.Local;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class LocalLibraryPage : UserControl, INavigationCacheMemoryParticipant, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware
+public sealed partial class LocalLibraryPage : UserControl, INavigationCacheMemoryParticipant, Wavee.UI.WinUI.Controls.PageHost.IPageHostAware, IRedirectsCtrlFToOmnibar
 {
     public LocalLandingViewModel ViewModel { get; }
 

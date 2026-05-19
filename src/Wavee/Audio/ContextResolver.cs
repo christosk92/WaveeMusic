@@ -143,6 +143,13 @@ public sealed class ContextResolver
             ? await EnrichTracksAsync(trackInfos, ct)
             : trackInfos.Select(t => new QueueTrack(t.Uri, t.Uid) { Metadata = t.Metadata }).ToList();
 
+        // Station / radio / autoplay contexts are inherently algo-generated — every track
+        // in them belongs in the queue's "Autoplay" section. Stamp here so the per-track
+        // check at QueueControl.xaml.cs:178 (QueueTrack.IsAutoplay) routes them correctly
+        // on both initial play and post-restart cluster-seed.
+        if (isInfinite)
+            tracks = tracks.Select(t => t with { Provider = "autoplay" }).ToList();
+
         return new ContextLoadResult(
             Tracks: tracks,
             TotalCount: totalCount,
@@ -160,6 +167,7 @@ public sealed class ContextResolver
     public async Task<ContextLoadResult> LoadNextPageAsync(
         string pageUrl,
         bool enrichMetadata = true,
+        bool isInfinite = false,
         CancellationToken ct = default)
     {
         _logger?.LogDebug("Loading next page: {PageUrl}", pageUrl);
@@ -175,13 +183,18 @@ public sealed class ContextResolver
             ? await EnrichTracksAsync(trackInfos, ct)
             : trackInfos.Select(t => new QueueTrack(t.Uri, t.Uid) { Metadata = t.Metadata }).ToList();
 
+        // Mirror the stamp from LoadContextAsync — pagination of a station / radio
+        // context yields more algo-generated tracks that belong in "Autoplay".
+        if (isInfinite)
+            tracks = tracks.Select(t => t with { Provider = "autoplay" }).ToList();
+
         var nextPageUrl = !string.IsNullOrEmpty(page.NextPageUrl) ? page.NextPageUrl : null;
 
         return new ContextLoadResult(
             Tracks: tracks,
             TotalCount: null,
             NextPageUrl: nextPageUrl,
-            IsInfinite: false,
+            IsInfinite: isInfinite,
             SortingCriteria: null,
             ContextOwner: null,
             PageCount: 1);

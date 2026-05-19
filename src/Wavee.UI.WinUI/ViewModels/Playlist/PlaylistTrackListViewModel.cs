@@ -932,6 +932,23 @@ public sealed partial class PlaylistTrackListViewModel
         _playbackStateService.AddToQueue(trackUris);
     }
 
+    /// <summary>Play-next every track of this playlist, in current sort order.
+    /// Counterpart to <see cref="AddPlaylistToQueue"/> exposed via the SplitButton's
+    /// dropdown. Inserts at the head of the user queue so the first track plays
+    /// right after the current one, then the rest in order.</summary>
+    [RelayCommand]
+    private void PlayPlaylistNext()
+    {
+        if (_allTracks.Count == 0) return;
+        var trackUris = _allTracks
+            .Select(t => t.Uri)
+            .Where(u => !string.IsNullOrEmpty(u))
+            .Cast<string>()
+            .ToList();
+        if (trackUris.Count == 0) return;
+        _playbackStateService.PlayNext(trackUris);
+    }
+
     /// <summary>Seeds Spotify radio from this playlist's URI. Mirrors
     /// AlbumViewModel.StartAlbumRadioAsyncCommand.</summary>
     [RelayCommand]

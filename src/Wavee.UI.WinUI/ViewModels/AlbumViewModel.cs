@@ -1969,6 +1969,23 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         _playbackStateService.AddToQueue(trackUris);
     }
 
+    /// <summary>Play-next every track of this album, in order. Counterpart to
+    /// <see cref="AddAlbumToQueue"/> exposed via the SplitButton's dropdown.
+    /// Inserts at the head of the user queue so track 1 plays right after the
+    /// current track, track 2 after that, and so on.</summary>
+    [RelayCommand]
+    private void PlayAlbumNext()
+    {
+        if (_allTracks.Count == 0) return;
+        var trackUris = _allTracks
+            .Select(t => t.Data is AlbumTrackDto dto ? dto.Uri : null)
+            .Where(u => !string.IsNullOrEmpty(u))
+            .Cast<string>()
+            .ToList();
+        if (trackUris.Count == 0) return;
+        _playbackStateService.PlayNext(trackUris);
+    }
+
     /// <summary>Seeds Spotify radio from this album's URI. Mirrors the
     /// PlayArtistRadioAsync command on ArtistViewModel; same wire path
     /// (<c>StartRadioAsync</c>) — Spotify accepts any seedable URI here.</summary>

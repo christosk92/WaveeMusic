@@ -1740,14 +1740,20 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
             return;
         }
 
-        var isCurrentSongRadio = IsSpotifyTrackUri(seedUri) && IsCurrentTrackSeed(seedUri);
+        // Always queue the radio behind the currently-playing track so the user
+        // hears the current song to completion. The orchestrator's MoveNext
+        // semantics naturally drop the radio's first track only when it IS the
+        // current track (cursor lands on radio[0] → MoveNext → 1); otherwise the
+        // cursor sits at -1 (see PlaybackOrchestrator.SwitchToContextAfterCurrentAsync)
+        // and MoveNext plays radio[0]. Falls back to immediate play only when
+        // nothing is currently playing.
+        var currentTrackUri = GetCurrentTrackUri();
         PlaybackResult result;
-
-        if (isCurrentSongRadio)
+        if (!string.IsNullOrWhiteSpace(currentTrackUri))
         {
             result = await _playbackService.SwitchToContextAfterCurrentAsync(
                 playlistUri,
-                currentTrackUri: seedUri,
+                currentTrackUri: currentTrackUri,
                 displayName: displayName);
         }
         else
@@ -1756,7 +1762,7 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
                 playlistUri,
                 new PlayContextOptions
                 {
-                    StartIndex = 1,
+                    StartIndex = 0,
                     PlayOriginFeature = "playlist",
                     BypassPrompt = true
                 });
@@ -1772,20 +1778,6 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         }
 
         ShowRadioStartedNotification(playlistUri, displayName);
-    }
-
-    private bool IsCurrentTrackSeed(string seedUri)
-    {
-        var seedId = ExtractTrackId(seedUri);
-        if (string.IsNullOrEmpty(seedId)) return false;
-
-        if (string.Equals(CurrentTrackId, seedId, StringComparison.Ordinal))
-            return true;
-
-        if (string.Equals(CurrentOriginalTrackId, seedId, StringComparison.Ordinal))
-            return true;
-
-        return string.Equals(GetCurrentTrackUri(), seedUri, StringComparison.OrdinalIgnoreCase);
     }
 
     private void ShowRadioStartedNotification(string playlistUri, string? displayName)
@@ -1854,6 +1846,22 @@ internal sealed partial class PlaybackStateService : ObservableObject, IPlayback
         {
             if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] PlayNext FAILED: trackId={TrackId}", trackId);
         });
+    }
+
+    public void PlayNext(IEnumerable<string> trackIds)
+    {
+        // Each PlayNextAsync inserts at the head of the user queue, so iterating in
+        // REVERSE order means the first track in `trackIds` lands at slot 0 (plays
+        // right after the current track), the second at slot 1, and so on — natural
+        // "play these next, in order" semantics for a bulk Play-Next bind.
+        foreach (var trackId in trackIds.Reverse())
+        {
+            _logger?.LogInformation("[Cmd] PlayNext: trackId={TrackId}", trackId);
+            _ = _playbackService.PlayNextAsync(trackId).ContinueWith(t =>
+            {
+                if (t.IsFaulted) _logger?.LogError(t.Exception, "[Cmd] PlayNext FAILED: trackId={TrackId}", trackId);
+            });
+        }
     }
 
     public void LoadQueue(IReadOnlyList<QueueItem> items, PlaybackContextInfo context, int startIndex = 0)

@@ -247,6 +247,37 @@ public sealed class PlaybackStateManager : IAsyncDisposable
             _logger?.LogInformation("Ghost resume: loading {Track} from cluster state (userInitiated={UserInitiated}, position={Position}ms)",
                 _currentState.Track.Title, userInitiated, resumePosition);
 
+            // Faithfully rebuild the queue from the cluster's prev/next-tracks snapshot
+            // when present. Without this, the orchestrator's ContextResolver re-fetches
+            // the bare context and any user-queued items the cluster knew about are lost.
+            List<Commands.PageTrack>? pageTracks = null;
+            int? skipToIndex = _currentState.CurrentIndex > 0 ? _currentState.CurrentIndex : null;
+
+            var prevTracks = _currentState.PrevTracks;
+            var nextTracks = _currentState.NextTracks;
+            if (prevTracks.Count > 0 || nextTracks.Count > 0)
+            {
+                var ghostContextUri = _currentState.ContextUri;
+                var ghostIsInfinite = IsInfiniteContextUri(ghostContextUri);
+                string ProviderFor(TrackReference t) =>
+                    t.IsUserQueued ? "queue" : (ghostIsInfinite ? "autoplay" : "context");
+
+                pageTracks = [];
+                foreach (var t in prevTracks)
+                    pageTracks.Add(new Commands.PageTrack(t.Uri, t.Uid, ProviderFor(t)));
+                skipToIndex = pageTracks.Count;
+                pageTracks.Add(new Commands.PageTrack(
+                    _currentState.Track.Uri,
+                    _currentState.Track.Uid ?? string.Empty,
+                    ghostIsInfinite ? "autoplay" : "context"));
+                foreach (var t in nextTracks)
+                    pageTracks.Add(new Commands.PageTrack(t.Uri, t.Uid, ProviderFor(t)));
+
+                _logger?.LogDebug(
+                    "Ghost resume: rebuilt queue from cluster snapshot (prev={Prev}, current=@{Idx}, next={Next}, total={Total}, infinite={Infinite})",
+                    prevTracks.Count, skipToIndex, nextTracks.Count, pageTracks.Count, ghostIsInfinite);
+            }
+
             var playCommand = new Commands.PlayCommand
             {
                 Endpoint = "play",
@@ -258,11 +289,16 @@ public sealed class PlaybackStateManager : IAsyncDisposable
                 TrackUid = _currentState.Track.Uid,
                 ContextUri = _currentState.ContextUri ?? _currentState.Track.Uri,
                 PositionMs = resumePosition > 0 ? resumePosition : null,
-                SkipToIndex = _currentState.CurrentIndex > 0 ? _currentState.CurrentIndex : null,
+                PageTracks = pageTracks,
+                SkipToIndex = skipToIndex,
             };
             await _playbackEngine.PlayAsync(playCommand);
         }
     }
+
+    private static bool IsInfiniteContextUri(string? uri)
+        => !string.IsNullOrEmpty(uri)
+           && (uri.Contains(":station:") || uri.Contains(":radio:") || uri.Contains(":autoplay:"));
 
     /// <summary>
     /// Initializes PlaybackStateManager in **remote-only mode**.

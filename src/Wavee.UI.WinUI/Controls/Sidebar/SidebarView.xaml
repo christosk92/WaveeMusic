@@ -167,12 +167,23 @@
 		<VisualStateManager.VisualStateGroups>
 
 			<VisualStateGroup x:Name="DisplayModes">
-				<VisualState x:Name="Expanded" />
+				<VisualState x:Name="Expanded">
+					<VisualState.Setters>
+						<!-- Explicit restore — VSM does not reliably roll Visibility-like
+						     properties back to defaults when leaving Compact (same rationale
+						     as the NonCompact setters in SidebarStyles.xaml). -->
+						<Setter Target="MenuItemHostScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+					</VisualState.Setters>
+				</VisualState>
 				<VisualState x:Name="Compact">
 					<VisualState.Setters>
 						<Setter Target="PaneColumnDefinition.Width" Value="{StaticResource SidebarCompactOpenPaneLength}" />
 						<!-- Hide the Header (sidebar player widget) in compact mode — too narrow to render. -->
 						<Setter Target="HeaderPresenter.Visibility" Value="Collapsed" />
+						<!-- A ~12 px MouseIndicator scrollbar dominates the 56 px rail and
+						     reads as "always shown". Hide it in compact; wheel/touch scroll
+						     still work. -->
+						<Setter Target="MenuItemHostScrollViewer.VerticalScrollBarVisibility" Value="Hidden" />
 					</VisualState.Setters>
 				</VisualState>
 				<VisualState x:Name="MinimalCollapsed">

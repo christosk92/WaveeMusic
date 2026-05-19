@@ -156,19 +156,72 @@ public sealed partial class ArtistTopTracksViewModel : ObservableObject, IDispos
     public int TotalPages => Tracks.Count == 0 ? 0 : (int)Math.Ceiling((double)Tracks.Count / TracksPerPage);
     public bool HasMultiplePages => TotalPages > 1;
 
-    private List<LazyTrackItem>? _pagedTopTracksCache;
-    public IEnumerable<LazyTrackItem> PagedTopTracks => _pagedTopTracksCache ??= BuildPagedTopTracks();
+    // Stable ObservableCollection instance. Two mutation paths:
+    //
+    //  * ReconcileSliceInPlace — used after Tracks mutations from VM-internal
+    //    work (LoadExtendedTopTracksAsync, image enrichment). Preserves rows
+    //    whose LazyTrackItem reference didn't change so their CompositionImage
+    //    LRU pins survive, killing the "loads then flickers away" pattern on
+    //    the top-tracks band when extended tracks land ~250 ms after paint.
+    //
+    //  * RepopulateSlice — used for user-driven page changes and column-count
+    //    changes. Clear + Add gives ItemsRepeater a Reset signal it handles
+    //    cleanly; a long INCC.Replace sequence doesn't drive ItemsRepeater +
+    //    NonVirtualizingLayout reliably enough for the pip-click swap.
+    //
+    // Either way the OC instance itself is stable — no PropertyChanged fires
+    // on PagedTopTracks, so x:Bind never re-evaluates the ItemsSource.
+    private readonly ObservableCollection<LazyTrackItem> _pagedTopTracks = new();
+    public ObservableCollection<LazyTrackItem> PagedTopTracks => _pagedTopTracks;
 
-    private List<LazyTrackItem> BuildPagedTopTracks()
+    /// <summary>
+    /// In-place reconcile: rows whose LazyTrackItem reference matches keep
+    /// their container; mismatched rows fire one INCC.Replace each; growth /
+    /// shrink uses Add / RemoveAt. Used after Tracks mutation
+    /// (LoadExtendedTopTracksAsync, initial overview ReplaceWith) where most
+    /// rows are unchanged — this avoids the full ItemsRepeater recycle that
+    /// dropped the CompositionImage LRU pins and produced the visible
+    /// "loads then flickers away" pattern on the top-tracks band.
+    /// </summary>
+    private void ReconcileSliceInPlace()
     {
         int start = CurrentPage * TracksPerPage;
         int available = Tracks.Count - start;
-        if (available <= 0) return [];
-        int count = Math.Min(TracksPerPage, available);
-        var result = new List<LazyTrackItem>(count);
-        for (int i = 0; i < count; i++)
-            result.Add(Tracks[start + i]);
-        return result;
+        int desired = available <= 0 ? 0 : Math.Min(TracksPerPage, available);
+
+        for (int i = 0; i < desired; i++)
+        {
+            var newItem = Tracks[start + i];
+            if (i < _pagedTopTracks.Count)
+            {
+                if (!ReferenceEquals(_pagedTopTracks[i], newItem))
+                    _pagedTopTracks[i] = newItem;
+            }
+            else
+            {
+                _pagedTopTracks.Add(newItem);
+            }
+        }
+        while (_pagedTopTracks.Count > desired)
+            _pagedTopTracks.RemoveAt(_pagedTopTracks.Count - 1);
+    }
+
+    /// <summary>
+    /// Reset semantics: Clear + Add the new slice. ItemsRepeater fully
+    /// recycles every container. Used for explicit user-driven slice swaps
+    /// — page change (every visible row IS a different track) and column-
+    /// count change (slice shape changes). A long sequence of INCC.Replace
+    /// events doesn't drive ItemsRepeater + NonVirtualizingLayout reliably;
+    /// Reset does.
+    /// </summary>
+    private void RepopulateSlice()
+    {
+        _pagedTopTracks.Clear();
+        int start = CurrentPage * TracksPerPage;
+        int available = Tracks.Count - start;
+        int desired = available <= 0 ? 0 : Math.Min(TracksPerPage, available);
+        for (int i = 0; i < desired; i++)
+            _pagedTopTracks.Add(Tracks[start + i]);
     }
 
     [RelayCommand]
@@ -186,28 +239,44 @@ public sealed partial class ArtistTopTracksViewModel : ObservableObject, IDispos
     }
 
     /// <summary>
-    /// Drop the cached paginated slice and raise pagination dependents.
-    /// Called by the parent after a Tracks rebuild.
+    /// Called by the parent after a Tracks mutation (initial ReplaceWith,
+    /// extended-tracks append, image enrichment). Uses in-place reconcile so
+    /// rows whose LazyTrackItem reference is unchanged keep their realized
+    /// container — that's what stops the artist top-tracks band from
+    /// flickering when extended-tracks land ~250 ms after first paint.
     /// </summary>
     public void NotifyPaginationChanged()
     {
-        _pagedTopTracksCache = null;
+        ReconcileSliceInPlace();
         OnPropertyChanged(nameof(TotalPages));
         OnPropertyChanged(nameof(HasMultiplePages));
-        OnPropertyChanged(nameof(PagedTopTracks));
     }
 
     partial void OnCurrentPageChanged(int value)
     {
         ClearTopTracksSelection();
-        NotifyPaginationChanged();
+        // Explicit user-driven page swap. Reset semantics — every visible row
+        // becomes a different track, full recycle is the expected UX.
+        RepopulateSlice();
+        OnPropertyChanged(nameof(TotalPages));
+        OnPropertyChanged(nameof(HasMultiplePages));
     }
 
     partial void OnColumnCountChanged(int value)
     {
-        CurrentPage = 0;
         ClearTopTracksSelection();
-        NotifyPaginationChanged();
+        // Slice shape changes (TracksPerPage shifts). Resetting CurrentPage to
+        // 0 may or may not fire OnCurrentPageChanged depending on whether it
+        // was already 0 — capture that up front so we run RepopulateSlice
+        // exactly once in either case.
+        var pageAlreadyZero = CurrentPage == 0;
+        CurrentPage = 0;
+        if (pageAlreadyZero)
+        {
+            RepopulateSlice();
+            OnPropertyChanged(nameof(TotalPages));
+            OnPropertyChanged(nameof(HasMultiplePages));
+        }
     }
 
     // ── Reset / playback sync ───────────────────────────────────────────────
@@ -563,10 +632,7 @@ public sealed partial class ArtistTopTracksViewModel : ObservableObject, IDispos
                     idx++;
                 }
 
-                _pagedTopTracksCache = null;
-                OnPropertyChanged(nameof(TotalPages));
-                OnPropertyChanged(nameof(HasMultiplePages));
-                OnPropertyChanged(nameof(PagedTopTracks));
+                NotifyPaginationChanged();
 
                 if (addedVms.Count > 0)
                 {

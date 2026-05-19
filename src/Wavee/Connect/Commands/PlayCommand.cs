@@ -230,7 +230,7 @@ public sealed record PlayCommand : ConnectCommand
 /// playlist-API recommender fields (item-score, decision_id, PROBABLY_IN_*,
 /// core:list_uid, …) on remote Spotify clients.
 /// </summary>
-public sealed record PageTrack(string Uri, string Uid)
+public sealed record PageTrack(string Uri, string Uid, string Provider = "context")
 {
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
 }

@@ -26,6 +26,14 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
 
     private bool _disposed;
     private volatile bool _isPlaying; // volatile: read by native PortAudio callback thread
+    // Sticky "user has explicitly paused" flag, separate from _isPlaying. Without this,
+    // the buffer-fill auto-start in WriteAsync can't tell "never started yet" from
+    // "paused by the user" — so a device-switch reopen that restores a couple of seconds
+    // of buffered PCM via WriteImmediate would auto-resume playback on the new device
+    // even though the user is paused (e.g. unplugging USB-C headphones while paused
+    // would start playing on the speakers). The auto-start gate now also requires
+    // !_isPaused, so the user-paused state survives reopen → silence until resume.
+    private volatile bool _isPaused;
     private bool _isInitialized;
     private long _samplesWritten;
     private long _samplesPlayed;
@@ -198,6 +206,7 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
                 userData: null);
 
             _isInitialized = true;
+            _isPaused = false; // fresh track — auto-start gate must be open
             _samplesWritten = 0;
             _samplesPlayed = 0;
             _basePositionMs = 0;
@@ -298,9 +307,11 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
         // Auto-start playback once we've buffered ~2s of audio.
         // The extra headroom absorbs GC pauses and I/O contention during the
         // concurrent track download burst that happens at track start.
+        // _isPaused gates this so a device-switch reopen (which restores buffered
+        // PCM via WriteImmediate while the user is paused) can't auto-resume.
         lock (_lock)
         {
-            if (!_isPlaying && _buffer.Available > _format!.BytesPerSecond * 2)
+            if (!_isPlaying && !_isPaused && _buffer.Available > _format!.BytesPerSecond * 2)
             {
                 StartPlayback();
             }
@@ -405,6 +416,9 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
 
         // Pure flag flip — callback outputs silence on next invocation (~5ms).
         // Stream stays running so resume is instant (no device restart).
+        // _isPaused is sticky — survives device-switch reopens so the auto-start
+        // gate in WriteAsync stays closed until the user explicitly resumes.
+        _isPaused = true;
         _isPlaying = false;
         _logger?.LogDebug("PortAudio paused (flag flip)");
         return Task.CompletedTask;
@@ -419,6 +433,7 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
         // Stream never stopped, so there's zero startup latency.
         if (_stream != null)
         {
+            _isPaused = false;
             _isPlaying = true;
             _logger?.LogDebug("PortAudio resumed (flag flip)");
             return Task.FromResult(true);
@@ -1075,6 +1090,7 @@ public sealed class PortAudioSink : IAudioSink, IDeviceSelectableSink
 
         _buffer = null;
         _isInitialized = false;
+        _isPaused = false; // teardown — don't carry stale paused state into a future re-init
     }
 
     /// <inheritdoc />

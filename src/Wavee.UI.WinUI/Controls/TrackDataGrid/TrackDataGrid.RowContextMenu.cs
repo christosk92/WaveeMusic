@@ -283,7 +283,7 @@ public sealed partial class TrackDataGrid
 
         items.Add(new ContextMenuItemModel
         {
-            Text = $"{AppLocalization.GetString("TrackMenu_PlayAfter")} ({count})",
+            Text = $"{AppLocalization.GetString("TrackMenu_AddToQueue")} ({count})",
             Glyph = FluentGlyphs.AddToQueue,
             AccentIconStyleKey = "App.AccentIcons.Media.PlayAfter",
             Command = MultiSelectAddToQueueCommand,

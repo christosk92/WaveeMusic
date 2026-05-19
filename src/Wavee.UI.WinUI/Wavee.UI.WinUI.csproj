@@ -215,7 +215,7 @@
 	    Hot-Reload "Skipping analyzers" fast path. Targets is a SET, so the
 	    body executes at most once per build even when multiple hooks fire.
 	-->
-	<Target Name="BuildAudioHost" BeforeTargets="PrepareForBuild;ResolveProjectReferences;CoreCompile;Build">
+	<Target Name="BuildAudioHost" BeforeTargets="PrepareForBuild;ResolveProjectReferences;CoreCompile;Build" Condition="'$(SkipBuildAudioHost)' != 'true'">
 		<Message Importance="high" Text="[BuildAudioHost] Building AudioHost in an isolated 'dotnet build' subprocess..." />
 		<!--
 		    Spawn 'dotnet build' as a separate process. The previous approach

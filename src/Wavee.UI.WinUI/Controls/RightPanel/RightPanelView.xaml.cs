@@ -131,12 +131,16 @@ public sealed partial class RightPanelView : UserControl
         // Re-apply tab content visibility now that we're loaded.
         UpdateContentVisibility();
         UpdateLyricsConsumerActivity();
+
+        // Initial sync — if we're loaded mid-playback into a podcast episode,
+        // the tab should already say "Transcript".
+        UpdateLyricsTabLabelForCurrentItem();
     }
 
     private void OnPanelSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (SelectedMode == RightPanelMode.Lyrics)
-            UpdateCanvasLayout();
+            RequestThrottledCanvasLayout();
 
         UpdateBackgroundChrome();
     }
@@ -174,6 +178,14 @@ public sealed partial class RightPanelView : UserControl
 
         CancelBackgroundTintRefresh();
         _overlayBehavior.Detach();
+
+        if (_resizeThrottleTimer != null)
+        {
+            _resizeThrottleTimer.Stop();
+            _resizeThrottleTimer.Tick -= OnResizeThrottleTick;
+            _resizeThrottleTimer = null;
+        }
+        _layoutPendingDuringThrottle = false;
     }
 
     private void OnThemeColorsChanged()
@@ -245,7 +257,7 @@ public sealed partial class RightPanelView : UserControl
     }
 
     private void OnLyricsHostCanvasLayoutInvalidated(object? sender, EventArgs e)
-        => UpdateCanvasLayout();
+        => RequestThrottledCanvasLayout();
 
     private void OnLyricsDebugRequested(object? sender, EventArgs e)
         => _ = ShowLyricsDebugDialogAsync();
@@ -275,9 +287,84 @@ public sealed partial class RightPanelView : UserControl
         {
             UpdateBackgroundChrome();
         }
+
+        if (e.PropertyName == nameof(IPlaybackStateService.CurrentTrackId))
+            UpdateLyricsTabLabelForCurrentItem();
+    }
+
+    /// <summary>
+    /// Pulls the current episode/track classification from
+    /// <see cref="LyricsViewModel.IsEpisode"/> and forwards the appropriate
+    /// localized label to the tab pager. Called whenever the playing item
+    /// changes — the VM has already raised its own <c>IsEpisode</c> change by
+    /// the time this fires, since its subscription was wired first.
+    /// </summary>
+    private void UpdateLyricsTabLabelForCurrentItem()
+    {
+        if (TabPager == null) return;
+        var isEpisode = _lyricsVm?.IsEpisode == true;
+        var key = isEpisode
+            ? "Controls_RightPanel_RightPanelView__SegmentedItem_2_Transcript.Content"
+            : "Controls_RightPanel_RightPanelView__SegmentedItem_2.Content";
+        var label = AppLocalization.GetString(key);
+        // Fallback when the resw key is missing (e.g. partial localization).
+        if (string.IsNullOrEmpty(label) || label == key)
+            label = isEpisode ? "Transcript" : "Lyrics";
+        TabPager.LyricsTabContent = label;
     }
 
     // ── Canvas layout ──
+
+    // Resize throttle. LyricsLayoutManager.MeasureAndArrange creates one
+    // CanvasTextLayout per line on every layout pass — for a long podcast
+    // transcript (~1000 sentence lines) that's 1000 layouts × 60fps = 60k
+    // CanvasTextLayout creations/sec while the user drags the panel edge.
+    // The dirty-flag pattern in LyricsEngine already coalesces multiple
+    // SetLyricsWidth/Height calls per frame, but per-frame is still too
+    // aggressive. We apply once on the leading edge, then suppress further
+    // applies for ~120 ms and only run the trailing apply if anything new
+    // came in. The user sees the canvas reflow at ~8fps during drag — still
+    // smooth visually, but ~7× cheaper than per-frame.
+    private DispatcherTimer? _resizeThrottleTimer;
+    private bool _layoutPendingDuringThrottle;
+
+    private void RequestThrottledCanvasLayout()
+    {
+        if (_resizeThrottleTimer == null)
+        {
+            _resizeThrottleTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+            _resizeThrottleTimer.Tick += OnResizeThrottleTick;
+        }
+
+        if (!_resizeThrottleTimer.IsEnabled)
+        {
+            // Leading edge — apply once immediately so the first feedback is
+            // instant, then close the gate until the timer expires.
+            UpdateCanvasLayout();
+            _resizeThrottleTimer.Start();
+            return;
+        }
+
+        // Inside throttle window — coalesce. The trailing tick will apply
+        // the final size once the window closes.
+        _layoutPendingDuringThrottle = true;
+    }
+
+    private void OnResizeThrottleTick(object? sender, object e)
+    {
+        if (_resizeThrottleTimer == null) return;
+        _resizeThrottleTimer.Stop();
+
+        if (!_layoutPendingDuringThrottle)
+            return;
+
+        _layoutPendingDuringThrottle = false;
+        UpdateCanvasLayout();
+
+        // Another resize burst may still be in flight — restart the gate so
+        // subsequent SizeChanged events continue to coalesce.
+        _resizeThrottleTimer.Start();
+    }
 
     private void UpdateCanvasLayout()
     {

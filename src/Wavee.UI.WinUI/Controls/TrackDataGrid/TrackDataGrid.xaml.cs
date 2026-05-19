@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
+using System.Numerics;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -13,6 +14,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Wavee.UI.Services.DragDrop;
 using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.Contracts;
@@ -1313,7 +1315,17 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     {
         if (e.Key == VirtualKey.A && GetCtrlShiftState().ctrl)
         {
-            SelectAllRows();
+            // Toggle: if every track-row is already selected, clear; else select-all.
+            // Counted against ITrackItem rows in _visibleRows so any interleaved
+            // group-header markers don't throw off the "fully selected" comparison.
+            var selectableCount = 0;
+            foreach (var item in _visibleRows)
+                if (item is ITrackItem) selectableCount++;
+
+            if (selectableCount > 0 && RowsItemsView.SelectedItems.Count >= selectableCount)
+                ClearSelection();
+            else
+                SelectAllRows();
             e.Handled = true;
             return;
         }
@@ -1452,21 +1464,38 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void RowsItemsViewHost_DragOver(object sender, DragEventArgs e)
     {
-        if (!CanReorder) return;
-        if (ResolveDragState()?.CurrentPayload is TrackDragPayload p
-            && !string.IsNullOrEmpty(ContextUri)
-            && string.Equals(p.SourceContextUri, ContextUri, StringComparison.Ordinal))
+        if (!CanReorder) { HideDropIndicators(); return; }
+        if (ResolveDragState()?.CurrentPayload is not TrackDragPayload p
+            || string.IsNullOrEmpty(ContextUri)
+            || !string.Equals(p.SourceContextUri, ContextUri, StringComparison.Ordinal))
         {
-            e.AcceptedOperation = DataPackageOperation.Move;
+            HideDropIndicators();
+            return;
         }
+
+        e.AcceptedOperation = DataPackageOperation.Move;
+        e.DragUIOverride.IsCaptionVisible = true;
+        e.DragUIOverride.IsGlyphVisible = true;
+        e.DragUIOverride.Caption = p.ItemCount == 1 ? "Move 1 track" : $"Move {p.ItemCount} tracks";
+
+        ShowDropIndicators(ResolveDropSlot(e));
     }
+
+    private void RowsItemsViewHost_DragLeave(object sender, DragEventArgs e) => HideDropIndicators();
 
     private void RowsItemsViewHost_Drop(object sender, DragEventArgs e)
     {
-        if (!TryReadIntraListReorder(e, out var fromIndex, out var length)) return;
-        var toIndex = ResolveDropTargetIndex(e.OriginalSource, RowsItemsView, _visibleRows.Count);
-        if (toIndex < 0) return;
-        TracksReorderRequested?.Invoke(fromIndex, length, toIndex);
+        System.Diagnostics.Debug.WriteLine("[plreorder] Drop fired");
+        HideDropIndicators();
+        if (!TryReadIntraListReorder(e, out var fromIndex, out var length))
+        {
+            System.Diagnostics.Debug.WriteLine("[plreorder] Drop rejected by TryReadIntraListReorder");
+            return;
+        }
+        var slot = ResolveDropSlot(e);
+        System.Diagnostics.Debug.WriteLine($"[plreorder] Drop slot={slot.Index} from={fromIndex} len={length}");
+        if (slot.Index < 0) return;
+        TracksReorderRequested?.Invoke(fromIndex, length, slot.Index);
     }
 
     private void WriteTrackPayload(DataPackage data, IReadOnlyList<ITrackItem> tracks, int sourceStartIndex)
@@ -1496,23 +1525,232 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     }
 
     /// <summary>
-    /// Walk up to the dropped-on ItemContainer; its DataContext is the row's
-    /// ITrackItem. Index it in _visibleRows (the grid's only source) to get
-    /// the target slot. Drops in empty space below the last row append.
-    /// Group-header markers in _visibleRows are non-selectable, so they're
-    /// never the drop target via a real row click.
+    /// Drop slot resolution: the gap index between rows where a drop will land,
+    /// the hovered ItemContainer (anchor for the insertion line), and whether
+    /// the line should sit above or below that anchor. Slot 0 = before the
+    /// first row; slot N = after the last row.
     /// </summary>
-    private int ResolveDropTargetIndex(object originalSource, ItemsView itemsView, int totalCount)
+    private readonly record struct DropSlot(int Index, FrameworkElement? HitContainer, bool PlaceBelow);
+
+    /// <summary>
+    /// Hit-test the pointer against realized rows. We iterate the rows we
+    /// already track ourselves — <see cref="_itemsViewRowsWithManualDrag"/>
+    /// (every realized TrackItem since first Loaded) — and walk each one
+    /// up to its ItemContainer via the existing <see cref="FindParent{T}"/>
+    /// helper. <c>VisualTreeHelper</c>-driven descent from this UserControl
+    /// can't reach ItemsView's row containers (its internal ScrollView /
+    /// ItemsRepeater template stays opaque to <c>GetChild</c>), so the
+    /// tracked-rows set is the only reliable source. Filters out unloaded
+    /// rows by checking <see cref="UIElement.XamlRoot"/>.
+    /// </summary>
+    /// <summary>
+    /// Hit-test the pointer against realized rows by enumerating <see cref="_itemsViewRows"/>
+    /// (every currently-Loaded TrackItem) and walking up to its parent ItemContainer for
+    /// visual bounds. The XAML-side route can't be used: DragOver fires on the host
+    /// StackPanel (the only AllowDrop=true element), so <c>e.OriginalSource</c> is the
+    /// StackPanel itself, and a downward <c>VisualTreeHelper</c> walk doesn't reach the
+    /// row containers buried inside ItemsView's internal ScrollView+ItemsRepeater. We
+    /// pull the data item via <see cref="Track.TrackItem.Track"/> rather than reading
+    /// <see cref="ItemContainer.DataContext"/> because the container's DataContext can be
+    /// briefly stale during virtualization recycle and reject the cast.
+    /// </summary>
+    private DropSlot ResolveDropSlot(DragEventArgs e)
     {
-        var element = originalSource as DependencyObject;
-        while (element is not null and not ItemContainer)
-            element = VisualTreeHelper.GetParent(element);
-        if (element is ItemContainer container
-            && container.DataContext is ITrackItem item
-            && _visibleRows.IndexOf(item) is int idx and >= 0)
+        var pY = e.GetPosition(RowsHostCell).Y;
+
+        FrameworkElement? hit = null;
+        ITrackItem? hitItem = null;
+        double hitTop = 0, hitHeight = 0;
+        FrameworkElement? nearest = null;
+        ITrackItem? nearestItem = null;
+        double nearestBottom = 0;
+        var nearestDist = double.PositiveInfinity;
+
+        foreach (var row in _itemsViewRows)
         {
-            return idx;
+            var item = row.Track;
+            if (item is null) continue;
+
+            // Prefer the ItemContainer as the bounds anchor (full row height incl. its
+            // 2-px Margin); fall back to the TrackItem if the container isn't reachable.
+            FrameworkElement boundsSource = FindParent<ItemContainer>(row) ?? (FrameworkElement)row;
+
+            double top;
+            try
+            {
+                top = boundsSource.TransformToVisual(RowsHostCell)
+                    .TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+            }
+            catch
+            {
+                continue;
+            }
+
+            var height = boundsSource.ActualHeight;
+            var bottom = top + height;
+
+            if (hit is null && pY >= top && pY < bottom)
+            {
+                hit = boundsSource;
+                hitItem = item;
+                hitTop = top;
+                hitHeight = height;
+            }
+
+            var dist = pY < top ? top - pY : (pY > bottom ? pY - bottom : 0);
+            if (dist < nearestDist)
+            {
+                nearestDist = dist;
+                nearest = boundsSource;
+                nearestItem = item;
+                nearestBottom = bottom;
+            }
         }
-        return totalCount;
+
+        if (hit is not null && hitItem is not null
+            && _visibleRows.IndexOf(hitItem) is int hitIndex and >= 0)
+        {
+            var placeBelow = (pY - hitTop) >= hitHeight / 2;
+            var slot = placeBelow ? hitIndex + 1 : hitIndex;
+            return new DropSlot(slot, hit, placeBelow);
+        }
+
+        if (nearest is not null && nearestItem is not null
+            && _visibleRows.IndexOf(nearestItem) is int nearIdx and >= 0)
+        {
+            var placeBelow = pY >= nearestBottom;
+            var slot = placeBelow ? nearIdx + 1 : nearIdx;
+            return new DropSlot(slot, nearest, placeBelow);
+        }
+
+        return new DropSlot(_visibleRows.Count, null, PlaceBelow: true);
+    }
+
+    // Drop-indicator pool. One Rectangle per realized row's top-edge slot + one for
+    // the end-of-list slot. Each Rectangle stays in DropIndicatorOverlay permanently;
+    // show/hide is driven by Opacity (toggling Visibility=Collapsed would short-circuit
+    // the implicit OpacityTransition). Active-target affordance is a Scale.Y bump that
+    // composition animates on the GPU. Pool size grows on demand and is never trimmed —
+    // a moderate over-allocation costs nothing once the elements are parked at Opacity=0.
+    private readonly List<Rectangle> _dropLines = new();
+    private static readonly TimeSpan IndicatorTransitionDuration = TimeSpan.FromMilliseconds(140);
+    private const double FaintIndicatorOpacity = 0.15;
+    private const double ActiveIndicatorOpacity = 1.0;
+    private const float ActiveIndicatorScaleY = 1.6f;
+    private const double IndicatorThicknessPx = 2.0;
+
+    private Rectangle AcquireDropLine(int index)
+    {
+        while (_dropLines.Count <= index)
+        {
+            var rect = new Rectangle
+            {
+                Height = IndicatorThicknessPx,
+                RadiusX = 1,
+                RadiusY = 1,
+                Opacity = 0,
+                IsHitTestVisible = false,
+                Fill = Application.Current.Resources["AccentFillColorDefaultBrush"] as Brush,
+                // Use the composition-native CenterPoint (set per tick below) — setting
+                // RenderTransformOrigin pins the element to the legacy XAML rendering
+                // path, which then refuses OpacityTransition with UnauthorizedAccess.
+                OpacityTransition = new ScalarTransition { Duration = IndicatorTransitionDuration },
+                ScaleTransition = new Vector3Transition { Duration = IndicatorTransitionDuration },
+            };
+            DropIndicatorOverlay.Children.Add(rect);
+            _dropLines.Add(rect);
+        }
+        return _dropLines[index];
+    }
+
+    /// <summary>
+    /// Position and reveal the pool. The reference slot is the candidate drop target;
+    /// every other realized-row gap renders a faint line so the user can see all
+    /// available drop zones simultaneously. Re-iterates <see cref="_itemsViewRows"/>
+    /// here rather than threading the list out of <see cref="ResolveDropSlot"/> — the
+    /// realized set is small (one viewport's worth, ~15–25 rows) and the walk is cheap.
+    /// </summary>
+    private void ShowDropIndicators(DropSlot slot)
+    {
+        // Collect (slotIndex, y) pairs for every realized row's top, plus a final
+        // entry for the bottom of the last row (end-of-list slot).
+        var hostWidth = RowsHostCell.ActualWidth;
+        var slotEntries = new List<(int Index, double Y)>(_itemsViewRows.Count + 1);
+
+        FrameworkElement? lastContainer = null;
+        double lastBottomY = double.NegativeInfinity;
+
+        foreach (var row in _itemsViewRows)
+        {
+            var item = row.Track;
+            if (item is null) continue;
+            FrameworkElement boundsSource = FindParent<ItemContainer>(row) ?? (FrameworkElement)row;
+            double top;
+            try
+            {
+                top = boundsSource.TransformToVisual(RowsHostCell)
+                    .TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+            }
+            catch { continue; }
+
+            var rowIndex = _visibleRows.IndexOf(item);
+            if (rowIndex < 0) continue;
+            slotEntries.Add((rowIndex, top));
+
+            var bottom = top + boundsSource.ActualHeight;
+            if (bottom > lastBottomY)
+            {
+                lastBottomY = bottom;
+                lastContainer = boundsSource;
+            }
+        }
+
+        // End-of-list anchor: only render if the last realized row is the very last
+        // track. Otherwise the user would see a misleading line in the middle of the
+        // virtualized region.
+        if (lastContainer is not null && _itemsViewRows.Count > 0)
+        {
+            var lastTrack = _itemsViewRows.Select(r => r.Track).LastOrDefault(t => t is not null);
+            if (lastTrack is not null
+                && _visibleRows.IndexOf(lastTrack) is int lastIdx
+                && lastIdx == _visibleRows.Count - 1)
+            {
+                slotEntries.Add((_visibleRows.Count, lastBottomY));
+            }
+        }
+
+        // Park every existing pool entry at opacity 0; we'll re-enable the ones we use
+        // this tick. Cheaper than tracking which entries were used last tick.
+        foreach (var existing in _dropLines)
+        {
+            existing.Opacity = 0;
+            existing.Scale = new Vector3(1f, 1f, 1f);
+        }
+
+        for (var i = 0; i < slotEntries.Count; i++)
+        {
+            var (slotIndex, y) = slotEntries[i];
+            var rect = AcquireDropLine(i);
+            rect.Width = hostWidth;
+            Canvas.SetLeft(rect, 0);
+            Canvas.SetTop(rect, y - IndicatorThicknessPx / 2);
+            // Composition CenterPoint in absolute pixels (no RenderTransformOrigin
+            // allowed — see AcquireDropLine). Re-set each tick because Width tracks
+            // the host width which can change on resize.
+            rect.CenterPoint = new Vector3((float)(hostWidth / 2), (float)(IndicatorThicknessPx / 2), 0);
+
+            var isActive = slotIndex == slot.Index;
+            rect.Opacity = isActive ? ActiveIndicatorOpacity : FaintIndicatorOpacity;
+            rect.Scale = isActive ? new Vector3(1f, ActiveIndicatorScaleY, 1f) : new Vector3(1f, 1f, 1f);
+        }
+    }
+
+    private void HideDropIndicators()
+    {
+        foreach (var rect in _dropLines)
+        {
+            rect.Opacity = 0;
+            rect.Scale = new Vector3(1f, 1f, 1f);
+        }
     }
 }

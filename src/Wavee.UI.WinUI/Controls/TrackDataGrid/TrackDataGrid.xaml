@@ -324,46 +324,73 @@
                  visible-rows collection interleaves TrackDataGridGroupRow
                  markers between buckets, and the ItemTemplate selector routes
                  markers to GroupHeaderTemplate and tracks to RowTemplate. -->
+            <!-- AllowDrop is unconditional; the DragOver handler gates on CanReorder.
+                 An x:Bind from AllowDrop to a same-class DependencyProperty was
+                 latching false on first render (CanReorderTracks gets fired later,
+                 once the playlist's owner-edit gate resolves) and never re-binding,
+                 so DragOver simply never fired. Always-true here means the routed
+                 event is delivered, the handler reads the current CanReorder DP
+                 value, and rejects the drop unambiguously when ineligible. -->
             <StackPanel x:Name="RowsItemsViewHost"
                         Grid.Row="2"
-                        AllowDrop="{x:Bind CanReorder, Mode=OneWay}"
+                        AllowDrop="True"
                         DragOver="RowsItemsViewHost_DragOver"
+                        DragLeave="RowsItemsViewHost_DragLeave"
                         Drop="RowsItemsViewHost_Drop">
 
-                <ItemsView
-                    x:Name="RowsItemsView"
-                    SelectionMode="Extended"
-                    KeyDown="OnRowsKeyDown"
-                    SelectionChanged="RowsItemsView_SelectionChanged">
-                    <ItemsView.Layout>
-                        <StackLayout Orientation="Vertical" Spacing="0"/>
-                    </ItemsView.Layout>
-                    <ItemsView.ItemTemplate>
-                        <!-- The RowTemplate is the per-track template. The selector's
-                             GroupHeaderTemplate is plugged in from code-behind whenever
-                             the GroupHeaderTemplate DP changes (see ApplyGroupHeaderTemplate).
-                             That keeps each consumer page's existing header markup
-                             unchanged while letting ItemsView render headers inline. -->
-                        <local:TrackDataGridItemTemplateSelector x:Name="ItemTemplateSelector">
-                            <local:TrackDataGridItemTemplateSelector.RowTemplate>
-                                <DataTemplate x:DataType="contracts:ITrackItem">
-                                    <ItemContainer
-                                        Padding="0"
-                                        Margin="0,2"
-                                        HorizontalContentAlignment="Stretch"
-                                        VerticalContentAlignment="Stretch"
-                                        MinHeight="0">
-                                        <track:TrackItem
-                                            Track="{x:Bind}"
-                                            Mode="Row"
-                                            Loaded="RowsItemsViewTrackItem_Loaded"
-                                            Unloaded="RowsItemsViewTrackItem_Unloaded"/>
-                                    </ItemContainer>
-                                </DataTemplate>
-                            </local:TrackDataGridItemTemplateSelector.RowTemplate>
-                        </local:TrackDataGridItemTemplateSelector>
-                    </ItemsView.ItemTemplate>
-                </ItemsView>
+                <!-- ItemsView + drop-indicator overlay share one cell so the
+                     2-px insertion line can be positioned absolutely against
+                     the rendered rows without disturbing the layout. The
+                     Canvas sits above the ItemsView in z-order and is
+                     hit-test-invisible so drag events still reach the
+                     StackPanel's DragOver/Drop handlers. -->
+                <Grid x:Name="RowsHostCell">
+                    <ItemsView
+                        x:Name="RowsItemsView"
+                        SelectionMode="Extended"
+                        KeyDown="OnRowsKeyDown"
+                        SelectionChanged="RowsItemsView_SelectionChanged">
+                        <ItemsView.Layout>
+                            <StackLayout Orientation="Vertical" Spacing="0"/>
+                        </ItemsView.Layout>
+                        <ItemsView.ItemTemplate>
+                            <!-- The RowTemplate is the per-track template. The selector's
+                                 GroupHeaderTemplate is plugged in from code-behind whenever
+                                 the GroupHeaderTemplate DP changes (see ApplyGroupHeaderTemplate).
+                                 That keeps each consumer page's existing header markup
+                                 unchanged while letting ItemsView render headers inline. -->
+                            <local:TrackDataGridItemTemplateSelector x:Name="ItemTemplateSelector">
+                                <local:TrackDataGridItemTemplateSelector.RowTemplate>
+                                    <DataTemplate x:DataType="contracts:ITrackItem">
+                                        <ItemContainer
+                                            Padding="0"
+                                            Margin="0,4"
+                                            HorizontalContentAlignment="Stretch"
+                                            VerticalContentAlignment="Stretch"
+                                            MinHeight="0">
+                                            <track:TrackItem
+                                                Track="{x:Bind}"
+                                                Mode="Row"
+                                                Loaded="RowsItemsViewTrackItem_Loaded"
+                                                Unloaded="RowsItemsViewTrackItem_Unloaded"/>
+                                        </ItemContainer>
+                                    </DataTemplate>
+                                </local:TrackDataGridItemTemplateSelector.RowTemplate>
+                            </local:TrackDataGridItemTemplateSelector>
+                        </ItemsView.ItemTemplate>
+                    </ItemsView>
+
+                    <!-- Drop-indicator pool. Rectangles are allocated lazily in
+                         code-behind (one per realized row + one for the end-of-list
+                         anchor), parked at Opacity=0 in the rest state, and animated
+                         via UIElement.OpacityTransition + ScaleTransition on every
+                         DragOver tick. Keeping Visibility="Visible" and using opacity
+                         for show/hide is intentional — Visibility=Collapsed kills the
+                         implicit transition because the element drops out of the
+                         visual tree. -->
+                    <Canvas x:Name="DropIndicatorOverlay"
+                            IsHitTestVisible="False"/>
+                </Grid>
 
                 <!-- Footer slot. Mirrors the pre-refactor ListView.Footer
                      pattern: lives inside the same StackPanel as the ItemsView

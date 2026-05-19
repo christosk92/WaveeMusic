@@ -225,6 +225,9 @@
   <data name="Controls_RightPanel_RightPanelView__SegmentedItem_2.Content" xml:space="preserve">
     <value>가사</value>
   </data>
+  <data name="Controls_RightPanel_RightPanelView__SegmentedItem_2_Transcript.Content" xml:space="preserve">
+    <value>대본</value>
+  </data>
   <data name="Controls_RightPanel_RightPanelView__SegmentedItem_3.Content" xml:space="preserve">
     <value>친구</value>
   </data>
@@ -242,6 +245,9 @@
   </data>
   <data name="Controls_RightPanel_RightPanelView__TextBlock_5.Text" xml:space="preserve">
     <value>이 트랙에 사용할 수 있는 가사가 없습니다</value>
+  </data>
+  <data name="Controls_RightPanel_RightPanelView__TextBlock_5_Transcript.Text" xml:space="preserve">
+    <value>이 에피소드에 사용할 수 있는 대본이 없습니다</value>
   </data>
   <data name="Controls_RightPanel_RightPanelView__TextBlock_7.Text" xml:space="preserve">
     <value>가사</value>
@@ -1000,6 +1006,15 @@ Aggressive</value>
   </data>
   <data name="TrackMenu_PlayNext" xml:space="preserve">
     <value>다음에 재생</value>
+  </data>
+  <data name="TrackMenu_AddToQueue" xml:space="preserve">
+    <value>대기열에 추가</value>
+  </data>
+  <data name="TrackMenu_PlayNext_Tooltip" xml:space="preserve">
+    <value>현재 트랙 바로 다음에 재생됩니다.</value>
+  </data>
+  <data name="TrackMenu_AddToQueue_Tooltip" xml:space="preserve">
+    <value>현재 목록이 끝난 후 재생됩니다.</value>
   </data>
   <data name="TrackMenu_Remove" xml:space="preserve">
     <value>제거</value>

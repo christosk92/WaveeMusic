@@ -3,14 +3,24 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Wavee.UI.Models;
+using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class AlbumsLibraryView : UserControl, IDisposable
+public sealed partial class AlbumsLibraryView : UserControl, IDisposable, IInPageFilterable
 {
+    // ── IInPageFilterable ───────────────────────────────────────────────
+    string IInPageFilterable.FilterQuery
+    {
+        get => ViewModel?.SearchQuery ?? string.Empty;
+        set { if (ViewModel is { } vm) vm.SearchQuery = value ?? string.Empty; }
+    }
+    string IInPageFilterable.FilterPlaceholder => "Filter albums…";
+    bool IInPageFilterable.CanFilter => ViewModel is not null;
+
     private const double NarrowLayoutBreakpoint = 650;
     private bool _hasInitializedLayoutMode;
     private bool _disposed;

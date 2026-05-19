@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Controls;
+using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Controls.TrackDataGrid;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Enums;
@@ -15,8 +16,17 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class YourEpisodesView : UserControl, IDisposable
+public sealed partial class YourEpisodesView : UserControl, IDisposable, IInPageFilterable
 {
+    // ── IInPageFilterable ───────────────────────────────────────────────
+    string IInPageFilterable.FilterQuery
+    {
+        get => ViewModel?.SearchQuery ?? string.Empty;
+        set { if (ViewModel is { } vm) vm.SearchQuery = value ?? string.Empty; }
+    }
+    string IInPageFilterable.FilterPlaceholder => "Filter episodes…";
+    bool IInPageFilterable.CanFilter => ViewModel is not null;
+
     private const double WideLayoutSplitterTotalWidth = 24;
     private const double DefaultShowsColumnWidth = 260;
     private const double DefaultEpisodesColumnWidth = 520;

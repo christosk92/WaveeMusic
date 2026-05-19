@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.Cards;
+using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Controls.PageHost;
 using Wavee.UI.WinUI.Controls.ShowEpisode;
 using Wavee.UI.WinUI.Controls.TabBar;
@@ -24,8 +25,17 @@ using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Views;
 
-public sealed partial class ShowPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IContentPageHost
+public sealed partial class ShowPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IContentPageHost, IInPageFilterable
 {
+    // ── IInPageFilterable ───────────────────────────────────────────────
+    string IInPageFilterable.FilterQuery
+    {
+        get => ViewModel?.SearchQuery ?? string.Empty;
+        set { if (ViewModel is { } vm) vm.SearchQuery = value ?? string.Empty; }
+    }
+    string IInPageFilterable.FilterPlaceholder => "Filter episodes…";
+    bool IInPageFilterable.CanFilter => ViewModel is not null;
+
     private readonly ILogger? _logger;
     private readonly INotificationService? _notificationService;
     private readonly ISettingsService _settings;
