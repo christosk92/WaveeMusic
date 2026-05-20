@@ -1,3 +1,0 @@
-﻿C:\Users\ChristosKarapasias\AppData\Local\Microsoft\WinGet\Packages\Microsoft.Sysinternals.VMMap_Microsoft.Winget.Source_8wekyb3d8bbwe\vmmap.exe
-C:\Users\ChristosKarapasias\AppData\Local\Microsoft\WinGet\Packages\Microsoft.Sysinternals.VMMap_Microsoft.Winget.Source_8wekyb3d8bbwe\vmmap64.exe
-C:\Users\ChristosKarapasias\AppData\Local\Microsoft\WinGet\Packages\Microsoft.Sysinternals.VMMap_Microsoft.Winget.Source_8wekyb3d8bbwe\vmmap64a.exe

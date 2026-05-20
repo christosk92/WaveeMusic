@@ -248,5 +248,6 @@ bodies/
 .codex-dotnet-home/
 .codex-dumps/
 .codex-har-inspect/
+.tmp-dumps/
 .dotnet-cli-home/
 .dotnet-home/
