@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Wavee.UI.WinUI.Controls.Omnibar;
@@ -296,6 +297,7 @@ public sealed partial class NavigationToolbar : UserControl
     public event TypedEventHandler<NavigationToolbar, object>? SearchSuggestionChosen;
     public event TypedEventHandler<NavigationToolbar, Wavee.UI.Contracts.SearchSuggestionItem>? SearchActionButtonClicked;
     public event TypedEventHandler<NavigationToolbar, RoutedEventArgs>? SearchRetryRequested;
+    public event TypedEventHandler<NavigationToolbar, RoutedEventArgs>? SidebarToggleRequested;
     public event TypedEventHandler<NavigationToolbar, RoutedEventArgs>? FriendsRequested;
 
     /// <summary>
@@ -313,6 +315,27 @@ public sealed partial class NavigationToolbar : UserControl
         Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("NavToolbar.Back");
         BackRequested?.Invoke(this, e);
     }
+
+    private void SidebarToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent("NavToolbar.SidebarToggle");
+        SidebarToggleRequested?.Invoke(this, e);
+    }
+
+    // Drive the hamburger AnimatedIcon's hover/press micro-animation. NavigationToolbar
+    // is a UserControl, so the child Button's CommonStates can't be reached by a VSM
+    // here — pointer handlers are the idiomatic way to set AnimatedIcon.State.
+    private void SidebarToggleButton_PointerEntered(object sender, PointerRoutedEventArgs e)
+        => AnimatedIcon.SetState(SidebarToggleAnimatedIcon, "PointerOver");
+
+    private void SidebarToggleButton_PointerExited(object sender, PointerRoutedEventArgs e)
+        => AnimatedIcon.SetState(SidebarToggleAnimatedIcon, "Normal");
+
+    private void SidebarToggleButton_PointerPressed(object sender, PointerRoutedEventArgs e)
+        => AnimatedIcon.SetState(SidebarToggleAnimatedIcon, "Pressed");
+
+    private void SidebarToggleButton_PointerReleased(object sender, PointerRoutedEventArgs e)
+        => AnimatedIcon.SetState(SidebarToggleAnimatedIcon, "PointerOver");
 
     private void ForwardButton_Click(object sender, RoutedEventArgs e)
     {

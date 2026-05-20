@@ -542,12 +542,21 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             items[i] = new LoadingRowConfig
             {
                 Index = i,
+                ShowIndexCell = template.ShowIndexCell,
+                ShowLikeCell = template.ShowLikeCell,
+                ShowArtCell = template.ShowArtCell,
+                ShowAlbumCell = template.ShowAlbumCell,
+                ShowAddedByCell = template.ShowAddedByCell,
+                ShowDateAddedCell = template.ShowDateAddedCell,
+                ShowPlayCountCell = template.ShowPlayCountCell,
+                ShowDurationCell = template.ShowDurationCell,
                 ArtColumnWidth = template.ArtColumnWidth,
                 AlbumColumnWidth = template.AlbumColumnWidth,
                 AddedByColumnWidth = template.AddedByColumnWidth,
                 DateAddedColumnWidth = template.DateAddedColumnWidth,
                 PlayCountColumnWidth = template.PlayCountColumnWidth,
                 DurationColumnWidth = template.DurationColumnWidth,
+                ContentMinWidth = template.ContentMinWidth,
                 TitleColumnMaxWidth = template.TitleColumnMaxWidth,
                 ShowArtistSubtitle = template.ShowArtistSubtitle,
             };
@@ -564,9 +573,25 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     /// </summary>
     private LoadingRowConfig BuildLoadingRowConfigTemplate()
     {
-        static GridLength WidthOrZero(TrackDataGridColumn? col)
-            => col is null ? new GridLength(0) : col.Length;
+        static bool IsVisible(TrackDataGridColumn? col)
+            => col is { IsVisible: true };
 
+        static GridLength WidthOrZero(TrackDataGridColumn? col)
+            => IsVisible(col) ? col.Length : new GridLength(0);
+
+        static double PixelWidthOrZero(TrackDataGridColumn? col)
+        {
+            if (!IsVisible(col))
+                return 0;
+
+            if (col.Length.IsAbsolute)
+                return col.Length.Value;
+
+            return col.MinLength.IsAbsolute ? col.MinLength.Value : 0;
+        }
+
+        var indexCol = Columns?.FirstOrDefault(c => c.Key == "Index");
+        var likeCol = Columns?.FirstOrDefault(c => c.Key == "Like");
         var artCol = Columns?.FirstOrDefault(c => c.Key == "TrackArt");
         var albumCol = Columns?.FirstOrDefault(c => c.Key == "Album");
         var addedByCol = Columns?.FirstOrDefault(c => c.Key == "AddedBy");
@@ -578,7 +603,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         // AddedBy is special: the column may be present in the set but hidden
         // by the page-level AddedByVisible toggle (non-collab playlists).
         // Mirrored from ConfigureItemsViewRow's ShowAddedByColumn calculation.
-        var addedByWidth = AddedByVisible && addedByCol is not null
+        var showAddedBy = AddedByVisible && IsVisible(addedByCol);
+        var addedByWidth = showAddedBy
             ? addedByCol.Length
             : new GridLength(0);
 
@@ -588,15 +614,40 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         var titleMax = titleCol?.MaxLength is { GridUnitType: GridUnitType.Pixel } px
             ? px.Value
             : double.PositiveInfinity;
+        var titleSkeletonWidth = double.IsFinite(titleMax)
+            ? titleMax
+            : titleCol?.MinLength is { GridUnitType: GridUnitType.Pixel } minTitle
+                ? minTitle.Value
+                : 120;
+
+        var contentMinWidth =
+            PixelWidthOrZero(indexCol) +
+            PixelWidthOrZero(likeCol) +
+            PixelWidthOrZero(artCol) +
+            titleSkeletonWidth +
+            PixelWidthOrZero(albumCol) +
+            (showAddedBy ? PixelWidthOrZero(addedByCol) : 0) +
+            PixelWidthOrZero(dateAddedCol) +
+            PixelWidthOrZero(playCountCol) +
+            PixelWidthOrZero(durationCol);
 
         return new LoadingRowConfig
         {
+            ShowIndexCell = IsVisible(indexCol),
+            ShowLikeCell = IsVisible(likeCol),
+            ShowArtCell = IsVisible(artCol),
+            ShowAlbumCell = IsVisible(albumCol),
+            ShowAddedByCell = showAddedBy,
+            ShowDateAddedCell = IsVisible(dateAddedCol),
+            ShowPlayCountCell = IsVisible(playCountCol),
+            ShowDurationCell = IsVisible(durationCol),
             ArtColumnWidth = WidthOrZero(artCol),
             AlbumColumnWidth = WidthOrZero(albumCol),
             AddedByColumnWidth = addedByWidth,
             DateAddedColumnWidth = WidthOrZero(dateAddedCol),
             PlayCountColumnWidth = WidthOrZero(playCountCol),
             DurationColumnWidth = WidthOrZero(durationCol),
+            ContentMinWidth = contentMinWidth,
             TitleColumnMaxWidth = titleMax,
             ShowArtistSubtitle = ResolveShowArtistColumn(),
         };

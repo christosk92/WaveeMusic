@@ -785,7 +785,10 @@ public sealed partial class SidebarItem : Control
 
 	private void SidebarDisplayModeChanged(SidebarDisplayMode oldValue, bool? useAnimationsOverride = null)
 	{
-		var useAnimations = useAnimationsOverride ?? oldValue != SidebarDisplayMode.Minimal;
+		// Display-mode changes can touch many realized rows at once. Keep those
+		// row state changes instant; user-initiated group expand/collapse still
+		// animates through UpdateExpansionState().
+		var useAnimations = useAnimationsOverride ?? false;
 		switch (DisplayMode)
 		{
 			case SidebarDisplayMode.Expanded:

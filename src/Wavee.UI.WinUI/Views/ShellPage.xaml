@@ -81,6 +81,7 @@
             SearchActionButtonClicked="NavToolbar_SearchActionButtonClicked"
             SearchSuggestions="{x:Bind ViewModel.Omnibar.SearchSuggestions, Mode=OneWay}"
             SuggestionGroups="{x:Bind ViewModel.Omnibar.SuggestionGroups, Mode=OneWay}"
+            SidebarToggleRequested="NavToolbar_SidebarToggleRequested"
             FriendsRequested="NavToolbar_FriendsRequested"
             SignInRequested="NavToolbar_SignInRequested"/>
 

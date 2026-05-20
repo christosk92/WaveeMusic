@@ -1,0 +1,8 @@
+﻿Loading core dump: C:\WAVEE\WaveeMusic\.tmp-dumps\ui-20260517-212245.dmp ...
+Statistics:
+          MT Count TotalSize Class Name
+7ffc4870e8b0     1        40 Wavee.UI.WinUI.DragDrop.DragStateService
+7ffc4890c1a0   461    14,752 Wavee.UI.WinUI.DragDrop.ManualDragAttachment+<>c__DisplayClass1_0
+7ffc4890c2c0   461    18,440 Wavee.UI.WinUI.DragDrop.ManualDragAttachment+<>c__DisplayClass5_0
+7ffc4890c038   461    22,128 Wavee.UI.WinUI.DragDrop.ManualDragAttachment+DragState
+Total 1,384 objects, 55,360 bytes

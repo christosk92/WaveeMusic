@@ -1,8 +1,8 @@
 ---
 guide: library-and-sync
 scope: Every code path that reads, writes, syncs, or persists the user's Spotify library — collection sync, playlist cache, dealer-driven incremental updates, save/pin/follow write paths, and every library/playlist UI surface that reads from the database.
-last_verified: 2026-05-16
-verified_by: read+grep over src/Wavee/Core/Library/Spotify, src/Wavee/Core/Playlists, src/Wavee/Core/Storage, src/Wavee/Connect/LibraryChangeManager.cs, and src/Wavee.UI.WinUI/Data/Contexts
+last_verified: 2026-05-20
+verified_by: read+grep over src/Wavee/Core/Library/Spotify, src/Wavee/Core/Playlists, src/Wavee/Core/Storage, src/Wavee/Connect/LibraryChangeManager.cs, src/Wavee.UI.WinUI/Data/Contexts, and LibraryPage cold-tab creation path
 root_index: AGENTS.md (Codex) and CLAUDE.md (Claude Code)
 ---
 

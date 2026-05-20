@@ -433,7 +433,8 @@
                             Padding="8,8"
                             CornerRadius="6"
                             Background="Transparent">
-                            <Grid ColumnSpacing="0">
+                            <Grid ColumnSpacing="0"
+                                  MinWidth="{x:Bind ContentMinWidth, Mode=OneTime}">
                                 <Grid.ColumnDefinitions>
                                     <!-- Index (always 52) -->
                                     <ColumnDefinition Width="52"/>
@@ -455,12 +456,25 @@
                                     <ColumnDefinition Width="{x:Bind DurationColumnWidth, Mode=OneTime}"/>
                                 </Grid.ColumnDefinitions>
 
+                                <toolkit:Shimmer Grid.Column="0" Width="14" Height="12"
+                                                 CornerRadius="3"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"
+                                                 Visibility="{x:Bind ShowIndexCell, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                                <toolkit:Shimmer Grid.Column="1" Width="14" Height="14"
+                                                 CornerRadius="7"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"
+                                                 Visibility="{x:Bind ShowLikeCell, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
                                 <!-- Track art shimmer — only paints when ArtColumnWidth > 0.
                                      The Width=34 / Height=34 is intrinsic; the column
                                      either reveals it (42 px column = 4 px margin each
                                      side) or collapses around it. -->
                                 <toolkit:Shimmer Grid.Column="2" Width="34" Height="34"
-                                                 CornerRadius="4" HorizontalAlignment="Left"/>
+                                                 CornerRadius="4" HorizontalAlignment="Left"
+                                                 Visibility="{x:Bind ShowArtCell, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                                 <!-- Title + (optional) artist subtitle.
                                      Margin matches TrackItem RowTitle Margin="12,0,8,0". -->
@@ -474,24 +488,29 @@
 
                                 <!-- Album cell skeleton (playlist / liked). 120×12 bar, left-aligned. -->
                                 <toolkit:Shimmer Grid.Column="4" Width="120" Height="12"
-                                                 HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                                 HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                 Visibility="{x:Bind ShowAlbumCell, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                                 <!-- AddedBy cell skeleton (collab playlists). 96×12 bar. -->
                                 <toolkit:Shimmer Grid.Column="5" Width="96" Height="12"
-                                                 HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                                 HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                 Visibility="{x:Bind ShowAddedByCell, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                                 <!-- DateAdded cell skeleton. 80×12 bar, left-aligned. -->
                                 <toolkit:Shimmer Grid.Column="6" Width="80" Height="12"
-                                                 HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                                 HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                 Visibility="{x:Bind ShowDateAddedCell, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                                 <!-- PlayCount cell skeleton (album). 60×12 bar, RIGHT-aligned
                                      to match TrackItem's PlayCount cell (no margin). -->
                                 <toolkit:Shimmer Grid.Column="7" Width="60" Height="12"
-                                                 HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                                 HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                 Visibility="{x:Bind ShowPlayCountCell, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                                 <!-- Duration cell skeleton. 36×12, RIGHT-aligned (no margin). -->
                                 <toolkit:Shimmer Grid.Column="8" Width="36" Height="12"
-                                                 HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                                 HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                 Visibility="{x:Bind ShowDurationCell, Mode=OneTime, Converter={StaticResource BoolToVisibilityConverter}}"/>
                             </Grid>
                         </Border>
                     </DataTemplate>

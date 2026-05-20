@@ -44,6 +44,7 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
     private string? _lastRestoredAlbumId;
     private int _layoutSettlingGeneration;
     private int _scrollResetGeneration;
+    private int _bindingsUpdateGeneration;
 
     public AlbumViewModel ViewModel { get; }
 
@@ -534,30 +535,32 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
             && string.Equals(_lastRestoredAlbumId, ViewModel.AlbumId, StringComparison.Ordinal);
         if (!sameAlbum)
         {
-            // Defer to the next dispatcher tick so DWM gets a paint frame
-            // between the page reattaching (still showing the freshly-armed
-            // shimmer / pre-update state) and the synchronous binding sweep
-            // that would otherwise hog the UI thread immediately. Without
-            // this defer, the user sees the page "just appear" fully rendered
-            // — PageHost.Navigate calls this sync, Bindings.Update runs sync,
-            // and the post-nav PageEntranceFade never gets a render frame to
-            // animate against. Update is still synchronous within the queued
-            // delegate; the trick is just yielding once between the nav swap
-            // and the heavy sweep.
-            DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
-            {
-                if (_isDisposed) return;
-                using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.bindingsUpdate"))
-                {
-                    Bindings?.Update();
-                }
-            });
+            // Defer so DWM gets a paint frame between page reattachment and
+            // the synchronous compiled-binding sweep.
+            ScheduleBindingsUpdate("restore");
         }
         // ResetForNewLoad + ViewModel.Activate + TryShowContentNow used to run here
         // too — but OnNavigatedTo → LoadNewContent fires next on the same dispatch
         // with the authoritative parameter and does the same Activate. Running both
         // caused two ApplyDetail dispatches against AlbumStore and two waves of
         // TrackItem materialization per navigation.
+    }
+
+    private void ScheduleBindingsUpdate(string reason)
+    {
+        var generation = ++_bindingsUpdateGeneration;
+        DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
+        {
+            if (_isDisposed || generation != _bindingsUpdateGeneration)
+                return;
+
+            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile($"page.album.bindingsUpdate.{reason}"))
+            {
+                Bindings?.Update();
+            }
+
+            RebuildHeaderArtistsText();
+        });
     }
 
     // Same-tab navigation between two albums reuses this Page instance and never
@@ -588,10 +591,11 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         _trimmedForNavigationCache = false;
         if (wasTrimmed)
         {
-            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.album.bindingsUpdate"))
-            {
-                Bindings?.Update();
-            }
+            // The current VM writes below can be missed while compiled x:Bind
+            // tracking is detached; one queued Update catches the graph up
+            // after navigation returns without charging the cost to
+            // page.album.onEntered.
+            ScheduleBindingsUpdate("load-trimmed");
         }
         System.Diagnostics.Debug.WriteLine(
             $"[diag-album] LoadNewContent.enter mode={mode} wasTrimmed={wasTrimmed} vm.AlbumId={ViewModel.AlbumId} " +

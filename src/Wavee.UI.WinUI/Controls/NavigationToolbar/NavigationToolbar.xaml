@@ -8,6 +8,7 @@
     xmlns:activityBell="using:Wavee.UI.WinUI.Controls.ActivityBell"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:animatedvisuals="using:Microsoft.UI.Xaml.Controls.AnimatedVisuals"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -53,6 +54,34 @@
             Grid.Column="0"
             Orientation="Horizontal"
             Spacing="2">
+
+            <!-- Sidebar toggle: plain NavigationView-style hamburger, aligned to the
+                 56 px sidebar rail below. -->
+            <Button
+                x:Name="SidebarToggleButton"
+                Style="{StaticResource NavigationButtonStyle}"
+                Width="48"
+                AutomationProperties.Name="Toggle sidebar"
+                ToolTipService.ToolTip="Toggle sidebar"
+                Click="SidebarToggleButton_Click"
+                PointerEntered="SidebarToggleButton_PointerEntered"
+                PointerExited="SidebarToggleButton_PointerExited"
+                PointerCanceled="SidebarToggleButton_PointerExited"
+                PointerCaptureLost="SidebarToggleButton_PointerExited"
+                PointerPressed="SidebarToggleButton_PointerPressed"
+                PointerReleased="SidebarToggleButton_PointerReleased">
+                <AnimatedIcon
+                    x:Name="SidebarToggleAnimatedIcon"
+                    Width="16"
+                    Height="16"
+                    AnimatedIcon.State="Normal"
+                    AutomationProperties.AccessibilityView="Raw">
+                    <animatedvisuals:AnimatedGlobalNavigationButtonVisualSource />
+                    <AnimatedIcon.FallbackIconSource>
+                        <FontIconSource FontSize="14" Glyph="&#xE700;" />
+                    </AnimatedIcon.FallbackIconSource>
+                </AnimatedIcon>
+            </Button>
 
             <!-- Back Button -->
             <Button x:Uid="Controls_NavigationToolbar_NavigationToolbar__Button_1"

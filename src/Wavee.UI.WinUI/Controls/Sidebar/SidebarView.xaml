@@ -137,8 +137,10 @@
 			PointerCanceled="SidebarResizer_PointerExited"
 			PointerEntered="SidebarResizer_PointerEntered"
 			PointerExited="SidebarResizer_PointerExited"
-			RenderTransform="{Binding ElementName=ContentRoot, Path=RenderTransform, Mode=OneWay}"
-			Visibility="{Binding ElementName=PaneRoot, Path=Visibility, Mode=OneWay}">
+			Visibility="{Binding ElementName=PaneColumnGrid, Path=Visibility, Mode=OneWay}">
+			<Border.RenderTransform>
+				<CompositeTransform x:Name="SidebarResizerTransform" />
+			</Border.RenderTransform>
 			<UserControl
 				x:Name="SidebarResizerControl"
 				IsTabStop="True"
@@ -152,6 +154,9 @@
 			Grid.Row="1"
 			Grid.Column="2"
 			Margin="0,0,8,0">
+			<Border.RenderTransform>
+				<CompositeTransform x:Name="ContentCardShadowHostTransform" />
+			</Border.RenderTransform>
 
 			<Border
 				x:Name="ContentCardBorder">
@@ -177,8 +182,9 @@
 				</VisualState>
 				<VisualState x:Name="Compact">
 					<VisualState.Setters>
-						<Setter Target="PaneColumnDefinition.Width" Value="{StaticResource SidebarCompactOpenPaneLength}" />
-						<!-- Hide the Header (sidebar player widget) in compact mode — too narrow to render. -->
+						<!-- Width is set in code-behind so Expanded/Compact can keep content
+						     motion independent from layout. -->
+						<!-- Hide the Header (sidebar player widget) in compact mode - too narrow to render. -->
 						<Setter Target="HeaderPresenter.Visibility" Value="Collapsed" />
 						<!-- A ~12 px MouseIndicator scrollbar dominates the 56 px rail and
 						     reads as "always shown". Hide it in compact; wheel/touch scroll

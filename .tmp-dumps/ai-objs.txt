@@ -1,0 +1,63 @@
+﻿Loading core dump: C:\WAVEE\WaveeMusic\.tmp-dumps\ui-20260517-212245.dmp ...
+Statistics:
+          MT Count TotalSize Class Name
+7ffc4bb04f58     1        24 ABI.Microsoft.Windows.AI.Text.LanguageModelResponseResultRcwFactoryAttribute
+7ffc4bae8fe0     1        24 System.AsyncInfoToTaskBridge<Microsoft.Windows.AI.Text.LanguageModel, System.VoidValueTypeParameter>+<>c
+7ffc4bae2998     1        24 ABI.Microsoft.Windows.AI.Text.LanguageModelRcwFactoryAttribute
+7ffc4bb05038     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult, WinRT.IObjectReference>
+7ffc4bb051c0     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult, WinRT.ObjectReferenceValue>
+7ffc4bb05568     1        64 System.Func<System.IntPtr, Microsoft.Windows.AI.Text.LanguageModelResponseResult>
+7ffc4bb05810     1        64 System.Func<System.Object, Microsoft.Windows.AI.Text.LanguageModelResponseResult>
+7ffc4bb05900     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult, System.IntPtr>
+7ffc4bb05d30     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult[], WinRT.MarshalInterfaceHelper<Microsoft.Windows.AI.Text.LanguageModelResponseResult>+MarshalerArray>
+7ffc4bb05fd8     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult[], System.Object>
+7ffc4bae2a78     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModel, WinRT.IObjectReference>
+7ffc4bae2c00     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModel, WinRT.ObjectReferenceValue>
+7ffc4bae2fa8     1        64 System.Func<System.IntPtr, Microsoft.Windows.AI.Text.LanguageModel>
+7ffc4bae3250     1        64 System.Func<System.Object, Microsoft.Windows.AI.Text.LanguageModel>
+7ffc4bae3340     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModel, System.IntPtr>
+7ffc4bae3770     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModel[], WinRT.MarshalInterfaceHelper<Microsoft.Windows.AI.Text.LanguageModel>+MarshalerArray>
+7ffc4bae3a18     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModel[], System.Object>
+7ffc4bae3b18     1        64 System.Func<System.Object, Microsoft.Windows.AI.Text.LanguageModel[]>
+7ffc4bae3ca0     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModel[], System.ValueTuple<System.Int32, System.IntPtr>>
+7ffc4bae3e28     1        64 System.Action<WinRT.MarshalInterfaceHelper<Microsoft.Windows.AI.Text.LanguageModel>+MarshalerArray>
+7ffc4bae41a8     1        64 System.Action<Microsoft.Windows.AI.Text.LanguageModel[], System.IntPtr>
+7ffc4bb060d8     1        64 System.Func<System.Object, Microsoft.Windows.AI.Text.LanguageModelResponseResult[]>
+7ffc4bb06260     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult[], System.ValueTuple<System.Int32, System.IntPtr>>
+7ffc4bb063e8     1        64 System.Action<WinRT.MarshalInterfaceHelper<Microsoft.Windows.AI.Text.LanguageModelResponseResult>+MarshalerArray>
+7ffc4bb06768     1        64 System.Action<Microsoft.Windows.AI.Text.LanguageModelResponseResult[], System.IntPtr>
+7ffc4bae90e0     1        64 System.Func<Windows.Foundation.IAsyncInfo, Microsoft.Windows.AI.Text.LanguageModel>
+7ffc4bb05468     2       128 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult, System.Object>
+7ffc4bae2ea8     2       128 System.Func<Microsoft.Windows.AI.Text.LanguageModel, System.Object>
+Total 30 objects, 1,800 bytes
+Statistics:
+          MT Count TotalSize Class Name
+7ffc4bb04f58     1        24 ABI.Microsoft.Windows.AI.Text.LanguageModelResponseResultRcwFactoryAttribute
+7ffc4bae8fe0     1        24 System.AsyncInfoToTaskBridge<Microsoft.Windows.AI.Text.LanguageModel, System.VoidValueTypeParameter>+<>c
+7ffc4bae2998     1        24 ABI.Microsoft.Windows.AI.Text.LanguageModelRcwFactoryAttribute
+7ffc4bb05038     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult, WinRT.IObjectReference>
+7ffc4bb051c0     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult, WinRT.ObjectReferenceValue>
+7ffc4bb05568     1        64 System.Func<System.IntPtr, Microsoft.Windows.AI.Text.LanguageModelResponseResult>
+7ffc4bb05810     1        64 System.Func<System.Object, Microsoft.Windows.AI.Text.LanguageModelResponseResult>
+7ffc4bb05900     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult, System.IntPtr>
+7ffc4bb05d30     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult[], WinRT.MarshalInterfaceHelper<Microsoft.Windows.AI.Text.LanguageModelResponseResult>+MarshalerArray>
+7ffc4bb05fd8     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult[], System.Object>
+7ffc4bae2a78     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModel, WinRT.IObjectReference>
+7ffc4bae2c00     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModel, WinRT.ObjectReferenceValue>
+7ffc4bae2fa8     1        64 System.Func<System.IntPtr, Microsoft.Windows.AI.Text.LanguageModel>
+7ffc4bae3250     1        64 System.Func<System.Object, Microsoft.Windows.AI.Text.LanguageModel>
+7ffc4bae3340     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModel, System.IntPtr>
+7ffc4bae3770     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModel[], WinRT.MarshalInterfaceHelper<Microsoft.Windows.AI.Text.LanguageModel>+MarshalerArray>
+7ffc4bae3a18     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModel[], System.Object>
+7ffc4bae3b18     1        64 System.Func<System.Object, Microsoft.Windows.AI.Text.LanguageModel[]>
+7ffc4bae3ca0     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModel[], System.ValueTuple<System.Int32, System.IntPtr>>
+7ffc4bae3e28     1        64 System.Action<WinRT.MarshalInterfaceHelper<Microsoft.Windows.AI.Text.LanguageModel>+MarshalerArray>
+7ffc4bae41a8     1        64 System.Action<Microsoft.Windows.AI.Text.LanguageModel[], System.IntPtr>
+7ffc4bb060d8     1        64 System.Func<System.Object, Microsoft.Windows.AI.Text.LanguageModelResponseResult[]>
+7ffc4bb06260     1        64 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult[], System.ValueTuple<System.Int32, System.IntPtr>>
+7ffc4bb063e8     1        64 System.Action<WinRT.MarshalInterfaceHelper<Microsoft.Windows.AI.Text.LanguageModelResponseResult>+MarshalerArray>
+7ffc4bb06768     1        64 System.Action<Microsoft.Windows.AI.Text.LanguageModelResponseResult[], System.IntPtr>
+7ffc4bae90e0     1        64 System.Func<Windows.Foundation.IAsyncInfo, Microsoft.Windows.AI.Text.LanguageModel>
+7ffc4bb05468     2       128 System.Func<Microsoft.Windows.AI.Text.LanguageModelResponseResult, System.Object>
+7ffc4bae2ea8     2       128 System.Func<Microsoft.Windows.AI.Text.LanguageModel, System.Object>
+Total 30 objects, 1,800 bytes

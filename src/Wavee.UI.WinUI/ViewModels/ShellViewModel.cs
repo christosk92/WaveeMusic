@@ -707,6 +707,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _appModel.IsSidebarPaneOpen = value;
     }
 
+    public void ToggleSidebar()
+    {
+        IsSidebarPaneOpen = false;
+        SidebarDisplayMode = SidebarDisplayMode == SidebarDisplayMode.Expanded
+            ? SidebarDisplayMode.Compact
+            : SidebarDisplayMode.Expanded;
+    }
+
     partial void OnRightPanelWidthChanged(double value)
     {
         _appModel.RightPanelWidth = value;

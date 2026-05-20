@@ -13,6 +13,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Markup;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Windows.Foundation;
 using Windows.System;
 using Windows.UI.Core;
@@ -22,7 +24,8 @@ namespace Wavee.UI.WinUI.Controls.Sidebar;
 [ContentProperty(Name = "InnerContent")]
 public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 {
-	private const double COMPACT_MAX_WIDTH = 200;
+	private const double MinExpandedPaneWidth = 200;
+	private const double CompactPaneLength = 56; // == SidebarCompactOpenPaneLength resource
 
 	public event EventHandler<ItemInvokedEventArgs>? ItemInvoked;
 	public event EventHandler<ItemContextInvokedArgs>? ItemContextInvoked;
@@ -36,6 +39,8 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 	private bool draggingSidebarResizer;
 	private double preManipulationSidebarWidth = 0;
 	private DragStateService? _dragStateService;
+	private Storyboard? _contentOffsetStoryboard;
+	private bool _suppressPaneTransition = true; // first layout / startup is always instant
 
 	public SidebarView()
 	{
@@ -95,18 +100,23 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 
 	private void UpdateDisplayMode()
 	{
+		// Discrete toggles get compositor-friendly content motion. Startup and
+		// live resize-drag stay instant.
+		bool animate = !_suppressPaneTransition
+			&& !draggingSidebarResizer
+			&& Visibility == Visibility.Visible;
+
 		switch (DisplayMode)
 		{
 			case SidebarDisplayMode.Compact:
 				VisualStateManager.GoToState(this, "Compact", true);
+				ApplyPaneWidth(CompactPaneLength, animate);
 				return;
 			case SidebarDisplayMode.Expanded:
 				VisualStateManager.GoToState(this, "Expanded", true);
-				// The "Expanded" visual state is empty — it relies on PaneColumnDefinition
-				// reverting to its XAML-default width (240). For users whose saved
-				// OpenPaneLength is something else (e.g. resized to 320), re-apply it
-				// here so the restored width matches their last expanded session.
-				UpdateOpenPaneLengthColumn();
+				// For users whose saved OpenPaneLength is something other than the
+				// default (e.g. resized to 320), restore their last width.
+				ApplyPaneWidth(OpenPaneLength, animate);
 				return;
 			case SidebarDisplayMode.Minimal:
 				IsPaneOpen = false;
@@ -115,26 +125,86 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 		}
 	}
 
+	private void ApplyPaneWidth(double targetWidth, bool animate)
+	{
+		double currentWidth = PaneColumnDefinition.Width.Value;
+		if (double.IsNaN(currentWidth) || currentWidth <= 0)
+			currentWidth = PaneColumnGrid.ActualWidth;
+
+		double currentOffset = ContentCardShadowHostTransform.TranslateX;
+		double fromOffset = currentWidth + currentOffset - targetWidth;
+
+		_contentOffsetStoryboard?.Stop();
+		PaneColumnDefinition.Width = new GridLength(targetWidth);
+
+		if (!animate || Math.Abs(fromOffset) < 0.5)
+		{
+			ResetContentOffset();
+			return;
+		}
+
+		AnimateContentOffsetFrom(fromOffset);
+	}
+
+	private void AnimateContentOffsetFrom(double fromOffset)
+	{
+		ContentCardShadowHostTransform.TranslateX = fromOffset;
+		SidebarResizerTransform.TranslateX = fromOffset;
+
+		var storyboard = new Storyboard();
+		storyboard.Children.Add(CreateOffsetAnimation(ContentCardShadowHostTransform, fromOffset));
+		storyboard.Children.Add(CreateOffsetAnimation(SidebarResizerTransform, fromOffset));
+		storyboard.Completed += (_, _) =>
+		{
+			if (!ReferenceEquals(_contentOffsetStoryboard, storyboard))
+				return;
+
+			_contentOffsetStoryboard = null;
+			ResetContentOffset();
+		};
+
+		_contentOffsetStoryboard = storyboard;
+		storyboard.Begin();
+	}
+
+	private static DoubleAnimationUsingKeyFrames CreateOffsetAnimation(CompositeTransform target, double fromOffset)
+	{
+		var anim = new DoubleAnimationUsingKeyFrames();
+		anim.KeyFrames.Add(new DiscreteDoubleKeyFrame { KeyTime = TimeSpan.Zero, Value = fromOffset });
+		anim.KeyFrames.Add(new SplineDoubleKeyFrame
+		{
+			KeyTime = TimeSpan.FromMilliseconds(180),
+			Value = 0,
+			KeySpline = new KeySpline
+			{
+				ControlPoint1 = new Point(0.1, 0.9),
+				ControlPoint2 = new Point(0.2, 1.0),
+			},
+		});
+		Storyboard.SetTarget(anim, target);
+		Storyboard.SetTargetProperty(anim, nameof(CompositeTransform.TranslateX));
+		return anim;
+	}
+
+	private void ResetContentOffset()
+	{
+		ContentCardShadowHostTransform.TranslateX = 0;
+		SidebarResizerTransform.TranslateX = 0;
+	}
+
 	private void UpdateDisplayModeForPaneWidth(double newPaneWidth)
 	{
-		if (newPaneWidth < COMPACT_MAX_WIDTH)
-		{
-			DisplayMode = SidebarDisplayMode.Compact;
-		}
-		else if (newPaneWidth > COMPACT_MAX_WIDTH)
-		{
-			DisplayMode = SidebarDisplayMode.Expanded;
-			OpenPaneLength = newPaneWidth;
-		}
+		OpenPaneLength = Math.Max(newPaneWidth, MinExpandedPaneWidth);
+		DisplayMode = SidebarDisplayMode.Expanded;
 	}
 
 	private void UpdateOpenPaneLengthColumn()
 	{
 		// OpenPaneLength is the "last known expanded width". In Compact/Minimal,
-		// the visual state owns PaneColumnDefinition.Width (SidebarCompactOpenPaneLength
-		// = 56) — applying OpenPaneLength here would clobber the Compact-mode width
-		// and produce a wide pane with Compact-mode items inside, which is what users
-		// saw on app re-open after closing with the sidebar collapsed.
+		// the display-mode logic owns PaneColumnDefinition.Width; applying
+		// OpenPaneLength here would clobber the Compact-mode 56 px width and produce
+		// a wide pane with Compact-mode items inside, which is what users saw on app
+		// re-open after closing with the sidebar collapsed.
 		if (DisplayMode != SidebarDisplayMode.Expanded)
 			return;
 		PaneColumnDefinition.Width = new GridLength(OpenPaneLength);
@@ -142,10 +212,11 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 
 	private void SidebarView_Loaded(object sender, RoutedEventArgs e)
 	{
+		// The initial layout (incl. a persisted Compact or custom-width restore)
+		// must be applied instantly.
+		_suppressPaneTransition = true;
 		UpdateDisplayMode();
-		// UpdateOpenPaneLengthColumn is invoked from UpdateDisplayMode when the
-		// mode is Expanded; for Compact/Minimal we deliberately leave the visual
-		// state's width in place.
+		ResetContentOffset();
 		PaneColumnGrid.Translation = new System.Numerics.Vector3(0, 0, 32);
 
 		_dragStateService = Ioc.Default.GetService<DragStateService>();
@@ -153,6 +224,9 @@ public sealed partial class SidebarView : UserControl, INotifyPropertyChanged
 			_dragStateService.DragStateChanged += OnDragStateChanged;
 
 		Unloaded += SidebarView_Unloaded;
+
+		// Arm the transition - every later display-mode toggle now gets motion.
+		_suppressPaneTransition = false;
 	}
 
 	private void SidebarView_Unloaded(object sender, RoutedEventArgs e)

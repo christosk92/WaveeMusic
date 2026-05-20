@@ -1,4 +1,5 @@
 ﻿using System;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -53,6 +54,7 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
     private LibraryPageSleepState? _pendingSleepState;
     private bool _trimmedForNavigationCache;
     private string? _trimmedSelectedTabKey;
+    private int _deferredShowTabGeneration;
 
     public LibraryPage()
     {
@@ -97,7 +99,7 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
         SegmentedItem itemToSelect = GetItemForTabKey(tabName);
 
         SetSelectedItemSilently(itemToSelect);
-        ShowTab(itemToSelect);
+        ShowTab(itemToSelect, deferColdCreation: false);
     }
 
     public void OnEntered(object? parameter, PageHostNavigationMode mode)
@@ -128,7 +130,7 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
         SetSelectedItemSilently(itemToSelect);
         _trimmedForNavigationCache = false;
         _trimmedSelectedTabKey = null;
-        ShowTab(itemToSelect);
+        ShowTab(itemToSelect, deferColdCreation: true);
         TryApplyPendingSleepState();
     }
 
@@ -176,7 +178,7 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
         var selectedItem = LibrarySelectorBar.SelectedItem as SegmentedItem
                            ?? GetItemForTabKey(_trimmedSelectedTabKey);
         SetSelectedItemSilently(selectedItem);
-        ShowTab(selectedItem);
+        ShowTab(selectedItem, deferColdCreation: true);
     }
 
     /// <summary>
@@ -185,7 +187,7 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
     /// sub-VM's LoadCommand via its constructor); subsequent accesses are a
     /// reference swap.
     /// </summary>
-    private void ShowTab(SegmentedItem selectedItem)
+    private void ShowTab(SegmentedItem selectedItem, bool deferColdCreation)
     {
         if (_disposed) return;
 
@@ -196,13 +198,31 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
             if (_deferredShowTabAttempts < MaxDeferredShowTabAttempts)
             {
                 _deferredShowTabAttempts++;
-                DispatcherQueue.TryEnqueue(() => ShowTab(selectedItem));
+                DispatcherQueue.TryEnqueue(() => ShowTab(selectedItem, deferColdCreation));
             }
 
             return;
         }
 
         _deferredShowTabAttempts = 0;
+        UpdateSidebarSelection(selectedItem);
+        UpdateCurrentTabTitle(selectedItem);
+        UpdateTabItemParameter(selectedItem);
+
+        if (deferColdCreation && !HasCachedViewFor(selectedItem))
+        {
+            var generation = ++_deferredShowTabGeneration;
+            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            {
+                if (_disposed || generation != _deferredShowTabGeneration)
+                    return;
+
+                ShowTab(selectedItem, deferColdCreation: false);
+            });
+            return;
+        }
+
+        _deferredShowTabGeneration++;
 
         UserControl view;
 
@@ -232,10 +252,17 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
             // another Ctrl+F press and will target the new child.
             Ioc.Default.GetService<Services.InPageFilterController>()?.Hide();
         }
+    }
 
-        UpdateSidebarSelection(selectedItem);
-        UpdateCurrentTabTitle(selectedItem);
-        UpdateTabItemParameter(selectedItem);
+    private bool HasCachedViewFor(SegmentedItem selectedItem)
+    {
+        if (selectedItem == ArtistsItem)
+            return _artistsView is not null;
+        if (selectedItem == LikedSongsItem)
+            return _likedSongsView is not null;
+        if (selectedItem == YourEpisodesItem)
+            return _yourEpisodesView is not null;
+        return _albumsView is not null;
     }
 
     private static string GetLocalizedTabTitle(SegmentedItem selectedItem, SegmentedItem albumsItem, SegmentedItem artistsItem, SegmentedItem likedSongsItem, SegmentedItem yourEpisodesItem)

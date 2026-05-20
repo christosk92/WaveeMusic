@@ -1,0 +1,71 @@
+﻿Loading core dump: C:\WAVEE\WaveeMusic\.tmp-dumps\ui-20260517-212245.dmp ...
+         Address               MT           Size
+    01a06f800028     7ffc473a2308        130,584 
+    01a079804000     7ffc473a2308         65,304 
+    01a080814bd0     7ffc473cdda0         76,280 
+    01a08084f838     7ffc473cdda0         77,386 
+    01a086036628     01a0651f7800         50,664 Free
+    01a086c1f690     01a0651f7800        289,344 Free
+    01a08705f818     7ffc48f942d0         65,560 
+    01a088800028     01a0651f7800      2,976,552 Free
+    01a088ad6b50     7ffc475d7458      1,048,600 
+    01a08a800028     01a0651f7800        262,232 Free
+    01a08a840080     7ffc473cdda0         88,322 
+    01a08a8559a8     7ffc473cdda0        106,984 
+    01a08a86fb90     01a0651f7800      1,573,008 Free
+    01a08a9efc20     7ffc475d9600      3,754,512 
+    01a08ad84650     7ffc475d7458      1,048,600 
+    01a08c800028     01a0651f7800      1,002,496 Free
+    01a08c8f4c28     7ffc473cb1a0        524,312 
+    01a08c974c60     7ffc475d7098      2,097,176 
+    01a090800048     7ffc47470510         97,200 
+    01a090817bf8     01a0651f7800        131,160 Free
+    01a090837c50     7ffc47470510         97,200 
+    01a09084f800     01a0651f7800        262,232 Free
+    01a09088f858     7ffc47dea9d0        262,160 
+    01a092800048     7ffc473cb1a0         98,352 
+    01a096800028     01a0651f7800        228,392 Free
+    01a096837c50     7ffc4a63a590         97,200 
+    01a098800048     7ffc48da9408        242,496 
+    01a09883b3a8     7ffc473cb1a0        262,168 
+    01a09887b3c0     01a0651f7800        233,464 Free
+    01a0988b43b8     7ffc474a2d20        438,550 
+    01a09891f4f0     7ffc475d0680      1,048,600 
+    01a098a1f508     01a0651f7800        214,136 Free
+    01a098a53980     7ffc47f05998        290,848 
+    01a098a9a9c0     7ffc473cb1a0        262,168 
+    01a09a800048     7ffc473cb1a0        262,168 
+    01a09a840080     7ffc475d0680      1,048,600 
+    01a09a9400b8     7ffc473cb1a0        262,168 
+    01a09a9800d0     01a0651f7800        655,504 Free
+    01a09aa20160     7ffc473cb1a0        625,772 
+    01a0a0800650     7ffc473cdda0         67,286 
+    01a0a180d388     7ffc48daa2f8         56,016 
+    01a0a1cedf40     7ffc473cdda0         76,280 
+    01a0a277a500     7ffc48f80458         65,560 
+    01a0a27a95c8     7ffc48f80458         65,560 
+    01a0a2c024b8     7ffc48dae070         56,016 
+    01a0a2c20c08     7ffc48dc4080         56,016 
+
+Statistics:
+          MT Count TotalSize Class Name
+7ffc48daa2f8     1    56,016 System.Collections.Generic.Dictionary<System.String, Wavee.Core.Storage.HotCache<Wavee.Core.Storage.Entities.AlbumCacheEntry>+CacheNode>+Entry[]
+7ffc48dae070     1    56,016 System.Collections.Generic.Dictionary<System.String, Wavee.Core.Storage.HotCache<Wavee.Core.Storage.Entities.EpisodeCacheEntry>+CacheNode>+Entry[]
+7ffc48dc4080     1    56,016 System.Collections.Generic.Dictionary<System.String, Wavee.Core.Storage.HotCache<Wavee.UI.Contracts.AlbumDetailResult>+CacheNode>+Entry[]
+7ffc48f942d0     1    65,560 System.Runtime.CompilerServices.ConditionalWeakTable<System.Object, ABI.WinRT.Interop.EventSource<Windows.Foundation.TypedEventHandler<Microsoft.UI.Xaml.FrameworkElement, System.Object>>>+Entry[]
+7ffc4a63a590     1    97,200 System.Collections.Generic.Dictionary<System.String, FontAwesome6.Svg.Shared.FontAwesomeSvgInformation>+Entry[]
+7ffc48f80458     2   131,120 System.Runtime.CompilerServices.ConditionalWeakTable<System.Object, ABI.WinRT.Interop.EventSource<Microsoft.UI.Xaml.RoutedEventHandler>>+Entry[]
+7ffc47470510     2   194,400 System.Collections.Generic.Dictionary<System.String, System.Object>+Entry[]
+7ffc473a2308     2   195,888 System.Object[]
+7ffc48da9408     1   242,496 System.Collections.Generic.Dictionary<System.String, Wavee.Core.Storage.HotCache<Wavee.Core.Storage.TrackCacheEntry>+CacheNode>+Entry[]
+7ffc47dea9d0     1   262,160 System.Runtime.InteropServices.GCHandleSet+Entry[]
+7ffc47f05998     1   290,848 System.Collections.Concurrent.ConcurrentDictionary<System.IntPtr, ABI.WinRT.Interop.EventSourceCache>+VolatileNode[]
+7ffc474a2d20     1   438,550 System.Byte[]
+7ffc473cdda0     6   492,538 System.String
+7ffc475d7098     1 2,097,176 System.Runtime.CompilerServices.ConditionalWeakTable<System.Object, System.Runtime.InteropServices.ComWrappers+NativeObjectWrapper>+Entry[]
+7ffc475d7458     2 2,097,200 System.Runtime.CompilerServices.ConditionalWeakTable<System.Object, System.Collections.Generic.List<System.Runtime.InteropServices.ComWrappers+ManagedObjectWrapperHolder>>+Entry[]
+7ffc475d0680     2 2,097,200 System.Runtime.CompilerServices.ConditionalWeakTable<System.Object, System.Runtime.InteropServices.ComWrappers+ManagedObjectWrapperHolder>+Entry[]
+7ffc473cb1a0     7 2,297,108 System.Int32[]
+7ffc475d9600     1 3,754,512 System.Collections.Generic.Dictionary<System.IntPtr, System.Runtime.InteropServices.GCHandle>+Entry[]
+01a0651f7800    12 7,879,184 Free
+Total 46 objects, 22,801,188 bytes

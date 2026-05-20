@@ -711,6 +711,11 @@ public sealed partial class ShellPage : UserControl
         NavigationHelpers.OpenHome(openInNewTab);
     }
 
+    private void NavToolbar_SidebarToggleRequested(NavigationToolbar sender, RoutedEventArgs args)
+    {
+        ViewModel.ToggleSidebar();
+    }
+
     private void NavToolbar_FriendsRequested(NavigationToolbar sender, RoutedEventArgs args)
     {
         WeakReferenceMessenger.Default.Send(new ToggleRightPanelMessage(RightPanelMode.FriendsActivity));

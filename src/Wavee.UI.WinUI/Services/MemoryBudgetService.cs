@@ -14,7 +14,8 @@ namespace Wavee.UI.WinUI.Services;
 /// Soft process memory budget monitor. This is intentionally not an OS hard
 /// cap: hard caps make native WinUI/WebView/media allocations fail abruptly.
 /// Instead, when the resident process footprint or managed heap crosses the
-/// budget, we clear stale warm caches. Private bytes are logged for leak
+/// budget, or the resident footprint moves well beyond the normal WinUI image
+/// cache band, we clear stale warm caches. Private bytes are logged for leak
 /// diagnostics, but are not used as the cleanup trigger: WinUI / DirectX heaps
 /// can keep committed address space for hours after the working set has fallen,
 /// and treating that as active pressure churns page and image caches without
@@ -37,6 +38,8 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
     // hard-clear loop on a transient spike.
     private const double EmergencyTriggerMultiple = 1.10;
     private const double ManagedHeapTriggerMultiple = 0.75;
+    private const double WorkingSetTriggerMultiple = 1.50;
+    private const long MinimumWorkingSetTriggerBytes = 1200L * 1024 * 1024;
 
     private readonly IReadOnlyList<ICleanableCache> _caches;
     private readonly ILogger<MemoryBudgetService>? _logger;
@@ -86,8 +89,9 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
         }
 
         _logger?.LogInformation(
-            "Memory budget monitor started. Budget={BudgetMb:F0}MB interval={Interval} osPressureHook={Hook}",
+            "Memory budget monitor started. ManagedBudget={BudgetMb:F0}MB workingSetTrigger={WorkingSetTriggerMb:F0}MB interval={Interval} osPressureHook={Hook}",
             _budgetBytes / 1048576.0,
+            WorkingSetTriggerBytes(_budgetBytes) / 1048576.0,
             CheckInterval,
             _memoryPressureHooked);
     }
@@ -213,7 +217,7 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
         // because the bytes never left). Other ICleanableCache implementations
         // already cleared via Tier-2's ClearAsync().
         var afterEsc = Capture();
-        if (PressureBytes(afterEsc) < _budgetBytes * EmergencyTriggerMultiple) return;
+        if (!IsEmergencyOverBudget(afterEsc, _budgetBytes)) return;
         if (now - _lastEmergencyAt < EmergencyCooldown) return;
 
         _lastEmergencyAt = now;
@@ -330,11 +334,15 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
     }
 
     private static bool IsOverBudget(MemoryBudgetSnapshot snapshot, long budgetBytes)
-        => snapshot.WorkingSetBytes >= budgetBytes
+        => snapshot.WorkingSetBytes >= WorkingSetTriggerBytes(budgetBytes)
            || snapshot.ManagedHeapBytes >= budgetBytes * ManagedHeapTriggerMultiple;
 
-    private static long PressureBytes(MemoryBudgetSnapshot snapshot)
-        => Math.Max(snapshot.WorkingSetBytes, snapshot.ManagedHeapBytes);
+    private static long WorkingSetTriggerBytes(long budgetBytes)
+        => Math.Max(MinimumWorkingSetTriggerBytes, (long)(budgetBytes * WorkingSetTriggerMultiple));
+
+    private static bool IsEmergencyOverBudget(MemoryBudgetSnapshot snapshot, long budgetBytes)
+        => snapshot.ManagedHeapBytes >= budgetBytes * ManagedHeapTriggerMultiple
+           || snapshot.WorkingSetBytes >= WorkingSetTriggerBytes(budgetBytes) * EmergencyTriggerMultiple;
 
     private void UnhookMemoryPressure()
     {

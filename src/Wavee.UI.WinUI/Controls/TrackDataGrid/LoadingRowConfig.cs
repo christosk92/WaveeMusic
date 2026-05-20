@@ -19,6 +19,15 @@ public sealed class LoadingRowConfig
 {
     public int Index { get; init; }
 
+    public bool ShowIndexCell { get; init; }
+    public bool ShowLikeCell { get; init; }
+    public bool ShowArtCell { get; init; }
+    public bool ShowAlbumCell { get; init; }
+    public bool ShowAddedByCell { get; init; }
+    public bool ShowDateAddedCell { get; init; }
+    public bool ShowPlayCountCell { get; init; }
+    public bool ShowDurationCell { get; init; }
+
     public GridLength ArtColumnWidth { get; init; }
     public GridLength AlbumColumnWidth { get; init; }
     public GridLength AddedByColumnWidth { get; init; }
@@ -26,6 +35,7 @@ public sealed class LoadingRowConfig
     public GridLength PlayCountColumnWidth { get; init; }
     public GridLength DurationColumnWidth { get; init; }
 
+    public double ContentMinWidth { get; init; }
     public double TitleColumnMaxWidth { get; init; }
 
     /// <summary>

@@ -1,0 +1,212 @@
+﻿Loading core dump: C:\WAVEE\WaveeMusic\.tmp-dumps\ui-20260517-212245.dmp ...
+
+DATAS = 0
+========================================
+Number of GC Heaps: 12
+----------------------------------------
+Heap 0 (000001a065147f20)
+Small object heap
+         segment            begin        allocated        committed allocated size     committed size    
+generation 0:
+    01e07b44ac28     01a0aa400028     01a0aa400028     01a0aa531000                    0x131000 (1249280)
+generation 1:
+    01e07b4432b0     01a080000028     01a080081f00     01a080176000 0x81ed8 (532184)   0x176000 (1531904)
+generation 2:
+    01e07b443140     01a07f800028     01a07fbb84e8     01a07fbef000 0x3b84c0 (3900608) 0x3ef000 (4124672)
+NonGC heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01a065678420     01a064ad0008     01a064ca5ae0     01a064cb0000 0x1d5ad8 (1923800) 0x1e0000 (1966080)
+Large object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b444b20     01a088800028     01a088bd6b68     01a088bf7000 0x3d6b40 (4025152) 0x3f7000 (4157440)
+Pinned object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b43ec40     01a067800028     01a067800028     01a067801000                    0x1000 (4096)     
+------------------------------
+Heap 1 (000001a06514f960)
+Small object heap
+         segment            begin        allocated        committed allocated size     committed size    
+generation 0:
+    01e07b443cc0     01a083800028     01a083806088     01a083c00000 0x6060 (24672)     0x400000 (4194304)
+generation 1:
+    01e07b4444a8     01a086400028     01a08640ee08     01a0865b9000 0xede0 (60896)     0x1b9000 (1806336)
+generation 2:
+    01e07b443420     01a080800028     01a0808fb890     01a08091c000 0xfb868 (1030248)  0x11c000 (1163264)
+    01e07b449300     01a0a1800028     01a0a1beedf0     01a0a1c00000 0x3eedc8 (4124104) 0x400000 (4194304)
+Large object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b4450e0     01a08a800028     01a08ae84668     01a08ae85000 0x684640 (6833728) 0x685000 (6836224)
+Pinned object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b43f200     01a069800028     01a069800028     01a069801000                    0x1000 (4096)     
+------------------------------
+Heap 2 (000001a065156b50)
+Small object heap
+         segment            begin        allocated        committed allocated size     committed size    
+generation 0:
+    01e07b44a5b0     01a0a8000028     01a0a80080a8     01a0a80e1000 0x8080 (32896)     0xe1000 (921600)  
+generation 1:
+    01e07b4439e0     01a082800028     01a08288e468     01a082b2f000 0x8e440 (582720)   0x32f000 (3338240)
+generation 2:
+    01e07b4437b8     01a081c00028     01a081fffbf8     01a082000000 0x3ffbd0 (4193232) 0x400000 (4194304)
+    01e07b443a98     01a082c00028     01a082c7da60     01a082d41000 0x7da38 (514616)   0x141000 (1314816)
+Large object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b4456a0     01a08c800028     01a08cb74c78     01a08cb75000 0x374c50 (3624016) 0x375000 (3624960)
+Pinned object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b43f7c0     01a06b800028     01a06b800028     01a06b801000                    0x1000 (4096)     
+------------------------------
+Heap 3 (000001a065163d50)
+Small object heap
+         segment            begin        allocated        committed allocated size     committed size    
+generation 0:
+    01e07b44a7d8     01a0a8c00028     01a0a8c080a8     01a0a8d21000 0x8080 (32896)     0x121000 (1183744)
+generation 1:
+    01e07b444280     01a085800028     01a085837098     01a085b4f000 0x37070 (225392)   0x34f000 (3469312)
+generation 2:
+    01e07b443928     01a082400028     01a0824577a8     01a082563000 0x57780 (358272)   0x163000 (1454080)
+    01e07b449528     01a0a2400028     01a0a27ffa30     01a0a2800000 0x3ffa08 (4192776) 0x400000 (4194304)
+Large object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b445c60     01a08e800028     01a08e800028     01a08e821000                    0x21000 (135168)  
+Pinned object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b43fd80     01a06d800028     01a06d800028     01a06d801000                    0x1000 (4096)     
+------------------------------
+Heap 4 (000001a06562aa80)
+Small object heap
+         segment            begin        allocated        committed allocated size     committed size    
+generation 0:
+    01e07b44a218     01a0a6c00028     01a0a6c8b088     01a0a6c91000 0x8b060 (569440)   0x91000 (593920)  
+generation 1:
+    01e07b4490d8     01a0a0c00028     01a0a0ca05d0     01a0a0ecd000 0xa05a8 (656808)   0x2cd000 (2936832)
+generation 2:
+    01e07b443590     01a081000028     01a0813fff90     01a081400000 0x3fff68 (4194152) 0x400000 (4194304)
+    01e07b443b50     01a083000028     01a083022c20     01a08313d000 0x22bf8 (142328)   0x13d000 (1298432)
+Large object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b446220     01a090800028     01a0908cf868     01a090930000 0xcf840 (849984)   0x130000 (1245184)
+Pinned object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b440340     01a06f800028     01a06f81fe40     01a06f820000 0x1fe18 (130584)   0x20000 (131072)  
+------------------------------
+Heap 5 (000001a065631c70)
+Small object heap
+         segment            begin        allocated        committed allocated size     committed size    
+generation 0:
+    01e07b44a0a8     01a0a6400028     01a0a640f6c8     01a0a6800000 0xf6a0 (63136)     0x400000 (4194304)
+generation 1:
+    01e07b443368     01a080400028     01a08047cdd8     01a080671000 0x7cdb0 (511408)   0x271000 (2560000)
+generation 2:
+    01e07b449190     01a0a1000028     01a0a1315d00     01a0a1368000 0x315cd8 (3235032) 0x368000 (3571712)
+Large object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b4467e0     01a092800028     01a092818078     01a092839000 0x18050 (98384)    0x39000 (233472)  
+Pinned object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b440900     01a071800028     01a071800028     01a071801000                    0x1000 (4096)     
+------------------------------
+Heap 6 (000001a0656e6040)
+Small object heap
+         segment            begin        allocated        committed allocated size     committed size    
+generation 0:
+    01e07b4448f8     01a087c00028     01a087c888a8     01a088000000 0x88880 (559232)   0x400000 (4194304)
+generation 1:
+    01e07b4498c0     01a0a3800028     01a0a385fae0     01a0a3897000 0x5fab8 (391864)   0x97000 (618496)  
+generation 2:
+    01e07b444338     01a085c00028     01a085d397d0     01a085d49000 0x1397a8 (1284008) 0x149000 (1347584)
+    01e07b449698     01a0a2c00028     01a0a2ffa6f0     01a0a3000000 0x3fa6c8 (4171464) 0x400000 (4194304)
+Large object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b446da0     01a094800028     01a094800028     01a094821000                    0x21000 (135168)  
+Pinned object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b440ec0     01a073800028     01a073800028     01a073801000                    0x1000 (4096)     
+------------------------------
+Heap 7 (000001a0656ed230)
+Small object heap
+         segment            begin        allocated        committed allocated size     committed size    
+generation 0:
+    01e07b443d78     01a083c00028     01a083c04068     01a083ef1000 0x4040 (16448)     0x2f1000 (3084288)
+generation 1:
+    01e07b443870     01a082000028     01a082097cb0     01a08232f000 0x97c88 (621704)   0x32f000 (3338240)
+generation 2:
+    01e07b4441c8     01a085400028     01a08541a198     01a085524000 0x1a170 (106864)   0x124000 (1196032)
+    01e07b4493b8     01a0a1c00028     01a0a1ffff90     01a0a2000000 0x3fff68 (4194152) 0x400000 (4194304)
+Large object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b447360     01a096800028     01a09684f800     01a096870000 0x4f7d8 (325592)   0x70000 (458752)  
+Pinned object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b441480     01a075800028     01a075800028     01a075801000                    0x1000 (4096)     
+------------------------------
+Heap 8 (000001a065ada040)
+Small object heap
+         segment            begin        allocated        committed allocated size     committed size    
+generation 0:
+    01e07b4431f8     01a07fc00028     01a07fc56588     01a07fea0000 0x56560 (353632)   0x2a0000 (2752512)
+generation 1:
+    01e07b4434d8     01a080c00028     01a080cbf850     01a080f16000 0xbf828 (784424)   0x316000 (3235840)
+generation 2:
+    01e07b4443f0     01a086000028     01a086042d18     01a086070000 0x42cf0 (273648)   0x70000 (458752)  
+    01e07b4495e0     01a0a2800028     01a0a2bfd4f0     01a0a2c00000 0x3fd4c8 (4183240) 0x400000 (4194304)
+Large object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b447920     01a098800028     01a098ada9d8     01a098adb000 0x2da9b0 (2992560) 0x2db000 (2994176)
+Pinned object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b441a40     01a077800028     01a07780a3d0     01a077811000 0xa3a8 (41896)     0x11000 (69632)   
+------------------------------
+Heap 9 (000001a065adf550)
+Small object heap
+         segment            begin        allocated        committed allocated size     committed size    
+generation 0:
+    01e07b449ff0     01a0a6000028     01a0a60228e8     01a0a6400000 0x228c0 (141504)   0x400000 (4194304)
+generation 1:
+    01e07b444618     01a086c00028     01a086c69358     01a086d0a000 0x69330 (430896)   0x10a000 (1089536)
+generation 2:
+    01e07b449808     01a0a3400028     01a0a37267c0     01a0a3741000 0x326798 (3303320) 0x341000 (3411968)
+Large object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b447ee0     01a09a800028     01a09aab8dd0     01a09aad9000 0x2b8da8 (2854312) 0x2d9000 (2985984)
+Pinned object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b442000     01a079800028     01a079813f18     01a079821000 0x13ef0 (81648)    0x21000 (135168)  
+------------------------------
+Heap 10 (000001a065ae6580)
+Small object heap
+         segment            begin        allocated        committed allocated size     committed size    
+generation 0:
+    01e07b449dc8     01a0a5400028     01a0a543a3c8     01a0a5800000 0x3a3a0 (238496)   0x400000 (4194304)
+generation 1:
+    01e07b444840     01a087800028     01a087856b58     01a087a6b000 0x56b30 (355120)   0x26b000 (2535424)
+generation 2:
+    01e07b4446d0     01a087000028     01a08710da10     01a08713b000 0x10d9e8 (1104360) 0x13b000 (1290240)
+    01e07b449020     01a0a0800028     01a0a0bf55b0     01a0a0c00000 0x3f5588 (4150664) 0x400000 (4194304)
+Large object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b4484a0     01a09c800028     01a09c800028     01a09c821000                    0x21000 (135168)  
+Pinned object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b4425c0     01a07b800028     01a07b800028     01a07b801000                    0x1000 (4096)     
+------------------------------
+Heap 11 (000001a065aee610)
+Small object heap
+         segment            begin        allocated        committed allocated size     committed size    
+generation 0:
+    01e07b443e30     01a084000028     01a08400bf68     01a084400000 0xbf40 (48960)     0x400000 (4194304)
+generation 1:
+    01e07b443700     01a081800028     01a081945be8     01a0819b3000 0x145bc0 (1334208) 0x1b3000 (1781760)
+generation 2:
+    01e07b443ee8     01a084400028     01a0845a3cd8     01a0845c4000 0x1a3cb0 (1719472) 0x1c4000 (1851392)
+    01e07b449750     01a0a3000028     01a0a33ff510     01a0a3400000 0x3ff4e8 (4191464) 0x400000 (4194304)
+Large object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b448a60     01a09e800028     01a09e800028     01a09e821000                    0x21000 (135168)  
+Pinned object heap
+         segment            begin        allocated        committed allocated size     committed size    
+    01e07b442b80     01a07d800028     01a07d800028     01a07d801000                    0x1000 (4096)     
+------------------------------
+GC Allocated Heap Size:    Size: 0x52e45d8 (86918616) bytes.
+GC Committed Heap Size:    Size: 0x8df2000 (148840448) bytes.
