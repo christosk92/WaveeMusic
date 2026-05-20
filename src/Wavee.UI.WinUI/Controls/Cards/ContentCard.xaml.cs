@@ -428,6 +428,85 @@ public sealed partial class ContentCard : UserControl
             CirclePlaceholder.Fill = new SolidColorBrush(color) { Opacity = 0.3 };
     }
 
+    /// <summary>
+    /// Flip the card between standard (art-on-top, title-below) and category-tile
+    /// (full-bleed colored block, title bottom-left, optional rotated artwork
+    /// bottom-right) presentation. Called by the IsCategoryTile DP changed
+    /// callback. The overlay subtree is x:Load=false so non-podcast surfaces
+    /// never pay the realization cost.
+    /// </summary>
+    private void ApplyCategoryTileMode()
+    {
+        if (CardRoot == null) return;
+
+        if (IsCategoryTile)
+        {
+            // Force the overlay subtree into the visual tree (x:Load=False until
+            // first access). The FindName side-effect of an x:Load element only
+            // triggers when something asks for it — touching the field is enough.
+            this.FindName(nameof(CategoryTileOverlay));
+
+            ContentPanel.Visibility = Visibility.Collapsed;
+            CardRoot.BorderThickness = new Microsoft.UI.Xaml.Thickness(0);
+            CardRoot.Padding = new Microsoft.UI.Xaml.Thickness(12);
+
+            if (CategoryTileOverlay != null)
+                CategoryTileOverlay.Visibility = Visibility.Visible;
+            if (CategoryTileTitle != null)
+                CategoryTileTitle.Text = Title ?? string.Empty;
+
+            ApplyCategoryTileBackground();
+            ApplyCategoryTileArt(ImageUrl);
+        }
+        else
+        {
+            ContentPanel.Visibility = Visibility.Visible;
+            CardRoot.BorderThickness = new Microsoft.UI.Xaml.Thickness(1);
+            CardRoot.Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
+            CardRoot.Padding = new Microsoft.UI.Xaml.Thickness(8, 8, 8, 12);
+            if (CategoryTileOverlay != null)
+                CategoryTileOverlay.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>
+    /// Paint <see cref="CardRoot"/> with the per-tile background colour when
+    /// in category-tile mode. Falls back to the accent text-fill brush when
+    /// PlaceholderColorHex is missing so the card is still visible.
+    /// </summary>
+    private void ApplyCategoryTileBackground()
+    {
+        if (CardRoot == null || !IsCategoryTile) return;
+
+        var hex = PlaceholderColorHex;
+        if (string.IsNullOrEmpty(hex))
+        {
+            CardRoot.Background = (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"];
+            return;
+        }
+
+        var color = ParseHexColor(hex);
+        CardRoot.Background = new SolidColorBrush(color);
+    }
+
+    /// <summary>
+    /// Push the artwork URL into the rotated bottom-right thumbnail when in
+    /// category-tile mode. When the URL is null/empty the slot collapses so
+    /// the tile reads as a pure colored block with just the title.
+    /// </summary>
+    private void ApplyCategoryTileArt(string? url)
+    {
+        if (CategoryTileArt == null) return;
+        if (string.IsNullOrEmpty(url))
+        {
+            CategoryTileArt.ImageUrl = null;
+            CategoryTileArt.Opacity = 0;
+            return;
+        }
+        CategoryTileArt.ImageUrl = url;
+        CategoryTileArt.Opacity = 1;
+    }
+
     private void UpdateImageMode()
     {
         if (SquareImageContainer == null) return; // template not applied yet

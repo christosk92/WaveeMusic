@@ -17,6 +17,13 @@ public sealed record PodcastBrowsePageDto
     public string Title { get; init; } = "";
     public string? Subtitle { get; init; }
     public string? HeaderColorHex { get; init; }
+    /// <summary>
+    /// Optional background image URL for the page header band, plumbed through
+    /// from Spotify's <c>browse.header.backgroundImage.sources[0].url</c>. The
+    /// root podcasts page returns null today; mapping the field now means the
+    /// header band lights up automatically when Spotify enables it.
+    /// </summary>
+    public string? BackgroundImageUrl { get; init; }
     public IReadOnlyList<PodcastBrowseSectionDto> Sections { get; init; } = [];
 
     public IEnumerable<PodcastBrowseSectionDto> ShowSections =>

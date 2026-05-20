@@ -567,6 +567,7 @@ public sealed class PodcastService : IPodcastService
             Title = LabelText(container.Header?.Title) ?? LabelText(card?.Title) ?? "Podcasts",
             Subtitle = LabelText(container.Header?.Subtitle),
             HeaderColorHex = container.Header?.Color?.Hex ?? card?.BackgroundColor?.Hex,
+            BackgroundImageUrl = PickBestBrowseImage(container.Header?.BackgroundImage?.Sources, preferredHeight: 720),
             Sections = sections
         };
     }

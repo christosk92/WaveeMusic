@@ -9,6 +9,9 @@
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:pb="using:Wavee.UI.WinUI.Controls.PodcastBrowse"
+    xmlns:pbmodels="using:Wavee.UI.WinUI.Models.PodcastBrowse"
     mc:Ignorable="d"
     Background="Transparent"
     Loaded="Page_Loaded"
@@ -18,82 +21,321 @@
     <UserControl.Resources>
         <ResourceDictionary>
             <converters:NullToVisibilityConverter x:Key="NullToCollapsedConverter"/>
+
+            <!-- Show-shelf template: section title + horizontal rail of cover-art
+                 ContentCards. Used for the typed `PodcastBrowseSection`s coming
+                 from the Charts page on root and from drilled show-bearing pages. -->
+            <DataTemplate x:Key="PodcastShowShelfTemplate"
+                          x:DataType="pbmodels:PodcastBrowseSection">
+                <StackPanel Spacing="10" Margin="0,0,0,28">
+                    <TextBlock Text="{x:Bind Title}"
+                               Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <ScrollViewer HorizontalScrollMode="Enabled"
+                                  HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollMode="Disabled"
+                                  VerticalScrollBarVisibility="Disabled">
+                        <ItemsRepeater ItemsSource="{x:Bind Items}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="16"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="pbmodels:PodcastBrowseTile">
+                                    <cards:ContentCard
+                                        Width="180"
+                                        Title="{x:Bind Title}"
+                                        Subtitle="{x:Bind Subtitle}"
+                                        ImageUrl="{x:Bind ImageUrl}"
+                                        PlaceholderColorHex="{x:Bind ColorHex}"
+                                        NavigationUri="{x:Bind NavigationUri}"
+                                        PlaceholderGlyph="&#xEC05;"
+                                        Tag="{x:Bind}"
+                                        Tapped="PodcastTile_Tapped"/>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollViewer>
+                </StackPanel>
+            </DataTemplate>
+
+            <!-- Category-tile shelf for drilled pages (BrowseGridSectionData with
+                 sub-page tiles). Renders colored category cards with the existing
+                 IsCategoryTile mode. Drilled pages with show-bearing sections
+                 fall through to PodcastShowShelfTemplate. -->
+            <DataTemplate x:Key="PodcastCategoryTileShelfTemplate"
+                          x:DataType="pbmodels:PodcastBrowseSection">
+                <StackPanel Spacing="10" Margin="0,0,0,28">
+                    <TextBlock Text="{x:Bind Title}"
+                               Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <ScrollViewer HorizontalScrollMode="Enabled"
+                                  HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollMode="Disabled"
+                                  VerticalScrollBarVisibility="Disabled">
+                        <ItemsRepeater ItemsSource="{x:Bind Items}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="14"/>
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="pbmodels:PodcastBrowseTile">
+                                    <cards:ContentCard
+                                        Width="180" Height="180"
+                                        IsCategoryTile="True"
+                                        Title="{x:Bind Title}"
+                                        ImageUrl="{x:Bind ImageUrl}"
+                                        PlaceholderColorHex="{x:Bind ColorHex}"
+                                        NavigationUri="{x:Bind NavigationUri}"
+                                        Tag="{x:Bind}"
+                                        Tapped="PodcastTile_Tapped"/>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollViewer>
+                </StackPanel>
+            </DataTemplate>
+
+            <!-- Show-grid template: section title + multi-row UniformGridLayout
+                 of cover-art ContentCards. Pagination is infinite-scroll —
+                 PodcastBrowsePage.xaml.cs hooks the outer ScrollView's
+                 ViewChanged and calls LoadMoreSectionAsync when the viewport
+                 reaches the bottom band. A row of shimmer placeholders below
+                 the grid is visible while IsLoadingMore is true so the user
+                 sees the fetch in flight without a layout jump. -->
+            <DataTemplate x:Key="PodcastShowGridTemplate"
+                          x:DataType="pbmodels:PodcastBrowseSection">
+                <StackPanel Spacing="14" Margin="0,0,0,32">
+                    <TextBlock Text="{x:Bind Title}"
+                               Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <ItemsRepeater ItemsSource="{x:Bind Items}">
+                        <ItemsRepeater.Layout>
+                            <UniformGridLayout MinItemWidth="180" MinItemHeight="260"
+                                               MinRowSpacing="16" MinColumnSpacing="16"
+                                               ItemsStretch="Uniform"/>
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="pbmodels:PodcastBrowseTile">
+                                <cards:ContentCard
+                                    Title="{x:Bind Title}"
+                                    Subtitle="{x:Bind Subtitle}"
+                                    ImageUrl="{x:Bind ImageUrl}"
+                                    PlaceholderColorHex="{x:Bind ColorHex}"
+                                    NavigationUri="{x:Bind NavigationUri}"
+                                    PlaceholderGlyph="&#xEC05;"
+                                    Tag="{x:Bind}"
+                                    Tapped="PodcastTile_Tapped"/>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+
+                    <!-- Shimmer footer: 5 ghost cards that match the live tile
+                         silhouette, only visible while a pagination request is
+                         in flight. Reserves bottom space so the auto-load
+                         trigger can re-fire after the new items land. -->
+                    <ItemsRepeater ItemsSource="{x:Bind PaginationShimmerSlots}"
+                                   Visibility="{x:Bind IsLoadingMore, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <ItemsRepeater.Layout>
+                            <UniformGridLayout MinItemWidth="180" MinItemHeight="260"
+                                               MinRowSpacing="16" MinColumnSpacing="16"
+                                               ItemsStretch="Uniform"/>
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Spacing="8" Padding="8,8,8,12">
+                                    <controls:Shimmer Height="140" CornerRadius="4"/>
+                                    <controls:Shimmer Width="120" Height="14" HorizontalAlignment="Left"/>
+                                    <controls:Shimmer Width="80" Height="12" HorizontalAlignment="Left"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </DataTemplate>
+
+            <!-- CTA pill bar (BrowseRelatedSectionData). -->
+            <DataTemplate x:Key="PodcastCtaShelfTemplate"
+                          x:DataType="pbmodels:PodcastBrowseSection">
+                <ItemsRepeater ItemsSource="{x:Bind Items}"
+                               Margin="0,0,0,24">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Orientation="Horizontal" Spacing="8"/>
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="pbmodels:PodcastBrowseTile">
+                            <Button Content="{x:Bind Title}"
+                                    Tag="{x:Bind}"
+                                    Click="PodcastCta_Click"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    BorderThickness="0"
+                                    CornerRadius="14"
+                                    Padding="14,6"/>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </DataTemplate>
+
+            <pb:PodcastBrowseSectionTemplateSelector
+                x:Key="PodcastSectionTemplateSelector"
+                ArtworkRailTemplate="{StaticResource PodcastShowShelfTemplate}"
+                CtaTemplate="{StaticResource PodcastCtaShelfTemplate}"
+                RankedListTemplate="{StaticResource PodcastShowShelfTemplate}"
+                PlainListTemplate="{StaticResource PodcastShowShelfTemplate}"
+                GridTemplate="{StaticResource PodcastShowGridTemplate}"/>
+
+            <!-- Pill-chip template for the chip rail. A Button hosting two
+                 mutually-exclusive Borders: accent surface (selected) vs subtle
+                 (default). Cheaper than a new BoolToBrush converter. -->
+            <DataTemplate x:Key="PodcastChipTemplate"
+                          x:DataType="pbmodels:PodcastBrowseCategoryItem">
+                <Button Tag="{x:Bind}"
+                        Click="ChipButton_Click"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0">
+                    <Grid>
+                        <Border CornerRadius="14"
+                                Padding="14,6"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                Visibility="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Text="{x:Bind Title}"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                        </Border>
+                        <Border CornerRadius="14"
+                                Padding="14,6"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                Visibility="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                            <TextBlock Text="{x:Bind Title}"
+                                       FontSize="13"/>
+                        </Border>
+                    </Grid>
+                </Button>
+            </DataTemplate>
+
+            <!-- Grouped chip rail: one header + WrapPanel of chips per
+                 PodcastBrowseCategoryGroup. ItemsControl drives the chip
+                 collection; the WrapPanel handles flowing chips into multiple
+                 rows when the group's chip count exceeds one viewport row. -->
+            <DataTemplate x:Key="PodcastCategoryGroupTemplate"
+                          x:DataType="pbmodels:PodcastBrowseCategoryGroup">
+                <StackPanel Spacing="8" Margin="0,0,0,16">
+                    <TextBlock Text="{x:Bind Title, Converter={StaticResource StringToUpperConverter}}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               CharacterSpacing="80"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <ItemsControl
+                        ItemsSource="{x:Bind Chips}"
+                        ItemTemplate="{StaticResource PodcastChipTemplate}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <controls:WrapPanel Orientation="Horizontal"
+                                                    HorizontalSpacing="8"
+                                                    VerticalSpacing="8"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </StackPanel>
+            </DataTemplate>
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <ScrollView x:Name="RootScrollViewer"
-                HorizontalScrollMode="Disabled"
-                VerticalScrollBarVisibility="Auto"
-                Padding="0">
-        <Grid>
-            <!-- Real content. Initial Opacity=0 set in code-behind on Loaded so
-                 it doesn't paint until the crossfade reveals it; mirrors
-                 BrowsePage's shimmer pattern. Padding tracks the music browse
-                 page so HomeRegion-style sections (if ever added) bleed cleanly. -->
+    <Grid>
+        <ScrollView x:Name="ContentScrollViewer"
+                    HorizontalScrollMode="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    ViewChanged="ContentScrollViewer_ViewChanged">
             <StackPanel x:Name="ContentContainer"
-                        Padding="32,28,32,40"
-                        Spacing="0">
-                <TextBlock Text="PODCASTS"
-                           FontSize="11"
-                           FontWeight="SemiBold"
-                           Opacity="0.78"
-                           CharacterSpacing="140"
-                           Margin="0,0,0,4"/>
-                <TextBlock Text="{x:Bind ViewModel.Title, Mode=OneWay}"
-                           FontSize="44"
-                           FontWeight="SemiBold"
-                           LineHeight="48"
-                           Margin="0,0,0,0"/>
-                <TextBlock Text="{x:Bind ViewModel.Subtitle, Mode=OneWay}"
-                           Visibility="{x:Bind ViewModel.Subtitle, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"
-                           FontSize="14"
-                           Opacity="0.75"
-                           Margin="0,8,0,0"/>
+                        Padding="40,32,40,48"
+                        Spacing="32">
 
-                <!-- Section shelves. SectionShelvesView is the shared layout used
-                     by BrowsePage too; each HomeSection renders as title + a
-                     horizontal ShelfScroller of ContentCards bound to
-                     HomeSectionItem. -->
-                <shared:SectionShelvesView
-                    Sections="{x:Bind ViewModel.Sections, Mode=OneWay}"
-                    Margin="0,24,0,0"/>
+                <!-- Header band — breadcrumb (single rung at root) + restrained
+                     TitleLarge title + secondary-foreground subtitle. -->
+                <StackPanel Spacing="6">
+                    <BreadcrumbBar
+                        x:Name="HeaderBreadcrumb"
+                        ItemsSource="{x:Bind ViewModel.Breadcrumbs, Mode=OneWay}"
+                        ItemClicked="HeaderBreadcrumb_ItemClicked"
+                        Visibility="{x:Bind ViewModel.Breadcrumbs.Count, Mode=OneWay, Converter={StaticResource CountToVisibilityConverter}}">
+                        <BreadcrumbBar.ItemTemplate>
+                            <DataTemplate x:DataType="pbmodels:BreadcrumbItem">
+                                <TextBlock Text="{x:Bind Title}"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </DataTemplate>
+                        </BreadcrumbBar.ItemTemplate>
+                    </BreadcrumbBar>
+                    <TextBlock Text="{x:Bind ViewModel.Title, Mode=OneWay}"
+                               Style="{StaticResource TitleLargeTextBlockStyle}"/>
+                    <TextBlock Text="{x:Bind ViewModel.Subtitle, Mode=OneWay}"
+                               Visibility="{x:Bind ViewModel.Subtitle, Mode=OneWay, Converter={StaticResource NullToCollapsedConverter}}"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
 
-                <!-- Error state — sits inside ContentContainer so it shares the
-                     crossfade. Mutually exclusive with Sections; if HasError is
-                     true the VM clears Sections first. -->
+                <!-- Full-width hero filmstrip. Klankhuis carousel; halo backdrop,
+                     accent tint, autoplay all come from the existing wrapper. -->
+                <shared:HeroBandPanel
+                    x:Name="HeroBand"
+                    Slides="{x:Bind ViewModel.HeroSlides, Mode=OneWay}"
+                    Height="340"
+                    Visibility="{x:Bind ViewModel.HeroSlides.Count, Mode=OneWay, Converter={StaticResource CountToVisibilityConverter}}"/>
+
+                <!-- Chip rail — pinned "All" chip + grouped category chips. -->
+                <StackPanel Spacing="20">
+                    <!-- All chip lives outside the groups so it's always the
+                         first interactive element regardless of group order. -->
+                    <StackPanel Orientation="Horizontal" Spacing="0">
+                        <ContentControl
+                            ContentTemplate="{StaticResource PodcastChipTemplate}"
+                            Content="{x:Bind ViewModel.AllCategoriesChip}"/>
+                    </StackPanel>
+
+                    <ItemsRepeater
+                        ItemsSource="{x:Bind ViewModel.CategoryGroups, Mode=OneWay}"
+                        ItemTemplate="{StaticResource PodcastCategoryGroupTemplate}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Orientation="Vertical" Spacing="4"/>
+                        </ItemsRepeater.Layout>
+                    </ItemsRepeater>
+                </StackPanel>
+
+                <!-- Typed content shelves. -->
+                <ItemsControl
+                    ItemsSource="{x:Bind ViewModel.ContentShelves, Mode=OneWay}"
+                    ItemTemplateSelector="{StaticResource PodcastSectionTemplateSelector}"/>
+
+                <!-- Error fallback. -->
                 <StackPanel Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                             HorizontalAlignment="Center"
-                            Margin="0,40,0,40"
+                            Margin="0,16,0,16"
                             Spacing="8">
                     <TextBlock Text="Couldn't load this topic"
-                               FontSize="16"
-                               FontWeight="SemiBold"
+                               Style="{StaticResource SubtitleTextBlockStyle}"
                                HorizontalAlignment="Center"/>
                     <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-                               FontSize="13"
-                               Opacity="0.7"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Center"
                                TextWrapping="Wrap"
                                MaxWidth="480"/>
                 </StackPanel>
             </StackPanel>
+        </ScrollView>
 
-            <!-- Loading skeleton — overlays the same vertical real estate as
-                 ContentContainer. Padding mirrors the content StackPanel so
-                 there's no edge jump on swap. Crossfaded out + Children cleared
-                 in code-behind once data arrives. -->
-            <StackPanel x:Name="ShimmerContainer"
-                        Padding="32,28,32,40"
-                        Spacing="0"
-                        IsHitTestVisible="False">
-                <controls:Shimmer Width="80" Height="11" CornerRadius="3"
-                                  HorizontalAlignment="Left"
-                                  Margin="0,0,0,4"/>
-                <controls:Shimmer Width="280" Height="44" CornerRadius="6"
-                                  HorizontalAlignment="Left"
-                                  Margin="0,0,0,24"/>
-                <shared:SectionShelvesShimmer/>
-            </StackPanel>
-        </Grid>
-    </ScrollView>
+        <!-- Loading shimmer — overlays the page during first fetch. -->
+        <StackPanel x:Name="ShimmerContainer"
+                    Padding="40,32,40,48"
+                    Spacing="20"
+                    IsHitTestVisible="False">
+            <controls:Shimmer Width="280" Height="34" CornerRadius="4"
+                              HorizontalAlignment="Left"/>
+            <controls:Shimmer Height="320" HorizontalAlignment="Stretch" CornerRadius="14"
+                              Margin="0,12,0,0"/>
+            <controls:Shimmer Width="380" Height="22" CornerRadius="4"
+                              HorizontalAlignment="Left"
+                              Margin="0,8,0,0"/>
+            <controls:Shimmer Height="180" HorizontalAlignment="Stretch" CornerRadius="10"/>
+        </StackPanel>
+    </Grid>
 </UserControl>

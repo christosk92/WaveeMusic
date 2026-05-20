@@ -90,7 +90,7 @@
              model. -->
         <DataTemplate x:Key="PodcastEpisodeHeaderTemplate">
             <ItemContainer
-                CanUserSelect="False"
+                IsHitTestVisible="False"
                 IsTabStop="False"
                 HorizontalContentAlignment="Stretch"
                 VerticalContentAlignment="Stretch">

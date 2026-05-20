@@ -79,6 +79,17 @@ public sealed partial class ContentCard
         DependencyProperty.Register(nameof(AspectMode), typeof(CardAspectMode), typeof(ContentCard),
             new PropertyMetadata(CardAspectMode.Square, OnAspectModeChanged));
 
+    /// <summary>
+    /// Spotify-style "category tile" mode. Flips the card from the standard
+    /// art-on-top / title-below treatment to a full-bleed colored block with a
+    /// bold bottom-left title and an optional small rotated artwork pinned to
+    /// the bottom-right. The colored surface comes from <see cref="PlaceholderColorHex"/>.
+    /// Default false — every existing call site keeps the original layout.
+    /// </summary>
+    public static readonly DependencyProperty IsCategoryTileProperty =
+        DependencyProperty.Register(nameof(IsCategoryTile), typeof(bool), typeof(ContentCard),
+            new PropertyMetadata(false, OnIsCategoryTileChanged));
+
     public string? ImageUrl
     {
         get => (string?)GetValue(ImageUrlProperty);
@@ -142,6 +153,12 @@ public sealed partial class ContentCard
     {
         get => (CardAspectMode)GetValue(AspectModeProperty);
         set => SetValue(AspectModeProperty, value);
+    }
+
+    public bool IsCategoryTile
+    {
+        get => (bool)GetValue(IsCategoryTileProperty);
+        set => SetValue(IsCategoryTileProperty, value);
     }
 
     // ── Navigation DPs ───────────────────────────────────────────────────────
@@ -355,6 +372,12 @@ public sealed partial class ContentCard
     {
         var card = (ContentCard)d;
         var url = e.NewValue as string;
+
+        // Category-tile mode owns its own bottom-right art slot; route the
+        // URL there in addition to (or in place of) the standard square host.
+        if (card.IsCategoryTile)
+            card.ApplyCategoryTileArt(url);
+
         if (card.HasLoadedImageFor(url))
             return;
 
@@ -378,7 +401,10 @@ public sealed partial class ContentCard
     private static void OnTitleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var card = (ContentCard)d;
-        card.TitleText.Text = e.NewValue as string ?? "";
+        var value = e.NewValue as string ?? "";
+        card.TitleText.Text = value;
+        if (card.CategoryTileTitle != null)
+            card.CategoryTileTitle.Text = value;
     }
 
     private static void OnSubtitleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -400,6 +426,14 @@ public sealed partial class ContentCard
     {
         var card = (ContentCard)d;
         card.ApplyPlaceholderColor(e.NewValue as string);
+        if (card.IsCategoryTile)
+            card.ApplyCategoryTileBackground();
+    }
+
+    private static void OnIsCategoryTileChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var card = (ContentCard)d;
+        card.ApplyCategoryTileMode();
     }
 
     private static void OnPlaceholderGlyphChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

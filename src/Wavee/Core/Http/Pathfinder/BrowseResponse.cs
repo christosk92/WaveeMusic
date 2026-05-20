@@ -78,6 +78,15 @@ public sealed class PathfinderBrowseHeader
 
     [JsonPropertyName("title")]
     public PathfinderBrowseLabel? Title { get; init; }
+
+    /// <summary>
+    /// Optional background image for the page header band. Spotify currently
+    /// returns null for podcast pages but the field is present in the response
+    /// shape; mapping it lets the header bloom an editorial image once Spotify
+    /// starts populating it.
+    /// </summary>
+    [JsonPropertyName("backgroundImage")]
+    public PathfinderBrowseCoverArt? BackgroundImage { get; init; }
 }
 
 public sealed class PathfinderBrowseContainerData

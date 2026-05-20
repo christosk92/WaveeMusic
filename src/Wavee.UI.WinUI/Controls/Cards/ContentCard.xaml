@@ -237,6 +237,40 @@
                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                            FontSize="11"/>
             </StackPanel>
+
+            <!-- Category-tile overlay: realized only when IsCategoryTile=true. The
+                 standard ContentPanel is collapsed at that point and CardRoot's
+                 background is repainted with the per-tile hex color. Bottom-left
+                 carries a bold title (white on color); when an artwork URL is
+                 present, a small rotated square sits at the bottom-right corner.
+                 Mirrors Spotify's web "category card" treatment exactly. -->
+            <Grid x:Name="CategoryTileOverlay"
+                  x:Load="False"
+                  Visibility="Collapsed">
+                <imaging:CompositionImage x:Name="CategoryTileArt"
+                                           Width="80"
+                                           Height="80"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Bottom"
+                                           Stretch="UniformToFill"
+                                           Opacity="0"
+                                           RenderTransformOrigin="0.5,0.5">
+                    <imaging:CompositionImage.RenderTransform>
+                        <RotateTransform Angle="25"/>
+                    </imaging:CompositionImage.RenderTransform>
+                </imaging:CompositionImage>
+
+                <TextBlock x:Name="CategoryTileTitle"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Top"
+                           Margin="6,6,6,0"
+                           FontSize="20"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           TextWrapping="WrapWholeWords"
+                           MaxLines="2"
+                           TextTrimming="CharacterEllipsis"/>
+            </Grid>
         </Grid>
             <local:PendingBorderBeam x:Name="PendingBeam"
                                      x:Load="False"
