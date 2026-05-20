@@ -36,6 +36,8 @@ public sealed partial class ProfilePage : UserControl, ITabBarItemContent, INavi
     private bool _viewSubscriptionsAttached;
     private bool _dataSubscriptionsAttached;
     private bool _trimmedForNavigationCache;
+    private int _viewSubscriptionGeneration;
+    private int _restoreGeneration;
 
     public ProfileViewModel ViewModel { get; }
 
@@ -70,8 +72,33 @@ public sealed partial class ProfilePage : UserControl, ITabBarItemContent, INavi
 
     private void ProfilePage_Loaded(object sender, RoutedEventArgs e)
     {
+        _isNavigatingAway = false;
         AttachDataSubscriptions();
-        AttachViewSubscriptions();
+        ScheduleViewSubscriptions();
+    }
+
+    private void ScheduleViewSubscriptions()
+    {
+        if (DispatcherQueue is null)
+        {
+            AttachViewSubscriptions();
+            return;
+        }
+
+        var generation = ++_viewSubscriptionGeneration;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, async () =>
+        {
+            await Task.Yield();
+            if (_isDisposed ||
+                _isNavigatingAway ||
+                generation != _viewSubscriptionGeneration ||
+                !IsLoaded)
+            {
+                return;
+            }
+
+            AttachViewSubscriptions();
+        });
     }
 
     private void AttachViewSubscriptions()
@@ -125,6 +152,7 @@ public sealed partial class ProfilePage : UserControl, ITabBarItemContent, INavi
     private void DetachViewSubscriptions()
     {
         _isNavigatingAway = true;
+        _viewSubscriptionGeneration++;
         if (!_viewSubscriptionsAttached)
             return;
 
@@ -234,12 +262,39 @@ public sealed partial class ProfilePage : UserControl, ITabBarItemContent, INavi
 
         _trimmedForNavigationCache = false;
         _isNavigatingAway = false;
-        Bindings?.Update();
-        AttachDataSubscriptions();
-        ViewModel.ResumeFromHibernate();
-        UpdateProfileAvatar(ViewModel.ProfileImageUrl);
-        UpdateIdentityCardBackground();
-        _shyHeader?.Reset();
+        var generation = ++_restoreGeneration;
+        if (DispatcherQueue is null)
+        {
+            using (UiOperationProfiler.Instance?.Profile("page.profile.bindingsUpdate"))
+            {
+                Bindings?.Update();
+            }
+
+            AttachDataSubscriptions();
+            ViewModel.ResumeFromHibernate();
+            UpdateProfileAvatar(ViewModel.ProfileImageUrl);
+            UpdateIdentityCardBackground();
+            _shyHeader?.Reset();
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, async () =>
+        {
+            await Task.Yield();
+            if (_isDisposed || _isNavigatingAway || generation != _restoreGeneration)
+                return;
+
+            using (UiOperationProfiler.Instance?.Profile("page.profile.bindingsUpdate"))
+            {
+                Bindings?.Update();
+            }
+
+            AttachDataSubscriptions();
+            ViewModel.ResumeFromHibernate();
+            UpdateProfileAvatar(ViewModel.ProfileImageUrl);
+            UpdateIdentityCardBackground();
+            _shyHeader?.Reset();
+        });
     }
 
     // ── ViewModel events ──

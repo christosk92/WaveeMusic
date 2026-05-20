@@ -37,6 +37,7 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
     private bool _trimmedForNavigationCache;
     private bool _sectionsDetachedForNavigationCache;
     private bool _isNavigatedAway;
+    private bool _postNavigationResumeQueued;
     private HomePageSleepState? _pendingSleepState;
 
     private const int ScrollRestoreMaxAttempts = 12;
@@ -386,40 +387,16 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
             _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 
-    public async void OnEntered(object? parameter, PageHostNavigationMode mode)
+    public void OnEntered(object? parameter, PageHostNavigationMode mode)
     {
-        // Bracket only the synchronous prefix — the using-scope disposes BEFORE
-        // the first await so the per-nav stage time excludes async work that
-        // runs after navigation has returned.
         using (Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.home.onEntered"))
         {
             _isNavigatedAway = false;
             // The deferred trim (scheduled by TabBarItem on the previous leave)
             // is cancelled by TabBarItem itself in ContentHost_Navigated when
             // the user returns to this page — no per-page cancel needed here.
-
-            // Re-attach compiled x:Bind to VM.PropertyChanged before any rehydrate
-            // path runs. Idempotent; safe on first entry too.
-            using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.home.bindingsUpdate"))
-            {
-                Bindings?.Update();
-            }
-
-            var restoredFromTrim = _trimmedForNavigationCache;
-            if (restoredFromTrim)
-            {
-                RestoreFromNavigationCache();
-            }
-
-            // Rehydrate rebuilds Sections + Chips from the cached home-feed
-            // response — paired with HibernateForNavigation on OnLeaving.
-            // Cheap (no network); avoids holding the parsed tree while away.
-            // On Back/Forward cache-hit the visual tree is still live and
-            // re-running ResumeFromNavigationCache is wasted work; skip it.
-            if (mode == PageHostNavigationMode.New && !restoredFromTrim)
-                ViewModel.ResumeFromNavigationCache();
+            QueuePostNavigationResume(mode);
         }
-        await ViewModel.RefreshLocalSectionAsync();
     }
 
     public void OnLeaving()
@@ -466,19 +443,8 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         AttachSectionsRepeater();
         ViewModel.ResumeFromNavigationCache();
 
-        // Force a synchronous measure+arrange right after attach so:
-        //   (a) ScrollViewer.ExtentHeight reflects the real content height
-        //       before TryApplyPendingSleepState's ScrollToImmediate runs,
-        //       avoiding the empty-extent retry loop in RestoreScrollOffsetAsync.
-        //   (b) RegionsRepeater realizes containers for the current viewport
-        //       (scroll = 0 at this point) so the upper sections paint.
-        // Without this the cached page can render with the upper region slots
-        // devirtualized until the user nudges the scrollbar.
-        RegionsRepeater?.UpdateLayout();
-        ContentContainer?.UpdateLayout();
-
-        TryApplyPendingSleepState();
         QueueRestoredLayoutRefresh();
+        TryApplyPendingSleepState();
     }
 
     public void Dispose()
@@ -528,8 +494,6 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
         ResetRegionsLayoutCache();
         RegionsRepeater.ItemsSource = ViewModel.HeroAdapter.Regions;
         _sectionsDetachedForNavigationCache = false;
-        // The synchronous UpdateLayout in RestoreFromNavigationCache replaces
-        // the queued refresh; keeping both was a redundant double pass.
     }
 
     private void ResetRegionsLayoutCache()
@@ -539,6 +503,50 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
 
         RegionsRepeater?.InvalidateMeasure();
         ContentContainer?.InvalidateMeasure();
+    }
+
+    private void QueuePostNavigationResume(PageHostNavigationMode mode)
+    {
+        if (_postNavigationResumeQueued)
+            return;
+
+        var restoreFromTrim = _trimmedForNavigationCache;
+        var resumeFromCache = mode == PageHostNavigationMode.New && !restoreFromTrim;
+        _postNavigationResumeQueued = true;
+
+        if (!DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            {
+                _postNavigationResumeQueued = false;
+                if (_isDisposed || _isNavigatedAway)
+                    return;
+
+                using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.home.postNavigationResume"))
+                {
+                    // Re-attach compiled x:Bind after navigation has returned.
+                    // Existing values stay painted while tracking is restored.
+                    using (Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile("page.home.bindingsUpdate"))
+                    {
+                        Bindings?.Update();
+                    }
+
+                    if (restoreFromTrim)
+                    {
+                        RestoreFromNavigationCache();
+                    }
+                    else if (resumeFromCache)
+                    {
+                        // Rehydrate rebuilds Sections + Chips from the cached
+                        // home-feed response. Keep it outside the nav stage so
+                        // PageHost can complete the transition first.
+                        ViewModel.ResumeFromNavigationCache();
+                    }
+                }
+
+                _ = ViewModel.RefreshLocalSectionAsync();
+            }))
+        {
+            _postNavigationResumeQueued = false;
+        }
     }
 
     private void QueueRestoredLayoutRefresh()
@@ -553,8 +561,8 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
                 return;
 
             ResetRegionsLayoutCache();
-            RegionsRepeater?.UpdateLayout();
-            ContentContainer?.UpdateLayout();
+            RegionsRepeater?.InvalidateMeasure();
+            ContentContainer?.InvalidateMeasure();
         });
     }
 
@@ -632,14 +640,12 @@ public sealed partial class HomePage : UserControl, ITabBarItemContent, ITabSlee
             var target = Math.Clamp(offset, 0, maxOffset);
             ContentContainer.ScrollToImmediate(0, target);
 
-            // EffectiveViewport propagation to RegionsRepeater normally needs
-            // a layout cycle after ScrollToImmediate. Force it synchronously
-            // so SectionStackLayout's MeasureOverride re-runs with the new
-            // RealizationRect and realizes containers for the restored
-            // viewport position before paint — otherwise the user sees blank
-            // section slots until they nudge the scrollbar.
+            // EffectiveViewport propagation to RegionsRepeater needs a layout
+            // cycle after ScrollToImmediate. Invalidate and let XAML process it
+            // naturally; forcing UpdateLayout here made home resume block the
+            // UI thread for hundreds of milliseconds on large feeds.
             RegionsRepeater?.InvalidateMeasure();
-            ContentContainer?.UpdateLayout();
+            ContentContainer?.InvalidateMeasure();
 
             QueueRestoredLayoutRefresh();
             await Task.Yield();

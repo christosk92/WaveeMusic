@@ -341,17 +341,18 @@ public static class PlaybackStateHelpers
         logger?.LogDebug("ClusterToPlaybackState: ps null={PsNull}, ps.PrevTracks={PrevCount}, ps.NextTracks={NextCount}",
             ps == null, ps?.PrevTracks?.Count ?? -1, ps?.NextTracks?.Count ?? -1);
 
-        var prevQueue = ps?.PrevTracks.Count > 0 ? ExtractQueueItems(ps.PrevTracks) : prev.PrevQueue;
-        var nextQueue = ps?.NextTracks.Count > 0 ? ExtractQueueItems(ps.NextTracks) : prev.NextQueue;
+        var hasAuthoritativeClusterQueue = ps is not null;
+        var prevQueue = hasAuthoritativeClusterQueue ? ExtractQueueItems(ps!.PrevTracks) : prev.PrevQueue;
+        var nextQueue = hasAuthoritativeClusterQueue ? ExtractQueueItems(ps!.NextTracks) : prev.NextQueue;
 
         logger?.LogDebug("Queue extraction: prevQueue={PrevCount}, nextQueue={NextCount}",
             prevQueue.Count, nextQueue.Count);
 
         // Derive thin TrackReference lists from tracks only (skip page markers/delimiters)
-        var prevTracks = prevQueue.Count > 0
+        var prevTracks = hasAuthoritativeClusterQueue
             ? prevQueue.OfType<QueueTrack>().Select(q => new TrackReference(q.Uri, q.Uid ?? "", q.AlbumUri, q.ArtistUri, q.IsUserQueued)).ToList()
             : (IReadOnlyList<TrackReference>)prev.PrevTracks;
-        var nextTracks = nextQueue.Count > 0
+        var nextTracks = hasAuthoritativeClusterQueue
             ? nextQueue.OfType<QueueTrack>().Select(q => new TrackReference(q.Uri, q.Uid ?? "", q.AlbumUri, q.ArtistUri, q.IsUserQueued)).ToList()
             : (IReadOnlyList<TrackReference>)prev.NextTracks;
 
@@ -390,7 +391,7 @@ public static class PlaybackStateHelpers
             NextTracks = nextTracks,
             PrevQueue = prevQueue,
             NextQueue = nextQueue,
-            QueueRevision = !string.IsNullOrEmpty(ps?.QueueRevision) ? ps!.QueueRevision : prev.QueueRevision,
+            QueueRevision = hasAuthoritativeClusterQueue ? ps!.QueueRevision : prev.QueueRevision,
             Options = ps?.Options != null
                 ? new PlaybackOptions
                 {
@@ -576,6 +577,15 @@ public static class PlaybackStateHelpers
             ? Guid.NewGuid().ToString("N")
             : prev.PlaybackId;
 
+        // The orchestrator always stamps QueueRevision, even when the queue is
+        // empty. In that case empty Prev/Next lists are authoritative and must
+        // clear stale UI rows instead of being treated as "not supplied".
+        var hasAuthoritativeQueue = localState.QueueRevision is not null
+                                    || localState.PrevQueueItems.Count > 0
+                                    || localState.NextQueueItems.Count > 0
+                                    || localState.PrevTracks.Count > 0
+                                    || localState.NextTracks.Count > 0;
+
         // Merge: start from previous state, override only fields with real values
         var newState = prev with
         {
@@ -587,11 +597,11 @@ public static class PlaybackStateHelpers
             ContextUri = !string.IsNullOrEmpty(localState.ContextUri) ? localState.ContextUri : prev.ContextUri,
             ContextUrl = !string.IsNullOrEmpty(localState.ContextUrl) ? localState.ContextUrl : prev.ContextUrl,
             CurrentIndex = localState.CurrentIndex,
-            PrevTracks = localState.PrevTracks.Count > 0 ? localState.PrevTracks : prev.PrevTracks,
-            NextTracks = localState.NextTracks.Count > 0 ? localState.NextTracks : prev.NextTracks,
-            PrevQueue = localState.PrevQueueItems.Count > 0 ? localState.PrevQueueItems : prev.PrevQueue,
-            NextQueue = localState.NextQueueItems.Count > 0 ? localState.NextQueueItems : prev.NextQueue,
-            QueueRevision = !string.IsNullOrEmpty(localState.QueueRevision) ? localState.QueueRevision : prev.QueueRevision,
+            PrevTracks = hasAuthoritativeQueue ? localState.PrevTracks : prev.PrevTracks,
+            NextTracks = hasAuthoritativeQueue ? localState.NextTracks : prev.NextTracks,
+            PrevQueue = hasAuthoritativeQueue ? localState.PrevQueueItems : prev.PrevQueue,
+            NextQueue = hasAuthoritativeQueue ? localState.NextQueueItems : prev.NextQueue,
+            QueueRevision = localState.QueueRevision is not null ? localState.QueueRevision : prev.QueueRevision,
             Options = new PlaybackOptions
             {
                 Shuffling = localState.Shuffling,

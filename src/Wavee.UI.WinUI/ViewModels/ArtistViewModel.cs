@@ -53,6 +53,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
     private CompositeDisposable? _subscriptions;
     private string? _appliedOverviewFor;
     private ArtistOverviewResult? _appliedOverview;
+    private string? _videoCatalogPrimedFor;
+    private ArtistOverviewResult? _videoCatalogPrimedOverview;
     private int _loadGeneration;
     private bool _disposed;
 
@@ -442,11 +444,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 IsLoading = loading.Previous is null;
                 break;
             case EntityState<ArtistOverviewResult>.Ready ready:
-                // Music-video catalog cache pre-warm. Runs unconditionally so
-                // the cache is populated whether LoadAsync runs (fresh nav) or
-                // we go down the EnsureHeroUrls path (cache-served re-show).
-                NoteTopTracksHaveVideo(ready.Value);
-
                 if (_appliedOverviewFor != expectedArtistId || !ReferenceEquals(_appliedOverview, ready.Value))
                 {
                     _backgroundWork.Run(_ => LoadAsync(ready.Value, expectedArtistId), "ArtistViewModel.LoadAsync");
@@ -458,6 +455,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                     // touching data collections. Restore the URLs from the
                     // cached overview without re-running the heavy LoadAsync.
                     EnsureHeroUrls(ready.Value);
+                    PrimeMusicVideoCatalogOnce(ready.Value, expectedArtistId);
                 }
                 IsLoading = false;
                 break;
@@ -472,13 +470,18 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
     /// <summary>
     /// Populates the music-video catalog cache with the top-tracks' has-video
-    /// flags. Called from <c>ApplyOverviewState</c> on every Ready state —
-    /// both fresh navigations (where LoadAsync runs) and cache-served re-shows
-    /// (where only EnsureHeroUrls runs). Harmless to call twice — the cache
-    /// is idempotent.
+    /// flags once per applied overview. Cache-served re-shows can emit Ready
+    /// repeatedly; re-writing the same video entries on every navigation adds
+    /// allocation churn right on the artist page hot path.
     /// </summary>
-    private void NoteTopTracksHaveVideo(ArtistOverviewResult overview)
+    private void PrimeMusicVideoCatalogOnce(ArtistOverviewResult overview, string artistId)
     {
+        if (ReferenceEquals(_videoCatalogPrimedOverview, overview)
+            && string.Equals(_videoCatalogPrimedFor, artistId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         if ((overview.TopTracks is null || overview.TopTracks.Count == 0)
             && overview.MusicVideoMappings.Count == 0)
             return;
@@ -486,8 +489,11 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         var videoMetadata = _musicVideoMetadataService;
         if (videoMetadata is null) return;
 
+        _videoCatalogPrimedOverview = overview;
+        _videoCatalogPrimedFor = artistId;
+
         _logger?.LogInformation("[VideoCache] ArtistViewModel pre-warm: {Count} top tracks for {Artist}",
-            overview.TopTracks?.Count ?? 0, ArtistId ?? "<unknown>");
+            overview.TopTracks?.Count ?? 0, artistId);
         if (overview.TopTracks is not null)
         {
             foreach (var track in overview.TopTracks)
@@ -571,6 +577,8 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         Bio.ResetForNewArtist();
         IsFollowing = false;
         HasData = false;
+        _videoCatalogPrimedOverview = null;
+        _videoCatalogPrimedFor = null;
 
         TopTracks.ResetForNewArtist();
         Discography.ResetForNewArtist();
@@ -647,15 +655,16 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             AddReleaseImages(overview.Albums, releaseImageByUri, releaseImageByName);
             AddReleaseImages(overview.Singles, releaseImageByUri, releaseImageByName);
             AddReleaseImages(overview.Compilations, releaseImageByUri, releaseImageByName);
+            PrimeMusicVideoCatalogOnce(overview, artistId);
 
             // -- Top tracks (batch to avoid N+1 CollectionChanged events) --
-            var newTracks = new System.Collections.ObjectModel.ObservableCollection<LazyTrackItem>();
-            // Populate the music-video catalog cache as we map top tracks.
-            // Avoids a redundant NPV roundtrip when the user clicks a track
-            // they've already seen on this artist page.
             var videoMetadata = _musicVideoMetadataService;
-            _logger?.LogInformation("[VideoCache] ArtistViewModel populating cache with {Count} top tracks (cacheResolved={HasCache})",
-                overview.TopTracks.Count, videoMetadata is not null);
+            var pageSize = TopTracks.PlaceholderPageSize;
+            var estimatedCount = overview.TopTracks.Count + Math.Max(pageSize, 1);
+            var newTracks = new List<LazyTrackItem>(estimatedCount);
+            var topTrackVms = videoMetadata is null
+                ? null
+                : new List<ArtistTopTrackVm>(overview.TopTracks.Count);
             int idx = 1;
             foreach (var track in overview.TopTracks)
             {
@@ -677,41 +686,23 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                     HasCanvasVideo = track.HasVideo
                 };
                 newTracks.Add(LazyTrackItem.Loaded(trackVm.Id, idx, trackVm));
-                if (videoMetadata is not null && !string.IsNullOrEmpty(track.Uri))
-                {
-                    videoMetadata.NoteHasVideo(track.Uri, track.HasVideo);
-                    _logger?.LogDebug("[VideoCache]   {Uri} -> hasVideo={HasVideo}", track.Uri, track.HasVideo);
-                }
+                topTrackVms?.Add(trackVm);
                 idx++;
             }
 
-            if (videoMetadata is not null)
+            if (videoMetadata is not null && topTrackVms is { Count: > 0 })
             {
-                foreach (var mapping in overview.MusicVideoMappings)
-                {
-                    videoMetadata.NoteVideoUri(mapping.AudioTrackUri, mapping.VideoTrackUri);
-                    _logger?.LogDebug("[VideoCache]   {AudioUri} -> {VideoUri}",
-                        mapping.AudioTrackUri, mapping.VideoTrackUri);
-                }
-
                 // Light the music-video badge on rows whose Spotify track is
                 // linked to a local music-video file. Fire-and-forget; the
                 // VM's HasLinkedLocalVideo setter raises PropertyChanged so
                 // TrackItem updates its badge live when the result lands.
-                var topTrackVms = newTracks
-                    .Where(i => i.IsLoaded && i.Data is ArtistTopTrackVm)
-                    .Select(i => (ArtistTopTrackVm)i.Data!)
-                    .ToList();
-                if (topTrackVms.Count > 0)
-                {
-                    _backgroundWork.Run(
-                        _ => videoMetadata.ApplyAvailabilityToAsync(
-                            topTrackVms,
-                            static t => t.Uri,
-                            static (t, v) => t.HasLinkedLocalVideo = v,
-                            CancellationToken.None),
-                        "ArtistViewModel.ApplyMusicVideoAvailability");
-                }
+                _backgroundWork.Run(
+                    _ => videoMetadata.ApplyAvailabilityToAsync(
+                        topTrackVms,
+                        static t => t.Uri,
+                        static (t, v) => t.HasLinkedLocalVideo = v,
+                        CancellationToken.None),
+                    "ArtistViewModel.ApplyMusicVideoAvailability");
             }
 
             // Pad + shimmer placeholders. The child exposes a PlaceholderPageSize
@@ -719,7 +710,6 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             // back to 12 (the original 3 × 4 layout) when the repeater hasn't
             // reported a column count yet — matches the legacy fallback math.
             var loadedCount = idx - 1;
-            var pageSize = TopTracks.PlaceholderPageSize;
             var remainder = loadedCount % pageSize;
             var padCount = remainder > 0 ? pageSize - remainder : 0;
             for (int i = 0; i < padCount + pageSize; i++)
@@ -738,27 +728,9 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             _backgroundWork.Run(_ => TopTracks.EnrichMissingTopTrackImagesAsync(artistId, generation),
                 "ArtistViewModel.EnrichMissingTopTrackImages");
 
-            // -- Releases --
-            Discography.ApplyOverview(overview);
-
-            // -- Related artists (batch swap) --
-            RelatedArtists.ApplyOverview(overview);
-
-            // -- Extras (concerts, music videos, merch, playlists, links, cities, gallery) --
-            Extras.ApplyOverview(overview);
-
-            // Spotlight selection — must run after Discography.ApplyOverview
-            // populates PopularReleases. The Header.ArtistChanged event already
-            // fired earlier from BuildArtistView, but at that point
-            // Discography.PopularReleases was still the previous artist's so
-            // we re-raise here to pick up the fresh popular release set.
-            RaiseSpotlightProjection();
-
-            // Reset pagination state on every load.
-            TopTracks.CurrentPage = 0;
-            TopTracks.NotifyPaginationChanged();
-            _backgroundWork.Run(_ => StartDeferredArtistWorkAsync(artistId, generation, overview),
-                "ArtistViewModel.StartDeferredArtistWork");
+            // Apply below-the-fold sections after the first viewport has rendered.
+            _backgroundWork.Run(_ => ApplySecondaryArtistSectionsAsync(artistId, generation, overview),
+                "ArtistViewModel.ApplySecondaryArtistSections");
 
             // V4A: kick off the on-device "about this artist" excerpt when
             // Spotify's ArtistOverview has no biography. Gated through
@@ -784,6 +756,79 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         {
             IsLoading = false;
         }
+    }
+
+    private async Task ApplySecondaryArtistSectionsAsync(
+        string artistId,
+        int generation,
+        ArtistOverviewResult overview)
+    {
+        // Let hero and top tracks render before applying below-the-fold
+        // collections. Each section can invalidate many WinUI containers; split
+        // the work into smaller dispatcher slices to avoid one large UI stall.
+        await Task.Delay(32).ConfigureAwait(false);
+
+        if (!IsCurrentLoad(artistId, generation))
+            return;
+
+        await RunOnDispatcherAsync(() =>
+        {
+            if (IsCurrentLoad(artistId, generation))
+                Discography.ApplyOverview(overview);
+        }).ConfigureAwait(false);
+
+        await Task.Delay(1).ConfigureAwait(false);
+
+        if (!IsCurrentLoad(artistId, generation))
+            return;
+
+        await RunOnDispatcherAsync(() =>
+        {
+            if (IsCurrentLoad(artistId, generation))
+                RelatedArtists.ApplyOverview(overview);
+        }).ConfigureAwait(false);
+
+        await Task.Delay(1).ConfigureAwait(false);
+
+        if (!IsCurrentLoad(artistId, generation))
+            return;
+
+        await RunOnDispatcherAsync(() =>
+        {
+            if (!IsCurrentLoad(artistId, generation))
+                return;
+
+            Extras.ApplyOverview(overview);
+            RaiseSpotlightProjection();
+
+            TopTracks.CurrentPage = 0;
+            TopTracks.NotifyPaginationChanged();
+
+            _backgroundWork.Run(_ => StartDeferredArtistWorkAsync(artistId, generation, overview),
+                "ArtistViewModel.StartDeferredArtistWork");
+        }).ConfigureAwait(false);
+    }
+
+    private Task RunOnDispatcherAsync(Action action)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_dispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    action();
+                    tcs.SetResult();
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
+            }))
+        {
+            tcs.SetCanceled();
+        }
+
+        return tcs.Task;
     }
 
     private async Task StartDeferredArtistWorkAsync(

@@ -11,6 +11,7 @@ using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.ViewModels.Home;
@@ -157,7 +158,7 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
         if (Sections.Count == 0)
             await PopulateSectionsChunkedAsync(ordered);
         else
-            HomeFeedCache.ApplyDiff(Sections, ordered, _greetingSetter, snapshot.Greeting,
+            await HomeFeedCache.ApplyDiffChunkedAsync(Sections, ordered, _greetingSetter, snapshot.Greeting,
                 s => s.ApplyTheme(_isDarkThemeProvider()));
         RestoreLocalSection(localSection);
         ApplyChips(snapshot.Chips);
@@ -178,7 +179,7 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
         if (Sections.Count == 0)
             await PopulateSectionsChunkedAsync(ordered);
         else
-            HomeFeedCache.ApplyDiff(Sections, ordered, _greetingSetter, snapshot.Greeting,
+            await HomeFeedCache.ApplyDiffChunkedAsync(Sections, ordered, _greetingSetter, snapshot.Greeting,
                 s => s.ApplyTheme(_isDarkThemeProvider()));
         RestoreLocalSection(localSection);
         ApplyChips(snapshot.Chips);
@@ -209,15 +210,25 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
     /// <c>ApplyBackgroundRefresh</c> orchestration.
     /// </summary>
     public void ApplyBackgroundRefresh(HomeFeedSnapshot snapshot)
+        => _ = ApplyBackgroundRefreshAsync(snapshot);
+
+    private async Task ApplyBackgroundRefreshAsync(HomeFeedSnapshot snapshot)
     {
-        var ordered = ApplyPreferences(snapshot.Sections);
-        var localSection = ExtractLocalSection();
-        HomeFeedCache.ApplyDiff(Sections, ordered, _greetingSetter, snapshot.Greeting,
-            s => s.ApplyTheme(_isDarkThemeProvider()));
-        RestoreLocalSection(localSection);
-        ApplyChips(snapshot.Chips);
-        SectionsApplied?.Invoke(this, ordered);
-        _ = RefreshLocalSectionAsync();
+        try
+        {
+            var ordered = ApplyPreferences(snapshot.Sections);
+            var localSection = ExtractLocalSection();
+            await HomeFeedCache.ApplyDiffChunkedAsync(Sections, ordered, _greetingSetter, snapshot.Greeting,
+                s => s.ApplyTheme(_isDarkThemeProvider()));
+            RestoreLocalSection(localSection);
+            ApplyChips(snapshot.Chips);
+            SectionsApplied?.Invoke(this, ordered);
+            _ = RefreshLocalSectionAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Home background refresh apply failed");
+        }
     }
 
     // ── Local files Home section ────────────────────────────────────────────
@@ -326,8 +337,7 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
         var existing = Sections.FirstOrDefault(s => s.SectionUri == LocalSectionUri);
         if (existing != null)
         {
-            existing.Items.Clear();
-            foreach (var item in items) existing.Items.Add(item);
+            existing.Items.ReplaceWith(items);
             MoveLocalSectionToPreferredPosition(existing);
             EnsureLocalChipPresent();
             return;
@@ -343,7 +353,7 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
             SectionUri = LocalSectionUri,
             ViewAllUri = "wavee:local:library",
         };
-        foreach (var item in items) section.Items.Add(item);
+        section.Items.ReplaceWith(items);
         section.ApplyTheme(_isDarkThemeProvider());
         Sections.Insert(GetLocalSectionInsertIndex(), section);
         EnsureLocalChipPresent();
@@ -850,9 +860,9 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
 
             var localSection = ExtractLocalSection();
             if (Sections.Count == 0)
-                Sections = new ObservableCollection<HomeSection>(ordered);
+                await PopulateSectionsChunkedAsync(ordered);
             else
-                HomeFeedCache.ApplyDiff(Sections, ordered,
+                await HomeFeedCache.ApplyDiffChunkedAsync(Sections, ordered,
                     _greetingSetter, snapshot.Greeting,
                     s => s.ApplyTheme(_isDarkThemeProvider()));
             RestoreLocalSection(localSection);

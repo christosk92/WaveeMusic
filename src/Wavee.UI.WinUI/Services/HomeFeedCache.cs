@@ -153,6 +153,79 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
             current.RemoveAt(current.Count - 1);
     }
 
+    public static async Task ApplyDiffChunkedAsync(
+        ObservableCollection<HomeSection> current,
+        List<HomeSection> fresh,
+        Action<string?>? onGreetingChanged = null,
+        string? newGreeting = null,
+        Action<HomeSection>? onAccentChanged = null,
+        int sectionChunkSize = 2)
+    {
+        if (onGreetingChanged != null && newGreeting != null)
+            onGreetingChanged(newGreeting);
+
+        var freshUris = new HashSet<string>(fresh.Select(s => s.SectionUri));
+        var workSinceYield = 0;
+
+        for (int i = current.Count - 1; i >= 0; i--)
+        {
+            if (!freshUris.Contains(current[i].SectionUri))
+                current.RemoveAt(i);
+
+            if (++workSinceYield >= sectionChunkSize)
+            {
+                workSinceYield = 0;
+                await Task.Yield();
+            }
+        }
+
+        for (int i = 0; i < fresh.Count; i++)
+        {
+            if (i < current.Count && current[i].SectionUri == fresh[i].SectionUri)
+            {
+                UpdateSectionInPlace(current[i], fresh[i], onAccentChanged);
+            }
+            else
+            {
+                var existingIdx = -1;
+                for (int j = 0; j < current.Count; j++)
+                {
+                    if (current[j].SectionUri == fresh[i].SectionUri)
+                    {
+                        existingIdx = j;
+                        break;
+                    }
+                }
+
+                if (existingIdx >= 0)
+                {
+                    current.Move(existingIdx, Math.Min(i, current.Count - 1));
+                    UpdateSectionInPlace(current[i], fresh[i], onAccentChanged);
+                }
+                else
+                {
+                    current.Insert(Math.Min(i, current.Count), fresh[i]);
+                }
+            }
+
+            if (++workSinceYield >= sectionChunkSize && i + 1 < fresh.Count)
+            {
+                workSinceYield = 0;
+                await Task.Yield();
+            }
+        }
+
+        while (current.Count > fresh.Count)
+        {
+            current.RemoveAt(current.Count - 1);
+            if (++workSinceYield >= sectionChunkSize)
+            {
+                workSinceYield = 0;
+                await Task.Yield();
+            }
+        }
+    }
+
     private static void UpdateSectionInPlace(
         HomeSection target,
         HomeSection source,

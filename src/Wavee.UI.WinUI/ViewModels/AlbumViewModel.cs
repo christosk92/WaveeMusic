@@ -1425,9 +1425,6 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
 
         try
         {
-            // Rootlist for "Add to playlist" — fire-and-forget so it doesn't block detail render.
-            _ = LoadRootlistAsync();
-
             // Push the heavy LINQ (track wrapping, artist-graph filter+group,
             // copyright join, formatted strings) to the threadpool so the nav
             // frame can paint before this method's UI-thread tail runs.
@@ -1487,78 +1484,12 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
             IsSaved = detail.IsSaved;
             RefreshSaveState();
             IsLoading = false;
-            // Light the music-video badge on rows whose Spotify track is linked
-            // to a local music-video file. Fire-and-forget; the DTO's
-            // HasLinkedLocalVideo setter raises PropertyChanged so TrackItem
-            // updates its badge live when the result lands.
-            if (_musicVideoMetadata is not null && detail.Tracks.Count > 0)
-            {
-                _ = _musicVideoMetadata.ApplyAvailabilityToAsync(
-                    detail.Tracks,
-                    static t => t.Uri,
-                    static (t, v) => t.HasLinkedLocalVideo = v,
-                    CancellationToken.None);
-            }
 
             // Apply the real track snapshot in one reset. The grid-level loading
             // skeleton avoids constructing placeholder TrackItems before this.
             ApplyFilterAndSort();
 
-            // Related albums
-            _moreByArtist.ReplaceWith(detail.MoreByArtist);
-            HasMoreByArtist = MoreByArtist.Count > 0;
-            HasNoRelatedAlbums = !HasMoreByArtist;
-
-            // Alternate releases (deluxe / remaster / anniversary editions of THIS album)
-            _alternateReleases.ReplaceWith(detail.AlternateReleases);
-            OnPropertyChanged(nameof(AlternateReleases));
-            HasAlternateReleases = AlternateReleases.Count > 0;
-
-            // Merch (non-blocking, loaded after main content)
-            _ = LoadMerchAsync(albumId);
-
-            // Similar albums + artist context + music-video signal — non-blocking,
-            // run after main detail render so the track table paints first.
-            _ = LoadSimilarAlbumsAsync(albumId);
-
-            // Short releases (single / 2-track EP) — one getTrack call gives us
-            // both the music-video signal AND related-artists for "Fans also
-            // like", replacing the heavier queryArtistOverview round-trip. The
-            // bio excerpt isn't surfaced on the new design for short releases,
-            // so we accept losing it in exchange for one network call.
-            if (_allTracks.Count is >= 1 and <= 2)
-            {
-                _ = LoadSingleTrackContextAsync(albumId, _allTracks[0]);
-            }
-            else
-            {
-                // Multi-track albums keep the existing artist-overview path —
-                // bio excerpt + related-artists. Music video isn't promoted
-                // for ≥ 3-track albums.
-                var multiTrackArtistUri = detail.Artists.FirstOrDefault()?.Uri;
-                if (!string.IsNullOrEmpty(multiTrackArtistUri))
-                    _ = LoadArtistContextAsync(albumId, multiTrackArtistUri);
-            }
-
-            // "About the artist" card — NPV fetch runs unconditionally because
-            // it carries avatar + verified + monthly-listeners that the other
-            // two paths don't surface. NPV's bio also fills in for short
-            // releases where the overview path is skipped.
-            var npvArtistUri = detail.Artists.FirstOrDefault()?.Uri;
-            var npvLeadTrackUri = (_allTracks.FirstOrDefault()?.Data as AlbumTrackDto)?.Uri;
-            if (!string.IsNullOrEmpty(npvArtistUri) && !string.IsNullOrEmpty(npvLeadTrackUri))
-                _ = LoadArtistNpvAsync(albumId, npvArtistUri, npvLeadTrackUri);
-
-            // Seed the artist follow-state from the local likes store so the
-            // pill renders the correct glyph on first paint. The existing
-            // SaveStateChanged subscription (already attached for the album
-            // heart) keeps the bool in sync after toggles elsewhere.
-            RefreshArtistFollowState();
-
-            // Recommended playlists — RECOMMENDED_PLAYLISTS extended-metadata
-            // for this album, then batched LIST_METADATA_V2 to resolve names +
-            // covers. Also warms PlaylistStore so click-to-open is instant.
-            _ = LoadRecommendedPlaylistsAsync(albumId);
+            _ = ApplySecondaryAlbumSectionsAsync(detail, albumId);
         }
         catch (Exception ex)
         {
@@ -1582,6 +1513,62 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
             _appliedDetailFor = null;
             _albumStore.Invalidate(AlbumId);
         }
+    }
+
+    private async Task ApplySecondaryAlbumSectionsAsync(AlbumDetailResult detail, string albumId)
+    {
+        // Let hero + track grid paint before shelves, artist context, playlist
+        // rootlist, and video-badge probes invalidate more UI.
+        await Task.Delay(32);
+        if (_disposed || AlbumId != albumId) return;
+
+        _moreByArtist.ReplaceWith(detail.MoreByArtist);
+        HasMoreByArtist = MoreByArtist.Count > 0;
+        HasNoRelatedAlbums = !HasMoreByArtist;
+
+        await Task.Yield();
+        if (_disposed || AlbumId != albumId) return;
+
+        _alternateReleases.ReplaceWith(detail.AlternateReleases);
+        OnPropertyChanged(nameof(AlternateReleases));
+        HasAlternateReleases = AlternateReleases.Count > 0;
+
+        await Task.Yield();
+        if (_disposed || AlbumId != albumId) return;
+
+        // Rootlist is only needed for the "Add to playlist" affordance.
+        _ = LoadRootlistAsync();
+
+        if (_musicVideoMetadata is not null && detail.Tracks.Count > 0)
+        {
+            _ = _musicVideoMetadata.ApplyAvailabilityToAsync(
+                detail.Tracks,
+                static t => t.Uri,
+                static (t, v) => t.HasLinkedLocalVideo = v,
+                CancellationToken.None);
+        }
+
+        _ = LoadMerchAsync(albumId);
+        _ = LoadSimilarAlbumsAsync(albumId);
+
+        if (_allTracks.Count is >= 1 and <= 2)
+        {
+            _ = LoadSingleTrackContextAsync(albumId, _allTracks[0]);
+        }
+        else
+        {
+            var multiTrackArtistUri = detail.Artists.FirstOrDefault()?.Uri;
+            if (!string.IsNullOrEmpty(multiTrackArtistUri))
+                _ = LoadArtistContextAsync(albumId, multiTrackArtistUri);
+        }
+
+        var npvArtistUri = detail.Artists.FirstOrDefault()?.Uri;
+        var npvLeadTrackUri = (_allTracks.FirstOrDefault()?.Data as AlbumTrackDto)?.Uri;
+        if (!string.IsNullOrEmpty(npvArtistUri) && !string.IsNullOrEmpty(npvLeadTrackUri))
+            _ = LoadArtistNpvAsync(albumId, npvArtistUri, npvLeadTrackUri);
+
+        RefreshArtistFollowState();
+        _ = LoadRecommendedPlaylistsAsync(albumId);
     }
 
     private async Task LoadRootlistAsync()

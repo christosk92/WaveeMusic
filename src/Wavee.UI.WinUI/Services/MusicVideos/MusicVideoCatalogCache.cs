@@ -28,7 +28,9 @@ internal sealed class MusicVideoCatalogCache : IMusicVideoCatalogCache
         _entries.AddOrUpdate(
             audioTrackUri,
             _ => new Entry(hasVideo, null, null),
-            (_, prev) => prev with { HasVideo = hasVideo });
+            (_, prev) => prev.HasVideo == hasVideo
+                ? prev
+                : prev with { HasVideo = hasVideo });
     }
 
     public void NoteVideoUri(string audioTrackUri, string videoTrackUri)
@@ -37,8 +39,15 @@ internal sealed class MusicVideoCatalogCache : IMusicVideoCatalogCache
         _entries.AddOrUpdate(
             audioTrackUri,
             _ => new Entry(true, videoTrackUri, null),
-            (_, prev) => prev with { HasVideo = true, VideoUri = videoTrackUri });
-        _audioUrisByVideoUri[videoTrackUri] = audioTrackUri;
+            (_, prev) => prev.HasVideo == true
+                         && string.Equals(prev.VideoUri, videoTrackUri, System.StringComparison.Ordinal)
+                ? prev
+                : prev with { HasVideo = true, VideoUri = videoTrackUri });
+        if (!_audioUrisByVideoUri.TryGetValue(videoTrackUri, out var existing)
+            || !string.Equals(existing, audioTrackUri, System.StringComparison.Ordinal))
+        {
+            _audioUrisByVideoUri[videoTrackUri] = audioTrackUri;
+        }
     }
 
     public bool TryGetVideoUri(string audioTrackUri, out string videoTrackUri)
@@ -83,7 +92,10 @@ internal sealed class MusicVideoCatalogCache : IMusicVideoCatalogCache
         _entries.AddOrUpdate(
             audioTrackUri,
             _ => new Entry(true, null, manifestId),
-            (_, prev) => prev with { HasVideo = true, ManifestId = manifestId });
+            (_, prev) => prev.HasVideo == true
+                         && string.Equals(prev.ManifestId, manifestId, System.StringComparison.Ordinal)
+                ? prev
+                : prev with { HasVideo = true, ManifestId = manifestId });
     }
 
     public bool TryGetManifestId(string audioTrackUri, out string manifestId)

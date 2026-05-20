@@ -95,6 +95,8 @@ namespace Wavee.Controls.Lyrics.Helper.Lyrics
                 bool isSecondaryLinePlaying = !isPreLyrics && line.GetIsPlaying(currentPositionMs);
                 bool isSecondaryLinePlayingChanged = line.IsPlayingLastFrame != isSecondaryLinePlaying;
                 line.IsPlayingLastFrame = isSecondaryLinePlaying;
+                if (isLayoutChanged)
+                    isSecondaryLinePlayingChanged = false;
 
                 // 行动画
                 if (isLayoutChanged || isPrimaryPlayingLineChanged || isMouseScrollingChanged || isSecondaryLinePlayingChanged || isArtThemeColorsChanged)
@@ -203,6 +205,42 @@ namespace Wavee.Controls.Lyrics.Helper.Lyrics
                         fanAngleRad * distanceFactor * (i > primaryPlayingLineIndex ? 1 : -1) :
                         0);
 
+                    if (isLayoutChanged)
+                    {
+                        // Resize/reflow recreates RenderLyricsLine instances.
+                        // Snap the freshly-created transitions to their targets
+                        // so panel resize does not replay the line enter/fade
+                        // animation for every visible lyric.
+                        line.BlurAmountTransition.JumpTo(
+                            (isMouseScrolling || isSecondaryLinePlaying) ? 0 :
+                            (isBlurEnabled ? (5 * distanceFactor) : 0));
+                        line.ScaleTransition.JumpTo(
+                            isSecondaryLinePlaying ? _highlightedScale :
+                            (isOutOfSightEnabled ?
+                            (_highlightedScale - distanceFactor * (_highlightedScale - _defaultScale)) :
+                            _highlightedScale));
+                        line.PhoneticOpacityTransition.JumpTo(
+                            isSecondaryLinePlaying ? phoneticOpacity :
+                            CalculateTargetOpacity(phoneticOpacity, phoneticOpacity, distanceFactor, isMouseScrolling, lyricsEffect));
+                        line.PlayedPrimaryOpacityTransition.JumpTo(
+                            isSecondaryLinePlaying ? 1.0 :
+                            CalculateTargetOpacity(originalOpacity, 1.0, distanceFactor, isMouseScrolling, lyricsEffect));
+                        line.UnplayedPrimaryOpacityTransition.JumpTo(
+                            isSecondaryLinePlaying ? originalOpacity :
+                            CalculateTargetOpacity(originalOpacity, originalOpacity, distanceFactor, isMouseScrolling, lyricsEffect));
+                        line.TranslatedOpacityTransition.JumpTo(
+                            isSecondaryLinePlaying ? translatedOpacity :
+                            CalculateTargetOpacity(translatedOpacity, translatedOpacity, distanceFactor, isMouseScrolling, lyricsEffect));
+                        line.PlayedFillColorTransition.JumpTo(isSecondaryLinePlaying ? albumArtThemeColors.PlayedCurrentLineFillColor : albumArtThemeColors.NonCurrentLineFillColor);
+                        line.UnplayedFillColorTransition.JumpTo(isSecondaryLinePlaying ? albumArtThemeColors.UnplayedCurrentLineFillColor : albumArtThemeColors.NonCurrentLineFillColor);
+                        line.PlayedStrokeColorTransition.JumpTo(isSecondaryLinePlaying ? albumArtThemeColors.PlayedTextStrokeColor : albumArtThemeColors.UnplayedTextStrokeColor);
+                        line.UnplayedStrokeColorTransition.JumpTo(isSecondaryLinePlaying ? albumArtThemeColors.UnplayedTextStrokeColor : albumArtThemeColors.UnplayedTextStrokeColor);
+                        line.AngleTransition.JumpTo(
+                            (isFanEnabled && !isMouseScrolling) ?
+                            fanAngleRad * distanceFactor * (i > primaryPlayingLineIndex ? 1 : -1) :
+                            0);
+                    }
+
                     if (isLayoutChanged || isPrimaryPlayingLineChanged || isMouseScrollingChanged)
                     {
                         if (isLayoutChanged)
@@ -270,6 +308,23 @@ namespace Wavee.Controls.Lyrics.Helper.Lyrics
                     }
 
                     // 浮动动画（控制单个）
+                    if (isLayoutChanged)
+                    {
+                        foreach (var renderChar in line.PrimaryRenderChars)
+                        {
+                            renderChar.ProgressPlayed = renderChar.GetPlayProgress(currentPositionMs);
+                            renderChar.IsPlayingLastFrame = renderChar.GetIsPlaying(currentPositionMs);
+                            renderChar.FloatTransition.JumpTo(0);
+                            renderChar.ScaleTransition.JumpTo(1.0);
+                            renderChar.GlowTransition.JumpTo(0);
+                        }
+
+                        foreach (var syllable in line.PrimaryRenderSyllables)
+                        {
+                            syllable.IsPlayingLastFrame = syllable.GetIsPlaying(currentPositionMs);
+                        }
+                    }
+
                     foreach (var renderChar in line.PrimaryRenderChars)
                     {
                         renderChar.ProgressPlayed = renderChar.GetPlayProgress(currentPositionMs);

@@ -670,6 +670,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         _queue.PlayNext(new QueueTrack(trackUri));
         _logger?.LogInformation("Orchestrator: PlayNext → {Uri}", trackUri);
         PublishQueueState();
+        PrimeQueueContinuationIfNeeded();
         return Task.CompletedTask;
     }
 
@@ -923,6 +924,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         }
 
         PublishQueueState();
+        PrimeQueueContinuationIfNeeded();
     }
 
     private bool ShouldPreferSpotifyVideoPlayback()
@@ -1738,6 +1740,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
                 if (result.Tracks.Count > 0)
                 {
                     _queue.AppendTracks(result.Tracks);
+                    PublishQueueState();
                     _logger?.LogDebug("Appended {Count} tracks from next page", result.Tracks.Count);
                 }
 
@@ -1893,6 +1896,7 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         _logger?.LogInformation(
             "Autoplay active: station={Station}, tracks={Count}, nextPage={HasNext}",
             stationUri, autoplay.Tracks.Count, autoplay.NextPageUrl != null);
+        PublishQueueState();
     }
 
     // ── Remote commands ──
@@ -2284,6 +2288,20 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
             }
             catch (Exception ex) { _logger?.LogDebug(ex, "Prefetch task fault (non-fatal)"); }
         }, cts.Token);
+    }
+
+    private void PrimeQueueContinuationIfNeeded()
+    {
+        if (_repeatTrack || _repeatContext) return;
+
+        // PlaybackQueue.NeedsMoreTracks only fires from context advancement.
+        // A click-row play can start directly on the last/only context item,
+        // and user-queue items drain without touching the context cursor. Prime
+        // the same loader here so pagination/autoplay can appear before the
+        // current tail item finishes instead of resolving synchronously at EOF.
+        if (_queue.GetNextTracks().Count > 5) return;
+
+        _ = LoadMoreTracksAsync();
     }
 
     /// <summary>

@@ -925,11 +925,8 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
             return;
 
         InvalidateHeroArrange();
-        HeroPhotoLayer?.UpdateLayout();
-        HeroOverlayPanel?.UpdateLayout();
-        HeroOverlayContentGrid?.UpdateLayout();
 
-        await Task.Yield();
+        await Task.Delay(16).ConfigureAwait(true);
 
         if (_isDisposed || _isNavigatingAway || revision != _heroArrangeRefreshRevision)
             return;

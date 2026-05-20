@@ -773,17 +773,17 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
 
         var generation = ++_footerRevealGeneration;
 
-        // Two Task.Yield()s + UpdateLayout matches SettleAlbumLayoutAsync's pattern:
-        // gives XAML one frame to measure the freshly-bound footer subtree
-        // before the composition crossfade starts, so neither shimmer nor real
-        // content snaps a layout pass mid-animation.
+        // Let XAML measure the freshly-bound footer subtree on a natural frame
+        // before the composition crossfade starts. Avoid forcing UpdateLayout:
+        // this footer can contain shelves and image hosts, so a sync layout
+        // walk shows up as a navigation stall.
         await Task.Yield();
         if (_isDisposed || PageController.IsNavigatingAway || generation != _footerRevealGeneration)
             return;
 
-        FooterShimmer?.UpdateLayout();
-        FooterContent?.UpdateLayout();
-        await Task.Yield();
+        FooterShimmer?.InvalidateMeasure();
+        FooterContent?.InvalidateMeasure();
+        await Task.Delay(16).ConfigureAwait(true);
         if (_isDisposed || PageController.IsNavigatingAway || generation != _footerRevealGeneration)
             return;
 
@@ -819,12 +819,12 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
             return false;
         }
 
-        ShimmerContainer?.UpdateLayout();
-        AlbumArtContainer?.UpdateLayout();
-        TrackGrid?.UpdateLayout();
-        ContentContainer?.UpdateLayout();
+        ShimmerContainer?.InvalidateMeasure();
+        AlbumArtContainer?.InvalidateMeasure();
+        TrackGrid?.InvalidateMeasure();
+        ContentContainer?.InvalidateMeasure();
 
-        await Task.Yield();
+        await Task.Delay(16).ConfigureAwait(true);
         return !_isDisposed &&
                !PageController.IsNavigatingAway &&
                generation == _layoutSettlingGeneration;

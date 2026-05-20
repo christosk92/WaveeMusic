@@ -1,5 +1,6 @@
 using FluentAssertions;
 using System.Reactive.Linq;
+using Wavee.Audio.Queue;
 using Wavee.Connect;
 using Wavee.Connect.Protocol;
 using Wavee.Core.Audio;
@@ -510,6 +511,107 @@ public sealed class PlaybackStateManagerTests : IAsyncDisposable
         // Assert
         state.Track!.Uri.Should().Be("spotify:track:new");
         state.PositionMs.Should().Be(0);
+    }
+
+    [Fact]
+    public void LocalToPlaybackState_EmptyAuthoritativeQueue_ShouldClearPreviousQueue()
+    {
+        var previous = PlaybackState.Empty with
+        {
+            Track = new TrackInfo { Uri = "spotify:track:old" },
+            NextTracks =
+            [
+                new TrackReference(
+                    "spotify:track:queued",
+                    "q0",
+                    AlbumUri: null,
+                    ArtistUri: null,
+                    IsUserQueued: true)
+            ],
+            NextQueue =
+            [
+                new QueueTrack(
+                    Uri: "spotify:track:queued",
+                    Uid: "q0",
+                    IsUserQueued: true,
+                    Provider: "queue")
+            ],
+            QueueRevision = "old-revision",
+            Source = StateSource.Local
+        };
+
+        var local = new LocalPlaybackState
+        {
+            TrackUri = "spotify:track:current",
+            TrackUid = "current",
+            ContextUri = "spotify:internal:queue",
+            IsPlaying = true,
+            DurationMs = 200_000,
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            QueueRevision = "empty-revision"
+        };
+
+        var state = PlaybackStateHelpers.LocalToPlaybackState(local, previous, activeDeviceId: "local-device");
+
+        state.NextTracks.Should().BeEmpty();
+        state.NextQueue.Should().BeEmpty();
+        state.QueueRevision.Should().Be("empty-revision");
+        state.Changes.Should().HaveFlag(StateChanges.Queue);
+    }
+
+    [Fact]
+    public void ClusterToPlaybackState_EmptyPlayerQueue_ShouldClearPreviousQueue()
+    {
+        var previous = PlaybackState.Empty with
+        {
+            Track = new TrackInfo { Uri = "spotify:track:old" },
+            NextTracks =
+            [
+                new TrackReference(
+                    "spotify:track:queued",
+                    "q0",
+                    AlbumUri: null,
+                    ArtistUri: null,
+                    IsUserQueued: true)
+            ],
+            NextQueue =
+            [
+                new QueueTrack(
+                    Uri: "spotify:track:queued",
+                    Uid: "q0",
+                    IsUserQueued: true,
+                    Provider: "queue")
+            ],
+            QueueRevision = "old-revision",
+            Source = StateSource.Cluster
+        };
+
+        var cluster = new Cluster
+        {
+            ActiveDeviceId = "device_123",
+            ChangedTimestampMs = 5_000,
+            ServerTimestampMs = 5_000,
+            PlayerState = new PlayerState
+            {
+                Timestamp = 5_000,
+                PositionAsOfTimestamp = 0,
+                Duration = 200_000,
+                IsPlaying = true,
+                QueueRevision = string.Empty,
+                Track = new ProvidedTrack
+                {
+                    Uri = "spotify:track:current",
+                    Uid = "current"
+                }
+            }
+        };
+
+        var state = PlaybackStateHelpers.ClusterToPlaybackState(cluster, previous);
+
+        state.NextTracks.Should().BeEmpty();
+        state.NextQueue.Should().BeEmpty();
+        state.QueueRevision.Should().BeEmpty();
+        state.Changes.Should().HaveFlag(StateChanges.Queue);
     }
 
     [Fact]

@@ -36,27 +36,16 @@
 		<FileVersion>0.1.0.0</FileVersion>
 		<!-- Required for CommunityToolkit.Mvvm 8.4.0 on .NET 10 -->
 		<LangVersion>preview</LangVersion>
-		<!-- Pure ServerGC (NO DATAS). ServerGarbageCollection=true provisions one
-		     managed heap per logical CPU at process start; allocations are
-		     contention-free and Gen2 sweeps run on dedicated GC threads in
-		     parallel. Costs ~50–100 MB more idle working set than DATAS but
-		     eliminates the adaptive-rebalance Gen2 pause that DATAS triggers on
-		     bursty allocation patterns (the exact shape of cross-type page
-		     navigation: alloc spike → idle → alloc spike). DATAS' published p99
-		     pause is ~3× ServerGC under this pattern (dotnet/runtime#93891),
-		     which manifested in WaveeMusic as 1–2 s UI freezes during Album →
-		     Artist → Album cycles.
-		     History: workstation GC (one heap, no parallel Gen2) was tried
-		     first and exhibited a mid-life-crisis ratio (Gen0:Gen1:Gen2 ≈
-		     711:541:334) on this codebase. DATAS was then tried and improved
-		     working set but introduced the adaptive-rebalance pause. ServerGC
-		     trades working set for predictable click latency — the right
-		     trade-off for a desktop app where navigation feel matters and the
-		     audio pipeline runs out-of-process (so UI GC pauses don't affect
-		     playback). -->
-		<ServerGarbageCollection>true</ServerGarbageCollection>
+		<!-- Workstation GC for the WinUI process. This app is latency-sensitive:
+		     one UI thread has to stay responsive while navigation, binding
+		     rebuilds, image surfaces, and playback-state updates allocate in
+		     bursts. Pure Server GC kept larger per-CPU heaps resident and recent
+		     traces showed repeated 1-2 s Gen2 stop-the-world pauses in the UI
+		     process. The audio engine runs out-of-process, so the UI process
+		     should optimize for short pauses and lower footprint rather than
+		     throughput. -->
+		<ServerGarbageCollection>false</ServerGarbageCollection>
 		<ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
-		<GarbageCollectionAdaptationMode>0</GarbageCollectionAdaptationMode>
 
 		<!-- Required by Microsoft's official Windows AI APIs guide:
 		     https://learn.microsoft.com/en-us/windows/ai/apis/get-started

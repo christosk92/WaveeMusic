@@ -177,53 +177,6 @@ public sealed partial class LibraryPage : UserControl, ITabBarItemContent, ITabS
                            ?? GetItemForTabKey(_trimmedSelectedTabKey);
         SetSelectedItemSilently(selectedItem);
         ShowTab(selectedItem);
-
-        // Pre-warm the other three views in the background so the first
-        // click on each tab is also an instantaneous ContentControl.Content
-        // reference swap, not a "construct then swap." Low priority so the
-        // active tab's first paint isn't delayed; each pre-warm runs as a
-        // separate dispatcher item so we yield between constructions and
-        // never block input for an extended period.
-        SchedulePreWarm(selectedItem);
-    }
-
-    /// <summary>
-    /// Lazily construct the three non-active library views on background
-    /// dispatcher ticks. Each ??= guard makes this idempotent — if a view
-    /// has already been built (e.g. user clicked the tab before the queue
-    /// drained), the construction is skipped. Cancellable via _disposed.
-    /// </summary>
-    private void SchedulePreWarm(SegmentedItem activeTab)
-    {
-        var queue = DispatcherQueue;
-        if (queue is null) return;
-
-        // Enqueue each construction separately so the dispatcher can pump
-        // input / animations between them. Low priority pushes them after
-        // any higher-priority work (initial layout, image loads, etc.).
-        queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-        {
-            if (_disposed || activeTab == AlbumsItem) return;
-            _albumsView ??= new AlbumsLibraryView(ViewModel.Albums);
-        });
-
-        queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-        {
-            if (_disposed || activeTab == ArtistsItem) return;
-            _artistsView ??= new ArtistsLibraryView(ViewModel.Artists);
-        });
-
-        queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-        {
-            if (_disposed || activeTab == LikedSongsItem) return;
-            _likedSongsView ??= new LikedSongsView(ViewModel.LikedSongs);
-        });
-
-        queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-        {
-            if (_disposed || activeTab == YourEpisodesItem) return;
-            _yourEpisodesView ??= new YourEpisodesView(ViewModel.YourEpisodes);
-        });
     }
 
     /// <summary>

@@ -311,8 +311,7 @@ public sealed partial class HomeHeroAdapter : ObservableObject, IDisposable
         // has â‰¤4, Discover has â‰¤8, Podcasts has â‰¤8) and HomeFeedCache.ApplyDiff
         // already keeps the per-section item lists current. A full replace just
         // resyncs the bucketing.
-        target.Clear();
-        foreach (var s in source) target.Add(s);
+        Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(target, source);
     }
 
     // â”€â”€ Hero slides â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

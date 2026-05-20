@@ -64,6 +64,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     private bool _trimmedForNavigationCache;
     private string? _lastRestoredPlaylistId;
     private int _visualSettlingGeneration;
+    private int _loadedViewWorkGeneration;
 
     // Composition resources for the full-width hero banner image. Surface is
     // (re)loaded whenever HeaderImageUrl changes; null when no header image.
@@ -188,8 +189,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         // on the bare-id "@…" fallback because the imperative formatter only
         // runs at row materialization, not when the source DTO mutates.
         ViewModel.Header.AddedByResolved += ViewModel_AddedByResolved;
-        ApplyDateAddedColumnVisibility();
-        RebuildDescriptionInlines();
+        QueueInitialBindingDerivedUiSync();
 
         HeaderBackgroundHost.Loaded += HeaderBackgroundHost_Loaded;
         HeaderBackgroundHost.Unloaded += HeaderBackgroundHost_Unloaded;
@@ -205,17 +205,12 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
 
     private void PlaylistPage_Loaded(object sender, RoutedEventArgs e)
     {
-        AttachParallax();
-        AttachShyHeader();
-
-        // Left-column overflow handling — see AlbumPage for the full rationale.
-        if (PageScrollView is not null)
-            PageScrollView.SizeChanged += PageScrollView_SizeChangedForLeftScroll;
-        UpdateLeftScrollableMaxHeight();
+        ScheduleLoadedViewWork();
     }
 
     private void PlaylistPage_Unloaded(object sender, RoutedEventArgs e)
     {
+        _loadedViewWorkGeneration++;
         PageController.IsNavigatingAway = true;
         DetachShyHeader();
         DetachParallax();
@@ -223,6 +218,64 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
             PageScrollView.SizeChanged -= PageScrollView_SizeChangedForLeftScroll;
         _heroImageSurface?.Dispose();
         _heroImageSurface = null;
+    }
+
+    private void QueueInitialBindingDerivedUiSync()
+    {
+        if (DispatcherQueue is null)
+        {
+            ApplyDateAddedColumnVisibility();
+            RebuildDescriptionInlines();
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (_isDisposed)
+                return;
+
+            ApplyDateAddedColumnVisibility();
+            RebuildDescriptionInlines();
+        });
+    }
+
+    private void ScheduleLoadedViewWork()
+    {
+        if (DispatcherQueue is null)
+        {
+            AttachLoadedViewWork();
+            return;
+        }
+
+        var generation = ++_loadedViewWorkGeneration;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, async () =>
+        {
+            await Task.Yield();
+            if (_isDisposed ||
+                PageController.IsNavigatingAway ||
+                generation != _loadedViewWorkGeneration ||
+                !IsLoaded)
+            {
+                return;
+            }
+
+            AttachLoadedViewWork();
+        });
+    }
+
+    private void AttachLoadedViewWork()
+    {
+        AttachParallax();
+        AttachShyHeader();
+
+        // Left-column overflow handling — see AlbumPage for the full rationale.
+        if (PageScrollView is not null)
+        {
+            PageScrollView.SizeChanged -= PageScrollView_SizeChangedForLeftScroll;
+            PageScrollView.SizeChanged += PageScrollView_SizeChangedForLeftScroll;
+        }
+
+        UpdateLeftScrollableMaxHeight();
     }
 
     // ── Left-column overflow: sticky top + scrollable bottom ─────────────────
@@ -1088,13 +1141,13 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
                 return;
             }
 
-            HeroBannerRow?.UpdateLayout();
-            HeaderBackgroundHost?.UpdateLayout();
-            CoverHeroBlock?.UpdateLayout();
-            TwoColumnGrid?.UpdateLayout();
-            LeftColumnHost?.UpdateLayout();
+            HeroBannerRow?.InvalidateMeasure();
+            HeaderBackgroundHost?.InvalidateMeasure();
+            CoverHeroBlock?.InvalidateMeasure();
+            TwoColumnGrid?.InvalidateMeasure();
+            LeftColumnHost?.InvalidateMeasure();
 
-            await Task.Yield();
+            await Task.Delay(16).ConfigureAwait(true);
             if (_isDisposed ||
                 PageController.IsNavigatingAway ||
                 generation != _visualSettlingGeneration)

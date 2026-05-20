@@ -1,7 +1,7 @@
 ---
 guide: queue
 scope: Wavee's playback queue subsystem — the in-memory queue model (three buckets, cursor, shuffle, repeat, pagination signal), every orchestrator queue mutation, the autoplay handoff, the cluster-sync layer (PutState prev/next + QueueRevision), the UI bridge (`PlaybackStateService.RawNextQueue`), the right-panel `QueueControl`, drag-and-drop targets, context-menu affordances, and the SetQueue / AddToQueue dealer commands.
-last_verified: 2026-05-19
+last_verified: 2026-05-20
 verified_by: read+grep over src/Wavee/Audio/Queue, src/Wavee/Audio/PlaybackOrchestrator.cs, src/Wavee/Connect (PlaybackStateManager, ConnectCommandHandler, QueueCommands), src/Wavee.UI/Contracts, src/Wavee.UI.WinUI/Data/Contexts (PlaybackService, PlaybackStateService, ConnectCommandExecutor), src/Wavee.UI.WinUI/Controls/Queue, src/Wavee.UI.WinUI/Controls/RightPanel, src/Wavee.UI.Services/DragDrop/Handlers, src/Wavee.UI.WinUI/Controls/ContextMenu/Builders
 root_index: AGENTS.md (Codex) and CLAUDE.md (Claude Code)
 ---
@@ -611,6 +611,12 @@ sections, in screen order:
 The rows use the shared `TrackTemplate` from
 `.agents/guides/track-and-episode-ui.md` — 40 × 40 art, title, artist,
 drag handle.
+
+Queue snapshots with zero next items are authoritative when they come from a
+real cluster `PlayerState` or a local `LocalPlaybackState.QueueRevision`. Do
+not preserve the previous queue just because `Count == 0` — that leaves stale
+right-panel rows after standalone search plays and after the last queued item is
+promoted to current.
 
 **Toolbar pills** (XAML ~lines 95-150; CS `…Button_Click` handlers ~lines
 420-509):

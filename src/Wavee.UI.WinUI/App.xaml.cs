@@ -246,11 +246,10 @@ public partial class App : Application
                 Ioc.Default.GetRequiredService<Diagnostics.NavigationDiagnostics>();
             });
 
-        // (Post-startup forced Gen2 compact removed. It produced one of the ~65
+        // Post-startup forced Gen2 compact removed. It produced one of the ~65
         // forced Gen2 compacts per session that were responsible for navigation
-        // stalls and a pathological Gen0 ≈ Gen1 ≈ Gen2 counter ratio. DATAS GC
-        // self-tunes the post-startup slack as part of its normal heap-count
-        // adaptation — no manual hint needed.)
+        // stalls and a pathological Gen0 ≈ Gen1 ≈ Gen2 counter ratio. Let the
+        // runtime self-tune the post-startup slack.
     }
 
     /// <summary>

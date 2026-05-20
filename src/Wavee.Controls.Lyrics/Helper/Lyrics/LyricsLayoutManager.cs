@@ -42,7 +42,14 @@ namespace Wavee.Controls.Lyrics.Helper.Lyrics
 
             if (style.IsDynamicLyricsFontSize)
             {
-                var lyricsLayoutMetrics = LyricsLayoutHelper.CalculateLayout(canvasWidth, canvasHeight);
+                // Font sizing must follow the actual lyrics rectangle, not the
+                // full Win2D canvas. The right panel canvas spans chrome and
+                // can report a stale/smaller size during first-open animation;
+                // using the lyrics slot keeps first paint consistent with the
+                // post-resize layout.
+                var layoutWidth = lyricsWidth > 0 ? lyricsWidth : canvasWidth;
+                var layoutHeight = lyricsHeight > 0 ? lyricsHeight : canvasHeight;
+                var lyricsLayoutMetrics = LyricsLayoutHelper.CalculateLayout(layoutWidth, layoutHeight);
 
                 phoneticFontSize = (int)lyricsLayoutMetrics.TransliterationSize;
                 originalFontSize = (int)lyricsLayoutMetrics.MainLyricsSize;

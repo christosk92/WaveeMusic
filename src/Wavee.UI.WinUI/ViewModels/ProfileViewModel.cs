@@ -16,6 +16,7 @@ using Wavee.UI.Contracts;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
+using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels.Contracts;
@@ -274,14 +275,9 @@ public sealed partial class ProfileViewModel : Wavee.UI.ViewModels.Helpers.Track
         Username = snapshot.Username;
         UserUri = snapshot.UserUri;
 
-        _recentArtists.Clear();
-        foreach (var a in snapshot.RecentArtists) _recentArtists.Add(a);
-
-        _publicPlaylists.Clear();
-        foreach (var p in snapshot.PublicPlaylists) _publicPlaylists.Add(p);
-
-        _followingArtists.Clear();
-        foreach (var f in snapshot.FollowingArtists) _followingArtists.Add(f);
+        _recentArtists.ReplaceWith(snapshot.RecentArtists);
+        _publicPlaylists.ReplaceWith(snapshot.PublicPlaylists);
+        _followingArtists.ReplaceWith(snapshot.FollowingArtists);
 
         RebuildTopTracks(snapshot.TopTracks);
 
@@ -329,17 +325,16 @@ public sealed partial class ProfileViewModel : Wavee.UI.ViewModels.Helpers.Track
 
     private void RebuildTopTracks(List<TopTrackItem> tracks)
     {
-        _topTracks.Clear();
-        _topTrackItems.Clear();
-        foreach (var item in tracks)
-            _topTracks.Add(item);
+        _topTracks.ReplaceWith(tracks);
 
         int idx = 1;
+        var visibleRows = new List<ITrackItem>(Math.Min(5, tracks.Count));
         foreach (var item in _topTracks.Take(5))
         {
             if (item.Data != null)
-                _topTrackItems.Add(new TopTrackAdapter(item.Data, idx++));
+                visibleRows.Add(new TopTrackAdapter(item.Data, idx++));
         }
+        _topTrackItems.ReplaceWith(visibleRows);
     }
 
     partial void OnHeroColorHexChanged(string? value) => RebuildPageBleedBrush();

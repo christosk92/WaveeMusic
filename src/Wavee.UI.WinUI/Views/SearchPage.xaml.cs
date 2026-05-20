@@ -40,6 +40,7 @@ public sealed partial class SearchPage : UserControl, ITabSleepParticipant, INav
     private bool _viewModelEventsAttached;
     private bool _scrollHandlerAttached;
     private bool _isDisposed;
+    private int _restoreGeneration;
 
     public SearchPage()
     {
@@ -459,8 +460,35 @@ public sealed partial class SearchPage : UserControl, ITabSleepParticipant, INav
             return;
 
         _trimmedForNavigationCache = false;
-        Bindings?.Update();
-        _ = ViewModel.ResumeFromHibernateAsync();
+        var generation = ++_restoreGeneration;
+        if (DispatcherQueue is null)
+        {
+            using (UiOperationProfiler.Instance?.Profile("page.search.bindingsUpdate"))
+            {
+                Bindings?.Update();
+            }
+
+            _ = ViewModel.ResumeFromHibernateAsync();
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, async () =>
+        {
+            await System.Threading.Tasks.Task.Yield();
+            if (_isDisposed || _trimmedForNavigationCache || generation != _restoreGeneration)
+                return;
+
+            using (UiOperationProfiler.Instance?.Profile("page.search.bindingsUpdate"))
+            {
+                Bindings?.Update();
+            }
+
+            await ViewModel.ResumeFromHibernateAsync();
+            if (_isDisposed || _trimmedForNavigationCache || generation != _restoreGeneration)
+                return;
+
+            TryApplyPendingSleepState();
+        });
     }
 
     private void TryApplyPendingSleepState()

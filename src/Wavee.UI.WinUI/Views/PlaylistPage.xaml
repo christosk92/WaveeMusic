@@ -764,6 +764,9 @@
                                 x:Name="FooterTracks"
                                 Spacing="16"
                                 Visibility="{x:Bind ViewModel.Header.CanShowRecommendations, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid x:Name="FooterTracksContent"
+                              x:Load="{x:Bind ViewModel.Header.CanShowRecommendations, Mode=OneWay}">
+                            <StackPanel Spacing="16">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -906,12 +909,15 @@
                                 </DataTemplate>
                             </ItemsRepeater.ItemTemplate>
                         </ItemsRepeater>
+                            </StackPanel>
+                        </Grid>
                     </StackPanel>
                 </tdg:TrackDataGrid.FooterContent>
             </tdg:TrackDataGrid>
 
             <Grid
                 x:Name="EmptyPlaylistState"
+                x:Load="{x:Bind ViewModel.TrackList.ShowEmptyPlaylistState, Mode=OneWay}"
                 Grid.Row="1" Grid.Column="2"
                 Margin="24,104,24,24"
                 HorizontalAlignment="Stretch"

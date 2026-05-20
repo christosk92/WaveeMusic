@@ -263,9 +263,8 @@ internal sealed class NavigationDiagnostics
     /// Records that <c>GC.CollectionCount(gen)</c> incremented since the last
     /// sample. Called from <see cref="UiHealthMonitor"/>'s 16 ms tick whenever a
     /// per-gen delta is observed. Carries the runtime <see cref="GCLatencyMode"/>
-    /// at observation time so the report can distinguish Gen2s fired with
-    /// <c>SustainedLowLatency</c> still active vs after the navigation window
-    /// closed.
+    /// at observation time so the report can distinguish any non-default
+    /// latency policy from the normal interactive path.
     /// </summary>
     public void RecordGc(int generation, double allocSinceMb)
     {

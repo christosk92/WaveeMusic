@@ -130,6 +130,7 @@ public sealed partial class RightPanelView
                     if (view.IsLoaded && view._isOpenCached)
                         view.UpdateCanvasLayout();
                 });
+                view.ScheduleCanvasLayoutSettledPass();
             }
         }
     }

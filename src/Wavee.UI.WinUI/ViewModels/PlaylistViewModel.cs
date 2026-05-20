@@ -49,6 +49,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
     private CompositeDisposable? _subscriptions;
     private CancellationTokenSource? _tracksCts;
     private string? _tracksLoadedFor;
+    private string? _tracksLoadInFlightFor;
+    private string? _appliedDetailSignature;
+    private string? _ownerResolutionKey;
     private string? _pendingFallbackMosaicPlaylistId;
     private bool _disposed;
 
@@ -337,6 +340,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
             TrackList.ResetForNewPlaylist();
             Header.NotifyAddedByGateChanged();
             _tracksLoadedFor = null;
+            _tracksLoadInFlightFor = null;
+            _appliedDetailSignature = null;
+            _ownerResolutionKey = null;
 
             Mutations.ResetForNewPlaylist();
 
@@ -366,10 +372,9 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
                 ex => _logger?.LogError(ex, "PlaylistStore stream faulted for {PlaylistId}", playlistId));
         _subscriptions.Add(streamSubscription);
 
-        // Rootlist (user playlists) for the "Add to playlist" flyout is secondary
-        // — load it in the background instead of gating the detail render on it.
-        // In a later pass this becomes its own store observation.
-        _ = TrackList.LoadRootlistAsync();
+        // Rootlist is secondary: the add-to-playlist flyout can hydrate after
+        // the playlist hero and first rows have painted.
+        _ = LoadRootlistAfterFirstFrameAsync();
     }
 
     public void Deactivate()
@@ -440,13 +445,23 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
                 break;
 
             case EntityState<PlaylistDetailDto>.Ready ready:
-                ApplyDetail(ready.Value);
+                var detailSignature = BuildDetailSignature(ready.Value);
+                var duplicateDetail = string.Equals(
+                    _appliedDetailSignature,
+                    detailSignature,
+                    StringComparison.Ordinal);
+                if (!duplicateDetail)
+                {
+                    _appliedDetailSignature = detailSignature;
+                    ApplyDetail(ready.Value);
+                }
                 IsLoading = false;
                 // Always re-fetch on Ready. Initial replay (page re-visit) gets a
                 // fresh read; later Ready pushes (from PlaylistCacheService.Changes
                 // → PlaylistStore.Invalidate) deliver remote edits. LoadTracksAsync
                 // keeps rows visible while it refetches — see its IsLoadingTracks guard.
-                _ = LoadTracksAsync(expectedPlaylistId);
+                if (!duplicateDetail || _tracksLoadedFor != expectedPlaylistId)
+                    _ = LoadTracksAsync(expectedPlaylistId);
                 break;
 
             case EntityState<PlaylistDetailDto>.Error error:
@@ -577,16 +592,19 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
         // caches both hits and misses.
         if (_userProfileResolver is not null)
         {
-            var ownerUri = !string.IsNullOrWhiteSpace(detail.OwnerId)
-                ? detail.OwnerId
-                : (Header.OwnerName is { Length: > 0 } currentOwner && LooksLikeUserIdentifier(currentOwner) ? currentOwner : null);
+            var ownerUri = ResolveOwnerProfileLookupKey(detail, Header.OwnerName);
             if (!string.IsNullOrEmpty(ownerUri))
             {
                 var pinnedPlaylistId = PlaylistId;
-                _logger?.LogInformation(
-                    "ApplyDetail: resolving owner display name for '{OwnerUri}' (playlist '{PlaylistId}')",
-                    ownerUri, pinnedPlaylistId);
-                _ = ResolveOwnerDisplayNameAsync(ownerUri, pinnedPlaylistId);
+                var ownerResolutionKey = string.Concat(pinnedPlaylistId, "|", ownerUri);
+                if (!string.Equals(_ownerResolutionKey, ownerResolutionKey, StringComparison.Ordinal))
+                {
+                    _ownerResolutionKey = ownerResolutionKey;
+                    _logger?.LogInformation(
+                        "ApplyDetail: resolving owner display name for '{OwnerUri}' (playlist '{PlaylistId}')",
+                        ownerUri, pinnedPlaylistId);
+                    _ = ResolveOwnerDisplayNameAsync(ownerUri, pinnedPlaylistId);
+                }
             }
         }
         else
@@ -616,39 +634,102 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
             detail.Capabilities.CanDelete, detail.Capabilities.CanAdministratePermissions,
             Header.CanEditName, Header.CanEditDescription, Header.CanEditPicture, Header.CanEditCollaborative, Header.CanDelete);
 
-        // Seed the chip strip with whatever's on screen right now (owner +
-        // anyone present via track AddedBy fields) so the first paint isn't
-        // empty. LoadTracksAsync + addedBy resolution will rebuild again as
-        // track contributors materialise.
-        Header.RebuildCollaboratorsFromContext();
-
-        // Kick off the real members fetch in the background. When it returns,
-        // LoadCollaboratorsAsync replaces the chip strip with the role-aware
-        // list from the permission backend. Falls back silently to the seeded
-        // context-rebuild if the user lacks permission or the endpoint returns
-        // empty.
-        _ = Header.LoadCollaboratorsCommand.ExecuteAsync(null);
+        _ = ApplySecondaryHeaderStateAsync(PlaylistId);
 
         HasError = false;
         ErrorMessage = null;
     }
 
-    /// <summary>
-    /// Heuristic: does this string look like a bare Spotify user id or a
-    /// <c>spotify:user:{id}</c> URI rather than a human display name? Anything with
-    /// whitespace or a non-prefix colon is assumed to be a real display name.
-    /// </summary>
-    private static bool LooksLikeUserIdentifier(string value)
+    private async Task LoadRootlistAfterFirstFrameAsync()
     {
-        if (string.IsNullOrWhiteSpace(value)) return false;
-        if (value.StartsWith("spotify:user:", StringComparison.Ordinal)) return true;
-        // Bare ids: URL-safe slug, no spaces, no colons.
-        for (int i = 0; i < value.Length; i++)
+        await Task.Delay(64);
+        if (_disposed)
+            return;
+
+        await TrackList.LoadRootlistAsync();
+    }
+
+    private async Task ApplySecondaryHeaderStateAsync(string playlistId)
+    {
+        // Collaborator chips are below the hot path for navigation. Deferring
+        // avoids several synchronous collection rebuilds during ApplyDetail.
+        await Task.Delay(32);
+        if (_disposed || PlaylistId != playlistId)
+            return;
+
+        Header.RebuildCollaboratorsFromContext();
+        _ = Header.LoadCollaboratorsCommand.ExecuteAsync(null);
+    }
+
+    private static string BuildDetailSignature(PlaylistDetailDto detail)
+    {
+        var caps = detail.Capabilities;
+        return string.Join("|",
+            detail.Id,
+            detail.Name,
+            detail.Description,
+            detail.ImageUrl,
+            detail.HeaderImageUrl,
+            detail.OwnerName,
+            detail.OwnerId,
+            FormatAttributesSignature(detail.FormatAttributes),
+            FormatRevision(detail.Revision),
+            detail.SessionControlGroupId,
+            detail.IsOwner,
+            detail.IsPublic,
+            detail.IsCollaborative,
+            detail.BasePermission,
+            caps.CanEditItems,
+            caps.CanAdministratePermissions,
+            caps.CanCancelMembership,
+            caps.CanAbuseReport,
+            caps.CanEditMetadata,
+            caps.CanEditName,
+            caps.CanEditDescription,
+            caps.CanEditPicture,
+            caps.CanEditCollaborative,
+            caps.CanDelete,
+            detail.FollowerCount);
+    }
+
+    private static string FormatAttributesSignature(IReadOnlyDictionary<string, string>? attributes)
+    {
+        if (attributes is not { Count: > 0 })
+            return string.Empty;
+
+        return string.Join(
+            ";",
+            attributes
+                .OrderBy(static kv => kv.Key, StringComparer.Ordinal)
+                .Select(static kv => string.Concat(kv.Key, "=", kv.Value)));
+    }
+
+    private static string FormatRevision(object? revision)
+        => revision switch
         {
-            var c = value[i];
-            if (c == ' ' || c == ':' || c == '/') return false;
+            null => string.Empty,
+            byte[] bytes => Convert.ToBase64String(bytes),
+            _ => revision.ToString() ?? string.Empty
+        };
+
+    private static string? ResolveOwnerProfileLookupKey(PlaylistDetailDto detail, string? currentOwnerName)
+    {
+        if (!string.IsNullOrWhiteSpace(detail.OwnerId))
+            return detail.OwnerId;
+
+        if (!string.IsNullOrWhiteSpace(detail.OwnerName)
+            && detail.OwnerName.StartsWith("spotify:user:", StringComparison.Ordinal))
+        {
+            return detail.OwnerName;
         }
-        return true;
+
+        if (!string.IsNullOrWhiteSpace(currentOwnerName)
+            && currentOwnerName.StartsWith("spotify:user:", StringComparison.Ordinal))
+        {
+            return currentOwnerName;
+        }
+
+        return null;
     }
 
     private async Task ResolveOwnerDisplayNameAsync(string ownerUri, string pinnedPlaylistId)
@@ -786,6 +867,11 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
 
     private async Task LoadTracksAsync(string playlistId)
     {
+        if (string.Equals(_tracksLoadInFlightFor, playlistId, StringComparison.Ordinal))
+            return;
+
+        _tracksLoadInFlightFor = playlistId;
+
         // Warm hit (revisiting a playlist whose tracks are already loaded): keep
         // the existing CTS alive and don't show the shimmer. The fetch still runs
         // (so remote edits land), but the apply path below diff-checks the result
@@ -890,6 +976,11 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
                 HasError = true;
                 ErrorMessage = ErrorMapper.ToUserMessage(ex);
             });
+        }
+        finally
+        {
+            if (string.Equals(_tracksLoadInFlightFor, playlistId, StringComparison.Ordinal))
+                _tracksLoadInFlightFor = null;
         }
     }
 

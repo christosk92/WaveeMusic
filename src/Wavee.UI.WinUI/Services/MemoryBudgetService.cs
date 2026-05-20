@@ -13,8 +13,12 @@ namespace Wavee.UI.WinUI.Services;
 /// <summary>
 /// Soft process memory budget monitor. This is intentionally not an OS hard
 /// cap: hard caps make native WinUI/WebView/media allocations fail abruptly.
-/// Instead, when the process crosses the budget, we clear stale warm caches,
-/// compact the managed heap, and ask Windows to trim unused working-set pages.
+/// Instead, when the resident process footprint or managed heap crosses the
+/// budget, we clear stale warm caches. Private bytes are logged for leak
+/// diagnostics, but are not used as the cleanup trigger: WinUI / DirectX heaps
+/// can keep committed address space for hours after the working set has fallen,
+/// and treating that as active pressure churns page and image caches without
+/// freeing useful memory.
 /// </summary>
 public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
 {
@@ -32,6 +36,7 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
     // tolerate the overshoot until the next pressure tick to avoid a
     // hard-clear loop on a transient spike.
     private const double EmergencyTriggerMultiple = 1.10;
+    private const double ManagedHeapTriggerMultiple = 0.75;
 
     private readonly IReadOnlyList<ICleanableCache> _caches;
     private readonly ILogger<MemoryBudgetService>? _logger;
@@ -175,8 +180,7 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
             return;
 
         var snapshot = Capture();
-        var observedBytes = Math.Max(snapshot.WorkingSetBytes, snapshot.PrivateBytes);
-        if (observedBytes < _budgetBytes)
+        if (!IsOverBudget(snapshot, _budgetBytes))
             return;
 
         var now = DateTimeOffset.UtcNow;
@@ -195,8 +199,7 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
         CompactAndTrim("budget");
 
         var after = Capture();
-        var afterObserved = Math.Max(after.WorkingSetBytes, after.PrivateBytes);
-        if (afterObserved <= _budgetBytes || now - _lastEscalationAt < EscalationCooldown)
+        if (!IsOverBudget(after, _budgetBytes) || now - _lastEscalationAt < EscalationCooldown)
             return;
 
         _lastEscalationAt = now;
@@ -210,8 +213,7 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
         // because the bytes never left). Other ICleanableCache implementations
         // already cleared via Tier-2's ClearAsync().
         var afterEsc = Capture();
-        var afterEscObserved = Math.Max(afterEsc.WorkingSetBytes, afterEsc.PrivateBytes);
-        if (afterEscObserved < _budgetBytes * EmergencyTriggerMultiple) return;
+        if (PressureBytes(afterEsc) < _budgetBytes * EmergencyTriggerMultiple) return;
         if (now - _lastEmergencyAt < EmergencyCooldown) return;
 
         _lastEmergencyAt = now;
@@ -300,8 +302,8 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
             // GC.Collect(Gen2, blocking: true, compacting: true) on every
             // 10-second pressure tick, which was responsible for ~60% of the
             // forced Gen2 compacts in a session and the "stall then BOOM"
-            // navigation hangs (see nav-health report from 2026-05-07). DATAS
-            // GC self-tunes; manual collects fight it and produce a Gen0 ≈
+            // navigation hangs (see nav-health report from 2026-05-07). The
+            // runtime self-tunes; manual collects fight it and produce a Gen0 ≈
             // Gen1 ≈ Gen2 counter ratio that is impossible organically.
             MemoryReleaseHelper.TrimWorkingSet(_logger, reason);
         }
@@ -326,6 +328,13 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
             return new MemoryBudgetSnapshot(0, 0, GC.GetTotalMemory(forceFullCollection: false));
         }
     }
+
+    private static bool IsOverBudget(MemoryBudgetSnapshot snapshot, long budgetBytes)
+        => snapshot.WorkingSetBytes >= budgetBytes
+           || snapshot.ManagedHeapBytes >= budgetBytes * ManagedHeapTriggerMultiple;
+
+    private static long PressureBytes(MemoryBudgetSnapshot snapshot)
+        => Math.Max(snapshot.WorkingSetBytes, snapshot.ManagedHeapBytes);
 
     private void UnhookMemoryPressure()
     {

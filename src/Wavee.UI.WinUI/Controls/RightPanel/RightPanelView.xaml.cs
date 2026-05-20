@@ -71,6 +71,7 @@ public sealed partial class RightPanelView : UserControl
     private readonly LyricsViewModel? _lyricsVm;
     private bool _lyricsConsumerActive;
     private bool _pendingCanvasLayoutRetry;
+    private int _canvasLayoutSettleGeneration;
 
     private readonly ThemeColorService? _themeColors;
     private readonly ILyricsService? _lyricsService;
@@ -371,8 +372,8 @@ public sealed partial class RightPanelView : UserControl
         if (SelectedMode != RightPanelMode.Lyrics || NowPlayingCanvas == null || !_isOpenCached)
             return;
 
-        var w = RootGrid.ActualWidth;
-        var h = RootGrid.ActualHeight;
+        var w = GetStablePanelWidth();
+        var h = Math.Max(RootGrid.ActualHeight, ActualHeight);
 
         // If layout hasn't measured the grid yet (common when we're called from
         // ApplyCurrentLyricsState right as the panel/tab becomes visible), retry on the
@@ -383,10 +384,6 @@ public sealed partial class RightPanelView : UserControl
             ScheduleCanvasLayoutRetry();
             return;
         }
-
-        // Final fallback: use the control's explicit Width if layout still hasn't resolved.
-        if (w <= 0) w = Width;
-        if (h <= 0) h = ActualHeight;
 
         if (w <= 0 || h <= 0)
         {
@@ -426,6 +423,20 @@ public sealed partial class RightPanelView : UserControl
 #endif
     }
 
+    private double GetStablePanelWidth()
+    {
+        var width = RootGrid.ActualWidth;
+        width = Math.Max(width, ActualWidth);
+
+        if (!double.IsNaN(Width) && !double.IsInfinity(Width) && Width > 0)
+            width = Math.Max(width, Width);
+
+        if (PanelWidth > 0)
+            width = Math.Max(width, PanelWidth);
+
+        return width;
+    }
+
     private void ScheduleCanvasLayoutRetry()
     {
         if (_pendingCanvasLayoutRetry || DispatcherQueue == null)
@@ -456,6 +467,30 @@ public sealed partial class RightPanelView : UserControl
             // so SetLyricsData is called with the now-correct canvas dimensions.
             if (NowPlayingCanvas.LyricsWidth > 0 && SelectedMode == RightPanelMode.Lyrics)
                 LyricsContent?.ApplyCurrentLyricsState();
+        });
+    }
+
+    private void ScheduleCanvasLayoutSettledPass()
+    {
+        if (DispatcherQueue == null || !_isOpenCached)
+            return;
+
+        var generation = ++_canvasLayoutSettleGeneration;
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Delay(32);
+            if (!IsLoaded || !_isOpenCached || generation != _canvasLayoutSettleGeneration)
+                return;
+
+            UpdateCanvasLayout();
+            LyricsContent?.ApplyCurrentLyricsState();
+
+            await Task.Delay(120);
+            if (!IsLoaded || !_isOpenCached || generation != _canvasLayoutSettleGeneration)
+                return;
+
+            UpdateCanvasLayout();
+            LyricsContent?.ApplyCurrentLyricsState();
         });
     }
 
@@ -728,6 +763,7 @@ public sealed partial class RightPanelView : UserControl
             _ = _lyricsVm?.LoadLyricsAsync();
             UpdateCanvasLayout();
             LyricsContent?.ApplyCurrentLyricsState();
+            ScheduleCanvasLayoutSettledPass();
             if (_lyricsVm != null && NowPlayingCanvas != null)
             {
                 NowPlayingCanvas.SetPosition(_lyricsVm.GetInterpolatedPosition());
