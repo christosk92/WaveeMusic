@@ -8,6 +8,11 @@ A modern, open-source Spotify desktop client for Windows — built with .NET 10 
 
 ![Wavee](screenshots/screenshot-1.jpg)
 
+## Big todo issues
+- Memory leaks
+- Waiting for WinUI 3 Performance improvements (specifically related to allocations)
+- Snappiness of the app.
+
 ## What it is
 
 Wavee is an alternative client for Spotify on Windows. Under the hood it's a clean‑room reimplementation of Spotify's Access Point, Connect, Mercury, and metadata protocols — the same ones the official client speaks — wrapped in a polished WinUI 3 desktop app.
