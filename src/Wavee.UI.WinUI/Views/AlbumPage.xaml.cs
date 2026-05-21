@@ -96,6 +96,11 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
                 : "";
         TrackGrid.PopularityBadgeSelector = ViewModel.IsPopularTrack;
 
+        // Floating multi-select command bar — observes TrackGrid's selection.
+        // Albums deliberately don't wire MultiSelectRemoveCommand, so the bar's
+        // Remove action stays hidden here.
+        SelectionBar.Attach(TrackGrid);
+
         ViewModel.ContentChanged += ViewModel_ContentChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         ActualThemeChanged += OnActualThemeChanged;
@@ -406,6 +411,7 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         ActualThemeChanged -= OnActualThemeChanged;
         ViewModel.ContentChanged -= ViewModel_ContentChanged;
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        SelectionBar.Detach();
         TrackGrid.Dispose();
         if (OtherVersionsFlyout != null)
             OtherVersionsFlyout.Items.Clear();

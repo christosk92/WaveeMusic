@@ -37,6 +37,13 @@ public sealed class TrackMenuContext
     public DetailsBackgroundMode CurrentBackgroundMode { get; init; }
 
     /// <summary>
+    /// When set, the menu shows a "Select" entry that puts the host track list
+    /// into multi-select mode with the right-tapped track selected. Supplied by
+    /// grid-hosted track rows (<c>TrackDataGrid</c>); unset elsewhere.
+    /// </summary>
+    public Action? EnterSelectionAction { get; init; }
+
+    /// <summary>
     /// Extra items appended to the built menu (under a separator). Lets callers inject
     /// surface-specific rows without baking those into the shared builder.
     /// </summary>
@@ -83,7 +90,7 @@ public static class TrackContextMenuBuilder
         items.Add(new ContextMenuItemModel
         {
             Text = AppLocalization.GetString("TrackMenu_AddToQueue"),
-            Glyph = FluentGlyphs.AddToQueue,
+            Glyph = FluentGlyphs.Queue,
             AccentIconStyleKey = "App.AccentIcons.Media.PlayAfter",
             Command = ctx.AddToQueueCommand,
             CommandParameter = track,
@@ -117,6 +124,19 @@ public static class TrackContextMenuBuilder
         items.Add(ContextMenuItemModel.Separator);
 
         // ── Secondary list (single group, no internal separators) ────────────
+
+        // Select — enters the host list's multi-select mode (keyboard-free).
+        // Only present when a grid-hosted row supplied the action.
+        if (ctx.EnterSelectionAction is { } enterSelection)
+        {
+            items.Add(new ContextMenuItemModel
+            {
+                Text = "Select",
+                Glyph = FluentGlyphs.SelectAll,
+                Invoke = enterSelection
+            });
+        }
+
         items.Add(new ContextMenuItemModel
         {
             Text = AppLocalization.GetString("TrackMenu_AddToPlaylist"),

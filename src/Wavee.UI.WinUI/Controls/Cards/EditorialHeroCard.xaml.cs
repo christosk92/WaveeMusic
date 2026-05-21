@@ -5,6 +5,7 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
+using Wavee.UI.WinUI.Controls.TabBar;
 using Wavee.UI.WinUI.Effects.Editorial;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
@@ -22,7 +23,7 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 /// backdrop re-bakes and the cover swaps in lockstep. Click routes through
 /// <see cref="HomeViewModel.NavigateToItem"/>.
 /// </summary>
-public sealed partial class EditorialHeroCard : UserControl
+public sealed partial class EditorialHeroCard : UserControl, INavCacheSurfaceParticipant
 {
     public static readonly DependencyProperty ItemProperty =
         DependencyProperty.Register(
@@ -44,6 +45,7 @@ public sealed partial class EditorialHeroCard : UserControl
     private Color _lastBakedAccent;
     private SizeInt32 _lastBakedSize;
     private bool _lastBakedDark;
+    private bool _navCacheReleased;
 
     public EditorialHeroCard()
     {
@@ -60,7 +62,11 @@ public sealed partial class EditorialHeroCard : UserControl
             card.ApplyItem(e.NewValue as HomeSectionItem);
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private void OnLoaded(object sender, RoutedEventArgs e) => HydrateBackdrop();
+
+    private void OnUnloaded(object sender, RoutedEventArgs e) => TeardownBackdrop();
+
+    private void HydrateBackdrop()
     {
         if (_renderer is null)
         {
@@ -71,7 +77,7 @@ public sealed partial class EditorialHeroCard : UserControl
         ApplyItem(Item);
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
+    private void TeardownBackdrop()
     {
         _bakeCts?.Cancel();
         _bakeCts?.Dispose();
@@ -90,9 +96,37 @@ public sealed partial class EditorialHeroCard : UserControl
         _lastBakedUri = null;
         _lastBakedSize = default;
 
-        // CompositionImage releases its own pin on Unload. Don't clear
-        // HeroImage.ImageUrl — breaks scroll-back-up.
+        // HeroImage (CompositionImage) sheds its own surface via the
+        // NavCacheSurfaces walk. Don't clear HeroImage.ImageUrl — breaks
+        // scroll-back-up.
     }
+
+    // ── INavCacheSurfaceParticipant ──
+    // Off-screen pages drop the baked CompositionDrawingSurface backdrop and
+    // its renderer; restore re-bakes from the current Item.
+
+    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
+    {
+        if (_navCacheReleased)
+            return false;
+        _navCacheReleased = true;
+        TeardownBackdrop();
+        return true;
+    }
+
+    bool INavCacheSurfaceParticipant.RestoreForNavCache()
+    {
+        if (!_navCacheReleased)
+            return false;
+        _navCacheReleased = false;
+        HydrateBackdrop();
+        return true;
+    }
+
+    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
+        => _navCacheReleased || _backdropVisual is null
+            ? 0
+            : (long)Math.Max(0, _lastBakedSize.Width) * Math.Max(0, _lastBakedSize.Height) * 4;
 
     private void BackdropHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {

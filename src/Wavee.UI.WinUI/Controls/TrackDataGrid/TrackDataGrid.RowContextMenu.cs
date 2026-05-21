@@ -127,12 +127,13 @@ public sealed partial class TrackDataGrid
     // ──────────────────────────────────────────────────────────────────────
 
     private RightTappedEventHandler? _rowsItemsViewRightTappedHandler;
+    private HoldingEventHandler? _rowsItemsViewHoldingHandler;
     private bool _rightTappedHandlersWired;
 
     /// <summary>
-    /// Install the bubble-phase right-tap handler on the rows presenter. Called from
-    /// the constructor (after <c>InitializeComponent</c>) so the handler is live
-    /// before any row is realized. Idempotent.
+    /// Install the bubble-phase right-tap + hold handlers on the rows presenter.
+    /// Called from the constructor (after <c>InitializeComponent</c>) so the
+    /// handlers are live before any row is realized. Idempotent.
     /// </summary>
     private void WireRowContextMenuHandlers()
     {
@@ -140,12 +141,14 @@ public sealed partial class TrackDataGrid
         _rightTappedHandlersWired = true;
 
         _rowsItemsViewRightTappedHandler ??= OnRowsPresenterRightTapped;
+        _rowsItemsViewHoldingHandler ??= OnRowsPresenterHolding;
 
         // handledEventsToo=true is required because TrackItem marks the bubble-phase
-        // RightTapped Handled=true after showing its single-row flyout. We want to
-        // observe it anyway so we can override with the multi-selection menu when
-        // appropriate.
+        // RightTapped / Holding Handled=true after showing its single-row flyout. We
+        // want to observe them anyway so we can override with the multi-selection
+        // menu when appropriate. Holding covers touch long-press (no right button).
         RowsItemsView.AddHandler(UIElement.RightTappedEvent, _rowsItemsViewRightTappedHandler, true);
+        RowsItemsView.AddHandler(UIElement.HoldingEvent, _rowsItemsViewHoldingHandler, true);
     }
 
     private void UnwireRowContextMenuHandlers()
@@ -155,12 +158,21 @@ public sealed partial class TrackDataGrid
 
         if (_rowsItemsViewRightTappedHandler is not null)
             RowsItemsView.RemoveHandler(UIElement.RightTappedEvent, _rowsItemsViewRightTappedHandler);
+        if (_rowsItemsViewHoldingHandler is not null)
+            RowsItemsView.RemoveHandler(UIElement.HoldingEvent, _rowsItemsViewHoldingHandler);
 
         _rowsItemsViewRightTappedHandler = null;
+        _rowsItemsViewHoldingHandler = null;
     }
 
     private void OnRowsPresenterRightTapped(object sender, RightTappedRoutedEventArgs e)
     {
+        // On touch, press-and-hold raises Holding then RightTapped — the
+        // multi-selection override runs from OnRowsPresenterHolding for touch,
+        // so skip the touch RightTapped here to avoid showing it twice.
+        if (e.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
+            return;
+
         // The right-tap reaches us AFTER TrackItem's per-row handler ran (events bubble
         // inside-out). TrackItem already showed its single-track flyout if the click
         // landed on a row. We only override the menu when the right-tapped row is part
@@ -173,6 +185,30 @@ public sealed partial class TrackDataGrid
         // Also nothing to do if the right-tapped row is not part of the current
         // multi-selection — TrackItem's menu (for the right-tapped track only)
         // is already showing, which is the desired behavior.
+        if (clickedRow is null || selection.Count <= 1)
+            return;
+        if (!selection.Contains(clickedRow))
+            return;
+
+        DismissOpenFlyoutsAtCurrentRoot();
+        ShowSelectionContextMenu(sender as FrameworkElement ?? this, selection, e.GetPosition(this));
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Touch long-press equivalent of <see cref="OnRowsPresenterRightTapped"/>.
+    /// TrackItem already showed its single-track flyout on Holding; when the
+    /// held row is part of a multi-row selection we dismiss that and show the
+    /// selection-aware menu instead — same override the right-click path does.
+    /// </summary>
+    private void OnRowsPresenterHolding(object sender, HoldingRoutedEventArgs e)
+    {
+        if (e.HoldingState != Microsoft.UI.Input.HoldingState.Started)
+            return;
+
+        var clickedRow = ResolveClickedRow(e.OriginalSource as DependencyObject);
+        var selection = CaptureSelectionForContextMenu();
+
         if (clickedRow is null || selection.Count <= 1)
             return;
         if (!selection.Contains(clickedRow))
@@ -261,36 +297,28 @@ public sealed partial class TrackDataGrid
     {
         var items = new List<ContextMenuItemModel>();
         var count = selection.Count;
-        var anyLiked = selection.Any(t => t.IsLiked);
-        var allLiked = selection.All(t => t.IsLiked);
+        var allLiked = selection.Count > 0 && selection.All(t => t.IsLiked);
 
-        // ── Primary row (icon-only buttons): PlayNext · AddToQueue · Save
-        // Selection-count suffix appended manually rather than via a *Format
-        // resource key — keeps the menu working today without requiring new
-        // localizable strings before the supporting .resw entries land.
+        // ── Primary row (icon-only buttons): PlayNext · AddToQueue · Save.
+        // All actions route through the shared Invoke*Selection dispatch in
+        // TrackDataGrid.SelectionMode.cs — the same path the floating
+        // TrackSelectionBar uses. Selection-count suffix appended manually
+        // rather than via a *Format resource key.
         items.Add(new ContextMenuItemModel
         {
             Text = $"{AppLocalization.GetString("TrackMenu_PlayNext")} ({count})",
             Glyph = FluentGlyphs.PlayNext,
             AccentIconStyleKey = "App.AccentIcons.Media.PlayNext",
-            Command = MultiSelectPlayNextCommand,
-            CommandParameter = selection,
-            Invoke = MultiSelectPlayNextCommand is null
-                ? () => DefaultPlayNextSelection(selection)
-                : null,
+            Invoke = () => InvokePlayNextSelection(selection),
             IsPrimary = true,
         });
 
         items.Add(new ContextMenuItemModel
         {
             Text = $"{AppLocalization.GetString("TrackMenu_AddToQueue")} ({count})",
-            Glyph = FluentGlyphs.AddToQueue,
+            Glyph = FluentGlyphs.Queue,
             AccentIconStyleKey = "App.AccentIcons.Media.PlayAfter",
-            Command = MultiSelectAddToQueueCommand,
-            CommandParameter = selection,
-            Invoke = MultiSelectAddToQueueCommand is null
-                ? () => DefaultAddToQueueSelection(selection)
-                : null,
+            Invoke = () => InvokeAddToQueueSelection(selection),
             IsPrimary = true,
         });
 
@@ -304,11 +332,7 @@ public sealed partial class TrackDataGrid
             AccentIconStyleKey = allLiked
                 ? "App.AccentIcons.Media.Saved"
                 : "App.AccentIcons.Media.Save",
-            Command = MultiSelectToggleLikeCommand,
-            CommandParameter = selection,
-            Invoke = MultiSelectToggleLikeCommand is null
-                ? () => DefaultToggleLikeSelection(selection, anyLiked)
-                : null,
+            Invoke = () => InvokeToggleLikeSelection(selection),
             IsPrimary = true,
         });
 
@@ -321,8 +345,7 @@ public sealed partial class TrackDataGrid
                 Text = MultiSelectRemoveLabel
                     ?? $"{AppLocalization.GetString("TrackMenu_Remove")} ({count})",
                 Glyph = FluentGlyphs.Remove,
-                Command = MultiSelectRemoveCommand,
-                CommandParameter = selection,
+                Invoke = () => InvokeRemoveSelection(selection),
                 IsDestructive = true,
             });
         }

@@ -28,6 +28,12 @@
     </UserControl.Resources>
 
     <Grid x:Name="Root">
+        <Grid.KeyboardAccelerators>
+            <!-- Ctrl+A selects every track and enters selection mode. Lives on
+                 the control root (not the inner ItemsView) so it fires whether
+                 focus is on a row, the toolbar, or anywhere in the grid. -->
+            <KeyboardAccelerator Key="A" Modifiers="Control" Invoked="OnSelectAllAccelerator" />
+        </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -78,52 +84,21 @@
                         Glyph="&#xE71C;" />
                 </ToggleButton>
 
-                <!--  Selection menu — Select all / Invert / Clear. Matches Files' selection flyout.  -->
-                <Button
-                    x:Name="SelectionButton"
-                    Style="{ThemeResource IconButtonStyle}"
-                    ToolTipService.ToolTip="Selection">
-                    <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-                        <FontIcon
-                            FontFamily="{StaticResource SymbolThemeFontFamily}"
-                            FontSize="14"
-                            Glyph="&#xE762;" />
-                        <FontIcon
-                            FontFamily="{StaticResource SymbolThemeFontFamily}"
-                            FontSize="10"
-                            Opacity="0.7"
-                            Glyph="&#xE70D;" />
-                    </StackPanel>
-                    <Button.Flyout>
-                        <MenuFlyout Placement="Bottom">
-                            <MenuFlyoutItem
-                                Text="Select all"
-                                Click="SelectAllItem_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE762;" />
-                                </MenuFlyoutItem.Icon>
-                                <MenuFlyoutItem.KeyboardAccelerators>
-                                    <KeyboardAccelerator Key="A" Modifiers="Control" />
-                                </MenuFlyoutItem.KeyboardAccelerators>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem
-                                Text="Invert selection"
-                                Click="InvertSelectionItem_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE8B9;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem
-                                x:Name="ClearSelectionItem"
-                                Text="Clear selection"
-                                Click="ClearSelectionItem_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE711;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                        </MenuFlyout>
-                    </Button.Flyout>
-                </Button>
+                <!--  Selection-mode toggle — flips the grid into keyboard-free
+                      multi-select: per-row checkboxes + the floating action bar.
+                      Sits next to the filter toggle; kept in sync with the
+                      grid's IsSelectionMode in code-behind.  -->
+                <ToggleButton
+                    x:Name="SelectionModeToggle"
+                    Style="{StaticResource TrackDataGridToggleButtonStyle}"
+                    Checked="SelectionModeToggle_Checked"
+                    Unchecked="SelectionModeToggle_Unchecked"
+                    ToolTipService.ToolTip="Select tracks">
+                    <FontIcon
+                        FontFamily="{StaticResource SymbolThemeFontFamily}"
+                        FontSize="14"
+                        Glyph="&#xE762;" />
+                </ToggleButton>
 
                 <Button
                     x:Name="SortButton"

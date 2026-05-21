@@ -70,7 +70,7 @@ public static class PlaylistContextMenuBuilder
         items.Add(new ContextMenuItemModel
         {
             Text = AppLocalization.GetString("SidebarMenu_AddToQueue"),
-            Glyph = FluentGlyphs.AddToQueue,
+            Glyph = FluentGlyphs.Queue,
             Command = ctx.AddToQueueCommand,
             Invoke = ctx.AddToQueueCommand is null ? () => Debug.WriteLine($"AddPlaylistToQueue: {uri}") : null
         });

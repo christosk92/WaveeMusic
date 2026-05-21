@@ -7,6 +7,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Storage.Abstractions;
+using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -199,8 +201,16 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
             snapshot.ManagedHeapBytes / 1048576.0,
             _budgetBytes / 1048576.0);
 
+        await LogMemoryAttributionAsync().ConfigureAwait(false);
+
         await CleanupStaleCachesAsync(ct).ConfigureAwait(false);
         CompactAndTrim("budget");
+
+        // Tier-1b: re-sweep nav-cache GPU surfaces. Steady-state retention
+        // already sheds dormant surfaces on every nav / tab-switch; this is a
+        // safety sweep that also drops each tab's prime-back-target under real
+        // pressure (keeping only the on-screen page).
+        await ReleaseDormantNavSurfacesAsync().ConfigureAwait(false);
 
         var after = Capture();
         if (!IsOverBudget(after, _budgetBytes) || now - _lastEscalationAt < EscalationCooldown)
@@ -270,6 +280,111 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
 
         if (totalRemoved > 0)
             _logger?.LogInformation("Memory budget stale cleanup removed {Count} cache entries", totalRemoved);
+    }
+
+    /// <summary>
+    /// Emits the <c>[mem-attribution]</c> breakdown line — confirms where the
+    /// footprint actually sits (managed heap by generation, image cache, and
+    /// the GPU surfaces held by cached pages) so the result of the nav-cache
+    /// surface work is measurable.
+    /// </summary>
+    private async Task LogMemoryAttributionAsync()
+    {
+        if (_logger is null)
+            return;
+
+        try
+        {
+            var imageCache = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<ImageCacheService>();
+            var icCount = imageCache?.Count ?? 0;
+            var icPinned = imageCache?.PinnedCount ?? 0;
+            var icMb = (imageCache?.EstimatedBytes ?? 0) / 1048576.0;
+
+            var gen = GC.GetGCMemoryInfo().GenerationInfo;
+            var gen0 = gen.Length > 0 ? gen[0].SizeAfterBytes / 1048576.0 : 0.0;
+            var gen1 = gen.Length > 1 ? gen[1].SizeAfterBytes / 1048576.0 : 0.0;
+            var gen2 = gen.Length > 2 ? gen[2].SizeAfterBytes / 1048576.0 : 0.0;
+            var loh = gen.Length > 3 ? gen[3].SizeAfterBytes / 1048576.0 : 0.0;
+            var poh = gen.Length > 4 ? gen[4].SizeAfterBytes / 1048576.0 : 0.0;
+
+            var (tabCount, pageCount, surfaceBytes) = await GatherPageAttributionAsync().ConfigureAwait(false);
+
+            _logger.LogInformation(
+                "[mem-attribution] imageCache={IcCount}/{IcMb:F1}MB pinned={IcPinned} | cachedPages={Pages} tabs={Tabs} navSurfaces={SurfMb:F1}MB | managed gen0={Gen0:F1} gen1={Gen1:F1} gen2={Gen2:F1} loh={Loh:F1} poh={Poh:F1} MB",
+                icCount, icMb, icPinned,
+                pageCount, tabCount, surfaceBytes / 1048576.0,
+                gen0, gen1, gen2, loh, poh);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[mem-attribution] failed");
+        }
+    }
+
+    private static Task<(int Tabs, int Pages, long SurfaceBytes)> GatherPageAttributionAsync()
+    {
+        var dispatcher = MainWindow.Instance?.DispatcherQueue;
+        if (dispatcher is null)
+            return Task.FromResult((0, 0, 0L));
+
+        var tcs = new TaskCompletionSource<(int, int, long)>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void Gather()
+        {
+            try
+            {
+                var tabs = ShellViewModel.TabInstances;
+                var pageCount = 0;
+                long surfaceBytes = 0;
+                foreach (var tab in tabs)
+                {
+                    foreach (var page in tab.ContentHost.CachedPagesByRecency())
+                    {
+                        pageCount++;
+                        surfaceBytes += NavCacheSurfaces.SumEstimatedBytes(page);
+                    }
+                }
+                tcs.TrySetResult((tabs.Count, pageCount, surfaceBytes));
+            }
+            catch
+            {
+                tcs.TrySetResult((0, 0, 0L));
+            }
+        }
+
+        if (dispatcher.HasThreadAccess)
+            Gather();
+        else if (!dispatcher.TryEnqueue(Gather))
+            tcs.TrySetResult((0, 0, 0L));
+
+        return tcs.Task;
+    }
+
+    private static Task ReleaseDormantNavSurfacesAsync()
+    {
+        var dispatcher = MainWindow.Instance?.DispatcherQueue;
+        if (dispatcher is null)
+            return Task.CompletedTask;
+
+        if (dispatcher.HasThreadAccess)
+        {
+            try { TabBarItem.ReleaseDormantSurfacesAllTabs(); }
+            catch { /* best-effort pressure sweep */ }
+            return Task.CompletedTask;
+        }
+
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!dispatcher.TryEnqueue(() =>
+            {
+                try { TabBarItem.ReleaseDormantSurfacesAllTabs(); }
+                catch { /* best-effort pressure sweep */ }
+                tcs.TrySetResult();
+            }))
+        {
+            tcs.TrySetResult();
+        }
+
+        return tcs.Task;
     }
 
     private async Task ClearWarmCachesAsync(CancellationToken ct)

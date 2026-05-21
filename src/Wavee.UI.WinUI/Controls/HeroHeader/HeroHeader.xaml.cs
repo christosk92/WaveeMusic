@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
+using Wavee.UI.WinUI.Controls.TabBar;
 
 namespace Wavee.UI.WinUI.Controls.HeroHeader;
 
@@ -15,7 +16,7 @@ namespace Wavee.UI.WinUI.Controls.HeroHeader;
 /// gradient mask, overlaid with a dark scrim for text readability, and scales in with
 /// a smooth pop-in animation on load.
 /// </summary>
-public sealed partial class HeroHeader : UserControl
+public sealed partial class HeroHeader : UserControl, INavCacheSurfaceParticipant
 {
     private static readonly TimeSpan ColorTransitionDuration = TimeSpan.FromMilliseconds(420);
     private CompositionSurfaceBrush? _surfaceBrush;
@@ -37,6 +38,7 @@ public sealed partial class HeroHeader : UserControl
     private bool _animateNextImageLoad = true;
     private string? _loadedImageUrl;
     private string? _requestedImageUrl;
+    private bool _navCacheReleased;
 
     // â”€â”€ Dependency Properties â”€â”€
 
@@ -475,6 +477,41 @@ public sealed partial class HeroHeader : UserControl
     public void RestoreSurface()
     {
         LoadImage(ImageUrl);
+    }
+
+    // ── INavCacheSurfaceParticipant ──
+    // Driven by the NavCacheSurfaces tree-walk when the hosting page goes
+    // off-screen. Wraps the existing ReleaseSurface / RestoreSurface so the
+    // page no longer needs a bespoke per-page hero-release trim micro-step.
+
+    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
+    {
+        if (_navCacheReleased)
+            return false;
+        _navCacheReleased = true;
+        ReleaseSurface();
+        return true;
+    }
+
+    bool INavCacheSurfaceParticipant.RestoreForNavCache()
+    {
+        if (!_navCacheReleased)
+            return false;
+        _navCacheReleased = false;
+        RestoreSurface();
+        return true;
+    }
+
+    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
+    {
+        get
+        {
+            if (_navCacheReleased || _imageSurface is null)
+                return 0;
+            var w = ImageBorder.ActualWidth > 0 ? ImageBorder.ActualWidth : 1200;
+            var h = ImageBorder.ActualHeight > 0 ? ImageBorder.ActualHeight : 420;
+            return (long)(w * h * 4);
+        }
     }
 
     private void LoadImage(string? url)

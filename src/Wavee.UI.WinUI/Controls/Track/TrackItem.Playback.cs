@@ -220,6 +220,28 @@ public sealed partial class TrackItem
 
     private void UpdateRowOverlay()
     {
+        // Trailing hover affordance — the "…" (more) button swaps in for the
+        // duration on hover, giving non-right-click users a pointer path to the
+        // context menu. Suppressed in selection mode and on shimmer rows.
+        var showMore = _isHovered && !IsSelectionMode && !IsLoading && Track is not null;
+        if (RowMoreButton is not null)
+            RowMoreButton.Visibility = showMore ? Visibility.Visible : Visibility.Collapsed;
+        RowDuration.Visibility = showMore ? Visibility.Collapsed : Visibility.Visible;
+
+        // Selection mode: the index gutter belongs to RowSelectCheckBox
+        // (managed by UpdateSelectionAffordance). Collapse every other index-
+        // cell visual; now-playing is still conveyed by the accent title
+        // colour set in RefreshPlaybackState, and the pending beam still runs.
+        if (IsSelectionMode)
+        {
+            RowIndexText.Visibility = Visibility.Collapsed;
+            RowPlayButton.Visibility = Visibility.Collapsed;
+            RowBufferingRing.IsActive = false;
+            RowBufferingRing.Visibility = Visibility.Collapsed;
+            SetRowEqualizer(false, false);
+            return;
+        }
+
         if (_isBuffering)
         {
             RowIndexText.Visibility = Visibility.Collapsed;

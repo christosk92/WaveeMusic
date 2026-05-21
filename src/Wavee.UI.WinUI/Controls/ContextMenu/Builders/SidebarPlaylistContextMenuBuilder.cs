@@ -43,7 +43,7 @@ public static class SidebarPlaylistContextMenuBuilder
         items.Add(new ContextMenuItemModel
         {
             Text = AppLocalization.GetString("SidebarMenu_AddToQueue"),
-            Glyph = FluentGlyphs.AddToQueue,
+            Glyph = FluentGlyphs.Queue,
             AccentIconStyleKey = "App.AccentIcons.Media.PlayAfter",
             Command = ctx.AddToQueueCommand,
             CommandParameter = uri,

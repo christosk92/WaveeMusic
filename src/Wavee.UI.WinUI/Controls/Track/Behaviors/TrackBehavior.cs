@@ -253,6 +253,11 @@ public static class TrackBehavior
 
     private static void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
     {
+        // On touch, press-and-hold raises Holding (→ OnHolding) AND RightTapped
+        // on release. Skip the touch RightTapped so the menu opens once.
+        if (e.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
+            return;
+
         if (sender is not FrameworkElement element) return;
         if (!GetContextMenuEnabled(element)) return;
 

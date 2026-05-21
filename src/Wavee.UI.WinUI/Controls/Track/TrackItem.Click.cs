@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.Contracts;
@@ -45,6 +46,18 @@ public sealed partial class TrackItem
         {
             ExecutePlayCommandWithPending(track);
         }
+    }
+
+    // The hover "…" button — opens the same context menu a right-click / hold
+    // would, anchored just below the button. The pointer path for users who
+    // don't right-click (trackpad, touch without long-press).
+    private void OnRowMoreButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (Track is null || RowMoreButton is null) return;
+        var origin = RowMoreButton
+            .TransformToVisual(this)
+            .TransformPoint(new Windows.Foundation.Point(0, RowMoreButton.ActualHeight));
+        ShowContextMenu(origin);
     }
 
     private void OnHeartClicked()
@@ -118,9 +131,20 @@ public sealed partial class TrackItem
 
     private void OnTapped(object sender, TappedRoutedEventArgs e)
     {
-        // Don't handle taps on interactive elements (buttons, links)
+        // Don't handle taps on interactive elements (buttons, links, checkbox)
         if (IsInteractiveElement(e.OriginalSource as DependencyObject))
             return;
+
+        // In selection mode a plain tap toggles this row's selection and never
+        // plays. e.Handled stops the tap reaching the ItemContainer, so its
+        // native Extended-mode select-replace doesn't wipe the multi-selection.
+        if (IsSelectionMode)
+        {
+            SelectionToggleRequested?.Invoke(this, !IsSelected);
+            e.Handled = true;
+            return;
+        }
+
         if (IsCtrlOrShiftDown())
             return;
 
@@ -136,6 +160,15 @@ public sealed partial class TrackItem
         // Don't handle double-taps on interactive elements
         if (IsInteractiveElement(e.OriginalSource as DependencyObject))
             return;
+
+        // Selection mode: a tap already toggled selection via OnTapped — the
+        // double-tap must not fall through to play.
+        if (IsSelectionMode)
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (IsCtrlOrShiftDown())
             return;
 
@@ -321,7 +354,10 @@ public sealed partial class TrackItem
     {
         while (element != null)
         {
-            if (element is Button or HyperlinkButton) return true;
+            // ButtonBase covers Button, HyperlinkButton and the row's
+            // CheckBox (a ToggleButton) — all should swallow row tap-to-play
+            // / tap-to-toggle so they handle their own input.
+            if (element is ButtonBase) return true;
             element = VisualTreeHelper.GetParent(element);
         }
         return false;

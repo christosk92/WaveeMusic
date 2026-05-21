@@ -446,9 +446,11 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             // placeholder glyph. Page-level micro-steps below still release
             // the heavy GPU consumers (HeroHeader surfaces, backdrop blur
             // graphs) per-page where the page actually knows what's safe to
-            // drop. If a future memory pass needs broader release, it should
-            // go through MemoryBudgetService's tiered eviction (which respects
-            // pins) rather than the visual-tree walk that ran here.
+            // drop. Broader GPU-surface release across cached pages now exists
+            // — see ApplySurfaceRetention — but it runs recency-scoped (the
+            // prime back-target is never released, so single-step Back never
+            // reloads) and restores via a clean reload, not the fragile cache
+            // peek that failed here.
 
             // Enqueue each micro-step on its own low-priority dispatcher pump
             // so rendering and input frames can interleave between them. For
@@ -496,13 +498,139 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         if (IsSleeping)
             return;
 
+        // Page-level binding restore only. GPU-surface restore is handled
+        // separately by ApplySurfaceRetention — one mechanism, recency-scoped.
         if (ContentHost.ActivePage is INavigationCacheMemoryParticipant participant)
             participant.RestoreFromNavigationCache();
+    }
 
-        if (ContentHost.ActivePage is { } activePage)
+    // ── Nav-cache GPU-surface retention ──────────────────────────────────
+    //
+    // A page keeps its GPU surfaces (image surfaces, Win2D swap chains, baked
+    // backdrops) only while it is the active page of the active tab or that
+    // tab's most-recent collapsed page (the prime back-target). Everything else
+    // — older collapsed pages, and every page of a background tab — sheds them
+    // via the NavCacheSurfaces walk and re-hydrates on return. Visual trees are
+    // never touched, so single-step Back stays an instant Visibility flip.
+
+    /// <summary>
+    /// Re-classifies this tab's cached pages and releases / restores their
+    /// surface participants accordingly. Each page's tree-walk is pumped on a
+    /// low-priority dispatcher tick so it never blocks a frame.
+    /// </summary>
+    public void ApplySurfaceRetention(bool isActiveTab)
+    {
+        if (IsSleeping)
+            return;
+
+        var pages = ContentHost.CachedPagesByRecency();
+        var count = pages.Count;
+        if (count == 0)
+            return;
+
+        var dispatcher = DispatcherQueue.GetForCurrentThread();
+        for (var i = 0; i < count; i++)
         {
-            try { CompositionImage.RestoreSurfacesAfterNavigationCache(activePage); }
-            catch { /* best-effort — page-specific restore still owns correctness */ }
+            // The active tab keeps the last two entries (active + prime
+            // back-target); everything older — and every page of a background
+            // tab — is dormant.
+            var retained = isActiveTab && i >= count - 2;
+            var page = pages[i];
+            void Apply()
+            {
+                if (retained)
+                    NavCacheSurfaces.RestoreAll(page);
+                else
+                    NavCacheSurfaces.ReleaseAll(page);
+            }
+
+            if (dispatcher is not null)
+                dispatcher.TryEnqueue(DispatcherQueuePriority.Low, Apply);
+            else
+                Apply();
+        }
+    }
+
+    /// <summary>
+    /// Releases the surfaces of every cached page in this tab — used when the
+    /// tab is deactivated and the whole tab goes off-screen.
+    /// </summary>
+    public void ReleaseAllSurfaces()
+    {
+        if (IsSleeping)
+            return;
+
+        var dispatcher = DispatcherQueue.GetForCurrentThread();
+        foreach (var page in ContentHost.CachedPagesByRecency())
+        {
+            var captured = page;
+            if (dispatcher is not null)
+                dispatcher.TryEnqueue(DispatcherQueuePriority.Low,
+                    () => NavCacheSurfaces.ReleaseAll(captured));
+            else
+                NavCacheSurfaces.ReleaseAll(captured);
+        }
+    }
+
+    // Cross-tab cached-page ceiling. Per-tab CacheSize already adapts 3→2, but
+    // 2 × N tabs is still unbounded as tabs accumulate. This caps the *total*
+    // realised page count across all non-sleeping tabs, evicting the oldest
+    // collapsed page from the least-recently-activated tab.
+    private const int GlobalCachedPageLimit = 8;
+
+    private static void EnforceGlobalCachedPageLimit()
+    {
+        var tabs = ShellViewModel.TabInstances;
+        // Bounded loop — each pass evicts exactly one page or stops.
+        for (var guard = 0; guard < 64; guard++)
+        {
+            var total = 0;
+            TabBarItem? victim = null;
+            var victimActivatedAt = DateTimeOffset.MaxValue;
+            foreach (var tab in tabs)
+            {
+                if (tab.IsSleeping)
+                    continue;
+                total += tab.ContentHost.CachedPageCount;
+                // Drop from the least-recently-activated tab that has a
+                // collapsed page to spare (CachedPageCount > 1 keeps its
+                // active page). The active tab has the newest
+                // LastActivatedAtUtc, so this naturally favours background tabs.
+                if (tab.ContentHost.CachedPageCount > 1
+                    && tab.LastActivatedAtUtc < victimActivatedAt)
+                {
+                    victimActivatedAt = tab.LastActivatedAtUtc;
+                    victim = tab;
+                }
+            }
+
+            if (total <= GlobalCachedPageLimit || victim is null)
+                break;
+            if (!victim.ContentHost.EvictOldestCollapsed())
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Releases the GPU surfaces of every cached page across all tabs except
+    /// each tab's currently-active page (the active tab's active page is
+    /// on-screen; an inactive tab's active page is kept as a cheap safety
+    /// margin). Drives the memory-budget service's pressure re-sweep — more
+    /// aggressive than steady-state retention because it also sheds the
+    /// prime-back-target.
+    /// </summary>
+    public static void ReleaseDormantSurfacesAllTabs()
+    {
+        foreach (var tab in ShellViewModel.TabInstances)
+        {
+            if (tab.IsSleeping)
+                continue;
+            var active = tab.ContentHost.ActivePage;
+            foreach (var page in tab.ContentHost.CachedPagesByRecency())
+            {
+                if (!ReferenceEquals(page, active))
+                    NavCacheSurfaces.ReleaseAll(page);
+            }
         }
     }
 
@@ -646,6 +774,12 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             while (ContentHost.BackStack.Count > MaxBackStackSize)
                 ContentHost.BackStack.RemoveAt(0);
         }
+
+        // Bound the cross-tab page count, then re-classify this tab's cached
+        // pages so the page just demoted past the prime back-target sheds its
+        // GPU surfaces (low-priority pumps — never blocks this frame).
+        EnforceGlobalCachedPageLimit();
+        ApplySurfaceRetention(isActiveTab: true);
 
         // EndNav is NOT called here. ContentHost_Navigated runs synchronously
         // inside the originating Navigate call; the entry-point method

@@ -327,6 +327,32 @@ public sealed partial class TrackItem : UserControl
         DependencyProperty.Register(nameof(IsSelected), typeof(bool), typeof(TrackItem),
             new PropertyMetadata(false, (d, _) => ((TrackItem)d).UpdateSelectionVisualState()));
 
+    /// <summary>
+    /// When true the host track list is in multi-select mode: this row shows a
+    /// persistent checkbox, tap-to-play is suppressed (tap toggles selection),
+    /// and the index / play-button / equalizer cell content is hidden in favour
+    /// of the checkbox. Pushed onto every realized row by <c>TrackDataGrid</c>.
+    /// </summary>
+    public static readonly DependencyProperty IsSelectionModeProperty =
+        DependencyProperty.Register(nameof(IsSelectionMode), typeof(bool), typeof(TrackItem),
+            new PropertyMetadata(false, OnIsSelectionModeChanged));
+
+    private static void OnIsSelectionModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var item = (TrackItem)d;
+        item.UpdateSelectionAffordance();
+        item.UpdateOverlayState();
+    }
+
+    /// <summary>
+    /// When true this row's host supports selection mode, so the right-click
+    /// menu offers a "Select" entry. Set by <c>TrackDataGrid</c>; left false on
+    /// surfaces (search cards, etc.) that don't host multi-select.
+    /// </summary>
+    public static readonly DependencyProperty SupportsSelectionModeProperty =
+        DependencyProperty.Register(nameof(SupportsSelectionMode), typeof(bool), typeof(TrackItem),
+            new PropertyMetadata(false));
+
     public ITrackItem? Track
     {
         get => (ITrackItem?)GetValue(TrackProperty);
@@ -494,6 +520,18 @@ public sealed partial class TrackItem : UserControl
         set => SetValue(IsSelectedProperty, value);
     }
 
+    public bool IsSelectionMode
+    {
+        get => (bool)GetValue(IsSelectionModeProperty);
+        set => SetValue(IsSelectionModeProperty, value);
+    }
+
+    public bool SupportsSelectionMode
+    {
+        get => (bool)GetValue(SupportsSelectionModeProperty);
+        set => SetValue(SupportsSelectionModeProperty, value);
+    }
+
     #endregion
 
     #region Events
@@ -501,6 +539,16 @@ public sealed partial class TrackItem : UserControl
     public event EventHandler<string>? ArtistClicked;
     public event EventHandler<string>? AlbumClicked;
     public event EventHandler? TrackChanged;
+
+    /// <summary>Raised when the row's checkbox / tap toggles selection while in
+    /// selection mode. The bool is the desired selected state. The host
+    /// (<c>TrackDataGrid</c>) owns the selection — it acts on this request.</summary>
+    public event EventHandler<bool>? SelectionToggleRequested;
+
+    /// <summary>Raised when the user clicks the hover checkbox (or the "Select"
+    /// context-menu item) on a row that is not yet in selection mode. The host
+    /// enters selection mode and selects this row.</summary>
+    public event EventHandler? EnterSelectionRequested;
 
     #endregion
 
@@ -593,6 +641,17 @@ public sealed partial class TrackItem : UserControl
         RowHeartButton.Command = new CommunityToolkit.Mvvm.Input.RelayCommand(OnHeartClicked);
         RowPlayButton.Click += OnPlayButtonClick;
         RowAlbumLink.Click += OnAlbumLinkClick;
+        if (RowMoreButton is not null)
+            RowMoreButton.Click += OnRowMoreButtonClick;
+        if (RowSelectCheckBox is not null)
+        {
+            RowSelectCheckBox.Checked += RowSelectCheckBox_Toggled;
+            RowSelectCheckBox.Unchecked += RowSelectCheckBox_Toggled;
+            // Mark the tap handled so it never reaches the ItemContainer, which
+            // would otherwise run its native Extended-mode select-replace and
+            // wipe the rest of the multi-selection.
+            RowSelectCheckBox.Tapped += RowSelectCheckBox_Tapped;
+        }
         _rowHandlersWired = true;
     }
 
@@ -657,6 +716,7 @@ public sealed partial class TrackItem : UserControl
         // recycled rows can be re-pointed at a track that's already in the
         // pending set, so we need to repaint the glyph (+ vs check).
         item.UpdateAddToPlaylistAffordance();
+        item.UpdateSelectionAffordance();
         item.TrackChanged?.Invoke(item, EventArgs.Empty);
     }
 
@@ -1481,6 +1541,12 @@ public sealed partial class TrackItem : UserControl
 
     private void OnRightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
     {
+        // On touch, a press-and-hold raises Holding (→ OnHolding shows the
+        // menu) AND then RightTapped on release. Skip the touch RightTapped so
+        // the menu opens exactly once. Mouse / pen still route through here.
+        if (e.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
+            return;
+
         var track = Track;
         if (track == null) return;
 
@@ -1510,7 +1576,12 @@ public sealed partial class TrackItem : UserControl
             PlayNextCommand = PlayNextCommand,
             AddToQueueCommand = AddToQueueCommand,
             RemoveCommand = RemoveCommand,
-            RemoveLabel = RemoveCommandLabel
+            RemoveLabel = RemoveCommandLabel,
+            // Offer "Select" only on grid-hosted rows that aren't already in
+            // selection mode (the multi-selection menu takes over from there).
+            EnterSelectionAction = SupportsSelectionMode && !IsSelectionMode
+                ? () => EnterSelectionRequested?.Invoke(this, EventArgs.Empty)
+                : null
         };
 
         var items = TrackContextMenuBuilder.Build(track, ctx);

@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Wavee.UI.WinUI.Controls.TabBar;
 
 namespace Wavee.UI.WinUI.Controls.MiniVideoPlayer;
 
@@ -23,7 +24,7 @@ namespace Wavee.UI.WinUI.Controls.MiniVideoPlayer;
 /// <see cref="LoadedImageSurface"/>. The visual lives as a child of
 /// <c>PosterBlurHost</c> through <see cref="ElementCompositionPreview"/>.
 /// </summary>
-public sealed partial class VideoSurfaceHost : UserControl
+public sealed partial class VideoSurfaceHost : UserControl, INavCacheSurfaceParticipant
 {
     // Crossfade durations / easing — locked to the "Soft" preset the user
     // approved in the HTML prototype.
@@ -44,6 +45,7 @@ public sealed partial class VideoSurfaceHost : UserControl
     private LoadedImageSurface? _posterSurface;
     private CompositionSurfaceBrush? _posterSurfaceBrush;
     private CompositionEffectBrush? _posterEffectBrush;
+    private bool _navCacheReleased;
 
     public VideoSurfaceHost()
     {
@@ -145,7 +147,9 @@ public sealed partial class VideoSurfaceHost : UserControl
         ApplyHostCornerRadius();
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
+    private void OnUnloaded(object sender, RoutedEventArgs e) => TeardownComposition();
+
+    private void TeardownComposition()
     {
         // ORDER MATTERS: drop implicit animations BEFORE disposing the
         // SpriteVisual. Disposing a visual while an implicit animation is
@@ -165,16 +169,54 @@ public sealed partial class VideoSurfaceHost : UserControl
             // Best effort — composition may already be torn down for window close.
         }
 
-        // Release the Win2D-backed brush + LoadedImageSurface (this already
-        // existed). Sets _posterEffectBrush / _posterSurfaceBrush / _posterSurface to null.
+        // Release the Win2D-backed brush + LoadedImageSurface.
+        // Sets _posterEffectBrush / _posterSurfaceBrush / _posterSurface to null.
         DisposePosterResources();
         AlbumArtLayer.Source = null;
 
         // Finally drop the SpriteVisual itself. Null _compositor so the next
-        // OnLoaded sees a fresh slate (idempotent EnsureComposition will rebuild).
+        // EnsureComposition sees a fresh slate (idempotent — it rebuilds).
         try { _posterVisual?.Dispose(); } catch { /* idempotent */ }
         _posterVisual = null;
         _compositor = null;
+    }
+
+    // ── INavCacheSurfaceParticipant ──
+    // Reuses the OnUnloaded teardown / OnLoaded hydrate so an off-screen page
+    // sheds the blurred-poster GPU surfaces (the poster decodes to ≤512²) the
+    // same way a real unload would.
+
+    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
+    {
+        if (_navCacheReleased)
+            return false;
+        _navCacheReleased = true;
+        TeardownComposition();
+        return true;
+    }
+
+    bool INavCacheSurfaceParticipant.RestoreForNavCache()
+    {
+        if (!_navCacheReleased)
+            return false;
+        _navCacheReleased = false;
+        EnsureComposition();
+        ApplyAlbumArt(AlbumArtUrl);
+        ApplyPosterUrl(PosterUrl);
+        ApplyFirstFrameState(IsFirstFrameReady, animate: false);
+        ApplyHostCornerRadius();
+        return true;
+    }
+
+    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
+    {
+        get
+        {
+            if (_navCacheReleased || _posterSurface is null)
+                return 0;
+            var d = ComputeArtworkDecodeSize();
+            return (long)d * d * 4;
+        }
     }
 
     private static void ClearOpacityImplicits(UIElement element)
@@ -344,7 +386,9 @@ public sealed partial class VideoSurfaceHost : UserControl
         var width = ActualWidth > 0 ? ActualWidth : FallbackArtworkDecodeSize / 2.0;
         var height = ActualHeight > 0 ? ActualHeight : FallbackArtworkDecodeSize / 2.0;
         var target = (int)Math.Ceiling(Math.Max(width, height) * 2.0);
-        return Math.Clamp(target, 256, 1024);
+        // Blurred poster — a heavy Gaussian (24px) hides any detail loss, so a
+        // 512² decode is plenty and a quarter the memory of the old 1024² cap.
+        return Math.Clamp(target, 256, 512);
     }
 
     // ── State driver ─────────────────────────────────────────────────────

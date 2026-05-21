@@ -1054,11 +1054,32 @@ public sealed partial class PlaylistTrackListViewModel
     }
 
     [RelayCommand(CanExecute = nameof(CanRemove))]
-    private async Task RemoveSelectedAsync()
-    {
-        if (!CanRemove) return;
+    private Task RemoveSelectedAsync()
+        => CanRemove
+            ? RemoveTrackIdsAsync(SelectedItems.OfType<PlaylistTrackDto>().Select(t => t.Id).ToList())
+            : Task.CompletedTask;
 
-        var trackIds = SelectedItems.OfType<PlaylistTrackDto>().Select(t => t.Id).ToList();
+    /// <summary>
+    /// Multi-track removal driven by the floating selection bar and the
+    /// multi-select context menu — receives the explicit selection as a
+    /// parameter (the <c>TrackDataGrid</c> owns selection state, not this VM's
+    /// <see cref="SelectedItems"/>). Bound to <c>TrackDataGrid.MultiSelectRemoveCommand</c>.
+    /// </summary>
+    [RelayCommand]
+    private Task RemoveTracksAsync(IReadOnlyList<ITrackItem>? tracks)
+    {
+        if (!_canEditItemsProvider() || tracks is null)
+            return Task.CompletedTask;
+
+        var ids = tracks
+            .Select(t => t.Id)
+            .Where(id => !string.IsNullOrEmpty(id))
+            .ToList();
+        return RemoveTrackIdsAsync(ids);
+    }
+
+    private async Task RemoveTrackIdsAsync(IReadOnlyList<string> trackIds)
+    {
         if (trackIds.Count == 0) return;
 
         await _playlistMutationService.RemoveTracksFromPlaylistAsync(PlaylistId, trackIds);

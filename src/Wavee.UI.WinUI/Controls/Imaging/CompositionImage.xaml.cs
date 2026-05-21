@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Media;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.Controls.TabBar;
 
 namespace Wavee.UI.WinUI.Controls.Imaging;
 
@@ -32,7 +33,7 @@ namespace Wavee.UI.WinUI.Controls.Imaging;
 /// swap the surface brush atomically.
 /// </para>
 /// </summary>
-public sealed partial class CompositionImage : UserControl
+public sealed partial class CompositionImage : UserControl, INavCacheSurfaceParticipant
 {
     // â”€â”€ Dependency Properties â”€â”€
 
@@ -377,7 +378,24 @@ public sealed partial class CompositionImage : UserControl
         DiagLog("OnUnloaded:exit");
     }
 
-    public bool ReleaseForNavigationCache()
+    // ── INavCacheSurfaceParticipant ──
+    //
+    // Driven by the NavCacheSurfaces tree-walk when this control's hosting page
+    // goes off-screen / comes back. Replaces the reverted indiscriminate
+    // surface tree-walk: scoped to dormant pages only (the prime back-target
+    // keeps its surfaces), and restore is a deterministic clean reload rather
+    // than a fragile peek that broke when the LRU evicted the entry.
+
+    /// <summary>
+    /// Sheds the GPU surface for an off-screen cached page. Unpins the LRU
+    /// entry (refcount-safe — a shared image still pinned by another realized
+    /// control survives) and resets <c>_resolvedUrl</c> so a later
+    /// <see cref="RestoreForNavCache"/> runs the standard fresh-load path.
+    /// Unpinning is the whole point: it lets <c>ImageCacheService</c> evict
+    /// the surface (the earlier nav-cache release kept the pin and freed no
+    /// memory).
+    /// </summary>
+    public bool ReleaseForNavCache()
     {
         if (_releasedForNavigationCache)
             return false;
@@ -387,119 +405,45 @@ public sealed partial class CompositionImage : UserControl
             && _surfaceBrush?.Surface is null)
             return false;
 
-        // Light release: drop the brush surface and detach the sprite so the
-        // image stops painting while the page sits hidden, but KEEP the LRU
-        // pin (_pinnedUrl), the cached-entry reference (_currentCachedImage),
-        // the LoadCompleted subscription, and the _resolvedUrl marker. The
-        // earlier implementation went through ReleaseSurfaceReference, which
-        // unpinned the LRU entry — under memory pressure the cache would
-        // evict it, and on the return tree-walk TryLoadCurrent's peek would
-        // miss and fall into the cold-load path that nulls the surface and
-        // waits on a network fetch. With the pin preserved the entry stays
-        // resident and RestoreAfterNavigationCache becomes a cheap atomic
-        // re-attach. Trade-off: a few MB of GPU memory held per cached page,
-        // which is the explicit point of the nav-cache (snappy back/forward).
-        if (_surfaceBrush is not null)
-        {
-            try { _surfaceBrush.Surface = null; } catch { }
-        }
-        DetachVisualFromHost();
-        ResetPlaceholderOpacity();
-        IsImageLoaded = false;
-
+        ReleaseSurfaceReference(resetResolvedUrl: true);
         _releasedForNavigationCache = true;
-        DiagLog("ReleaseForNavigationCache");
+        DiagLog("ReleaseForNavCache");
         return true;
     }
 
-    public bool RestoreAfterNavigationCache()
+    /// <summary>
+    /// Re-hydrates after <see cref="ReleaseForNavCache"/>. Runs a clean
+    /// <see cref="TryLoadCurrent"/> from a fully-reset state: peek-hit (instant)
+    /// if the surface is still warm in the cache, cold re-decode otherwise —
+    /// both deterministic, the standard first-realization path.
+    /// </summary>
+    public bool RestoreForNavCache()
     {
         if (!_releasedForNavigationCache)
             return false;
 
-        if (!_isAttached)
-        {
-            // Item hasn't realized yet (e.g. ItemsRepeater hasn't materialized
-            // this row). Leave the flag set so OnLoaded picks it up — clearing
-            // it now would leave the row stuck on placeholder until the next
-            // URL change or scroll re-realization.
-            return false;
-        }
-
         _releasedForNavigationCache = false;
 
-        // Fast path: cache pin survived, surface still in memory. Atomic
-        // brush re-assign + sprite re-attach — no peek, no cold load, no
-        // race window for OnUnloaded to clobber the freshly-loaded surface.
-        if (_currentCachedImage is { IsLoaded: true, Surface: not null } cached
-            && _surfaceBrush is not null
-            && _surfaceBrush.Surface is null
-            && !string.IsNullOrEmpty(_resolvedUrl))
-        {
-            try
-            {
-                EnsureCompositionResources();
-                AttachVisualToHost();
-                _surfaceBrush.Surface = cached.Surface;
-                IsImageLoaded = true;
-                FadeOutPlaceholder();
-                return true;
-            }
-            catch
-            {
-                // Fall through to the standard load path.
-            }
-        }
+        // Not realized yet (e.g. ItemsRepeater hasn't materialized this row) —
+        // OnLoaded will TryLoadCurrent from the clean state we left behind.
+        if (!_isAttached)
+            return true;
 
+        DiagLog("RestoreForNavCache");
         TryLoadCurrent();
         return true;
     }
 
-    public static int ReleaseSurfacesForNavigationCache(DependencyObject? root)
-        => VisitCompositionImages(root, static image => image.ReleaseForNavigationCache());
-
-    public static int RestoreSurfacesAfterNavigationCache(DependencyObject? root)
-        => VisitCompositionImages(root, static image => image.RestoreAfterNavigationCache());
-
-    private static int VisitCompositionImages(DependencyObject? root, Func<CompositionImage, bool> action)
+    /// <summary>Rough GPU bytes held — 0 once released. Diagnostics only.</summary>
+    public long EstimatedSurfaceBytes
     {
-        if (root is null)
-            return 0;
-
-        var count = 0;
-        var stack = new Stack<DependencyObject>();
-        stack.Push(root);
-
-        while (stack.Count > 0)
+        get
         {
-            var current = stack.Pop();
-            if (current is CompositionImage image && action(image))
-                count++;
-
-            int childCount;
-            try
-            {
-                childCount = VisualTreeHelper.GetChildrenCount(current);
-            }
-            catch
-            {
-                continue;
-            }
-
-            for (var i = childCount - 1; i >= 0; i--)
-            {
-                try
-                {
-                    stack.Push(VisualTreeHelper.GetChild(current, i));
-                }
-                catch
-                {
-                    // Visual tree can mutate during page trim; skip that branch.
-                }
-            }
+            if (_releasedForNavigationCache || _surfaceBrush?.Surface is null)
+                return 0;
+            var d = _pinnedDecode > 0 ? _pinnedDecode : 512;
+            return (long)d * d * 4;
         }
-
-        return count;
     }
 
     private void ReleaseCompositionResources()

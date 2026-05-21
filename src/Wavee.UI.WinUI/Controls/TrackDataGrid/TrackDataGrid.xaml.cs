@@ -278,6 +278,17 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         _itemsViewRows.Add(row);
         row.TrackChanged -= RowsItemsViewTrackItem_TrackChanged;
         row.TrackChanged += RowsItemsViewTrackItem_TrackChanged;
+
+        // Selection-mode wiring. SupportsSelectionMode lights up the row's
+        // "Select" context-menu entry; IsSelectionMode catches rows realized
+        // mid-session up to the grid's current mode.
+        row.SupportsSelectionMode = true;
+        row.IsSelectionMode = _isSelectionMode;
+        row.SelectionToggleRequested -= OnRowSelectionToggleRequested;
+        row.SelectionToggleRequested += OnRowSelectionToggleRequested;
+        row.EnterSelectionRequested -= OnRowEnterSelectionRequested;
+        row.EnterSelectionRequested += OnRowEnterSelectionRequested;
+
         var sourceItem = row.Track;
         var index = sourceItem is null ? -1 : _visibleRows.IndexOf(sourceItem);
         ConfigureItemsViewRow(row, sourceItem, index);
@@ -320,6 +331,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         // recycle (Unload → Load on the same row instance) doesn't double-
         // register the manual-drag pointer handlers.
         row.TrackChanged -= RowsItemsViewTrackItem_TrackChanged;
+        row.SelectionToggleRequested -= OnRowSelectionToggleRequested;
+        row.EnterSelectionRequested -= OnRowEnterSelectionRequested;
         UnregisterRow(row);
     }
 
@@ -403,26 +416,6 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         }
 
         item.ShowPopularityBadge = ShouldShowPopularityBadge(row);
-    }
-
-    // CoreWindow.GetForCurrentThread() returns null on WinUI 3 threads that don't have a
-    // CoreWindow attached (some dispatcher contexts hit this); dereferencing it crashed
-    // the app. Use Microsoft.UI.Input.InputKeyboardSource — the WinUI 3 native key-state
-    // API — and treat any failure as "no modifier held".
-    private static (bool ctrl, bool shift) GetCtrlShiftState()
-    {
-        try
-        {
-            var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
-            var shiftState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
-            return (
-                (ctrlState & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down,
-                (shiftState & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down);
-        }
-        catch
-        {
-            return (false, false);
-        }
     }
 
     // ------------------------------------------------------------------ DPs
@@ -1277,26 +1270,26 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         }
     }
 
-    // Selection menu — Select all / Invert / Clear.
-    private void SelectAllItem_Click(object sender, RoutedEventArgs e)
-        => SelectAllRows();
-
-    private void SelectAllRows()
+    public void SelectAllRows()
     {
         RowsItemsView.SelectAll();
+        // Group-header markers (multi-disc albums) are selectable ItemsView
+        // entries but aren't tracks — drop them so the selection, the floating
+        // bar's count, and any bulk action stay tracks-only.
+        for (var i = 0; i < _visibleRows.Count; i++)
+        {
+            if (_visibleRows[i] is not ITrackItem)
+                RowsItemsView.Deselect(i);
+        }
         SyncItemsViewRowSelectionState();
     }
-
-    private void InvertSelectionItem_Click(object sender, RoutedEventArgs e)
-    {
-        RowsItemsView.InvertSelection();
-    }
-
-    private void ClearSelectionItem_Click(object sender, RoutedEventArgs e) => ClearSelection();
 
     private void RowsItemsView_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs args)
     {
         SyncItemsViewRowSelectionState();
+        // Keep the floating selection bar's count / visibility in sync — fires
+        // for user changes AND programmatic restore (RestoreSelectionByKeys).
+        RaiseSelectionModeStateChanged();
         if (_restoringSelection)
             return;
 
@@ -1364,22 +1357,16 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void OnRowsKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key == VirtualKey.A && GetCtrlShiftState().ctrl)
+        // Esc leaves selection mode (and clears the selection).
+        if (e.Key == VirtualKey.Escape && _isSelectionMode)
         {
-            // Toggle: if every track-row is already selected, clear; else select-all.
-            // Counted against ITrackItem rows in _visibleRows so any interleaved
-            // group-header markers don't throw off the "fully selected" comparison.
-            var selectableCount = 0;
-            foreach (var item in _visibleRows)
-                if (item is ITrackItem) selectableCount++;
-
-            if (selectableCount > 0 && RowsItemsView.SelectedItems.Count >= selectableCount)
-                ClearSelection();
-            else
-                SelectAllRows();
+            ExitSelectionMode();
             e.Handled = true;
             return;
         }
+
+        // Ctrl+A is handled by the KeyboardAccelerator on Root (OnSelectAllAccelerator)
+        // so it works regardless of which sub-element holds focus.
 
         if ((e.Key == VirtualKey.Enter || e.Key == VirtualKey.Space) &&
             SelectedRowItem() is ITrackItem track)
@@ -1394,6 +1381,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         if (_disposed)
             return;
         _disposed = true;
+        _isSelectionMode = false;
 
         if (_rowsItemsViewScrollView is not null)
         {

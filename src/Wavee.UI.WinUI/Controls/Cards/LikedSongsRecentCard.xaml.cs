@@ -15,6 +15,7 @@ using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Styles;
+using Wavee.UI.WinUI.Controls.TabBar;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
 
@@ -31,7 +32,7 @@ namespace Wavee.UI.WinUI.Controls.Cards;
 ///   2. <see cref="DropShadow"/> per visual gives the depth Spotify's render
 ///      has; ThemeShadow on three rotated XAML Borders is heavy and awkward.
 /// </summary>
-public sealed partial class LikedSongsRecentCard : UserControl
+public sealed partial class LikedSongsRecentCard : UserControl, INavCacheSurfaceParticipant
 {
     public static readonly DependencyProperty TitleProperty =
         DependencyProperty.Register(nameof(Title), typeof(string), typeof(LikedSongsRecentCard),
@@ -116,6 +117,7 @@ public sealed partial class LikedSongsRecentCard : UserControl
     private bool _isHovered;
     private float _hostWidth;
     private int _thumbnailGeneration;
+    private bool _navCacheReleased;
 
     // Per-slot fan layout â€” back-to-front. Each slot has a rest pose (matches
     // Spotify's tight stack where thumbnails barely peek behind the heart)
@@ -491,6 +493,39 @@ public sealed partial class LikedSongsRecentCard : UserControl
             _thumbnailContainer = null;
         }
         _compositor = null;
+    }
+
+    // ── INavCacheSurfaceParticipant ──
+    // Off-screen pages drop the three fanned thumbnail LoadedImageSurfaces +
+    // their sprites; restore rebuilds the fan from the current thumbnail URLs.
+
+    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
+    {
+        if (_navCacheReleased || (_surfaces.Count == 0 && _sprites.Count == 0))
+            return false;
+        _navCacheReleased = true;
+        ResetThumbnailResources();
+        return true;
+    }
+
+    bool INavCacheSurfaceParticipant.RestoreForNavCache()
+    {
+        if (!_navCacheReleased)
+            return false;
+        _navCacheReleased = false;
+        RebuildThumbnails();
+        return true;
+    }
+
+    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
+    {
+        get
+        {
+            if (_navCacheReleased || _surfaces.Count == 0)
+                return 0;
+            var edge = _hostWidth > 0 ? _hostWidth * ThumbSizeRatio : 150f;
+            return (long)(_surfaces.Count * edge * edge * 4);
+        }
     }
 
     // â”€â”€ Pointer + nav â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

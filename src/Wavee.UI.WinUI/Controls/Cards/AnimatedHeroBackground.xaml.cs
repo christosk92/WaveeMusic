@@ -8,12 +8,13 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Wavee.UI.WinUI.Shaders;
+using Wavee.UI.WinUI.Controls.TabBar;
 using Windows.Foundation;
 using Windows.UI;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
 
-public sealed partial class AnimatedHeroBackground : UserControl
+public sealed partial class AnimatedHeroBackground : UserControl, INavCacheSurfaceParticipant
 {
     public static readonly DependencyProperty PrimaryColorProperty = DependencyProperty.Register(
         nameof(PrimaryColor),
@@ -49,6 +50,7 @@ public sealed partial class AnimatedHeroBackground : UserControl
     // Cached on the UI thread so OnDraw (Win2D render thread) doesn't have to read
     // the DP, which throws when accessed off the dispatcher.
     private float _clipRadius;
+    private bool _navCacheReleased;
 
     public Color PrimaryColor
     {
@@ -94,6 +96,45 @@ public sealed partial class AnimatedHeroBackground : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
         => PART_Canvas.Paused = true;
+
+    // ── INavCacheSurfaceParticipant ──
+    // Off-screen pages stop the continuous mesh-gradient render loop. Pausing
+    // halts the per-frame shader dispatch (CPU + GPU + power — and a real
+    // composition-thread competitor for the active page); the card-sized
+    // CanvasAnimatedControl swap chain itself is only a few MB and is left in
+    // place so restore is an instant un-pause rather than a Win2D control
+    // rebuild.
+
+    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
+    {
+        if (_navCacheReleased)
+            return false;
+        _navCacheReleased = true;
+        if (PART_Canvas is { } canvas)
+            canvas.Paused = true;
+        return true;
+    }
+
+    bool INavCacheSurfaceParticipant.RestoreForNavCache()
+    {
+        if (!_navCacheReleased)
+            return false;
+        _navCacheReleased = false;
+        if (PART_Canvas is { } canvas)
+            canvas.Paused = IsPaused || !IsLoaded;
+        return true;
+    }
+
+    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
+    {
+        get
+        {
+            if (!IsLoaded || ActualWidth <= 0 || ActualHeight <= 0)
+                return 0;
+            // CanvasAnimatedControl swap chain — ~2 buffers at control size.
+            return (long)(ActualWidth * ActualHeight * 4 * 2);
+        }
+    }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
         => UpdateClip();

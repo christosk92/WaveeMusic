@@ -146,6 +146,13 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
             return new Controls.TrackDataGrid.AddedByCellInfo(label, avatarUrl);
         };
 
+        // Floating multi-select command bar — observes TrackGrid's selection.
+        // Remove is wired only while the playlist is editable (see
+        // UpdateSelectionRemoveCommand, kept in sync from the header stream).
+        SelectionBar.Attach(TrackGrid);
+        TrackGrid.MultiSelectRemoveLabel = "Remove from playlist";
+        UpdateSelectionRemoveCommand();
+
         LeftColumnHost.RightTapped += (_, e) =>
         {
             if (string.IsNullOrEmpty(ViewModel.PlaylistId)) return;
@@ -502,6 +509,13 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
             PageController.OnIsLoadingChanged();
     }
 
+    // The floating selection bar's Remove action is only wired while the
+    // playlist is editable — non-owner playlists never expose Remove.
+    private void UpdateSelectionRemoveCommand()
+        => TrackGrid.MultiSelectRemoveCommand = ViewModel.Header.CanEditItems
+            ? ViewModel.TrackList.RemoveTracksCommand
+            : null;
+
     private void ViewModel_Header_PropertyChanged(object? sender, PropertyChangedEventArgs ev)
     {
         if (_isDisposed)
@@ -527,6 +541,8 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         }
         else if (ev.PropertyName == nameof(PlaylistHeaderViewModel.PlaylistDescription))
             RebuildDescriptionInlines();
+        else if (ev.PropertyName == nameof(PlaylistHeaderViewModel.CanEditItems))
+            UpdateSelectionRemoveCommand();
         else if (ev.PropertyName == nameof(PlaylistHeaderViewModel.PlaylistName))
         {
             // Warm-cache / fresh-create path: PlaylistStore emits Ready directly,
@@ -664,6 +680,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         HeaderBackgroundHost.Loaded -= HeaderBackgroundHost_Loaded;
         HeaderBackgroundHost.Unloaded -= HeaderBackgroundHost_Unloaded;
         ActualThemeChanged -= PlaylistPage_ActualThemeChanged;
+        SelectionBar.Detach();
         TrackGrid.Dispose();
         _heroImageSurface?.Dispose();
         _heroImageSurface = null;

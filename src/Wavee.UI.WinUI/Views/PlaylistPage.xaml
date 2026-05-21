@@ -1017,5 +1017,14 @@
             PaletteAccentPillBrush="{x:Bind ViewModel.Header.PaletteAccentPillBrush, Mode=OneWay}"
             PaletteAccentPillForegroundBrush="{x:Bind ViewModel.Header.PaletteAccentPillForegroundBrush, Mode=OneWay}"
             PlayCommand="{x:Bind ViewModel.TrackList.PlayAllCommand}"/>
+
+        <!-- Floating multi-select command bar — viewport-pinned sibling of
+             PageScrollView (same pattern as PlaylistShyPill) so it stays at the
+             bottom of the viewport while the track table scrolls. Wired to
+             TrackGrid in code-behind. -->
+        <tdg:TrackSelectionBar x:Name="SelectionBar"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Bottom"
+                               Margin="0,0,0,24"/>
     </Grid>
 </UserControl>

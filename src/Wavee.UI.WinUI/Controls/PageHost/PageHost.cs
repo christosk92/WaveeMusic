@@ -82,6 +82,50 @@ public sealed class PageHost : ContentControl
     /// <summary>Total count of cached pages (active + collapsed). For memory diagnostics.</summary>
     public int CachedPageCount => _container.Children.Count;
 
+    /// <summary>
+    /// Cached pages ordered oldest-first — the last entry is the active page,
+    /// the second-last is the prime back-target. Drives the nav-cache
+    /// surface-retention pass in <c>TabBarItem</c>.
+    /// </summary>
+    public IReadOnlyList<UserControl> CachedPagesByRecency()
+    {
+        var list = new List<UserControl>(_lru.Count);
+        foreach (var type in _lru)
+        {
+            if (_cache.TryGetValue(type, out var page))
+                list.Add(page);
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// Evicts the oldest collapsed (non-active) cached page, disposing it when
+    /// <see cref="IDisposable"/>. Returns false when only the active page
+    /// remains. Drives the cross-tab cached-page ceiling.
+    /// </summary>
+    public bool EvictOldestCollapsed()
+    {
+        Type? victimType = null;
+        foreach (var type in _lru)
+        {
+            if (type != _currentPageType)
+            {
+                victimType = type;
+                break;
+            }
+        }
+
+        if (victimType is null || !_cache.TryGetValue(victimType, out var victim))
+            return false;
+
+        _cache.Remove(victimType);
+        _lru.Remove(victimType);
+        _container.Children.Remove(victim);
+        if (victim is IDisposable d)
+            d.Dispose();
+        return true;
+    }
+
     public event EventHandler<PageHostNavigatingEventArgs>? Navigating;
     public event EventHandler<PageHostNavigatedEventArgs>? Navigated;
     public event EventHandler<PageHostNavigationFailedEventArgs>? NavigationFailed;

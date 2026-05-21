@@ -667,6 +667,16 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             newValue.Navigated += TabItem_Navigated;
             newValue.RestoreActiveContentFromNavigationCache();
+            newValue.ApplySurfaceRetention(isActiveTab: true);
+        }
+
+        // Every other realised tab is now in the background — shed its GPU
+        // surfaces (image surfaces, Win2D swap chains, baked backdrops). The
+        // new tab already re-hydrated its active + prime-back-target pages.
+        foreach (var tab in TabInstances)
+        {
+            if (!ReferenceEquals(tab, newValue))
+                tab.ReleaseAllSurfaces();
         }
 
         UpdateNavigationState();

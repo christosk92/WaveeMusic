@@ -14,6 +14,7 @@ using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.ViewModels;
+using Wavee.UI.WinUI.Controls.TabBar;
 
 namespace Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 
@@ -21,7 +22,7 @@ namespace Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 /// Expandable inline album detail panel (Apple Music style).
 /// Album art uses Composition API alpha mask (left fade) matching the hero header pattern.
 /// </summary>
-public sealed partial class AlbumDetailPanel : UserControl
+public sealed partial class AlbumDetailPanel : UserControl, INavCacheSurfaceParticipant
 {
     private CompositionSurfaceBrush? _surfaceBrush;
     private SpriteVisual? _spriteVisual;
@@ -29,6 +30,7 @@ public sealed partial class AlbumDetailPanel : UserControl
     private Microsoft.UI.Xaml.Media.LoadedImageSurface? _imageSurface;
     private readonly IPlaybackService? _playbackService;
     private string? _appliedColorHex;
+    private bool _navCacheReleased;
 
     // Alpha (0..255) that the palette colour is blended over the theme surface
     // at. Keeps the album's accent recognisable without producing a saturated
@@ -215,6 +217,43 @@ public sealed partial class AlbumDetailPanel : UserControl
             Math.Max(1, ImageArea.ActualHeight > 0 ? ImageArea.ActualHeight : 640));
         _imageSurface = Microsoft.UI.Xaml.Media.LoadedImageSurface.StartLoadFromUri(new Uri(url), desiredSize);
         _surfaceBrush.Surface = _imageSurface;
+    }
+
+    // ── INavCacheSurfaceParticipant ──
+    // Off-screen pages drop the album-art LoadedImageSurface; restore reloads
+    // it from the current Album. The composition mask tree is left intact.
+
+    bool INavCacheSurfaceParticipant.ReleaseForNavCache()
+    {
+        if (_navCacheReleased || _imageSurface is null)
+            return false;
+        _navCacheReleased = true;
+        _imageSurface.Dispose();
+        _imageSurface = null;
+        if (_surfaceBrush != null)
+            _surfaceBrush.Surface = null;
+        return true;
+    }
+
+    bool INavCacheSurfaceParticipant.RestoreForNavCache()
+    {
+        if (!_navCacheReleased)
+            return false;
+        _navCacheReleased = false;
+        LoadImage(Album?.ImageUrl);
+        return true;
+    }
+
+    long INavCacheSurfaceParticipant.EstimatedSurfaceBytes
+    {
+        get
+        {
+            if (_navCacheReleased || _imageSurface is null)
+                return 0;
+            var w = ImageArea.ActualWidth > 0 ? ImageArea.ActualWidth : 640;
+            var h = ImageArea.ActualHeight > 0 ? ImageArea.ActualHeight : 640;
+            return (long)(w * h * 4);
+        }
     }
 
     private void OuterGrid_SizeChanged(object sender, SizeChangedEventArgs e)

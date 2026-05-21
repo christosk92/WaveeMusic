@@ -158,6 +158,10 @@ public sealed partial class TrackItem
             ApplyCompactBackground();
         else
             ApplyRowBackground();
+
+        // Keep the multi-select checkbox's checked state in sync with the
+        // host-owned IsSelected.
+        UpdateSelectionAffordance();
     }
 
     #endregion

@@ -170,6 +170,11 @@ public static class FluentGlyphs
     public const string Ribbon = "\uEB44";
     /// <summary>CheckMark - E73E. Used for the "Played" podcast-episode state.</summary>
     public const string CheckMark = "\uE73E";
+    /// <summary>SelectAll - E762. Multi-select / selection-mode affordance.</summary>
+    public const string SelectAll = "\uE762";
+    /// <summary>List - E8FD. "Add to queue" icon \u2014 matches the album / playlist
+    /// pages' secondary-action cluster (distinct from the "+" used for playlist).</summary>
+    public const string Queue = "\uE8FD";
     /// <summary>ErrorBadge - EA39. Severity glyph for error notifications/toasts.</summary>
     public const string ErrorBadge = "\uEA39";
     /// <summary>Warning - E7BA. Severity glyph for warning notifications/toasts.</summary>
