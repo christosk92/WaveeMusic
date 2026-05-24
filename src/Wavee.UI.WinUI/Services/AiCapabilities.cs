@@ -154,6 +154,13 @@ public sealed class AiCapabilities
     public async Task<bool> EnsureLanguageModelReadyAsync(
         IProgress<double>? progress = null,
         CancellationToken cancellationToken = default)
+        => await Task.Run(
+            () => EnsureLanguageModelReadyCoreAsync(progress, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+
+    private async Task<bool> EnsureLanguageModelReadyCoreAsync(
+        IProgress<double>? progress,
+        CancellationToken cancellationToken)
     {
         if (!LanguageModelHardwareAvailable || !_regionAllowed)
             return false;

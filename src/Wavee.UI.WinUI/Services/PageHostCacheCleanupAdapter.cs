@@ -35,7 +35,15 @@ public sealed class PageHostCacheCleanupAdapter : ICleanableCache
     }
 
     public Task<int> CleanupStaleEntriesAsync(TimeSpan maxAge, CancellationToken ct = default)
-        => Task.FromResult(0);
+    {
+        // PageHost entries are LRU, not timestamped. Avoid treating normal
+        // pressure cleanup as permission to destroy warm navigation state; the
+        // heavier ClearAsync path and manual diagnostics button can still drop
+        // collapsed trees when the user explicitly asks or memory escalates.
+        _ = maxAge;
+        _ = ct;
+        return Task.FromResult(0);
+    }
 
     public Task<int> ClearAsync(CancellationToken ct = default)
         => RunOnUiThreadAsync(DropCollapsedPageCaches, ct);
@@ -50,12 +58,7 @@ public sealed class PageHostCacheCleanupAdapter : ICleanableCache
                 if (tab.IsSleeping)
                     continue;
 
-                var host = tab.ContentHost;
-                var before = host.CachedPageCount;
-                var prior = host.CacheSize;
-                host.CacheSize = 0;
-                host.CacheSize = prior;
-                dropped += Math.Max(0, before - host.CachedPageCount);
+                dropped += tab.ContentHost.EvictAllCollapsed();
             }
             catch
             {

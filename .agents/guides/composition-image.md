@@ -1,8 +1,8 @@
 ---
 guide: composition-image
 scope: WaveeMusic's composition-backed image control — GPU-resident cache, LoadedImageSurface lifecycle, and every place CompositionImage / CrossFadeImage are bound across the UI.
-last_verified: 2026-05-18
-verified_by: read+grep over src/Wavee.UI.WinUI/Controls/Imaging and src/Wavee.UI.WinUI/Services + diagnostic trace of the artist top-tracks recycle path
+last_verified: 2026-05-22
+verified_by: read+grep over src/Wavee.UI.WinUI/Controls/Imaging, src/Wavee.UI.WinUI/Services, ContentCard, BaselineHomeCard, and Home region layout while fixing fast-scroll image/section disappearance
 root_index: AGENTS.md (Codex) and CLAUDE.md (Claude Code)
 ---
 
@@ -164,10 +164,15 @@ thread, the `ReferenceEquals(_currentCachedImage, cached)` check
 succeeds, and `_surfaceBrush.Surface = cached.Surface` is assigned —
 ready for the next `OnLoaded` to re-attach the visual.
 
-`ReleasePin()` (and only `ReleasePin()`) does unsubscribe. It is called
-from `TryLoadCurrent` when switching to a different URL and from
-`ReleaseSurfaceReference` on the explicit nav-cache / memory-pressure
-paths. Do not call `ReleasePin()` from `OnUnloaded`.
+After that one-shot completion fires, the handler unsubscribes itself from
+`CachedImage.LoadCompleted`. This preserves the recycle-mid-load fix without
+letting a loaded cache entry retain a dead `CompositionImage` until LRU
+eviction.
+
+`ReleasePin()` also unsubscribes. It is called from `TryLoadCurrent`
+when switching to a different URL and from `ReleaseSurfaceReference` on
+the explicit nav-cache / memory-pressure paths. Do not call
+`ReleasePin()` from `OnUnloaded`.
 
 ### Invariant 2 — `OnLoaded` re-attaches the visual eagerly
 

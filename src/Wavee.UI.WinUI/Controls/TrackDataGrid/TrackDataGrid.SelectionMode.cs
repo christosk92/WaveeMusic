@@ -45,6 +45,12 @@ public sealed partial class TrackDataGrid
     public void EnterSelectionMode()
     {
         if (_isSelectionMode) return;
+        // A normal row click can leave an ItemsView selected item behind for
+        // focus/details purposes. Do not treat that as a bulk selection when
+        // the user later opens checkbox mode; explicit entry points that target
+        // a row (Ctrl-click / context-menu Select) select that row after this.
+        if (RowsItemsView.SelectedItems.Count > 0)
+            ClearSelection();
         _isSelectionMode = true;
         SyncSelectionModeToggle();
         PushSelectionModeToRows();

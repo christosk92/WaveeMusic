@@ -342,6 +342,9 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
         SetStringPreservingExisting(target.Title, source.Title, v => target.Title = v);
         SetStringPreservingExisting(target.Subtitle, source.Subtitle, v => target.Subtitle = v);
         SetStringPreservingExisting(target.ImageUrl, source.ImageUrl, v => target.ImageUrl = v);
+        SetStringPreservingExisting(target.ImageSmallUrl, source.ImageSmallUrl, v => target.ImageSmallUrl = v);
+        SetStringPreservingExisting(target.ImageMediumUrl, source.ImageMediumUrl, v => target.ImageMediumUrl = v);
+        SetStringPreservingExisting(target.ImageLargeUrl, source.ImageLargeUrl, v => target.ImageLargeUrl = v);
         SetStringPreservingExisting(target.ColorHex, source.ColorHex, v => target.ColorHex = v);
         if (target.ContentType != source.ContentType
             && (source.ContentType != HomeContentType.Unknown || target.ContentType == HomeContentType.Unknown))
@@ -418,6 +421,9 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
         SetMissingString(target.Title, source.Title, v => target.Title = v);
         SetMissingString(target.Subtitle, source.Subtitle, v => target.Subtitle = v);
         SetMissingString(target.ImageUrl, source.ImageUrl, v => target.ImageUrl = v);
+        SetMissingString(target.ImageSmallUrl, source.ImageSmallUrl, v => target.ImageSmallUrl = v);
+        SetMissingString(target.ImageMediumUrl, source.ImageMediumUrl, v => target.ImageMediumUrl = v);
+        SetMissingString(target.ImageLargeUrl, source.ImageLargeUrl, v => target.ImageLargeUrl = v);
         SetMissingString(target.ColorHex, source.ColorHex, v => target.ColorHex = v);
         SetMissingString(target.PlaceholderGlyph, source.PlaceholderGlyph, v => target.PlaceholderGlyph = v);
         SetMissingString(target.HeroImageUrl, source.HeroImageUrl, v => target.HeroImageUrl = v);
@@ -472,7 +478,11 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
 
     private static bool IsUnrenderable(HomeSectionItem item)
     {
-        if (!string.IsNullOrWhiteSpace(item.Title) || !string.IsNullOrWhiteSpace(item.ImageUrl))
+        if (!string.IsNullOrWhiteSpace(item.Title)
+            || !string.IsNullOrWhiteSpace(item.ImageUrl)
+            || !string.IsNullOrWhiteSpace(item.ImageSmallUrl)
+            || !string.IsNullOrWhiteSpace(item.ImageMediumUrl)
+            || !string.IsNullOrWhiteSpace(item.ImageLargeUrl))
             return false;
 
         if (!string.IsNullOrWhiteSpace(item.Uri)

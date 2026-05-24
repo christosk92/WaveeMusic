@@ -5,9 +5,50 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="using:Wavee.UI.WinUI.Controls.AlbumDetailPanel"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
+    xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
     mc:Ignorable="d">
 
-    <!-- The grid is built entirely in code-behind.
-         RootPanel holds dynamically created rows + the detail panel. -->
-    <StackPanel x:Name="RootPanel" Spacing="12"/>
+    <UserControl.Resources>
+        <!-- Discography release card. The repeater hosts only these (one
+             template, clean recycling); the detail panel is a separate
+             overlay. CardClick expands inline (AutoNavigateOnTap=False); the
+             secondary action opens the full album page. -->
+        <DataTemplate x:Key="DiscographyCardTemplate" x:DataType="vm:LazyReleaseItem">
+            <cards:ContentCard
+                IsCircularImage="False"
+                Title="{x:Bind Data.Name, Mode=OneWay, FallbackValue=''}"
+                Subtitle="{x:Bind Data.SubtitleDetail, Mode=OneWay, FallbackValue=''}"
+                ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
+                NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
+                NavigationTotalTracks="{x:Bind Data.TrackCount, Mode=OneWay}"
+                AutoNavigateOnTap="False"
+                SecondaryActionVisible="True"
+                SecondaryActionTooltip="Open album page"
+                Tag="{x:Bind Data.Uri, Mode=OneWay}"
+                CardClick="OnCardClick"/>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- Virtualizing card grid. ExpandingGridLayout reserves an empty band
+             below the expanded row; the cards stay realised across expand /
+             collapse. -->
+        <ItemsRepeater x:Name="Repeater"
+                       ItemTemplate="{StaticResource DiscographyCardTemplate}">
+            <ItemsRepeater.Layout>
+                <local:ExpandingGridLayout x:Name="GridLayout"/>
+            </ItemsRepeater.Layout>
+        </ItemsRepeater>
+
+        <!-- Single persistent detail panel overlay, positioned (Margin.Top)
+             into the band the layout reserves. Never recycled. -->
+        <local:AlbumDetailPanel x:Name="DetailPanel"
+                                VerticalAlignment="Top"
+                                HorizontalAlignment="Stretch"
+                                Visibility="Collapsed"
+                                CloseRequested="OnDetailPanelCloseRequested"
+                                SizeChanged="OnDetailPanelSizeChanged"/>
+    </Grid>
 </UserControl>

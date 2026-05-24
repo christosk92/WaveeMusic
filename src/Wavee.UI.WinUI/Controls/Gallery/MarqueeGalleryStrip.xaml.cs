@@ -219,6 +219,7 @@ public sealed partial class MarqueeGalleryStrip : UserControl
         if (source is null || source.Count == 0)
         {
             _singleSetWidth = 0;
+            SetContentVisible(false);
             return;
         }
 
@@ -233,8 +234,11 @@ public sealed partial class MarqueeGalleryStrip : UserControl
         if (urls.Count == 0)
         {
             _singleSetWidth = 0;
+            SetContentVisible(false);
             return;
         }
+
+        SetContentVisible(true);
 
         var itemSize = ItemSize;
         var spacing = ItemSpacing;
@@ -264,6 +268,13 @@ public sealed partial class MarqueeGalleryStrip : UserControl
 
         ApplyHalo();
         StartAnimation();
+    }
+
+    private void SetContentVisible(bool hasContent)
+    {
+        Visibility = hasContent ? Visibility.Visible : Visibility.Collapsed;
+        LeftFade.Visibility = hasContent ? Visibility.Visible : Visibility.Collapsed;
+        RightFade.Visibility = hasContent ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private Border CreateTile(string url, int originalIndex)

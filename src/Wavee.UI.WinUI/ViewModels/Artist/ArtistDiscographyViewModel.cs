@@ -675,6 +675,11 @@ public sealed partial class ArtistDiscographyViewModel : ObservableObject, IDisp
             var albumUri = album.Data.Uri ?? $"spotify:album:{album.Data.Id}";
             var tracks = await _albumService.GetTracksAsync(albumUri);
 
+            // Collapsed, or switched to another album, while the fetch was in
+            // flight — drop this result so it can't overwrite the live one.
+            if (ExpandedAlbum != album)
+                return;
+
             for (int i = 0; i < Math.Min(tracks.Count, ExpandedAlbumTracks.Count); i++)
                 ExpandedAlbumTracks[i] = LazyTrackItem.Loaded(tracks[i].Id, i + 1, tracks[i]);
 
@@ -687,7 +692,8 @@ public sealed partial class ArtistDiscographyViewModel : ObservableObject, IDisp
         }
         finally
         {
-            IsLoadingExpandedTracks = false;
+            if (ExpandedAlbum == album)
+                IsLoadingExpandedTracks = false;
         }
     }
 

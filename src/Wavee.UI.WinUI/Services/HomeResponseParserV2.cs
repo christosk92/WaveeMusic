@@ -257,7 +257,9 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
         var title = FirstNonWhiteSpace(
             entityData.IdentityTrait?.Name,
             ExtractTitleFromTypedEntityPayload(typedEntityPayload));
-        var imageUrl = ExtractImageUrl(entityData.VisualIdentityTrait?.SquareCoverImage)
+        var (imageSmallUrl, imageMediumUrl, imageLargeUrl) =
+            ExtractImageUrls(entityData.VisualIdentityTrait?.SquareCoverImage);
+        var imageUrl = imageLargeUrl ?? imageMediumUrl ?? imageSmallUrl
                        ?? ExtractImageUrlFromJson(typedEntityPayload);
         var subtitle = BuildSubtitle(entityData, contentType, formatAttributes);
         var colorHex = ExtractColorFromJson(typedEntityPayload);
@@ -269,6 +271,9 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
             Title = title,
             Subtitle = subtitle,
             ImageUrl = imageUrl,
+            ImageSmallUrl = imageSmallUrl,
+            ImageMediumUrl = imageMediumUrl,
+            ImageLargeUrl = imageLargeUrl,
             ContentType = contentType,
             ColorHex = colorHex,
             IsRecentlySaved = isRecentlySaved
@@ -618,20 +623,48 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
 
     private static string? ExtractImageUrl(HomeSquareCoverImage? coverImage)
     {
-        if (coverImage == null) return null;
+        var (small, medium, large) = ExtractImageUrls(coverImage);
+        return large ?? medium ?? small;
+    }
+
+    private static (string? Small, string? Medium, string? Large) ExtractImageUrls(HomeSquareCoverImage? coverImage)
+    {
+        if (coverImage == null) return default;
+
+        if (coverImage.Image?.Data?.Sources is { Count: > 0 } sources)
+            return SpotifyImageHelper.BucketSources(sources, s => s.Url, s => s.MaxWidth);
 
         if (coverImage.OriginalInstances is { Count: > 0 } instances)
         {
-            var preferred = instances.FirstOrDefault(i =>
-                i.Size is "IMAGE_SIZE_DEFAULT" or "IMAGE_SIZE_LARGE");
-            var cdnUrl = (preferred ?? instances[0]).FlatFile?.CdnUrl;
-            if (!string.IsNullOrEmpty(cdnUrl)) return cdnUrl;
+            string? small = null, medium = null, large = null, fallback = null;
+            foreach (var instance in instances)
+            {
+                var cdnUrl = instance.FlatFile?.CdnUrl;
+                if (string.IsNullOrWhiteSpace(cdnUrl))
+                    continue;
+
+                fallback ??= cdnUrl;
+                switch (instance.Size)
+                {
+                    case "IMAGE_SIZE_SMALL":
+                    case "IMAGE_SIZE_THUMBNAIL":
+                        small ??= cdnUrl;
+                        break;
+                    case "IMAGE_SIZE_DEFAULT":
+                    case "IMAGE_SIZE_MEDIUM":
+                        medium ??= cdnUrl;
+                        break;
+                    case "IMAGE_SIZE_LARGE":
+                    case "IMAGE_SIZE_XLARGE":
+                        large ??= cdnUrl;
+                        break;
+                }
+            }
+
+            return (small, medium ?? fallback, large);
         }
 
-        if (coverImage.Image?.Data?.Sources is { Count: > 0 } sources)
-            return sources.OrderByDescending(s => s.MaxWidth ?? 0).FirstOrDefault()?.Url;
-
-        return null;
+        return default;
     }
 
     // ── Subtitle building ──
@@ -695,6 +728,22 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
             if (!string.IsNullOrWhiteSpace(url)) return url;
         }
 
+        foreach (var propertyName in new[] { "image", "coverImage", "thumbnailImage", "posterImage", "avatarImage" })
+        {
+            if (data.TryGetProperty(propertyName, out var image))
+            {
+                var url = ExtractLargestSourceUrl(image) ?? ExtractSquareCoverImageUrl(image);
+                if (!string.IsNullOrWhiteSpace(url)) return url;
+            }
+        }
+
+        if (data.TryGetProperty("data", out var nested)
+            && nested.ValueKind == JsonValueKind.Object)
+        {
+            var url = ExtractImageUrlFromJson(nested);
+            if (!string.IsNullOrWhiteSpace(url)) return url;
+        }
+
         return null;
     }
 
@@ -741,8 +790,25 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
 
     private static string? ExtractLargestSourceUrl(JsonElement container)
     {
-        if (container.ValueKind != JsonValueKind.Object
-            || !container.TryGetProperty("sources", out var sources)
+        if (container.ValueKind != JsonValueKind.Object)
+            return null;
+
+        if (container.TryGetProperty("data", out var data)
+            && data.ValueKind == JsonValueKind.Object)
+        {
+            var url = ExtractLargestSourceUrl(data);
+            if (!string.IsNullOrWhiteSpace(url)) return url;
+        }
+
+        if (container.TryGetProperty("items", out var items)
+            && items.ValueKind == JsonValueKind.Array
+            && items.GetArrayLength() > 0)
+        {
+            var url = ExtractLargestSourceUrl(items[0]);
+            if (!string.IsNullOrWhiteSpace(url)) return url;
+        }
+
+        if (!container.TryGetProperty("sources", out var sources)
             || sources.ValueKind != JsonValueKind.Array
             || sources.GetArrayLength() == 0)
             return null;

@@ -26,8 +26,8 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
 
     // Per-tab page cache. "Comfortable" = 3 keeps back/forward through a
     // deep nav stack instant (no recreation, no flicker, no item-container
-    // rebind, no palette / hero re-prefetch). Setting this to 0 made nav feel
-    // sluggish.
+    // rebind, no palette / hero re-prefetch). Setting this too low makes nav
+    // feel sluggish.
     //
     // The catch is cross-tab: 5 × N tabs is unbounded growth, and the
     // composition tree footprint scales linearly with the total cached pages.
@@ -161,6 +161,8 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     // fires for the right page even if it's evicted from the cache mid-wait.
     // UI-thread-only field; no locking needed.
     private static readonly TimeSpan DeferredTrimDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan DeferredTrimRetryDelay = TimeSpan.FromMilliseconds(750);
+    private const int MaxDeferredTrimRetries = 8;
     private (INavigationCacheMemoryParticipant Participant, DispatcherQueueTimer Timer)? _pendingTrim;
 
     // Parallel correlation id for NavigationDiagnostics (per-stage timing + GC
@@ -447,10 +449,8 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             // the heavy GPU consumers (HeroHeader surfaces, backdrop blur
             // graphs) per-page where the page actually knows what's safe to
             // drop. Broader GPU-surface release across cached pages now exists
-            // — see ApplySurfaceRetention — but it runs recency-scoped (the
-            // prime back-target is never released, so single-step Back never
-            // reloads) and restores via a clean reload, not the fragile cache
-            // peek that failed here.
+            // in ApplySurfaceRetention; hidden pages restore via a clean reload,
+            // not the fragile cache peek that failed here.
 
             // Enqueue each micro-step on its own low-priority dispatcher pump
             // so rendering and input frames can interleave between them. For
@@ -462,21 +462,47 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
             foreach (var step in capturedParticipant.GetTrimMicroSteps())
             {
                 var capturedStep = step;
-                dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
-                {
-                    if (ReferenceEquals(capturedParticipant, ContentHost.ActivePage))
-                        return;
-
-                    using (NavigationDiagnostics.Instance?.StageCurrent("deferredTrim.step"))
-                    {
-                        try { capturedStep(); }
-                        catch { /* best-effort — diagnostics over correctness */ }
-                    }
-                });
+                ScheduleDeferredTrimStep(dispatcher, capturedParticipant, capturedStep, attempt: 0);
             }
         };
         _pendingTrim = (participant, timer);
         timer.Start();
+    }
+
+    private void ScheduleDeferredTrimStep(
+        DispatcherQueue dispatcher,
+        INavigationCacheMemoryParticipant participant,
+        Action step,
+        int attempt)
+    {
+        dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            if (ReferenceEquals(participant, ContentHost.ActivePage))
+                return;
+
+            if (NavigationGcCoordinator.IsNavigationCritical)
+            {
+                if (attempt >= MaxDeferredTrimRetries)
+                    return;
+
+                var retryTimer = dispatcher.CreateTimer();
+                retryTimer.Interval = DeferredTrimRetryDelay;
+                retryTimer.IsRepeating = false;
+                retryTimer.Tick += (s, _) =>
+                {
+                    s.Stop();
+                    ScheduleDeferredTrimStep(dispatcher, participant, step, attempt + 1);
+                };
+                retryTimer.Start();
+                return;
+            }
+
+            using (NavigationDiagnostics.Instance?.StageCurrent("deferredTrim.step"))
+            {
+                try { step(); }
+                catch { /* best-effort */ }
+            }
+        });
     }
 
     /// <summary>
@@ -507,11 +533,11 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     // ── Nav-cache GPU-surface retention ──────────────────────────────────
     //
     // A page keeps its GPU surfaces (image surfaces, Win2D swap chains, baked
-    // backdrops) only while it is the active page of the active tab or that
-    // tab's most-recent collapsed page (the prime back-target). Everything else
-    // — older collapsed pages, and every page of a background tab — sheds them
-    // via the NavCacheSurfaces walk and re-hydrates on return. Visual trees are
-    // never touched, so single-step Back stays an instant Visibility flip.
+    // backdrops) only while it is the active page of the active tab. Collapsed
+    // cached pages keep their full XAML tree and state, but shed native image
+    // resources via the NavCacheSurfaces walk and re-hydrate on return. Visual
+    // trees are never touched, so Back stays a Visibility flip; covers can fade
+    // back in after the page is already visible.
 
     /// <summary>
     /// Re-classifies this tab's cached pages and releases / restores their
@@ -531,11 +557,9 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         var dispatcher = DispatcherQueue.GetForCurrentThread();
         for (var i = 0; i < count; i++)
         {
-            // The active tab keeps the last two entries (active + prime
-            // back-target); everything older — and every page of a background
-            // tab — is dormant.
-            var retained = isActiveTab && i >= count - 2;
+            // Only the visible active page keeps native image/composition surfaces.
             var page = pages[i];
+            var retained = isActiveTab && ReferenceEquals(page, ContentHost.ActivePage);
             void Apply()
             {
                 if (retained)
@@ -572,7 +596,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         }
     }
 
-    // Cross-tab cached-page ceiling. Per-tab CacheSize already adapts 3→2, but
+    // Cross-tab cached-page ceiling. Per-tab CacheSize already adapts 3 to 2, but
     // 2 × N tabs is still unbounded as tabs accumulate. This caps the *total*
     // realised page count across all non-sleeping tabs, evicting the oldest
     // collapsed page from the least-recently-activated tab.
@@ -615,9 +639,7 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
     /// Releases the GPU surfaces of every cached page across all tabs except
     /// each tab's currently-active page (the active tab's active page is
     /// on-screen; an inactive tab's active page is kept as a cheap safety
-    /// margin). Drives the memory-budget service's pressure re-sweep — more
-    /// aggressive than steady-state retention because it also sheds the
-    /// prime-back-target.
+    /// margin). Drives the memory-budget service's pressure re-sweep.
     /// </summary>
     public static void ReleaseDormantSurfacesAllTabs()
     {
@@ -776,8 +798,8 @@ public sealed partial class TabBarItem : ObservableObject, ITabBarItem, IDisposa
         }
 
         // Bound the cross-tab page count, then re-classify this tab's cached
-        // pages so the page just demoted past the prime back-target sheds its
-        // GPU surfaces (low-priority pumps — never blocks this frame).
+        // pages so hidden pages shed GPU surfaces (low-priority pumps - never
+        // blocks this frame).
         EnforceGlobalCachedPageLimit();
         ApplySurfaceRetention(isActiveTab: true);
 

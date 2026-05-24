@@ -164,7 +164,9 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
                 trackUri: BuildTrackUri(_lyrics.PlaybackState.CurrentTrackId),
                 fullLyric: fullText,
                 deltaProgress: deltaProgress,
-                ct: ct));
+                ct: ct,
+                trackTitle: _lyrics.CurrentSongInfo?.Title,
+                artistName: _lyrics.CurrentSongInfo?.Artist));
     }
 
     /// <summary>

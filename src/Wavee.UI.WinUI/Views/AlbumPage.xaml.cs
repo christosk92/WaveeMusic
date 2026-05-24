@@ -534,17 +534,12 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
             return;
 
         _trimmedForNavigationCache = false;
-        // Bindings.Update() re-evaluates every compiled x:Bind on the page. Skip
-        // it when the user is returning to the same album they just left —
-        // nothing in the binding graph actually changed in that case.
-        var sameAlbum = !string.IsNullOrEmpty(_lastRestoredAlbumId)
-            && string.Equals(_lastRestoredAlbumId, ViewModel.AlbumId, StringComparison.Ordinal);
-        if (!sameAlbum)
-        {
-            // Defer so DWM gets a paint frame between page reattachment and
-            // the synchronous compiled-binding sweep.
-            ScheduleBindingsUpdate("restore");
-        }
+        // TrimForNavigationCache calls Bindings.StopTracking(). Even when the
+        // user returns to the same album, the VM was hibernated and will replay
+        // tracks/secondary sections, so the compiled binding graph must be
+        // reattached. Skipping this leaves footer x:Load bindings and title/meta
+        // fields deaf, which shows up as permanent skeletons on warm return.
+        ScheduleBindingsUpdate("restore");
         // ResetForNewLoad + ViewModel.Activate + TryShowContentNow used to run here
         // too — but OnNavigatedTo → LoadNewContent fires next on the same dispatch
         // with the authoritative parameter and does the same Activate. Running both
@@ -566,6 +561,11 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
             }
 
             RebuildHeaderArtistsText();
+
+            if (!ViewModel.IsLoading)
+                PageController.TryShowContentNow();
+            if (ViewModel.IsContentReady)
+                _ = TryRevealFooterAsync();
         });
     }
 
@@ -610,6 +610,8 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         _logger?.LogDebug(
             "[xfade][album:{Id}] load.enter",
             XfadeLog.Tag(ViewModel.AlbumId));
+
+        PageController.IsNavigatingAway = false;
 
         // Cache-hit nav (Back/Forward): content visual tree is already realised
         // and bindings live; skip shimmer reset to avoid flashing skeleton over

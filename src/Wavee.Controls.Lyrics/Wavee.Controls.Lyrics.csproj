@@ -23,7 +23,7 @@
 		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.7" />
 		<PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
 		<PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
-		<PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.1" />
+		<PackageReference Include="Microsoft.WindowsAppSDK" Version="2.1.4-experimental8" />
 		<PackageReference Include="NAudio.Wasapi" Version="2.3.0" />
 		<PackageReference Include="NTextCat" Version="0.3.65" />
 		<PackageReference Include="SpoutDx.Net.Interop.MultiPlatform" Version="0.1.0" />

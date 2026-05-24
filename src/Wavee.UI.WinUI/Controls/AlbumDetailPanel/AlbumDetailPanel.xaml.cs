@@ -97,13 +97,6 @@ public sealed partial class AlbumDetailPanel : UserControl, INavCacheSurfacePart
     {
         _playbackService = Ioc.Default.GetService<IPlaybackService>();
         InitializeComponent();
-        OuterGrid.SizeChanged += OuterGrid_SizeChanged;
-        ImageArea.Loaded += ImageArea_Loaded;
-        ActualThemeChanged += OnPanelActualThemeChanged;
-        Unloaded += OnUnloaded;
-
-        // Wire up track click → play via IPlaybackService
-        TrackListControl.TrackClicked += OnTrackClicked;
 
         // Add playcount custom column
         TrackListControl.CustomColumns.Add(new Controls.TrackList.TrackListColumnDefinition
@@ -120,17 +113,40 @@ public sealed partial class AlbumDetailPanel : UserControl, INavCacheSurfacePart
                 return "";
             }
         });
+
+        // Loaded / Unloaded are re-runnable: the panel is realised from a
+        // DataTemplate inside a virtualizing ItemsRepeater and pooled across
+        // expand / collapse, so per-realization wiring and composition setup
+        // must survive recycling rather than run once in the constructor.
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        // Idempotent: Loaded can fire again after a recycle (or, defensively,
+        // more than once) — never stack duplicate handlers.
+        OuterGrid.SizeChanged -= OuterGrid_SizeChanged;
+        OuterGrid.SizeChanged += OuterGrid_SizeChanged;
+        ActualThemeChanged -= OnPanelActualThemeChanged;
+        ActualThemeChanged += OnPanelActualThemeChanged;
+        TrackListControl.TrackClicked -= OnTrackClicked;
+        TrackListControl.TrackClicked += OnTrackClicked;
+
+        SetupCompositionMask();
+        if (Album != null)
+            LoadImage(Album.ImageUrl);
+        ApplyBackground();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        Unloaded -= OnUnloaded;
         OuterGrid.SizeChanged -= OuterGrid_SizeChanged;
         ActualThemeChanged -= OnPanelActualThemeChanged;
         TrackListControl.TrackClicked -= OnTrackClicked;
 
-        // Dispose composition resources to prevent leaks
-        // (this control is created/destroyed dynamically on each expand/collapse)
+        // Dispose composition resources — OnLoaded recreates them if the panel
+        // is realised again from the recycle pool.
         _imageSurface?.Dispose();
         _imageSurface = null;
 
@@ -150,19 +166,14 @@ public sealed partial class AlbumDetailPanel : UserControl, INavCacheSurfacePart
         }
 
         _compositor = null;
-    }
-
-    private void ImageArea_Loaded(object sender, RoutedEventArgs e)
-    {
-        ImageArea.Loaded -= ImageArea_Loaded;
-        SetupCompositionMask();
-        // If album was already set before Loaded, load the image now
-        if (Album != null)
-            LoadImage(Album.ImageUrl);
+        _navCacheReleased = false;
     }
 
     private void SetupCompositionMask()
     {
+        if (_compositor != null)
+            return; // already wired (defensive against a double Loaded)
+
         var visual = ElementCompositionPreview.GetElementVisual(ImageArea);
         _compositor = visual.Compositor;
 

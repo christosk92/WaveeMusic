@@ -20,16 +20,16 @@
                 <ResourceDictionary x:Key="Light">
                     <AcrylicBrush x:Key="DetailsCardBrush"
                                   TintColor="#F7F7F7"
-                                  TintOpacity="0.42"
-                                  TintLuminosityOpacity="0.88"
-                                  FallbackColor="#EEF4F7FA"/>
+                                  TintOpacity="0.62"
+                                  TintLuminosityOpacity="0.92"
+                                  FallbackColor="#F4F7FAFC"/>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <AcrylicBrush x:Key="DetailsCardBrush"
                                   TintColor="#10161C"
-                                  TintOpacity="0.38"
-                                  TintLuminosityOpacity="0.76"
-                                  FallbackColor="#CC10161C"/>
+                                  TintOpacity="0.58"
+                                  TintLuminosityOpacity="0.68"
+                                  FallbackColor="#E8141A20"/>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
@@ -378,12 +378,12 @@
                         <ProgressBar x:Name="DetailsAiMeaningProgress"
                                      IsIndeterminate="True"
                                      Visibility="Collapsed"/>
-                        <TextBlock x:Name="DetailsAiMeaningText"
-                                   TextWrapping="WrapWholeWords"
-                                   LineHeight="19"
-                                   FontSize="12"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Visibility="Collapsed"/>
+                        <RichTextBlock x:Name="DetailsAiMeaningText"
+                                       TextWrapping="WrapWholeWords"
+                                       LineHeight="19"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Visibility="Collapsed"/>
                     </StackPanel>
                 </Border>
 

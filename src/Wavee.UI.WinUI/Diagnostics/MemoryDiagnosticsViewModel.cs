@@ -155,17 +155,11 @@ public sealed partial class MemoryDiagnosticsViewModel : ObservableObject, IDisp
         {
             try
             {
-                var h = tab.ContentHost;
-                var prior = h.CacheSize;
-                h.CacheSize = 0;
-                // Restoring the size doesn't bring back the dropped pages — they were
-                // evicted on the cycle. Set it back so future navigations cache as before.
-                h.CacheSize = prior;
-                dropped++;
+                dropped += tab.ContentHost.EvictAllCollapsed();
             }
             catch { /* best-effort */ }
         }
-        SetAction($"Dropped page cache on {dropped} tabs");
+        SetAction($"Dropped {dropped} cached pages");
         _service.SampleNow();
     }
 

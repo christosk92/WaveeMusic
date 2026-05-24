@@ -179,6 +179,8 @@
                                               IsCircle="True"
                                               Stretch="UniformToFill"
                                               Opacity="0.85"
+                                              ImageOpened="CircleImage_ImageOpened"
+                                              ImageFailed="CircleImage_ImageFailed"
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"/>
 
@@ -250,6 +252,7 @@
                 <imaging:CompositionImage x:Name="CategoryTileArt"
                                            Width="80"
                                            Height="80"
+                                           DecodePixelSize="80"
                                            HorizontalAlignment="Right"
                                            VerticalAlignment="Bottom"
                                            Stretch="UniformToFill"

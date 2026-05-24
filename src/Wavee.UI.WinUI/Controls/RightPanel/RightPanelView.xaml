@@ -93,6 +93,7 @@
             <ColumnDefinition Width="*"/>     <!-- Panel content -->
         </Grid.ColumnDefinitions>
 
+
         <!-- Win2D canvas as full-panel background (swap chain can't blend with XAML, so it owns the background) -->
         <lyrics:NowPlayingCanvas x:Name="NowPlayingCanvas"
                                  Grid.ColumnSpan="2"

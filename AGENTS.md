@@ -37,6 +37,11 @@ Read the relevant guide before changing that area:
   Library, Artist, Album, Show, Concert, Profile, Local-media. Card chrome,
   modes (square / circle / Tall / Wide / Backdrop), viewport gating, attached
   behaviors. `.agents/guides/content-card.md`
+- **Discography inline expander** — the artist-page Albums / Singles grids that
+  open an `AlbumDetailPanel` inline between rows: `ExpandableAlbumGrid`,
+  `ExpandingGridLayout` (custom virtualizing layout with a reserved band),
+  `AlbumDetailPanel`, and the `ArtistDiscographyViewModel` expand/collapse
+  surface. `.agents/guides/discography-expander.md`
 
 ## How To Add A New Component Guide
 

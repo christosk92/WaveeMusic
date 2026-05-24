@@ -20,8 +20,8 @@ namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 /// page's <see cref="TrackDataGrid"/> via <see cref="Attach"/>.
 ///
 /// The bar is purely a view over the grid's selection: it observes
-/// <see cref="TrackDataGrid.SelectionModeStateChanged"/>, shows itself while the
-/// grid is in selection mode (or 1+ rows are selected), and routes every action
+/// <see cref="TrackDataGrid.SelectionModeStateChanged"/>, shows itself only while
+/// the grid is in explicit selection mode, and routes every action
 /// through the grid's shared <c>Invoke*Selection</c> helpers. It owns no
 /// selection state of its own.
 /// </summary>
@@ -98,8 +98,10 @@ public sealed partial class TrackSelectionBar : UserControl
         var selection = _grid.GetSelectedTracks();
         var count = selection.Count;
 
-        // Visible while in selection mode, or whenever any track is selected.
-        var show = _grid.IsSelectionMode || count >= 1;
+        // Native ItemsView selection is also used for row focus / keyboard
+        // navigation. The bulk-action bar belongs only to the explicit
+        // checkbox-selection mode (toolbar Select, row menu Select, Ctrl-click).
+        var show = _grid.IsSelectionMode;
         Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (!show) return;
 

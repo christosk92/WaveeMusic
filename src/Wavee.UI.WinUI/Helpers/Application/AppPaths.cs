@@ -16,4 +16,8 @@ public static class AppPaths
     public static string DrmRollingLogFilePath { get; } = Path.Combine(LogsDirectory, "drm-.log");
 
     public static string CrashLogPath { get; } = Path.Combine(AppDataDirectory, "crash.log");
+
+    public static string DiagnosticsDirectory { get; } = Path.Combine(AppDataDirectory, "diag");
+
+    public static string PhiSilicaDiagnosticsDirectory { get; } = Path.Combine(DiagnosticsDirectory, "phi-silica");
 }

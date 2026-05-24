@@ -660,6 +660,19 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Sets repeat as one atomic mode update. Used by UI repeat cycling so
+    /// Track -> Off cannot transiently publish an intermediate state or leave
+    /// one of the two repeat flags behind.
+    /// </summary>
+    public Task SetRepeatModeAsync(bool repeatContext, bool repeatTrack, CancellationToken ct = default)
+    {
+        _repeatContext = repeatContext;
+        _repeatTrack = repeatTrack;
+        PublishQueueState();
+        return Task.CompletedTask;
+    }
+
     public Task PlayNextAsync(string trackUri, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(trackUri))
@@ -685,6 +698,55 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
         _logger?.LogInformation("Orchestrator: Enqueue (post-context) → {Uri}", trackUri);
         PublishQueueState();
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Drag-reorder of one item within a single queue bucket. Publishes the new
+    /// queue state (cluster + UI) only if the move was actually applied.
+    /// </summary>
+    public Task ReorderQueueAsync(
+        Wavee.Audio.Queue.QueueReorderTarget target,
+        int oldIndex,
+        int newIndex,
+        CancellationToken ct = default)
+    {
+        if (_queue.ReorderWithinBucket(target, oldIndex, newIndex))
+        {
+            _logger?.LogInformation(
+                "Orchestrator: ReorderQueue → target={Target} {Old} -> {New}", target, oldIndex, newIndex);
+            PublishQueueState();
+        }
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Skips playback to a specific upcoming queue item — the 0-based position
+    /// in the next-tracks list (Queue → Next up → Queued later → Autoplay, the
+    /// same order as <see cref="PlaybackQueue.GetNextTracks"/>). Everything
+    /// before it is consumed, exactly as a normal forward skip would.
+    /// </summary>
+    public async Task SkipToUpcomingAsync(int upcomingIndex, CancellationToken ct = default)
+    {
+        if (upcomingIndex < 0)
+            return;
+
+        DispatchTrackTransition(Wavee.Connect.Events.PlaybackReason.ForwardBtn, _stateSubject.Value.PositionMs);
+
+        QueueTrack? landed = null;
+        for (var i = 0; i <= upcomingIndex; i++)
+        {
+            var next = _queue.MoveNext();
+            if (next is null)
+                break;
+            landed = next;
+        }
+        if (landed is null)
+            return;
+
+        ResetPrefetch();
+        _logger?.LogInformation(
+            "Orchestrator: skip to upcoming queue item #{Index} → {Uri}", upcomingIndex, landed.Uri);
+        await PlayCurrentTrackAsync(0, ct);
     }
 
     public async Task SwitchToContextAfterCurrentAsync(

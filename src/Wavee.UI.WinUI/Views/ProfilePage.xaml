@@ -38,33 +38,24 @@
             <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True"/>
             <converters:BoolToFollowTextConverter x:Key="BoolToFollowTextConverter"/>
 
-            <!-- Shy-header morph: identity card content <-> floating compact card.
-                 Matched ids on the avatar / name / meta / follow button interpolate
-                 between source (identity card) and target (floating card) bounds.
-                 Unpaired chrome (the floating card border + acrylic) fades in via
-                 the helper's independent show animation. -->
+            <!-- Shy-header slide/fade: identity card content <-> floating
+                 compact card. Matched ids anchor the motion without scaling
+                 the avatar, text, or follow button. Unpaired chrome fades in
+                 via the helper's independent show animation. -->
             <transitions:TransitionHelper x:Key="ProfileShyHeaderTransition"
-                                          Duration="0:0:0.36"
-                                          ReverseDuration="0:0:0.30"
+                                          Duration="0:0:0.30"
+                                          ReverseDuration="0:0:0.24"
                                           DefaultEasingMode="EaseInOut"
                                           SourceToggleMethod="ByVisibility"
                                           TargetToggleMethod="ByVisibility"
-                                          IndependentElementShowDuration="0:0:0.18"
-                                          IndependentElementShowDelay="0:0:0.10"
-                                          IndependentElementHideDuration="0:0:0.12"
+                                          IndependentElementShowDuration="0:0:0.16"
+                                          IndependentElementShowDelay="0:0:0.04"
+                                          IndependentElementHideDuration="0:0:0.10"
                                           IsHitTestVisibleWhenAnimating="False">
-                <transitions:TransitionConfig Id="profile-avatar" ScaleMode="Scale"/>
-                <transitions:TransitionConfig Id="profile-name" ScaleMode="Custom">
-                    <transitions:TransitionConfig.CustomScalingCalculator>
-                        <waveeHelpers:TransitionTextScalingCalculator/>
-                    </transitions:TransitionConfig.CustomScalingCalculator>
-                </transitions:TransitionConfig>
-                <transitions:TransitionConfig Id="profile-meta" ScaleMode="Custom">
-                    <transitions:TransitionConfig.CustomScalingCalculator>
-                        <waveeHelpers:TransitionTextScalingCalculator/>
-                    </transitions:TransitionConfig.CustomScalingCalculator>
-                </transitions:TransitionConfig>
-                <transitions:TransitionConfig Id="profile-follow" ScaleMode="Scale"/>
+                <transitions:TransitionConfig Id="profile-avatar" ScaleMode="None"/>
+                <transitions:TransitionConfig Id="profile-name" ScaleMode="None"/>
+                <transitions:TransitionConfig Id="profile-meta" ScaleMode="None"/>
+                <transitions:TransitionConfig Id="profile-follow" ScaleMode="None"/>
             </transitions:TransitionHelper>
         </ResourceDictionary>
     </UserControl.Resources>

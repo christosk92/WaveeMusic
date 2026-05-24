@@ -402,10 +402,12 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
 
         if (_currentCachedImage is null
             && string.IsNullOrEmpty(_pinnedUrl)
-            && _surfaceBrush?.Surface is null)
+            && _surfaceBrush is null
+            && _spriteVisual is null)
             return false;
 
         ReleaseSurfaceReference(resetResolvedUrl: true);
+        ReleaseCompositionResources();
         _releasedForNavigationCache = true;
         DiagLog("ReleaseForNavCache");
         return true;
@@ -705,8 +707,17 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
         ResetPlaceholderOpacity();
 
         DiagLog("TryLoad:subscribeLoadCompleted");
-        _loadCompletedHandler = (_, _) =>
+        EventHandler? handler = null;
+        handler = (_, _) =>
         {
+            if (handler is not null)
+            {
+                try { cached.LoadCompleted -= handler; }
+                catch { }
+                if (ReferenceEquals(_loadCompletedHandler, handler))
+                    _loadCompletedHandler = null;
+            }
+
             var ranOnUI = DispatcherQueue?.TryEnqueue(() =>
             {
                 DiagLog("LoadCompleted:dispatched",
@@ -730,7 +741,8 @@ public sealed partial class CompositionImage : UserControl, INavCacheSurfacePart
             if (ranOnUI != true) DiagLog("LoadCompleted:enqueueFailed",
                 $"dq={(DispatcherQueue is null ? "null" : "ok")}");
         };
-        cached.AddLoadCompletedHandler(_loadCompletedHandler);
+        _loadCompletedHandler = handler;
+        cached.AddLoadCompletedHandler(handler);
     }
 
     private void OnCachedLoaded(bool success)

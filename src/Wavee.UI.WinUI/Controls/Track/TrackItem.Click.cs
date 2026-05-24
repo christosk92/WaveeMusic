@@ -60,6 +60,15 @@ public sealed partial class TrackItem
         ShowContextMenu(origin);
     }
 
+    private void OnCompactMoreButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (Track is null || CompactMoreButton is null) return;
+        var origin = CompactMoreButton
+            .TransformToVisual(this)
+            .TransformPoint(new Windows.Foundation.Point(0, CompactMoreButton.ActualHeight));
+        ShowContextMenu(origin);
+    }
+
     private void OnHeartClicked()
         => _ = OnHeartClickedAsync();
 
@@ -145,6 +154,17 @@ public sealed partial class TrackItem
             return;
         }
 
+        // Ctrl-click is the direct keyboard path into checkbox selection mode:
+        // enter mode, show the row checkboxes, and select this row. Handle the
+        // tap so the underlying ItemsView doesn't also run its native
+        // select-replace behavior.
+        if (SupportsSelectionMode && IsCtrlDown())
+        {
+            EnterSelectionRequested?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+            return;
+        }
+
         if (IsCtrlOrShiftDown())
             return;
 
@@ -208,10 +228,23 @@ public sealed partial class TrackItem
     {
         try
         {
-            var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control);
             var shiftState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift);
             const Windows.UI.Core.CoreVirtualKeyStates down = Windows.UI.Core.CoreVirtualKeyStates.Down;
-            return (ctrlState & down) == down || (shiftState & down) == down;
+            return IsCtrlDown() || (shiftState & down) == down;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsCtrlDown()
+    {
+        try
+        {
+            var ctrlState = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control);
+            const Windows.UI.Core.CoreVirtualKeyStates down = Windows.UI.Core.CoreVirtualKeyStates.Down;
+            return (ctrlState & down) == down;
         }
         catch
         {

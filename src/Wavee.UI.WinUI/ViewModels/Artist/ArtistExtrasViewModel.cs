@@ -131,7 +131,12 @@ public sealed partial class ArtistExtrasViewModel : ObservableObject, IDisposabl
         OnPropertyChanged(nameof(HasTopCities));
         OnPropertyChanged(nameof(HasConnectSection));
 
-        _galleryPhotos.ReplaceWith(overview.GalleryPhotos);
+        _galleryPhotos.ReplaceWith(
+            overview.GalleryPhotos
+                .Select(SpotifyImageHelper.ToHttpsUrl)
+                .Where(static url => !string.IsNullOrWhiteSpace(url))
+                .Select(static url => url!)
+                .Distinct(StringComparer.Ordinal));
         OnPropertyChanged(nameof(HasGallery));
 
         // Playlists & discovery (batch swap) — playlistsV2 + featuringV2 +

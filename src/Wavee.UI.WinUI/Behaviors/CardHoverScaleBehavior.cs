@@ -32,6 +32,8 @@ public static class CardHoverScaleBehavior
     {
         public PointerEventHandler? Entered;
         public PointerEventHandler? Exited;
+        public RoutedEventHandler? Loaded;
+        public SizeChangedEventHandler? SizeChanged;
     }
 
     public static readonly DependencyProperty EnableProperty =
@@ -59,18 +61,20 @@ public static class CardHoverScaleBehavior
         var holder = new HandlerHolder();
         holder.Entered = (_, _) => Animate(fe, HoverScale);
         holder.Exited = (_, _) => Animate(fe, 1.0f);
+        holder.Loaded = OnLoaded;
+        holder.SizeChanged = OnSizeChanged;
         fe.PointerEntered += holder.Entered;
         fe.PointerExited += holder.Exited;
         fe.PointerCanceled += holder.Exited;
         fe.PointerCaptureLost += holder.Exited;
+        fe.Loaded += holder.Loaded;
+        fe.SizeChanged += holder.SizeChanged;
         _holders.AddOrUpdate(fe, holder);
 
         // Snap the center point to the element's middle so the scale is
         // visually centered. Re-evaluated on Loaded/SizeChanged.
-        fe.Loaded += OnLoadedOrSizeChanged;
-        fe.SizeChanged += (_, _) => OnLoadedOrSizeChanged(fe, null!);
+        UpdateCenterPoint(fe);
     }
-
     private static void Detach(FrameworkElement fe)
     {
         if (!_holders.TryGetValue(fe, out var holder)) return;
@@ -81,16 +85,28 @@ public static class CardHoverScaleBehavior
             fe.PointerCanceled -= holder.Exited;
             fe.PointerCaptureLost -= holder.Exited;
         }
+        if (holder.Loaded != null) fe.Loaded -= holder.Loaded;
+        if (holder.SizeChanged != null) fe.SizeChanged -= holder.SizeChanged;
         _holders.Remove(fe);
     }
 
-    private static void OnLoadedOrSizeChanged(object sender, RoutedEventArgs _)
+    private static void OnLoaded(object sender, RoutedEventArgs _)
     {
-        if (sender is not FrameworkElement fe) return;
+        if (sender is FrameworkElement fe)
+            UpdateCenterPoint(fe);
+    }
+
+    private static void OnSizeChanged(object sender, SizeChangedEventArgs _)
+    {
+        if (sender is FrameworkElement fe)
+            UpdateCenterPoint(fe);
+    }
+
+    private static void UpdateCenterPoint(FrameworkElement fe)
+    {
         var visual = ElementCompositionPreview.GetElementVisual(fe);
         visual.CenterPoint = new Vector3((float)fe.ActualWidth / 2f, (float)fe.ActualHeight / 2f, 0f);
     }
-
     private static void Animate(FrameworkElement fe, float target)
     {
         var visual = ElementCompositionPreview.GetElementVisual(fe);

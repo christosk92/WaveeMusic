@@ -759,6 +759,93 @@ public sealed class PlaybackQueue : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Moves one item within a single queue bucket (drag-reorder). The move can
+    /// never cross buckets and never disturbs already-played or current tracks.
+    /// </summary>
+    /// <param name="target">Which bucket to reorder within.</param>
+    /// <param name="oldIndex">Source position. For <see cref="QueueReorderTarget.ContextUpcoming"/>
+    /// this is a 0-based position within the upcoming context tail (playback order).</param>
+    /// <param name="newIndex">Destination position, same indexing as <paramref name="oldIndex"/>.</param>
+    /// <returns>True if the move was applied.</returns>
+    public bool ReorderWithinBucket(QueueReorderTarget target, int oldIndex, int newIndex)
+    {
+        if (oldIndex == newIndex)
+            return false;
+
+        bool changed;
+        lock (_lock)
+        {
+            changed = target switch
+            {
+                QueueReorderTarget.UserQueue => MoveWithinList(_userQueue, oldIndex, newIndex),
+                QueueReorderTarget.PostContextQueue => MoveWithinList(_postContextQueue, oldIndex, newIndex),
+                QueueReorderTarget.ContextUpcoming => MoveContextUpcomingInternal(oldIndex, newIndex),
+                _ => false,
+            };
+
+            if (changed)
+                _logger?.LogDebug("Reordered queue: target={Target} {Old} -> {New}", target, oldIndex, newIndex);
+        }
+
+        if (changed)
+            NotifyStateChanged();
+        return changed;
+    }
+
+    private static bool MoveWithinList<T>(List<T> list, int oldIndex, int newIndex)
+    {
+        if (oldIndex < 0 || oldIndex >= list.Count)
+            return false;
+        if (newIndex < 0 || newIndex >= list.Count)
+            return false;
+
+        var item = list[oldIndex];
+        list.RemoveAt(oldIndex);
+        list.Insert(newIndex, item);
+        return true;
+    }
+
+    /// <summary>
+    /// Reorders within the upcoming context tail. <paramref name="oldTailPos"/> /
+    /// <paramref name="newTailPos"/> are 0-based positions after the cursor, in
+    /// playback order. When shuffled the shuffled-index permutation is moved and
+    /// the underlying <c>_contextTracks</c> list is left untouched. Both resolved
+    /// positions must sit strictly after the current track.
+    /// </summary>
+    private bool MoveContextUpcomingInternal(int oldTailPos, int newTailPos)
+    {
+        if (oldTailPos < 0 || newTailPos < 0)
+            return false;
+
+        var baseLogical = _currentIndex + 1;
+        var from = baseLogical + oldTailPos;
+        var to = baseLogical + newTailPos;
+
+        if (_isShuffled && _shuffledIndices != null)
+        {
+            if (from <= _currentIndex || from >= _shuffledIndices.Count)
+                return false;
+            if (to <= _currentIndex || to >= _shuffledIndices.Count)
+                return false;
+
+            var entry = _shuffledIndices[from];
+            _shuffledIndices.RemoveAt(from);
+            _shuffledIndices.Insert(to, entry);
+            return true;
+        }
+
+        if (from <= _currentIndex || from >= _contextTracks.Count)
+            return false;
+        if (to <= _currentIndex || to >= _contextTracks.Count)
+            return false;
+
+        var track = _contextTracks[from];
+        _contextTracks.RemoveAt(from);
+        _contextTracks.Insert(to, track);
+        return true;
+    }
+
     #endregion
 
     #region Shuffle

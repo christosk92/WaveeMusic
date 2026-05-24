@@ -863,6 +863,7 @@
                                         <imaging:CompositionImage
                                             ImageUrl="{x:Bind ViewModel.AlbumImageUrl, Mode=OneWay}"
                                             Stretch="UniformToFill"
+                                            DecodePixelSize="256"
                                             CornerRadius="8"/>
                                         <!-- Darken overlay so the accent play button reads
                                              clearly on lighter covers. VSM brightens this on

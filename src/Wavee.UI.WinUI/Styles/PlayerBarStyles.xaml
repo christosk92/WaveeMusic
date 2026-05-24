@@ -75,7 +75,7 @@
         <Setter Property="BorderThickness" Value="0" />
     </Style>
 
-    <!-- Subtle toggle button style for shuffle/repeat — transparent, accent when checked -->
+    <!-- Subtle toggle style for player-bar panel toggles (queue / lyrics / details). -->
     <Style x:Key="SubtleToggleButtonStyle" BasedOn="{StaticResource DefaultToggleButtonStyle}" TargetType="ToggleButton">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />

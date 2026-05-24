@@ -1,7 +1,7 @@
 ---
 guide: track-and-episode-ui
 scope: Every WaveeMusic UI surface that renders a track or podcast episode as a row, cell, or card.
-last_verified: 2026-05-20
+last_verified: 2026-05-22
 verified_by: read+grep over src/Wavee.UI.WinUI track row, TrackDataGrid loading-row, and now-playing video paths
 root_index: AGENTS.md (Codex) and CLAUDE.md (Claude Code)
 ---
@@ -145,6 +145,10 @@ DTOs that intentionally bypass `ITrackItem`:
   property fan-out during `Populate`. Consumers that need to react to a shimmer
   row becoming real should listen for `Data` and/or `IsLoaded`, not every
   delegated `ITrackItem` property.
+- Selection semantics: normal row selection/focus must not show the floating
+  bulk-action bar. The bar appears only in explicit selection mode (toolbar
+  Select, row context-menu Select, or Ctrl-click). While in selection mode,
+  tapping a row toggles selection and must not play the track.
 
 `src/Wavee.UI.WinUI/Controls/TrackList/TrackListView.xaml(.cs)`
 - Older reusable list host. Rows are `TrackItem` in row mode (templated at

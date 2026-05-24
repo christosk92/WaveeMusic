@@ -66,7 +66,7 @@ public sealed class PageHost : ContentControl
     /// <summary>
     /// Maximum number of cached pages (active + collapsed-cached). Setting this
     /// runs eviction immediately. Matches today's <c>TabBarItem</c>
-    /// adaptive 5/3 sizing.
+    /// adaptive 3/2 sizing.
     /// </summary>
     public int CacheSize
     {
@@ -124,6 +124,32 @@ public sealed class PageHost : ContentControl
         if (victim is IDisposable d)
             d.Dispose();
         return true;
+    }
+
+    /// <summary>
+    /// Evicts every collapsed cached page, preserving only the active page.
+    /// Returns the number of page trees dropped.
+    /// </summary>
+    public int EvictAllCollapsed()
+    {
+        var removed = 0;
+        foreach (var type in _lru.ToArray())
+        {
+            if (type == _currentPageType)
+                continue;
+
+            if (!_cache.TryGetValue(type, out var victim))
+                continue;
+
+            _cache.Remove(type);
+            _lru.Remove(type);
+            _container.Children.Remove(victim);
+            if (victim is IDisposable d)
+                d.Dispose();
+            removed++;
+        }
+
+        return removed;
     }
 
     public event EventHandler<PageHostNavigatingEventArgs>? Navigating;

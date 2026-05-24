@@ -20,6 +20,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -143,6 +144,8 @@ public sealed partial class DetailsTabHost : UserControl
     private CancellationTokenSource? _detailsAiMeaningCts;
     private string? _detailsAiMeaningTrackUri;
     private bool _detailsAiMeaningBusy;
+    private IReadOnlyDictionary<int, LyricsAiCitation> _detailsAiCitationById =
+        new Dictionary<int, LyricsAiCitation>();
 
     // Credits collapse
     private bool _creditsExpanded;
@@ -1238,7 +1241,7 @@ public sealed partial class DetailsTabHost : UserControl
             ResetDetailsAiMeaningUi(clearText: true);
         }
 
-        if (_lyricsAiService.TryGetCachedLyricsMeaning(trackUri, out var cached))
+        if (_lyricsAiService!.TryGetCachedLyricsMeaning(trackUri, out var cached))
             ApplyDetailsAiMeaningResult(cached);
         else if (!_detailsAiMeaningBusy)
             DetailsAiMeaningButton.Content = "Generate";
@@ -1275,7 +1278,9 @@ public sealed partial class DetailsTabHost : UserControl
                 trackUri,
                 fullText,
                 deltaProgress: null,
-                ct: cts.Token);
+                ct: cts.Token,
+                trackTitle: _lyricsVm.CurrentSongInfo?.Title,
+                artistName: _lyricsVm.CurrentSongInfo?.Artist);
 
             if (cts.IsCancellationRequested)
                 return;
@@ -1303,7 +1308,7 @@ public sealed partial class DetailsTabHost : UserControl
         DetailsAiMeaningText.Visibility = Visibility.Visible;
         DetailsAiMeaningButton.Content = result.Kind == LyricsAiResultKind.Ok ? "Ready" : "Retry";
 
-        DetailsAiMeaningText.Text = result.Kind switch
+        var text = result.Kind switch
         {
             LyricsAiResultKind.Ok => result.Text,
             LyricsAiResultKind.Filtered => "The on-device safety filter blocked this lyrics meaning.",
@@ -1312,6 +1317,112 @@ public sealed partial class DetailsTabHost : UserControl
             LyricsAiResultKind.Error => "Something went wrong asking the on-device model.",
             _ => string.Empty,
         };
+
+        if (result.HasCitations)
+            RenderDetailsAiMeaningWithCitations(result);
+        else
+            RenderDetailsAiMeaningPlainText(text);
+    }
+
+    private void RenderDetailsAiMeaningPlainText(string text)
+    {
+        _detailsAiCitationById = new Dictionary<int, LyricsAiCitation>();
+        DetailsAiMeaningText.Blocks.Clear();
+
+        var paragraph = new Paragraph();
+        paragraph.Inlines.Add(new Run { Text = text });
+        DetailsAiMeaningText.Blocks.Add(paragraph);
+    }
+
+    private void RenderDetailsAiMeaningWithCitations(LyricsAiResult result)
+    {
+        DetailsAiMeaningText.Blocks.Clear();
+        _detailsAiCitationById = result.Citations!.ToDictionary(static citation => citation.Id);
+
+        var paragraph = new Paragraph();
+        var lastChar = '\0';
+        foreach (var segment in result.Segments!)
+        {
+            if (string.IsNullOrEmpty(segment.Text))
+                continue;
+
+            // The model often emits self-contained segments that end and start
+            // mid-sentence with no whitespace at the boundary, so insert a
+            // single space Run between segments when the previous text ended
+            // with a non-whitespace character and this one starts with one.
+            if (lastChar != '\0'
+                && !char.IsWhiteSpace(lastChar)
+                && !char.IsWhiteSpace(segment.Text[0]))
+            {
+                paragraph.Inlines.Add(new Run { Text = " " });
+            }
+
+            if (segment.CitationId > 0
+                && _detailsAiCitationById.TryGetValue(segment.CitationId, out var citation))
+            {
+                var cited = citation;
+                var hyperlink = new Hyperlink();
+                hyperlink.Inlines.Add(new Run { Text = segment.Text });
+                hyperlink.Click += (_, _) => ShowDetailsAiCitationFlyout(cited);
+                ToolTipService.SetToolTip(hyperlink, FormatCitationTooltip(cited));
+                paragraph.Inlines.Add(hyperlink);
+            }
+            else
+            {
+                paragraph.Inlines.Add(new Run { Text = segment.Text });
+            }
+
+            lastChar = segment.Text[^1];
+        }
+
+        if (paragraph.Inlines.Count == 0)
+            paragraph.Inlines.Add(new Run { Text = result.Text });
+
+        DetailsAiMeaningText.Blocks.Add(paragraph);
+    }
+
+    private void ShowDetailsAiCitationFlyout(LyricsAiCitation citation)
+    {
+        if (XamlRoot is null)
+            return;
+
+        var stack = new StackPanel
+        {
+            Spacing = 6,
+            MaxWidth = 260,
+        };
+        stack.Children.Add(new TextBlock
+        {
+            Text = FormatCitationLineRange(citation),
+            FontSize = 11,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"],
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = citation.Summary,
+            FontSize = 12,
+            TextWrapping = TextWrapping.WrapWholeWords,
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+        });
+
+        var flyout = new Flyout
+        {
+            Content = stack,
+            Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft,
+            XamlRoot = XamlRoot,
+        };
+        flyout.ShowAt(DetailsAiMeaningText);
+    }
+
+    private static string FormatCitationTooltip(LyricsAiCitation citation)
+        => FormatCitationLineRange(citation) + ": " + citation.Summary;
+
+    private static string FormatCitationLineRange(LyricsAiCitation citation)
+    {
+        return citation.StartLine == citation.EndLine
+            ? $"Line {citation.StartLine}"
+            : $"Lines {citation.StartLine}-{citation.EndLine}";
     }
 
     private void SetDetailsAiMeaningBusy(bool isBusy)
@@ -1331,8 +1442,9 @@ public sealed partial class DetailsTabHost : UserControl
         DetailsAiMeaningButton.Content = "Generate";
         if (clearText)
         {
-            DetailsAiMeaningText.Text = string.Empty;
+            DetailsAiMeaningText.Blocks.Clear();
             DetailsAiMeaningText.Visibility = Visibility.Collapsed;
+            _detailsAiCitationById = new Dictionary<int, LyricsAiCitation>();
         }
     }
 

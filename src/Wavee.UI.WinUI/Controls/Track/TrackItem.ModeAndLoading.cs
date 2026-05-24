@@ -92,7 +92,7 @@ public sealed partial class TrackItem
     {
         var item = (TrackItem)d;
         item.ApplyLoadingVisualState((bool)e.NewValue);
-        item.UpdatePendingBeam();
+        item.UpdateOverlayState();
     }
 
     private void SyncLoadingStateFromTrack()
@@ -123,6 +123,8 @@ public sealed partial class TrackItem
             CompactInfoPanel.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
             CompactInfoShimmer.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
             CompactDuration.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+            if (CompactMoreButton is not null && loading)
+                CompactMoreButton.Visibility = Visibility.Collapsed;
         }
         else
         {

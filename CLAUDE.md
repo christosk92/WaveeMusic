@@ -13,6 +13,7 @@ Component-specific, LLM-friendly guides live in `.agents/guides/`. Read the rele
 - `.agents/guides/queue.md` — Queue subsystem: `PlaybackQueue` three buckets (user queue, context, post-context), cursor + shuffle + repeat, `NeedsMoreTracks` pagination signal, autoplay rollover, orchestrator queue ops, cluster sync (PutState prev/next + `QueueRevision`, `SetQueue` / `AddToQueue` dealer commands), right-panel `QueueControl`, drag-drop, context-menu Play next / Add to queue.
 - `.agents/guides/composition-image.md` — CompositionImage: GPU-resident image primitive, cache lifecycle, LoadedImageSurface, suspension gate, retry behaviors, every `<imaging:CompositionImage>` consumer.
 - `.agents/guides/content-card.md` — ContentCard: reusable shelf / grid card across Home / Search / Browse / Library / Artist / Album / Show / Concert / Profile / Local-media; modes, viewport gating, attached behaviors.
+- `.agents/guides/discography-expander.md` — artist-page inline album expander: `ExpandableAlbumGrid`, `ExpandingGridLayout` (custom virtualizing layout with a reserved band), `AlbumDetailPanel` overlay, the `ArtistDiscographyViewModel` expand/collapse surface, and the dead approaches not to re-introduce.
 
 When adding a new component guide, follow the frontmatter, Quick-find table, and authoring conventions in `AGENTS.md` (single source of truth), and update the index in both `AGENTS.md` and this file.
 

@@ -22,6 +22,7 @@ using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.Helpers;
+using Wavee.UI.WinUI.Controls.Reorder;
 using Wavee.UI.WinUI.Helpers;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.UI;
@@ -43,6 +44,29 @@ public sealed partial class QueueDisplayItem : ObservableObject
     public string? ImageUrl { get; init; }
     public bool HasMetadata { get; init; } = true;
     public double VisualOpacity { get; init; } = 1.0;
+
+    /// <summary>Album URI — the title links here.</summary>
+    public string? AlbumUri { get; init; }
+    /// <summary>Primary-artist URI — the artist line links here.</summary>
+    public string? ArtistUri { get; init; }
+    /// <summary>Album display name, for the navigation tab header.</summary>
+    public string? AlbumName { get; init; }
+    /// <summary>Formatted track duration (e.g. "3:24"); empty when unknown.</summary>
+    public string? Duration { get; init; }
+    /// <summary>The track's own Spotify URI — used to build the drag payload
+    /// when a queue row is dragged onto a playlist / other drop target.</summary>
+    public string? TrackUri { get; init; }
+
+    /// <summary>0-based position within the upcoming context tail (Next-up +
+    /// Autoplay rows together, in playback order); -1 for non-context rows.
+    /// Assigned by <c>Refresh</c>; maps a context-section drag to a backend
+    /// reorder index.</summary>
+    public int ContextTailIndex { get; set; } = -1;
+
+    /// <summary>0-based position among all upcoming next-tracks (Queue → Next up
+    /// → Queued later → Autoplay). The hover play button skips here.</summary>
+    public int QueueIndex { get; set; } = -1;
+
     public Visibility IsLoaded => HasMetadata ? Visibility.Visible : Visibility.Collapsed;
     public Visibility IsShimmer => HasMetadata ? Visibility.Collapsed : Visibility.Visible;
 
@@ -70,24 +94,34 @@ public sealed partial class QueueDisplayItem : ObservableObject
 
 public sealed partial class QueueControl : UserControl
 {
-    private static readonly SolidColorBrush TransparentBrush = new(Colors.Transparent);
     private static readonly InputCursor HandCursor =
         InputSystemCursor.Create(InputSystemCursorShape.Hand);
 
     private readonly IPlaybackStateService? _playbackService;
+    private readonly IPlaybackService? _playbackCommandService;
     private readonly ISettingsService? _settingsService;
     private readonly ITrackColorHintService? _colorHintService;
     private readonly ILogger? _logger;
+
+    // Source of an in-flight queue-internal reorder drag (null when no drag, or
+    // when the drag came from outside the queue). Set by the row's drag payload
+    // factory; consumed by Section_DragOver / Section_Drop.
+    private (ListView List, QueueReorderTarget Target, int SourceIndex, QueueDisplayItem Item)? _reorderSource;
+    // Rows that already have a ManualDragAttachment (guards against re-attaching
+    // on container recycle).
+    private readonly HashSet<UIElement> _dragAttachedRows = new();
     // Coalesce bursts of PropertyChanged (up to 7 per state batch) into a single
     // Refresh on the UI thread. Each Refresh re-materializes ~80 ItemsRepeater
     // containers; not deduping caused a 697ms flush on every playback transition.
     private bool _refreshQueued;
+    private RepeatMode _repeatVisualMode = RepeatMode.Off;
 
     public QueueControl()
     {
         InitializeComponent();
 
         _playbackService  = Ioc.Default.GetService<IPlaybackStateService>();
+        _playbackCommandService = Ioc.Default.GetService<IPlaybackService>();
         _settingsService  = Ioc.Default.GetService<ISettingsService>();
         _colorHintService = Ioc.Default.GetService<ITrackColorHintService>();
         _logger           = Ioc.Default.GetService<ILoggerFactory>()?.CreateLogger("QueueControl");
@@ -165,26 +199,47 @@ public sealed partial class QueueControl : UserControl
         var autoplay     = new List<QueueDisplayItem>();
         QueueDelimiter? delimiter = null;
 
+        // Running index over the upcoming context tail — Next-up AND Autoplay
+        // rows share one bucket (_contextTracks) in the backend, so this counter
+        // spans both, in RawNextQueue (playback) order.
+        int contextTailIndex = 0;
+        int flatIndex = 0;   // 0-based position among all next-tracks (skip target)
         foreach (var item in rawNextQueue)
         {
             switch (item)
             {
                 case QueueTrack t when t.IsPostContext:
-                    postContext.Add(ToDisplay(t, 1.0));
+                {
+                    var d = ToDisplay(t, 1.0);
+                    d.QueueIndex = flatIndex++;
+                    postContext.Add(d);
                     break;
+                }
                 case QueueTrack t when t.IsUserQueued:
-                    userQueued.Add(ToDisplay(t, 1.0));
+                {
+                    var d = ToDisplay(t, 1.0);
+                    d.QueueIndex = flatIndex++;
+                    userQueued.Add(d);
                     break;
+                }
                 case QueueTrack t when t.IsAutoplay:
                 {
                     int idx = autoplay.Count;
                     double opacity = Math.Max(0.35, 0.90 - (idx / 6.0 * 0.55));
-                    autoplay.Add(ToDisplay(t, opacity));
+                    var d = ToDisplay(t, opacity);
+                    d.ContextTailIndex = contextTailIndex++;
+                    d.QueueIndex = flatIndex++;
+                    autoplay.Add(d);
                     break;
                 }
                 case QueueTrack t:
-                    nextFrom.Add(ToDisplay(t, 1.0));
+                {
+                    var d = ToDisplay(t, 1.0);
+                    d.ContextTailIndex = contextTailIndex++;
+                    d.QueueIndex = flatIndex++;
+                    nextFrom.Add(d);
                     break;
+                }
                 case QueueDelimiter d:
                     delimiter = d;
                     break;
@@ -199,59 +254,31 @@ public sealed partial class QueueControl : UserControl
 
         // â”€â”€ Pill states â”€â”€
         ShuffleButton.IsChecked = _playbackService.IsShuffle;
-        RepeatButton.IsChecked = _playbackService.RepeatMode != RepeatMode.Off;
-        RepeatGlyph.Glyph = _playbackService.RepeatMode == RepeatMode.Track
-            ? "\uE8ED"   // RepeatOne
-            : "\uE8EE";  // RepeatAll
+        ApplyRepeatPill(_playbackService.RepeatMode);
         InfiniteButton.IsChecked = _settingsService?.Settings.AutoplayEnabled ?? true;
         CrossfadeButton.IsChecked = false;
 
         // â”€â”€ User Queue section â”€â”€
         UserQueueSection.Visibility = userQueued.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (userQueued.Count > 0)
-        {
             UserQueueHeaderLabel.Text = $"QUEUE \u00B7 {userQueued.Count}";
-            UserQueueRepeater.ItemsSource = userQueued;
-        }
-        else
-        {
-            UserQueueRepeater.ItemsSource = null;
-        }
+        UserQueueRepeater.ItemsSource = userQueued.Count > 0 ? userQueued : null;
 
         // â”€â”€ Next Up section (context continuation, non-autoplay) â”€â”€
         NextUpSection.Visibility = nextFrom.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (nextFrom.Count > 0)
-        {
             NextUpHeader.Text = $"NEXT UP \u00B7 {nextFrom.Count}";
-            NextUpRepeater.ItemsSource = nextFrom;
-        }
-        else
-        {
-            NextUpRepeater.ItemsSource = null;
-        }
+        NextUpRepeater.ItemsSource = nextFrom.Count > 0 ? nextFrom : null;
 
         // â”€â”€ Queued later section (post-context bucket, plays after this context) â”€â”€
         PostContextSection.Visibility = postContext.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (postContext.Count > 0)
-        {
             PostContextHeader.Text = $"QUEUED LATER · {postContext.Count}";
-            PostContextRepeater.ItemsSource = postContext;
-        }
-        else
-        {
-            PostContextRepeater.ItemsSource = null;
-        }
+        PostContextRepeater.ItemsSource = postContext.Count > 0 ? postContext : null;
 
         // â”€â”€ Autoplay section (similar music, dimmed) â”€â”€
         AutoPlaySection.Visibility = hasAutoplay ? Visibility.Visible : Visibility.Collapsed;
-        if (hasAutoplay)
-        {
-            AutoPlayRepeater.ItemsSource = autoplay;
-        }
-        else
-        {
-            AutoPlayRepeater.ItemsSource = null;
-        }
+        AutoPlayRepeater.ItemsSource = hasAutoplay ? autoplay : null;
 
         // â”€â”€ Delimiter â”€â”€
         DelimiterSection.Visibility = delimiter != null ? Visibility.Visible : Visibility.Collapsed;
@@ -373,7 +400,22 @@ public sealed partial class QueueControl : UserControl
         ImageUrl = t.ImageUrl,
         HasMetadata = t.HasMetadata,
         VisualOpacity = opacity,
+        AlbumUri = t.AlbumUri,
+        ArtistUri = t.ArtistUri,
+        AlbumName = t.Album,
+        Duration = FormatDuration(t.DurationMs),
+        TrackUri = t.Uri,
     };
+
+    private static string FormatDuration(int? ms)
+    {
+        if (ms is null or <= 0)
+            return "";
+        var ts = TimeSpan.FromMilliseconds(ms.Value);
+        return ts.TotalHours >= 1
+            ? $"{(int)ts.TotalHours}:{ts.Minutes:D2}:{ts.Seconds:D2}"
+            : $"{ts.Minutes}:{ts.Seconds:D2}";
+    }
 
     // â”€â”€ Pill click handlers â”€â”€
 
@@ -420,7 +462,7 @@ public sealed partial class QueueControl : UserControl
     private void ShuffleButton_Click(object sender, RoutedEventArgs e)
     {
         if (_playbackService == null) return;
-        var desired = ShuffleButton.IsChecked == true;
+        var desired = !_playbackService.IsShuffle;
         _logger?.LogInformation("Queue pill: shuffle → {State}", desired);
         _playbackService.SetShuffle(desired);
     }
@@ -428,7 +470,7 @@ public sealed partial class QueueControl : UserControl
     private void RepeatButton_Click(object sender, RoutedEventArgs e)
     {
         if (_playbackService == null) return;
-        var next = _playbackService.RepeatMode switch
+        var next = _repeatVisualMode switch
         {
             RepeatMode.Off => RepeatMode.Context,
             RepeatMode.Context => RepeatMode.Track,
@@ -436,7 +478,24 @@ public sealed partial class QueueControl : UserControl
             _ => RepeatMode.Off,
         };
         _logger?.LogInformation("Queue pill: repeat → {Mode}", next);
+        ApplyRepeatPill(next);
         _playbackService.SetRepeatMode(next);
+    }
+
+    private void ApplyRepeatPill(RepeatMode mode)
+    {
+        _repeatVisualMode = mode;
+        RepeatButton.IsChecked = mode != RepeatMode.Off;
+        RepeatGlyph.Glyph = mode == RepeatMode.Track
+            ? "\uE8ED"   // RepeatOne
+            : "\uE8EE";  // RepeatAll
+        ToolTipService.SetToolTip(RepeatButton, mode switch
+        {
+            RepeatMode.Off => "Repeat off",
+            RepeatMode.Context => "Repeat all",
+            RepeatMode.Track => "Repeat one",
+            _ => "Repeat"
+        });
     }
 
     private void ClearQueueButton_Click(object sender, RoutedEventArgs e)
@@ -506,24 +565,231 @@ public sealed partial class QueueControl : UserControl
     {
         // No crossfade API yet â€” visual-only toggle.
         _logger?.LogInformation("Queue pill: crossfade toggled (no-op, API pending)");
+        CrossfadeButton.IsChecked = false;
     }
 
     // â”€â”€ Track row hover state â”€â”€
 
-    private void TrackRow_PointerEntered(object sender, PointerRoutedEventArgs e)
+    // ── Row title / artist navigation ──────────────────────────────────────
+
+    private void TitleLink_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Grid g) return;
-        if (Application.Current.Resources.TryGetValue("SubtleFillColorSecondaryBrush", out var brushObj)
-            && brushObj is Brush brush)
+        if (sender is FrameworkElement { Tag: QueueDisplayItem item }
+            && !string.IsNullOrEmpty(item.AlbumUri))
         {
-            g.Background = brush;
+            var param = new ContentNavigationParameter
+            {
+                Uri = item.AlbumUri,
+                Title = item.AlbumName ?? "",
+                ImageUrl = item.ImageUrl,
+            };
+            NavigationHelpers.OpenAlbum(param, param.Title);
         }
     }
 
-    private void TrackRow_PointerExited(object sender, PointerRoutedEventArgs e)
+    private void ArtistLink_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Grid g) return;
-        g.Background = TransparentBrush;
+        if (sender is FrameworkElement { Tag: QueueDisplayItem item }
+            && !string.IsNullOrEmpty(item.ArtistUri))
+        {
+            NavigationHelpers.OpenArtist(item.ArtistUri, item.Subtitle ?? "");
+        }
+    }
+
+    // ── Drag-reorder ────────────────────────────────────────────────────────
+    //   Rows drag via ManualDragAttachment — it tracks pointer events even
+    //   through the title/artist HyperlinkButtons, which would otherwise
+    //   swallow a CanDragItems gesture. The drag carries a TrackDragPayload so a
+    //   queue row can also be dropped on a playlist; the queue-internal reorder
+    //   runs off _reorderSource and previews the shared ReorderDropIndicator
+    //   insertion line.
+
+    private ReorderDropIndicator? _dropIndicator;
+    private ReorderDropIndicator DropIndicator =>
+        _dropIndicator ??= new ReorderDropIndicator(DropIndicatorOverlay);
+
+    private QueueReorderTarget? SectionTargetFor(ListView list)
+    {
+        if (ReferenceEquals(list, UserQueueRepeater)) return QueueReorderTarget.UserQueue;
+        if (ReferenceEquals(list, PostContextRepeater)) return QueueReorderTarget.PostContextQueue;
+        if (ReferenceEquals(list, NextUpRepeater) || ReferenceEquals(list, AutoPlayRepeater))
+            return QueueReorderTarget.ContextUpcoming;
+        return null;
+    }
+
+    // Attaches a manual drag source to each realized row, once.
+    private void TrackRoot_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement row || !_dragAttachedRows.Add(row))
+            return;
+
+        row.AddHandler(
+            UIElement.RightTappedEvent,
+            new RightTappedEventHandler(TrackRow_RightTapped),
+            handledEventsToo: true);
+        row.AddHandler(
+            UIElement.HoldingEvent,
+            new HoldingEventHandler(TrackRow_Holding),
+            handledEventsToo: true);
+
+        Wavee.UI.WinUI.DragDrop.ManualDragAttachment.AttachWithPackageWriter(
+            row, () => BuildQueueDragPayload(row));
+        row.DropCompleted += OnRowDropCompleted;
+    }
+
+    // Runs at drag-start (pointer past the threshold). Records the reorder
+    // source and returns a TrackDragPayload so the row can also be dropped on a
+    // playlist.
+    private Wavee.UI.Services.DragDrop.IDragPayload? BuildQueueDragPayload(FrameworkElement row)
+    {
+        if (row.DataContext is not QueueDisplayItem item || string.IsNullOrEmpty(item.TrackUri))
+            return null;
+
+        // Locate the section ListView this row belongs to.
+        DependencyObject? node = row;
+        ListView? list = null;
+        while (node is not null)
+        {
+            node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node);
+            if (node is ListView lv) { list = lv; break; }
+        }
+        if (list is null || SectionTargetFor(list) is not { } target)
+            return null;
+
+        var index = list.Items.IndexOf(item);
+        if (index < 0)
+            return null;
+
+        _reorderSource = (list, target, index, item);
+
+        // SourceContextUri null: the queue is not a playlist context, so a drop
+        // on a playlist routes to "add tracks", never the intra-list reorder.
+        return new Wavee.UI.Services.DragDrop.Payloads.TrackDragPayload(
+            new[] { item.TrackUri }, sourceContextUri: null, sourceStartIndex: null);
+    }
+
+    private void OnRowDropCompleted(UIElement sender, DropCompletedEventArgs args)
+    {
+        _dropIndicator?.Hide();
+        _reorderSource = null;
+    }
+
+    private void Section_DragOver(object sender, DragEventArgs e)
+    {
+        if (_reorderSource is { } src)
+        {
+            if (ReferenceEquals(sender, src.List) && sender is ListView list
+                && !(_playbackCommandService?.IsPlayingRemotely ?? false))
+            {
+                e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+                var rows = BuildRowBounds(list);
+                var slot = ReorderDropIndicator.ResolveSlotIndex(
+                    e.GetPosition(DropIndicatorOverlay).Y, rows, list.Items.Count);
+                DropIndicator.Show(slot, rows, list.Items.Count, DropIndicatorOverlay.ActualWidth);
+            }
+            else
+            {
+                _dropIndicator?.Hide();
+            }
+            return;
+        }
+
+        // A drag from outside the queue — the user-queue section accepts an enqueue.
+        if (ReferenceEquals(sender, UserQueueRepeater))
+            UserQueue_DragOver(sender, e);
+    }
+
+    private void Section_Drop(object sender, DragEventArgs e)
+    {
+        if (_reorderSource is { } src)
+        {
+            if (ReferenceEquals(sender, src.List) && sender is ListView list
+                && !(_playbackCommandService?.IsPlayingRemotely ?? false))
+            {
+                var rows = BuildRowBounds(list);
+                var slot = ReorderDropIndicator.ResolveSlotIndex(
+                    e.GetPosition(DropIndicatorOverlay).Y, rows, list.Items.Count);
+                HandleReorderDrop(src, slot);
+            }
+            // Session cleanup runs in OnRowDropCompleted (fires for drop + cancel).
+            return;
+        }
+
+        // A drag from outside the queue — the user-queue section accepts an enqueue.
+        if (ReferenceEquals(sender, UserQueueRepeater))
+            UserQueue_Drop(sender, e);
+    }
+
+    /// <summary>Walks a section's realized rows into row-bounds (overlay-Canvas space).</summary>
+    private List<ReorderDropIndicator.RowBounds> BuildRowBounds(ListView list)
+    {
+        var rows = new List<ReorderDropIndicator.RowBounds>(list.Items.Count);
+        for (var i = 0; i < list.Items.Count; i++)
+        {
+            if (list.ContainerFromIndex(i) is not FrameworkElement container)
+                continue;
+            double top;
+            try
+            {
+                top = container.TransformToVisual(DropIndicatorOverlay)
+                    .TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+            }
+            catch { continue; }
+            rows.Add(new ReorderDropIndicator.RowBounds(container, top, container.ActualHeight, i));
+        }
+        return rows;
+    }
+
+    // Translates a resolved gap slot in the dragged section to a backend
+    // (from, to) move and dispatches it. Context sections map the gap to an
+    // absolute context-tail index via QueueDisplayItem.ContextTailIndex.
+    private void HandleReorderDrop(
+        (ListView List, QueueReorderTarget Target, int SourceIndex, QueueDisplayItem Item) src,
+        int slot)
+    {
+        var count = src.List.Items.Count;
+        if (count == 0 || slot < 0)
+            return;
+
+        int from, to;
+        if (src.Target == QueueReorderTarget.ContextUpcoming)
+        {
+            from = src.Item.ContextTailIndex;
+            int gapAbs;
+            if (slot < count && src.List.Items[slot] is QueueDisplayItem atSlot)
+                gapAbs = atSlot.ContextTailIndex;
+            else if (src.List.Items[count - 1] is QueueDisplayItem last)
+                gapAbs = last.ContextTailIndex + 1;
+            else
+                return;
+            // Plain remove+insert: a gap past the source shifts down by one.
+            to = gapAbs > from ? gapAbs - 1 : gapAbs;
+        }
+        else
+        {
+            from = src.SourceIndex;
+            to = slot > from ? slot - 1 : slot;
+            to = Math.Clamp(to, 0, count - 1);
+        }
+
+        if (from < 0 || to < 0 || from == to)
+            return;
+
+        _ = ReorderAsync(src.Target, from, to);
+    }
+
+    private async Task ReorderAsync(QueueReorderTarget target, int from, int to)
+    {
+        if (_playbackCommandService is null)
+            return;
+        try
+        {
+            await _playbackCommandService.ReorderQueueAsync(target, from, to);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Queue reorder failed: {Target} {From}->{To}", target, from, to);
+        }
     }
 
     // â”€â”€ Drag handle cursor â”€â”€
@@ -535,5 +801,131 @@ public sealed partial class QueueControl : UserControl
         // realize time â€” no per-frame pointer event overhead.
         if (sender is FontIcon icon)
             icon.ChangeCursor(HandCursor);
+    }
+
+    // ── Hover play button ───────────────────────────────────────────────────
+
+    private static void SetRowHoverState(object sender, bool shown)
+    {
+        if (sender is not FrameworkElement root)
+            return;
+
+        var hasLoadedTrack = root.DataContext is QueueDisplayItem { HasMetadata: true };
+        var showActions = shown && hasLoadedTrack;
+
+        if (root.FindName("RowPlayButton") is Button btn)
+        {
+            btn.Opacity = showActions ? 1 : 0;
+            btn.IsHitTestVisible = showActions;
+        }
+
+        if (root.FindName("RowMoreButton") is Button more)
+            more.Visibility = showActions ? Visibility.Visible : Visibility.Collapsed;
+
+        if (root.FindName("RowDurationText") is TextBlock duration)
+            duration.Visibility = showActions || !hasLoadedTrack ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void TrackRow_PointerEntered(object sender, PointerRoutedEventArgs e) => SetRowHoverState(sender, true);
+    private void TrackRow_PointerExited(object sender, PointerRoutedEventArgs e) => SetRowHoverState(sender, false);
+
+    private void RowPlay_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: QueueDisplayItem item } && item.QueueIndex >= 0)
+            _ = SkipToQueueAsync(item.QueueIndex);
+    }
+
+    private void RowMore_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: QueueDisplayItem item } button)
+            return;
+
+        var origin = new Windows.Foundation.Point(0, button.ActualHeight);
+        ShowQueueRowMenu(button, item, origin);
+    }
+
+    private async Task SkipToQueueAsync(int queueIndex)
+    {
+        if (_playbackCommandService is null || queueIndex < 0)
+            return;
+        try
+        {
+            await _playbackCommandService.SkipToQueueItemAsync(queueIndex);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Skip to queue item #{Index} failed", queueIndex);
+        }
+    }
+
+    // ── Right-click context menu (shared track menu, queue-row adapter) ──────
+
+    private void TrackRow_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (e.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
+            return;   // touch raises Holding instead
+        if (sender is FrameworkElement { DataContext: QueueDisplayItem item } root)
+        {
+            ShowQueueRowMenu(root, item, e.GetPosition(root));
+            e.Handled = true;
+        }
+    }
+
+    private void TrackRow_Holding(object sender, HoldingRoutedEventArgs e)
+    {
+        if (e.HoldingState != Microsoft.UI.Input.HoldingState.Started)
+            return;
+        if (sender is FrameworkElement { DataContext: QueueDisplayItem item } root)
+        {
+            ShowQueueRowMenu(root, item, e.GetPosition(root));
+            e.Handled = true;
+        }
+    }
+
+    private void ShowQueueRowMenu(FrameworkElement row, QueueDisplayItem item, Windows.Foundation.Point position)
+    {
+        if (string.IsNullOrEmpty(item.TrackUri))
+            return;
+
+        var track = new QueueRowTrackItem(item);
+        var ctx = new Wavee.UI.WinUI.Controls.ContextMenu.Builders.TrackMenuContext
+        {
+            // Play = skip playback to this queue item (the rest of the menu
+            // falls back to the builder's URI-based defaults).
+            PlayCommand = new CommunityToolkit.Mvvm.Input.RelayCommand(
+                () => _ = SkipToQueueAsync(item.QueueIndex)),
+        };
+        var menuItems = Wavee.UI.WinUI.Controls.ContextMenu.Builders.TrackContextMenuBuilder.Build(track, ctx);
+        Wavee.UI.WinUI.Controls.ContextMenu.ContextMenuHost.Show(row, menuItems, position);
+    }
+
+    /// <summary>
+    /// Lightweight <see cref="ITrackItem"/> over a <see cref="QueueDisplayItem"/>
+    /// so the shared <c>TrackContextMenuBuilder</c> can be reused for queue rows.
+    /// </summary>
+    private sealed class QueueRowTrackItem : ITrackItem
+    {
+        private readonly QueueDisplayItem _src;
+        public QueueRowTrackItem(QueueDisplayItem src) => _src = src;
+
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+
+        public string Id => _src.TrackUri ?? "";
+        public string Uri => _src.TrackUri ?? "";
+        public string Title => _src.Title;
+        public string ArtistName => _src.Subtitle ?? "";
+        public string ArtistId => LastSegment(_src.ArtistUri);
+        public string AlbumName => _src.AlbumName ?? "";
+        public string AlbumId => LastSegment(_src.AlbumUri);
+        public string? ImageUrl => _src.ImageUrl;
+        public TimeSpan Duration => TimeSpan.Zero;
+        public bool IsExplicit => false;
+        public string DurationFormatted => _src.Duration ?? "";
+        public int OriginalIndex => _src.QueueIndex;
+        public bool IsLoaded => true;
+        public bool IsLiked { get; set; }
+
+        private static string LastSegment(string? uri)
+            => string.IsNullOrEmpty(uri) ? "" : uri.Substring(uri.LastIndexOf(':') + 1);
     }
 }

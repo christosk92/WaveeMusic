@@ -81,6 +81,8 @@
                     x:Name="HeroImage"
                     Stretch="UniformToFill"
                     DecodePixelSize="240"
+                    ImageOpened="HeroImage_ImageOpened"
+                    ImageFailed="HeroImage_ImageFailed"
                     Opacity="0.94"/>
 
                 <Grid
@@ -172,6 +174,8 @@
                             x:Name="CoverThumbImage"
                             Stretch="UniformToFill"
                             DecodePixelSize="96"
+                            ImageOpened="CoverThumbImage_ImageOpened"
+                            ImageFailed="CoverThumbImage_ImageFailed"
                             CornerRadius="10"/>
                         <FontIcon
                             x:Name="CoverThumbPlaceholder"

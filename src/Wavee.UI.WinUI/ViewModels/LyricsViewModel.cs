@@ -131,8 +131,7 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
                 }
                 break;
             case nameof(IPlaybackStateService.CurrentAlbumArtColor):
-                if (HasActiveConsumers)
-                    ApplyPaletteFromPlaybackColor();
+                ApplyPaletteFromPlaybackColor();
                 break;
             case nameof(IPlaybackStateService.IsPlaying):
                 CapturePlaybackPositionSnapshot();
@@ -394,9 +393,12 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
             ShowDebugOverlay = false,
         };
 
-        // Disable all background overlays — let the normal app background show through
-        status.LyricsBackgroundSettings.IsPureColorOverlayEnabled = false;
-        status.LyricsBackgroundSettings.PureColorOverlayOpacity = 0;
+        // BetterLyrics-style pure color background. Keep the expensive animated
+        // overlays off; the right-panel shell reuses this same canvas background
+        // behind every tab.
+        status.IsAdaptToEnvironment = true;
+        status.LyricsBackgroundSettings.IsPureColorOverlayEnabled = true;
+        status.LyricsBackgroundSettings.PureColorOverlayOpacity = 78;
         status.LyricsBackgroundSettings.IsFluidOverlayEnabled = false;
         status.LyricsBackgroundSettings.IsSpectrumOverlayEnabled = false;
         status.LyricsBackgroundSettings.IsCoverOverlayEnabled = false;
@@ -464,6 +466,8 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         return status;
     }
 
+    public void RefreshPaletteFromPlaybackColor() => ApplyPaletteFromPlaybackColor();
+
     private void ApplyPaletteFromPlaybackColor()
     {
         var palette = BuildPaletteFromHex(_playbackState.CurrentAlbumArtColor);
@@ -486,7 +490,10 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         var accent4 = accent.WithBrightness(0.26);
         var lightAccent1 = accent.WithBrightness(0.86);
 
-        var underlay = accent1.WithBrightness(0.18);
+        var underlay = BlendColors(
+            Color.FromArgb(0xFF, 0x12, 0x12, 0x18),
+            accent1.WithBrightness(0.22),
+            0.42f);
         if (underlay.A == 0) underlay = fallback.UnderlayColor;
 
         return new NowPlayingPalette
@@ -506,6 +513,17 @@ public sealed partial class LyricsViewModel : ObservableObject, IDisposable
         };
     }
 
+    private static Color BlendColors(Color baseColor, Color overlayColor, float overlayWeight)
+    {
+        overlayWeight = Math.Clamp(overlayWeight, 0f, 1f);
+        var baseWeight = 1f - overlayWeight;
+
+        return Color.FromArgb(
+            0xFF,
+            (byte)Math.Clamp(baseColor.R * baseWeight + overlayColor.R * overlayWeight, 0, 255),
+            (byte)Math.Clamp(baseColor.G * baseWeight + overlayColor.G * overlayWeight, 0, 255),
+            (byte)Math.Clamp(baseColor.B * baseWeight + overlayColor.B * overlayWeight, 0, 255));
+    }
     private static bool TryParseHexColor(string? hexColor, out Color color)
     {
         color = default;

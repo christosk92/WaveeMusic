@@ -603,9 +603,17 @@ public sealed partial class TrackItem : UserControl
         Tapped += OnTapped;
         DoubleTapped += OnDoubleTapped;
 
-        // Context menu
-        RightTapped += OnRightTapped;
-        Holding += OnHolding;
+        // Context menu. Register with handledEventsToo so compact-mode child
+        // buttons (hover play, heart, trailing more) cannot accidentally make
+        // right-click/hold feel dead depending on the exact hit target.
+        AddHandler(
+            UIElement.RightTappedEvent,
+            new Microsoft.UI.Xaml.Input.RightTappedEventHandler(OnRightTapped),
+            handledEventsToo: true);
+        AddHandler(
+            UIElement.HoldingEvent,
+            new Microsoft.UI.Xaml.Input.HoldingEventHandler(OnHolding),
+            handledEventsToo: true);
 
         // CompactAlbumArt / RowAlbumArt ImageFailed subscriptions happen
         // lazily in EnsureCompactAlbumArtRealized / EnsureRowAlbumArtRealized.
@@ -631,6 +639,8 @@ public sealed partial class TrackItem : UserControl
         if (CompactHeartButton is null || CompactPlayButton is null) return;
         CompactHeartButton.Command = new CommunityToolkit.Mvvm.Input.RelayCommand(OnHeartClicked);
         CompactPlayButton.Click += OnPlayButtonClick;
+        if (CompactMoreButton is not null)
+            CompactMoreButton.Click += OnCompactMoreButtonClick;
         _compactHandlersWired = true;
     }
 

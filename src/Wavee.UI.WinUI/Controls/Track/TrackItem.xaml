@@ -226,6 +226,23 @@
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        VerticalAlignment="Center" Padding="6,0"/>
+
+            <!-- Compact "More" (...) button: mirrors Row mode by swapping in
+                 for duration on hover so artist top tracks have the same
+                 pointer path to the track context menu as playlist rows. -->
+            <Button x:Name="CompactMoreButton" Grid.Column="3"
+                    Visibility="Collapsed"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Width="28" Height="28"
+                    Padding="0"
+                    CornerRadius="14"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    AutomationProperties.Name="More options"
+                    ToolTipService.ToolTip="More">
+                <FontIcon Glyph="&#xE712;" FontSize="14"/>
+            </Button>
         </Grid>
         <!-- Selection indicator: left-edge accent bar, shown when IsSelected=true.
              Declared last so it paints ON TOP of CompactRoot's 48-px album art. -->

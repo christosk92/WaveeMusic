@@ -29,19 +29,25 @@ public sealed class ImageCacheService
     private readonly ReaderWriterLockSlim _rwLock = new();
     private readonly int _maxSize;
     private readonly int _hardMaxSize;
+    private readonly long _maxEstimatedBytes;
+    private readonly long _hardMaxEstimatedBytes;
     private long _estimatedBytes;
 
-    // Worst-case footprint: 200 × ≤1 MB (512-bucket) ≈ 200 MB of GPU memory;
-    // typical mix of 64/128/256 buckets averages ~50 KB → 10 MB ceiling. The
-    // GPU number is what matters now — no decoded CPU pixel buffer per entry.
+    private const long MinEstimatedByteBudget = 16L * 1024 * 1024;
+    private const long EstimatedByteBudgetPerEntry = 512L * 1024;
+
+    // Count caps alone are not enough: 60 tiny thumbnails and 60 large covers
+    // have very different native footprints. Trim on count and estimated bytes.
     public ImageCacheService(int maxSize = 200)
     {
-        _maxSize = maxSize;
+        _maxSize = Math.Max(1, maxSize);
         // Hard ceiling above the soft cap: pinned entries bypass the soft cap
         // entirely, so without this a pin leak (or a burst of cached pages)
         // could grow the cache without bound. Past 2× the soft cap the LRU
         // tail is force-evicted even if pinned.
-        _hardMaxSize = maxSize * 2;
+        _hardMaxSize = _maxSize * 2;
+        _maxEstimatedBytes = Math.Max(MinEstimatedByteBudget, _maxSize * EstimatedByteBudgetPerEntry);
+        _hardMaxEstimatedBytes = _maxEstimatedBytes * 4;
     }
 
     public int Count
@@ -219,12 +225,27 @@ public sealed class ImageCacheService
     {
         if (string.IsNullOrEmpty(uri)) return null;
         var key = new CacheKey(uri, SnapToBucket(decodePixelSize));
-        _rwLock.EnterReadLock();
+        _rwLock.EnterUpgradeableReadLock();
         try
         {
-            return _cache.TryGetValue(key, out var node) ? node.Value.Value.Image : null;
+            if (!_cache.TryGetValue(key, out var node))
+                return null;
+
+            _rwLock.EnterWriteLock();
+            try
+            {
+                node.Value.Value.LastAccessedTick = Environment.TickCount64;
+                if (!ReferenceEquals(_lruList.First, node))
+                {
+                    _lruList.Remove(node);
+                    _lruList.AddFirst(node);
+                }
+
+                return node.Value.Value.Image;
+            }
+            finally { _rwLock.ExitWriteLock(); }
         }
-        finally { _rwLock.ExitReadLock(); }
+        finally { _rwLock.ExitUpgradeableReadLock(); }
     }
 
     /// <summary>
@@ -267,7 +288,7 @@ public sealed class ImageCacheService
     {
         // Soft cap: evict the oldest UNPINNED entry. Stops once everything
         // remaining over-cap is pinned.
-        while (_cache.Count > _maxSize)
+        while (_cache.Count > _maxSize || _estimatedBytes > _maxEstimatedBytes)
         {
             var candidate = _lruList.Last;
             var removed = false;
@@ -287,10 +308,11 @@ public sealed class ImageCacheService
             if (!removed) break;
         }
 
-        // Hard cap: past _hardMaxSize, force-evict the LRU tail even if pinned —
-        // the owning CompositionImage simply reloads on next access. Bounds the
-        // worst case if pinning ever runs away.
-        while (_cache.Count > _hardMaxSize && _lruList.Last is { } tail)
+        // Hard cap: force-evict the LRU tail even if pinned. The owning
+        // CompositionImage reloads on next access. Bounds the worst case if
+        // pinning ever runs away.
+        while ((_cache.Count > _hardMaxSize || _estimatedBytes > _hardMaxEstimatedBytes)
+            && _lruList.Last is { } tail)
         {
             EvictNodeNoLock(tail);
         }

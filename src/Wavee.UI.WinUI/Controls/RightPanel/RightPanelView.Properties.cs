@@ -118,6 +118,8 @@ public sealed partial class RightPanelView
                 view.CancelBackgroundTintRefresh();
             }
 
+            view.ApplySharedLyricsCanvasBackgroundState(pulse: isOpen);
+
             // When the panel opens, kick a deferred UpdateCanvasLayout so the
             // lyrics canvas picks up the now-real RootGrid dimensions. We pair
             // this with the IsOpen gate inside ScheduleCanvasLayoutRetry — that
@@ -201,6 +203,7 @@ public sealed partial class RightPanelView
             TabContentFadeHost.Height = IsEmbeddedChromeTransparent ? 160 : 140;
 
         UpdateCanvasClearColor();
+        ApplySharedLyricsCanvasBackgroundState();
         UpdateTabContentFadeColor();
         UpdateBackgroundChrome();
     }

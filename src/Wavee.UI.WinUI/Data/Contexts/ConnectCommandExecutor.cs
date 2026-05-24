@@ -703,15 +703,50 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
     public Task<PlaybackResult> SetShuffleAsync(bool enabled, CancellationToken ct)
         => SendAsync("set_shuffling_context", new Dictionary<string, object> { ["value"] = enabled }, ct);
 
-    public Task<PlaybackResult> SetRepeatAsync(string state, CancellationToken ct)
+    public async Task<PlaybackResult> SetRepeatAsync(string state, CancellationToken ct)
     {
-        var (endpoint, value) = state switch
+        static (bool Context, bool Track) ToFlags(string mode) => mode switch
         {
-            "track" => ("set_repeating_track", true),
-            "context" => ("set_repeating_context", true),
-            _ => ("set_repeating_context", false)
+            "context" => (true, false),
+            "track" => (false, true),
+            _ => (false, false)
         };
-        return SendAsync(endpoint, new Dictionary<string, object> { ["value"] = value }, ct);
+
+        var device = GetTargetDeviceId();
+        var selfId = _session.Config.DeviceId;
+        var isLocalRoute = string.IsNullOrEmpty(device) || device == selfId;
+
+        if (isLocalRoute && _localEngine is Wavee.Audio.PlaybackOrchestrator orchestrator)
+        {
+            try
+            {
+                var (repeatContext, repeatTrack) = ToFlags(state);
+                await orchestrator.SetRepeatModeAsync(repeatContext, repeatTrack, ct).ConfigureAwait(false);
+                return PlaybackResult.Success();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[Executor] SetRepeat FAILED (local engine threw)");
+                return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
+            }
+        }
+
+        // Remote endpoints are split by flag. Always send an explicit complete
+        // mode so Track -> Off and Track -> Context cannot leave track-repeat
+        // stuck on the target device.
+        async Task<PlaybackResult> SendRepeatFlagsAsync(bool repeatContext, bool repeatTrack)
+        {
+            var trackResult = await SendAsync("set_repeating_track",
+                new Dictionary<string, object> { ["value"] = repeatTrack }, ct).ConfigureAwait(false);
+            if (!trackResult.IsSuccess)
+                return trackResult;
+
+            return await SendAsync("set_repeating_context",
+                new Dictionary<string, object> { ["value"] = repeatContext }, ct).ConfigureAwait(false);
+        }
+
+        var flags = ToFlags(state);
+        return await SendRepeatFlagsAsync(flags.Context, flags.Track).ConfigureAwait(false);
     }
 
     public Task<PlaybackResult> SetPlaybackSpeedAsync(double speed, CancellationToken ct)
@@ -748,6 +783,67 @@ internal sealed class ConnectCommandExecutor : IPlaybackCommandExecutor, IAudioP
     /// </summary>
     public Task<PlaybackResult> PlayNextAsync(string trackUri, CancellationToken ct)
         => SendQueueMutationAsync(trackUri, atHead: true, ct);
+
+    /// <summary>
+    /// Drag-reorder of one item within a queue bucket. Local playback only —
+    /// the queue wire format (set_queue) cannot express post-context or
+    /// context-tail ordering, so a remote reorder is rejected (the UI hides the
+    /// affordance when playing remotely).
+    /// </summary>
+    public async Task<PlaybackResult> ReorderQueueAsync(
+        Wavee.Audio.Queue.QueueReorderTarget target, int oldIndex, int newIndex, CancellationToken ct)
+    {
+        var device = GetTargetDeviceId();
+        var selfId = _session.Config.DeviceId;
+        var isLocalRoute = string.IsNullOrEmpty(device) || device == selfId;
+
+        if (isLocalRoute && _localEngine is Wavee.Audio.PlaybackOrchestrator orchestrator)
+        {
+            try
+            {
+                await orchestrator.ReorderQueueAsync(target, oldIndex, newIndex, ct).ConfigureAwait(false);
+                return PlaybackResult.Success();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[Executor] ReorderQueue FAILED (local engine threw)");
+                return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
+            }
+        }
+
+        return PlaybackResult.Failure(
+            PlaybackErrorKind.DeviceUnavailable,
+            "Queue reorder is only available on the local device.");
+    }
+
+    /// <summary>
+    /// Skips playback to the upcoming queue item at <paramref name="upcomingIndex"/>
+    /// (0-based in the next-tracks list). Local playback only.
+    /// </summary>
+    public async Task<PlaybackResult> SkipToQueueItemAsync(int upcomingIndex, CancellationToken ct)
+    {
+        var device = GetTargetDeviceId();
+        var selfId = _session.Config.DeviceId;
+        var isLocalRoute = string.IsNullOrEmpty(device) || device == selfId;
+
+        if (isLocalRoute && _localEngine is Wavee.Audio.PlaybackOrchestrator orchestrator)
+        {
+            try
+            {
+                await orchestrator.SkipToUpcomingAsync(upcomingIndex, ct).ConfigureAwait(false);
+                return PlaybackResult.Success();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[Executor] SkipToQueueItem FAILED (local engine threw)");
+                return PlaybackResult.Failure(PlaybackErrorKind.Unknown, ex.Message, ex);
+            }
+        }
+
+        return PlaybackResult.Failure(
+            PlaybackErrorKind.DeviceUnavailable,
+            "Skipping to a queue item is only available on the local device.");
+    }
 
     private async Task<PlaybackResult> SendQueueMutationAsync(
         string trackUri, bool atHead, CancellationToken ct)

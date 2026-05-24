@@ -137,7 +137,11 @@ public static class ManualDragAttachment
                 return;
             }
             DragPackageWriter.Write(args.Data, captured);
-            args.Data.RequestedOperation = DataPackageOperation.Copy | DataPackageOperation.Link;
+            // Move is included so intra-list reorder targets (queue / TrackDataGrid)
+            // that accept Move overlap the requested set — otherwise Windows shows
+            // the no-drop cursor. Copy/Link keep the cross-target drops working.
+            args.Data.RequestedOperation =
+                DataPackageOperation.Copy | DataPackageOperation.Link | DataPackageOperation.Move;
 
             if (useSmallPreview && sender is FrameworkElement fe)
                 _ = ApplySmallDragPreviewAsync(args, fe);

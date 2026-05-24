@@ -17,22 +17,18 @@
         <converters:BoolToVisibilityConverter x:Key="InverseBoolToVis" Invert="True"/>
 
         <transitions:TransitionHelper x:Key="LocalShowsShyHeaderTransition"
-                                      Duration="0:0:0.36"
-                                      ReverseDuration="0:0:0.30"
+                                      Duration="0:0:0.30"
+                                      ReverseDuration="0:0:0.24"
                                       DefaultEasingMode="EaseInOut"
                                       SourceToggleMethod="ByVisibility"
                                       TargetToggleMethod="ByVisibility"
-                                      IndependentElementShowDuration="0:0:0.18"
-                                      IndependentElementShowDelay="0:0:0.10"
-                                      IndependentElementHideDuration="0:0:0.12"
+                                      IndependentElementShowDuration="0:0:0.16"
+                                      IndependentElementShowDelay="0:0:0.04"
+                                      IndependentElementHideDuration="0:0:0.10"
                                       IsHitTestVisibleWhenAnimating="False">
-            <transitions:TransitionConfig Id="card-shell" ScaleMode="Scale"/>
-            <transitions:TransitionConfig Id="library-title" ScaleMode="Custom">
-                <transitions:TransitionConfig.CustomScalingCalculator>
-                    <waveeHelpers:TransitionTextScalingCalculator/>
-                </transitions:TransitionConfig.CustomScalingCalculator>
-            </transitions:TransitionConfig>
-            <transitions:TransitionConfig Id="library-sync" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="card-shell" ScaleMode="None"/>
+            <transitions:TransitionConfig Id="library-title" ScaleMode="None"/>
+            <transitions:TransitionConfig Id="library-sync" ScaleMode="None"/>
         </transitions:TransitionHelper>
     </UserControl.Resources>
 

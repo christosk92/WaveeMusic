@@ -1,8 +1,8 @@
 ---
 guide: content-card
 scope: ContentCard — the reusable shelf / grid card used across every shelf and grid surface (Home, Search, Browse, Library, Artist, Album, Show, Concert, Profile, Local-media).
-last_verified: 2026-05-18
-verified_by: read+grep over src/Wavee.UI.WinUI/Controls/Cards, src/Wavee.UI.WinUI/Behaviors/Card, and every XAML page that hosts a ContentCard
+last_verified: 2026-05-22
+verified_by: read+grep over src/Wavee.UI.WinUI/Controls/Cards, src/Wavee.UI.WinUI/Behaviors/Card, HomePage, and HomeRegionView while fixing fast-scroll image/section disappearance
 root_index: AGENTS.md (Codex) and CLAUDE.md (Claude Code)
 ---
 
@@ -172,10 +172,26 @@ let synchronous DP-changed callbacks read the gate without taking a
 dependency on the behavior. Default is `true` so the first realize loads
 the image even before the first `EffectiveViewportChanged` fires.
 
+Home fast-scroll note: `HomePage` keeps the outer `RegionsRepeater`
+virtualized with `SectionStackLayout`. Inside a realized region,
+`HomeRegionView.SectionsRepeater` uses `NonVirtualizingStackLayout`, and
+baseline-card grids keep `SafeUniformGridLayout.RealizeAllItems=True`.
+Do not reintroduce nested vertical section / row virtualization there
+unless the realized region always keeps its visible contents realized;
+otherwise a fast scroll can show the region tint/background with empty
+section content until layout catches up.
+
 `_currentImageCacheUrl` is the card's own URL dedup — set by `LoadImage`
 when a fresh URL is pushed to `SquareImage.ImageUrl`. The retry callback
 uses this to bail when the failing URL no longer matches what the card
 currently wants.
+
+Important: `HasImage()` means the active `CompositionImage.IsImageLoaded`
+is true, not merely that an `ImageUrl` was assigned. `HasRequestedImage()`
+is the URL-assigned check. Same-URL but not-yet-loaded cards call
+`RefreshCurrentImage()` so a suspended / recycled load can recover instead
+of staying on the colored placeholder. Placeholder glyphs hide on
+`ImageOpened`, not on URL assignment.
 
 ## Attached Behaviors
 

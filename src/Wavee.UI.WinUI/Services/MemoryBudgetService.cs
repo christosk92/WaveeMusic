@@ -40,8 +40,8 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
     // hard-clear loop on a transient spike.
     private const double EmergencyTriggerMultiple = 1.10;
     private const double ManagedHeapTriggerMultiple = 0.75;
-    private const double WorkingSetTriggerMultiple = 1.50;
-    private const long MinimumWorkingSetTriggerBytes = 1200L * 1024 * 1024;
+    private const double WorkingSetTriggerMultiple = 1.20;
+    private const long MinimumWorkingSetTriggerBytes = 960L * 1024 * 1024;
 
     private readonly IReadOnlyList<ICleanableCache> _caches;
     private readonly ILogger<MemoryBudgetService>? _logger;

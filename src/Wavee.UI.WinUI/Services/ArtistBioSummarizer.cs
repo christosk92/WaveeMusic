@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,8 +13,8 @@ namespace Wavee.UI.WinUI.Services;
 /// Generates a short on-device biography for an artist whose ArtistOverview
 /// payload has no biography text. Mirrors <see cref="LyricsAiService"/>'s
 /// Phi Silica bridging pattern: gates through <see cref="AiCapabilities"/>,
-/// isolates Microsoft.Windows.AI.* references behind a <see cref="MethodImplOptions.NoInlining"/>
-/// helper so a missing AI projection collapses to <see cref="LyricsAiResult.Unavailable"/>
+/// uses the shared structured-response helper so a missing AI projection collapses
+/// to <see cref="LyricsAiResult.Unavailable"/>
 /// instead of throwing at JIT time, and reuses <see cref="LyricsAiResult"/> as
 /// the typed result envelope.
 ///
@@ -75,8 +73,10 @@ public sealed class ArtistBioSummarizer
             return Task.FromResult(LyricsAiResult.Empty);
 
         var key = NormalizeArtistUri(artistUri);
+        // Structured generation does not stream progress: intermediate deltas
+        // may be partial JSON rather than final biography text.
         var created = new Lazy<Task<LyricsAiResult>>(
-            () => SummarizeBioCoreAsync(key, artistName, genres, monthlyListenersDisplay, topTrackNames, deltaProgress),
+            () => SummarizeBioCoreAsync(key, artistName, genres, monthlyListenersDisplay, topTrackNames),
             LazyThreadSafetyMode.ExecutionAndPublication);
         var request = _requests.GetOrAdd(key, created);
         var fromExistingRequest = !ReferenceEquals(request, created);
@@ -109,141 +109,62 @@ public sealed class ArtistBioSummarizer
         _knownBlocked.Clear();
     }
 
-    private async Task<LyricsAiResult> AwaitRequestAsync(
+    private Task<LyricsAiResult> AwaitRequestAsync(
         Lazy<Task<LyricsAiResult>> request, string key, bool fromExistingRequest, CancellationToken ct)
-    {
-        try
-        {
-            var result = await request.Value.WaitAsync(ct);
-            if (result.Kind != LyricsAiResultKind.Ok)
-                _requests.TryRemove(key, out _);
-
-            return result.Kind == LyricsAiResultKind.Ok
-                ? LyricsAiResult.Ok(result.Text, fromExistingRequest || result.FromCache)
-                : result;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (TypeLoadException ex)
-        {
-            _requests.TryRemove(key, out _);
-            _logger?.LogWarning(ex, "SummarizeBioAsync hit TypeLoadException — AI projection assembly missing at runtime.");
-            return LyricsAiResult.Unavailable;
-        }
-        catch (FileNotFoundException ex)
-        {
-            _requests.TryRemove(key, out _);
-            _logger?.LogWarning(ex, "SummarizeBioAsync hit FileNotFoundException — AI projection assembly missing at runtime.");
-            return LyricsAiResult.Unavailable;
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            _requests.TryRemove(key, out _);
-            _logger?.LogWarning(ex, "SummarizeBioAsync hit UnauthorizedAccessException; Windows denied access to the LanguageModel limited access feature.");
-            return LyricsAiResult.Unavailable;
-        }
-        catch (Exception ex)
-        {
-            _requests.TryRemove(key, out _);
-            _logger?.LogWarning(ex, "SummarizeBioAsync failed for {ArtistUri}.", key);
-            return LyricsAiResult.Error(ex.Message);
-        }
-    }
+        => PhiSilicaStructuredTextPipeline.AwaitRequestAsync(
+            request,
+            fromExistingRequest,
+            () => _requests.TryRemove(key, out _),
+            "SummarizeBioAsync",
+            _logger,
+            ct);
 
     private async Task<LyricsAiResult> SummarizeBioCoreAsync(
         string artistUri,
         string artistName,
         IReadOnlyList<string>? genres,
         string? monthlyListenersDisplay,
-        IReadOnlyList<string>? topTrackNames,
-        IProgress<string>? deltaProgress)
+        IReadOnlyList<string>? topTrackNames)
     {
-        try
+        // Short-circuit: if a previous call for this artist URI came back
+        // BlockedByPolicy from Phi Silica, skip the entire prompt-build +
+        // Phi Silica round-trip on subsequent calls. Avoids 1 KB+ of managed
+        // heap per call x the 5-30/min cadence the release log captured
+        // (every artist nav + hover preview hits this path).
+        if (_knownBlocked.ContainsKey(artistUri))
         {
-            // Short-circuit: if a previous call for this artist URI came back
-            // BlockedByPolicy from Phi Silica, skip the entire prompt-build +
-            // Phi Silica round-trip on subsequent calls. Avoids 1 KB+ of managed
-            // heap per call × the 5-30/min cadence the release log captured
-            // (every artist nav + hover preview hits this path).
-            if (_knownBlocked.ContainsKey(artistUri))
-            {
-                _logger?.LogDebug(
-                    "SummarizeBioAsync short-circuited: {ArtistUri} previously BlockedByPolicy.",
-                    artistUri);
-                return LyricsAiResult.Unavailable;
-            }
+            _logger?.LogDebug(
+                "SummarizeBioAsync short-circuited: {ArtistUri} previously BlockedByPolicy.",
+                artistUri);
+            return LyricsAiResult.Unavailable;
+        }
 
-            if (!await _capabilities.EnsureLanguageModelReadyAsync())
-            {
-                _logger?.LogDebug("SummarizeBioAsync unavailable: EnsureLanguageModelReadyAsync returned false. {Diagnostics}",
-                    _capabilities.DescribeDiagnosticState());
-                return LyricsAiResult.Unavailable;
-            }
+        if (!await _capabilities.EnsureLanguageModelReadyAsync())
+        {
+            _logger?.LogDebug("SummarizeBioAsync unavailable: EnsureLanguageModelReadyAsync returned false. {Diagnostics}",
+                _capabilities.DescribeDiagnosticState());
+            return LyricsAiResult.Unavailable;
+        }
 
-            var prompt = BuildBioPrompt(artistName, genres, monthlyListenersDisplay, topTrackNames);
-            var response = await GenerateAsync(prompt, deltaProgress, CancellationToken.None);
-            if (ShouldRetryWithCompactPrompt(response))
+        return await PhiSilicaStructuredTextPipeline.GenerateAsync(
+            new PhiSilicaStructuredTextRequest(
+                "SummarizeBioAsync",
+                BuildBioPrompt(artistName, genres, monthlyListenersDisplay, topTrackNames),
+                BuildBioFallbackPrompt(artistName),
+                0.35f,
+                text => PhiSilicaStructuredTextPipeline.ClampLength(
+                    StripBulletsAndHeadings(text),
+                    MaxBioCharacters),
+                "Phi Silica returned an empty biography.")
             {
-                _logger?.LogInformation(
-                    "SummarizeBioAsync retrying with compact prompt after Phi Silica status {Status}.",
-                    response.Status);
-                response = await GenerateAsync(BuildBioFallbackPrompt(artistName), deltaProgress, CancellationToken.None);
-            }
-
-            if (response.Status != LanguageModelGeneratedTextStatus.Complete)
-            {
-                // Cache definitive policy blocks so the next visit short-circuits
-                // above. Other failure modes (Error, ContextOverflow, content
-                // moderation) may be transient or input-dependent and aren't
-                // cached — those still re-attempt on each call.
-                if (response.Status == LanguageModelGeneratedTextStatus.BlockedByPolicy)
-                    _knownBlocked.TryAdd(artistUri, 1);
-                return ToFailureResult(response, "SummarizeBioAsync");
-            }
-
-            var stripped = StripBulletsAndHeadings(response.Text);
-            if (string.IsNullOrWhiteSpace(stripped))
-            {
-                _logger?.LogInformation("SummarizeBioAsync retrying after Phi Silica returned no usable text.");
-                response = await GenerateAsync(BuildBioFallbackPrompt(artistName), deltaProgress, CancellationToken.None);
-                if (response.Status != LanguageModelGeneratedTextStatus.Complete)
+                ObserveTerminalStatus = status =>
                 {
-                    if (response.Status == LanguageModelGeneratedTextStatus.BlockedByPolicy)
+                    if (status == PhiSilicaStructuredGenerationStatus.BlockedByPolicy)
                         _knownBlocked.TryAdd(artistUri, 1);
-                    return ToFailureResult(response, "SummarizeBioAsync fallback");
-                }
-
-                stripped = StripBulletsAndHeadings(response.Text);
-            }
-
-            if (string.IsNullOrWhiteSpace(stripped))
-                return LyricsAiResult.Error("Phi Silica returned an empty biography.");
-
-            var trimmed = ClampLength(stripped, MaxBioCharacters);
-            return LyricsAiResult.Ok(trimmed, fromCache: false);
-        }
-        catch (TypeLoadException ex)
-        {
-            _logger?.LogWarning(ex, "SummarizeBioAsync hit TypeLoadException — AI projection assembly missing at runtime.");
-            return LyricsAiResult.Unavailable;
-        }
-        catch (FileNotFoundException ex)
-        {
-            _logger?.LogWarning(ex, "SummarizeBioAsync hit FileNotFoundException — AI projection assembly missing at runtime.");
-            return LyricsAiResult.Unavailable;
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            _logger?.LogWarning(ex, "SummarizeBioAsync hit UnauthorizedAccessException; Windows denied access to the LanguageModel limited access feature.");
-            return LyricsAiResult.Unavailable;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "SummarizeBioAsync failed for {ArtistUri}.", artistUri);
-            return LyricsAiResult.Error(ex.Message);
-        }
+                },
+            },
+            _logger,
+            CancellationToken.None);
     }
 
     // ── Prompt construction ────────────────────────────────────────────────
@@ -296,116 +217,6 @@ public sealed class ArtistBioSummarizer
     private static string NormalizeArtistUri(string artistUri)
         => string.IsNullOrWhiteSpace(artistUri) ? "spotify:artist:unknown" : artistUri.Trim();
 
-    // ── Phi Silica bridge (JIT-isolated, identical pattern to LyricsAiService) ──
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static async Task<LanguageModelGeneratedText> GenerateAsync(
-        string prompt,
-        IProgress<string>? deltaProgress,
-        CancellationToken ct)
-    {
-        using var languageModel = await Microsoft.Windows.AI.Text.LanguageModel.CreateAsync();
-
-        var op = TryBuildOptions() is { } opts
-            ? languageModel.GenerateResponseAsync(prompt, opts)
-            : languageModel.GenerateResponseAsync(prompt);
-
-        if (deltaProgress is not null)
-        {
-            op.Progress = (_, delta) =>
-            {
-                if (!string.IsNullOrEmpty(delta))
-                    deltaProgress.Report(delta);
-            };
-        }
-
-        using var ctReg = ct.Register(() =>
-        {
-            try { op.Cancel(); } catch { /* op may have completed */ }
-        });
-
-        var result = await op;
-        if (result is null)
-        {
-            return new LanguageModelGeneratedText(
-                LanguageModelGeneratedTextStatus.Error,
-                string.Empty,
-                "LanguageModel returned no result.");
-        }
-
-        return new LanguageModelGeneratedText(
-            result.Status switch
-            {
-                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.Complete =>
-                    LanguageModelGeneratedTextStatus.Complete,
-                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.InProgress =>
-                    LanguageModelGeneratedTextStatus.InProgress,
-                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.BlockedByPolicy =>
-                    LanguageModelGeneratedTextStatus.BlockedByPolicy,
-                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.PromptLargerThanContext =>
-                    LanguageModelGeneratedTextStatus.PromptLargerThanContext,
-                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.PromptBlockedByContentModeration =>
-                    LanguageModelGeneratedTextStatus.PromptBlockedByContentModeration,
-                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.ResponseBlockedByContentModeration =>
-                    LanguageModelGeneratedTextStatus.ResponseBlockedByContentModeration,
-                Microsoft.Windows.AI.Text.LanguageModelResponseStatus.Error =>
-                    LanguageModelGeneratedTextStatus.Error,
-                _ => LanguageModelGeneratedTextStatus.Error,
-            },
-            result.Text ?? string.Empty,
-            result.ExtendedError is null
-                ? null
-                : $"{result.ExtendedError.GetType().Name}: 0x{result.ExtendedError.HResult:X8} {result.ExtendedError.Message}");
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static Microsoft.Windows.AI.Text.LanguageModelOptions? TryBuildOptions()
-    {
-        try
-        {
-            return new Microsoft.Windows.AI.Text.LanguageModelOptions
-            {
-                Temperature = 0.35f,
-                TopP = 0.9f,
-                ContentFilterOptions = new Microsoft.Windows.AI.ContentSafety.ContentFilterOptions
-                {
-                    PromptMaxAllowedSeverityLevel = new Microsoft.Windows.AI.ContentSafety.TextContentFilterSeverity(
-                        Microsoft.Windows.AI.ContentSafety.SeverityLevel.High),
-                    ResponseMaxAllowedSeverityLevel = new Microsoft.Windows.AI.ContentSafety.TextContentFilterSeverity(
-                        Microsoft.Windows.AI.ContentSafety.SeverityLevel.High),
-                },
-            };
-        }
-        catch (TypeLoadException) { return null; }
-        catch (FileNotFoundException) { return null; }
-    }
-
-    private LyricsAiResult ToFailureResult(LanguageModelGeneratedText generated, string operation)
-    {
-        _logger?.LogWarning(
-            "{Operation} returned Phi Silica status {Status}. {ErrorMessage}",
-            operation,
-            generated.Status,
-            string.IsNullOrWhiteSpace(generated.ErrorMessage) ? "<no extended error>" : generated.ErrorMessage);
-
-        return generated.Status switch
-        {
-            LanguageModelGeneratedTextStatus.BlockedByPolicy => LyricsAiResult.Unavailable,
-            LanguageModelGeneratedTextStatus.PromptBlockedByContentModeration => LyricsAiResult.Filtered,
-            LanguageModelGeneratedTextStatus.ResponseBlockedByContentModeration => LyricsAiResult.Filtered,
-            LanguageModelGeneratedTextStatus.PromptLargerThanContext =>
-                LyricsAiResult.Error("Prompt exceeded Phi Silica's context window."),
-            _ => LyricsAiResult.Error(generated.ErrorMessage ?? generated.Status.ToString()),
-        };
-    }
-
-    private static bool ShouldRetryWithCompactPrompt(LanguageModelGeneratedText generated)
-        => generated.Status is LanguageModelGeneratedTextStatus.PromptLargerThanContext
-               or LanguageModelGeneratedTextStatus.PromptBlockedByContentModeration
-               or LanguageModelGeneratedTextStatus.ResponseBlockedByContentModeration
-           || (generated.Status == LanguageModelGeneratedTextStatus.Complete
-               && string.IsNullOrWhiteSpace(generated.Text));
-
     private static string StripBulletsAndHeadings(string s)
     {
         if (string.IsNullOrWhiteSpace(s))
@@ -428,30 +239,4 @@ public sealed class ArtistBioSummarizer
         return sb.ToString().Trim();
     }
 
-    private static string ClampLength(string s, int max)
-    {
-        if (string.IsNullOrEmpty(s) || s.Length <= max)
-            return s.Trim();
-        var truncated = s[..max];
-        var lastSpace = truncated.LastIndexOf(' ');
-        if (lastSpace > max / 2)
-            truncated = truncated[..lastSpace];
-        return truncated.TrimEnd('.', ',', ';', ':') + "…";
-    }
-
-    private readonly record struct LanguageModelGeneratedText(
-        LanguageModelGeneratedTextStatus Status,
-        string Text,
-        string? ErrorMessage);
-
-    private enum LanguageModelGeneratedTextStatus
-    {
-        Complete,
-        InProgress,
-        BlockedByPolicy,
-        PromptLargerThanContext,
-        PromptBlockedByContentModeration,
-        ResponseBlockedByContentModeration,
-        Error,
-    }
 }

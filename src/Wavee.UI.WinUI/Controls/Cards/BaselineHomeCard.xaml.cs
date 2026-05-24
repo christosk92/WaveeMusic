@@ -73,6 +73,8 @@ public sealed partial class BaselineHomeCard : UserControl
     private HomeSectionItem? _subscribedItem;
     private string? _currentHeroImageUrl;
     private string? _currentThumbImageUrl;
+    private string? _heroRetryAttemptedUrl;
+    private string? _thumbRetryAttemptedUrl;
 
     public static readonly DependencyProperty ItemProperty =
         DependencyProperty.Register(nameof(Item), typeof(HomeSectionItem), typeof(BaselineHomeCard),
@@ -144,6 +146,12 @@ public sealed partial class BaselineHomeCard : UserControl
 
         if (_sharedCanvasPreviewService != null)
             _ = _sharedCanvasPreviewService.EnsureInitializedAsync();
+
+        // A virtualized card can unload/reload with the same Item instance, so
+        // the Item DP does not refire. Re-apply the current URLs on Loaded so
+        // CompositionImage gets a fresh chance to attach/reload after fast
+        // scroll recycling.
+        UpdateFromItem();
 
         if (_isPointerOver)
         {
@@ -293,7 +301,7 @@ public sealed partial class BaselineHomeCard : UserControl
 
     private void LoadImages(string? heroUrl, string? thumbUrl)
     {
-        var heroHttpsUrl = SpotifyImageHelper.ToHttpsUrl(heroUrl);
+        var heroHttpsUrl = ResolveImageUrl(heroUrl);
         if (string.IsNullOrWhiteSpace(heroHttpsUrl))
         {
             _currentHeroImageUrl = null;
@@ -304,8 +312,12 @@ public sealed partial class BaselineHomeCard : UserControl
             _currentHeroImageUrl = heroHttpsUrl;
             HeroImage.ImageUrl = heroHttpsUrl;
         }
+        else if (!HeroImage.IsImageLoaded)
+        {
+            HeroImage.RefreshCurrentImage();
+        }
 
-        var thumbHttpsUrl = SpotifyImageHelper.ToHttpsUrl(thumbUrl);
+        var thumbHttpsUrl = ResolveImageUrl(thumbUrl);
         if (string.IsNullOrWhiteSpace(thumbHttpsUrl))
         {
             _currentThumbImageUrl = null;
@@ -319,8 +331,73 @@ public sealed partial class BaselineHomeCard : UserControl
             _currentThumbImageUrl = thumbHttpsUrl;
             CoverThumbImage.ImageUrl = thumbHttpsUrl;
         }
+        else if (!CoverThumbImage.IsImageLoaded)
+        {
+            CoverThumbImage.RefreshCurrentImage();
+        }
 
+        CoverThumbPlaceholder.Visibility = CoverThumbImage.IsImageLoaded
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private static string? ResolveImageUrl(string? url)
+    {
+        var httpsUrl = SpotifyImageHelper.ToHttpsUrl(url);
+        if (!string.IsNullOrEmpty(httpsUrl))
+            return httpsUrl;
+
+        // Baseline Home cards need a cheap fallback for playlist / mix mosaic
+        // descriptors. The full composed mosaic belongs to playlist detail
+        // surfaces; here a single tile is better than a permanent placeholder.
+        return SpotifyImageHelper.TryParseMosaicTileUrls(url, out var tileUrls) && tileUrls.Count > 0
+            ? tileUrls[0]
+            : null;
+    }
+
+    private void HeroImage_ImageOpened(object? sender, EventArgs e)
+        => _heroRetryAttemptedUrl = null;
+
+    private void HeroImage_ImageFailed(object? sender, EventArgs e)
+    {
+        var failedUrl = _currentHeroImageUrl;
+        _currentHeroImageUrl = null;
+        RetryCurrentItemImageOnce(failedUrl, isHero: true);
+    }
+
+    private void CoverThumbImage_ImageOpened(object? sender, EventArgs e)
+    {
+        _thumbRetryAttemptedUrl = null;
         CoverThumbPlaceholder.Visibility = Visibility.Collapsed;
+    }
+
+    private void CoverThumbImage_ImageFailed(object? sender, EventArgs e)
+    {
+        CoverThumbPlaceholder.Visibility = Visibility.Visible;
+        var failedUrl = _currentThumbImageUrl;
+        _currentThumbImageUrl = null;
+        RetryCurrentItemImageOnce(failedUrl, isHero: false);
+    }
+
+    private void RetryCurrentItemImageOnce(string? failedUrl, bool isHero)
+    {
+        if (string.IsNullOrEmpty(failedUrl))
+            return;
+
+        if (isHero)
+        {
+            if (string.Equals(_heroRetryAttemptedUrl, failedUrl, StringComparison.Ordinal))
+                return;
+            _heroRetryAttemptedUrl = failedUrl;
+        }
+        else
+        {
+            if (string.Equals(_thumbRetryAttemptedUrl, failedUrl, StringComparison.Ordinal))
+                return;
+            _thumbRetryAttemptedUrl = failedUrl;
+        }
+
+        DispatcherQueue.TryEnqueue(UpdateFromItem);
     }
 
     private void ApplyColor(string? hex)

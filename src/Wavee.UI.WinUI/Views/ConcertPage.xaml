@@ -31,22 +31,22 @@
                                CornerRadius="8"
                                InnerContentClipMode="CompositionMaskBrush"/>
 
-        <!-- Shy-header morph: feature-tile overlay ↔ floating compact card.
-             Matched ids on the hero image + title interpolate between the two
-             states; unpaired chrome fades via the helper's independent timings. -->
+        <!-- Shy-header slide/fade: feature-tile overlay ↔ floating compact
+             card. Matched ids anchor the hero image + title without scaling;
+             unpaired chrome fades via the helper's independent timings. -->
         <transitions:TransitionHelper x:Key="ConcertShyHeaderTransition"
-                                      Duration="0:0:0.36"
-                                      ReverseDuration="0:0:0.30"
+                                      Duration="0:0:0.30"
+                                      ReverseDuration="0:0:0.24"
                                       DefaultEasingMode="EaseInOut"
                                       SourceToggleMethod="ByVisibility"
                                       TargetToggleMethod="ByVisibility"
-                                      IndependentElementShowDuration="0:0:0.18"
-                                      IndependentElementShowDelay="0:0:0.10"
-                                      IndependentElementHideDuration="0:0:0.12"
+                                      IndependentElementShowDuration="0:0:0.16"
+                                      IndependentElementShowDelay="0:0:0.04"
+                                      IndependentElementHideDuration="0:0:0.10"
                                       IsHitTestVisibleWhenAnimating="False">
-            <transitions:TransitionConfig Id="card-shell"    ScaleMode="Scale"/>
-            <transitions:TransitionConfig Id="concert-image" ScaleMode="Scale"/>
-            <transitions:TransitionConfig Id="concert-title" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="card-shell"    ScaleMode="None"/>
+            <transitions:TransitionConfig Id="concert-image" ScaleMode="None"/>
+            <transitions:TransitionConfig Id="concert-title" ScaleMode="None"/>
         </transitions:TransitionHelper>
     </UserControl.Resources>
 
@@ -968,9 +968,10 @@
             </Grid>
         </ScrollView>
 
-        <!-- Shy-header compact card. Lives OUTSIDE the ScrollView, pinned top, ZIndex above
-             content. Starts collapsed; the TransitionHelper fades/scales it in when the user
-             scrolls past the feature-tile threshold (computed in code-behind). -->
+        <!-- Shy-header compact card. Lives OUTSIDE the ScrollView, pinned top,
+             ZIndex above content. Starts collapsed; the TransitionHelper slides
+             and fades it in when the user scrolls past the feature-tile
+             threshold (computed in code-behind). -->
         <Grid x:Name="ShyHeaderHost"
               Canvas.ZIndex="5"
               VerticalAlignment="Top"
@@ -981,9 +982,8 @@
                   MinHeight="60"
                   Visibility="Collapsed">
                 <!-- Floating chrome: matched-id card-shell pairs with the invisible
-                     chrome inside HeroOverlayPanel. TransitionHelper morphs this
-                     visible chrome FROM the source chrome bounds TO this floating
-                     position — true morph instead of a pop-in. -->
+                     chrome inside HeroOverlayPanel so the card lands from the
+                     source chrome bounds instead of popping in. -->
                 <Border transitions:TransitionHelper.Id="card-shell"
                         CornerRadius="14"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -1005,8 +1005,8 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Thumbnail (matches the hero image via concert-image id — morphs from
-                         the large tile image down to a 40×40 rounded square). Placeholder
+                    <!-- Thumbnail (matches the hero image via concert-image id and
+                         fades into the 40×40 rounded square). Placeholder
                          fill lives on an underlying Grid so the ImageBrush sits on top
                          cleanly without a duplicate Background assignment. -->
                     <Grid Grid.Column="0"

@@ -23,6 +23,7 @@
     xmlns:waveeHelpers="using:Wavee.UI.WinUI.Helpers"
     xmlns:views="using:Wavee.UI.WinUI.Views"
     xmlns:gallery="using:Wavee.UI.WinUI.Controls.Gallery"
+    xmlns:adp="using:Wavee.UI.WinUI.Controls.AlbumDetailPanel"
     waveeHelpers:PageEntranceFade.Fade="True"
     mc:Ignorable="d"
     Background="Transparent">
@@ -97,34 +98,26 @@
             <converters:GridScaleToSizeConverter x:Key="GridScaleToSizeHeightConverter" />
             <converters:NullToForegroundConverter x:Key="NullToForegroundConverter"/>
 
-            <!-- Shy-header morph: hero overlay -> floating compact card. Matched
-                 ids on inner avatar/name/badge/meta/play/follow elements
-                 interpolate between the two states. -->
+            <!-- Shy-header slide/fade: hero overlay -> floating compact card.
+                 Matched ids keep the motion anchored without resizing the
+                 source or target elements. -->
             <transitions:TransitionHelper x:Key="ArtistShyHeaderTransition"
-                                          Duration="0:0:0.36"
-                                          ReverseDuration="0:0:0.30"
+                                          Duration="0:0:0.30"
+                                          ReverseDuration="0:0:0.24"
                                           DefaultEasingMode="EaseInOut"
                                           SourceToggleMethod="ByVisibility"
                                           TargetToggleMethod="ByVisibility"
-                                          IndependentElementShowDuration="0:0:0.18"
-                                          IndependentElementShowDelay="0:0:0.10"
-                                          IndependentElementHideDuration="0:0:0.12"
+                                          IndependentElementShowDuration="0:0:0.16"
+                                          IndependentElementShowDelay="0:0:0.04"
+                                          IndependentElementHideDuration="0:0:0.10"
                                           IsHitTestVisibleWhenAnimating="False">
-                <transitions:TransitionConfig Id="card-shell" ScaleMode="Scale"/>
-                <transitions:TransitionConfig Id="artist-avatar" ScaleMode="Scale"/>
-                <transitions:TransitionConfig Id="artist-name" ScaleMode="Custom">
-                    <transitions:TransitionConfig.CustomScalingCalculator>
-                        <waveeHelpers:TransitionTextScalingCalculator/>
-                    </transitions:TransitionConfig.CustomScalingCalculator>
-                </transitions:TransitionConfig>
-                <transitions:TransitionConfig Id="artist-badge" ScaleMode="Scale"/>
-                <transitions:TransitionConfig Id="artist-meta" ScaleMode="Custom">
-                    <transitions:TransitionConfig.CustomScalingCalculator>
-                        <waveeHelpers:TransitionTextScalingCalculator/>
-                    </transitions:TransitionConfig.CustomScalingCalculator>
-                </transitions:TransitionConfig>
-                <transitions:TransitionConfig Id="artist-play" ScaleMode="Scale"/>
-                <transitions:TransitionConfig Id="artist-follow" ScaleMode="Scale"/>
+                <transitions:TransitionConfig Id="card-shell" ScaleMode="None"/>
+                <transitions:TransitionConfig Id="artist-avatar" ScaleMode="None"/>
+                <transitions:TransitionConfig Id="artist-name" ScaleMode="None"/>
+                <transitions:TransitionConfig Id="artist-badge" ScaleMode="None"/>
+                <transitions:TransitionConfig Id="artist-meta" ScaleMode="None"/>
+                <transitions:TransitionConfig Id="artist-play" ScaleMode="None"/>
+                <transitions:TransitionConfig Id="artist-follow" ScaleMode="None"/>
             </transitions:TransitionHelper>
         </ResourceDictionary>
     </UserControl.Resources>
@@ -720,32 +713,14 @@
                                        VerticalAlignment="Center"/>
                                 </StackPanel>
 
-                                <ItemsRepeater x:Name="AlbumsRepeater"
+                                <adp:ExpandableAlbumGrid x:Name="AlbumsGrid"
                                        ItemsSource="{x:Bind ViewModel.Discography.AlbumsCapped, Mode=OneWay}"
-                                       ElementClearing="DiscographyRepeater_ElementClearing">
-                                    <ItemsRepeater.Layout>
-                                        <UniformGridLayout MinItemWidth="160"
-                                                   MinItemHeight="220"
-                                                   MinRowSpacing="20" MinColumnSpacing="16"
-                                                   ItemsStretch="Uniform"/>
-                                    </ItemsRepeater.Layout>
-                                    <ItemsRepeater.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:LazyReleaseItem">
-                                            <cards:ContentCard
-                                        IsCircularImage="False"
-                                        Subtitle="{x:Bind Data.SubtitleDetail, Mode=OneWay, FallbackValue=''}"
-                                        Title="{x:Bind Data.Name, Mode=OneWay, FallbackValue=''}"
-                                        ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
-                                        NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
-                                        NavigationTotalTracks="{x:Bind Data.TrackCount, Mode=OneWay}"
-                                        AutoNavigateOnTap="False"
-                                        SecondaryActionVisible="True"
-                                        SecondaryActionTooltip="Open album page"
-                                        Tag="{x:Bind Data.Uri, Mode=OneWay}"
-                                        CardClick="AlbumCard_Click"/>
-                                        </DataTemplate>
-                                    </ItemsRepeater.ItemTemplate>
-                                </ItemsRepeater>
+                                       ExpandedAlbum="{x:Bind ViewModel.Discography.ExpandedAlbum, Mode=OneWay}"
+                                       ExpandedAlbumTracks="{x:Bind ViewModel.Discography.ExpandedAlbumTracks, Mode=OneWay}"
+                                       IsLoadingExpandedTracks="{x:Bind ViewModel.Discography.IsLoadingExpandedTracks, Mode=OneWay}"
+                                       ExpandRequested="OnDiscographyExpandRequested"
+                                       CollapseRequested="OnDiscographyCollapseRequested"
+                                       ExpandLayoutReady="OnDiscographyExpandLayoutReady"/>
 
                                 <!-- See-all-albums tile. Only appears when the artist has more
                              than 100 albums (capped grid above shows 30); routes to the
@@ -797,32 +772,14 @@
                                        VerticalAlignment="Center"/>
                                 </StackPanel>
 
-                                <ItemsRepeater x:Name="SinglesRepeater"
+                                <adp:ExpandableAlbumGrid x:Name="SinglesGrid"
                                        ItemsSource="{x:Bind ViewModel.Discography.SinglesCapped, Mode=OneWay}"
-                                       ElementClearing="DiscographyRepeater_ElementClearing">
-                                    <ItemsRepeater.Layout>
-                                        <UniformGridLayout MinItemWidth="160"
-                                                   MinItemHeight="220"
-                                                   MinRowSpacing="20" MinColumnSpacing="16"
-                                                   ItemsStretch="Uniform"/>
-                                    </ItemsRepeater.Layout>
-                                    <ItemsRepeater.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:LazyReleaseItem">
-                                            <cards:ContentCard
-                                        IsCircularImage="False"
-                                        Subtitle="{x:Bind Data.SubtitleDetail, Mode=OneWay, FallbackValue=''}"
-                                        Title="{x:Bind Data.Name, Mode=OneWay, FallbackValue=''}"
-                                        ImageUrl="{x:Bind Data.ImageUrl, Mode=OneWay}"
-                                        NavigationUri="{x:Bind Data.Uri, Mode=OneWay}"
-                                        NavigationTotalTracks="{x:Bind Data.TrackCount, Mode=OneWay}"
-                                        AutoNavigateOnTap="False"
-                                        SecondaryActionVisible="True"
-                                        SecondaryActionTooltip="Open album page"
-                                        Tag="{x:Bind Data.Uri, Mode=OneWay}"
-                                        CardClick="AlbumCard_Click"/>
-                                        </DataTemplate>
-                                    </ItemsRepeater.ItemTemplate>
-                                </ItemsRepeater>
+                                       ExpandedAlbum="{x:Bind ViewModel.Discography.ExpandedAlbum, Mode=OneWay}"
+                                       ExpandedAlbumTracks="{x:Bind ViewModel.Discography.ExpandedAlbumTracks, Mode=OneWay}"
+                                       IsLoadingExpandedTracks="{x:Bind ViewModel.Discography.IsLoadingExpandedTracks, Mode=OneWay}"
+                                       ExpandRequested="OnDiscographyExpandRequested"
+                                       CollapseRequested="OnDiscographyCollapseRequested"
+                                       ExpandLayoutReady="OnDiscographyExpandLayoutReady"/>
 
                                 <!-- See-all-singles tile (mirror of AlbumsSeeAllTile above). -->
                                 <Button x:Name="SinglesSeeAllTile"
@@ -872,7 +829,7 @@
                                       VerticalScrollBarVisibility="Disabled">
                                     <ItemsRepeater x:Name="AppearsOnRepeater"
                                            ItemsSource="{x:Bind ViewModel.Discography.AppearsOn, Mode=OneWay}"
-                                           ElementClearing="DiscographyRepeater_ElementClearing">
+                                           ElementClearing="AppearsOnRepeater_ElementClearing">
                                         <ItemsRepeater.Layout>
                                             <StackLayout Orientation="Horizontal" Spacing="14"/>
                                         </ItemsRepeater.Layout>
@@ -1186,7 +1143,7 @@
                       [10] GALLERY
                       ════════════════════════════════════════════════════════ -->
                         <StackPanel Spacing="12"
-                            x:Name="StackPanel2"
+                            x:Name="GallerySection"
                             x:Load="{x:Bind ViewModel.Extras.HasGallery, Mode=OneWay}">
                             <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                                 <Border Width="3" MinHeight="22" CornerRadius="1.5"

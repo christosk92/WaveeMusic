@@ -1,7 +1,7 @@
 ---
 guide: queue
 scope: Wavee's playback queue subsystem — the in-memory queue model (three buckets, cursor, shuffle, repeat, pagination signal), every orchestrator queue mutation, the autoplay handoff, the cluster-sync layer (PutState prev/next + QueueRevision), the UI bridge (`PlaybackStateService.RawNextQueue`), the right-panel `QueueControl`, drag-and-drop targets, context-menu affordances, and the SetQueue / AddToQueue dealer commands.
-last_verified: 2026-05-20
+last_verified: 2026-05-21
 verified_by: read+grep over src/Wavee/Audio/Queue, src/Wavee/Audio/PlaybackOrchestrator.cs, src/Wavee/Connect (PlaybackStateManager, ConnectCommandHandler, QueueCommands), src/Wavee.UI/Contracts, src/Wavee.UI.WinUI/Data/Contexts (PlaybackService, PlaybackStateService, ConnectCommandExecutor), src/Wavee.UI.WinUI/Controls/Queue, src/Wavee.UI.WinUI/Controls/RightPanel, src/Wavee.UI.Services/DragDrop/Handlers, src/Wavee.UI.WinUI/Controls/ContextMenu/Builders
 root_index: AGENTS.md (Codex) and CLAUDE.md (Claude Code)
 ---
@@ -123,6 +123,7 @@ state. Public surface (signatures abridged — re-confirm in code):
 - `PlayNext(QueueTrack track)` (line 702) — insert at head of user queue. UID becomes `q{_queueUidCounter++}`.
 - `EnqueueAfterContext(QueueTrack track)` (line 725) — append to post-context. UID becomes `p{_postContextUidCounter++}`.
 - `RemoveFromQueue(int index) → bool` (line 745) — for "X" buttons on queue rows.
+- `ReorderWithinBucket(QueueReorderTarget target, int oldIndex, int newIndex) → bool` (line ~762) — drag-reorder one item within a single bucket. `UserQueue` / `PostContextQueue` move within those lists; `ContextUpcoming` moves within the upcoming context tail and is shuffle-aware (permutes `_shuffledIndices` when shuffled, leaving `_contextTracks` intact), bounded so played / current tracks are never touched. `q#` / `p#` UIDs and `Provider` ride with the moved record. `QueueReorderTarget` enum lives in `src/Wavee/Audio/Queue/QueueReorderTarget.cs`.
 - `AddToQueue(QueueTrack track)` (line 680) — **legacy alias**; new callers should use `PlayNext` / `EnqueueAfterContext` directly. If you touch this, prefer deletion over keeping two names per memory `feedback_no_legacy_shims`.
 
 **Lookup**
@@ -223,6 +224,8 @@ shape emitted by `StateChanged` and `GetSnapshot()`.
 | Method | Notes |
 | --- | --- |
 | `PlayNextAsync(string trackUri, CancellationToken)` (~line 94) | Insert at head of user queue. |
+| `ReorderQueueAsync(QueueReorderTarget, int oldIndex, int newIndex, CancellationToken)` | Drag-reorder one item within a bucket. Routes to `PlaybackOrchestrator.ReorderQueueAsync` → `_queue.ReorderWithinBucket` → `PublishQueueState()`. Local playback only — the executor returns `DeviceUnavailable` for a remote active device. |
+| `SkipToQueueItemAsync(int upcomingIndex, CancellationToken)` | Skip playback to the upcoming next-tracks item at `upcomingIndex`. Routes to `PlaybackOrchestrator.SkipToUpcomingAsync` (advances the queue via `MoveNext` and plays). Local playback only. Used by the queue-row hover play button + context-menu Play. |
 | `AddToQueueAsync(string trackUri, CancellationToken)` (~line 88) | Append to post-context bucket. |
 | `SetShuffleAsync(bool enabled, CancellationToken)` (~line 76) | Toggle shuffle. |
 | `SetRepeatModeAsync(RepeatMode mode, CancellationToken)` (~line 77) | Off / Context / Track. The executor splits the enum into the orchestrator's two booleans (mutually exclusive). |
@@ -608,9 +611,34 @@ sections, in screen order:
 8. **Empty-state overlay** (XAML ~line 340). Shown when no current track
    and all four buckets are empty.
 
-The rows use the shared `TrackTemplate` from
-`.agents/guides/track-and-episode-ui.md` — 40 × 40 art, title, artist,
-drag handle.
+Each section is a `ListView` bound to a per-`Refresh` `List<QueueDisplayItem>`.
+Rows use `QueueControl`'s own `TrackTemplate` — 40 × 40 art, a click-through
+title (→ album) and artist (→ artist), the track duration, and a grip cue. Each
+row is a drag source via `ManualDragAttachment` (attached in `TrackRoot_Loaded`)
+— not `ListView.CanDragItems`, which the title/artist `HyperlinkButton`s would
+swallow. The drag carries a real `TrackDragPayload`, so a queue row can be
+dropped on a playlist (→ add tracks); the within-section reorder runs off
+`_reorderSource`.
+
+During the drag the shared `ReorderDropIndicator`
+(`Controls/Reorder/ReorderDropIndicator.cs`, also used by `TrackDataGrid`) draws
+a 2 px accent insertion line into the `DropIndicatorOverlay` Canvas — bright at
+the slot under the pointer, faint at every other gap. `Section_Drop` →
+`HandleReorderDrop` maps the resolved slot to a backend `(from, to)` and calls
+`IPlaybackService.ReorderQueueAsync`; `QueueDisplayItem.ContextTailIndex` maps a
+Next-up / Autoplay drop to an absolute context-tail index. The reorder is gated
+on local playback in `Section_DragOver`/`_Drop` (`IsPlayingRemotely`). (There is
+no "ghost gap" preview — the insertion line is the whole preview.)
+
+Each row also has a **hover play button** over the 40×40 artwork
+(`RowPlayButton`, shown by `TrackRow_PointerEntered`) and a **right-click
+context menu** (`TrackRow_RightTapped`/`_Holding`). Both reuse shared pieces:
+the menu is the standard `TrackContextMenuBuilder` fed a `QueueRowTrackItem`
+(a lightweight `ITrackItem` adapter over `QueueDisplayItem`). Play / the menu's
+Play both call `IPlaybackService.SkipToQueueItemAsync(QueueDisplayItem.QueueIndex)`
+→ `PlaybackOrchestrator.SkipToUpcomingAsync` (advances the queue to that
+next-tracks index and plays). `QueueIndex` is the flat 0-based position across
+all four sections, assigned in `Refresh`.
 
 Queue snapshots with zero next items are authoritative when they come from a
 real cluster `PlayerState` or a local `LocalPlaybackState.QueueRevision`. Do
@@ -625,6 +653,17 @@ promoted to current.
 - Autoplay (∞) → toggles `ISettingsService.Settings.AutoplayEnabled`,
   broadcasts `AutoplayEnabledChangedMessage`.
 - Crossfade → currently a visual stub (no-op).
+
+The queue toolbar uses regular `ToggleButton`s with their checked background
+state intact. This is intentional: the foreground-only active treatment belongs
+to the player bar transport controls, not this right-panel queue toolbar.
+`Refresh` sets `IsChecked` on each queue toolbar button. Repeat is optimistic in
+`QueueControl` (`_repeatVisualMode`) and local repeat updates go through
+`PlaybackOrchestrator.SetRepeatModeAsync(bool repeatContext, bool repeatTrack)`
+so Track → Off is one atomic flag update. Remote repeat sends both
+`set_repeating_track` and `set_repeating_context` explicitly; sending only
+context-off leaves `_repeatTrack` stuck and maps straight back to
+`RepeatMode.Track`.
 
 **Drag-drop targets**: only the "Queue · n" section accepts drops
 (`UserQueue_DragOver` / `_Drop`, ~lines 449-492). Modifier-aware caption
@@ -677,6 +716,7 @@ Play / SkipNext; manually clearable via the bar's dismiss button.
 | Track row "Add to queue" | `IPlaybackStateService.AddToQueue(uri)` | `PlaybackOrchestrator.EnqueueAsync` → `_queue.EnqueueAfterContext` |
 | Right-panel drag-drop (no modifier) | `EnqueueTracksHandler` → `IPlaybackService.AddToQueueAsync` | same as above |
 | Right-panel drag-drop (Shift) | `EnqueueTracksHandler` → `IPlaybackService.PlayNextAsync` | same as Play next |
+| Right-panel queue row drag-reorder | `IPlaybackService.ReorderQueueAsync` | `PlaybackOrchestrator.ReorderQueueAsync` → `_queue.ReorderWithinBucket` (local only) |
 | Shuffle pill | `IPlaybackService.SetShuffleAsync(b)` | `PlaybackOrchestrator.SetShuffleAsync` → `_queue.SetShuffle` |
 | Repeat pill | `IPlaybackService.SetRepeatModeAsync(mode)` | orchestrator splits into `SetRepeatContextAsync` / `SetRepeatTrackAsync` (flags only — no queue mutation) |
 | Album / artist / track "Start radio" | `IPlaybackStateService.StartRadioAsync(seedUri, …)` | resolves a radio playlist via SpClient, then routes through `SwitchToContextAfterCurrentAsync` (current track playing) or `PlayContextAsync` (cold start) — see the "Radio path" note below. |

@@ -15,30 +15,25 @@
     waveeHelpers:PageEntranceFade.Fade="True">
 
     <UserControl.Resources>
-        <!-- Shy-header morph: hero overlay panel (full hero) <-> floating
-             acrylic pill (top of page once scrolled). Matched ids on the
-             inner poster / title / play button interpolate between the two
-             states. Unpaired chrome (the visible pill border) fades in via
-             the helper's independent show animation. Mirrors ArtistPage's
-             ArtistShyHeaderTransition resource. -->
+        <!-- Shy-header slide/fade: hero overlay panel (full hero) <-> floating
+             acrylic pill (top of page once scrolled). Matched ids anchor the
+             inner poster / title / play button without scaling. Unpaired
+             chrome fades in via the helper's independent show animation.
+             Mirrors ArtistPage's ArtistShyHeaderTransition resource. -->
         <transitions:TransitionHelper x:Key="LocalShowShyHeaderTransition"
-                                      Duration="0:0:0.36"
-                                      ReverseDuration="0:0:0.30"
+                                      Duration="0:0:0.30"
+                                      ReverseDuration="0:0:0.24"
                                       DefaultEasingMode="EaseInOut"
                                       SourceToggleMethod="ByVisibility"
                                       TargetToggleMethod="ByVisibility"
-                                      IndependentElementShowDuration="0:0:0.18"
-                                      IndependentElementShowDelay="0:0:0.10"
-                                      IndependentElementHideDuration="0:0:0.12"
+                                      IndependentElementShowDuration="0:0:0.16"
+                                      IndependentElementShowDelay="0:0:0.04"
+                                      IndependentElementHideDuration="0:0:0.10"
                                       IsHitTestVisibleWhenAnimating="False">
-            <transitions:TransitionConfig Id="card-shell" ScaleMode="Scale"/>
-            <transitions:TransitionConfig Id="show-poster" ScaleMode="Scale"/>
-            <transitions:TransitionConfig Id="show-title" ScaleMode="Custom">
-                <transitions:TransitionConfig.CustomScalingCalculator>
-                    <waveeHelpers:TransitionTextScalingCalculator/>
-                </transitions:TransitionConfig.CustomScalingCalculator>
-            </transitions:TransitionConfig>
-            <transitions:TransitionConfig Id="show-play" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="card-shell" ScaleMode="None"/>
+            <transitions:TransitionConfig Id="show-poster" ScaleMode="None"/>
+            <transitions:TransitionConfig Id="show-title" ScaleMode="None"/>
+            <transitions:TransitionConfig Id="show-play" ScaleMode="None"/>
         </transitions:TransitionHelper>
     </UserControl.Resources>
 
@@ -65,9 +60,8 @@
                     <hero:HeroHeader.OverlayContent>
                         <Grid x:Name="HeroOverlayPanel">
                             <!-- Invisible chrome: source for the floating pill's
-                                 card-shell. TransitionHelper morphs the visible
-                                 ShyHeaderCard border FROM these bounds (hero
-                                 bottom, full width) into the floating pill on
+                                 card-shell. TransitionHelper uses these bounds
+                                 as the slide/fade origin for the floating pill on
                                  scroll. IsHitTestVisible=False so this stretched
                                  invisible Border doesn't swallow clicks meant for
                                  the Play / Mark Watched / Sync buttons that sit
@@ -286,10 +280,10 @@
             </Grid>
         </ScrollView>
 
-        <!-- SHY HEADER: floating acrylic pill that morphs in once the hero
-             scrolls off. Matched ids (card-shell / show-poster / show-title
-             / show-play) pair with their hero-overlay counterparts so the
-             TransitionHelper interpolates position + scale during the morph. -->
+        <!-- SHY HEADER: floating acrylic pill that slides/fades in once the
+             hero scrolls off. Matched ids (card-shell / show-poster /
+             show-title / show-play) pair with their hero-overlay counterparts
+             without animating scale. -->
         <Grid x:Name="ShyHeaderHost"
               Canvas.ZIndex="5"
               VerticalAlignment="Top"

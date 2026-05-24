@@ -1053,6 +1053,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     {
         var next = !IsShuffle;
         _logger?.LogInformation("[PlayerBar] ToggleShuffle: {From} → {To}", IsShuffle, next);
+        IsShuffle = next;
         _playbackStateService.SetShuffle(next);
     }
 
@@ -1068,6 +1069,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             _ => RepeatMode.Off
         };
         _logger?.LogInformation("[PlayerBar] ToggleRepeat: {From} → {To}", RepeatMode, next);
+        RepeatMode = next;
         _playbackStateService.SetRepeatMode(next);
     }
 

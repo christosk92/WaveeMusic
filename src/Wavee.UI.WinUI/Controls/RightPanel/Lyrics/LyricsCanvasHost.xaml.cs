@@ -140,11 +140,12 @@ public sealed partial class LyricsCanvasHost : UserControl
         System.Diagnostics.Debug.WriteLine("[mem] LyricsCanvasHost.InitializeLyrics");
         _lyricsInitialized = true;
 
-        // Configure the canvas
+        // Configure the canvas. The sidebar uses the BetterLyrics pure-color
+        // background on every tab, so only the heavier animated overlays stay off.
         _canvas.LyricsWindowStatus = _lyricsVm.WindowStatus;
         var bg = _lyricsVm.WindowStatus.LyricsBackgroundSettings;
-        bg.IsPureColorOverlayEnabled = false;
-        bg.PureColorOverlayOpacity = 0;
+        bg.IsPureColorOverlayEnabled = true;
+        bg.PureColorOverlayOpacity = 78;
         bg.IsFluidOverlayEnabled = false;
         bg.IsCoverOverlayEnabled = false;
         bg.IsSpectrumOverlayEnabled = false;
@@ -203,7 +204,7 @@ public sealed partial class LyricsCanvasHost : UserControl
             _canvas.SetRenderingActive(false);
             if (!_lyricsCanvasDataCleared)
                 _canvas.SetLyricsData(null);
-            _canvas.Visibility = Visibility.Collapsed;
+            _canvas.Visibility = IsPanelVisible ? Visibility.Visible : Visibility.Collapsed;
         }
 
         if (LyricsAi?.ViewModel is { } aiVm)
@@ -307,11 +308,11 @@ public sealed partial class LyricsCanvasHost : UserControl
                            && !_lyricsVm.HasLyrics
                            && !string.IsNullOrEmpty(_lyricsVm.PlaybackState.CurrentTrackId);
 
-        // Canvas only shows real lyrics; loading now uses shimmer in XAML.
+        // The parent-level NowPlayingCanvas always carries the BetterLyrics background;
+        // lyric text and interactions are only active on the Lyrics tab.
         var showCanvas = isLyricsMode && hasLyrics;
-
-        // NowPlayingCanvas is parent-level.
-        _canvas.Visibility = showCanvas ? Visibility.Visible : Visibility.Collapsed;
+        _canvas.Visibility = IsPanelVisible ? Visibility.Visible : Visibility.Collapsed;
+        _canvas.LyricsOpacity = showCanvas ? 1 : 0;
 
         if (!showCanvas)
         {

@@ -311,6 +311,11 @@ public sealed partial class ContentCard : UserControl
 
     private bool HasImage()
         => IsCircularImage
+            ? CircleImage?.IsImageLoaded == true
+            : SquareImage?.IsImageLoaded == true;
+
+    private bool HasRequestedImage()
+        => IsCircularImage
             ? !string.IsNullOrEmpty(CircleImage?.ImageUrl)
             : !string.IsNullOrEmpty(SquareImage?.ImageUrl);
 
@@ -337,9 +342,12 @@ public sealed partial class ContentCard : UserControl
             return;
         }
 
-        if (string.Equals(_currentImageCacheUrl, resolvedImageUrl, StringComparison.Ordinal) && HasImage())
+        if (string.Equals(_currentImageCacheUrl, resolvedImageUrl, StringComparison.Ordinal) && HasRequestedImage())
         {
-            HidePlaceholderForCurrentMode();
+            if (HasImage())
+                HidePlaceholderForCurrentMode();
+            else
+                GetActiveImage()?.RefreshCurrentImage();
             return;
         }
 
@@ -367,22 +375,29 @@ public sealed partial class ContentCard : UserControl
             // Clear the square slot so a virtualized recycle doesn't leave the
             // last item's surface holding a pin in this card's other layer.
             SquareImage.ImageUrl = null;
-            CirclePlaceholderIcon!.Visibility = Visibility.Collapsed;
+            CirclePlaceholderIcon!.Visibility = CircleImage.IsImageLoaded
+                ? Visibility.Collapsed
+                : Visibility.Visible;
         }
         else
         {
             SquareImage.DecodePixelSize = CardImageDecodeSize;
             SquareImage.ImageUrl = httpsUrl;
             if (CircleImage != null) CircleImage.ImageUrl = null;
-            SquarePlaceholderIcon.Visibility = Visibility.Collapsed;
             // If the surface is already loaded (cache hit), snap to resting
             // opacity. CompositionImage's ImageOpened event still fires in
             // that case, but we'd otherwise pop from 0 → 0.85 on the next
             // tick which looks like a delayed reveal on a cached hit.
             if (SquareImage.IsImageLoaded)
+            {
+                SquarePlaceholderIcon.Visibility = Visibility.Collapsed;
                 SquareImage.Opacity = 0.85;
+            }
         }
     }
+
+    private CompositionImage? GetActiveImage()
+        => IsCircularImage ? CircleImage : SquareImage;
 
     private void HidePlaceholderForCurrentMode()
     {
@@ -697,6 +712,20 @@ public sealed partial class ContentCard : UserControl
         // call back into OnImageRetryRequested if appropriate.
         SquareImage.ImageUrl = null;
         SquarePlaceholderIcon.Visibility = Visibility.Visible;
+    }
+
+    private void CircleImage_ImageOpened(object? sender, EventArgs e)
+    {
+        if (CirclePlaceholderIcon != null)
+            CirclePlaceholderIcon.Visibility = Visibility.Collapsed;
+    }
+
+    private void CircleImage_ImageFailed(object? sender, EventArgs e)
+    {
+        if (CircleImage != null)
+            CircleImage.ImageUrl = null;
+        if (CirclePlaceholderIcon != null)
+            CirclePlaceholderIcon.Visibility = Visibility.Visible;
     }
 
     // ── Hover handling ───────────────────────────────────────────────────────

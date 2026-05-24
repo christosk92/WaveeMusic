@@ -30,6 +30,63 @@
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
             <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True" />
             <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+
+            <Style x:Key="TransportModeButtonStyle" TargetType="playback:TransportModeButton">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="16" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="InactiveForeground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="ActiveForeground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="playback:TransportModeButton">
+                            <Border x:Name="Root"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background"
+                                                        Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background"
+                                                        Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="ContentPresenter.Opacity" Value="0.4" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                    <VisualStateGroup x:Name="ActiveStates">
+                                        <VisualState x:Name="Inactive" />
+                                        <VisualState x:Name="Active" />
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter x:Name="ContentPresenter"
+                                                  Content="{TemplateBinding Content}"
+                                                  Foreground="{TemplateBinding Foreground}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -311,16 +368,16 @@
                         VerticalAlignment="Center"
                         Spacing="0"
                         Margin="0,0,12,0">
-                        <ToggleButton
-                            Style="{StaticResource SubtleToggleButtonStyle}"
+                        <playback:TransportModeButton
+                            Style="{StaticResource TransportModeButtonStyle}"
                             Width="32"
                             Height="32"
                             Padding="0"
-                            IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
+                            IsActive="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
                             Command="{x:Bind ViewModel.ToggleShuffleCommand}"
                             ToolTipService.ToolTip="Shuffle">
                             <FontIcon Glyph="&#xE8B1;" FontSize="14" />
-                        </ToggleButton>
+                        </playback:TransportModeButton>
                         <Button
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="34"
@@ -362,18 +419,18 @@
                             ToolTipService.ToolTip="Next">
                             <FontIcon Glyph="&#xF8AD;" FontSize="14" />
                         </Button>
-                        <ToggleButton
-                            Style="{StaticResource SubtleToggleButtonStyle}"
+                        <playback:TransportModeButton
+                            Style="{StaticResource TransportModeButtonStyle}"
                             Width="32"
                             Height="32"
                             Padding="0"
-                            IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
+                            IsActive="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
                             Command="{x:Bind ViewModel.ToggleRepeatCommand}"
                             ToolTipService.ToolTip="Repeat">
                             <FontIcon
                                 Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
                                 FontSize="14" />
-                        </ToggleButton>
+                        </playback:TransportModeButton>
                         <Button
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="34"
@@ -792,16 +849,16 @@
                         VerticalAlignment="Center"
                         Spacing="0"
                         Margin="0,0,4,0">
-                        <ToggleButton
-                            Style="{StaticResource SubtleToggleButtonStyle}"
+                        <playback:TransportModeButton
+                            Style="{StaticResource TransportModeButtonStyle}"
                             Width="30"
                             Height="30"
                             Padding="0"
-                            IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
+                            IsActive="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
                             Command="{x:Bind ViewModel.ToggleShuffleCommand}"
                             ToolTipService.ToolTip="Shuffle">
                             <FontIcon Glyph="&#xE8B1;" FontSize="13" />
-                        </ToggleButton>
+                        </playback:TransportModeButton>
                         <Button
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="30"
@@ -843,18 +900,18 @@
                             ToolTipService.ToolTip="Next">
                             <FontIcon Glyph="&#xF8AD;" FontSize="14" />
                         </Button>
-                        <ToggleButton
-                            Style="{StaticResource SubtleToggleButtonStyle}"
+                        <playback:TransportModeButton
+                            Style="{StaticResource TransportModeButtonStyle}"
                             Width="30"
                             Height="30"
                             Padding="0"
-                            IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
+                            IsActive="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"
                             Command="{x:Bind ViewModel.ToggleRepeatCommand}"
                             ToolTipService.ToolTip="Repeat">
                             <FontIcon
                                 Glyph="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatGlyphConverter}}"
                                 FontSize="13" />
-                        </ToggleButton>
+                        </playback:TransportModeButton>
                         <Button
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="30"

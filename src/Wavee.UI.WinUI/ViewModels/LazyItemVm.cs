@@ -185,7 +185,7 @@ public sealed partial class LazyTrackItem : ObservableObject, ITrackItem
 /// </summary>
 public sealed partial class LazyReleaseItem : ObservableObject
 {
-    public required string Id { get; init; }
+    public string Id { get; init; } = "";
 
     [ObservableProperty] private int _index;
     [ObservableProperty] private bool _isLoaded;

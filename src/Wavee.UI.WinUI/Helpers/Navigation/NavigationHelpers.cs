@@ -629,37 +629,11 @@ public static class NavigationHelpers
         currentTab.Navigate(pageType, parameter, suppressTransition);
     }
 
-    private static bool _prewarmScheduled;
-
     private static void AddNewTab(Type pageType, object? parameter, string header, IconSource icon)
     {
-        var isFirstTab = ShellViewModel.TabInstances.Count == 0;
         var tab = CreateTab(pageType, parameter, header, icon);
         ShellViewModel.TabInstances.Add(tab);
         _shellViewModel!.SelectTab(ShellViewModel.TabInstances.Count - 1);
-
-        // Schedule a one-shot prewarm for the most-visited pages into the
-        // initial tab's PageHost. Cost lands during idle after first paint;
-        // first user nav to Library / Search becomes a cache hit instead of
-        // paying ~80-200ms of XAML realisation cost on click.
-        if (isFirstTab && !_prewarmScheduled)
-        {
-            _prewarmScheduled = true;
-            Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(
-                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                () =>
-                {
-                    try
-                    {
-                        tab.ContentHost.Prewarm(typeof(LibraryPage));
-                        tab.ContentHost.Prewarm(typeof(SearchPage));
-                    }
-                    catch
-                    {
-                        // Prewarm is best-effort; missing cache hit later is the only impact.
-                    }
-                });
-        }
     }
 
     public static TabBarItem CreateTab(

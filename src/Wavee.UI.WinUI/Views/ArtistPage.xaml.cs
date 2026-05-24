@@ -59,12 +59,7 @@ namespace Wavee.UI.WinUI.Views;
 /// </summary>
 public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavigationCacheMemoryParticipant, IPageHostAware, IDisposable, IRedirectsCtrlFToOmnibar
 {
-    private const int ReleasePanelResizeDebounceMs = 75;
-    private const int ReleasePanelExitMs = 110;
-    private const double ReleasePanelExitOffset = -8;
-
     private readonly ILogger? _logger;
-    private readonly IColorService _colorService;
     private ShyHeaderController? _shyHeader;
     private LinearGradientBrush? _pageTintBrush;
     private GradientStop? _pageTintHeroStop;
@@ -93,16 +88,6 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     private bool _crossfadeScheduled;
     private int _navigationRevision;
     private int _heroArrangeRefreshRevision;
-    private AlbumDetailPanel? _activeDetailPanel;
-    private EventHandler? _closeRequestedHandler;
-    private ItemsRepeater? _splitRepeaterAfter;
-    private StackPanel? _splitParent;
-    private ItemsRepeater? _originalRepeater;
-    private object? _originalItemsSource;
-    private LazyReleaseItem? _expandedItem;
-    private int _expandedItemIndex = -1;
-    private CancellationTokenSource? _resizeDebounceCts;
-    private int _releaseExpansionRevision;
 
     public ArtistViewModel ViewModel { get; }
 
@@ -116,7 +101,6 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     {
         ViewModel = Ioc.Default.GetRequiredService<ArtistViewModel>();
         _logger = Ioc.Default.GetService<ILogger<ArtistPage>>();
-        _colorService = Ioc.Default.GetRequiredService<IColorService>();
         InitializeComponent();
 
         ViewModel.ContentChanged += ViewModel_ContentChanged;
@@ -306,8 +290,9 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.artist.onLeaving");
         _isNavigatingAway = true;
-        CancelResizeDebounce();
-        CollapseExpandedAlbumCore();
+        AlbumsGrid?.CollapseNow();
+        SinglesGrid?.CollapseNow();
+        ViewModel.Discography.CollapseAlbumCommand.Execute(null);
         // Trim work is deferred ~1 s by TabBarItem's central scheduler — calling
         // it here would move the cost from pageHostNavigating into onLeaving.
     }
@@ -373,8 +358,8 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         DetachScrollParallax();
-        CancelResizeDebounce();
-        CollapseExpandedAlbumCore();
+        AlbumsGrid?.CollapseNow();
+        SinglesGrid?.CollapseNow();
         DetachHeroSizeHandlers();
     }
 
@@ -417,49 +402,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     }
 
     private void OnPageSizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        UpdateResponsivePageChrome(e.NewSize.Width);
-
-        if (_activeDetailPanel is null || _expandedItem is null)
-            return;
-
-        CancelResizeDebounce();
-        _resizeDebounceCts = new CancellationTokenSource();
-        _ = RecomputeExpandedPanelAsync(_resizeDebounceCts.Token);
-    }
-
-    private async Task RecomputeExpandedPanelAsync(CancellationToken ct)
-    {
-        try
-        {
-            await Task.Delay(ReleasePanelResizeDebounceMs, ct);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-
-        if (_activeDetailPanel is null
-            || _expandedItem is null
-            || _originalRepeater is null
-            || _splitParent is null
-            || _originalItemsSource is null)
-        {
-            return;
-        }
-
-        ApplySplitLayout();
-    }
-
-    private void CancelResizeDebounce()
-    {
-        var cts = Interlocked.Exchange(ref _resizeDebounceCts, null);
-        if (cts is null) return;
-
-        try { cts.Cancel(); }
-        catch (ObjectDisposedException) { }
-        cts.Dispose();
-    }
+        => UpdateResponsivePageChrome(e.NewSize.Width);
 
     private void OnHeroPhotoBorderSizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -573,19 +516,22 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     /// </summary>
     private void RebuildGallerySlides()
     {
-        if (GalleryMarquee is null) return;
         var photos = ViewModel.Extras.GalleryPhotos;
-        if (photos is null || photos.Count == 0)
+        var urls = new System.Collections.Generic.List<string>(photos?.Count ?? 0);
+        if (photos is not null)
         {
-            GalleryMarquee.ItemsSource = null;
-            return;
+            foreach (var photo in photos)
+            {
+                if (!string.IsNullOrWhiteSpace(photo))
+                    urls.Add(photo);
+            }
         }
-        var urls = new System.Collections.Generic.List<string>(photos.Count);
-        foreach (var photo in photos)
-        {
-            if (!string.IsNullOrEmpty(photo)) urls.Add(photo);
-        }
-        GalleryMarquee.ItemsSource = urls;
+
+        if (GallerySection is not null)
+            GallerySection.Visibility = urls.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (GalleryMarquee is not null)
+            GalleryMarquee.ItemsSource = urls.Count > 0 ? urls : null;
     }
 
     private async void ProbeWarmCacheReveal(int navigationRevision, string? expectedArtistId)
@@ -1230,357 +1176,43 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
             NavigationHelpers.IsCtrlPressed());
     }
 
-    private async void AlbumCard_Click(object? sender, EventArgs e)
+    // ── Discography inline expander ─────────────────────────────────────────
+    // The two ExpandableAlbumGrid instances (Albums / Singles) own the inline
+    // expand visuals. The view-model's ExpandedAlbum is the single source of
+    // truth; these handlers route the grids' requests to its commands.
+
+    private void OnDiscographyExpandRequested(object? sender, LazyReleaseItem album)
+        => ViewModel.Discography.ExpandAlbumCommand.Execute(album);
+
+    private void OnDiscographyCollapseRequested(object? sender, EventArgs e)
+        => ViewModel.Discography.CollapseAlbumCommand.Execute(null);
+
+    // AppearsOn is a horizontal recycling strip — proactively free a recycled
+    // card's artwork so the image cache can evict it promptly.
+    private void AppearsOnRepeater_ElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
     {
-        if (sender is not FrameworkElement source) return;
-        var expansionRevision = ++_releaseExpansionRevision;
-
-        var repeater = FindParent<ItemsRepeater>(source);
-        if (repeater is null || repeater == AppearsOnRepeater)
-            return;
-
-        var item = ResolveReleaseItemFromRepeaterClick(source, repeater, out var trueRepeater, out var itemIndex);
-        if (item?.IsLoaded != true || item.Data is null)
-            return;
-
-        if (ViewModel.Discography.ExpandedAlbum?.Id == item.Id)
-        {
-            // User clicked the already-expanded album â†’ animate the close.
-            await CollapseExpandedAlbumAsync(animate: true);
-            return;
-        }
-
-        // Switching to a different album: tear the previous expansion down
-        // synchronously so the new one appears in the same frame. Awaiting an
-        // exit animation here just stacked latency on top of the enter delay.
-        if (HasActiveReleaseExpansion())
-            CollapseExpandedAlbumCore();
-
-        if (expansionRevision != _releaseExpansionRevision || _isNavigatingAway || XamlRoot is null)
-            return;
-
-        if (trueRepeater.Parent is not StackPanel parentPanel)
-            return;
-
-        var repeaterIndex = parentPanel.Children.IndexOf(trueRepeater);
-        if (repeaterIndex < 0)
-            return;
-
-        _originalRepeater = trueRepeater;
-        _originalItemsSource = trueRepeater.ItemsSource;
-        _splitParent = parentPanel;
-        _expandedItem = item;
-        _expandedItemIndex = itemIndex;
-
-        _activeDetailPanel = new AlbumDetailPanel
-        {
-            Album = item.Data,
-            Tracks = ViewModel.Discography.ExpandedAlbumTracks
-        };
-        _closeRequestedHandler = async (_, _) => await CollapseExpandedAlbumAsync(animate: true);
-        _activeDetailPanel.CloseRequested += _closeRequestedHandler;
-
-        parentPanel.Children.Insert(repeaterIndex + 1, _activeDetailPanel);
-        ApplySplitLayout();
-
-        // Single motion source: scroll the inserted panel into view. Adding a
-        // Y-translate enter animation alongside this fought the scroll and
-        // produced the "down then up again" stutter; opacity-prep made the
-        // panel invisible for the first ~180 ms and read as click latency.
-        _activeDetailPanel.StartBringIntoView(new BringIntoViewOptions
-        {
-            AnimationDesired = true,
-            VerticalAlignmentRatio = 0.5,
-            VerticalOffset = -200
-        });
-
-        _ = FetchAlbumColorAsync(item.Data, _activeDetailPanel);
-        ViewModel.Discography.ExpandAlbumCommand.Execute(item);
+        if (args.Element is ContentCard card)
+            card.ReleaseImage();
     }
 
-    private LazyReleaseItem? ResolveReleaseItemFromRepeaterClick(
-        FrameworkElement source,
-        ItemsRepeater repeater,
-        out ItemsRepeater trueRepeater,
-        out int itemIndex)
+    // Gentle clipped-scroll: when the freshly-expanded panel's bottom falls
+    // below the viewport, nudge the page down just enough to reveal it — no
+    // recenter, so the open never reads as a jump.
+    private void OnDiscographyExpandLayoutReady(object? sender, AlbumDetailPanel panel)
     {
-        var isSplitRepeaterAfter = _splitRepeaterAfter is not null && ReferenceEquals(repeater, _splitRepeaterAfter);
-        var isOriginalSplitRepeater = _originalRepeater is not null && ReferenceEquals(repeater, _originalRepeater);
-
-        trueRepeater = isSplitRepeaterAfter
-            ? _originalRepeater ?? repeater
-            : repeater;
-        itemIndex = -1;
-
-        var templateRoot = FindRepeaterTemplateRoot(source, repeater);
-        if (templateRoot is null)
-            return null;
-
-        var visibleIndex = repeater.GetElementIndex(templateRoot);
-        if (visibleIndex < 0 || repeater.ItemsSource is not IList visibleItems || visibleIndex >= visibleItems.Count)
-            return null;
-
-        var item = visibleItems[visibleIndex] as LazyReleaseItem;
-        if (item is null)
-            return null;
-
-        var fullItems = (isSplitRepeaterAfter || isOriginalSplitRepeater
-            ? _originalItemsSource
-            : trueRepeater.ItemsSource) as IList;
-        itemIndex = fullItems?.IndexOf(item) ?? visibleIndex;
-        if (itemIndex < 0)
-            itemIndex = visibleIndex;
-
-        return item;
-    }
-
-    private static UIElement? FindRepeaterTemplateRoot(DependencyObject source, ItemsRepeater repeater)
-    {
-        DependencyObject? current = source;
-        var parent = VisualTreeHelper.GetParent(current);
-        while (parent is not null && parent != repeater)
-        {
-            current = parent;
-            parent = VisualTreeHelper.GetParent(current);
-        }
-
-        return parent == repeater ? current as UIElement : null;
-    }
-
-    private void ApplySplitLayout()
-    {
-        if (_originalRepeater is null
-            || _splitParent is null
-            || _originalItemsSource is not IList allItems
-            || _activeDetailPanel is null
-            || _expandedItemIndex < 0)
-        {
-            return;
-        }
-
-        var layout = _originalRepeater.Layout as UniformGridLayout;
-        var availableWidth = Math.Max(_splitParent.ActualWidth, _originalRepeater.ActualWidth);
-        if (availableWidth <= 0)
-            availableWidth = BodyContent?.ActualWidth ?? 0;
-        if (availableWidth <= 0)
+        if (panel.ActualHeight <= 0 || PageScrollView is null)
             return;
 
-        var minWidth = layout?.MinItemWidth ?? 160;
-        var spacing = layout?.MinColumnSpacing ?? 16;
-        var columns = Math.Max(1, (int)Math.Floor((availableWidth + spacing) / (minWidth + spacing)));
-        var rowOfItem = _expandedItemIndex / columns;
-        var splitAfterIndex = Math.Min((rowOfItem + 1) * columns, allItems.Count);
-
-        var itemsBefore = new System.Collections.Generic.List<object>();
-        var itemsAfter = new System.Collections.Generic.List<object>();
-        for (var i = 0; i < allItems.Count; i++)
-        {
-            if (i < splitAfterIndex)
-                itemsBefore.Add(allItems[i]!);
-            else
-                itemsAfter.Add(allItems[i]!);
-        }
-
-        _originalRepeater.ItemsSource = itemsBefore;
-
-        if (_splitRepeaterAfter is not null)
-        {
-            if (itemsAfter.Count > 0)
-            {
-                _splitRepeaterAfter.ItemsSource = itemsAfter;
-            }
-            else
-            {
-                _splitRepeaterAfter.ElementClearing -= DiscographyRepeater_ElementClearing;
-                ReleaseImagesInSubtree(_splitRepeaterAfter);
-                _splitParent.Children.Remove(_splitRepeaterAfter);
-                _splitRepeaterAfter = null;
-            }
-        }
-        else if (itemsAfter.Count > 0)
-        {
-            _splitRepeaterAfter = new ItemsRepeater
-            {
-                Layout = new UniformGridLayout
-                {
-                    MinItemWidth = minWidth,
-                    MinItemHeight = layout?.MinItemHeight ?? 220,
-                    MinRowSpacing = layout?.MinRowSpacing ?? 20,
-                    MinColumnSpacing = spacing,
-                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
-                },
-                ItemTemplate = _originalRepeater.ItemTemplate,
-                ItemsSource = itemsAfter
-            };
-            _splitRepeaterAfter.ElementClearing += DiscographyRepeater_ElementClearing;
-
-            var panelIndex = _splitParent.Children.IndexOf(_activeDetailPanel);
-            if (panelIndex >= 0)
-                _splitParent.Children.Insert(panelIndex + 1, _splitRepeaterAfter);
-        }
-
-        var columnIndex = _expandedItemIndex % columns;
-        var cellWidth = (availableWidth - (columns - 1) * spacing) / columns;
-        _activeDetailPanel.NotchOffsetX = columnIndex * (cellWidth + spacing) + cellWidth / 2;
-    }
-
-    private bool HasActiveReleaseExpansion()
-        => _activeDetailPanel is not null
-           || _splitRepeaterAfter is not null
-           || _originalRepeater is not null
-           || ViewModel.Discography.ExpandedAlbum is not null;
-
-    private async Task CollapseExpandedAlbumAsync(bool animate)
-    {
-        var panel = _activeDetailPanel;
-        if (animate && panel is not null)
-            await AnimateReleasePanelOutAsync(panel);
-
-        CollapseExpandedAlbumCore();
-    }
-
-    private async Task AnimateReleasePanelOutAsync(FrameworkElement panel)
-    {
-        try
-        {
-            await AnimationBuilder.Create()
-                .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(ReleasePanelExitMs))
-                .Translation(
-                    Axis.Y,
-                    to: ReleasePanelExitOffset,
-                    duration: TimeSpan.FromMilliseconds(ReleasePanelExitMs),
-                    easingType: EasingType.Sine,
-                    easingMode: EasingMode.EaseIn)
-                .StartAsync(panel);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogDebug(ex, "ArtistPage release panel collapse animation failed.");
-        }
-    }
-
-    private void CollapseExpandedAlbumCore()
-    {
-        var hadExpansion = _activeDetailPanel is not null
-            || _splitRepeaterAfter is not null
-            || _originalRepeater is not null
-            || ViewModel.Discography.ExpandedAlbum is not null;
-
-        CancelResizeDebounce();
-
-        if (_activeDetailPanel is not null && _closeRequestedHandler is not null)
-            _activeDetailPanel.CloseRequested -= _closeRequestedHandler;
-        _closeRequestedHandler = null;
-
-        if (_activeDetailPanel is not null)
-        {
-            ReleaseImagesInSubtree(_activeDetailPanel);
-            _activeDetailPanel.Tracks = null;
-            _splitParent?.Children.Remove(_activeDetailPanel);
-        }
-
-        if (_splitRepeaterAfter is not null)
-        {
-            _splitRepeaterAfter.ElementClearing -= DiscographyRepeater_ElementClearing;
-            ReleaseImagesInSubtree(_splitRepeaterAfter);
-            _splitParent?.Children.Remove(_splitRepeaterAfter);
-        }
-
-        if (_originalRepeater is not null)
-            _originalRepeater.ItemsSource = _originalItemsSource;
-
-        _activeDetailPanel = null;
-        _splitRepeaterAfter = null;
-        _splitParent = null;
-        _originalRepeater = null;
-        _originalItemsSource = null;
-        _expandedItem = null;
-        _expandedItemIndex = -1;
-
-        if (hadExpansion)
-            ViewModel.Discography.CollapseAlbumCommand.Execute(null);
-    }
-
-    private async Task FetchAlbumColorAsync(Wavee.UI.WinUI.ViewModels.ArtistReleaseVm album, AlbumDetailPanel panel)
-    {
-        if (!string.IsNullOrEmpty(album.ColorHex))
-        {
-            panel.ColorHex = album.ColorHex;
-            return;
-        }
-
-        var imageUrl = SpotifyImageHelper.ToHttpsUrl(album.ImageUrl);
-        if (string.IsNullOrEmpty(imageUrl))
+        var top = panel.TransformToVisual(PageScrollView)
+            .TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+        var overflow = top + panel.ActualHeight - PageScrollView.ViewportHeight;
+        if (overflow <= 0)
             return;
 
-        try
-        {
-            var color = await _colorService.GetColorAsync(imageUrl);
-            if (color is null || panel.XamlRoot is null)
-                return;
-
-            var isDark = ActualTheme == ElementTheme.Dark;
-            var hex = isDark
-                ? color.DarkHex ?? color.RawHex
-                : color.LightHex ?? color.RawHex;
-
-            if (!string.IsNullOrEmpty(hex))
-                panel.ColorHex = hex;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Failed to fetch artist release color");
-        }
-    }
-
-    private void DiscographyRepeater_ElementClearing(ItemsRepeater sender, ItemsRepeaterElementClearingEventArgs args)
-        => ReleaseImagesInSubtree(args.Element);
-
-    private static void ReleaseImagesInSubtree(DependencyObject? root)
-    {
-        if (root is null)
-            return;
-
-        switch (root)
-        {
-            case ContentCard card:
-                card.ReleaseImage();
-                break;
-            case Image image:
-                image.Source = null;
-                image.Opacity = 1;
-                image.Visibility = Visibility.Visible;
-                break;
-            case Microsoft.UI.Xaml.Shapes.Shape { Fill: ImageBrush shapeBrush }:
-                shapeBrush.ImageSource = null;
-                break;
-            case Border { Background: ImageBrush borderBrush }:
-                borderBrush.ImageSource = null;
-                break;
-        }
-
-        var childCount = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < childCount; i++)
-            ReleaseImagesInSubtree(VisualTreeHelper.GetChild(root, i));
-    }
-
-    private static T? FindParent<T>(DependencyObject child, DependencyObject? stopAt = null)
-        where T : DependencyObject
-    {
-        var current = child;
-        var parent = VisualTreeHelper.GetParent(current);
-        while (parent is not null && parent != stopAt)
-        {
-            if (parent is T found)
-                return found;
-
-            current = parent;
-            parent = VisualTreeHelper.GetParent(current);
-        }
-
-        return stopAt is not null && parent == stopAt
-            ? current as T
-            : null;
+        PageScrollView.ScrollTo(
+            PageScrollView.HorizontalOffset,
+            PageScrollView.VerticalOffset + overflow + 16,
+            new ScrollingScrollOptions(ScrollingAnimationMode.Enabled));
     }
 
     private void MusicVideoCard_Click(object? sender, EventArgs e)
@@ -1849,8 +1481,9 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         SizeChanged -= OnPageSizeChanged;
         DetachScrollParallax();
         DetachHeroSizeHandlers();
-        CancelResizeDebounce();
-        CollapseExpandedAlbumCore();
+        AlbumsGrid?.CollapseNow();
+        SinglesGrid?.CollapseNow();
+        ViewModel.Discography.CollapseAlbumCommand.Execute(null);
         _shyHeader?.Detach();
         _shyHeader = null;
 

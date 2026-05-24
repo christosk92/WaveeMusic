@@ -136,6 +136,14 @@ public sealed partial class TrackItem
 
     private void UpdateCompactOverlay()
     {
+        // Trailing hover affordance for compact rows (artist top tracks). Keep
+        // it in the duration slot so the row does not resize on hover.
+        var showMore = _isHovered && !IsSelectionMode && !IsLoading && Track is not null;
+        if (CompactMoreButton is not null)
+            CompactMoreButton.Visibility = showMore ? Visibility.Visible : Visibility.Collapsed;
+        if (CompactDuration is not null)
+            CompactDuration.Visibility = showMore || IsLoading ? Visibility.Collapsed : Visibility.Visible;
+
         if (_isBuffering)
         {
             CompactPlayButton.Opacity = 0;

@@ -14,23 +14,19 @@
 
     <UserControl.Resources>
         <transitions:TransitionHelper x:Key="LocalMovieShyHeaderTransition"
-                                      Duration="0:0:0.36"
-                                      ReverseDuration="0:0:0.30"
+                                      Duration="0:0:0.30"
+                                      ReverseDuration="0:0:0.24"
                                       DefaultEasingMode="EaseInOut"
                                       SourceToggleMethod="ByVisibility"
                                       TargetToggleMethod="ByVisibility"
-                                      IndependentElementShowDuration="0:0:0.18"
-                                      IndependentElementShowDelay="0:0:0.10"
-                                      IndependentElementHideDuration="0:0:0.12"
+                                      IndependentElementShowDuration="0:0:0.16"
+                                      IndependentElementShowDelay="0:0:0.04"
+                                      IndependentElementHideDuration="0:0:0.10"
                                       IsHitTestVisibleWhenAnimating="False">
-            <transitions:TransitionConfig Id="card-shell" ScaleMode="Scale"/>
-            <transitions:TransitionConfig Id="movie-poster" ScaleMode="Scale"/>
-            <transitions:TransitionConfig Id="movie-title" ScaleMode="Custom">
-                <transitions:TransitionConfig.CustomScalingCalculator>
-                    <waveeHelpers:TransitionTextScalingCalculator/>
-                </transitions:TransitionConfig.CustomScalingCalculator>
-            </transitions:TransitionConfig>
-            <transitions:TransitionConfig Id="movie-play" ScaleMode="Scale"/>
+            <transitions:TransitionConfig Id="card-shell" ScaleMode="None"/>
+            <transitions:TransitionConfig Id="movie-poster" ScaleMode="None"/>
+            <transitions:TransitionConfig Id="movie-title" ScaleMode="None"/>
+            <transitions:TransitionConfig Id="movie-play" ScaleMode="None"/>
         </transitions:TransitionHelper>
     </UserControl.Resources>
 

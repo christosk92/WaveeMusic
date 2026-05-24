@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.Controls.Lyrics.Models.Settings;
 using Wavee.UI.Contracts;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Controls.RightPanel.Details;
@@ -62,6 +63,8 @@ public sealed partial class RightPanelView : UserControl
     private bool _lyricsTreeLoaded;
     private bool _detailsTreeLoaded;
     private bool _trackDetailsTreeLoaded;
+    private bool _lyricsHostEventsSubscribed;
+    private bool _detailsHostEventsSubscribed;
     private PropertyChangedEventHandler? _shellViewModelTrackDetailsHandler;
     private ShellViewModel? _shellViewModelForTrackDetails;
 
@@ -79,10 +82,13 @@ public sealed partial class RightPanelView : UserControl
     private bool _themeColorsSubscribed;
 
     private readonly BackgroundOverlayCompositionBehavior _overlayBehavior = new();
+    private bool _parentPlaybackStateSubscribed;
+    private bool _panelFrameworkEventsSubscribed;
 
     private CancellationTokenSource? _backgroundTintCts;
     private string? _backgroundTintImageUrl;
     private ExtractedColor? _backgroundTintExtractedColor;
+    private int _sharedLyricsCanvasRenderGeneration;
 
     public RightPanelView()
     {
@@ -110,15 +116,23 @@ public sealed partial class RightPanelView : UserControl
         // background-tint refresh on album-art changes. The lyrics-canvas
         // wiring is handled inside LyricsCanvasHost; the Details snippet /
         // canvas overlay / AI meaning wiring is handled inside DetailsTabHost.
-        if (_lyricsVm != null)
+        if (_lyricsVm != null && !_parentPlaybackStateSubscribed)
+        {
             _lyricsVm.PlaybackState.PropertyChanged += OnParentPlaybackStateChanged;
+            _parentPlaybackStateSubscribed = true;
+        }
 
         // Build the composition stacks once the visual tree is realised.
         _overlayBehavior.Attach(BackgroundOverlayHost, TabContentFadeHost);
 
-        ActualThemeChanged += OnActualThemeChanged;
-        SizeChanged += OnPanelSizeChanged;
+        if (!_panelFrameworkEventsSubscribed)
+        {
+            ActualThemeChanged += OnActualThemeChanged;
+            SizeChanged += OnPanelSizeChanged;
+            _panelFrameworkEventsSubscribed = true;
+        }
         UpdateCanvasClearColor();
+        ApplySharedLyricsCanvasBackgroundState();
         ApplyEmbeddedChrome();
         UpdateBackgroundChrome();
         RefreshBackgroundTint();
@@ -155,27 +169,31 @@ public sealed partial class RightPanelView : UserControl
             _themeColorsSubscribed = false;
         }
 
-        if (_lyricsVm != null)
+        if (_lyricsVm != null && _parentPlaybackStateSubscribed)
+        {
             _lyricsVm.PlaybackState.PropertyChanged -= OnParentPlaybackStateChanged;
+            _parentPlaybackStateSubscribed = false;
+        }
 
-        ActualThemeChanged -= OnActualThemeChanged;
-        SizeChanged -= OnPanelSizeChanged;
+        if (_panelFrameworkEventsSubscribed)
+        {
+            ActualThemeChanged -= OnActualThemeChanged;
+            SizeChanged -= OnPanelSizeChanged;
+            _panelFrameworkEventsSubscribed = false;
+        }
         UpdateLyricsConsumerActivity(active: false);
         TeardownLyrics();
 
-        if (LyricsContent != null)
-        {
-            LyricsContent.DebugRequested -= OnLyricsDebugRequested;
-            LyricsContent.CanvasLayoutInvalidated -= OnLyricsHostCanvasLayoutInvalidated;
-        }
+        UnwireLyricsHostEvents();
 
         if (DetailsContent != null)
         {
-            DetailsContent.LyricsSnippetTapped -= DetailsContent_LyricsSnippetTapped;
-            DetailsContent.BackgroundChromeInvalidated -= DetailsContent_BackgroundChromeInvalidated;
-            DetailsContent.BackgroundModeChanged -= DetailsContent_BackgroundModeChanged;
+            UnwireDetailsHostEvents();
             DetailsContent.TeardownDetails();
+            TeardownOutputDeviceCard();
         }
+
+        UnsubscribeTrackDetailsShellViewModel();
 
         CancelBackgroundTintRefresh();
         _overlayBehavior.Detach();
@@ -194,6 +212,7 @@ public sealed partial class RightPanelView : UserControl
         DispatcherQueue.TryEnqueue(() =>
         {
             UpdateCanvasClearColor();
+            ApplySharedLyricsCanvasBackgroundState();
             UpdateTabContentFadeColor();
             UpdateLyricsPaletteForTheme();
             UpdateBackgroundChrome();
@@ -204,6 +223,7 @@ public sealed partial class RightPanelView : UserControl
     private void OnActualThemeChanged(FrameworkElement sender, object args)
     {
         UpdateCanvasClearColor();
+        ApplySharedLyricsCanvasBackgroundState();
         UpdateTabContentFadeColor();
         UpdateLyricsPaletteForTheme();
         UpdateBackgroundChrome();
@@ -279,6 +299,13 @@ public sealed partial class RightPanelView : UserControl
         {
             RefreshBackgroundTint();
             UpdateBackgroundChrome();
+            ApplySharedLyricsCanvasBackgroundState();
+        }
+
+        if (e.PropertyName == nameof(IPlaybackStateService.CurrentAlbumArtColor))
+        {
+            _lyricsVm?.RefreshPaletteFromPlaybackColor();
+            ApplySharedLyricsCanvasBackgroundState();
         }
 
         // Track changes invalidate the chrome (Details host has already cleared
@@ -503,6 +530,85 @@ public sealed partial class RightPanelView : UserControl
         NowPlayingCanvas.SetClearColor(color);
     }
 
+    private void ApplySharedLyricsCanvasBackgroundState(bool pulse = true)
+    {
+        if (NowPlayingCanvas == null)
+            return;
+
+        var shouldShow = ShouldShowSharedLyricsCanvasBackground();
+        if (!shouldShow)
+        {
+            NowPlayingCanvas.Visibility = Visibility.Collapsed;
+            NowPlayingCanvas.SetRenderingActive(false);
+            return;
+        }
+
+        _lyricsVm!.RefreshPaletteFromPlaybackColor();
+        var status = _lyricsVm.WindowStatus;
+        status.IsAdaptToEnvironment = true;
+        ConfigureSidebarLyricsBackground(status.LyricsBackgroundSettings);
+
+        NowPlayingCanvas.LyricsWindowStatus = status;
+        var palette = _lyricsVm.CurrentPalette ?? status.WindowPalette;
+        NowPlayingCanvas.SetNowPlayingPalette(palette);
+        NowPlayingCanvas.Visibility = Visibility.Visible;
+
+        if (SelectedMode != RightPanelMode.Lyrics)
+        {
+            NowPlayingCanvas.LyricsOpacity = 0;
+            NowPlayingCanvas.MouseScrollOffset = 0;
+            NowPlayingCanvas.IsMouseScrolling = false;
+            NowPlayingCanvas.SetIsPlaying(false);
+        }
+
+        if (pulse)
+            PulseSharedLyricsCanvasBackground();
+    }
+
+    private bool ShouldShowSharedLyricsCanvasBackground()
+        => _isOpenCached
+           && !IsEmbeddedChromeTransparent
+           && _lyricsVm != null
+           && !IsDetailsCanvasBackgroundActive();
+
+    private bool IsDetailsCanvasBackgroundActive()
+        => SelectedMode == RightPanelMode.Details
+           && DetailsContent != null
+           && DetailsContent.ActiveBackgroundMode == DetailsBackgroundMode.Canvas
+           && DetailsContent.IsCanvasMediaVisible;
+
+    private static void ConfigureSidebarLyricsBackground(LyricsBackgroundSettings bg)
+    {
+        bg.IsPureColorOverlayEnabled = true;
+        bg.PureColorOverlayOpacity = 78;
+        bg.IsFluidOverlayEnabled = false;
+        bg.IsCoverOverlayEnabled = false;
+        bg.IsSpectrumOverlayEnabled = false;
+        bg.IsFogOverlayEnabled = false;
+        bg.IsRaindropOverlayEnabled = false;
+        bg.IsSnowFlakeOverlayEnabled = false;
+    }
+
+    private void PulseSharedLyricsCanvasBackground()
+    {
+        if (NowPlayingCanvas == null || !_isOpenCached || IsEmbeddedChromeTransparent || DispatcherQueue == null)
+            return;
+
+        NowPlayingCanvas.SetRenderingActive(true);
+        var generation = ++_sharedLyricsCanvasRenderGeneration;
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Delay(360);
+            if (!IsLoaded || !_isOpenCached || generation != _sharedLyricsCanvasRenderGeneration)
+                return;
+
+            if (SelectedMode == RightPanelMode.Lyrics && LyricsContent != null)
+                LyricsContent.UpdateTimerState();
+            else
+                NowPlayingCanvas.SetRenderingActive(false);
+        });
+    }
+
     // ── Background chrome plumbing — pushes precomputed colours through the
     //    behavior. All colour math lives in RightPanelThemeResolver. ──
 
@@ -571,6 +677,12 @@ public sealed partial class RightPanelView : UserControl
         // should show. When the Details subtree hasn't materialised yet, fall
         // back to "hidden" (the parent's UpdateContentVisibility will re-evaluate
         // once the host loads).
+        if (ShouldShowSharedLyricsCanvasBackground())
+        {
+            _overlayBehavior.ApplyState(OverlayState.Hidden);
+            return;
+        }
+
         var showDetailsCanvasChrome = SelectedMode == RightPanelMode.Details
                                       && DetailsContent != null
                                       && DetailsContent.ActiveBackgroundMode == DetailsBackgroundMode.Canvas
@@ -588,7 +700,8 @@ public sealed partial class RightPanelView : UserControl
         if (BackgroundOverlayHost == null)
             return;
 
-        var hasMedia = DetailsContent != null
+        var hasMedia = !ShouldShowSharedLyricsCanvasBackground()
+                       && DetailsContent != null
                        && DetailsContent.ActiveBackgroundMode == DetailsBackgroundMode.Canvas
                        && DetailsContent.IsCanvasMediaVisible;
         BackgroundOverlayHost.Visibility = hasMedia ? Visibility.Visible : Visibility.Collapsed;
@@ -598,6 +711,16 @@ public sealed partial class RightPanelView : UserControl
 
     private void UpdateTabContentFadeColor()
     {
+        if (ShouldShowSharedLyricsCanvasBackground())
+        {
+            if (TabContentFadeHost != null)
+                TabContentFadeHost.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (TabContentFadeHost != null)
+            TabContentFadeHost.Visibility = Visibility.Visible;
+
         var target = RightPanelThemeResolver.ResolveTabFadeTargetColor(
             ActualTheme,
             IsEmbeddedChromeTransparent,
@@ -755,6 +878,8 @@ public sealed partial class RightPanelView : UserControl
         if (_lyricsTreeLoaded && LyricsContent != null)
             LyricsContent.ApplyCurrentLyricsState();
 
+        ApplySharedLyricsCanvasBackgroundState();
+
         TabPager?.SyncVisualState();
 
         // When switching to lyrics tab, ensure we have the latest state
@@ -787,41 +912,86 @@ public sealed partial class RightPanelView : UserControl
 
     private void EnsureLyricsTreeLoaded()
     {
-        if (_lyricsTreeLoaded) return;
-        _ = FindName(nameof(LyricsContent));
-        _lyricsTreeLoaded = LyricsContent != null;
-        if (_lyricsTreeLoaded && LyricsContent != null)
+        if (!_lyricsTreeLoaded)
         {
-            // Set the canvas reference explicitly — relying solely on the x:Bind in
-            // XAML is fragile when LyricsContent is x:Load'd late (the bind runs
-            // before this code path catches it on the first manual trigger).
-            LyricsContent.NowPlayingCanvas = NowPlayingCanvas;
-            LyricsContent.CanvasLayoutInvalidated += OnLyricsHostCanvasLayoutInvalidated;
-            LyricsContent.DebugRequested += OnLyricsDebugRequested;
+            _ = FindName(nameof(LyricsContent));
+            _lyricsTreeLoaded = LyricsContent != null;
         }
+
+        if (!_lyricsTreeLoaded || LyricsContent == null)
+            return;
+
+        // Set the canvas reference explicitly — relying solely on the x:Bind in
+        // XAML is fragile when LyricsContent is x:Load'd late (the bind runs
+        // before this code path catches it on the first manual trigger).
+        LyricsContent.NowPlayingCanvas = NowPlayingCanvas;
+        WireLyricsHostEvents();
+    }
+
+    private void WireLyricsHostEvents()
+    {
+        if (_lyricsHostEventsSubscribed || LyricsContent == null)
+            return;
+
+        LyricsContent.CanvasLayoutInvalidated += OnLyricsHostCanvasLayoutInvalidated;
+        LyricsContent.DebugRequested += OnLyricsDebugRequested;
+        _lyricsHostEventsSubscribed = true;
+    }
+
+    private void UnwireLyricsHostEvents()
+    {
+        if (!_lyricsHostEventsSubscribed)
+            return;
+
+        if (LyricsContent != null)
+        {
+            LyricsContent.DebugRequested -= OnLyricsDebugRequested;
+            LyricsContent.CanvasLayoutInvalidated -= OnLyricsHostCanvasLayoutInvalidated;
+        }
+
+        _lyricsHostEventsSubscribed = false;
     }
 
     private void EnsureTrackDetailsTreeLoaded()
     {
-        if (_trackDetailsTreeLoaded) return;
-        _ = FindName(nameof(TrackDetailsContent));
-        _trackDetailsTreeLoaded = TrackDetailsContent != null;
+        if (!_trackDetailsTreeLoaded)
+        {
+            _ = FindName(nameof(TrackDetailsContent));
+            _trackDetailsTreeLoaded = TrackDetailsContent != null;
+        }
+
+        if (!_trackDetailsTreeLoaded || TrackDetailsContent == null)
+            return;
+
+        EnsureTrackDetailsShellViewModelSubscription();
+    }
+
+    private void EnsureTrackDetailsShellViewModelSubscription()
+    {
+        if (_shellViewModelTrackDetailsHandler is not null)
+            return;
 
         // Lazy-subscribe to ShellViewModel.SelectedTrackForDetails so a re-invocation
         // with a different track rebinds without forcing the user to close+reopen.
-        if (_trackDetailsTreeLoaded && _shellViewModelTrackDetailsHandler is null)
+        _shellViewModelForTrackDetails = Ioc.Default.GetService<ShellViewModel>();
+        if (_shellViewModelForTrackDetails is null)
+            return;
+
+        _shellViewModelTrackDetailsHandler = (_, args) =>
         {
-            _shellViewModelForTrackDetails = Ioc.Default.GetService<ShellViewModel>();
-            if (_shellViewModelForTrackDetails is not null)
-            {
-                _shellViewModelTrackDetailsHandler = (_, args) =>
-                {
-                    if (args.PropertyName == nameof(ShellViewModel.SelectedTrackForDetails))
-                        DispatcherQueue.TryEnqueue(RefreshTrackDetailsContent);
-                };
-                _shellViewModelForTrackDetails.PropertyChanged += _shellViewModelTrackDetailsHandler;
-            }
-        }
+            if (args.PropertyName == nameof(ShellViewModel.SelectedTrackForDetails))
+                DispatcherQueue.TryEnqueue(RefreshTrackDetailsContent);
+        };
+        _shellViewModelForTrackDetails.PropertyChanged += _shellViewModelTrackDetailsHandler;
+    }
+
+    private void UnsubscribeTrackDetailsShellViewModel()
+    {
+        if (_shellViewModelForTrackDetails is not null && _shellViewModelTrackDetailsHandler is not null)
+            _shellViewModelForTrackDetails.PropertyChanged -= _shellViewModelTrackDetailsHandler;
+
+        _shellViewModelTrackDetailsHandler = null;
+        _shellViewModelForTrackDetails = null;
     }
 
     private void RefreshTrackDetailsContent()
@@ -860,22 +1030,46 @@ public sealed partial class RightPanelView : UserControl
 
     private void EnsureDetailsTreeLoaded()
     {
-        if (_detailsTreeLoaded) return;
-        _ = FindName(nameof(DetailsContent));
-        _detailsTreeLoaded = DetailsContent != null;
-
-        if (_detailsTreeLoaded && DetailsContent != null)
+        if (!_detailsTreeLoaded)
         {
-            DetailsContent.LyricsSnippetTapped += DetailsContent_LyricsSnippetTapped;
-            DetailsContent.BackgroundChromeInvalidated += DetailsContent_BackgroundChromeInvalidated;
-            DetailsContent.BackgroundModeChanged += DetailsContent_BackgroundModeChanged;
-            DetailsContent.IsEmbeddedChromeTransparent = IsEmbeddedChromeTransparent;
-            DetailsContent.InitializeDetails();
-            InitializeOutputDeviceCard();
+            _ = FindName(nameof(DetailsContent));
+            _detailsTreeLoaded = DetailsContent != null;
         }
+
+        if (!_detailsTreeLoaded || DetailsContent == null)
+            return;
+
+        WireDetailsHostEvents();
+        DetailsContent.IsEmbeddedChromeTransparent = IsEmbeddedChromeTransparent;
+        DetailsContent.InitializeDetails();
+        InitializeOutputDeviceCard();
     }
 
-    // ── DetailsTabHost event handlers ──
+    private void WireDetailsHostEvents()
+    {
+        if (_detailsHostEventsSubscribed || DetailsContent == null)
+            return;
+
+        DetailsContent.LyricsSnippetTapped += DetailsContent_LyricsSnippetTapped;
+        DetailsContent.BackgroundChromeInvalidated += DetailsContent_BackgroundChromeInvalidated;
+        DetailsContent.BackgroundModeChanged += DetailsContent_BackgroundModeChanged;
+        _detailsHostEventsSubscribed = true;
+    }
+
+    private void UnwireDetailsHostEvents()
+    {
+        if (!_detailsHostEventsSubscribed)
+            return;
+
+        if (DetailsContent != null)
+        {
+            DetailsContent.LyricsSnippetTapped -= DetailsContent_LyricsSnippetTapped;
+            DetailsContent.BackgroundChromeInvalidated -= DetailsContent_BackgroundChromeInvalidated;
+            DetailsContent.BackgroundModeChanged -= DetailsContent_BackgroundModeChanged;
+        }
+
+        _detailsHostEventsSubscribed = false;
+    }
 
     private void DetailsContent_LyricsSnippetTapped(object? sender, EventArgs e)
     {

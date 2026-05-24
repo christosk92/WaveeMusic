@@ -13,7 +13,18 @@
     <UserControl.Resources>
         <converters:SpotifyImageConverter x:Key="SpotifyImageConverter"/>
 
-        <!-- Shared track row template with always-visible drag handle on the right. -->
+        <!-- Queue rows are ListViewItems; strip the default padding / min-height
+             so they match the 52px row template, and keep content stretched. -->
+        <Style x:Key="QueueRowContainerStyle" TargetType="ListViewItem">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+
+        <!-- Shared track row template. Title → album, artist → artist (click-
+             through links); duration before the grip; the whole row drags to
+             reorder, the grip is the visible cue. -->
         <DataTemplate x:Key="TrackTemplate" x:DataType="local:QueueDisplayItem">
             <Grid x:Name="TrackRoot"
                   Padding="6,6"
@@ -21,12 +32,14 @@
                   Height="52"
                   CornerRadius="4"
                   Background="Transparent"
-                  Opacity="{x:Bind VisualOpacity, Mode=OneTime}"
+                  Loaded="TrackRoot_Loaded"
                   PointerEntered="TrackRow_PointerEntered"
-                  PointerExited="TrackRow_PointerExited">
+                  PointerExited="TrackRow_PointerExited"
+                  Opacity="{x:Bind VisualOpacity, Mode=OneTime}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="40"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
@@ -54,17 +67,59 @@
                 <shimmer:Shimmer Grid.Column="0" Width="40" Height="40"
                                  Visibility="{x:Bind IsShimmer, Mode=OneTime}"/>
 
-                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2"
+                <!-- Hover play button over the artwork — skips playback to this
+                     queue item. Shown by TrackRow_PointerEntered. -->
+                <Button x:Name="RowPlayButton"
+                        Grid.Column="0"
+                        Width="40" Height="40"
+                        CornerRadius="4"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Opacity="0"
+                        IsHitTestVisible="False"
+                        Tag="{x:Bind Mode=OneTime}"
+                        Click="RowPlay_Click"
+                        ToolTipService.ToolTip="Play"
+                        Visibility="{x:Bind IsLoaded, Mode=OneTime}">
+                    <Grid>
+                        <Border CornerRadius="4" Background="#A6000000"/>
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                  Glyph="&#xE768;"
+                                  FontSize="16"
+                                  Foreground="White"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"/>
+                    </Grid>
+                </Button>
+
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1"
                             Visibility="{x:Bind IsLoaded, Mode=OneTime}">
-                    <TextBlock Text="{x:Bind Title, Mode=OneTime}"
-                               FontSize="13"
-                               MaxLines="1"
-                               TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Text="{x:Bind Subtitle, Mode=OneTime}"
-                               FontSize="11"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               MaxLines="1"
-                               TextTrimming="CharacterEllipsis"/>
+                    <HyperlinkButton Tag="{x:Bind Mode=OneTime}"
+                                     Click="TitleLink_Click"
+                                     Padding="0" MinWidth="0" MinHeight="0"
+                                     Background="Transparent" BorderThickness="0"
+                                     HorizontalAlignment="Stretch"
+                                     HorizontalContentAlignment="Left"
+                                     ToolTipService.ToolTip="{x:Bind Title, Mode=OneTime}">
+                        <TextBlock Text="{x:Bind Title, Mode=OneTime}"
+                                   FontSize="13"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                   MaxLines="1"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </HyperlinkButton>
+                    <HyperlinkButton Tag="{x:Bind Mode=OneTime}"
+                                     Click="ArtistLink_Click"
+                                     Padding="0" MinWidth="0" MinHeight="0"
+                                     Background="Transparent" BorderThickness="0"
+                                     HorizontalAlignment="Stretch"
+                                     HorizontalContentAlignment="Left">
+                        <TextBlock Text="{x:Bind Subtitle, Mode=OneTime}"
+                                   FontSize="11"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   MaxLines="1"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </HyperlinkButton>
                 </StackPanel>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4"
                             Visibility="{x:Bind IsShimmer, Mode=OneTime}">
@@ -72,9 +127,38 @@
                     <shimmer:Shimmer Width="110" Height="10" HorizontalAlignment="Left"/>
                 </StackPanel>
 
-                <!-- Hamburger drag handle — always visible, hand cursor on hover (set in code-behind via Loaded). -->
+                <!-- Track duration -->
+                <TextBlock x:Name="RowDurationText"
+                           Grid.Column="2"
+                           Text="{x:Bind Duration, Mode=OneTime}"
+                           FontSize="11"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           VerticalAlignment="Center"
+                           Visibility="{x:Bind IsLoaded, Mode=OneTime}"/>
+
+                <!-- Same hover affordance as TrackItem: swap the duration for
+                     a trailing More button so queue rows have a direct pointer
+                     path to the shared track context menu. -->
+                <Button x:Name="RowMoreButton"
+                        Grid.Column="2"
+                        Width="28" Height="28"
+                        Padding="0"
+                        CornerRadius="14"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Visibility="Collapsed"
+                        Tag="{x:Bind Mode=OneTime}"
+                        Click="RowMore_Click"
+                        AutomationProperties.Name="More options"
+                        ToolTipService.ToolTip="More">
+                    <FontIcon Glyph="&#xE712;" FontSize="14"/>
+                </Button>
+
+                <!-- Hamburger grip — the reorder-drag cue. Hand cursor set in code-behind. -->
                 <FontIcon x:Name="DragHandle"
-                          Grid.Column="2"
+                          Grid.Column="3"
                           FontFamily="{ThemeResource SymbolThemeFontFamily}"
                           Glyph="&#xE700;"
                           FontSize="14"
@@ -92,7 +176,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Pinned controls row — default ToggleButton chrome with a pill corner radius. -->
+        <!-- Pinned queue controls. Active state keeps the checked background. -->
         <StackPanel Grid.Row="0"
                     Orientation="Horizontal"
                     HorizontalAlignment="Center"
@@ -152,6 +236,7 @@
 
         <!-- Scrolling content -->
         <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Auto">
+          <Grid>
             <StackPanel Spacing="0" Padding="0,0,0,160">
 
                 <!-- Playing-from breadcrumb. Borderless / fill-less single line; the
@@ -244,10 +329,7 @@
                 </Border>
 
                 <!-- User queue section -->
-                <StackPanel x:Name="UserQueueSection" Visibility="Collapsed" Spacing="0"
-                            AllowDrop="True"
-                            DragOver="UserQueue_DragOver"
-                            Drop="UserQueue_Drop">
+                <StackPanel x:Name="UserQueueSection" Visibility="Collapsed" Spacing="0">
                     <Grid Margin="2,8,2,4">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -264,12 +346,18 @@
                                          Padding="6,2"
                                          Click="ClearQueueButton_Click"/>
                     </Grid>
-                    <ItemsRepeater x:Name="UserQueueRepeater"
-                                   ItemTemplate="{StaticResource TrackTemplate}">
-                        <ItemsRepeater.Layout>
-                            <StackLayout Spacing="0"/>
-                        </ItemsRepeater.Layout>
-                    </ItemsRepeater>
+                    <ListView x:Name="UserQueueRepeater"
+                              ItemTemplate="{StaticResource TrackTemplate}"
+                              ItemContainerStyle="{StaticResource QueueRowContainerStyle}"
+                              SelectionMode="None"
+                              IsItemClickEnabled="False"
+                              AllowDrop="True"
+                              DragOver="Section_DragOver"
+                              Drop="Section_Drop"
+                              ScrollViewer.VerticalScrollMode="Disabled"
+                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              ScrollViewer.HorizontalScrollMode="Disabled"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
                 </StackPanel>
 
                 <!-- Next up section -->
@@ -278,12 +366,18 @@
                                Text="Next up"
                                Style="{StaticResource BodyStrongTextBlockStyle}"
                                Margin="2,14,2,4"/>
-                    <ItemsRepeater x:Name="NextUpRepeater"
-                                   ItemTemplate="{StaticResource TrackTemplate}">
-                        <ItemsRepeater.Layout>
-                            <StackLayout Spacing="0"/>
-                        </ItemsRepeater.Layout>
-                    </ItemsRepeater>
+                    <ListView x:Name="NextUpRepeater"
+                              ItemTemplate="{StaticResource TrackTemplate}"
+                              ItemContainerStyle="{StaticResource QueueRowContainerStyle}"
+                              SelectionMode="None"
+                              IsItemClickEnabled="False"
+                              AllowDrop="True"
+                              DragOver="Section_DragOver"
+                              Drop="Section_Drop"
+                              ScrollViewer.VerticalScrollMode="Disabled"
+                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              ScrollViewer.HorizontalScrollMode="Disabled"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
                 </StackPanel>
 
                 <!-- Queued later (post-context bucket — "Add to Queue" items
@@ -297,12 +391,18 @@
                                    FontSize="11"
                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                     </StackPanel>
-                    <ItemsRepeater x:Name="PostContextRepeater"
-                                   ItemTemplate="{StaticResource TrackTemplate}">
-                        <ItemsRepeater.Layout>
-                            <StackLayout Spacing="0"/>
-                        </ItemsRepeater.Layout>
-                    </ItemsRepeater>
+                    <ListView x:Name="PostContextRepeater"
+                              ItemTemplate="{StaticResource TrackTemplate}"
+                              ItemContainerStyle="{StaticResource QueueRowContainerStyle}"
+                              SelectionMode="None"
+                              IsItemClickEnabled="False"
+                              AllowDrop="True"
+                              DragOver="Section_DragOver"
+                              Drop="Section_Drop"
+                              ScrollViewer.VerticalScrollMode="Disabled"
+                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              ScrollViewer.HorizontalScrollMode="Disabled"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
                 </StackPanel>
 
                 <!-- Autoplay section (progressively dimmed) -->
@@ -314,12 +414,18 @@
                                    FontSize="11"
                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                     </StackPanel>
-                    <ItemsRepeater x:Name="AutoPlayRepeater"
-                                   ItemTemplate="{StaticResource TrackTemplate}">
-                        <ItemsRepeater.Layout>
-                            <StackLayout Spacing="0"/>
-                        </ItemsRepeater.Layout>
-                    </ItemsRepeater>
+                    <ListView x:Name="AutoPlayRepeater"
+                              ItemTemplate="{StaticResource TrackTemplate}"
+                              ItemContainerStyle="{StaticResource QueueRowContainerStyle}"
+                              SelectionMode="None"
+                              IsItemClickEnabled="False"
+                              AllowDrop="True"
+                              DragOver="Section_DragOver"
+                              Drop="Section_Drop"
+                              ScrollViewer.VerticalScrollMode="Disabled"
+                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              ScrollViewer.HorizontalScrollMode="Disabled"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
                 </StackPanel>
 
                 <!-- Delimiter -->
@@ -334,6 +440,11 @@
                 </StackPanel>
 
             </StackPanel>
+
+            <!-- Drag-reorder insertion line overlay. Hit-test-invisible so drag
+                 events still reach the section ListViews underneath. -->
+            <Canvas x:Name="DropIndicatorOverlay" IsHitTestVisible="False"/>
+          </Grid>
         </ScrollView>
 
         <!-- Empty state -->

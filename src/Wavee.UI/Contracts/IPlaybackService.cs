@@ -93,6 +93,19 @@ public interface IPlaybackService : INotifyPropertyChanged
     /// </summary>
     Task<PlaybackResult> PlayNextAsync(string trackUri, CancellationToken ct = default);
 
+    /// <summary>
+    /// Drag-reorder of one item within a single queue bucket. Local playback
+    /// only — rejected when playing on a remote device.
+    /// </summary>
+    Task<PlaybackResult> ReorderQueueAsync(
+        Wavee.Audio.Queue.QueueReorderTarget target, int oldIndex, int newIndex, CancellationToken ct = default);
+
+    /// <summary>
+    /// Skips playback to a specific upcoming queue item (0-based index in the
+    /// next-tracks list). Local playback only.
+    /// </summary>
+    Task<PlaybackResult> SkipToQueueItemAsync(int upcomingIndex, CancellationToken ct = default);
+
     // ── Device ──
 
     Task<PlaybackResult> TransferPlaybackAsync(

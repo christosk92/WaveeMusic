@@ -33,33 +33,23 @@
             <homeViews:BrowseChip Item="{x:Bind}"/>
         </DataTemplate>
 
-        <!-- Shy-header morph: banner overlay -> floating compact pill. Matched
-             ids on the title + owner-name elements interpolate between the two
-             states; card-shell on the outer pill Border drives the chrome
-             morph. Cover thumb + Play button on the pill have no matched
-             source in the banner overlay, so they fade in via the Independent*
-             show window. Mirrors ArtistShyHeaderTransition. -->
+        <!-- Shy-header slide/fade: banner overlay -> floating compact pill.
+             Matched ids anchor the motion without scaling the title, owner,
+             or card chrome. Cover thumb + Play button fade in via the
+             Independent* show window. Mirrors ArtistShyHeaderTransition. -->
         <transitions:TransitionHelper x:Key="PlaylistShyHeaderTransition"
-                                      Duration="0:0:0.36"
-                                      ReverseDuration="0:0:0.30"
+                                      Duration="0:0:0.30"
+                                      ReverseDuration="0:0:0.24"
                                       DefaultEasingMode="EaseInOut"
                                       SourceToggleMethod="ByVisibility"
                                       TargetToggleMethod="ByVisibility"
-                                      IndependentElementShowDuration="0:0:0.18"
-                                      IndependentElementShowDelay="0:0:0.10"
-                                      IndependentElementHideDuration="0:0:0.12"
+                                      IndependentElementShowDuration="0:0:0.16"
+                                      IndependentElementShowDelay="0:0:0.04"
+                                      IndependentElementHideDuration="0:0:0.10"
                                       IsHitTestVisibleWhenAnimating="False">
-            <transitions:TransitionConfig Id="card-shell" ScaleMode="Scale"/>
-            <transitions:TransitionConfig Id="playlist-name" ScaleMode="Custom">
-                <transitions:TransitionConfig.CustomScalingCalculator>
-                    <helpers:TransitionTextScalingCalculator/>
-                </transitions:TransitionConfig.CustomScalingCalculator>
-            </transitions:TransitionConfig>
-            <transitions:TransitionConfig Id="playlist-owner" ScaleMode="Custom">
-                <transitions:TransitionConfig.CustomScalingCalculator>
-                    <helpers:TransitionTextScalingCalculator/>
-                </transitions:TransitionConfig.CustomScalingCalculator>
-            </transitions:TransitionConfig>
+            <transitions:TransitionConfig Id="card-shell" ScaleMode="None"/>
+            <transitions:TransitionConfig Id="playlist-name" ScaleMode="None"/>
+            <transitions:TransitionConfig Id="playlist-owner" ScaleMode="None"/>
         </transitions:TransitionHelper>
     </UserControl.Resources>
 
