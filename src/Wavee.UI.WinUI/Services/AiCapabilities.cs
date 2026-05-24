@@ -121,12 +121,6 @@ public sealed class AiCapabilities
         LanguageModelHardwareAvailable && _regionAllowed && UserOptedIn;
 
     /// <summary>
-    /// Per-feature gate: lyrics line "explain" affordance.
-    /// </summary>
-    public bool IsLyricsExplainEnabled =>
-        IsAiAvailableAndEnabled && _settings.Settings.AiLyricsExplainEnabled;
-
-    /// <summary>
     /// Per-feature gate: header "summarize song" affordance.
     /// </summary>
     public bool IsLyricsSummarizeEnabled =>
@@ -225,7 +219,7 @@ public sealed class AiCapabilities
 
     public string DescribeDiagnosticState()
         => $"hardware={LanguageModelHardwareAvailable}, regionAllowed={_regionAllowed}, userOptedIn={UserOptedIn}, " +
-           $"lyricsExplain={_settings.Settings.AiLyricsExplainEnabled}, lyricsMeaning={_settings.Settings.AiLyricsSummarizeEnabled}, " +
+           $"lyricsMeaning={_settings.Settings.AiLyricsSummarizeEnabled}, " +
            $"artistBio={_settings.Settings.AiBioSummarizeEnabled}, " +
            $"laf={_lafUnlockStatusLabel ?? "<not probed>"}, " +
            $"status=\"{DescribeStatus()}\"";

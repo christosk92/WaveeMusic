@@ -7,28 +7,21 @@ using Microsoft.Extensions.Logging;
 namespace Wavee.UI.WinUI.Services;
 
 /// <summary>
-/// Wraps Phi Silica for the lyrics pilot:
-///   - <see cref="ExplainLineAsync"/>: per-line "what does this lyric line mean?" via
-///     structured JSON generation with a tightly-scoped prompt.
+/// Wraps Phi Silica for the lyrics-meaning feature:
 ///   - <see cref="GetLyricsMeaningAsync"/>: whole-song lyrics meaning through
-///     structured JSON generation with a short interpretive prompt.
+///     structured JSON generation with a short interpretive prompt + citations.
 ///
 /// All inference is on-device (NPU) via Microsoft Foundry on Windows. Calls are gated
 /// through <see cref="AiCapabilities"/>: if the user hasn't opted in or the hardware
 /// isn't a Copilot+ PC, every method returns <see cref="LyricsAiResult.Unavailable"/>
 /// without touching the model.
 ///
-/// Caching: in-memory only for the pilot (per-process, lost on restart). Keyed by
-/// <c>(trackUri, lineIndex, line)</c> for explanations and <c>trackUri</c> for lyrics meaning.
-/// TODO: persist via <c>IMetadataDatabase</c> once a cache table is added — current
-/// IMetadataDatabase contract has lyrics + extended-metadata tables but no generic AI
-/// blob store. Cache hit ratios should be high in a single session anyway (a user
-/// re-clicking the same line replays from RAM).
+/// Caching: in-memory per-track via shared <see cref="Lazy{T}"/> task — all UI surfaces
+/// asking about the same track reuse the same in-flight or completed result.
 ///
-/// Cancellation: line explanations cancel the model operation. Lyrics meaning
-/// cancels only the caller's wait; the shared in-flight task keeps running so
-/// another visible lyrics surface can reuse the same result instead of starting
-/// a duplicate call.
+/// Cancellation: cancels only the caller's wait; the shared in-flight task keeps
+/// running so another visible lyrics surface can reuse the same result instead of
+/// starting a duplicate call.
 ///
 /// Prompt construction, evidence JSON parsing, and output normalization live in
 /// <see cref="LyricsAiPrompts"/>, <see cref="LyricsAiEvidenceParser"/>, and
@@ -40,7 +33,6 @@ public sealed class LyricsAiService
     private readonly AiCapabilities _capabilities;
     private readonly ILogger? _logger;
 
-    private readonly ConcurrentDictionary<(string trackUri, int lineIndex, string line), string> _explanationCache = new();
     private readonly ConcurrentDictionary<string, Lazy<Task<LyricsAiResult>>> _lyricsMeaningRequests =
         new(StringComparer.Ordinal);
 
@@ -48,60 +40,6 @@ public sealed class LyricsAiService
     {
         _capabilities = capabilities ?? throw new ArgumentNullException(nameof(capabilities));
         _logger = logger;
-    }
-
-    /// <summary>
-    /// Asks Phi Silica to explain a single lyric line in 1-2 sentences. Returns the
-    /// explanation text on success; <see cref="LyricsAiResult.Unavailable"/> if the
-    /// feature is gated off; <see cref="LyricsAiResult.Filtered"/> if the model's
-    /// content filter blocked the output.
-    /// </summary>
-    /// <param name="trackUri">Spotify URI for cache keying (e.g. "spotify:track:xyz").</param>
-    /// <param name="lineIndex">Index of the line in the lyric, used as the cache key.</param>
-    /// <param name="line">The lyric line to explain.</param>
-    public async Task<LyricsAiResult> ExplainLineAsync(
-        string trackUri, int lineIndex, string line, string? fullLyric,
-        IProgress<string>? deltaProgress = null,
-        CancellationToken ct = default)
-    {
-        if (!_capabilities.IsLyricsExplainEnabled)
-        {
-            _logger?.LogWarning("ExplainLineAsync unavailable before model call. {Diagnostics}",
-                _capabilities.DescribeDiagnosticState());
-            return LyricsAiResult.Unavailable;
-        }
-        if (string.IsNullOrWhiteSpace(line))
-            return LyricsAiResult.Empty;
-
-        var normalizedTrackUri = NormalizeTrackUri(trackUri);
-        var explanationCacheKey = (normalizedTrackUri, lineIndex, line);
-        if (_explanationCache.TryGetValue(explanationCacheKey, out var cached))
-            return LyricsAiResult.Ok(cached, fromCache: true);
-
-        if (!await _capabilities.EnsureLanguageModelReadyAsync())
-        {
-            _logger?.LogWarning("ExplainLineAsync unavailable: EnsureLanguageModelReadyAsync returned false. {Diagnostics}",
-                _capabilities.DescribeDiagnosticState());
-            return LyricsAiResult.Unavailable;
-        }
-
-        var result = await PhiSilicaStructuredTextPipeline.GenerateAsync(
-            new PhiSilicaStructuredTextRequest(
-                "ExplainLineAsync",
-                LyricsAiPrompts.BuildExplainPrompt(line, lineIndex, fullLyric),
-                LyricsAiPrompts.BuildExplainFallbackPrompt(line, lineIndex, fullLyric),
-                0.3f,
-                text => PhiSilicaStructuredTextPipeline.ClampLength(
-                    LyricsAiOutputNormalizer.StripEvidenceLines(text),
-                    LyricsAiOutputNormalizer.MaxExplanationCharacters),
-                "Phi Silica returned an empty explanation."),
-            _logger,
-            ct);
-
-        if (result.Kind == LyricsAiResultKind.Ok)
-            _explanationCache[explanationCacheKey] = result.Text;
-
-        return result;
     }
 
     /// <summary>
@@ -172,12 +110,11 @@ public sealed class LyricsAiService
     }
 
     /// <summary>
-    /// Drops cached explanations and lyrics meanings (e.g. on logout, or as a manual reset
+    /// Drops cached lyrics meanings (e.g. on logout, or as a manual reset
     /// affordance in Settings). Cheap.
     /// </summary>
     public void ClearCache()
     {
-        _explanationCache.Clear();
         _lyricsMeaningRequests.Clear();
     }
 
@@ -206,7 +143,9 @@ public sealed class LyricsAiService
                 "GetLyricsMeaningAsync",
                 LyricsAiPrompts.BuildLyricsMeaningPrompt(numberedLyrics.Text, trackContext),
                 LyricsAiPrompts.BuildLyricsMeaningFallbackPrompt(fallbackLyrics.Text, trackContext),
-                0.3f,
+                // Greedy decoding (temperature 0) — faster under constrained JSON
+                // schemas and produces tighter output for instructive prompts.
+                0.0f,
                 text => LyricsAiOutputNormalizer.NormalizeLyricsMeaningOutput(
                     LyricsAiOutputNormalizer.StripEvidenceLines(text)),
                 "Phi Silica returned an empty lyrics meaning.")

@@ -227,6 +227,11 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
                 vm.Feed.RemoveLocalSectionOnDispatcher();
         });
 
+        WeakReferenceMessenger.Default.Register<AlbumMetadataPrefetchedMessage>(this, (r, m) =>
+        {
+            ((HomeViewModel)r).Feed.ApplyAlbumMetadataPrefetch(m);
+        });
+
         TabItemParameter = new TabItemParameter(Data.Enums.NavigationPageType.Home, null)
         {
             Title = "Home"
@@ -903,7 +908,8 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             Uri = id,
             Title = item.Title,
             Subtitle = item.Subtitle,
-            ImageUrl = item.ImageUrl
+            ImageUrl = item.ImageUrl,
+            TotalTracks = item.AlbumTotalTracks > 0 ? item.AlbumTotalTracks : null
         };
 
         switch (type)
@@ -1084,6 +1090,7 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
 
         DetachLongLivedServices();
         WeakReferenceMessenger.Default.Unregister<HomeLocalFilesVisibilityChangedMessage>(this);
+        WeakReferenceMessenger.Default.Unregister<AlbumMetadataPrefetchedMessage>(this);
 
         Greeting.Dispose();
         Recommendations.Dispose();
@@ -1272,6 +1279,8 @@ public sealed class HomeSectionItem : ObservableObject
     private string? _uri;
     private string? _title;
     private string? _subtitle;
+    private string? _albumMetadataSubtitle;
+    private int _albumTotalTracks;
     private string? _imageUrl;
     private string? _imageSmallUrl;
     private string? _imageMediumUrl;
@@ -1304,8 +1313,33 @@ public sealed class HomeSectionItem : ObservableObject
     public string? Subtitle
     {
         get => _subtitle;
-        set => SetProperty(ref _subtitle, value);
+        set
+        {
+            if (SetProperty(ref _subtitle, value))
+                OnPropertyChanged(nameof(DisplaySubtitle));
+        }
     }
+
+    public string? AlbumMetadataSubtitle
+    {
+        get => _albumMetadataSubtitle;
+        set
+        {
+            if (SetProperty(ref _albumMetadataSubtitle, value))
+                OnPropertyChanged(nameof(DisplaySubtitle));
+        }
+    }
+
+    public int AlbumTotalTracks
+    {
+        get => _albumTotalTracks;
+        set => SetProperty(ref _albumTotalTracks, value);
+    }
+
+    public string? DisplaySubtitle =>
+        !string.IsNullOrWhiteSpace(_albumMetadataSubtitle)
+            ? _albumMetadataSubtitle
+            : _subtitle;
 
     public string? ImageUrl
     {

@@ -310,6 +310,8 @@
                                 Padding="0"
                                 MinHeight="0"
                                 MinWidth="0"
+                                HorizontalAlignment="Left"
+                                HorizontalContentAlignment="Left"
                                 Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
                                 Click="TrackTitle_Click"
                                 RightTapped="NowPlaying_RightTapped">

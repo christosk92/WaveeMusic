@@ -97,7 +97,6 @@
         <!-- Win2D canvas as full-panel background (swap chain can't blend with XAML, so it owns the background) -->
         <lyrics:NowPlayingCanvas x:Name="NowPlayingCanvas"
                                  Grid.ColumnSpan="2"
-                                 HoverActionInvoked="NowPlayingCanvas_HoverActionInvoked"
                                  Visibility="Collapsed"/>
 
         <!-- Details tab subtree — sub-control that owns the Details header card,

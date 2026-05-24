@@ -233,14 +233,6 @@ public sealed class AppSettings
     public bool AiFeaturesEnabled { get; set; } = false;
 
     /// <summary>
-    /// Per-feature toggle: per-line "what does this lyric mean?" affordance on
-    /// the expanded now-playing panel. Only effective when <see cref="AiFeaturesEnabled"/>
-    /// is true. Default true so a user who opts in to AI gets the feature without
-    /// having to toggle a second switch.
-    /// </summary>
-    public bool AiLyricsExplainEnabled { get; set; } = true;
-
-    /// <summary>
     /// Per-feature toggle: header-level "summarize song themes" affordance on the
     /// expanded now-playing panel. Only effective when <see cref="AiFeaturesEnabled"/>
     /// is true. Default true.

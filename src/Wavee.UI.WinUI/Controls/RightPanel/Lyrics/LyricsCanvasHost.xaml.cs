@@ -6,7 +6,6 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
 using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.UI.Contracts;
@@ -153,7 +152,6 @@ public sealed partial class LyricsCanvasHost : UserControl
         bg.IsRaindropOverlayEnabled = false;
         bg.IsSnowFlakeOverlayEnabled = false;
         _canvas.SeekRequested += OnSeekRequested;
-        WireLyricsAiAffordance();
 
         // Subscribe to ViewModel state changes
         _lyricsVm.PropertyChanged += OnLyricsVmPropertyChanged;
@@ -199,16 +197,12 @@ public sealed partial class LyricsCanvasHost : UserControl
         if (_canvas != null)
         {
             _canvas.SeekRequested -= OnSeekRequested;
-            _canvas.ShowHoverActionIcon = false;
             _canvas.SetIsPlaying(false);
             _canvas.SetRenderingActive(false);
             if (!_lyricsCanvasDataCleared)
                 _canvas.SetLyricsData(null);
             _canvas.Visibility = IsPanelVisible ? Visibility.Visible : Visibility.Collapsed;
         }
-
-        if (LyricsAi?.ViewModel is { } aiVm)
-            aiVm.PropertyChanged -= OnLyricsAiPanelVmPropertyChanged;
 
         _appliedLyricsData = null;
         _appliedSongInfo = null;
@@ -533,17 +527,6 @@ public sealed partial class LyricsCanvasHost : UserControl
     {
         if (_canvas == null) return;
         _canvas.IsMousePressing = false;
-
-        // Suppress seek-to-line when the click landed on the in-canvas hover icon — the
-        // canvas raises HoverActionInvoked instead, which the AI panel handles.
-        var point = e.GetCurrentPoint(LyricsInteractionOverlay).Position;
-        if (_canvas.TryInvokeHoverActionAt(point))
-        {
-            UpdateTimerState();
-            e.Handled = true;
-            return;
-        }
-
         _canvas.FireSeekIfHovering();
         UpdateTimerState();
     }
@@ -576,54 +559,6 @@ public sealed partial class LyricsCanvasHost : UserControl
         _scrollResetTimer.Start();
 
         e.Handled = true;
-    }
-
-    // ── AI affordance ──
-
-    /// <summary>
-    /// Wire the canvas-hover-action accent colour and visibility against the
-    /// embedded <see cref="LyricsAi"/> panel's ViewModel. Safe to call before
-    /// <see cref="InitializeLyrics"/> — it's idempotent.
-    /// </summary>
-    public void WireLyricsAiAffordance()
-    {
-        if (LyricsAi?.ViewModel is null || _canvas == null) return;
-
-        LyricsAi.ViewModel.PropertyChanged -= OnLyricsAiPanelVmPropertyChanged;
-        LyricsAi.ViewModel.PropertyChanged += OnLyricsAiPanelVmPropertyChanged;
-
-        // Resolve the AI accent brush as a Color so the canvas can paint with it directly.
-        if (Resources.TryGetValue("AiAccentSolidBrush", out var resourceObj)
-            || Application.Current.Resources.TryGetValue("AiAccentSolidBrush", out resourceObj))
-        {
-            if (resourceObj is SolidColorBrush brush)
-                _canvas.HoverActionIconAccentColor = brush.Color;
-        }
-
-        _canvas.ShowHoverActionIcon = LyricsAi.ViewModel.IsExplainAvailable;
-    }
-
-    private void OnLyricsAiPanelVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(LyricsAiPanelViewModel.IsExplainAvailable)
-            && LyricsAi?.ViewModel is { } vm
-            && _canvas != null)
-        {
-            _canvas.ShowHoverActionIcon = vm.IsExplainAvailable;
-        }
-    }
-
-    /// <summary>
-    /// Forwarded canvas-hover-action click — invokes the AI panel's
-    /// per-line-explain command. Public so the parent's
-    /// <c>NowPlayingCanvas_HoverActionInvoked</c> handler can delegate.
-    /// </summary>
-    public System.Threading.Tasks.Task HandleHoverActionInvokedAsync(int lineIndex)
-    {
-        if (lineIndex < 0 || LyricsAi?.ViewModel is null)
-            return System.Threading.Tasks.Task.CompletedTask;
-
-        return LyricsAi.ViewModel.ExplainLineAtIndexAsync(lineIndex);
     }
 
     // ── Scroll reset (auto-resume after wheel scrolling) ──

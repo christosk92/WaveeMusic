@@ -269,14 +269,6 @@ public sealed partial class RightPanelView : UserControl
         _lyricsVm?.SetConsumerActive(this, active);
     }
 
-    // Forwarded from <NowPlayingCanvas HoverActionInvoked=...>. The host
-    // delegates back to the AI panel — keeps the canvas event wired to XAML.
-    private async void NowPlayingCanvas_HoverActionInvoked(object? sender, int lineIndex)
-    {
-        if (LyricsContent != null)
-            await LyricsContent.HandleHoverActionInvokedAsync(lineIndex);
-    }
-
     private void OnLyricsHostCanvasLayoutInvalidated(object? sender, EventArgs e)
         => RequestThrottledCanvasLayout();
 
@@ -431,8 +423,7 @@ public sealed partial class RightPanelView : UserControl
         const double padLeft = 12, padRight = 12, padBottom = 12;
         const double topGap = 8;
 
-        var explainButtonGutter = w >= 280 ? 52 : 0;
-        var lyricsW = w - resizerW - padLeft - padRight - explainButtonGutter;
+        var lyricsW = w - resizerW - padLeft - padRight;
         var lyricsH = h - tabH - topGap - padBottom;
 
         NowPlayingCanvas.LyricsStartX = resizerW + padLeft;

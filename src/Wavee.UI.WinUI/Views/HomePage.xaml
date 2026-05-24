@@ -68,11 +68,12 @@
                 <cards:ContentCard
                 ImageUrl="{x:Bind BestMediumImageUrl, Mode=OneWay}"
                 Title="{x:Bind Title, Mode=OneWay}"
-                Subtitle="{x:Bind Subtitle, Mode=OneWay}"
+                Subtitle="{x:Bind DisplaySubtitle, Mode=OneWay}"
                 PlaceholderColorHex="{x:Bind ColorHex, Mode=OneWay}"
                 IsCircularImage="False"
                 NavigationUri="{x:Bind Uri, Mode=OneWay}"
-                NavigationTitle="{x:Bind Title, Mode=OneWay}"/>
+                NavigationTitle="{x:Bind Title, Mode=OneWay}"
+                NavigationTotalTracks="{x:Bind AlbumTotalTracks, Mode=OneWay}"/>
             </DataTemplate>
 
             <!-- Artist card: circular image, centered text -->

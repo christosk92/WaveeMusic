@@ -18,19 +18,24 @@
             <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
-        <!-- HoverFrame wraps the text/textbox and carries the editable affordance.
-             Background + BorderBrush flip in code-behind on pointer enter/exit
-             (tracked at the Root level so moving from text → pencil doesn't
-             collapse the affordance). CornerRadius/Padding keep the chrome
-             unobtrusive. -->
-        <Border x:Name="HoverFrame"
-                Grid.Column="0"
-                Background="Transparent"
-                BorderBrush="Transparent"
-                BorderThickness="1"
-                CornerRadius="4"
-                Padding="6,2"
-                Tapped="Frame_Tapped">
+        <!-- Click target + visual chrome. The HoverFrame is a SIBLING of the
+             text content (not a wrapper around it) with a negative margin that
+             extends 7 px horizontally / 3 px vertically beyond the text bounds.
+             That keeps the hover affordance looking unchanged — same border
+             stroke, same breathing room around the text — while leaving the
+             DisplayText at X=0 of this Grid. The previous wrapper-Border with
+             Padding="6,2" + BorderThickness="1" pushed the text 7 px right of
+             the control's left edge, which misaligned the title against
+             plain-TextBlock siblings (owner name, stats) in PlaylistPage.
+             Background + BorderBrush flip in code-behind on pointer enter/exit. -->
+        <Grid Grid.Column="0" Tapped="Frame_Tapped">
+            <Border x:Name="HoverFrame"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Margin="-7,-3,-7,-3"
+                    IsHitTestVisible="False"/>
             <Grid>
                 <TextBlock x:Name="DisplayText"
                            Text="{x:Bind Text, Mode=OneWay}"
@@ -161,7 +166,7 @@
                     </StackPanel>
                 </StackPanel>
             </Grid>
-        </Border>
+        </Grid>
 
         <!-- Persistent pencil hint — visible when IsEditable && not editing && not busy.
              Click also enters edit mode (in addition to the hover-frame Tapped). -->

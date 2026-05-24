@@ -7,7 +7,6 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:Wavee.UI.WinUI.Controls"
     xmlns:converters="using:Wavee.UI.WinUI.Converters"
-    xmlns:ic="using:FluentIcons.WinUI"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -67,31 +66,25 @@
                     HorizontalAlignment="Right"
                     Margin="0,6,8,8">
 
+            <!-- Button stays IsEnabled while busy so click-to-cancel works.
+                 The icon ↔ ProgressRing swap is bound to IsBusy; label and
+                 tooltip flip to "Stop" via VM-side derived strings. -->
             <Button Style="{StaticResource SparkleAffordanceButtonStyle}"
                     Command="{x:Bind ViewModel.SummarizeSongCommand}"
                     IsEnabled="{x:Bind ViewModel.IsSummarizeAvailable, Mode=OneWay}"
                     Visibility="{x:Bind ViewModel.IsSummarizeAvailable, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
-                    ToolTipService.ToolTip="Interpret the lyrics on-device">
+                    ToolTipService.ToolTip="{x:Bind ViewModel.SummarizeButtonTooltip, Mode=OneWay}">
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <controls:AiSparkleIcon State="{x:Bind ViewModel.SparkleState, Mode=OneWay}" />
-                    <TextBlock Text="Lyrics meaning"
-                               FontSize="12"
-                               FontWeight="SemiBold"
-                               VerticalAlignment="Center" />
-                </StackPanel>
-            </Button>
-
-            <Button Style="{StaticResource SparkleAffordanceButtonStyle}"
-                    Command="{x:Bind ViewModel.ExplainCurrentLineCommand}"
-                    IsEnabled="{x:Bind ViewModel.IsExplainAvailable, Mode=OneWay}"
-                    Visibility="{x:Bind ViewModel.IsExplainAvailable, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
-                    ToolTipService.ToolTip="Explain the lyric line currently playing">
-                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <ic:SymbolIcon Symbol="LightbulbFilament"
-                                   IconVariant="Filled"
-                                   FontSize="14"
-                                   Foreground="{ThemeResource AiAccentSolidBrush}" />
-                    <TextBlock Text="Explain line"
+                    <Grid Width="14" Height="14" VerticalAlignment="Center">
+                        <controls:AiSparkleIcon State="{x:Bind ViewModel.SparkleState, Mode=OneWay}"
+                                                Visibility="{x:Bind ViewModel.IsNotBusy, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                        <ProgressRing IsActive="True"
+                                      Width="14"
+                                      Height="14"
+                                      Foreground="{ThemeResource AiAccentSolidBrush}"
+                                      Visibility="{x:Bind ViewModel.IsBusy, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
+                    </Grid>
+                    <TextBlock Text="{x:Bind ViewModel.SummarizeButtonLabel, Mode=OneWay}"
                                FontSize="12"
                                FontWeight="SemiBold"
                                VerticalAlignment="Center" />
@@ -122,7 +115,6 @@
             <Grid x:Name="ResultContentGrid" RowSpacing="8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
@@ -150,17 +142,11 @@
                     </Button>
                 </Grid>
 
-                <!-- Streaming progress — visible until the final token arrives. -->
-                <ProgressBar Grid.Row="1"
-                             IsIndeterminate="True"
-                             Foreground="{ThemeResource AiAccentGradientBrush}"
-                             Background="Transparent"
-                             Visibility="{x:Bind ViewModel.IsBusy, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}" />
-
-                <!-- Body. ScrollViewer name is referenced from code-behind so
-                     it auto-scrolls to bottom as deltas append. -->
+                <!-- Body. The card only opens once HasResult flips to true on
+                     completion, so the text appears in one shot — no in-card
+                     spinner needed. -->
                 <ScrollViewer x:Name="ResultScrollViewer"
-                              Grid.Row="2"
+                              Grid.Row="1"
                               VerticalScrollMode="Auto"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollMode="Disabled"
@@ -174,9 +160,8 @@
                 </ScrollViewer>
 
                 <!-- Footer: expand/collapse toggle. Caption flips with the
-                     expansion state. The expand button itself is hidden while
-                     the result is empty (e.g. cache miss yielded blank). -->
-                <Button Grid.Row="3"
+                     expansion state. -->
+                <Button Grid.Row="2"
                         Command="{x:Bind ViewModel.ToggleExpandedCommand}"
                         HorizontalAlignment="Right"
                         Background="Transparent"

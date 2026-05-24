@@ -212,6 +212,18 @@ public sealed class HomeFeedLoadedMessage(int sectionCount, int itemCount)
     : ValueChangedMessage<(int Sections, int Items)>((sectionCount, itemCount));
 
 /// <summary>
+/// Fired when viewport album-prefetch has enough AlbumV4 metadata to enrich
+/// matching Home album cards without waiting for another Home fetch.
+/// </summary>
+public sealed class AlbumMetadataPrefetchedMessage(string albumUri, string? displaySubtitle, int totalTracks)
+    : ValueChangedMessage<(string AlbumUri, string? DisplaySubtitle, int TotalTracks)>((albumUri, displaySubtitle, totalTracks))
+{
+    public string AlbumUri => Value.AlbumUri;
+    public string? DisplaySubtitle => Value.DisplaySubtitle;
+    public int TotalTracks => Value.TotalTracks;
+}
+
+/// <summary>
 /// AudioProcessManager.StateChanged forwarded as a message so the
 /// SpotifyConnectViewModel can react without taking a direct
 /// dependency on the audio plumbing.

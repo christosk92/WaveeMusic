@@ -10,6 +10,7 @@ using Microsoft.UI.Dispatching;
 using Wavee.Core.Http.Pathfinder;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Services;
@@ -228,6 +229,42 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "Home background refresh apply failed");
+        }
+    }
+
+    public void ApplyAlbumMetadataPrefetch(AlbumMetadataPrefetchedMessage message)
+    {
+        if (_isDisposed || string.IsNullOrWhiteSpace(message.AlbumUri))
+            return;
+
+        void Apply()
+        {
+            ApplyAlbumMetadataToSections(Sections, message);
+
+            var cachedSections = _homeFeedCache?.GetCached()?.Sections;
+            if (cachedSections is not null)
+                ApplyAlbumMetadataToSections(cachedSections, message);
+        }
+
+        if (_dispatcherQueue.HasThreadAccess)
+            Apply();
+        else
+            _dispatcherQueue.TryEnqueue(Apply);
+    }
+
+    private static void ApplyAlbumMetadataToSections(IEnumerable<HomeSection> sections, AlbumMetadataPrefetchedMessage message)
+    {
+        foreach (var item in sections.SelectMany(section => section.Items))
+        {
+            if (item.ContentType != HomeContentType.Album)
+                continue;
+            if (!string.Equals(item.Uri, message.AlbumUri, StringComparison.Ordinal))
+                continue;
+
+            if (!string.IsNullOrWhiteSpace(message.DisplaySubtitle))
+                item.AlbumMetadataSubtitle = message.DisplaySubtitle;
+            if (message.TotalTracks > 0)
+                item.AlbumTotalTracks = message.TotalTracks;
         }
     }
 

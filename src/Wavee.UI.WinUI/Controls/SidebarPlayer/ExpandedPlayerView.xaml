@@ -37,7 +37,6 @@
         <lyrics:NowPlayingCanvas
             x:Name="FullscreenLyricsCanvas"
             x:Load="False"
-            HoverActionInvoked="FullscreenLyricsCanvas_HoverActionInvoked"
             Visibility="Collapsed"
             IsHitTestVisible="False" />
 

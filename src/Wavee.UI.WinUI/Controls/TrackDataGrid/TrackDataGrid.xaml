@@ -287,13 +287,21 @@
             </ScrollViewer>
 
             <!-- Items presenter. ItemsView (which wraps ItemsRepeater inside a
-                 ScrollView) has no Footer slot, so we put it + FooterContent
-                 inside a vertical StackPanel. The whole stack is one scroll
-                 region — items + footer scroll together; the footer sits
-                 naturally below the last row rather than floating as sticky.
-                 The inner ItemsRepeater still virtualizes inside the StackPanel
-                 because it hooks the nearest ScrollView/ScrollViewer ancestor
-                 (the one ItemsView wraps itself in) as its viewport.
+                 ScrollView) has no Footer slot, so we host it + FooterContent
+                 in a two-row Grid (*, Auto). Two modes:
+                   - IsParentScrolling=false (e.g. LikedSongs): the outer Grid
+                     gives this host a finite height, so the * row constrains
+                     ItemsView's ScrollView and it scrolls internally; the
+                     footer stays pinned in the Auto row.
+                   - IsParentScrolling=true (Album / Playlist, with the page
+                     wrapping us in an outer ScrollView): vertical available
+                     is infinity, the * row collapses to ItemsView's natural
+                     desired height, the Auto row sits below, and the outer
+                     ScrollView scrolls items + footer together.
+
+                 An earlier StackPanel version broke the first mode because
+                 StackPanels never propagate a finite height to children, so
+                 the inner ScrollView saw viewport == content and never scrolled.
 
                  Grouping (IsGrouped=true) is handled in code-behind: the
                  visible-rows collection interleaves TrackDataGridGroupRow
@@ -306,20 +314,24 @@
                  so DragOver simply never fired. Always-true here means the routed
                  event is delivered, the handler reads the current CanReorder DP
                  value, and rejects the drop unambiguously when ineligible. -->
-            <StackPanel x:Name="RowsItemsViewHost"
-                        Grid.Row="2"
-                        AllowDrop="True"
-                        DragOver="RowsItemsViewHost_DragOver"
-                        DragLeave="RowsItemsViewHost_DragLeave"
-                        Drop="RowsItemsViewHost_Drop">
+            <Grid x:Name="RowsItemsViewHost"
+                  Grid.Row="2"
+                  AllowDrop="True"
+                  DragOver="RowsItemsViewHost_DragOver"
+                  DragLeave="RowsItemsViewHost_DragLeave"
+                  Drop="RowsItemsViewHost_Drop">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
                 <!-- ItemsView + drop-indicator overlay share one cell so the
                      2-px insertion line can be positioned absolutely against
                      the rendered rows without disturbing the layout. The
                      Canvas sits above the ItemsView in z-order and is
                      hit-test-invisible so drag events still reach the
-                     StackPanel's DragOver/Drop handlers. -->
-                <Grid x:Name="RowsHostCell">
+                     host's DragOver/Drop handlers. -->
+                <Grid x:Name="RowsHostCell" Grid.Row="0">
                     <ItemsView
                         x:Name="RowsItemsView"
                         SelectionMode="Extended"
@@ -368,12 +380,14 @@
                 </Grid>
 
                 <!-- Footer slot. Mirrors the pre-refactor ListView.Footer
-                     pattern: lives inside the same StackPanel as the ItemsView
-                     so they share the parent's scroll region. Consumers bind
+                     pattern. In IsParentScrolling=true mode it scrolls with
+                     items under the outer ScrollView; in internal-scroll mode
+                     it stays pinned below the scrolling list. Consumers bind
                      the FooterContent DP as before. -->
-                <ContentPresenter Content="{x:Bind FooterContent, Mode=OneWay}"
+                <ContentPresenter Grid.Row="1"
+                                  Content="{x:Bind FooterContent, Mode=OneWay}"
                                   HorizontalContentAlignment="Stretch"/>
-            </StackPanel>
+            </Grid>
 
             <!--
                 Track-row skeleton. Column widths are bound to the active

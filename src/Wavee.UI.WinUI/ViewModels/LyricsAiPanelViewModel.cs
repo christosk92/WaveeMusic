@@ -1,12 +1,10 @@
 using System;
 using System.ComponentModel;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
-using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Styles;
@@ -14,21 +12,16 @@ using Wavee.UI.WinUI.Styles;
 namespace Wavee.UI.WinUI.ViewModels;
 
 /// <summary>
-/// Drives the on-device-AI affordances on the expanded now-playing lyrics view.
-/// Two commands:
-///   - <see cref="ExplainCurrentLineCommand"/> — sends the currently synced line
-///     (resolved from <see cref="LyricsViewModel.LastServicePosition"/>) to
-///     <see cref="LyricsAiService.ExplainLineAsync"/>.
-///   - <see cref="SummarizeSongCommand"/> — sends the whole lyric to
-///     <see cref="LyricsAiService.GetLyricsMeaningAsync"/>.
-///
-/// Both are gated by <see cref="AiCapabilities.IsLyricsExplainEnabled"/> /
+/// Drives the on-device-AI affordance on the expanded now-playing lyrics view.
+/// One command — <see cref="SummarizeSongCommand"/> — sends the whole lyric to
+/// <see cref="LyricsAiService.GetLyricsMeaningAsync"/>. Gated by
 /// <see cref="AiCapabilities.IsLyricsSummarizeEnabled"/>; the bound
-/// <see cref="IsExplainAvailable"/> / <see cref="IsSummarizeAvailable"/>
-/// drive the affordance visibility in XAML.
+/// <see cref="IsSummarizeAvailable"/> drives affordance visibility in XAML.
 ///
-/// Owns its own cancellation token: tapping a different command cancels the
-/// previous in-flight request so the UI never gets stuck on a stale generation.
+/// Generation lifecycle: the button itself owns the in-flight state. Clicking
+/// while busy cancels the running task. Switching tracks cancels via
+/// <see cref="OnLyricsPropertyChanged"/>. The result card stays hidden until
+/// the await returns with a real result — never during the busy phase.
 /// </summary>
 public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposable
 {
@@ -54,15 +47,27 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
         _lyrics.PropertyChanged += OnLyricsPropertyChanged;
     }
 
-    /// <summary>True if Phi Silica is available and the user opted in. Per-feature
-    /// gate is on <see cref="IsExplainAvailable"/> / <see cref="IsSummarizeAvailable"/>.</summary>
+    /// <summary>True if Phi Silica is available and the user opted in.</summary>
     public bool IsAnyAiAvailable => _capabilities.IsAiAvailableAndEnabled;
 
-    public bool IsExplainAvailable => _capabilities.IsLyricsExplainEnabled && _lyrics.HasLyrics;
     public bool IsSummarizeAvailable => _capabilities.IsLyricsSummarizeEnabled && _lyrics.HasLyrics;
 
+    /// <summary>
+    /// True while the meaning generation is in flight. Drives the spinner +
+    /// label swap on the affordance button. The result card never renders off
+    /// this — it waits for <see cref="HasResult"/>, which is only set once the
+    /// await returns with a real result.
+    /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsNotBusy))]
+    [NotifyPropertyChangedFor(nameof(SummarizeButtonLabel))]
+    [NotifyPropertyChangedFor(nameof(SummarizeButtonTooltip))]
     private bool _isBusy;
+
+    public bool IsNotBusy => !IsBusy;
+
+    public string SummarizeButtonLabel => IsBusy ? "Stop" : "Lyrics meaning";
+    public string SummarizeButtonTooltip => IsBusy ? "Stop generation" : "Interpret the lyrics on-device";
 
     [ObservableProperty]
     private string _resultText = string.Empty;
@@ -99,56 +104,15 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
     public string DismissGlyph => FluentGlyphs.Cancel;
 
     [RelayCommand]
-    private async Task ExplainCurrentLineAsync()
+    private async Task SummarizeSongAsync()
     {
-        if (!_capabilities.IsLyricsExplainEnabled) return;
-
-        var lyrics = _lyrics.CurrentLyrics;
-        if (lyrics is null || lyrics.LyricsLines.Count == 0) return;
-
-        var (_, lineIndex) = ResolveCurrentLine(lyrics);
-        await ExplainLineAtIndexAsync(lineIndex);
-    }
-
-    public async Task ExplainLineAtIndexAsync(int lineIndex)
-    {
-        if (!_capabilities.IsLyricsExplainEnabled) return;
-
-        var lyrics = _lyrics.CurrentLyrics;
-        if (lyrics is null || lyrics.LyricsLines.Count == 0) return;
-        if (lineIndex < 0 || lineIndex >= lyrics.LyricsLines.Count) return;
-
-        var line = lyrics.LyricsLines[lineIndex];
-        var lineText = SnapshotText(line?.PrimaryText);
-        if (string.IsNullOrWhiteSpace(lineText))
+        // Click-while-busy = cancel, no restart.
+        if (IsBusy)
         {
-            ResultCaption = "No lyric line is active right now";
-            ResultText = string.Empty;
-            HasResult = true;
+            CancelActive();
             return;
         }
 
-        var fullText = SnapshotText(lyrics.WrappedOriginalText);
-        if (string.IsNullOrWhiteSpace(fullText))
-            fullText = lineText;
-
-        var trackUri = BuildTrackUri(_lyrics.PlaybackState.CurrentTrackId);
-
-        await RunGenerationAsync(
-            captionWhileBusy: $"Explaining: \"{Truncate(lineText, 60)}\"",
-            captionOnDone: "AI interpretation",
-            invoke: (deltaProgress, ct) => _aiService.ExplainLineAsync(
-                trackUri: trackUri,
-                lineIndex: lineIndex,
-                line: lineText,
-                fullLyric: fullText,
-                deltaProgress: deltaProgress,
-                ct: ct));
-    }
-
-    [RelayCommand]
-    private async Task SummarizeSongAsync()
-    {
         if (!_capabilities.IsLyricsSummarizeEnabled) return;
 
         var lyrics = _lyrics.CurrentLyrics;
@@ -158,12 +122,11 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
         if (string.IsNullOrWhiteSpace(fullText)) return;
 
         await RunGenerationAsync(
-            captionWhileBusy: "Finding lyrics meaning",
             captionOnDone: "Lyrics meaning",
-            invoke: (deltaProgress, ct) => _aiService.GetLyricsMeaningAsync(
+            invoke: ct => _aiService.GetLyricsMeaningAsync(
                 trackUri: BuildTrackUri(_lyrics.PlaybackState.CurrentTrackId),
                 fullLyric: fullText,
-                deltaProgress: deltaProgress,
+                deltaProgress: null,
                 ct: ct,
                 trackTitle: _lyrics.CurrentSongInfo?.Title,
                 artistName: _lyrics.CurrentSongInfo?.Artist));
@@ -177,6 +140,7 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
     private void DismissResult()
     {
         CancelActive();
+        IsBusy = false;
         ResultText = string.Empty;
         ResultCaption = string.Empty;
         HasResult = false;
@@ -188,80 +152,63 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
     private void ToggleExpanded() => IsResultExpanded = !IsResultExpanded;
 
     private async Task RunGenerationAsync(
-        string captionWhileBusy,
         string captionOnDone,
-        Func<IProgress<string>, CancellationToken, Task<LyricsAiResult>> invoke)
+        Func<CancellationToken, Task<LyricsAiResult>> invoke)
     {
+        // Cancel any prior in-flight call (track-change also flows through
+        // CancelActive via DismissResult). Result card stays hidden — HasResult
+        // is only set once the await returns with a real result kind.
         CancelActive();
         var cts = _activeCts = new CancellationTokenSource();
 
         try
         {
             IsBusy = true;
-            HasResult = true;
-            ResultCaption = captionWhileBusy;
-            ResultText = string.Empty;
             SparkleState = "Generating";
 
-            // Progress<T> captures the current SynchronizationContext at
-            // construction time. We always run this method on the UI thread
-            // (RelayCommand handlers are dispatched there), so each delta
-            // hops back to the UI thread automatically — no manual
-            // DispatcherQueue.TryEnqueue needed.
-            //
-            // Cancellation: ignore late deltas after the user moved on. The
-            // generation token is cooperative on the service side, but a
-            // racing delta can still land between cancellation and op.Cancel
-            // taking effect.
-            var streamProgress = new Progress<string>(delta =>
-            {
-                if (cts.IsCancellationRequested) return;
-                if (!string.IsNullOrEmpty(delta))
-                    ResultText += delta;
-            });
-
-            var result = await invoke(streamProgress, cts.Token);
+            var result = await invoke(cts.Token);
             if (cts.IsCancellationRequested) return;
 
             switch (result.Kind)
             {
                 case LyricsAiResultKind.Ok:
-                    // Defensive replace: if the WinRT API ever shifts to
-                    // cumulative deltas (or returns a slightly different final
-                    // string than the concatenated stream), prefer the canonical
-                    // final text. Cache-replay path also lands here with
-                    // FromCache=true and ResultText still empty (no streaming
-                    // happened) — the assignment renders cached text instantly.
                     ResultText = result.Text;
                     ResultCaption = captionOnDone + (result.FromCache ? " (cached)" : string.Empty);
                     SparkleState = "Done";
+                    HasResult = true;
                     break;
                 case LyricsAiResultKind.Filtered:
                     ResultText = "The on-device safety filter blocked this generation. Try a different lyric.";
                     ResultCaption = "Filtered";
                     SparkleState = "Normal";
+                    HasResult = true;
                     break;
                 case LyricsAiResultKind.Empty:
                     ResultText = string.Empty;
                     ResultCaption = "No lyrics available";
                     SparkleState = "Normal";
+                    HasResult = true;
                     break;
                 case LyricsAiResultKind.Unavailable:
                     ResultText = "On-device AI isn't available right now.";
                     ResultCaption = "Unavailable";
                     SparkleState = "Normal";
+                    HasResult = true;
                     break;
                 case LyricsAiResultKind.Error:
                     ResultText = "Something went wrong asking the on-device model.";
                     ResultCaption = "Error";
                     SparkleState = "Normal";
+                    HasResult = true;
                     _logger?.LogWarning("Lyrics AI generation error: {Message}", result.ErrorMessage);
                     break;
             }
         }
         catch (OperationCanceledException)
         {
-            // User triggered another action; swallow.
+            // Cancellation (user toggled the busy button or switched tracks).
+            // Leave HasResult untouched so no card pops up — the button reset
+            // in `finally` is the only signal.
         }
         catch (Exception ex)
         {
@@ -269,6 +216,7 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
             ResultText = "Something went wrong asking the on-device model.";
             ResultCaption = "Error";
             SparkleState = "Normal";
+            HasResult = true;
         }
         finally
         {
@@ -291,33 +239,6 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
         _activeCts = null;
     }
 
-    private (LyricsLine? line, int index) ResolveCurrentLine(LyricsData lyrics)
-    {
-        // Use the same interpolation the canvas uses: last service position +
-        // wall-clock delta since the last position update. Phi Silica is fast
-        // enough that this won't drift visibly.
-        var basePos = _lyrics.LastServicePosition;
-        var delta = (DateTime.UtcNow - _lyrics.LastPositionTimestamp).TotalMilliseconds;
-        var nowMs = basePos + Math.Max(0, delta);
-
-        for (int i = 0; i < lyrics.LyricsLines.Count; i++)
-        {
-            var line = lyrics.LyricsLines[i];
-            var endMs = line.EndMs ?? (i + 1 < lyrics.LyricsLines.Count
-                ? lyrics.LyricsLines[i + 1].StartMs
-                : int.MaxValue);
-
-            if (line.StartMs <= nowMs && nowMs < endMs)
-                return (line, i);
-        }
-
-        // Fallback to the first non-empty line if we can't place the cursor
-        // (e.g. lyrics with no time info, or position is past the last line).
-        var first = lyrics.LyricsLines.FirstOrDefault(l => !string.IsNullOrWhiteSpace(l.PrimaryText));
-        var firstIndex = first is null ? 0 : lyrics.LyricsLines.IndexOf(first);
-        return (first, firstIndex);
-    }
-
     private static string BuildTrackUri(string? trackId) =>
         string.IsNullOrEmpty(trackId)
             ? SpotifyUriHelper.ToUri(SpotifyEntityKind.Track, "unknown")
@@ -325,21 +246,11 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
                 ? trackId
                 : SpotifyUriHelper.ToUri(SpotifyEntityKind.Track, trackId);
 
-    private static string SnapshotText(string? text) =>
-        string.IsNullOrEmpty(text) ? string.Empty : new string(text.AsSpan());
-
-    private static string Truncate(string s, int max)
-    {
-        if (string.IsNullOrEmpty(s)) return string.Empty;
-        return s.Length <= max ? s : s[..max].TrimEnd() + "…";
-    }
-
     private void OnLyricsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)
         {
             case nameof(LyricsViewModel.HasLyrics):
-                OnPropertyChanged(nameof(IsExplainAvailable));
                 OnPropertyChanged(nameof(IsSummarizeAvailable));
                 break;
             case nameof(LyricsViewModel.CurrentLyrics):

@@ -10,7 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
-using ReactiveUI;
+using CommunityToolkit.Mvvm.ComponentModel;
 using Windows.UI;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -31,7 +31,7 @@ namespace Wavee.UI.WinUI.ViewModels;
 /// Mirrors <see cref="ShowViewModel"/>'s palette + cancellation patterns but is
 /// scoped to one episode rather than a whole show.
 /// </summary>
-public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemContent, IDisposable
+public sealed partial class EpisodePageViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
     private const int MaxPodcastCommentLength = 500;
     private const long PodcastProgressUiDeltaMs = 5_000;
@@ -84,8 +84,8 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         get => _episodeUri;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _episodeUri, value);
-            this.RaisePropertyChanged(nameof(CanSubmitComment));
+            SetProperty(ref _episodeUri, value);
+            OnPropertyChanged(nameof(CanSubmitComment));
         }
     }
 
@@ -94,15 +94,15 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         get => _episode;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _episode, value);
-            this.RaisePropertyChanged(nameof(Title));
-            this.RaisePropertyChanged(nameof(MetaLine));
-            this.RaisePropertyChanged(nameof(ListenActionText));
-            this.RaisePropertyChanged(nameof(IsExplicit));
-            this.RaisePropertyChanged(nameof(IsVideo));
-            this.RaisePropertyChanged(nameof(CoverArtUrl));
-            this.RaisePropertyChanged(nameof(EpisodeNumberTag));
-            this.RaisePropertyChanged(nameof(BreadcrumbItems));
+            SetProperty(ref _episode, value);
+            OnPropertyChanged(nameof(Title));
+            OnPropertyChanged(nameof(MetaLine));
+            OnPropertyChanged(nameof(ListenActionText));
+            OnPropertyChanged(nameof(IsExplicit));
+            OnPropertyChanged(nameof(IsVideo));
+            OnPropertyChanged(nameof(CoverArtUrl));
+            OnPropertyChanged(nameof(EpisodeNumberTag));
+            OnPropertyChanged(nameof(BreadcrumbItems));
             UpdateTabTitle();
         }
     }
@@ -120,9 +120,9 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         get => _fullDescription;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _fullDescription, value);
-            this.RaisePropertyChanged(nameof(HasDescription));
-            this.RaisePropertyChanged(nameof(DescriptionHtml));
+            SetProperty(ref _fullDescription, value);
+            OnPropertyChanged(nameof(HasDescription));
+            OnPropertyChanged(nameof(DescriptionHtml));
         }
     }
 
@@ -131,8 +131,8 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         get => _descriptionHtml ?? _fullDescription;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _descriptionHtml, value);
-            this.RaisePropertyChanged(nameof(HasDescription));
+            SetProperty(ref _descriptionHtml, value);
+            OnPropertyChanged(nameof(HasDescription));
         }
     }
 
@@ -143,8 +143,10 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         get => _shareUrl;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _shareUrl, value);
-            this.RaisePropertyChanged(nameof(CanShare));
+            if (!SetProperty(ref _shareUrl, value))
+                return;
+            OnPropertyChanged(nameof(CanShare));
+            ShareCommand.NotifyCanExecuteChanged();
         }
     }
     public bool CanShare => !string.IsNullOrEmpty(_shareUrl);
@@ -154,21 +156,21 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         get => _isLoading;
         set
         {
-            this.RaiseAndSetIfChanged(ref _isLoading, value);
-            this.RaisePropertyChanged(nameof(HasNoComments));
+            SetProperty(ref _isLoading, value);
+            OnPropertyChanged(nameof(HasNoComments));
         }
     }
-    public bool HasError { get => _hasError; set => this.RaiseAndSetIfChanged(ref _hasError, value); }
-    public string? ErrorMessage { get => _errorMessage; set => this.RaiseAndSetIfChanged(ref _errorMessage, value); }
+    public bool HasError { get => _hasError; set => SetProperty(ref _hasError, value); }
+    public string? ErrorMessage { get => _errorMessage; set => SetProperty(ref _errorMessage, value); }
 
     public string? ParentShowUri
     {
         get => _parentShowUri;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _parentShowUri, value);
-            this.RaisePropertyChanged(nameof(HasParentShow));
-            this.RaisePropertyChanged(nameof(BreadcrumbItems));
+            SetProperty(ref _parentShowUri, value);
+            OnPropertyChanged(nameof(HasParentShow));
+            OnPropertyChanged(nameof(BreadcrumbItems));
         }
     }
 
@@ -177,16 +179,16 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         get => _parentShowTitle;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _parentShowTitle, value);
-            this.RaisePropertyChanged(nameof(HasParentShow));
-            this.RaisePropertyChanged(nameof(BreadcrumbItems));
+            SetProperty(ref _parentShowTitle, value);
+            OnPropertyChanged(nameof(HasParentShow));
+            OnPropertyChanged(nameof(BreadcrumbItems));
         }
     }
 
     public string? ParentShowImageUrl
     {
         get => _parentShowImageUrl;
-        private set => this.RaiseAndSetIfChanged(ref _parentShowImageUrl, value);
+        private set => SetProperty(ref _parentShowImageUrl, value);
     }
 
     public bool HasParentShow => !string.IsNullOrEmpty(_parentShowUri) && !string.IsNullOrEmpty(_parentShowTitle);
@@ -209,8 +211,8 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         get => _chapters;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _chapters, value);
-            this.RaisePropertyChanged(nameof(HasChapters));
+            SetProperty(ref _chapters, value);
+            OnPropertyChanged(nameof(HasChapters));
         }
     }
     public bool HasChapters => Chapters.Count > 0;
@@ -220,8 +222,8 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         get => _moreFromShow;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _moreFromShow, value);
-            this.RaisePropertyChanged(nameof(HasMoreFromShow));
+            SetProperty(ref _moreFromShow, value);
+            OnPropertyChanged(nameof(HasMoreFromShow));
         }
     }
     public bool HasMoreFromShow => MoreFromShow.Count > 0;
@@ -231,7 +233,7 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         get => _comments;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _comments, value);
+            SetProperty(ref _comments, value);
             RaiseCommentStateChanged();
         }
     }
@@ -251,9 +253,9 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         get => _commentDraft;
         set
         {
-            this.RaiseAndSetIfChanged(ref _commentDraft, value ?? "");
-            this.RaisePropertyChanged(nameof(CommentCharacterCount));
-            this.RaisePropertyChanged(nameof(CanSubmitComment));
+            SetProperty(ref _commentDraft, value ?? "");
+            OnPropertyChanged(nameof(CommentCharacterCount));
+            OnPropertyChanged(nameof(CanSubmitComment));
         }
     }
 
@@ -264,15 +266,15 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         get => _isSubmittingComment;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _isSubmittingComment, value);
-            this.RaisePropertyChanged(nameof(CanSubmitComment));
+            SetProperty(ref _isSubmittingComment, value);
+            OnPropertyChanged(nameof(CanSubmitComment));
         }
     }
 
     public bool IsLoadingMoreComments
     {
         get => _isLoadingMoreComments;
-        private set => this.RaiseAndSetIfChanged(ref _isLoadingMoreComments, value);
+        private set => SetProperty(ref _isLoadingMoreComments, value);
     }
 
     public string? CommentStatus
@@ -280,8 +282,8 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         get => _commentStatus;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _commentStatus, value);
-            this.RaisePropertyChanged(nameof(HasCommentStatus));
+            SetProperty(ref _commentStatus, value);
+            OnPropertyChanged(nameof(HasCommentStatus));
         }
     }
 
@@ -298,8 +300,8 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         }
     }
 
-    public Brush? PaletteBackdropBrush { get => _paletteBackdropBrush; private set => this.RaiseAndSetIfChanged(ref _paletteBackdropBrush, value); }
-    public Brush? PaletteCoverColorBrush { get => _paletteCoverColorBrush; private set => this.RaiseAndSetIfChanged(ref _paletteCoverColorBrush, value); }
+    public Brush? PaletteBackdropBrush { get => _paletteBackdropBrush; private set => SetProperty(ref _paletteBackdropBrush, value); }
+    public Brush? PaletteCoverColorBrush { get => _paletteCoverColorBrush; private set => SetProperty(ref _paletteCoverColorBrush, value); }
 
     public EpisodePageViewModel(
         IPodcastService podcastService,
@@ -408,9 +410,9 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
         DescriptionHtml = null;
         ShareUrl = null;
         Chapters.Clear();
-        this.RaisePropertyChanged(nameof(HasChapters));
+        OnPropertyChanged(nameof(HasChapters));
         MoreFromShow.Clear();
-        this.RaisePropertyChanged(nameof(HasMoreFromShow));
+        OnPropertyChanged(nameof(HasMoreFromShow));
         Comments.Clear();
         _commentsNextPageToken = null;
         _commentsTotalCount = 0;
@@ -499,7 +501,7 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
                     ShareUrl = episodeDetail.ShareUrl;
 
                 Chapters = new ObservableCollection<EpisodeChapterVm>(chapters);
-                this.RaisePropertyChanged(nameof(HasChapters));
+                OnPropertyChanged(nameof(HasChapters));
                 RefreshChapterTimeline();
                 ApplyCommentsPage(commentsPage, replace: true);
 
@@ -558,7 +560,7 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
                             MoreFromShow = new ObservableCollection<ShowEpisodeDto>(siblings
                                 .OrderByDescending(e => e.ReleaseDate ?? DateTimeOffset.MinValue)
                                 .Take(6));
-                            this.RaisePropertyChanged(nameof(HasMoreFromShow));
+                            OnPropertyChanged(nameof(HasMoreFromShow));
                         });
                     }
                 }
@@ -611,10 +613,10 @@ public sealed partial class EpisodePageViewModel : ReactiveObject, ITabBarItemCo
 
     private void RaiseCommentStateChanged()
     {
-        this.RaisePropertyChanged(nameof(HasComments));
-        this.RaisePropertyChanged(nameof(HasNoComments));
-        this.RaisePropertyChanged(nameof(HasMoreComments));
-        this.RaisePropertyChanged(nameof(CommentsCountLabel));
+        OnPropertyChanged(nameof(HasComments));
+        OnPropertyChanged(nameof(HasNoComments));
+        OnPropertyChanged(nameof(HasMoreComments));
+        OnPropertyChanged(nameof(CommentsCountLabel));
     }
 
     public void ApplyTheme(bool isDark)

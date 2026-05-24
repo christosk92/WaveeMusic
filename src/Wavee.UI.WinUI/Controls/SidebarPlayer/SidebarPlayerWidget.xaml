@@ -238,6 +238,8 @@
                             Padding="0"
                             MinHeight="0"
                             MinWidth="0"
+                            HorizontalAlignment="Left"
+                            HorizontalContentAlignment="Left"
                             Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
                             Click="TrackTitle_Click">
                             <TextBlock
@@ -578,10 +580,18 @@
                     </Grid>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="0">
+                        <!-- HorizontalAlignment+HorizontalContentAlignment="Left" so the
+                             button's bounds collapse to the text width and the inner
+                             TextBlock anchors at X=0. Without them, the HyperlinkButton's
+                             default HorizontalContentAlignment="Center" centers the text
+                             inside a column-wide button, pushing the title right of the
+                             artist (MetadataControl renders text at X=0 with no wrapper). -->
                         <HyperlinkButton
                             Padding="0"
                             MinHeight="0"
                             MinWidth="0"
+                            HorizontalAlignment="Left"
+                            HorizontalContentAlignment="Left"
                             Foreground="{ThemeResource ApplicationForegroundThemeBrush}"
                             Click="TrackTitle_Click">
                             <TextBlock

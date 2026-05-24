@@ -5,13 +5,6 @@ namespace Wavee.UI.WinUI.Services;
 
 internal static class LyricsAiOutputNormalizer
 {
-    /// <summary>
-    /// Conservative output ceiling for the per-line explanation. Phi Silica respects
-    /// "in one or two sentences" reliably, but we also clamp at the API level to
-    /// avoid pathological model outputs that ramble. Max ~80 tokens ≈ 320 chars.
-    /// </summary>
-    internal const int MaxExplanationCharacters = 360;
-
     internal static string NormalizeLyricsMeaningOutput(string s)
     {
         if (string.IsNullOrWhiteSpace(s))

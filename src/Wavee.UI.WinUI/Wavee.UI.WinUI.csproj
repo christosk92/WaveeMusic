@@ -5,11 +5,9 @@
 		<!-- Windows 11 24H2 (build 26100) is the floor where Microsoft.Windows.AI.*
 		     APIs (Phi Silica, etc.) are available. We deliberately gate the whole
 		     app to this minimum so the AI projection assemblies are guaranteed
-		     loadable at startup — older Windows versions would throw
-		     ReflectionTypeLoadException when ReactiveUI enumerates types in
-		     this assembly. Bumping the floor is opinionated but matches the app's
-		     opinionated, high-end audience and removes a whole class of
-		     hardware-availability bugs. -->
+		     loadable when the opt-in AI surfaces probe them. Bumping the floor is
+		     opinionated but matches the app's high-end audience and removes a
+		     whole class of hardware-availability bugs. -->
 		<TargetPlatformMinVersion>10.0.26100.0</TargetPlatformMinVersion>
 		<RootNamespace>Wavee.UI.WinUI</RootNamespace>
 		<ApplicationManifest>app.manifest</ApplicationManifest>
@@ -123,9 +121,8 @@
 		<!-- UI Extensions -->
 		<PackageReference Include="CommunityToolkit.WinUI.Extensions" Version="8.3.260402-preview2" />
 		<PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.3.260402-preview2" />
-		<!-- Reactive Extensions (System.Reactive used by Connect/Core layer) -->
-		<PackageReference Include="ReactiveUI" Version="23.2.27" />
-		<PackageReference Include="ReactiveUI.WinUI" Version="23.2.19" />
+		<!-- Reactive Extensions (System.Reactive used directly by WinUI and Connect/Core layer) -->
+		<PackageReference Include="System.Reactive" Version="7.0.0-preview.15" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -175,7 +172,7 @@
 	       - PublishReadyToRun needs either SelfContained=true or an explicit
 	         <RuntimeIdentifier> with a restored runtime package.
 	     Re-enabling either would require bundling the entire .NET runtime into the AppX
-	     (~70-100 MB bigger) and validating trim safety across WinUI, ReactiveUI, MVVM
+	     (~70-100 MB bigger) and validating trim safety across WinUI, MVVM
 	     Toolkit, and ComputeSharp, which all use reflection or source generators. Not
 	     worth it for a framework-dependent store/sideload distribution. When self-
 	     contained packaging is revisited, both can be re-enabled together. -->

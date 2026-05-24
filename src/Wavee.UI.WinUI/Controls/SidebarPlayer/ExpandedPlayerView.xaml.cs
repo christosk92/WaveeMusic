@@ -408,8 +408,6 @@ public sealed partial class ExpandedPlayerView : UserControl
         RightColumnContainer.Visibility = rightVisible ? Visibility.Visible : Visibility.Collapsed;
         LyricsInteractionRegion.Visibility = lyricsVisible ? Visibility.Visible : Visibility.Collapsed;
         ExpandedLyricsAi.Visibility = lyricsVisible ? Visibility.Visible : Visibility.Collapsed;
-        if (!lyricsVisible && FullscreenLyricsCanvas != null)
-            FullscreenLyricsCanvas.ShowHoverActionIcon = false;
         UpdateLyricsConsumerActivity(lyricsVisible);
 
         if (lyricsVisible)
@@ -764,38 +762,9 @@ public sealed partial class ExpandedPlayerView : UserControl
         _lyricsVm.PropertyChanged += OnLyricsVmPropertyChanged;
         _lyricsVm.PlaybackState.PropertyChanged += OnLyricsPlaybackStateChanged;
 
-        WireFullscreenLyricsAiAffordance();
-
         ApplyLyricsPaletteForTheme();
         ApplyCurrentLyricsState();
         UpdateLyricsRenderState();
-    }
-
-    private void WireFullscreenLyricsAiAffordance()
-    {
-        if (FullscreenLyricsCanvas == null || ExpandedLyricsAi?.ViewModel is null) return;
-
-        ExpandedLyricsAi.ViewModel.PropertyChanged -= OnExpandedLyricsAiVmPropertyChanged;
-        ExpandedLyricsAi.ViewModel.PropertyChanged += OnExpandedLyricsAiVmPropertyChanged;
-
-        if (Resources.TryGetValue("AiAccentSolidBrush", out var resourceObj)
-            || Application.Current.Resources.TryGetValue("AiAccentSolidBrush", out resourceObj))
-        {
-            if (resourceObj is Microsoft.UI.Xaml.Media.SolidColorBrush brush)
-                FullscreenLyricsCanvas.HoverActionIconAccentColor = brush.Color;
-        }
-
-        FullscreenLyricsCanvas.ShowHoverActionIcon = ExpandedLyricsAi.ViewModel.IsExplainAvailable;
-    }
-
-    private void OnExpandedLyricsAiVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(LyricsAiPanelViewModel.IsExplainAvailable)
-            && FullscreenLyricsCanvas != null
-            && ExpandedLyricsAi?.ViewModel is { } vm)
-        {
-            FullscreenLyricsCanvas.ShowHoverActionIcon = vm.IsExplainAvailable;
-        }
     }
 
     private void TeardownLyricsCanvas()
@@ -814,13 +783,9 @@ public sealed partial class ExpandedPlayerView : UserControl
             _lyricsVm.PlaybackState.PropertyChanged -= OnLyricsPlaybackStateChanged;
         }
 
-        if (ExpandedLyricsAi?.ViewModel is { } aiVm)
-            aiVm.PropertyChanged -= OnExpandedLyricsAiVmPropertyChanged;
-
         if (FullscreenLyricsCanvas != null)
         {
             FullscreenLyricsCanvas.SeekRequested -= OnLyricsSeekRequested;
-            FullscreenLyricsCanvas.ShowHoverActionIcon = false;
             FullscreenLyricsCanvas.SetIsPlaying(false);
             FullscreenLyricsCanvas.SetRenderingActive(false);
             if (!_lyricsCanvasDataCleared)
@@ -1080,17 +1045,6 @@ public sealed partial class ExpandedPlayerView : UserControl
     {
         if (FullscreenLyricsCanvas == null) return;
         FullscreenLyricsCanvas.IsMousePressing = false;
-
-        // Suppress seek-to-line when the click landed on the in-canvas hover icon — the
-        // canvas raises HoverActionInvoked instead, which the AI panel handles.
-        var point = e.GetCurrentPoint(LyricsInteractionRegion).Position;
-        if (FullscreenLyricsCanvas.TryInvokeHoverActionAt(point))
-        {
-            UpdateLyricsRenderState();
-            e.Handled = true;
-            return;
-        }
-
         FullscreenLyricsCanvas.FireSeekIfHovering();
         UpdateLyricsRenderState();
     }
@@ -1120,14 +1074,6 @@ public sealed partial class ExpandedPlayerView : UserControl
         _lyricsScrollResetTimer.Start();
 
         e.Handled = true;
-    }
-
-    private async void FullscreenLyricsCanvas_HoverActionInvoked(object? sender, int lineIndex)
-    {
-        if (lineIndex < 0 || ExpandedLyricsAi?.ViewModel is null)
-            return;
-
-        await ExpandedLyricsAi.ViewModel.ExplainLineAtIndexAsync(lineIndex);
     }
 
     private DispatcherQueueTimer CreateLyricsScrollResetTimer()
@@ -1163,7 +1109,6 @@ public sealed partial class ExpandedPlayerView : UserControl
         FullscreenLyricsCanvas.IsMouseScrolling = false;
         FullscreenLyricsCanvas.IsMousePressing = false;
         FullscreenLyricsCanvas.IsMouseInLyricsArea = false;
-        FullscreenLyricsCanvas.ShowHoverActionIcon = false;
 
         // Force one render frame with no lyric data so a held-syllable glow /
         // scaled line cannot survive past the mode change. The clear color

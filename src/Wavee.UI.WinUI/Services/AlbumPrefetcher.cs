@@ -1,15 +1,18 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.Messaging;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Audio;
 using Wavee.Protocol.ExtendedMetadata;
 using Wavee.Protocol.Metadata;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Stores;
 using MetadataAlbum = Wavee.Protocol.Metadata.Album;
 using MetadataImage = Wavee.Protocol.Metadata.Image;
@@ -49,6 +52,7 @@ public sealed class AlbumPrefetcher : IAlbumPrefetcher, IDisposable
 
     private readonly ExtendedMetadataStore _metadataStore;
     private readonly AlbumStore _albumStore;
+    private readonly IMessenger _messenger;
     private readonly ILogger? _logger;
 
     // Single-fire guard: once a URI's prefetch has been kicked off this session,
@@ -66,10 +70,12 @@ public sealed class AlbumPrefetcher : IAlbumPrefetcher, IDisposable
     public AlbumPrefetcher(
         ExtendedMetadataStore metadataStore,
         AlbumStore albumStore,
+        IMessenger? messenger = null,
         ILogger<AlbumPrefetcher>? logger = null)
     {
         _metadataStore = metadataStore ?? throw new ArgumentNullException(nameof(metadataStore));
         _albumStore = albumStore ?? throw new ArgumentNullException(nameof(albumStore));
+        _messenger = messenger ?? WeakReferenceMessenger.Default;
         _logger = logger;
     }
 
@@ -140,6 +146,10 @@ public sealed class AlbumPrefetcher : IAlbumPrefetcher, IDisposable
                     var album = MetadataAlbum.Parser.ParseFrom(bytes);
                     var partial = BuildPartial(uri, album);
                     _albumStore.HintPartial(uri, partial);
+
+                    var displaySubtitle = BuildHomeAlbumDisplaySubtitle(album, partial.TotalTracks);
+                    if (!string.IsNullOrWhiteSpace(displaySubtitle) || partial.TotalTracks > 0)
+                        _messenger.Send(new AlbumMetadataPrefetchedMessage(uri, displaySubtitle, partial.TotalTracks));
                 }
                 catch (Exception ex)
                 {
@@ -197,7 +207,7 @@ public sealed class AlbumPrefetcher : IAlbumPrefetcher, IDisposable
         }
 
         var coverUrl = ExtractLargestCover(album);
-        var totalTracks = album.Disc?.Sum(d => d.Track?.Count ?? 0) ?? 0;
+        var totalTracks = GetTotalTracks(album);
         var discCount = album.Disc?.Count ?? 0;
 
         return new AlbumDetailResult
@@ -225,6 +235,53 @@ public sealed class AlbumPrefetcher : IAlbumPrefetcher, IDisposable
             Palette = null,
             IsPartial = true,
         };
+    }
+
+    private static int GetTotalTracks(MetadataAlbum album)
+        => album.Disc?.Sum(d => d.Track?.Count ?? 0) ?? 0;
+
+    private static string? BuildHomeAlbumDisplaySubtitle(MetadataAlbum album, int totalTracks)
+    {
+        var parts = new List<string>(capacity: 2);
+        var date = FormatAlbumDateForCard(album);
+        if (!string.IsNullOrWhiteSpace(date))
+            parts.Add(date);
+
+        if (totalTracks > 0)
+        {
+            var word = totalTracks == 1 ? "track" : "tracks";
+            parts.Add($"{totalTracks.ToString("N0", CultureInfo.CurrentCulture)} {word}");
+        }
+
+        return parts.Count == 0 ? null : string.Join(" \u00B7 ", parts);
+    }
+
+    private static string? FormatAlbumDateForCard(MetadataAlbum album)
+    {
+        var date = album.Date;
+        if (date is null || date.Year <= 0)
+            return null;
+
+        try
+        {
+            if (date.Month > 0 && date.Day > 0)
+            {
+                return new DateTimeOffset(date.Year, date.Month, date.Day, 0, 0, 0, TimeSpan.Zero)
+                    .ToString("MMM d, yyyy", CultureInfo.CurrentCulture);
+            }
+
+            if (date.Month > 0)
+            {
+                return new DateTimeOffset(date.Year, date.Month, 1, 0, 0, 0, TimeSpan.Zero)
+                    .ToString("MMM yyyy", CultureInfo.CurrentCulture);
+            }
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // Malformed partial dates should still keep the useful year.
+        }
+
+        return date.Year.ToString(CultureInfo.InvariantCulture);
     }
 
     private static string? ExtractLargestCover(MetadataAlbum album)

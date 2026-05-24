@@ -201,8 +201,8 @@ The csproj also contains `PreserveWindowsAiManifestMaxVersionTested`, which patc
 | File | Role |
 |---|---|
 | `Services/AiCapabilities.cs` | Composite gate — hardware (`LanguageModel.GetReadyState()`) + region + user opt-in. The single decision point every AI affordance binds against. |
-| `Services/LyricsAiService.cs` | Wraps `LanguageModel.GenerateResponseAsync` for line explanation and lyrics meaning. In-memory cache is keyed by `(trackUri, lineIndex)` for lines and by `trackUri` for lyrics meaning; per-track meaning uses a shared in-flight task so multiple UI surfaces do not duplicate model calls. |
-| `ViewModels/LyricsAiPanelViewModel.cs` | UI orchestration: cancellation-aware commands, observable result/caption/busy state. Resolves the currently synced line via `LyricsViewModel.LastServicePosition` so "Explain current line" works without canvas hit-testing. |
+| `Services/LyricsAiService.cs` | Wraps Phi Silica structured JSON generation for whole-song lyrics meaning + citations. Per-track requests share an in-flight `Lazy<Task>` so multiple UI surfaces do not duplicate model calls. |
+| `ViewModels/LyricsAiPanelViewModel.cs` | UI orchestration: cancellation-aware `SummarizeSongCommand` (click-while-busy = cancel), observable result/caption/busy state. The result card opens only on completion. |
 | `Controls/SidebarPlayer/LyricsAiPanel.xaml(.cs)` | The floating affordance row + result chrome that mounts above the lyrics column on the expanded now-playing view. |
 | `Controls/AiSparkleIcon.xaml(.cs)` | The animated sparkle icon. State-driven Composition animations (pulse / rotate / wiggle) replace a Lottie source — same on-screen behavior, no LottieGen step. |
 | `Themes/AiBrandTheme.xaml` | `AiAccentGradientBrush` (Copilot rainbow), `AiAccentSolidBrush`, `AiBorderBrush`, `AiPanelBackgroundBrush`. Light/dark/HighContrast variants. `SparkleAffordanceButtonStyle` and `AiCaptionTextBlockStyle` for visual consistency. |
@@ -215,7 +215,7 @@ The csproj also contains `PreserveWindowsAiManifestMaxVersionTested`, which patc
 ## GC / publish settings
 
 - **Workstation GC** (`<ServerGarbageCollection>false</>`) with **concurrent** enabled. Server GC creates one heap per logical processor and grows working set aggressively — the wrong trade for image-heavy navigation UI. The audio pipeline runs out-of-process, so we don't need server GC's footprint to protect playback latency.
-- **`<PublishReadyToRun>false</>`** — both ReadyToRun and trimming require `<SelfContained>true</>`, and going self-contained adds ~70-100 MB to the AppX. Validating trim safety across WinUI / ReactiveUI / MVVM Toolkit / ComputeSharp would be a separate project. Re-enable both together if/when self-contained packaging is revisited.
+- **`<PublishReadyToRun>false</>`** — both ReadyToRun and trimming require `<SelfContained>true</>`, and going self-contained adds ~70-100 MB to the AppX. Validating trim safety across WinUI / MVVM Toolkit / ComputeSharp would be a separate project. Re-enable both together if/when self-contained packaging is revisited.
 
 ## Project relationships
 

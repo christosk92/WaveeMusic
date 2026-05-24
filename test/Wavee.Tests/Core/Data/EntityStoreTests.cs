@@ -112,6 +112,38 @@ public class EntityStoreTests
     }
 
     [Fact]
+    public async Task GetOnceAsync_SharesInflightFetch_WithConcurrentObserver()
+    {
+        // ============================================================
+        // WHY: Viewport prefetch can use GetOnceAsync while a page open uses
+        // Observe(). Both paths must join the same per-key fetch.
+        // ============================================================
+
+        // Arrange
+        using var store = new FakeStore();
+        var gate = new TaskCompletionSource<TestEntity>();
+        store.FetchImpl = (_, _, _) => gate.Task;
+
+        // Act
+        var prefetchTask = store.GetOnceAsync("playlist", CancellationToken.None);
+        var observeTask = store.Observe("playlist")
+            .OfType<EntityState<TestEntity>.Ready>()
+            .FirstAsync()
+            .ToTask();
+
+        await WaitUntilAsync(() => store.FetchCallCount == 1);
+        gate.SetResult(new TestEntity("playlist", 7));
+
+        var prefetched = await prefetchTask;
+        var observed = await observeTask;
+
+        // Assert
+        store.FetchCallCount.Should().Be(1);
+        prefetched.Should().Be(new TestEntity("playlist", 7));
+        observed.Value.Should().Be(new TestEntity("playlist", 7));
+    }
+
+    [Fact]
     public async Task Unsubscribe_CancelsInflightFetch_WhenLastSubscriberLeaves()
     {
         // ============================================================

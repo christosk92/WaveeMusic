@@ -21,8 +21,7 @@ namespace Wavee.UI.WinUI.Controls.SidebarPlayer;
 /// Code-behind also drives:
 ///   - Compact/expanded result-card sizing, including the height transition.
 ///   - Footer label/glyph swap to match the current expansion state.
-///   - Auto-scroll the result ScrollViewer to bottom as streamed deltas
-///     append to ResultText, so the latest tokens stay visible.
+///   - Scroll-to-top reset when a fresh result lands (HasResult flip).
 /// </summary>
 public sealed partial class LyricsAiPanel : UserControl
 {
@@ -91,12 +90,12 @@ public sealed partial class LyricsAiPanel : UserControl
                 break;
             case nameof(LyricsAiPanelViewModel.ResultText):
                 QueueExpandedCardHeightUpdate();
-                ScrollResultToBottom();
                 break;
             case nameof(LyricsAiPanelViewModel.HasResult):
                 if (!ViewModel.HasResult) break;
-                // Fresh result starting — ensure scroll position resets so
-                // streaming begins from the top of the body.
+                // Fresh result just landed — scroll to top so the user starts
+                // reading from the beginning of the meaning, not wherever the
+                // ScrollViewer was last parked.
                 ResultScrollViewer?.ChangeView(null, 0, null, disableAnimation: true);
                 break;
         }
@@ -258,16 +257,4 @@ public sealed partial class LyricsAiPanel : UserControl
         }
     }
 
-    private void ScrollResultToBottom()
-    {
-        if (ResultScrollViewer is null) return;
-        // Defer to the next layout pass so the new text has been measured
-        // before we attempt to scroll past its bottom.
-        this.DispatcherQueue?.TryEnqueue(() =>
-        {
-            var extent = ResultScrollViewer.ExtentHeight;
-            if (extent > 0)
-                ResultScrollViewer.ChangeView(null, extent, null, disableAnimation: true);
-        });
-    }
 }

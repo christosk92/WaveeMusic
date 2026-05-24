@@ -11,7 +11,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
-using ReactiveUI;
+using CommunityToolkit.Mvvm.ComponentModel;
 using Windows.UI;
 using Wavee.UI.Models;
 using Wavee.UI.WinUI.Helpers;
@@ -34,7 +34,7 @@ public enum ShowEpisodeSort { Newest, Oldest }
 /// theme-aware palette brushes from the show's <c>extractedColorSet</c>, and
 /// surfaces the filter/sort/search state for the right column.
 /// </summary>
-public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, IDisposable
+public sealed partial class ShowViewModel : ObservableObject, ITabBarItemContent, IDisposable
 {
     private const long PodcastProgressUiDeltaMs = 5_000;
     private const long PodcastCompletedThresholdMs = 90_000;
@@ -102,43 +102,45 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
     public TabItemParameter? TabItemParameter { get; private set; }
     public event EventHandler<TabItemParameter>? ContentChanged;
 
-    public string ShowId { get => _showId; private set => this.RaiseAndSetIfChanged(ref _showId, value); }
-    public string ShowUri { get => _showUri; private set => this.RaiseAndSetIfChanged(ref _showUri, value); }
+    public string ShowId { get => _showId; private set => SetProperty(ref _showId, value); }
+    public string ShowUri { get => _showUri; private set => SetProperty(ref _showUri, value); }
     public string ShowName
     {
         get => _showName;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _showName, value);
-            this.RaisePropertyChanged(nameof(BreadcrumbItems));
+            SetProperty(ref _showName, value);
+            OnPropertyChanged(nameof(BreadcrumbItems));
             UpdateTabTitle();
         }
     }
-    public string? PublisherName { get => _publisherName; private set => this.RaiseAndSetIfChanged(ref _publisherName, value); }
-    public string? CoverArtUrl { get => _coverArtUrl; private set => this.RaiseAndSetIfChanged(ref _coverArtUrl, value); }
-    public string? Description { get => _description; private set => this.RaiseAndSetIfChanged(ref _description, value); }
-    public bool IsExplicit { get => _isExplicit; private set => this.RaiseAndSetIfChanged(ref _isExplicit, value); }
-    public bool IsExclusive { get => _isExclusive; private set => this.RaiseAndSetIfChanged(ref _isExclusive, value); }
-    public bool IsVideoShow { get => _isVideoShow; private set => this.RaiseAndSetIfChanged(ref _isVideoShow, value); }
-    public bool IsFollowing { get => _isFollowing; set => this.RaiseAndSetIfChanged(ref _isFollowing, value); }
-    public bool IsLoading { get => _isLoading; set => this.RaiseAndSetIfChanged(ref _isLoading, value); }
-    public bool HasError { get => _hasError; set => this.RaiseAndSetIfChanged(ref _hasError, value); }
-    public string? ErrorMessage { get => _errorMessage; set => this.RaiseAndSetIfChanged(ref _errorMessage, value); }
-    public string? RatingLine { get => _ratingLine; private set => this.RaiseAndSetIfChanged(ref _ratingLine, value); }
-    public bool ShowAverageRating { get => _showAverageRating; private set => this.RaiseAndSetIfChanged(ref _showAverageRating, value); }
-    public double AverageRating { get => _averageRating; private set => this.RaiseAndSetIfChanged(ref _averageRating, value); }
-    public long TotalRatings { get => _totalRatings; private set => this.RaiseAndSetIfChanged(ref _totalRatings, value); }
-    public int TotalEpisodes { get => _totalEpisodes; private set => this.RaiseAndSetIfChanged(ref _totalEpisodes, value); }
-    public string EpisodeCountLine { get => _episodeCountLine; private set => this.RaiseAndSetIfChanged(ref _episodeCountLine, value); }
-    public string ListeningSummaryLine { get => _listeningSummaryLine; private set => this.RaiseAndSetIfChanged(ref _listeningSummaryLine, value); }
-    public string ArchiveSummaryLine { get => _archiveSummaryLine; private set => this.RaiseAndSetIfChanged(ref _archiveSummaryLine, value); }
+    public string? PublisherName { get => _publisherName; private set => SetProperty(ref _publisherName, value); }
+    public string? CoverArtUrl { get => _coverArtUrl; private set => SetProperty(ref _coverArtUrl, value); }
+    public string? Description { get => _description; private set => SetProperty(ref _description, value); }
+    public bool IsExplicit { get => _isExplicit; private set => SetProperty(ref _isExplicit, value); }
+    public bool IsExclusive { get => _isExclusive; private set => SetProperty(ref _isExclusive, value); }
+    public bool IsVideoShow { get => _isVideoShow; private set => SetProperty(ref _isVideoShow, value); }
+    public bool IsFollowing { get => _isFollowing; set => SetProperty(ref _isFollowing, value); }
+    public bool IsLoading { get => _isLoading; set => SetProperty(ref _isLoading, value); }
+    public bool HasError { get => _hasError; set => SetProperty(ref _hasError, value); }
+    public string? ErrorMessage { get => _errorMessage; set => SetProperty(ref _errorMessage, value); }
+    public string? RatingLine { get => _ratingLine; private set => SetProperty(ref _ratingLine, value); }
+    public bool ShowAverageRating { get => _showAverageRating; private set => SetProperty(ref _showAverageRating, value); }
+    public double AverageRating { get => _averageRating; private set => SetProperty(ref _averageRating, value); }
+    public long TotalRatings { get => _totalRatings; private set => SetProperty(ref _totalRatings, value); }
+    public int TotalEpisodes { get => _totalEpisodes; private set => SetProperty(ref _totalEpisodes, value); }
+    public string EpisodeCountLine { get => _episodeCountLine; private set => SetProperty(ref _episodeCountLine, value); }
+    public string ListeningSummaryLine { get => _listeningSummaryLine; private set => SetProperty(ref _listeningSummaryLine, value); }
+    public string ArchiveSummaryLine { get => _archiveSummaryLine; private set => SetProperty(ref _archiveSummaryLine, value); }
     public string? ShareUrl
     {
         get => _shareUrl;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _shareUrl, value);
-            this.RaisePropertyChanged(nameof(CanShare));
+            if (!SetProperty(ref _shareUrl, value))
+                return;
+            OnPropertyChanged(nameof(CanShare));
+            ShareCommand.NotifyCanExecuteChanged();
         }
     }
     public bool CanShare => !string.IsNullOrEmpty(_shareUrl);
@@ -146,14 +148,14 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
     public ObservableCollection<ShowTopicDto> Topics
     {
         get => _topics;
-        private set => this.RaiseAndSetIfChanged(ref _topics, value);
+        private set => SetProperty(ref _topics, value);
     }
     public bool HasTopics => Topics.Count > 0;
 
     public ObservableCollection<ShowRecommendationDto> Recommendations
     {
         get => _recommendations;
-        private set => this.RaiseAndSetIfChanged(ref _recommendations, value);
+        private set => SetProperty(ref _recommendations, value);
     }
     public bool HasRecommendations => Recommendations.Count > 0;
 
@@ -171,9 +173,9 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         get => _filteredEpisodes;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _filteredEpisodes, value);
-            this.RaisePropertyChanged(nameof(HasEpisodes));
-            this.RaisePropertyChanged(nameof(NoEpisodesMatch));
+            SetProperty(ref _filteredEpisodes, value);
+            OnPropertyChanged(nameof(HasEpisodes));
+            OnPropertyChanged(nameof(NoEpisodesMatch));
         }
     }
     public bool HasEpisodes => FilteredEpisodes.Count > 0;
@@ -184,8 +186,8 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         get => _listenNextEpisodes;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _listenNextEpisodes, value);
-            this.RaisePropertyChanged(nameof(HasListenNextEpisodes));
+            SetProperty(ref _listenNextEpisodes, value);
+            OnPropertyChanged(nameof(HasListenNextEpisodes));
         }
     }
     public bool HasListenNextEpisodes => ListenNextEpisodes.Count > 0;
@@ -197,8 +199,8 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         get => _resumeEpisode;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _resumeEpisode, value);
-            this.RaisePropertyChanged(nameof(HasResumeEpisode));
+            SetProperty(ref _resumeEpisode, value);
+            OnPropertyChanged(nameof(HasResumeEpisode));
         }
     }
     public bool HasResumeEpisode => _resumeEpisode is not null;
@@ -210,8 +212,8 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         get => _upNextEpisodes;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _upNextEpisodes, value);
-            this.RaisePropertyChanged(nameof(HasUpNextEpisodes));
+            SetProperty(ref _upNextEpisodes, value);
+            OnPropertyChanged(nameof(HasUpNextEpisodes));
         }
     }
     public bool HasUpNextEpisodes => _upNextEpisodes.Count > 0;
@@ -222,7 +224,7 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         set
         {
             var old = _searchQuery;
-            this.RaiseAndSetIfChanged(ref _searchQuery, value ?? "");
+            SetProperty(ref _searchQuery, value ?? "");
             if (old != _searchQuery) ApplyFilterAndSort();
         }
     }
@@ -233,7 +235,7 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         set
         {
             var old = _filter;
-            this.RaiseAndSetIfChanged(ref _filter, value);
+            SetProperty(ref _filter, value);
             if (old != value) ApplyFilterAndSort();
         }
     }
@@ -244,14 +246,14 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         set
         {
             var old = _sort;
-            this.RaiseAndSetIfChanged(ref _sort, value);
+            SetProperty(ref _sort, value);
             if (old != value) ApplyFilterAndSort();
         }
     }
 
-    public Brush? PaletteBackdropBrush { get => _paletteBackdropBrush; private set => this.RaiseAndSetIfChanged(ref _paletteBackdropBrush, value); }
-    public Brush? PaletteAccentPillBrush { get => _paletteAccentPillBrush; private set => this.RaiseAndSetIfChanged(ref _paletteAccentPillBrush, value); }
-    public Brush? PaletteAccentPillForegroundBrush { get => _paletteAccentPillForegroundBrush; private set => this.RaiseAndSetIfChanged(ref _paletteAccentPillForegroundBrush, value); }
+    public Brush? PaletteBackdropBrush { get => _paletteBackdropBrush; private set => SetProperty(ref _paletteBackdropBrush, value); }
+    public Brush? PaletteAccentPillBrush { get => _paletteAccentPillBrush; private set => SetProperty(ref _paletteAccentPillBrush, value); }
+    public Brush? PaletteAccentPillForegroundBrush { get => _paletteAccentPillForegroundBrush; private set => SetProperty(ref _paletteAccentPillForegroundBrush, value); }
 
     /// <summary>
     /// Solid full-opacity brush of the cover's dominant tone (Spotify's
@@ -261,7 +263,7 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
     /// <c>TextBrightAccent</c>, which ships as Spotify-brand green for many shows
     /// and shouldn't be used as the show's identity colour.
     /// </summary>
-    public Brush? PaletteCoverColorBrush { get => _paletteCoverColorBrush; private set => this.RaiseAndSetIfChanged(ref _paletteCoverColorBrush, value); }
+    public Brush? PaletteCoverColorBrush { get => _paletteCoverColorBrush; private set => SetProperty(ref _paletteCoverColorBrush, value); }
 
     public ShowViewModel(
         IPodcastService podcastService,
@@ -406,9 +408,9 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
             () =>
             {
                 Topics.Clear();
-                this.RaisePropertyChanged(nameof(HasTopics));
+                OnPropertyChanged(nameof(HasTopics));
                 Recommendations.Clear();
-                this.RaisePropertyChanged(nameof(HasRecommendations));
+                OnPropertyChanged(nameof(HasRecommendations));
             });
 
         _allEpisodes = new List<ShowEpisodeDto>();
@@ -482,7 +484,7 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
 
                 Recommendations.Clear();
                 foreach (var r in recs) Recommendations.Add(r);
-                this.RaisePropertyChanged(nameof(HasRecommendations));
+                OnPropertyChanged(nameof(HasRecommendations));
 
                 IsLoading = false;
             });
@@ -569,7 +571,7 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
 
         Topics.Clear();
         foreach (var topic in detail.Topics) Topics.Add(topic);
-        this.RaisePropertyChanged(nameof(HasTopics));
+        OnPropertyChanged(nameof(HasTopics));
 
         _palette = detail.Palette;
         ApplyTheme(_isDarkTheme);
@@ -578,7 +580,7 @@ public sealed partial class ShowViewModel : ReactiveObject, ITabBarItemContent, 
         // the show; the local cache catches up on the next library sync. Use it
         // to seed the heart so the page paints accurately on first render.
         // Must go through the property setter (not the backing field) — otherwise
-        // RaiseAndSetIfChanged doesn't fire and the x:Bind to ViewModel.IsFollowing
+        // SetProperty doesn't fire and the x:Bind to ViewModel.IsFollowing
         // stays at its default (false → "Follow") even when the server says we're
         // already subscribed.
         IsFollowing = detail.IsSavedOnServer;

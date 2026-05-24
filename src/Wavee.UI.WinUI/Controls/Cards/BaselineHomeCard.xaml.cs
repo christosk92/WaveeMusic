@@ -231,7 +231,7 @@ public sealed partial class BaselineHomeCard : UserControl
         var activePreviewTrack = GetActivePreviewTrack(item);
 
         TitleText.Text = item.Title ?? "";
-        SubtitleText.Text = item.Subtitle ?? "";
+        SubtitleText.Text = item.DisplaySubtitle ?? "";
         TypeText.Text = item.ContentType switch
         {
             HomeContentType.Album => "Album",

@@ -51,7 +51,6 @@ public sealed partial class AiSettingsViewModel : ObservableObject
 
         // Snapshot the initial state for the bound props.
         _aiFeaturesEnabled = _settings.Settings.AiFeaturesEnabled;
-        _aiLyricsExplainEnabled = _settings.Settings.AiLyricsExplainEnabled;
         _aiLyricsSummarizeEnabled = _settings.Settings.AiLyricsSummarizeEnabled;
         _aiBioSummarizeEnabled = _settings.Settings.AiBioSummarizeEnabled;
 
@@ -97,14 +96,6 @@ public sealed partial class AiSettingsViewModel : ObservableObject
             // notification after they've turned the feature off.
             _ = _notifications?.RemoveModelNotificationsAsync();
         }
-    }
-
-    [ObservableProperty]
-    private bool _aiLyricsExplainEnabled;
-
-    partial void OnAiLyricsExplainEnabledChanged(bool value)
-    {
-        _settings.Update(s => s.AiLyricsExplainEnabled = value);
     }
 
     [ObservableProperty]

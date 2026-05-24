@@ -341,6 +341,8 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
     {
         SetStringPreservingExisting(target.Title, source.Title, v => target.Title = v);
         SetStringPreservingExisting(target.Subtitle, source.Subtitle, v => target.Subtitle = v);
+        SetStringPreservingExisting(target.AlbumMetadataSubtitle, source.AlbumMetadataSubtitle, v => target.AlbumMetadataSubtitle = v);
+        if (target.AlbumTotalTracks <= 0 && source.AlbumTotalTracks > 0) target.AlbumTotalTracks = source.AlbumTotalTracks;
         SetStringPreservingExisting(target.ImageUrl, source.ImageUrl, v => target.ImageUrl = v);
         SetStringPreservingExisting(target.ImageSmallUrl, source.ImageSmallUrl, v => target.ImageSmallUrl = v);
         SetStringPreservingExisting(target.ImageMediumUrl, source.ImageMediumUrl, v => target.ImageMediumUrl = v);
@@ -420,6 +422,9 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
 
         SetMissingString(target.Title, source.Title, v => target.Title = v);
         SetMissingString(target.Subtitle, source.Subtitle, v => target.Subtitle = v);
+        SetMissingString(target.AlbumMetadataSubtitle, source.AlbumMetadataSubtitle, v => target.AlbumMetadataSubtitle = v);
+        if (target.AlbumTotalTracks <= 0 && source.AlbumTotalTracks > 0)
+            target.AlbumTotalTracks = source.AlbumTotalTracks;
         SetMissingString(target.ImageUrl, source.ImageUrl, v => target.ImageUrl = v);
         SetMissingString(target.ImageSmallUrl, source.ImageSmallUrl, v => target.ImageSmallUrl = v);
         SetMissingString(target.ImageMediumUrl, source.ImageMediumUrl, v => target.ImageMediumUrl = v);

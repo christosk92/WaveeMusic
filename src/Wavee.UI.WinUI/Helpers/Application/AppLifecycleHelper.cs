@@ -10,8 +10,6 @@ using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using ReactiveUI;
-using ReactiveUI.Builder;
 using Wavee.Connect;
 using Wavee.Core.Authentication;
 using Wavee.Core.DependencyInjection;
@@ -265,33 +263,6 @@ public static class AppLifecycleHelper
 
         // Propagate to the audio process so its CLI flag matches at first launch.
         Wavee.AudioIpc.AudioProcessManager.UseVerboseLogging = verboseEnabled;
-
-        // ReactiveUI's WithViewsFromAssembly calls Assembly.GetTypes() under the
-        // hood, which throws ReflectionTypeLoadException if ANY type in the
-        // assembly references something the loader can't resolve. We deliberately
-        // reference Microsoft.Windows.AI.Text.LanguageModel from AiCapabilities /
-        // LyricsAiService — strongly-typed, the right pattern — but on machines
-        // where the AI projection DLLs are absent (or our build target stripped
-        // them too aggressively) those types fail to load at metadata enumeration
-        // time, hard-crashing the app before OnLaunched returns.
-        //
-        // We cannot make GetTypes() succeed without the assemblies, but we CAN
-        // make startup robust: if the type-load throws, log the loader failures
-        // (so a future bug is diagnosable) and proceed without the ReactiveUI
-        // view registration. The typed AI calls then short-circuit naturally
-        // through AiCapabilities.LanguageModelHardwareAvailable returning false.
-        var rxuiBuilder = RxAppBuilder.CreateReactiveUIBuilder().WithWinUI();
-        try
-        {
-            rxuiBuilder = rxuiBuilder.WithViewsFromAssembly(typeof(App).Assembly);
-        }
-        catch (System.Reflection.ReflectionTypeLoadException ex)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[ReactiveUI] WithViewsFromAssembly failed with ReflectionTypeLoadException. " +
-                $"Loader failures: {string.Join(" | ", ex.LoaderExceptions.Where(e => e != null).Select(e => e!.Message))}");
-        }
-        var rxuiInstance = rxuiBuilder.BuildApp();
 
         // Create the InMemorySink early so Serilog can write to it from the start
         var inMemorySink = new InMemorySink(_uiDispatcher);
