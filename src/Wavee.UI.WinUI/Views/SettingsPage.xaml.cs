@@ -38,6 +38,7 @@ public sealed partial class SettingsPage : UserControl, ITabBarItemContent, IPag
 
             new("On-device AI", "App", "ai", "availability", "local ai language model summarize explain lyrics"),
             new("AI availability", "On-device AI", "ai", "availability", "model hardware region install status"),
+            new("AI online tools", "On-device AI", "ai", "tools", "web search online tools endpoint current information"),
 
             new("Playback & audio", "App", "playback-audio", "queue", "queue autoplay quality normalization lyrics player equalizer eq"),
             new("Track click behavior", "Playback & audio", "playback-audio", "interaction", "single tap double tap track click"),

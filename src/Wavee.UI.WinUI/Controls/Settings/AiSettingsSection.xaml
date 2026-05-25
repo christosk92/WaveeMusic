@@ -138,7 +138,7 @@
                        Tag="artist" />
 
             <controls:SettingsCard Header="About this artist"
-                                   Description="On the artist page, generate a short on-device summary when Spotify has no biography for the artist."
+                                   Description="On the artist page, generate an on-device summary and answer artist questions."
                                    IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}"
                                    Tag="artist">
                 <controls:SettingsCard.HeaderIcon>
@@ -146,6 +146,35 @@
                 </controls:SettingsCard.HeaderIcon>
                 <ToggleSwitch IsOn="{x:Bind ViewModel.AiBioSummarizeEnabled, Mode=TwoWay}"
                               OnContent="" OffContent="" />
+            </controls:SettingsCard>
+
+            <!-- ── Online tools ── -->
+            <TextBlock Text="Tools"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       Margin="0,24,0,8"
+                       Tag="tools" />
+
+            <controls:SettingsCard Header="Allow online AI tools"
+                                   Description="Lets AI features call configured online tools such as web search when a question needs current information."
+                                   IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}"
+                                   Tag="tools">
+                <controls:SettingsCard.HeaderIcon>
+                    <ic:SymbolIcon Symbol="Sparkle" IconVariant="Filled" />
+                </controls:SettingsCard.HeaderIcon>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.AiOnlineToolsEnabled, Mode=TwoWay}"
+                              OnContent="" OffContent="" />
+            </controls:SettingsCard>
+
+            <controls:SettingsCard Header="Web search endpoint"
+                                   Description="Optional JSON search endpoint. Use {query} in the URL or expose a q= parameter."
+                                   IsEnabled="{x:Bind ViewModel.IsOnlineToolConfigurationEnabled, Mode=OneWay}"
+                                   Tag="tools">
+                <controls:SettingsCard.HeaderIcon>
+                    <ic:SymbolIcon Symbol="Search" />
+                </controls:SettingsCard.HeaderIcon>
+                <TextBox Width="420"
+                         PlaceholderText="https://example/search?q={query}"
+                         Text="{x:Bind ViewModel.AiWebSearchEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             </controls:SettingsCard>
 
         </StackPanel>

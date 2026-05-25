@@ -1418,6 +1418,72 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         }
     }
 
+    private void AskAiSuggestion_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string question }
+            && !string.IsNullOrWhiteSpace(question))
+        {
+            ViewModel.Bio.AskAiQuestionText = question;
+            var command = ViewModel.Bio.AskArtistAiCommand;
+            if (command.CanExecute(null))
+                command.Execute(null);
+        }
+    }
+
+    private async void AskAiRecommendationPlay_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: ArtistAskAiRecommendationVm item }
+            || string.IsNullOrWhiteSpace(item.Uri))
+        {
+            return;
+        }
+
+        var playback = Ioc.Default.GetService<IPlaybackService>();
+        if (playback is null)
+            return;
+
+        var result = item.IsTrack
+            ? !string.IsNullOrWhiteSpace(item.ContextUri)
+                ? await playback.PlayTrackInContextAsync(
+                    item.Uri,
+                    item.ContextUri!,
+                    new PlayContextOptions { PlayOriginFeature = "artist_ai" })
+                : await playback.PlayTracksAsync(
+                    [item.Uri],
+                    context: new PlaybackContextInfo
+                    {
+                        ContextUri = ViewModel.ArtistId ?? item.Uri,
+                        Type = PlaybackContextType.Artist,
+                        Name = ViewModel.Header.ArtistName ?? "Artist AI",
+                        ImageUrl = ViewModel.Header.ArtistImageUrl,
+                    })
+            : await playback.PlayContextAsync(
+                item.Uri,
+                new PlayContextOptions { PlayOriginFeature = "artist_ai" });
+
+        if (!result.IsSuccess)
+            _logger?.LogWarning("Artist AI recommendation play failed: {Error}", result.ErrorMessage);
+    }
+
+    private void AskAiRecommendationOpen_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: ArtistAskAiRecommendationVm item })
+            return;
+
+        if (item.IsRelease && !string.IsNullOrWhiteSpace(item.Uri))
+        {
+            NavigationHelpers.OpenAlbum(item.Uri, item.Title);
+            return;
+        }
+
+        if (item.IsTrack
+            && !string.IsNullOrWhiteSpace(item.ContextUri)
+            && item.ContextUri.StartsWith("spotify:album:", StringComparison.Ordinal))
+        {
+            NavigationHelpers.OpenAlbum(item.ContextUri, item.Subtitle ?? item.Title);
+        }
+    }
+
     private void ShareArtist_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(ViewModel.ArtistId)) return;

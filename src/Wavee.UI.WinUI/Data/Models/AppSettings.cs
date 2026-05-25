@@ -263,6 +263,26 @@ public sealed class AppSettings
     public bool AiBioSummarizeEnabled { get; set; } = true;
 
     /// <summary>
+    /// Allows AI features to invoke online tools such as web search. Default false:
+    /// the on-device model can still use local catalog tools, but no network-backed
+    /// tool is called unless a provider is registered and this switch is enabled.
+    /// </summary>
+    public bool AiOnlineToolsEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Optional web-search endpoint used by AI online tools. Supports either a
+    /// "{query}" placeholder or a normal endpoint that accepts a q= query string.
+    /// Empty means no web-search provider is configured.
+    /// </summary>
+    public string? AiWebSearchEndpoint { get; set; }
+
+    /// <summary>
+    /// Optional bearer token for <see cref="AiWebSearchEndpoint"/>. Kept empty by
+    /// default; user-configured deployments can supply a provider-specific token.
+    /// </summary>
+    public string? AiWebSearchApiKey { get; set; }
+
+    /// <summary>
     /// True once the user dismisses the "Get free posters and metadata" InfoBar
     /// on the Local files landing page. The CTA never appears again. Detail-page
     /// inline banners ignore this flag — they're tied to actual content state and

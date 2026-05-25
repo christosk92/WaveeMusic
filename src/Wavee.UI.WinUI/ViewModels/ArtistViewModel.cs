@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Wavee.AI.Artists;
 using Wavee.Core.Data;
 using Wavee.Core.Http;
 using Wavee.UI.Contracts;
@@ -96,6 +97,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         ISettingsService? settingsService = null,
         ArtistBioSummarizer? bioSummarizer = null,
         AiCapabilities? aiCapabilities = null,
+        ArtistAiQuestionService? artistAiQuestionService = null,
         IMusicVideoMetadataService? musicVideoMetadataService = null,
         Wavee.UI.Services.Infra.IBackgroundWorkRunner? backgroundWorkRunner = null,
         ILogger<ArtistViewModel>? logger = null)
@@ -151,8 +153,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         Bio = new ArtistBioViewModel(
             bioSummarizer,
             aiCapabilities,
+            artistAiQuestionService,
             logger,
             biographyProvider: () => Header.Artist?.Biography,
+            artistUriProvider: () => ArtistId,
             artistNameProvider: () => Header.ArtistName,
             monthlyListenersProvider: () => Header.MonthlyListeners,
             topTrackNamesProvider: () => TopTracks.Tracks

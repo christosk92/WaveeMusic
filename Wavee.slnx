@@ -92,6 +92,11 @@
       <BuildType Solution="Release-Unpackaged|*" Project="Release" />
     </Project>
 
+    <Project Path="src/Wavee.AI/Wavee.AI.csproj">
+      <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
+      <BuildType Solution="Release-Unpackaged|*" Project="Release" />
+    </Project>
+
     <Project Path="src/Wavee/Wavee.csproj">
       <BuildType Solution="Debug-Unpackaged|*" Project="Debug" />
       <BuildType Solution="Release-Unpackaged|*" Project="Release" />

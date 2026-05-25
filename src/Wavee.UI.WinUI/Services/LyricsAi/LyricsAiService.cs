@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Wavee.AI.Generation;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -31,14 +32,19 @@ namespace Wavee.UI.WinUI.Services;
 public sealed class LyricsAiService
 {
     private readonly AiCapabilities _capabilities;
+    private readonly ILanguageModelClient _model;
     private readonly ILogger? _logger;
 
     private readonly ConcurrentDictionary<string, Lazy<Task<LyricsAiResult>>> _lyricsMeaningRequests =
         new(StringComparer.Ordinal);
 
-    public LyricsAiService(AiCapabilities capabilities, ILogger<LyricsAiService>? logger = null)
+    public LyricsAiService(
+        AiCapabilities capabilities,
+        ILanguageModelClient model,
+        ILogger<LyricsAiService>? logger = null)
     {
         _capabilities = capabilities ?? throw new ArgumentNullException(nameof(capabilities));
+        _model = model ?? throw new ArgumentNullException(nameof(model));
         _logger = logger;
     }
 
@@ -147,34 +153,34 @@ public sealed class LyricsAiService
         string fallbackPrompt,
         IProgress<string>? deltaProgress)
     {
-        var response = await PhiSilicaStructuredTextGenerator.GeneratePlainTextAsync(
-            prompt,
+        var response = await _model.GenerateTextAsync(
+            new AiTextGenerationRequest(prompt, 0.25f, "LyricsMeaning"),
             deltaProgress,
             CancellationToken.None);
         var usedFallback = false;
 
-        if (response.Status != PhiSilicaStructuredGenerationStatus.Complete
+        if (response.Status != AiGenerationStatus.Complete
             && ShouldRetryPlainTextWithFallback(response.Status))
         {
-            response = await PhiSilicaStructuredTextGenerator.GeneratePlainTextAsync(
-                fallbackPrompt,
+            response = await _model.GenerateTextAsync(
+                new AiTextGenerationRequest(fallbackPrompt, 0.2f, "LyricsMeaningFallback"),
                 deltaProgress,
                 CancellationToken.None);
             usedFallback = true;
         }
 
-        if (response.Status != PhiSilicaStructuredGenerationStatus.Complete)
+        if (response.Status != AiGenerationStatus.Complete)
             return ToPlainTextFailureResult(response);
 
         var text = CleanPlainTextMeaning(response.Text);
         if (string.IsNullOrWhiteSpace(text) && !usedFallback)
         {
-            response = await PhiSilicaStructuredTextGenerator.GeneratePlainTextAsync(
-                fallbackPrompt,
+            response = await _model.GenerateTextAsync(
+                new AiTextGenerationRequest(fallbackPrompt, 0.2f, "LyricsMeaningFallbackEmpty"),
                 deltaProgress,
                 CancellationToken.None);
 
-            if (response.Status != PhiSilicaStructuredGenerationStatus.Complete)
+            if (response.Status != AiGenerationStatus.Complete)
                 return ToPlainTextFailureResult(response);
 
             text = CleanPlainTextMeaning(response.Text);
@@ -185,7 +191,7 @@ public sealed class LyricsAiService
             : LyricsAiResult.Ok(text, fromCache: false);
     }
 
-    private LyricsAiResult ToPlainTextFailureResult(PhiSilicaStructuredGenerationResult generated)
+    private LyricsAiResult ToPlainTextFailureResult(AiGenerationResult generated)
     {
         _logger?.LogWarning(
             "GetLyricsMeaningAsync plaintext returned Phi Silica status {Status}. error={ErrorMessage}; diagnostics={Diagnostics}",
@@ -195,21 +201,22 @@ public sealed class LyricsAiService
 
         return generated.Status switch
         {
-            PhiSilicaStructuredGenerationStatus.BlockedByPolicy => LyricsAiResult.Filtered,
-            PhiSilicaStructuredGenerationStatus.PromptBlockedByContentModeration => LyricsAiResult.Filtered,
-            PhiSilicaStructuredGenerationStatus.ResponseBlockedByContentModeration => LyricsAiResult.Filtered,
-            PhiSilicaStructuredGenerationStatus.PromptLargerThanContext =>
+            AiGenerationStatus.BlockedByPolicy => LyricsAiResult.Filtered,
+            AiGenerationStatus.PromptBlockedByContentModeration => LyricsAiResult.Filtered,
+            AiGenerationStatus.ResponseBlockedByContentModeration => LyricsAiResult.Filtered,
+            AiGenerationStatus.Unavailable => LyricsAiResult.Unavailable,
+            AiGenerationStatus.PromptLargerThanContext =>
                 LyricsAiResult.Error("Prompt exceeded Phi Silica's context window."),
             _ => LyricsAiResult.Error(generated.ErrorMessage ?? generated.Status.ToString()),
         };
     }
 
-    private static bool ShouldRetryPlainTextWithFallback(PhiSilicaStructuredGenerationStatus status)
-        => status is PhiSilicaStructuredGenerationStatus.PromptLargerThanContext
-            or PhiSilicaStructuredGenerationStatus.PromptBlockedByContentModeration
-            or PhiSilicaStructuredGenerationStatus.ResponseBlockedByContentModeration
-            or PhiSilicaStructuredGenerationStatus.BlockedByPolicy
-            or PhiSilicaStructuredGenerationStatus.Error;
+    private static bool ShouldRetryPlainTextWithFallback(AiGenerationStatus status)
+        => status is AiGenerationStatus.PromptLargerThanContext
+            or AiGenerationStatus.PromptBlockedByContentModeration
+            or AiGenerationStatus.ResponseBlockedByContentModeration
+            or AiGenerationStatus.BlockedByPolicy
+            or AiGenerationStatus.Error;
 
     private static string CleanPlainTextMeaning(string text)
         => LyricsAiOutputNormalizer.NormalizeLyricsMeaningOutput(

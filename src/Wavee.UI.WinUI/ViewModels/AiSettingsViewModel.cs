@@ -53,6 +53,8 @@ public sealed partial class AiSettingsViewModel : ObservableObject
         _aiFeaturesEnabled = _settings.Settings.AiFeaturesEnabled;
         _aiLyricsSummarizeEnabled = _settings.Settings.AiLyricsSummarizeEnabled;
         _aiBioSummarizeEnabled = _settings.Settings.AiBioSummarizeEnabled;
+        _aiOnlineToolsEnabled = _settings.Settings.AiOnlineToolsEnabled;
+        _aiWebSearchEndpoint = _settings.Settings.AiWebSearchEndpoint ?? string.Empty;
 
         // If the user already opted in on a previous session, reflect the
         // current model state in the bound status without kicking off a fresh
@@ -73,6 +75,9 @@ public sealed partial class AiSettingsViewModel : ObservableObject
     public bool ArePerFeatureTogglesEnabled =>
         CanUseAi && AiFeaturesEnabled && !IsModelPreparing;
 
+    public bool IsOnlineToolConfigurationEnabled =>
+        ArePerFeatureTogglesEnabled && AiOnlineToolsEnabled;
+
     [ObservableProperty]
     private bool _aiFeaturesEnabled;
 
@@ -80,6 +85,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
     {
         _settings.Update(s => s.AiFeaturesEnabled = value);
         OnPropertyChanged(nameof(ArePerFeatureTogglesEnabled));
+        OnPropertyChanged(nameof(IsOnlineToolConfigurationEnabled));
 
         if (value)
         {
@@ -112,6 +118,24 @@ public sealed partial class AiSettingsViewModel : ObservableObject
     partial void OnAiBioSummarizeEnabledChanged(bool value)
     {
         _settings.Update(s => s.AiBioSummarizeEnabled = value);
+    }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOnlineToolConfigurationEnabled))]
+    private bool _aiOnlineToolsEnabled;
+
+    partial void OnAiOnlineToolsEnabledChanged(bool value)
+    {
+        _settings.Update(s => s.AiOnlineToolsEnabled = value);
+        OnPropertyChanged(nameof(IsOnlineToolConfigurationEnabled));
+    }
+
+    [ObservableProperty]
+    private string _aiWebSearchEndpoint = string.Empty;
+
+    partial void OnAiWebSearchEndpointChanged(string value)
+    {
+        _settings.Update(s => s.AiWebSearchEndpoint = string.IsNullOrWhiteSpace(value) ? null : value.Trim());
     }
 
     // ── Model preparation state ──────────────────────────────────────────
@@ -174,6 +198,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
         ModelPreparationProgress = -1;
         ModelPreparationStatus = "Preparing on-device AI…";
         OnPropertyChanged(nameof(ArePerFeatureTogglesEnabled));
+        OnPropertyChanged(nameof(IsOnlineToolConfigurationEnabled));
 
         // Post the system toast so the user can see download progress from the
         // Action Center even after they navigate away from this Settings page.
@@ -227,6 +252,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
                     _notifications?.ShowModelErrorNotification();
                 }
                 OnPropertyChanged(nameof(ArePerFeatureTogglesEnabled));
+                OnPropertyChanged(nameof(IsOnlineToolConfigurationEnabled));
             });
         }
         catch (OperationCanceledException)
@@ -244,6 +270,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
                 ModelPreparationStatus = $"Couldn't prepare the on-device model: {ex.Message}";
                 _notifications?.ShowModelErrorNotification(ex.Message);
                 OnPropertyChanged(nameof(ArePerFeatureTogglesEnabled));
+                OnPropertyChanged(nameof(IsOnlineToolConfigurationEnabled));
             });
         }
     }
@@ -268,6 +295,7 @@ public sealed partial class AiSettingsViewModel : ObservableObject
         ModelPreparationProgress = -1;
         ModelPreparationStatus = string.Empty;
         OnPropertyChanged(nameof(ArePerFeatureTogglesEnabled));
+        OnPropertyChanged(nameof(IsOnlineToolConfigurationEnabled));
     }
 
     private void PostToUi(Action action)

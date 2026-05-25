@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Wavee.AI.Generation;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -27,6 +28,7 @@ namespace Wavee.UI.WinUI.Services;
 public sealed class ArtistBioSummarizer
 {
     private readonly AiCapabilities _capabilities;
+    private readonly ILanguageModelClient _model;
     private readonly ILogger? _logger;
 
     private readonly ConcurrentDictionary<string, Lazy<Task<LyricsAiResult>>> _requests =
@@ -42,9 +44,13 @@ public sealed class ArtistBioSummarizer
     /// <summary>~90–140 words plus punctuation/headroom.</summary>
     private const int MaxBioCharacters = 1300;
 
-    public ArtistBioSummarizer(AiCapabilities capabilities, ILogger<ArtistBioSummarizer>? logger = null)
+    public ArtistBioSummarizer(
+        AiCapabilities capabilities,
+        ILanguageModelClient model,
+        ILogger<ArtistBioSummarizer>? logger = null)
     {
         _capabilities = capabilities ?? throw new ArgumentNullException(nameof(capabilities));
+        _model = model ?? throw new ArgumentNullException(nameof(model));
         _logger = logger;
     }
 
@@ -157,34 +163,34 @@ public sealed class ArtistBioSummarizer
         string fallbackPrompt,
         IProgress<string>? deltaProgress)
     {
-        var response = await PhiSilicaStructuredTextGenerator.GeneratePlainTextAsync(
-            prompt,
+        var response = await _model.GenerateTextAsync(
+            new AiTextGenerationRequest(prompt, 0.35f, "SummarizeArtistBio"),
             deltaProgress,
             CancellationToken.None);
         var usedFallback = false;
 
-        if (response.Status != PhiSilicaStructuredGenerationStatus.Complete
+        if (response.Status != AiGenerationStatus.Complete
             && ShouldRetryPlainTextWithFallback(response.Status))
         {
-            response = await PhiSilicaStructuredTextGenerator.GeneratePlainTextAsync(
-                fallbackPrompt,
+            response = await _model.GenerateTextAsync(
+                new AiTextGenerationRequest(fallbackPrompt, 0.3f, "SummarizeArtistBioFallback"),
                 deltaProgress,
                 CancellationToken.None);
             usedFallback = true;
         }
 
-        if (response.Status != PhiSilicaStructuredGenerationStatus.Complete)
+        if (response.Status != AiGenerationStatus.Complete)
             return ToPlainTextFailureResult(artistUri, response);
 
         var text = CleanBio(response.Text);
         if (string.IsNullOrWhiteSpace(text) && !usedFallback)
         {
-            response = await PhiSilicaStructuredTextGenerator.GeneratePlainTextAsync(
-                fallbackPrompt,
+            response = await _model.GenerateTextAsync(
+                new AiTextGenerationRequest(fallbackPrompt, 0.3f, "SummarizeArtistBioFallbackEmpty"),
                 deltaProgress,
                 CancellationToken.None);
 
-            if (response.Status != PhiSilicaStructuredGenerationStatus.Complete)
+            if (response.Status != AiGenerationStatus.Complete)
                 return ToPlainTextFailureResult(artistUri, response);
 
             text = CleanBio(response.Text);
@@ -197,9 +203,9 @@ public sealed class ArtistBioSummarizer
 
     private LyricsAiResult ToPlainTextFailureResult(
         string artistUri,
-        PhiSilicaStructuredGenerationResult generated)
+        AiGenerationResult generated)
     {
-        if (generated.Status == PhiSilicaStructuredGenerationStatus.BlockedByPolicy)
+        if (generated.Status == AiGenerationStatus.BlockedByPolicy)
             _knownBlocked.TryAdd(artistUri, 1);
 
         _logger?.LogWarning(
@@ -210,21 +216,22 @@ public sealed class ArtistBioSummarizer
 
         return generated.Status switch
         {
-            PhiSilicaStructuredGenerationStatus.BlockedByPolicy => LyricsAiResult.Filtered,
-            PhiSilicaStructuredGenerationStatus.PromptBlockedByContentModeration => LyricsAiResult.Filtered,
-            PhiSilicaStructuredGenerationStatus.ResponseBlockedByContentModeration => LyricsAiResult.Filtered,
-            PhiSilicaStructuredGenerationStatus.PromptLargerThanContext =>
+            AiGenerationStatus.BlockedByPolicy => LyricsAiResult.Filtered,
+            AiGenerationStatus.PromptBlockedByContentModeration => LyricsAiResult.Filtered,
+            AiGenerationStatus.ResponseBlockedByContentModeration => LyricsAiResult.Filtered,
+            AiGenerationStatus.Unavailable => LyricsAiResult.Unavailable,
+            AiGenerationStatus.PromptLargerThanContext =>
                 LyricsAiResult.Error("Prompt exceeded Phi Silica's context window."),
             _ => LyricsAiResult.Error(generated.ErrorMessage ?? generated.Status.ToString()),
         };
     }
 
-    private static bool ShouldRetryPlainTextWithFallback(PhiSilicaStructuredGenerationStatus status)
-        => status is PhiSilicaStructuredGenerationStatus.PromptLargerThanContext
-            or PhiSilicaStructuredGenerationStatus.PromptBlockedByContentModeration
-            or PhiSilicaStructuredGenerationStatus.ResponseBlockedByContentModeration
-            or PhiSilicaStructuredGenerationStatus.BlockedByPolicy
-            or PhiSilicaStructuredGenerationStatus.Error;
+    private static bool ShouldRetryPlainTextWithFallback(AiGenerationStatus status)
+        => status is AiGenerationStatus.PromptLargerThanContext
+            or AiGenerationStatus.PromptBlockedByContentModeration
+            or AiGenerationStatus.ResponseBlockedByContentModeration
+            or AiGenerationStatus.BlockedByPolicy
+            or AiGenerationStatus.Error;
 
     private static string CleanBio(string text)
         => PhiSilicaStructuredTextPipeline.ClampLength(

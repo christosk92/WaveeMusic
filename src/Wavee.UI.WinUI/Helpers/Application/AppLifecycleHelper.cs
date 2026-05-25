@@ -501,6 +501,11 @@ public static class AppLifecycleHelper
                 .AddSingleton<ISettingsService, SettingsService>()
 
                 // On-device AI (Copilot+ PC; opt-in via Settings → On-device AI)
+                .AddSingleton<Wavee.AI.IAiFeatureSettings, Services.Ai.WinUiAiFeatureSettings>()
+                .AddSingleton<Wavee.AI.Generation.ILanguageModelClient, Wavee.AI.Generation.PhiSilicaLanguageModelClient>()
+                .AddSingleton<Wavee.AI.Artists.IArtistAiToolProvider, Services.Ai.WinUiArtistAiToolProvider>()
+                .AddSingleton<Wavee.AI.Tools.IWebSearchToolProvider, Services.Ai.ConfigurableWebSearchToolProvider>()
+                .AddSingleton<Wavee.AI.Artists.ArtistAiQuestionService>()
                 .AddSingleton<AiCapabilities>()
                 .AddSingleton<LyricsAiService>()
                 .AddSingleton<ArtistBioSummarizer>()

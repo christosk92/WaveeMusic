@@ -1,10 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Wavee.AI.Activity;
+using Wavee.AI.Artists;
 using Wavee.UI.Contracts;
 using Wavee.UI.Formatters.Artist;
 using Wavee.UI.WinUI.Services;
@@ -29,28 +33,35 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
     private readonly AiCapabilities? _capabilities;
     private readonly ILogger? _logger;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
+    private readonly ArtistAiQuestionService? _artistQuestionService;
 
     private readonly Func<string?> _biographyProvider;
+    private readonly Func<string?> _artistUriProvider;
     private readonly Func<string?> _artistNameProvider;
     private readonly Func<string?> _monthlyListenersProvider;
     private readonly Func<IReadOnlyList<string>> _topTrackNamesProvider;
 
     private CancellationTokenSource? _bioSummaryCts;
+    private CancellationTokenSource? _artistQuestionCts;
 
     public ArtistBioViewModel(
         ArtistBioSummarizer? bioSummarizer,
         AiCapabilities? capabilities,
+        ArtistAiQuestionService? artistQuestionService,
         ILogger? logger,
         Func<string?> biographyProvider,
+        Func<string?> artistUriProvider,
         Func<string?> artistNameProvider,
         Func<string?> monthlyListenersProvider,
         Func<IReadOnlyList<string>> topTrackNamesProvider)
     {
         _bioSummarizer = bioSummarizer;
         _capabilities = capabilities;
+        _artistQuestionService = artistQuestionService;
         _logger = logger;
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         _biographyProvider = biographyProvider;
+        _artistUriProvider = artistUriProvider;
         _artistNameProvider = artistNameProvider;
         _monthlyListenersProvider = monthlyListenersProvider;
         _topTrackNamesProvider = topTrackNamesProvider;
@@ -126,6 +137,46 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
 
     public bool HasHeroBioLine => !string.IsNullOrWhiteSpace(HeroBioLine);
 
+    public ObservableCollection<AiActivityEvent> AskAiActivity { get; } = new();
+
+    public bool HasAskAiActivity => AskAiActivity.Count > 0;
+
+    public ObservableCollection<ArtistAskAiRecommendationVm> AskAiRecommendations { get; } = new();
+
+    public bool HasAskAiRecommendations => AskAiRecommendations.Count > 0;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAskArtistAi))]
+    private string _askAiQuestionText = string.Empty;
+
+    [ObservableProperty]
+    private string _askAiAnswerText = string.Empty;
+
+    [ObservableProperty]
+    private string _askAiCaption = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAskArtistAi))]
+    private bool _isAskAiBusy;
+
+    [ObservableProperty]
+    private bool _hasAskAiAnswer;
+
+    [ObservableProperty]
+    private string _askAiSparkleState = "Normal";
+
+    public bool CanAskArtistAi =>
+        IsAiBioCardVisible
+        && !IsAskAiBusy
+        && !string.IsNullOrWhiteSpace(AskAiQuestionText);
+
+    public IReadOnlyList<string> AskAiSuggestedQuestions { get; } =
+    [
+        "Give me some of their oldest songs",
+        "What is their best song in history?",
+        "Give me some lesser known songs"
+    ];
+
     // ── Lifecycle ───────────────────────────────────────────────────────────
 
     /// <summary>
@@ -146,16 +197,29 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsAiBioGenerating));
         OnPropertyChanged(nameof(IsAiBioReady));
         OnPropertyChanged(nameof(IsAiBioUnavailable));
+        OnPropertyChanged(nameof(CanAskArtistAi));
+        AskArtistAiCommand.NotifyCanExecuteChanged();
     }
 
     public void ResetForNewArtist()
     {
         _bioSummaryCts?.Cancel();
+        _artistQuestionCts?.Cancel();
         BioSummaryText = null;
         WasLastBioFromCache = false;
         IsBioSummaryStreaming = false;
         BioSummaryUnavailableText = null;
         IsBioSummaryLoading = false;
+        AskAiQuestionText = string.Empty;
+        AskAiAnswerText = string.Empty;
+        AskAiCaption = string.Empty;
+        IsAskAiBusy = false;
+        HasAskAiAnswer = false;
+        AskAiSparkleState = "Normal";
+        AskAiActivity.Clear();
+        OnPropertyChanged(nameof(HasAskAiActivity));
+        AskAiRecommendations.Clear();
+        OnPropertyChanged(nameof(HasAskAiRecommendations));
         NotifyBiographyChanged();
     }
 
@@ -313,10 +377,212 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         return current + next;
     }
 
+    private void ApplyAskAiRecommendations(IReadOnlyList<ArtistAiRecommendation>? recommendations)
+    {
+        AskAiRecommendations.Clear();
+        if (recommendations is not null)
+        {
+            foreach (var item in recommendations)
+                AskAiRecommendations.Add(ArtistAskAiRecommendationVm.From(item));
+        }
+
+        OnPropertyChanged(nameof(HasAskAiRecommendations));
+    }
+
+    [RelayCommand(CanExecute = nameof(CanAskArtistAi))]
+    private async Task AskArtistAiAsync()
+    {
+        if (_artistQuestionService is null)
+            return;
+
+        var artistUri = _artistUriProvider();
+        var artistName = _artistNameProvider();
+        var question = AskAiQuestionText.Trim();
+        if (string.IsNullOrWhiteSpace(artistUri)
+            || string.IsNullOrWhiteSpace(artistName)
+            || string.IsNullOrWhiteSpace(question))
+        {
+            return;
+        }
+
+        _artistQuestionCts?.Cancel();
+        var cts = _artistQuestionCts = new CancellationTokenSource();
+
+        try
+        {
+            IsAskAiBusy = true;
+            AskAiSparkleState = "Generating";
+            AskAiCaption = "Thinking";
+            AskAiAnswerText = string.Empty;
+            HasAskAiAnswer = false;
+            AskAiActivity.Clear();
+            OnPropertyChanged(nameof(HasAskAiActivity));
+            AskAiRecommendations.Clear();
+            OnPropertyChanged(nameof(HasAskAiRecommendations));
+
+            var streamedText = string.Empty;
+            var streamCompleted = 0;
+            var progress = new Progress<string>(delta =>
+            {
+                if (cts.IsCancellationRequested
+                    || Interlocked.CompareExchange(ref streamCompleted, 0, 0) != 0)
+                {
+                    return;
+                }
+
+                streamedText = MergeStreamingText(streamedText, delta);
+                var preview = streamedText.TrimStart();
+                if (string.IsNullOrWhiteSpace(preview))
+                    return;
+
+                RunOnDispatcher(() =>
+                {
+                    if (cts.IsCancellationRequested
+                        || Interlocked.CompareExchange(ref streamCompleted, 0, 0) != 0)
+                    {
+                        return;
+                    }
+
+                    AskAiAnswerText = preview;
+                    AskAiCaption = "Writing";
+                    HasAskAiAnswer = true;
+                });
+            });
+
+            var result = await _artistQuestionService.AskAsync(
+                new ArtistAiQuestionRequest(
+                    artistUri,
+                    artistName,
+                    question,
+                    Biography,
+                    _topTrackNamesProvider(),
+                    progress,
+                    new DelegateAiActivitySink(activity =>
+                        RunOnDispatcher(() =>
+                        {
+                            AskAiActivity.Add(activity);
+                            OnPropertyChanged(nameof(HasAskAiActivity));
+                        }))),
+                cts.Token);
+
+            if (cts.IsCancellationRequested)
+                return;
+
+            Interlocked.Exchange(ref streamCompleted, 1);
+            AskAiSparkleState = "Done";
+            HasAskAiAnswer = true;
+            switch (result.Kind)
+            {
+                case ArtistAiQuestionResultKind.Ok:
+                    AskAiAnswerText = result.Text;
+                    AskAiCaption = "Answer";
+                    ApplyAskAiRecommendations(result.Recommendations);
+                    break;
+                case ArtistAiQuestionResultKind.Filtered:
+                    AskAiAnswerText = "The on-device safety filter blocked this artist answer.";
+                    AskAiCaption = "Filtered";
+                    AskAiSparkleState = "Normal";
+                    break;
+                case ArtistAiQuestionResultKind.Empty:
+                    AskAiAnswerText = "Ask a question about this artist first.";
+                    AskAiCaption = "Empty";
+                    AskAiSparkleState = "Normal";
+                    break;
+                case ArtistAiQuestionResultKind.Unavailable:
+                    AskAiAnswerText = result.ErrorMessage ?? "Artist AI is not available right now.";
+                    AskAiCaption = "Unavailable";
+                    AskAiSparkleState = "Normal";
+                    break;
+                case ArtistAiQuestionResultKind.Error:
+                    AskAiAnswerText = "Something went wrong asking the on-device model.";
+                    AskAiCaption = "Error";
+                    AskAiSparkleState = "Normal";
+                    _logger?.LogWarning("Artist AI question failed: {Message}", result.ErrorMessage);
+                    break;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Artist AI question threw unexpectedly.");
+            AskAiAnswerText = "Something went wrong asking the on-device model.";
+            AskAiCaption = "Error";
+            AskAiSparkleState = "Normal";
+            HasAskAiAnswer = true;
+        }
+        finally
+        {
+            IsAskAiBusy = false;
+            if (cts == _artistQuestionCts)
+                _artistQuestionCts = null;
+            cts.Dispose();
+        }
+    }
+
+    [RelayCommand]
+    private void UseAskAiSuggestion(string question)
+    {
+        if (string.IsNullOrWhiteSpace(question))
+            return;
+
+        AskAiQuestionText = question;
+    }
+
+    partial void OnAskAiQuestionTextChanged(string value)
+    {
+        AskArtistAiCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnIsAskAiBusyChanged(bool value)
+    {
+        AskArtistAiCommand.NotifyCanExecuteChanged();
+    }
+
     public void Dispose()
     {
         _bioSummaryCts?.Cancel();
         _bioSummaryCts?.Dispose();
         _bioSummaryCts = null;
+        _artistQuestionCts?.Cancel();
+        _artistQuestionCts?.Dispose();
+        _artistQuestionCts = null;
     }
+
+    private sealed class DelegateAiActivitySink : IAiActivitySink
+    {
+        private readonly Action<AiActivityEvent> _onActivity;
+
+        public DelegateAiActivitySink(Action<AiActivityEvent> onActivity)
+        {
+            _onActivity = onActivity;
+        }
+
+        public void Report(AiActivityEvent activity) => _onActivity(activity);
+    }
+}
+
+public sealed record ArtistAskAiRecommendationVm(
+    ArtistAiRecommendationKind Kind,
+    string Title,
+    string? Subtitle,
+    string? Uri,
+    string? ImageUrl,
+    string? ContextUri,
+    string? Reason)
+{
+    public bool IsTrack => Kind == ArtistAiRecommendationKind.Track;
+    public bool IsRelease => Kind == ArtistAiRecommendationKind.Release;
+    public string KindLabel => IsTrack ? "TRACK" : "RELEASE";
+
+    public static ArtistAskAiRecommendationVm From(ArtistAiRecommendation item)
+        => new(
+            item.Kind,
+            item.Title,
+            item.Subtitle,
+            item.Uri,
+            item.ImageUrl,
+            item.ContextUri,
+            item.Reason);
 }

@@ -134,6 +134,8 @@
 		<ProjectReference Include="..\Wavee.Local\Wavee.Local.csproj" />
 		<!-- Plain-C# UI service layer (non-WinUI) -->
 		<ProjectReference Include="..\Wavee.UI\Wavee.UI.csproj" />
+		<!-- Shared AI orchestration + Phi Silica adapter -->
+		<ProjectReference Include="..\Wavee.AI\Wavee.AI.csproj" />
 		<!-- IPC contracts shared with AudioHost process (audio device DTOs, etc.) -->
 		<ProjectReference Include="..\Wavee.Playback.Contracts\Wavee.Playback.Contracts.csproj" />
 		<!-- Lyrics rendering control -->
