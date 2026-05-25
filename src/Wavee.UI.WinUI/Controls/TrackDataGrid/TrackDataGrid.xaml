@@ -282,16 +282,11 @@
 
             <!-- Items presenter. ItemsView (which wraps ItemsRepeater inside a
                  ScrollView) has no Footer slot, so we host it + FooterContent
-                 in a two-row Grid (*, Auto). Two modes:
-                   - IsParentScrolling=false (e.g. LikedSongs): the outer Grid
-                     gives this host a finite height, so the * row constrains
-                     ItemsView's ScrollView and it scrolls internally; the
-                     footer stays pinned in the Auto row.
-                   - IsParentScrolling=true (Album / Playlist, with the page
-                     wrapping us in an outer ScrollView): vertical available
-                     is infinity, the * row collapses to ItemsView's natural
-                     desired height, the Auto row sits below, and the outer
-                     ScrollView scrolls items + footer together.
+                 in a two-row Grid (*, Auto). The outer Grid gives this host
+                 finite height, so the * row constrains ItemsView's ScrollView
+                 and it scrolls internally. FooterContent normally uses the
+                 Auto row; FooterPlacement=InRowsScroll projects it as a final
+                 synthetic row when it must share the same scroller.
 
                  An earlier StackPanel version broke the first mode because
                  StackPanels never propagate a finite height to children, so
@@ -357,6 +352,21 @@
                                         </ItemContainer>
                                     </DataTemplate>
                                 </local:TrackDataGridItemTemplateSelector.RowTemplate>
+                                <local:TrackDataGridItemTemplateSelector.FooterTemplate>
+                                    <DataTemplate x:DataType="local:TrackDataGridFooterRow">
+                                        <ItemContainer
+                                            Padding="0"
+                                            Margin="0"
+                                            HorizontalContentAlignment="Stretch"
+                                            VerticalContentAlignment="Stretch"
+                                            MinHeight="0" CanUserInvoke="UserCannotInvoke"
+                                            IsSelected="False">
+                                            <ContentPresenter
+                                                Content="{x:Bind Content}"
+                                                HorizontalContentAlignment="Stretch" />
+                                        </ItemContainer>
+                                    </DataTemplate>
+                                </local:TrackDataGridItemTemplateSelector.FooterTemplate>
                             </local:TrackDataGridItemTemplateSelector>
                         </ItemsView.ItemTemplate>
                     </ItemsView>
@@ -373,14 +383,14 @@
                             IsHitTestVisible="False"/>
                 </Grid>
 
-                <!-- Footer slot. Mirrors the pre-refactor ListView.Footer
-                     pattern. In IsParentScrolling=true mode it scrolls with
-                     items under the outer ScrollView; in internal-scroll mode
-                     it stays pinned below the scrolling list. Consumers bind
-                     the FooterContent DP as before. -->
-                <ContentPresenter Grid.Row="1"
-                                  Content="{x:Bind FooterContent, Mode=OneWay}"
-                                  HorizontalContentAlignment="Stretch"/>
+                <!-- Footer slot. Default placement mirrors the pre-refactor
+                     ListView.Footer pattern. Consumers can opt into rendering
+                     FooterContent as a final ItemsView row when the footer
+                     should share the row scroller. -->
+                <ContentPresenter x:Name="FooterPresenter"
+                                  Grid.Row="1"
+                                  HorizontalContentAlignment="Stretch"
+                                  Visibility="Collapsed"/>
             </Grid>
 
             <!--

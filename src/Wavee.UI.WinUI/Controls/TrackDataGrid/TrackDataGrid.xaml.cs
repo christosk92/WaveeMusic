@@ -72,6 +72,9 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private readonly HashSet<LazyTrackItem> _subscribedLazyItems = new();
     private PropertyChangedEventHandler? _lazyItemHandler;
     public event EventHandler<ITrackItem>? RowSelected;
+    public event EventHandler? RowsScrollViewChanged;
+
+    public ScrollView? RowsScrollView => _rowsItemsViewScrollView ?? RowsItemsView?.ScrollView;
 
     // Size-slider stops (matches the XS/S/M/L/XL segmentation in the view flyout).
     // MinHeight floor per row; content (padding + art + text) may still push the
@@ -127,6 +130,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         {
             _rowsItemsViewScrollView.ViewChanged -= RowsItemsViewScrollView_ViewChanged;
             _rowsItemsViewScrollView = null;
+            RowsScrollViewChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -156,6 +160,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         _rowsItemsViewScrollView = scrollView;
         scrollView.ViewChanged += RowsItemsViewScrollView_ViewChanged;
         HeaderScrollTransform.X = -scrollView.HorizontalOffset;
+        RowsScrollViewChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void RowsItemsViewScrollView_ViewChanged(ScrollView sender, object args)
@@ -838,12 +843,55 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     public static readonly DependencyProperty FooterContentProperty =
         DependencyProperty.Register(nameof(FooterContent), typeof(object), typeof(TrackDataGrid),
-            new PropertyMetadata(null));
+            new PropertyMetadata(null, OnFooterContentChanged));
 
     public object? FooterContent
     {
         get => GetValue(FooterContentProperty);
         set => SetValue(FooterContentProperty, value);
+    }
+
+    private static void OnFooterContentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackDataGrid grid)
+            grid.ApplyFooterPlacement();
+    }
+
+    public static readonly DependencyProperty FooterPlacementProperty =
+        DependencyProperty.Register(nameof(FooterPlacement), typeof(TrackDataGridFooterPlacement), typeof(TrackDataGrid),
+            new PropertyMetadata(TrackDataGridFooterPlacement.BelowRows, OnFooterPlacementChanged));
+
+    public TrackDataGridFooterPlacement FooterPlacement
+    {
+        get => (TrackDataGridFooterPlacement)GetValue(FooterPlacementProperty);
+        set => SetValue(FooterPlacementProperty, value);
+    }
+
+    private static void OnFooterPlacementChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TrackDataGrid grid)
+            grid.ApplyFooterPlacement();
+    }
+
+    private void ApplyFooterPlacement()
+    {
+        var footer = FooterContent;
+        var usePinnedFooter = FooterPlacement == TrackDataGridFooterPlacement.BelowRows;
+
+        if (FooterPresenter is not null)
+        {
+            FooterPresenter.Content = null;
+            FooterPresenter.Visibility = Visibility.Collapsed;
+        }
+
+        if (!_disposed)
+            ReprojectRows();
+
+        if (FooterPresenter is not null && usePinnedFooter && footer is not null)
+        {
+            FooterPresenter.Content = footer;
+            FooterPresenter.Visibility = Visibility.Visible;
+        }
     }
 
     public static readonly DependencyProperty AllowHorizontalRowScrollProperty =
@@ -876,10 +924,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     /// <summary>
     /// When <c>true</c>, the internal ListView / ItemsView vertical scroll is
     /// disabled so the grid renders all its rows at natural height and the
-    /// containing page's scroll viewer drives the whole layout. Used by
-    /// AlbumPage to merge the left sidebar + the track table into one
-    /// unified scroller. Default <c>false</c> — other consumers (PlaylistPage,
-    /// etc.) keep their normal in-grid vertical scroll.
+    /// containing page's scroll viewer drives the whole layout. Default
+    /// <c>false</c> keeps normal in-grid vertical scrolling.
     ///
     /// <para>
     /// Tradeoff: in this mode all rows render up-front (no virtualization),
@@ -914,6 +960,13 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             itemsScrollView.VerticalScrollMode = ScrollingScrollMode.Auto;
             itemsScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Auto;
         }
+    }
+
+    public void ScrollRowsToTop()
+    {
+        RowsItemsView?.ScrollView?.ScrollTo(
+            0, 0,
+            new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
     }
 
     public static readonly DependencyProperty DateAddedFormatterProperty =
@@ -1104,9 +1157,19 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         }
 
         var tracks = pipeline.ToList();
-        _visibleRows.ReplaceWith(BuildFlatRowsWithHeaders(tracks));
+        var rows = BuildFlatRowsWithHeaders(tracks);
+        AppendFooterRow(rows);
+        _visibleRows.ReplaceWith(rows);
         RestoreSelectionByKeys(selectedKeys);
         ApplyLoadingRowsVisibility();
+    }
+
+    private void AppendFooterRow(List<object> rows)
+    {
+        if (FooterPlacement != TrackDataGridFooterPlacement.InRowsScroll || FooterContent is null)
+            return;
+
+        rows.Add(new TrackDataGridFooterRow { Content = FooterContent });
     }
 
     private void ApplyLoadingRowsVisibility()
@@ -1299,15 +1362,47 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         RaiseSelectionModeStateChanged();
         if (_restoringSelection)
             return;
+        if (DeselectSelectedNonTrackRows())
+            return;
         if (_isSelectionMode)
             return;
 
         var selected = SelectedRowItem();
-        if (selected is ITrackItem track)
-            RowSelected?.Invoke(this, track);
+        if (selected is not ITrackItem track)
+            return;
 
-        if (selected is not null && SelectionChangedCommand?.CanExecute(selected) == true)
-            SelectionChangedCommand.Execute(selected);
+        RowSelected?.Invoke(this, track);
+
+        if (SelectionChangedCommand?.CanExecute(track) == true)
+            SelectionChangedCommand.Execute(track);
+    }
+
+    private bool DeselectSelectedNonTrackRows()
+    {
+        var selectedItems = RowsItemsView.SelectedItems.Cast<object>().ToArray();
+        if (selectedItems.Length == 0)
+            return false;
+
+        var removedAny = false;
+        var hasSelectedTrack = false;
+
+        foreach (var item in selectedItems)
+        {
+            if (item is ITrackItem)
+            {
+                hasSelectedTrack = true;
+                continue;
+            }
+
+            var index = _visibleRows.IndexOf(item);
+            if (index < 0)
+                continue;
+
+            RowsItemsView.Deselect(index);
+            removedAny = true;
+        }
+
+        return removedAny && !hasSelectedTrack;
     }
 
     private object? SelectedRowItem() => RowsItemsView.SelectedItem;
@@ -1410,6 +1505,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         {
             _rowsItemsViewScrollView.ViewChanged -= RowsItemsViewScrollView_ViewChanged;
             _rowsItemsViewScrollView = null;
+            RowsScrollViewChanged?.Invoke(this, EventArgs.Empty);
         }
 
         UnwireRowContextMenuHandlers();
@@ -1451,6 +1547,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
         HeaderHost.Children.Clear();
         HeaderHost.ColumnDefinitions.Clear();
+        FooterPresenter.Content = null;
         RowsItemsView.DeselectAll();
         RowsItemsView.ItemsSource = null;
         if (LoadingRowsRepeater != null)

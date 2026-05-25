@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Wavee.UI.WinUI.Styles;
 
 namespace Wavee.UI.WinUI.Data.Models;
 
@@ -10,9 +11,15 @@ namespace Wavee.UI.WinUI.Data.Models;
 
 public enum ActivityStatus { Info, InProgress, Completed, Failed }
 
+public enum ActivityNotificationType { System, UserAction, Spotify }
+
+public enum ActivityOutcome { None, Positive, Negative, Undo }
+
 // ── Action model ──
 
 public sealed record ActivityAction(string Label, string? IconGlyph, Func<Task> Callback);
+
+public sealed record ActivityDetailRow(string Label, string Value);
 
 // ── Category styling ──
 
@@ -35,6 +42,7 @@ public interface IActivityItem : INotifyPropertyChanged
     string? IconGlyph { get; }
     bool IsRead { get; set; }
     bool IsPersistent { get; }
+    ActivityNotificationType ActivityType { get; }
     IReadOnlyList<ActivityAction>? Actions { get; }
 }
 
@@ -53,6 +61,7 @@ public abstract partial class ActivityItemBase : ObservableObject, IActivityItem
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.Now;
     public string? IconGlyph { get; init; }
     public virtual bool IsPersistent => false;
+    public virtual ActivityNotificationType ActivityType { get; init; } = ActivityNotificationType.System;
     public IReadOnlyList<ActivityAction>? Actions { get; init; }
 }
 
@@ -74,12 +83,43 @@ public sealed partial class NotificationActivityItem : ActivityItemBase
 {
     public override bool IsPersistent => true;
     public string? DetailUrl { get; init; }
+    public string? ImageUrl { get; init; }
+    public string? NavigationUri { get; init; }
+    public string? DetailTitle { get; init; }
+    public string? DetailSubtitle { get; init; }
+    public string? DetailBody { get; init; }
+    public IReadOnlyList<ActivityDetailRow>? DetailRows { get; init; }
+    public ActivityOutcome Outcome { get; init; }
+    public string? OutcomeLabel { get; init; }
+
+    public bool HasOutcome => Outcome != ActivityOutcome.None;
+
+    public string OutcomeGlyph => Outcome switch
+    {
+        ActivityOutcome.Positive => FluentGlyphs.CheckMark,
+        ActivityOutcome.Negative => FluentGlyphs.Remove,
+        ActivityOutcome.Undo => FluentGlyphs.Undo,
+        _ => ""
+    };
+
+    public bool HasNavigationTarget => !string.IsNullOrWhiteSpace(NavigationUri);
+
+    public bool HasDetailContent =>
+        !string.IsNullOrWhiteSpace(DetailTitle)
+        || !string.IsNullOrWhiteSpace(DetailSubtitle)
+        || !string.IsNullOrWhiteSpace(DetailBody)
+        || DetailRows is { Count: > 0 };
+
+    public bool HasDetails => HasDetailContent || HasNavigationTarget;
+
+    public bool HasActionRow => HasDetailContent || Actions is { Count: > 0 };
 }
 
 // ── Concrete: Spotify content notifications (new releases, friend activity) ──
 
 public sealed partial class SpotifyActivityItem : ActivityItemBase
 {
+    public override ActivityNotificationType ActivityType { get; init; } = ActivityNotificationType.Spotify;
     public string? ImageUrl { get; init; }
     public string? NavigationUri { get; init; }
 }

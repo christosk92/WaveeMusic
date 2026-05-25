@@ -170,6 +170,8 @@ public static class FluentGlyphs
     public const string Ribbon = "\uEB44";
     /// <summary>CheckMark - E73E. Used for the "Played" podcast-episode state.</summary>
     public const string CheckMark = "\uE73E";
+    /// <summary>Undo - E7A7. Used for reverted/undone actions.</summary>
+    public const string Undo = "\uE7A7";
     /// <summary>SelectAll - E762. Multi-select / selection-mode affordance.</summary>
     public const string SelectAll = "\uE762";
     /// <summary>List - E8FD. "Add to queue" icon \u2014 matches the album / playlist

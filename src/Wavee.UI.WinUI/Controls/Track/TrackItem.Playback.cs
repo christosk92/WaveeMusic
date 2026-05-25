@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Controls.Track.Behaviors;
 
@@ -105,16 +106,28 @@ public sealed partial class TrackItem
         var accentResource = ActualTheme == ElementTheme.Light
             ? "AccentTextFillColorSecondaryBrush"
             : "AccentTextFillColorPrimaryBrush";
-        var accentBrush = _themeColors?.AccentText ?? (Brush)Application.Current.Resources[accentResource];
-        var normalBrush = _themeColors?.TextPrimary ?? (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+        var accentBrush = ResolveTrackBrush(accentResource);
+        var useAccentTitle = isThisTrack || _isBuffering;
 
         if (Mode == TrackItemDisplayMode.Compact)
         {
-            CompactTitle.Foreground = (isThisTrack || _isBuffering) ? accentBrush : normalBrush;
+            if (CompactTitle is not null)
+            {
+                if (useAccentTitle)
+                    CompactTitle.Foreground = accentBrush;
+                else
+                    CompactTitle.ClearValue(TextBlock.ForegroundProperty);
+            }
         }
         else
         {
-            RowTitle.Foreground = (isThisTrack || _isBuffering) ? accentBrush : normalBrush;
+            if (RowTitle is not null)
+            {
+                if (useAccentTitle)
+                    RowTitle.Foreground = accentBrush;
+                else
+                    RowTitle.ClearValue(TextBlock.ForegroundProperty);
+            }
         }
     }
 

@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -729,28 +730,94 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         if (string.IsNullOrEmpty(bio))
             return;
 
-        AppendBioRuns(card.BodyInlines, bio, BuildBioEmphasisTokens());
+        AppendBioRuns(card.BodyInlines, bio, BuildBioInlineTokens());
     }
 
-    private System.Collections.Generic.IReadOnlyList<string> BuildBioEmphasisTokens()
+    private System.Collections.Generic.IReadOnlyList<BioInlineToken> BuildBioInlineTokens()
     {
-        var emphasize = new System.Collections.Generic.List<string>(8);
+        var tokens = new System.Collections.Generic.List<BioInlineToken>(32);
+        var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         if (!string.IsNullOrWhiteSpace(ViewModel.Header.ArtistName))
-            emphasize.Add(ViewModel.Header.ArtistName!);
+            AddBioToken(tokens, seen, ViewModel.Header.ArtistName!, BioInlineTokenKind.Accent);
 
         foreach (var track in ViewModel.TopTracks.Tracks)
         {
             if (track is { IsLoaded: true, Data: Wavee.UI.Contracts.ITrackItem item }
                 && !string.IsNullOrWhiteSpace(item.Title))
             {
-                emphasize.Add(item.Title!);
-                if (emphasize.Count >= 6) break;
+                AddBioToken(tokens, seen, item.Title!, BioInlineTokenKind.Track, item.Uri, item.AlbumId);
+                if (tokens.Count(t => t.Kind == BioInlineTokenKind.Track) >= 16)
+                    break;
             }
         }
 
+        foreach (var release in EnumerateBioReleases())
+        {
+            if (!string.IsNullOrWhiteSpace(release.Name))
+                AddBioToken(tokens, seen, release.Name!, BioInlineTokenKind.Release, release.Uri);
+        }
+
         // Longest-first so multi-word matches like "Strategy 2.0" win over "Strategy".
-        emphasize.Sort((a, b) => b.Length.CompareTo(a.Length));
-        return emphasize;
+        tokens.Sort((a, b) =>
+        {
+            var length = b.Text.Length.CompareTo(a.Text.Length);
+            return length != 0 ? length : a.Kind.CompareTo(b.Kind);
+        });
+        return tokens;
+    }
+
+    private static void AddBioToken(
+        System.Collections.Generic.List<BioInlineToken> tokens,
+        System.Collections.Generic.HashSet<string> seen,
+        string text,
+        BioInlineTokenKind kind,
+        string? uri = null,
+        string? contextUri = null)
+    {
+        var trimmed = text.Trim();
+        if (trimmed.Length < 2 || !seen.Add(trimmed))
+            return;
+
+        tokens.Add(new BioInlineToken(trimmed, kind, uri, contextUri));
+    }
+
+    private IEnumerable<ArtistReleaseVm> EnumerateBioReleases()
+    {
+        var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var release in ViewModel.Discography.SnapshotLoadedReleases())
+        {
+            if (!string.IsNullOrWhiteSpace(release.Uri) && seen.Add(release.Uri!))
+                yield return release;
+        }
+
+        foreach (var item in ViewModel.Discography.PopularReleases)
+        {
+            if (item is { IsLoaded: true, Data: { } release }
+                && !string.IsNullOrWhiteSpace(release.Uri)
+                && seen.Add(release.Uri!))
+            {
+                yield return release;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(ViewModel.Header.LatestReleaseUri)
+            && seen.Add(ViewModel.Header.LatestReleaseUri!))
+        {
+            yield return new ArtistReleaseVm
+            {
+                Id = ViewModel.Header.LatestReleaseUri!,
+                Uri = ViewModel.Header.LatestReleaseUri,
+                Name = ViewModel.Header.LatestReleaseName,
+                Type = ViewModel.Header.LatestReleaseType ?? string.Empty,
+                ImageUrl = ViewModel.Header.LatestReleaseImageUrl,
+                ReleaseDate = DateTimeOffset.MinValue,
+                TrackCount = ViewModel.Header.LatestReleaseTrackCount,
+                Label = null,
+                Year = 0,
+            };
+        }
     }
 
     /// <summary>
@@ -767,18 +834,18 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         return System.Text.RegularExpressions.Regex.Replace(decoded, @"\s+", " ").Trim();
     }
 
-    private static void AppendBioRuns(InlineCollection target, string text, System.Collections.Generic.IReadOnlyList<string> emphasize)
+    private void AppendBioRuns(InlineCollection target, string text, System.Collections.Generic.IReadOnlyList<BioInlineToken> tokens)
     {
         var i = 0;
         while (i < text.Length)
         {
             // Find the next earliest emphasize-match starting at i or later.
             var matchStart = -1;
-            string? matchValue = null;
-            foreach (var token in emphasize)
+            BioInlineToken? matchValue = null;
+            foreach (var token in tokens)
             {
-                if (token.Length == 0) continue;
-                var idx = text.IndexOf(token, i, StringComparison.OrdinalIgnoreCase);
+                if (token.Text.Length == 0) continue;
+                var idx = text.IndexOf(token.Text, i, StringComparison.OrdinalIgnoreCase);
                 if (idx >= 0 && (matchStart < 0 || idx < matchStart))
                 {
                     matchStart = idx;
@@ -796,16 +863,88 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
             if (matchStart > i)
                 target.Add(new Run { Text = text[i..matchStart] });
 
-            var accentRun = new Run
-            {
-                Text = text.Substring(matchStart, matchValue.Length),
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                Foreground = (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentTextFillColorPrimaryBrush"],
-            };
-            target.Add(accentRun);
-            i = matchStart + matchValue.Length;
+            var matchedText = text.Substring(matchStart, matchValue.Text.Length);
+            target.Add(CreateBioInline(matchValue, matchedText));
+            i = matchStart + matchValue.Text.Length;
         }
     }
+
+    private Inline CreateBioInline(BioInlineToken token, string text)
+    {
+        var accentBrush = (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
+        if (token.Kind == BioInlineTokenKind.Accent
+            || string.IsNullOrWhiteSpace(token.Uri))
+        {
+            return new Run
+            {
+                Text = text,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = accentBrush,
+            };
+        }
+
+        var link = new Hyperlink
+        {
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = accentBrush,
+        };
+        link.Inlines.Add(new Run { Text = text });
+        link.Click += async (_, _) =>
+        {
+            if (token.Kind == BioInlineTokenKind.Track)
+                await PlayBioTrackAsync(token);
+            else if (token.Kind == BioInlineTokenKind.Release)
+                OpenBioRelease(token);
+        };
+        return link;
+    }
+
+    private async Task PlayBioTrackAsync(BioInlineToken token)
+    {
+        if (string.IsNullOrWhiteSpace(token.Uri))
+            return;
+
+        var playback = Ioc.Default.GetService<IPlaybackService>();
+        if (playback is null)
+            return;
+
+        var result = !string.IsNullOrWhiteSpace(token.ContextUri)
+            ? await playback.PlayTrackInContextAsync(
+                token.Uri,
+                token.ContextUri!,
+                new PlayContextOptions { PlayOriginFeature = "artist_ai_bio" })
+            : await playback.PlayTracksAsync(
+                [token.Uri],
+                context: new PlaybackContextInfo
+                {
+                    ContextUri = ViewModel.ArtistId ?? token.Uri,
+                    Type = PlaybackContextType.Artist,
+                    Name = ViewModel.Header.ArtistName ?? "Artist AI",
+                    ImageUrl = ViewModel.Header.ArtistImageUrl,
+                });
+
+        if (!result.IsSuccess)
+            _logger?.LogWarning("Artist AI bio track play failed: {Error}", result.ErrorMessage);
+    }
+
+    private static void OpenBioRelease(BioInlineToken token)
+    {
+        if (!string.IsNullOrWhiteSpace(token.Uri))
+            NavigationHelpers.OpenAlbum(token.Uri, token.Text);
+    }
+
+    private enum BioInlineTokenKind
+    {
+        Accent,
+        Track,
+        Release,
+    }
+
+    private sealed record BioInlineToken(
+        string Text,
+        BioInlineTokenKind Kind,
+        string? Uri = null,
+        string? ContextUri = null);
 
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // PageTintFill â€” palette-driven gradient backdrop
@@ -1589,6 +1728,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
             {
                 if (_isDisposed) return;
                 Bindings?.Update();
+                TryShowContentNow();
             });
     }
 

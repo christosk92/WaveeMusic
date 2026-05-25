@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 
@@ -106,17 +107,12 @@ public sealed partial class TrackItem
 
         if (!nativePillShowing && (_useCardRow || _isAlternateRow))
         {
-            // CardBackground (Fluent card tint) gives visible alternating-row
-            // striping in both light and dark. The boxed-in-light-mode look
-            // users previously complained about was driven by the per-row
-            // drop shadow — that's been removed, and the card fill alone
-            // reads cleanly in both themes.
-            RowRoot.Background = _useCardRow
-                ? (_isAlternateRow
-                    ? (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"]
-                    : DefaultBackground)
-                : _themeColors?.CardBackground
-                  ?? (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
+            // SubtleFill keeps alternating-row striping visible without
+            // turning dark-mode rows into light slabs after a theme switch.
+            RowRoot.Background = _isAlternateRow
+                ? _themeColors?.SubtleFillSecondary
+                  ?? (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"]
+                : DefaultBackground;
         }
         else
         {
@@ -162,6 +158,43 @@ public sealed partial class TrackItem
         // Keep the multi-select checkbox's checked state in sync with the
         // host-owned IsSelected.
         UpdateSelectionAffordance();
+    }
+
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+    {
+        DispatcherQueue?.TryEnqueue(RefreshThemeVisuals);
+    }
+
+    private void RefreshThemeVisuals()
+    {
+        if (Mode == TrackItemDisplayMode.Compact)
+        {
+            ApplyCompactBackground();
+        }
+        else
+        {
+            ApplyRowBackground();
+            RefreshRowThemeForegrounds();
+            ApplyRowProgress(Track);
+            ApplyChartStatus(Track);
+        }
+
+        ResolveImageColorHint();
+        RefreshPlaybackState();
+        UpdateOverlayState();
+    }
+
+    private void RefreshRowThemeForegrounds()
+    {
+        if (Track is not null)
+            RebuildArtistsSubline(Track, force: true);
+
+        var secondaryBrush = ResolveTrackBrush("TextFillColorSecondaryBrush");
+        foreach (var element in _customColElements)
+        {
+            if (element is TextBlock textBlock)
+                textBlock.Foreground = secondaryBrush;
+        }
     }
 
     #endregion

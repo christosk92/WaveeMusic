@@ -590,6 +590,7 @@ public sealed partial class TrackItem : UserControl
 
         // Ensure playback bridge is initialized (idempotent)
         TrackStateBehavior.EnsurePlaybackSubscription();
+        ActualThemeChanged += OnActualThemeChanged;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
 
@@ -879,34 +880,28 @@ public sealed partial class TrackItem : UserControl
         {
             case ChartStatus.Up:
                 RowChartStatusGlyph.Glyph = FluentGlyphs.ChartUp;
-                RowChartStatusGlyph.Foreground =
-                    (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"];
-                RowChartStatusDelta.Foreground =
-                    (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"];
+                RowChartStatusGlyph.Foreground = ResolveTrackBrush("SystemFillColorSuccessBrush");
+                RowChartStatusDelta.Foreground = ResolveTrackBrush("SystemFillColorSuccessBrush");
                 RowChartStatusDelta.Text = info.Delta is > 0
                     ? info.Delta!.Value.ToString()
                     : string.Empty;
                 break;
             case ChartStatus.Down:
                 RowChartStatusGlyph.Glyph = FluentGlyphs.ChartDown;
-                RowChartStatusGlyph.Foreground =
-                    (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
-                RowChartStatusDelta.Foreground =
-                    (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
+                RowChartStatusGlyph.Foreground = ResolveTrackBrush("SystemFillColorCriticalBrush");
+                RowChartStatusDelta.Foreground = ResolveTrackBrush("SystemFillColorCriticalBrush");
                 RowChartStatusDelta.Text = info.Delta is < 0
                     ? (-info.Delta!.Value).ToString()
                     : string.Empty;
                 break;
             case ChartStatus.Equal:
                 RowChartStatusGlyph.Glyph = FluentGlyphs.ChartEqual;
-                RowChartStatusGlyph.Foreground =
-                    (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"];
+                RowChartStatusGlyph.Foreground = ResolveTrackBrush("TextFillColorTertiaryBrush");
                 RowChartStatusDelta.Text = string.Empty;
                 break;
             case ChartStatus.New:
                 RowChartStatusGlyph.Visibility = Visibility.Collapsed;
-                RowChartStatusDelta.Foreground =
-                    (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
+                RowChartStatusDelta.Foreground = ResolveTrackBrush("AccentTextFillColorPrimaryBrush");
                 RowChartStatusDelta.Text =
                     AppLocalization.GetString("Playlist_Chart_New");
                 break;
@@ -942,8 +937,8 @@ public sealed partial class TrackItem : UserControl
         Grid.SetColumnSpan(RowProgressText, hasProgressBar ? 1 : 2);
         RowProgressText.HorizontalAlignment = hasProgressBar ? HorizontalAlignment.Right : HorizontalAlignment.Left;
         RowProgressText.Foreground = hasError
-            ? (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"]
-            : (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+            ? ResolveTrackBrush("SystemFillColorCriticalBrush")
+            : ResolveTrackBrush("TextFillColorSecondaryBrush");
         var releaseText = track is LibraryEpisodeDto { ReleaseDate: DateTimeOffset releaseDate }
             ? releaseDate.LocalDateTime.ToString("MMM d, yyyy")
             : "";

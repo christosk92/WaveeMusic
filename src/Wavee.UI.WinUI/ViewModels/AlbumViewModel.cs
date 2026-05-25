@@ -40,7 +40,7 @@ public enum AlbumSortColumn { Title, Artist, TrackNumber }
 /// Header payload for one disc in a multi-disc album. Bound by the
 /// <c>TrackDataGrid.GroupHeaderTemplate</c> in <c>AlbumPage.xaml</c>.
 /// </summary>
-public sealed record DiscGroupHeader(int Number, string TitleText, string DurationFormatted);
+public sealed record DiscGroupHeader(int Number, string TitleText);
 
 /// <summary>
 /// ViewModel for the Album detail page.
@@ -653,10 +653,6 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     private readonly ObservableCollection<LazyTrackItem> _filteredTracks = [];
     public IReadOnlyList<LazyTrackItem> FilteredTracks => _filteredTracks;
 
-    // Per-disc totals computed once whenever _allTracks is replaced. Used by the
-    // disc-grouping header in AlbumPage to render "Disc N · X songs · M min".
-    private IReadOnlyDictionary<int, TimeSpan> _discDurations =
-        new Dictionary<int, TimeSpan>();
     private bool _isMultiDisc;
 
     /// <summary>
@@ -675,16 +671,10 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     public Func<ITrackItem, object?> DiscGroupKeySelector { get; }
 
     /// <summary>
-    /// Builds the <see cref="DiscGroupHeader"/> payload for one disc, looking up
-    /// the cached total duration so the header can render "Disc N · M min".
+    /// Builds the <see cref="DiscGroupHeader"/> payload for one disc.
     /// Called once per group with the group's first item.
     /// </summary>
     public Func<ITrackItem, object> DiscGroupHeaderSelector { get; }
-
-    /// <summary>
-    /// "N songs" formatter for the disc header. Singular for one-track discs.
-    /// </summary>
-    public Func<int, string> DiscGroupCountFormatter { get; }
 
     // Sort indicator properties for column headers
     public bool IsSortingByTitle => CurrentSortColumn == AlbumSortColumn.Title;
@@ -734,16 +724,10 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
             var disc = (item is LazyTrackItem l && l.Data is AlbumTrackDto d)
                 ? d.DiscNumber
                 : 1;
-            var duration = _discDurations.TryGetValue(disc, out var ts)
-                ? ts
-                : TimeSpan.Zero;
             return new DiscGroupHeader(
                 disc,
-                $"Disc {disc.ToString(CultureInfo.InvariantCulture)}",
-                FormatDuration(duration.TotalSeconds));
+                $"Disc {disc.ToString(CultureInfo.InvariantCulture)}");
         };
-
-        DiscGroupCountFormatter = n => n == 1 ? "1 song" : $"{n:N0} songs";
 
         AttachLongLivedServices();
 
@@ -769,6 +753,61 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         if (_likeService != null)
             _likeService.SaveStateChanged -= OnSaveStateChanged;
     }
+
+    private bool IsCurrentAlbum(string albumId)
+        => !_disposed && string.Equals(AlbumId, albumId, StringComparison.Ordinal);
+
+    private Task RunOnUiThreadAsync(Action action)
+    {
+        bool hasThreadAccess;
+        try
+        {
+            hasThreadAccess = _dispatcherQueue.HasThreadAccess;
+        }
+        catch
+        {
+            return Task.CompletedTask;
+        }
+
+        if (hasThreadAccess)
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            if (!_dispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    action();
+                    tcs.TrySetResult(null);
+                }
+                catch (Exception ex)
+                {
+                    tcs.TrySetException(ex);
+                }
+            }))
+            {
+                tcs.TrySetResult(null);
+            }
+        }
+        catch
+        {
+            tcs.TrySetResult(null);
+        }
+
+        return tcs.Task;
+    }
+
+    private Task RunCurrentAlbumUiAsync(string albumId, Action action)
+        => RunOnUiThreadAsync(() =>
+        {
+            if (IsCurrentAlbum(albumId))
+                action();
+        });
 
     public void Initialize(string albumId, bool preserveHeaderPrefill = false)
     {
@@ -947,6 +986,10 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         _similarArtists.Clear();
         HasSimilarArtists = false;
         ArtistBioExcerpt = null;
+        ArtistAvatarImageUrl = null;
+        IsArtistVerified = false;
+        ArtistMonthlyListeners = 0;
+        IsArtistFollowing = false;
 
         _recommendedPlaylists.Clear();
         HasRecommendedPlaylists = false;
@@ -1050,29 +1093,29 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     }
 
     /// <summary>
-    /// Recomputes <see cref="IsMultiDisc"/> and the per-disc total durations
-    /// used by the disc-group header. Call after <c>_allTracks</c> is replaced.
+    /// Recomputes <see cref="IsMultiDisc"/>. Call after <c>_allTracks</c> is replaced.
     /// </summary>
     private void RebuildDiscMetadata()
     {
         if (_allTracks.Count == 0)
         {
-            _discDurations = new Dictionary<int, TimeSpan>();
             IsMultiDisc = false;
             return;
         }
 
-        var byDisc = new Dictionary<int, TimeSpan>();
+        var discs = new HashSet<int>();
         foreach (var t in _allTracks)
         {
             var disc = (t.Data as AlbumTrackDto)?.DiscNumber ?? 1;
-            byDisc[disc] = byDisc.TryGetValue(disc, out var acc)
-                ? acc + t.Duration
-                : t.Duration;
+            discs.Add(disc);
+            if (discs.Count > 1)
+            {
+                IsMultiDisc = true;
+                return;
+            }
         }
 
-        _discDurations = byDisc;
-        IsMultiDisc = byDisc.Count > 1;
+        IsMultiDisc = false;
     }
 
     private static HashSet<string> BuildPopularTrackIdSet(IReadOnlyList<AlbumTrackDto> tracks)
@@ -1430,76 +1473,83 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
             // frame can paint before this method's UI-thread tail runs.
             // Mirrors ArtistViewModel.LoadAsync's deferred-hydration pattern;
             // our caller already invokes us as `_ = ApplyDetailAsync`.
-            var prep = await Task.Run(() => BuildDetailPrep(detail));
+            var prep = await Task.Run(() => BuildDetailPrep(detail)).ConfigureAwait(false);
 
             // The user may have navigated to a different album while the prep
             // ran on the threadpool. Bail before touching observables.
-            if (_disposed || AlbumId != albumId) return;
+            if (!IsCurrentAlbum(albumId)) return;
 
-            _allTracks = prep.Tracks;
-            RebuildDiscMetadata();
-            _popularTrackIds = prep.PopularTrackIds;
-
-            TotalTracks = _allTracks.Count;
-            TotalDuration = FormatDuration(prep.TotalSeconds);
-            IsLoadingTracks = false;
-
-            var current = Album ?? EmptyAlbumEnvelope();
-            var firstArtist = detail.Artists.FirstOrDefault();
-            var year = prep.Year ?? current.Year;
-            var releaseDateFormatted = prep.ReleaseDateFormatted ?? current.ReleaseDateFormatted;
-            var copyrightsText = prep.CopyrightsText ?? current.CopyrightsText;
-
-            Album = current with
+            await RunCurrentAlbumUiAsync(albumId, () =>
             {
-                Id = albumId,
-                Name = !string.IsNullOrEmpty(detail.Name) ? detail.Name : current.Name,
-                ImageUrl = !string.IsNullOrEmpty(detail.CoverArtUrl) && string.IsNullOrEmpty(current.ImageUrl)
-                    ? detail.CoverArtUrl
-                    : current.ImageUrl,
-                ColorHex = detail.ColorDarkHex,
-                ArtistId = !string.IsNullOrEmpty(firstArtist?.Uri) ? firstArtist!.Uri! : current.ArtistId,
-                ArtistName = !string.IsNullOrEmpty(firstArtist?.Name) ? firstArtist!.Name! : current.ArtistName,
-                ArtistImageUrl = !string.IsNullOrEmpty(firstArtist?.ImageUrl) ? firstArtist!.ImageUrl : current.ArtistImageUrl,
-                Artists = prep.Billed,
-                ArtistAvatarItems = prep.AvatarItems,
-                HeaderArtistLinks = prep.HeaderArtistLinks,
-                AllDistinctArtists = prep.AllDistinctArtists,
-                OverflowArtistCount = prep.OverflowArtistCount,
-                Year = year,
-                Type = !string.IsNullOrEmpty(detail.Type) ? detail.Type : current.Type,
-                Label = detail.Label,
-                ReleaseDateFormatted = releaseDateFormatted,
-                CopyrightsText = copyrightsText,
-                IsPreRelease = detail.IsPreRelease,
-                PreReleaseEndDateTime = detail.PreReleaseEndDateTime,
-                PreReleaseFormatted = prep.PreReleaseFormatted,
-                PreReleaseRelative = prep.PreReleaseRelative,
-                ShareUrl = detail.ShareUrl,
-                MetaInlineLine = BuildMetaInlineLine(TotalTracks, prep.TotalSeconds, year),
-                Palette = detail.Palette,
-                TotalTracks = TotalTracks
-            };
+                _allTracks = prep.Tracks;
+                RebuildDiscMetadata();
+                _popularTrackIds = prep.PopularTrackIds;
 
-            IsSaved = detail.IsSaved;
-            RefreshSaveState();
-            IsLoading = false;
+                TotalTracks = _allTracks.Count;
+                TotalDuration = FormatDuration(prep.TotalSeconds);
+                IsLoadingTracks = false;
 
-            // Apply the real track snapshot in one reset. The grid-level loading
-            // skeleton avoids constructing placeholder TrackItems before this.
-            ApplyFilterAndSort();
+                var current = Album ?? EmptyAlbumEnvelope();
+                var firstArtist = detail.Artists.FirstOrDefault();
+                var year = prep.Year ?? current.Year;
+                var releaseDateFormatted = prep.ReleaseDateFormatted ?? current.ReleaseDateFormatted;
+                var copyrightsText = prep.CopyrightsText ?? current.CopyrightsText;
 
-            _ = ApplySecondaryAlbumSectionsAsync(detail, albumId);
+                Album = current with
+                {
+                    Id = albumId,
+                    Name = !string.IsNullOrEmpty(detail.Name) ? detail.Name : current.Name,
+                    ImageUrl = !string.IsNullOrEmpty(detail.CoverArtUrl) && string.IsNullOrEmpty(current.ImageUrl)
+                        ? detail.CoverArtUrl
+                        : current.ImageUrl,
+                    ColorHex = detail.ColorDarkHex,
+                    ArtistId = !string.IsNullOrEmpty(firstArtist?.Uri) ? firstArtist!.Uri! : current.ArtistId,
+                    ArtistName = !string.IsNullOrEmpty(firstArtist?.Name) ? firstArtist!.Name! : current.ArtistName,
+                    ArtistImageUrl = !string.IsNullOrEmpty(firstArtist?.ImageUrl) ? firstArtist!.ImageUrl : current.ArtistImageUrl,
+                    Artists = prep.Billed,
+                    ArtistAvatarItems = prep.AvatarItems,
+                    HeaderArtistLinks = prep.HeaderArtistLinks,
+                    AllDistinctArtists = prep.AllDistinctArtists,
+                    OverflowArtistCount = prep.OverflowArtistCount,
+                    Year = year,
+                    Type = !string.IsNullOrEmpty(detail.Type) ? detail.Type : current.Type,
+                    Label = detail.Label,
+                    ReleaseDateFormatted = releaseDateFormatted,
+                    CopyrightsText = copyrightsText,
+                    IsPreRelease = detail.IsPreRelease,
+                    PreReleaseEndDateTime = detail.PreReleaseEndDateTime,
+                    PreReleaseFormatted = prep.PreReleaseFormatted,
+                    PreReleaseRelative = prep.PreReleaseRelative,
+                    ShareUrl = detail.ShareUrl,
+                    MetaInlineLine = BuildMetaInlineLine(TotalTracks, prep.TotalSeconds, year),
+                    Palette = detail.Palette,
+                    TotalTracks = TotalTracks
+                };
+
+                IsSaved = detail.IsSaved;
+                ArtistAvatarImageUrl = Album.ArtistImageUrl;
+                RefreshSaveState();
+                IsLoading = false;
+
+                // Apply the real track snapshot in one reset. The grid-level loading
+                // skeleton avoids constructing placeholder TrackItems before this.
+                ApplyFilterAndSort();
+
+                _ = ApplySecondaryAlbumSectionsAsync(detail, albumId);
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            HasError = true;
-            ErrorMessage = ex.Message;
+            await RunCurrentAlbumUiAsync(albumId, () =>
+            {
+                HasError = true;
+                ErrorMessage = ex.Message;
+            }).ConfigureAwait(false);
             _logger?.LogError(ex, "Failed to load album {AlbumId}", albumId);
         }
         finally
         {
-            IsLoading = false;
+            await RunCurrentAlbumUiAsync(albumId, () => IsLoading = false).ConfigureAwait(false);
         }
     }
 
@@ -1517,58 +1567,87 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
 
     private async Task ApplySecondaryAlbumSectionsAsync(AlbumDetailResult detail, string albumId)
     {
-        // Let hero + track grid paint before shelves, artist context, playlist
-        // rootlist, and video-badge probes invalidate more UI.
-        await Task.Delay(32);
-        if (_disposed || AlbumId != albumId) return;
-
-        _moreByArtist.ReplaceWith(detail.MoreByArtist);
-        HasMoreByArtist = MoreByArtist.Count > 0;
-        HasNoRelatedAlbums = !HasMoreByArtist;
-
-        await Task.Yield();
-        if (_disposed || AlbumId != albumId) return;
-
-        _alternateReleases.ReplaceWith(detail.AlternateReleases);
-        OnPropertyChanged(nameof(AlternateReleases));
-        HasAlternateReleases = AlternateReleases.Count > 0;
-
-        await Task.Yield();
-        if (_disposed || AlbumId != albumId) return;
-
-        // Rootlist is only needed for the "Add to playlist" affordance.
-        _ = LoadRootlistAsync();
-
-        if (_musicVideoMetadata is not null && detail.Tracks.Count > 0)
+        try
         {
-            _ = _musicVideoMetadata.ApplyAvailabilityToAsync(
-                detail.Tracks,
+            // Let hero + track grid paint before shelves, artist context, playlist
+            // rootlist, and video-badge probes invalidate more UI.
+            await Task.Delay(32).ConfigureAwait(false);
+            if (!IsCurrentAlbum(albumId)) return;
+
+            await RunCurrentAlbumUiAsync(albumId, () =>
+            {
+                _moreByArtist.ReplaceWith(detail.MoreByArtist);
+                HasMoreByArtist = MoreByArtist.Count > 0;
+                HasNoRelatedAlbums = !HasMoreByArtist;
+            }).ConfigureAwait(false);
+
+            await Task.Yield();
+            if (!IsCurrentAlbum(albumId)) return;
+
+            await RunCurrentAlbumUiAsync(albumId, () =>
+            {
+                _alternateReleases.ReplaceWith(detail.AlternateReleases);
+                OnPropertyChanged(nameof(AlternateReleases));
+                HasAlternateReleases = AlternateReleases.Count > 0;
+            }).ConfigureAwait(false);
+
+            await Task.Yield();
+            if (!IsCurrentAlbum(albumId)) return;
+
+            await RunCurrentAlbumUiAsync(albumId, () =>
+            {
+                // Rootlist is only needed for the "Add to playlist" affordance.
+                _ = LoadRootlistAsync();
+
+                if (_musicVideoMetadata is not null && detail.Tracks.Count > 0)
+                    _ = ApplyMusicVideoAvailabilityAsync(detail.Tracks);
+
+                _ = LoadMerchAsync(albumId);
+                _ = LoadSimilarAlbumsAsync(albumId);
+
+                if (_allTracks.Count is >= 1 and <= 2)
+                {
+                    _ = LoadSingleTrackContextAsync(albumId, _allTracks[0]);
+                }
+                else
+                {
+                    var multiTrackArtistUri = detail.Artists.FirstOrDefault()?.Uri;
+                    if (!string.IsNullOrEmpty(multiTrackArtistUri))
+                        _ = LoadArtistContextAsync(albumId, multiTrackArtistUri);
+                }
+
+                var npvArtistUri = detail.Artists.FirstOrDefault()?.Uri;
+                var npvLeadTrackUri = (_allTracks.FirstOrDefault()?.Data as AlbumTrackDto)?.Uri;
+                if (!string.IsNullOrEmpty(npvArtistUri) && !string.IsNullOrEmpty(npvLeadTrackUri))
+                    _ = LoadArtistNpvAsync(albumId, npvArtistUri, npvLeadTrackUri);
+
+                RefreshArtistFollowState();
+                _ = LoadRecommendedPlaylistsAsync(albumId);
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "ApplySecondaryAlbumSectionsAsync failed for {AlbumId}", albumId);
+        }
+    }
+
+    private async Task ApplyMusicVideoAvailabilityAsync(IReadOnlyList<AlbumTrackDto> tracks)
+    {
+        try
+        {
+            if (_musicVideoMetadata is null || tracks.Count == 0)
+                return;
+
+            await _musicVideoMetadata.ApplyAvailabilityToAsync(
+                tracks,
                 static t => t.Uri,
                 static (t, v) => t.HasLinkedLocalVideo = v,
-                CancellationToken.None);
+                CancellationToken.None).ConfigureAwait(false);
         }
-
-        _ = LoadMerchAsync(albumId);
-        _ = LoadSimilarAlbumsAsync(albumId);
-
-        if (_allTracks.Count is >= 1 and <= 2)
+        catch (Exception ex)
         {
-            _ = LoadSingleTrackContextAsync(albumId, _allTracks[0]);
+            _logger?.LogDebug(ex, "Music-video availability probe failed for album {AlbumId}", AlbumId);
         }
-        else
-        {
-            var multiTrackArtistUri = detail.Artists.FirstOrDefault()?.Uri;
-            if (!string.IsNullOrEmpty(multiTrackArtistUri))
-                _ = LoadArtistContextAsync(albumId, multiTrackArtistUri);
-        }
-
-        var npvArtistUri = detail.Artists.FirstOrDefault()?.Uri;
-        var npvLeadTrackUri = (_allTracks.FirstOrDefault()?.Data as AlbumTrackDto)?.Uri;
-        if (!string.IsNullOrEmpty(npvArtistUri) && !string.IsNullOrEmpty(npvLeadTrackUri))
-            _ = LoadArtistNpvAsync(albumId, npvArtistUri, npvLeadTrackUri);
-
-        RefreshArtistFollowState();
-        _ = LoadRecommendedPlaylistsAsync(albumId);
     }
 
     private async Task LoadRootlistAsync()
@@ -1579,11 +1658,11 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
             if (_disposed)
                 return;
 
-            _dispatcherQueue.TryEnqueue(() =>
+            await RunOnUiThreadAsync(() =>
             {
                 if (!_disposed)
                     _playlists.ReplaceWith(list);
-            });
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1648,6 +1727,9 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     {
         _dispatcherQueue.TryEnqueue(() =>
         {
+            if (_disposed)
+                return;
+
             RefreshSaveState();
             // Same broadcast covers the album-heart AND the artist-follow pill
             // — both bind to ITrackLikeService state, so a toggle from any
@@ -1760,9 +1842,14 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     {
         try
         {
-            var items = await Task.Run(async () => await _albumService.GetMerchAsync(albumUri));
-            _merchItems.ReplaceWith(items);
-            OnPropertyChanged(nameof(HasMerch));
+            var items = await Task.Run(async () => await _albumService.GetMerchAsync(albumUri))
+                .ConfigureAwait(false);
+
+            await RunCurrentAlbumUiAsync(albumUri, () =>
+            {
+                _merchItems.ReplaceWith(items);
+                OnPropertyChanged(nameof(HasMerch));
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1775,14 +1862,17 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         try
         {
             var items = await Task.Run(() => _albumService.GetRecommendedPlaylistsAsync(albumUri))
-                .ConfigureAwait(true);
+                .ConfigureAwait(false);
 
             // Staleness guard — the user may have navigated to another album
             // while the batched extended-metadata POST was in flight.
-            if (AlbumId != albumUri) return;
+            if (!IsCurrentAlbum(albumUri)) return;
 
-            _recommendedPlaylists.ReplaceWith(items);
-            HasRecommendedPlaylists = items.Count > 0;
+            await RunCurrentAlbumUiAsync(albumUri, () =>
+            {
+                _recommendedPlaylists.ReplaceWith(items);
+                HasRecommendedPlaylists = items.Count > 0;
+            }).ConfigureAwait(false);
 
             // Warm PlaylistStore + BitmapImage cache so clicking a recommended
             // card opens the playlist page with the hero already populated.
@@ -1816,10 +1906,13 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         try
         {
             var results = await Task.Run(async () =>
-                await _albumService.GetSimilarAlbumsAsync(seedTrack.Uri));
-            if (AlbumId != albumId) return; // stale
-            _similarAlbums.ReplaceWith(results);
-            HasSimilarAlbums = _similarAlbums.Count > 0;
+                await _albumService.GetSimilarAlbumsAsync(seedTrack.Uri)).ConfigureAwait(false);
+
+            await RunCurrentAlbumUiAsync(albumId, () =>
+            {
+                _similarAlbums.ReplaceWith(results);
+                HasSimilarAlbums = _similarAlbums.Count > 0;
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1832,11 +1925,14 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         try
         {
             var context = await Task.Run(async () =>
-                await _albumService.GetArtistContextAsync(artistUri));
-            if (AlbumId != albumId) return; // stale
-            ArtistBioExcerpt = context.BioExcerpt;
-            _similarArtists.ReplaceWith(context.SimilarArtists);
-            HasSimilarArtists = _similarArtists.Count > 0;
+                await _albumService.GetArtistContextAsync(artistUri)).ConfigureAwait(false);
+
+            await RunCurrentAlbumUiAsync(albumId, () =>
+            {
+                ArtistBioExcerpt = context.BioExcerpt;
+                _similarArtists.ReplaceWith(context.SimilarArtists);
+                HasSimilarArtists = _similarArtists.Count > 0;
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1851,10 +1947,13 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         try
         {
             var videoUri = await Task.Run(async () =>
-                await _albumService.GetMusicVideoUriAsync(dto.Uri));
-            if (AlbumId != albumId) return; // stale
-            MusicVideoUri = videoUri;
-            HasMusicVideo = !string.IsNullOrEmpty(videoUri);
+                await _albumService.GetMusicVideoUriAsync(dto.Uri)).ConfigureAwait(false);
+
+            await RunCurrentAlbumUiAsync(albumId, () =>
+            {
+                MusicVideoUri = videoUri;
+                HasMusicVideo = !string.IsNullOrEmpty(videoUri);
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1872,14 +1971,19 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         try
         {
             var npv = await Task.Run(async () =>
-                await _albumService.GetArtistNpvAsync(artistUri, leadTrackUri));
-            if (_disposed || AlbumId != albumId || npv is null) return; // stale or failed
+                await _albumService.GetArtistNpvAsync(artistUri, leadTrackUri)).ConfigureAwait(false);
+            if (npv is null) return;
 
-            ArtistAvatarImageUrl = npv.AvatarImageUrl;
-            IsArtistVerified = npv.IsVerified;
-            ArtistMonthlyListeners = npv.MonthlyListeners;
-            if (!string.IsNullOrEmpty(npv.BioExcerpt))
-                ArtistBioExcerpt = npv.BioExcerpt;
+            await RunCurrentAlbumUiAsync(albumId, () =>
+            {
+                ArtistAvatarImageUrl = !string.IsNullOrWhiteSpace(npv.AvatarImageUrl)
+                    ? npv.AvatarImageUrl
+                    : ArtistImageUrl;
+                IsArtistVerified = npv.IsVerified;
+                ArtistMonthlyListeners = npv.MonthlyListeners;
+                if (!string.IsNullOrEmpty(npv.BioExcerpt))
+                    ArtistBioExcerpt = npv.BioExcerpt;
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1916,14 +2020,17 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         try
         {
             var ctx = await Task.Run(async () =>
-                await _albumService.GetSingleTrackContextAsync(dto.Uri));
-            if (AlbumId != albumId || ctx == null) return; // stale or failed
+                await _albumService.GetSingleTrackContextAsync(dto.Uri)).ConfigureAwait(false);
+            if (ctx == null) return;
 
-            MusicVideoUri = ctx.MusicVideoUri;
-            HasMusicVideo = !string.IsNullOrEmpty(ctx.MusicVideoUri);
+            await RunCurrentAlbumUiAsync(albumId, () =>
+            {
+                MusicVideoUri = ctx.MusicVideoUri;
+                HasMusicVideo = !string.IsNullOrEmpty(ctx.MusicVideoUri);
 
-            _similarArtists.ReplaceWith(ctx.RelatedArtists);
-            HasSimilarArtists = _similarArtists.Count > 0;
+                _similarArtists.ReplaceWith(ctx.RelatedArtists);
+                HasSimilarArtists = _similarArtists.Count > 0;
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -2047,12 +2154,13 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
 
         _allTracks.Clear();
         _popularTrackIds.Clear();
-        _filteredTracks.Clear();
-        _alternateReleases.Clear();
-        _moreByArtist.Clear();
-        _merchItems.Clear();
-        _playlists.Clear();
-        _similarAlbums.Clear();
-        _similarArtists.Clear();
+        _filteredTracks.ClearWithoutNotify();
+        _alternateReleases.ClearWithoutNotify();
+        _moreByArtist.ClearWithoutNotify();
+        _merchItems.ClearWithoutNotify();
+        _playlists.ClearWithoutNotify();
+        _similarAlbums.ClearWithoutNotify();
+        _similarArtists.ClearWithoutNotify();
+        _recommendedPlaylists.ClearWithoutNotify();
     }
 }

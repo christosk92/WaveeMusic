@@ -140,7 +140,8 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
             if (ViewModel.IsContentReady)
                 _ = TryRevealFooterAsync();
         }
-        else if (e.PropertyName == nameof(AlbumViewModel.AlternateReleases))
+        else if (e.PropertyName == nameof(AlbumViewModel.AlternateReleases)
+                 || e.PropertyName == nameof(AlbumViewModel.HasAlternateReleases))
             RebuildOtherVersionsFlyout();
         else if (e.PropertyName == nameof(AlbumViewModel.HeaderArtistLinks))
             RebuildHeaderArtistsText();
@@ -196,35 +197,6 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         // fully constructed and PropertyChanged finds HeaderArtistsText null.
         RebuildHeaderArtistsText();
 
-        // Defer parallax wire-up one dispatcher tick. Under PageHost, the page
-        // is added to the host's internal panel programmatically; Loaded fires
-        // synchronously inside that add but `PageScrollView.ExpressionAnimationSources`
-        // can be silently empty until the ScrollView's composition is fully
-        // realised, which lands on the next frame. Without this defer the
-        // sticky expression starts up bound to an empty source and never
-        // updates as the user scrolls.
-        DispatcherQueue?.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
-            () =>
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[album.parallax] AttachParallax (deferred). " +
-                    $"PageScrollView={(PageScrollView is null ? "NULL" : "ok")} " +
-                    $"LeftColumnHost={(LeftColumnHost is null ? "NULL" : "ok")} " +
-                    $"already-attached={_parallaxAttached}");
-                AttachParallax();
-
-                // Left-column overflow handling: dynamic MaxHeight on the inner
-                // ScrollView keeps secondary metadata reachable when the sticky
-                // column would otherwise clip below the viewport. Wire the page
-                // ScrollView's SizeChanged so the inner cap recomputes on window
-                // resize; LeftPinnedZone.SizeChanged in XAML covers the case
-                // where the title wraps to more/fewer lines and changes the
-                // pinned-zone height.
-                if (PageScrollView is not null)
-                    PageScrollView.SizeChanged += PageScrollView_SizeChangedForLeftScroll;
-                UpdateLeftScrollableMaxHeight();
-            });
     }
 
     private void AlbumPage_Unloaded(object sender, RoutedEventArgs e)
@@ -234,171 +206,6 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         // subscription attached for the page's lifetime — unhooking here would
         // leave the cached page deaf to the next IsLoading=false transition.
         PageController.IsNavigatingAway = true;
-        DetachParallax();
-        if (PageScrollView is not null)
-            PageScrollView.SizeChanged -= PageScrollView_SizeChangedForLeftScroll;
-    }
-
-    // ── Left-column overflow: sticky top + scrollable bottom ─────────────────
-    //
-    // LeftPinnedZone (cover/title/CTAs) is always visible. Everything below it
-    // lives inside LeftScrollableZone, a Microsoft.UI.Xaml.Controls.ScrollView
-    // whose MaxHeight is capped at (PageScrollView.ActualHeight − pinned.ActualHeight
-    // − 24) so it scrolls in place instead of overflowing into the void below
-    // the sticky parallax region. VerticalScrollChainMode=Always (set in XAML)
-    // routes wheel through to PageScrollView once we hit the inner edge.
-
-    private void PageScrollView_SizeChangedForLeftScroll(object sender, SizeChangedEventArgs e)
-        => UpdateLeftScrollableMaxHeight();
-
-    private void LeftPinnedZone_SizeChanged(object sender, SizeChangedEventArgs e)
-        => UpdateLeftScrollableMaxHeight();
-
-    private void UpdateLeftScrollableMaxHeight()
-    {
-        if (LeftPinnedZone is null || LeftScrollableZone is null || PageScrollView is null)
-            return;
-
-        const double bottomBreathingRoom = 24; // matches ContentContainer bottom padding
-        const double minScrollableHeight = 120; // never collapse fully; user can still
-                                                // reach the rest by scrolling the page
-
-        var available = PageScrollView.ActualHeight
-                        - LeftPinnedZone.ActualHeight
-                        - bottomBreathingRoom;
-        LeftScrollableZone.MaxHeight = System.Math.Max(minScrollableHeight, available);
-    }
-
-    // ── Sticky left column (composition-thread) ──────────────────────────
-    //
-    // Single unified page-level ScrollView drives the whole layout (left
-    // sidebar + TrackDataGrid + footer rail). The ScrollView translates ALL
-    // its content up by `offset`, so to make the left column stay PINNED at
-    // its starting position we apply an equal-and-opposite Translation.Y to
-    // its composition Visual: `+offset` cancels the scroll exactly.
-    //
-    // CRITICAL: this runs as an ExpressionAnimation bound to the
-    // ScrollView's ExpressionAnimationSources — NOT a UI-thread
-    // ViewChanged handler. The event-handler version had a visible
-    // "scroll-then-snap-back" flicker because ViewChanged fires AFTER the
-    // frame has painted; the compensating translation always landed one
-    // frame late. The expression runs on the composition thread in
-    // lockstep with the scroll, so the visual is never observably out of
-    // position.
-    //
-    // The MaxLag scalar in the local _stickyProps property set caps the
-    // translation when the column is taller than the viewport — after the
-    // user has scrolled past the column's own extent, it begins to scroll
-    // off naturally so the page doesn't permanently lock the sidebar at the
-    // top. Updated via SizeChanged whenever either bounds change.
-
-    private bool _parallaxAttached;
-    private Microsoft.UI.Composition.CompositionPropertySet? _stickyProps;
-    private Microsoft.UI.Composition.ExpressionAnimation? _stickyAnimation;
-
-    private void AttachParallax()
-    {
-        System.Diagnostics.Debug.WriteLine(
-            $"[diag-album] AttachParallax.enter parallaxAttached={_parallaxAttached} " +
-            $"pageScrollView={(PageScrollView is null ? "NULL" : "ok")} " +
-            $"leftColumnHost={(LeftColumnHost is null ? "NULL" : "ok")}");
-        if (_parallaxAttached) return;
-        if (PageScrollView is null || LeftColumnHost is null) return;
-        _parallaxAttached = true;
-
-        var visual = ElementCompositionPreview.GetElementVisual(LeftColumnHost);
-        var compositor = visual.Compositor;
-
-        // Animatable Translation requires opt-in; the default Visual surface
-        // ignores `StartAnimation("Translation", …)` without this.
-        ElementCompositionPreview.SetIsTranslationEnabled(LeftColumnHost, true);
-
-        // Property set kept (empty) so the SetReferenceParameter("source", ...)
-        // wiring stays in place; the current expression only depends on the
-        // ScrollView's own ExpressionAnimationSources (Position, Extent,
-        // Viewport) so no per-element scalars are needed.
-        _stickyProps = compositor.CreatePropertySet();
-
-        // ExpressionAnimationSources on the NEW ScrollView control exposes
-        // `Position` (Vector2 — positive Y when scrolled DOWN),
-        // `Extent` (content size) and `Viewport` (visible size). That's the
-        // raw offset we want to apply as a positive Y translation to pull
-        // the column DOWN, countering the scroll's upward push and pinning
-        // the column in place. (The OLD ScrollViewer.ManipulationPropertySet
-        // used a NEGATIVE `Translation` property — different shape; don't
-        // confuse the two.)
-        //
-        // Clamp(Y, 0, max(0, ExtentH - ViewportH)):
-        //   • For Y small: T = Y → column pinned at viewport top.
-        //   • At max scroll (Y = ExtentH - ViewportH), T plateaus at the cap;
-        //     since the page can't scroll further, the column visually stays
-        //     pinned for the entire scroll range.
-        //
-        // Earlier revisions capped at ExtentH - LeftColH. When the sidebar
-        // was taller than the available content (small track list, big
-        // metadata card), the cap collapsed to 0 and the column stopped
-        // sticking immediately after the user started scrolling — the
-        // "sticks for a few px and quits" symptom. Viewport-based cap
-        // sticks correctly for every size ratio.
-        _stickyAnimation = compositor.CreateExpressionAnimation(
-            "Vector3(0, Clamp(scroll.Position.Y, 0, Max(scroll.Extent.Y - scroll.Viewport.Y, 0)), 0)");
-        _stickyAnimation.SetReferenceParameter("scroll", PageScrollView.ExpressionAnimationSources);
-        _stickyAnimation.SetReferenceParameter("source", _stickyProps);
-        visual.StartAnimation("Translation", _stickyAnimation);
-
-        LeftColumnHost.SizeChanged += StickyAnchors_SizeChanged;
-        PageScrollView.SizeChanged += StickyAnchors_SizeChanged;
-    }
-
-    private void DetachParallax()
-    {
-        System.Diagnostics.Debug.WriteLine(
-            $"[diag-album] DetachParallax.enter parallaxAttached={_parallaxAttached} stack={new System.Diagnostics.StackTrace(1, false).ToString().Replace("\n", " | ").Substring(0, Math.Min(300, new System.Diagnostics.StackTrace(1, false).ToString().Length))}");
-        if (!_parallaxAttached) return;
-        _parallaxAttached = false;
-
-        if (LeftColumnHost is not null)
-            LeftColumnHost.SizeChanged -= StickyAnchors_SizeChanged;
-        if (PageScrollView is not null)
-            PageScrollView.SizeChanged -= StickyAnchors_SizeChanged;
-
-        if (LeftColumnHost is not null)
-        {
-            var visual = ElementCompositionPreview.GetElementVisual(LeftColumnHost);
-            visual.StopAnimation("Translation");
-            // Reset Translation explicitly so the next attach starts at
-            // origin — StopAnimation alone leaves the last computed value.
-            ElementCompositionPreview.SetIsTranslationEnabled(LeftColumnHost, true);
-            visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
-        }
-
-        _stickyAnimation?.Dispose();
-        _stickyAnimation = null;
-        _stickyProps?.Dispose();
-        _stickyProps = null;
-    }
-
-    private void StickyAnchors_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        // Cap is sourced from scroll.Extent.Y / scroll.Viewport.Y which the
-        // expression reads reactively from ExpressionAnimationSources — no
-        // SizeChanged-driven scalar push is needed. Hook retained so any
-        // future tweak that re-introduces a column-height term has a wiring
-        // point.
-    }
-
-    // Retained for reference / future tuning. Not called by the expression
-    // animation anymore — Extent and LeftColHeight are sourced reactively.
-    private float ComputeMaxLagFloat()
-    {
-        if (LeftColumnHost is null || PageScrollView is null) return float.MaxValue / 2f;
-        var columnHeight = LeftColumnHost.ActualHeight;
-        var viewportHeight = PageScrollView.ActualHeight;
-        // Column shorter than viewport: pin indefinitely (huge ceiling, the
-        // user can never scroll far enough to hit it).
-        if (columnHeight <= 0 || viewportHeight <= 0 || columnHeight <= viewportHeight)
-            return float.MaxValue / 2f;
-        return (float)(columnHeight - viewportHeight);
     }
 
     public void Dispose()
@@ -477,7 +284,7 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
     {
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.album.onLeaving");
         System.Diagnostics.Debug.WriteLine(
-            $"[diag-album] OnLeaving vm.AlbumId={ViewModel.AlbumId} parallaxAttached={_parallaxAttached}");
+            $"[diag-album] OnLeaving vm.AlbumId={ViewModel.AlbumId}");
         _logger?.LogDebug("[xfade][album:{Id}] nav.from", XfadeLog.Tag(ViewModel.AlbumId));
         // Trim work (Hibernate + Bindings.StopTracking) is deferred ~1 s by
         // TabBarItem's central scheduler — calling it synchronously here
@@ -494,15 +301,6 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         _trimmedForNavigationCache = true;
         _lastRestoredAlbumId = ViewModel.AlbumId;
         ViewModel.Hibernate();
-        // NOTE: do NOT DetachParallax here. Under PageHost the page is kept
-        // rooted with Visibility=Collapsed on leave (not detached from the
-        // visual tree like Frame did) — the composition ExpressionAnimation
-        // can safely keep evaluating against the still-rooted ScrollView
-        // while the page is hidden. Detaching here would break sticky on the
-        // next cache-hit re-entry because Loaded does NOT re-fire under
-        // PageHost (page Visibility flips but it never leaves the tree), so
-        // there's no chance to re-attach. DetachParallax stays in
-        // AlbumPage_Unloaded for true teardown (cache eviction).
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
         // sibling is no longer rooted by the (singleton-store-subscribed) VM —
         // without this the entire page tree is pinned across navigations.
@@ -606,7 +404,7 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
         System.Diagnostics.Debug.WriteLine(
             $"[diag-album] LoadNewContent.enter mode={mode} wasTrimmed={wasTrimmed} vm.AlbumId={ViewModel.AlbumId} " +
             $"vm.AlbumName={ViewModel.AlbumName} vm.AlbumImageUrl={(ViewModel.AlbumImageUrl ?? "<null>")} " +
-            $"vm.IsLoading={ViewModel.IsLoading} parallaxAttached={_parallaxAttached}");
+            $"vm.IsLoading={ViewModel.IsLoading}");
         _logger?.LogDebug(
             "[xfade][album:{Id}] load.enter",
             XfadeLog.Tag(ViewModel.AlbumId));
@@ -754,9 +552,10 @@ public sealed partial class AlbumPage : UserControl, ITabBarItemContent, INaviga
     {
         try
         {
-            PageScrollView?.ScrollTo(
+            LeftColumnScrollView?.ScrollTo(
                 0, 0,
                 new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
+            TrackGrid?.ScrollRowsToTop();
         }
         catch (Exception ex)
         {

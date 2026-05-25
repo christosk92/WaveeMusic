@@ -380,6 +380,7 @@
                         DurationMs="{x:Bind ViewModel.Duration, Mode=OneWay}"
                         IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
                         IsBuffering="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                        HoverPreviewItems="{x:Bind ViewModel.HoverPreviewItems, Mode=OneWay}"
                         SeekStarted="ProgressBar_SeekStarted"
                         SeekCommitted="ProgressBar_SeekCommitted"
                         Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
@@ -635,6 +636,7 @@
                     DurationMs="{x:Bind ViewModel.Duration, Mode=OneWay}"
                     IsPlaying="{x:Bind ViewModel.IsPlaying, Mode=OneWay}"
                     IsBuffering="{x:Bind ViewModel.IsBuffering, Mode=OneWay}"
+                    HoverPreviewItems="{x:Bind ViewModel.HoverPreviewItems, Mode=OneWay}"
                     SeekStarted="ProgressBar_SeekStarted"
                     SeekCommitted="ProgressBar_SeekCommitted"
                     Visibility="{x:Bind ViewModel.IsBuffering, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />

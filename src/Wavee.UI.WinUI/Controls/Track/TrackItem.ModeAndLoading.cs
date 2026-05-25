@@ -298,7 +298,7 @@ public sealed partial class TrackItem
             {
                 Text = values[i],
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                Foreground = _themeColors?.TextSecondary ?? (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                Foreground = ResolveTrackBrush("TextFillColorSecondaryBrush"),
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = columns[i].TextAlignment,
             };

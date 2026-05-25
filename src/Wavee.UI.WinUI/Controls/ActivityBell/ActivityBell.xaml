@@ -11,13 +11,18 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:BoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" Invert="True"/>
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:NullToVisibilityConverter x:Key="InverseNullToVisibilityConverter" Invert="True"/>
         <converters:NullToBoolConverter x:Key="NullToBoolConverter"/>
         <converters:StatusToActiveConverter x:Key="StatusToActiveConverter"/>
         <converters:NullableDoubleToDoubleConverter x:Key="NullableDoubleToDoubleConverter"/>
+        <converters:SpotifyImageConverter x:Key="SpotifyImageConverter"/>
+        <converters:ActivityOutcomeBrushConverter x:Key="ActivityOutcomeBrushConverter"/>
 
         <!-- ═══ Progress template (sync, download) ═══ -->
         <DataTemplate x:Key="ProgressTemplate" x:DataType="models:ProgressActivityItem">
             <Grid Padding="12,10" ColumnSpacing="12"
+                  Tag="{x:Bind}"
+                  Tapped="ActivityItem_Tapped"
                   Background="Transparent"
                   CornerRadius="6">
                 <Grid.ColumnDefinitions>
@@ -60,6 +65,8 @@
         <!-- ═══ Notification template (errors, release notes) ═══ -->
         <DataTemplate x:Key="NotificationTemplate" x:DataType="models:NotificationActivityItem">
             <Grid Padding="12,10" ColumnSpacing="12"
+                  Tag="{x:Bind}"
+                  Tapped="ActivityItem_Tapped"
                   Background="Transparent"
                   CornerRadius="6">
                 <Grid.RowDefinitions>
@@ -67,21 +74,45 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="32"/>
+                    <ColumnDefinition Width="40"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <Grid Width="32" Height="32" CornerRadius="16"
-                      Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                    <FontIcon Glyph="{x:Bind IconGlyph}" FontSize="14"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"
-                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                </Grid>
+                <Border Width="40" Height="40" CornerRadius="6"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <Grid>
+                        <Image Source="{Binding ImageUrl, Converter={StaticResource SpotifyImageConverter}, ConverterParameter=64}"
+                               Stretch="UniformToFill"
+                               Visibility="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"/>
+                        <FontIcon Glyph="{x:Bind IconGlyph}" FontSize="14"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  Visibility="{x:Bind ImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                    </Grid>
+                </Border>
 
                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                    <TextBlock Text="{x:Bind Title}" FontSize="13" FontWeight="SemiBold"
-                               Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                    <Grid ColumnSpacing="5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="{x:Bind OutcomeGlyph, Mode=OneWay}"
+                                  FontSize="11"
+                                  Margin="0,1,0,0"
+                                  VerticalAlignment="Center"
+                                  Foreground="{x:Bind Outcome, Mode=OneWay, Converter={StaticResource ActivityOutcomeBrushConverter}}"
+                                  ToolTipService.ToolTip="{x:Bind OutcomeLabel, Mode=OneWay}"
+                                  Visibility="{x:Bind HasOutcome, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        <TextBlock Grid.Column="1"
+                                   Text="{x:Bind Title}"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                   TextWrapping="WrapWholeWords"
+                                   MaxLines="2"/>
+                    </Grid>
                     <TextBlock Text="{x:Bind Message, Mode=OneWay}" FontSize="12"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap" MaxLines="2"
@@ -94,29 +125,50 @@
                          VerticalAlignment="Center"
                          Visibility="{x:Bind IsRead, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
 
+                <FontIcon Grid.Column="2" Glyph="&#xE76C;" FontSize="11"
+                          VerticalAlignment="Center"
+                          Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                          Visibility="{x:Bind HasNavigationTarget, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
                 <!-- Action buttons -->
-                <ItemsRepeater Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
-                               ItemsSource="{x:Bind Actions}"
-                               Visibility="{x:Bind Actions, Converter={StaticResource NullToVisibilityConverter}}"
-                               Margin="0,6,0,0">
-                    <ItemsRepeater.Layout>
-                        <StackLayout Orientation="Horizontal" Spacing="6"/>
-                    </ItemsRepeater.Layout>
-                    <ItemsRepeater.ItemTemplate>
-                        <DataTemplate x:DataType="models:ActivityAction">
-                            <Button Content="{x:Bind Label}"
-                                    Click="ActivityAction_Click"
-                                    FontSize="12" Padding="10,4"
-                                    CornerRadius="4"/>
-                        </DataTemplate>
-                    </ItemsRepeater.ItemTemplate>
-                </ItemsRepeater>
+                <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                            Orientation="Horizontal"
+                            Spacing="6"
+                            Margin="0,6,0,0"
+                            Visibility="{x:Bind HasActionRow, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Button Content="Details"
+                            Tag="{x:Bind}"
+                            CommandParameter="{x:Bind}"
+                            Click="ActivityDetails_Click"
+                            FontSize="12"
+                            Padding="10,4"
+                            CornerRadius="4"
+                            Visibility="{x:Bind HasDetailContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    <ItemsRepeater ItemsSource="{x:Bind Actions}"
+                                   Visibility="{x:Bind Actions, Converter={StaticResource NullToVisibilityConverter}}">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Orientation="Horizontal" Spacing="6"/>
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="models:ActivityAction">
+                                <Button Content="{x:Bind Label}"
+                                        Tag="{x:Bind}"
+                                        CommandParameter="{x:Bind}"
+                                        Click="ActivityAction_Click"
+                                        FontSize="12" Padding="10,4"
+                                        CornerRadius="4"/>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
             </Grid>
         </DataTemplate>
 
         <!-- ═══ Spotify template (new releases, friend activity) ═══ -->
         <DataTemplate x:Key="SpotifyTemplate" x:DataType="models:SpotifyActivityItem">
             <Grid Padding="12,10" ColumnSpacing="12"
+                  Tag="{x:Bind}"
+                  Tapped="ActivityItem_Tapped"
                   Background="Transparent"
                   CornerRadius="6">
                 <Grid.ColumnDefinitions>
@@ -170,8 +222,9 @@
                         </Style>
                     </Flyout.FlyoutPresenterStyle>
 
-                    <Grid Width="380" MaxHeight="480">
+                    <Grid Width="380" MaxHeight="520">
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
@@ -197,13 +250,60 @@
                             </StackPanel>
                         </Grid>
 
+                        <Grid Grid.Row="1" Padding="12,0,12,8" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <ToggleButton x:Name="FilterAllButton"
+                                              Content="All"
+                                              Tag="All"
+                                              Click="FilterButton_Click"
+                                              Padding="10,4"
+                                              MinWidth="0"
+                                              FontSize="12"/>
+                                <ToggleButton x:Name="FilterSystemButton"
+                                              Content="System"
+                                              Tag="System"
+                                              Click="FilterButton_Click"
+                                              Padding="10,4"
+                                              MinWidth="0"
+                                              FontSize="12"/>
+                                <ToggleButton x:Name="FilterActionsButton"
+                                              Content="Actions"
+                                              Tag="Actions"
+                                              Click="FilterButton_Click"
+                                              Padding="10,4"
+                                              MinWidth="0"
+                                              FontSize="12"/>
+                                <ToggleButton x:Name="FilterSpotifyButton"
+                                              Content="Spotify"
+                                              Tag="Spotify"
+                                              Click="FilterButton_Click"
+                                              Padding="10,4"
+                                              MinWidth="0"
+                                              FontSize="12"/>
+                            </StackPanel>
+
+                            <ToggleButton x:Name="BadgeToggleButton"
+                                          Grid.Column="1"
+                                          Content="Badge"
+                                          IsChecked="True"
+                                          Click="BadgeToggleButton_Click"
+                                          Padding="10,4"
+                                          MinWidth="0"
+                                          FontSize="12"/>
+                        </Grid>
+
                         <!-- Divider -->
-                        <Border Grid.Row="1" Height="1"
+                        <Border Grid.Row="2" Height="1"
                                 Background="{ThemeResource DividerStrokeColorDefaultBrush}"
                                 Margin="12,0"/>
 
                         <!-- Activity list -->
-                        <ListView x:Name="ActivityList" Grid.Row="2"
+                        <ListView x:Name="ActivityList" Grid.Row="3"
                                   SelectionMode="None"
                                   Padding="4,4"
                                   ItemTemplateSelector="{StaticResource ActivityTemplateSelector}">
@@ -218,7 +318,7 @@
                         </ListView>
 
                         <!-- Empty state -->
-                        <StackPanel Grid.Row="2" x:Name="EmptyState"
+                        <StackPanel Grid.Row="3" x:Name="EmptyState"
                                     HorizontalAlignment="Center" VerticalAlignment="Center"
                                     Visibility="Collapsed" Spacing="8" Padding="0,32">
                             <FontIcon Glyph="&#xEA8F;" FontSize="28" Opacity="0.2"

@@ -1133,26 +1133,28 @@
                                                         Command="{x:Bind ViewModel.Bio.AskArtistAiCommand}"/>
                                             </Grid>
 
-                                            <ScrollViewer HorizontalScrollMode="Enabled"
-                                                          HorizontalScrollBarVisibility="Hidden"
-                                                          VerticalScrollMode="Disabled"
-                                                          VerticalScrollBarVisibility="Disabled">
-                                                <ItemsRepeater ItemsSource="{x:Bind ViewModel.Bio.AskAiSuggestedQuestions, Mode=OneWay}">
-                                                    <ItemsRepeater.Layout>
-                                                        <StackLayout Orientation="Horizontal" Spacing="6"/>
-                                                    </ItemsRepeater.Layout>
-                                                    <ItemsRepeater.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <Button Content="{Binding}"
-                                                                    Tag="{Binding}"
-                                                                    Click="AskAiSuggestion_Click"
-                                                                    FontSize="12"
-                                                                    MinHeight="28"
-                                                                    Padding="10,4"/>
-                                                        </DataTemplate>
-                                                    </ItemsRepeater.ItemTemplate>
-                                                </ItemsRepeater>
-                                            </ScrollViewer>
+                                            <ItemsControl ItemsSource="{x:Bind ViewModel.Bio.AskAiSuggestedQuestions, Mode=OneWay}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <controls:WrapPanel Orientation="Horizontal"
+                                                                            HorizontalSpacing="6"
+                                                                            VerticalSpacing="6"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Button Tag="{Binding}"
+                                                                Click="AskAiSuggestion_Click"
+                                                                FontSize="12"
+                                                                MinHeight="28"
+                                                                Padding="10,4">
+                                                            <TextBlock Text="{Binding}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       MaxWidth="240"/>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
 
                                             <Border Visibility="{x:Bind ViewModel.Bio.HasAskAiActivity, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                                     Padding="10,8"

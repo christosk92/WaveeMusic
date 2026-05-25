@@ -48,7 +48,12 @@ public static class CloseTabsDialog
             SecondaryButtonText = "Discard Tabs",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = xamlRoot
+            XamlRoot = xamlRoot,
+            RequestedTheme = ResolveTheme(xamlRoot),
+            Style = Application.Current.Resources.TryGetValue("DefaultContentDialogStyle", out var style)
+                    && style is Style contentDialogStyle
+                ? contentDialogStyle
+                : null,
         };
 
         var result = await dialog.ShowAsync();
@@ -61,4 +66,9 @@ public static class CloseTabsDialog
 
         return new CloseTabsDialogResult(choice, askToggle.IsOn);
     }
+
+    private static ElementTheme ResolveTheme(XamlRoot xamlRoot)
+        => xamlRoot.Content is FrameworkElement root
+            ? root.ActualTheme
+            : ElementTheme.Default;
 }

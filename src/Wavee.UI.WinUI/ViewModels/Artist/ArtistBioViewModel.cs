@@ -43,6 +43,9 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
 
     private CancellationTokenSource? _bioSummaryCts;
     private CancellationTokenSource? _artistQuestionCts;
+    private CancellationTokenSource? _suggestedQuestionsCts;
+    private string? _suggestedQuestionsArtistUri;
+    private bool _suppressAskAiSuggestionRefresh;
 
     public ArtistBioViewModel(
         ArtistBioSummarizer? bioSummarizer,
@@ -170,12 +173,7 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         && !IsAskAiBusy
         && !string.IsNullOrWhiteSpace(AskAiQuestionText);
 
-    public IReadOnlyList<string> AskAiSuggestedQuestions { get; } =
-    [
-        "Give me some of their oldest songs",
-        "What is their best song in history?",
-        "Give me some lesser known songs"
-    ];
+    public ObservableCollection<string> AskAiSuggestedQuestions { get; } = new();
 
     // ── Lifecycle ───────────────────────────────────────────────────────────
 
@@ -199,12 +197,16 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsAiBioUnavailable));
         OnPropertyChanged(nameof(CanAskArtistAi));
         AskArtistAiCommand.NotifyCanExecuteChanged();
+        if (!_suppressAskAiSuggestionRefresh)
+            RefreshAskAiSuggestedQuestions();
     }
 
     public void ResetForNewArtist()
     {
         _bioSummaryCts?.Cancel();
         _artistQuestionCts?.Cancel();
+        _suggestedQuestionsCts?.Cancel();
+        _suggestedQuestionsArtistUri = null;
         BioSummaryText = null;
         WasLastBioFromCache = false;
         IsBioSummaryStreaming = false;
@@ -220,7 +222,16 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasAskAiActivity));
         AskAiRecommendations.Clear();
         OnPropertyChanged(nameof(HasAskAiRecommendations));
-        NotifyBiographyChanged();
+        AskAiSuggestedQuestions.Clear();
+        _suppressAskAiSuggestionRefresh = true;
+        try
+        {
+            NotifyBiographyChanged();
+        }
+        finally
+        {
+            _suppressAskAiSuggestionRefresh = false;
+        }
     }
 
     // ── On-device AI summary ────────────────────────────────────────────────
@@ -389,6 +400,117 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasAskAiRecommendations));
     }
 
+    private void RefreshAskAiSuggestedQuestions()
+    {
+        var artistUri = _artistUriProvider();
+        var artistName = _artistNameProvider();
+        if (string.IsNullOrWhiteSpace(artistUri) || string.IsNullOrWhiteSpace(artistName))
+            return;
+
+        ApplyAskAiSuggestedQuestions(BuildFallbackAskAiSuggestions(artistName));
+
+        if (_artistQuestionService is null || !IsAiBioCardVisible)
+            return;
+        if (string.Equals(_suggestedQuestionsArtistUri, artistUri, StringComparison.Ordinal))
+            return;
+
+        _suggestedQuestionsArtistUri = artistUri;
+        _suggestedQuestionsCts?.Cancel();
+        _suggestedQuestionsCts?.Dispose();
+        var cts = _suggestedQuestionsCts = new CancellationTokenSource();
+
+        _ = LoadGeneratedAskAiSuggestionsAsync(artistUri, artistName, cts);
+    }
+
+    private async Task LoadGeneratedAskAiSuggestionsAsync(
+        string artistUri,
+        string artistName,
+        CancellationTokenSource cts)
+    {
+        try
+        {
+            var suggestions = await _artistQuestionService!.SuggestQuestionsAsync(
+                new ArtistAiSuggestionRequest(
+                    artistUri,
+                    artistName,
+                    Biography,
+                    _topTrackNamesProvider()),
+                cts.Token).ConfigureAwait(false);
+
+            if (cts.IsCancellationRequested || suggestions.Count == 0)
+                return;
+
+            RunOnDispatcher(() =>
+            {
+                if (!cts.IsCancellationRequested)
+                    ApplyAskAiSuggestedQuestions(MergeSuggestions(suggestions, BuildFallbackAskAiSuggestions(artistName)));
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to generate artist Ask AI suggestions.");
+        }
+        finally
+        {
+            if (cts == _suggestedQuestionsCts)
+                _suggestedQuestionsCts = null;
+            cts.Dispose();
+        }
+    }
+
+    private void ApplyAskAiSuggestedQuestions(IEnumerable<string> suggestions)
+    {
+        AskAiSuggestedQuestions.Clear();
+        foreach (var suggestion in suggestions
+                     .Select(s => s.Trim())
+                     .Where(s => s.Length > 0)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .Take(4))
+        {
+            AskAiSuggestedQuestions.Add(suggestion);
+        }
+    }
+
+    private static IReadOnlyList<string> MergeSuggestions(
+        IReadOnlyList<string> generated,
+        IReadOnlyList<string> fallback)
+    {
+        var merged = new List<string>(4);
+        foreach (var suggestion in generated.Concat(fallback))
+        {
+            if (string.IsNullOrWhiteSpace(suggestion)
+                || suggestion.Contains("their", StringComparison.OrdinalIgnoreCase)
+                || merged.Contains(suggestion, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            merged.Add(suggestion);
+            if (merged.Count >= 4)
+                break;
+        }
+
+        return merged;
+    }
+
+    private static IReadOnlyList<string> BuildFallbackAskAiSuggestions(string artistName)
+    {
+        var name = artistName.Trim();
+        if (string.IsNullOrEmpty(name))
+            name = "this artist";
+
+        return
+        [
+            $"What is {name}'s best song?",
+            $"Show me {name}'s oldest songs",
+            $"Give me lesser-known {name} tracks",
+            $"Where should I start with {name}?"
+        ];
+    }
+
     [RelayCommand(CanExecute = nameof(CanAskArtistAi))]
     private async Task AskArtistAiAsync()
     {
@@ -548,6 +670,9 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         _artistQuestionCts?.Cancel();
         _artistQuestionCts?.Dispose();
         _artistQuestionCts = null;
+        _suggestedQuestionsCts?.Cancel();
+        _suggestedQuestionsCts?.Dispose();
+        _suggestedQuestionsCts = null;
     }
 
     private sealed class DelegateAiActivitySink : IAiActivitySink

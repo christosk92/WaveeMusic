@@ -31,11 +31,20 @@ public sealed class SpotifyImageConverter : IValueConverter
     {
         if (value is not string uri) return null;
         var url = SpotifyImageHelper.ToHttpsUrl(uri);
-        if (string.IsNullOrEmpty(url)) return null;
+        if (string.IsNullOrEmpty(url))
+        {
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out var directUri))
+                return null;
+
+            url = directUri.AbsoluteUri;
+        }
 
         var decodeSize = parameter is string s && int.TryParse(s, out var d) ? d : 200;
 
-        return new BitmapImage(new Uri(url))
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var imageUri))
+            return null;
+
+        return new BitmapImage(imageUri)
         {
             DecodePixelWidth = decodeSize,
             DecodePixelType = DecodePixelType.Logical,

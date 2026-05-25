@@ -286,17 +286,17 @@ public sealed partial class TrackItem
     /// back to a single link from <c>(ArtistName, ArtistId)</c> for legacy DTOs
     /// (LikedSongDto, PlaylistTrackDto, ...) that haven't been upgraded yet.
     /// </summary>
-    private void RebuildArtistsSubline(ITrackItem track)
+    private void RebuildArtistsSubline(ITrackItem track, bool force = false)
     {
         var signature = BuildArtistsSignature(track);
-        if (string.Equals(signature, _rowArtistsSignature, StringComparison.Ordinal))
+        if (!force && string.Equals(signature, _rowArtistsSignature, StringComparison.Ordinal))
             return;
 
         _rowArtistsSignature = signature;
         RowArtistsHost.Children.Clear();
 
         var captionStyle = (Microsoft.UI.Xaml.Style)Application.Current.Resources["CaptionTextBlockStyle"];
-        var subduedBrush = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+        var subduedBrush = ResolveTrackBrush("TextFillColorSecondaryBrush");
 
         var artists = track.Artists;
         if (artists == null || artists.Count == 0)

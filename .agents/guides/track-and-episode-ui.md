@@ -1,8 +1,8 @@
 ---
 guide: track-and-episode-ui
 scope: Every WaveeMusic UI surface that renders a track or podcast episode as a row, cell, or card.
-last_verified: 2026-05-22
-verified_by: read+grep over src/Wavee.UI.WinUI track row, TrackDataGrid loading-row, and now-playing video paths
+last_verified: 2026-05-25
+verified_by: read+grep over src/Wavee.UI.WinUI track row, TrackDataGrid loading/footer rows, and AlbumPage/PlaylistPage hosts
 root_index: AGENTS.md (Codex) and CLAUDE.md (Claude Code)
 ---
 
@@ -44,8 +44,8 @@ Scope:
 
 | Surface | Host file:line | DTO | Source binding |
 | --- | --- | --- | --- |
-| Playlist tracks | `Views/PlaylistPage.xaml:526` | `PlaylistTrackDto` (`LazyTrackItem`) via `ITrackItem` | `PlaylistViewModel.FilteredTracks` |
-| Album tracks | `Views/AlbumPage.xaml:358` | `AlbumTrackDto` (`LazyTrackItem`) via `ITrackItem` | `AlbumViewModel.FilteredTracks` |
+| Playlist tracks | `Views/PlaylistPage.xaml:699` | `PlaylistTrackDto` (`LazyTrackItem`) via `ITrackItem` | `PlaylistViewModel.FilteredTracks` |
+| Album tracks | `Views/AlbumPage.xaml:710` | `AlbumTrackDto` (`LazyTrackItem`) via `ITrackItem` | `AlbumViewModel.FilteredTracks` |
 | Liked Songs | `Views/LikedSongsView.xaml:60` | `LikedSongDto` via `ITrackItem` | `LikedSongsViewModel.FilteredSongs` |
 | Liked Songs (hidden legacy) | `Views/LikedSongsView.xaml:119` | `LikedSongDto` | hidden `TrackListView`, kept for old wiring |
 | Artist top tracks | `Views/ArtistPage.xaml:650` (compact `TrackItem` in `ItemsRepeater`) | `LazyTrackItem` | `ArtistViewModel.PagedTopTracks` |
@@ -149,6 +149,11 @@ DTOs that intentionally bypass `ITrackItem`:
   bulk-action bar. The bar appears only in explicit selection mode (toolbar
   Select, row context-menu Select, or Ctrl-click). While in selection mode,
   tapping a row toggles selection and must not play the track.
+- `FooterPlacement="InRowsScroll"` projects `FooterContent` as a final
+  non-track row so long footers do not force the grid to disable row
+  virtualization. `RowsScrollView`/`RowsScrollViewChanged` are exposed only for
+  page chrome that must react to the row scroller, such as PlaylistPage's banner
+  shy header.
 
 `src/Wavee.UI.WinUI/Controls/TrackList/TrackListView.xaml(.cs)`
 - Older reusable list host. Rows are `TrackItem` in row mode (templated at
@@ -175,13 +180,15 @@ DTOs that intentionally bypass `ITrackItem`:
 
 ## Track List Surfaces
 
-`src/Wavee.UI.WinUI/Views/PlaylistPage.xaml:526`
+`src/Wavee.UI.WinUI/Views/PlaylistPage.xaml:699`
 - Surface: playlist track table.
-- Host: `TrackDataGrid`, `PageKey="playlist"`, `UseItemsViewRows="True"`.
+- Host: `TrackDataGrid`, `PageKey="playlist"`, `FooterPlacement="InRowsScroll"`.
 - Source: `PlaylistViewModel.FilteredTracks` (`PlaylistTrackDto` and
   `LazyTrackItem` placeholders, both via `ITrackItem`).
 - Notes: added-by column is controlled by `ShouldShowAddedByColumn`;
-  filter bar (`:536`) includes "music videos only".
+  filter bar (`:713`) includes "music videos only"; footer (`:744`) hosts
+  recommended songs as a final non-track grid row. In banner layout, the
+  playlist shy header is driven from `TrackDataGrid.RowsScrollView`.
 - Load behavior: `PlaylistViewModel.Activate` clears stale rows and drives
   `TrackDataGrid.IsLoading` so the grid renders lightweight skeleton rows.
   `LoadTracksAsync` applies the real `FilteredTracks` snapshot with one
@@ -193,12 +200,12 @@ DTOs that intentionally bypass `ITrackItem`:
 - Fallback playlist mosaics should use the track snapshot already fetched by
   `LoadTracksAsync` when no `spotify:mosaic:` hint is available.
 
-`src/Wavee.UI.WinUI/Views/AlbumPage.xaml:358`
+`src/Wavee.UI.WinUI/Views/AlbumPage.xaml:710`
 - Surface: album track table.
-- Host: `TrackDataGrid`, `PageKey="album"`, toolbar hidden.
+- Host: `TrackDataGrid`, `PageKey="album"`, `FooterPlacement="InRowsScroll"`.
 - Source: `AlbumViewModel.FilteredTracks` (`LazyTrackItem` over `AlbumTrackDto`).
 - Notes: `ForceShowArtistColumn` is true for multi-artist albums; footer
-  (`:366`) hosts related album / merch shelves but those are not track rows.
+  (`:755`) hosts related album / merch shelves as a final non-track grid row.
 - Load behavior: `AlbumViewModel.Initialize` clears old rows and drives
   `TrackDataGrid.IsLoading` from `IsLoadingTracks`, so the album grid uses the
   shared lightweight skeleton instead of `LazyTrackItem` placeholder rows.

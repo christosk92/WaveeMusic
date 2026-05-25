@@ -16,6 +16,7 @@ using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.Enums;
 using Wavee.UI.Models;
+using Wavee.UI.Services;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
@@ -23,6 +24,7 @@ using Wavee.UI.WinUI.Data.Parameters;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Services.Docking;
+using ControlsLyricsData = Wavee.Controls.Lyrics.Models.Lyrics.LyricsData;
 
 namespace Wavee.UI.WinUI.ViewModels;
 
@@ -45,14 +47,21 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private readonly INotificationService? _notificationService;
     private readonly IPanelDockingService? _dockingService;
     private readonly IPodcastService? _podcastService;
+    private readonly ILyricsService? _lyricsService;
     private readonly ILibraryDataService? _libraryDataService;
     private readonly IPodcastEpisodeService? _podcastEpisodeService;
     private readonly ILogger? _logger;
     private bool _disposed;
     private CancellationTokenSource? _chapterFetchCts;
+    private CancellationTokenSource? _hoverLyricsFetchCts;
     private DispatcherTimer? _positionTimer;
     private DateTime _lastServicePositionUpdate = DateTime.UtcNow;
     private double _lastServicePosition;
+    private int _hoverLyricsFetchVersion;
+    private string? _hoverLyricsLoadedTrackId;
+    private double _hoverLyricsLoadedDurationMs;
+    private bool _hoverLyricsLoadedFromOfficialSpotify;
+    private string? _hoverLyricsOfficialAttemptedImageUrl;
     private bool _autoVideoSwitchInFlight;
     private string? _lastAutoVideoSwitchTrackId;
     private int _podcastResumeProbeVersion;
@@ -100,6 +109,13 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty]
     private IReadOnlyList<EpisodeChapterVm> _chapters = Array.Empty<EpisodeChapterVm>();
+
+    /// <summary>
+    /// Tooltip-only preview rows for the playerbar progress control. This is
+    /// separate from <see cref="Chapters"/> so music lyrics never segment the rail.
+    /// </summary>
+    [ObservableProperty]
+    private IReadOnlyList<TimelineHoverPreviewItem> _hoverPreviewItems = Array.Empty<TimelineHoverPreviewItem>();
 
     [ObservableProperty]
     private bool _isAlbumArtExpanded;
@@ -281,6 +297,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                               INotificationService? notificationService = null,
                               IPanelDockingService? dockingService = null,
                               IPodcastService? podcastService = null,
+                              ILyricsService? lyricsService = null,
                               ILibraryDataService? libraryDataService = null,
                               IPodcastEpisodeService? podcastEpisodeService = null,
                               ILoggerFactory? loggerFactory = null)
@@ -290,6 +307,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _notificationService = notificationService;
         _dockingService = dockingService;
         _podcastService = podcastService;
+        _lyricsService = lyricsService;
         _libraryDataService = libraryDataService;
         _podcastEpisodeService = podcastEpisodeService;
         _logger = loggerFactory?.CreateLogger<PlayerBarViewModel>();
@@ -333,6 +351,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         // so kick off the initial chapter fetch here for any episode that's
         // already playing when the VM was constructed.
         LoadChaptersForCurrentTrack(_playbackStateService.CurrentTrackId);
+        LoadHoverLyricsForCurrentTrack(_playbackStateService.CurrentTrackId);
         BeginPodcastResumePromptProbe();
     }
 
@@ -388,6 +407,134 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         {
             _logger?.LogWarning(ex, "Chapter fetch failed for {Uri}", episodeUri);
         }
+    }
+
+    private void LoadHoverLyricsForCurrentTrack(string? trackId)
+    {
+        _hoverLyricsFetchCts?.Cancel();
+        _hoverLyricsFetchCts?.Dispose();
+        _hoverLyricsFetchCts = null;
+        _hoverLyricsFetchVersion++;
+
+        if (string.IsNullOrEmpty(trackId)
+            || _lyricsService is null
+            || Wavee.Core.PlayableUri.IsLocalTrack(trackId)
+            || GetCurrentEpisodeUri() is not null
+            || IsVideoContent)
+        {
+            ClearHoverLyrics();
+            return;
+        }
+
+        var currentDurationMs = _playbackStateService.Duration > 0 ? _playbackStateService.Duration : Duration;
+        var imageUrl = _playbackStateService.CurrentAlbumArtLarge ?? _playbackStateService.CurrentAlbumArt;
+        var officialAttemptAlreadyMade = string.IsNullOrEmpty(imageUrl)
+            || string.Equals(_hoverLyricsOfficialAttemptedImageUrl, imageUrl, StringComparison.Ordinal);
+        if (HoverPreviewItems.Count > 0
+            && string.Equals(_hoverLyricsLoadedTrackId, trackId, StringComparison.Ordinal)
+            && (currentDurationMs <= 0 || Math.Abs(_hoverLyricsLoadedDurationMs - currentDurationMs) < 1000)
+            && (_hoverLyricsLoadedFromOfficialSpotify || officialAttemptAlreadyMade))
+        {
+            return;
+        }
+
+        ClearHoverLyrics();
+        var cts = new CancellationTokenSource();
+        _hoverLyricsFetchCts = cts;
+        var version = _hoverLyricsFetchVersion;
+        _ = LoadHoverLyricsAsync(trackId, imageUrl, version, cts.Token);
+    }
+
+    private async Task LoadHoverLyricsAsync(
+        string trackId,
+        string? imageUrl,
+        int version,
+        CancellationToken ct)
+    {
+        try
+        {
+            var durationMs = _playbackStateService.Duration > 0 ? _playbackStateService.Duration : Duration;
+            var officialAttemptedImageUrl = string.IsNullOrEmpty(imageUrl) ? null : imageUrl;
+            ControlsLyricsData? lyrics = null;
+            var loadedFromOfficialSpotify = false;
+
+            if (!string.IsNullOrEmpty(imageUrl))
+            {
+                (lyrics, _) = await _lyricsService!
+                    .GetOfficialSpotifyLyricsForTrackAsync(
+                        trackId,
+                        _playbackStateService.CurrentTrackTitle,
+                        _playbackStateService.CurrentArtistName,
+                        durationMs,
+                        imageUrl,
+                        ct)
+                    .ConfigureAwait(true);
+            }
+
+            if (!IsCurrentHoverLyricsRequest(trackId, version, ct))
+                return;
+
+            var previewItems = LyricsHoverPreviewBuilder.Build(
+                lyrics,
+                durationMs);
+
+            if (previewItems.Count > 0)
+            {
+                loadedFromOfficialSpotify = true;
+            }
+            else
+            {
+                (lyrics, _) = await _lyricsService!
+                    .GetLyricsForTrackAsync(
+                        trackId,
+                        _playbackStateService.CurrentTrackTitle,
+                        _playbackStateService.CurrentArtistName,
+                        durationMs,
+                        imageUrl,
+                        ct)
+                    .ConfigureAwait(true);
+
+                if (!IsCurrentHoverLyricsRequest(trackId, version, ct))
+                    return;
+
+                durationMs = _playbackStateService.Duration > 0 ? _playbackStateService.Duration : Duration;
+                previewItems = LyricsHoverPreviewBuilder.Build(lyrics, durationMs);
+            }
+
+            HoverPreviewItems = previewItems;
+            _hoverLyricsLoadedTrackId = previewItems.Count > 0 ? trackId : null;
+            _hoverLyricsLoadedDurationMs = previewItems.Count > 0
+                ? durationMs
+                : 0;
+            _hoverLyricsLoadedFromOfficialSpotify = previewItems.Count > 0 && loadedFromOfficialSpotify;
+            _hoverLyricsOfficialAttemptedImageUrl = officialAttemptedImageUrl;
+            _logger?.LogDebug("[PlayerBar] Loaded {Count} lyric hover preview line(s) for {TrackId} from {Source}",
+                previewItems.Count,
+                trackId,
+                loadedFromOfficialSpotify ? "official Spotify" : "normal lyrics service");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "[PlayerBar] Failed to load lyric hover preview for {TrackId}", trackId);
+        }
+    }
+
+    private bool IsCurrentHoverLyricsRequest(string trackId, int version, CancellationToken ct)
+        => !ct.IsCancellationRequested
+           && version == _hoverLyricsFetchVersion
+           && string.Equals(_playbackStateService.CurrentTrackId, trackId, StringComparison.Ordinal)
+           && !IsVideoContent
+           && GetCurrentEpisodeUri() is null;
+
+    private void ClearHoverLyrics()
+    {
+        _hoverLyricsLoadedTrackId = null;
+        _hoverLyricsLoadedDurationMs = 0;
+        _hoverLyricsLoadedFromOfficialSpotify = false;
+        _hoverLyricsOfficialAttemptedImageUrl = null;
+        if (HoverPreviewItems.Count != 0)
+            HoverPreviewItems = Array.Empty<TimelineHoverPreviewItem>();
     }
 
     private void BeginPodcastResumePromptProbe()
@@ -645,6 +792,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 SetPlaybackSpeedCommand.NotifyCanExecuteChanged();
                 TryAutoSwitchToVideo("track-changed");
                 LoadChaptersForCurrentTrack(newTrackId);
+                LoadHoverLyricsForCurrentTrack(newTrackId);
                 BeginPodcastResumePromptProbe();
                 ResetPodcastProgressSaveThrottle();
 
@@ -658,6 +806,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
             case nameof(IPlaybackStateService.CurrentContext):
                 OnPropertyChanged(nameof(IsCurrentItemEpisode));
                 SetPlaybackSpeedCommand.NotifyCanExecuteChanged();
+                LoadHoverLyricsForCurrentTrack(_playbackStateService.CurrentTrackId);
                 BeginPodcastResumePromptProbe();
                 break;
             case nameof(IPlaybackStateService.CurrentTrackTitle):
@@ -676,9 +825,11 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 break;
             case nameof(IPlaybackStateService.CurrentAlbumArt):
                 AlbumArt = _playbackStateService.CurrentAlbumArt;
+                LoadHoverLyricsForCurrentTrack(_playbackStateService.CurrentTrackId);
                 break;
             case nameof(IPlaybackStateService.CurrentAlbumArtLarge):
                 AlbumArtLarge = _playbackStateService.CurrentAlbumArtLarge;
+                LoadHoverLyricsForCurrentTrack(_playbackStateService.CurrentTrackId);
                 break;
             case nameof(IPlaybackStateService.CurrentArtistId):
                 CurrentArtistId = _playbackStateService.CurrentArtistId;
@@ -699,10 +850,12 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(IsVideoContent));
                 OnPropertyChanged(nameof(IsMusicOnlyContent));
                 TryAutoSwitchToVideo(e.PropertyName);
+                LoadHoverLyricsForCurrentTrack(_playbackStateService.CurrentTrackId);
                 break;
             case nameof(IPlaybackStateService.CurrentLocalContentKind):
                 OnPropertyChanged(nameof(IsVideoContent));
                 OnPropertyChanged(nameof(IsMusicOnlyContent));
+                LoadHoverLyricsForCurrentTrack(_playbackStateService.CurrentTrackId);
                 break;
             case nameof(IPlaybackStateService.CurrentAlbumArtColor):
                 AlbumArtColor = _playbackStateService.CurrentAlbumArtColor;
@@ -722,6 +875,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                 var newDur = _playbackStateService.Duration;
                 _logger?.LogDebug("[PlayerBar] Duration → {Dur}ms", newDur);
                 Duration = newDur;
+                LoadHoverLyricsForCurrentTrack(_playbackStateService.CurrentTrackId);
                 MaybeSavePodcastEpisodeProgress();
                 break;
             case nameof(IPlaybackStateService.Volume):
@@ -1372,6 +1526,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         Duration = durationMs;
         ApplyPlaybackPosition(0, updateProgressBar: true, resetInterpolationClock: true);
         HasTrack = !string.IsNullOrEmpty(title);
+        LoadHoverLyricsForCurrentTrack(_playbackStateService.CurrentTrackId);
     }
 
     /// <summary>
@@ -1386,6 +1541,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         ApplyPlaybackPosition(0, updateProgressBar: true, resetInterpolationClock: true);
         HasTrack = false;
         IsPlaying = false;
+        ClearHoverLyrics();
     }
 
     /// <summary>
@@ -1472,6 +1628,10 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _chapterFetchCts?.Cancel();
         _chapterFetchCts?.Dispose();
         _chapterFetchCts = null;
+
+        _hoverLyricsFetchCts?.Cancel();
+        _hoverLyricsFetchCts?.Dispose();
+        _hoverLyricsFetchCts = null;
 
         DisposePositionTimer();
     }

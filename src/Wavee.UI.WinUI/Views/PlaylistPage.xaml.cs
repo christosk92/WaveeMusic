@@ -65,6 +65,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     private string? _lastRestoredPlaylistId;
     private int _visualSettlingGeneration;
     private int _loadedViewWorkGeneration;
+    private int _navigationRevision;
 
     // Composition resources for the full-width hero banner image. Surface is
     // (re)loaded whenever HeaderImageUrl changes; null when no header image.
@@ -172,6 +173,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         // shimmer→content swap is a smooth crossfade. The previous BoolToVisibility
         // hard cut snapped distractingly when IsLoading flipped false.
         ElementCompositionPreview.GetElementVisual(LeftColumnHost).Opacity = 0;
+        TrackGrid.RowsScrollViewChanged += TrackGrid_RowsScrollViewChanged;
         Loaded += PlaylistPage_Loaded;
         Unloaded += PlaylistPage_Unloaded;
         _logger?.LogDebug("[xfade][playlist:{Id}] ctor.enter", XfadeLog.Tag(ViewModel.PlaylistId));
@@ -220,9 +222,6 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         _loadedViewWorkGeneration++;
         PageController.IsNavigatingAway = true;
         DetachShyHeader();
-        DetachParallax();
-        if (PageScrollView is not null)
-            PageScrollView.SizeChanged -= PageScrollView_SizeChangedForLeftScroll;
         _heroImageSurface?.Dispose();
         _heroImageSurface = null;
     }
@@ -272,154 +271,23 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
 
     private void AttachLoadedViewWork()
     {
-        AttachParallax();
         AttachShyHeader();
-
-        // Left-column overflow handling — see AlbumPage for the full rationale.
-        if (PageScrollView is not null)
-        {
-            PageScrollView.SizeChanged -= PageScrollView_SizeChangedForLeftScroll;
-            PageScrollView.SizeChanged += PageScrollView_SizeChangedForLeftScroll;
-        }
-
-        UpdateLeftScrollableMaxHeight();
     }
 
-    // ── Left-column overflow: sticky top + scrollable bottom ─────────────────
-    //
-    // Mirrors AlbumPage. LeftPinnedZone (cover + title + owner/meta + primary
-    // CTAs) is always visible. Everything below it lives inside
-    // LeftScrollableZone, whose MaxHeight caps at viewport − pinned − padding
-    // so it scrolls in place rather than getting clipped by the sticky parallax
-    // region.
-
-    private void PageScrollView_SizeChangedForLeftScroll(object sender, SizeChangedEventArgs e)
-        => UpdateLeftScrollableMaxHeight();
-
-    private void LeftPinnedZone_SizeChanged(object sender, SizeChangedEventArgs e)
-        => UpdateLeftScrollableMaxHeight();
-
-    private void UpdateLeftScrollableMaxHeight()
+    private void TrackGrid_RowsScrollViewChanged(object? sender, EventArgs e)
     {
-        if (LeftPinnedZone is null || LeftScrollableZone is null || PageScrollView is null)
+        if (_isDisposed)
             return;
 
-        const double bottomBreathingRoom = 24;
-        const double minScrollableHeight = 120;
-
-        var available = PageScrollView.ActualHeight
-                        - LeftPinnedZone.ActualHeight
-                        - bottomBreathingRoom;
-        LeftScrollableZone.MaxHeight = System.Math.Max(minScrollableHeight, available);
-    }
-
-    // ── Sticky-left composition binding ─────────────────────────────────────
-    //
-    // Mirrors AlbumPage.AttachParallax / DetachParallax with one tweak: the
-    // clamp window starts at the hero banner's height rather than at 0. With
-    // a 280-px banner above the two-column content, an unconditional sticky
-    // expression would visually pin the left column from scroll=0 — which
-    // ends up parking the column 280 px below the viewport top after the
-    // banner has fully scrolled away (since the column never moved). Subtracting
-    // BannerHeight from the input lets the column scroll up with the banner
-    // through the first 280 px, then lock in place at viewport top once
-    // banner clears. Phase 2's shy-header pill pins earlier (~190 px) so the
-    // pill is fully visible before the left column locks; no collision.
-    //
-    // BannerHeight + MaxLag both live in a per-page CompositionPropertySet so
-    // the expression re-evaluates reactively from SizeChanged ticks without
-    // restarting the animation.
-
-    private bool _parallaxAttached;
-    private Microsoft.UI.Composition.CompositionPropertySet? _stickyProps;
-    private Microsoft.UI.Composition.ExpressionAnimation? _stickyAnimation;
-
-    private void AttachParallax()
-    {
-        if (_parallaxAttached) return;
-        if (PageScrollView is null || LeftColumnHost is null || HeroBannerRow is null) return;
-        _parallaxAttached = true;
-
-        var visual = ElementCompositionPreview.GetElementVisual(LeftColumnHost);
-        var compositor = visual.Compositor;
-        ElementCompositionPreview.SetIsTranslationEnabled(LeftColumnHost, true);
-
-        _stickyProps = compositor.CreatePropertySet();
-        _stickyProps.InsertScalar("BannerHeight", (float)HeroBannerRow.ActualHeight);
-
-        // Clamp(scroll.Position.Y - BannerHeight, 0, T_max) where
-        // T_max = max(0, scroll.Extent.Y - BannerHeight - scroll.Viewport.Y):
-        //   • Y ≤ BannerHeight                       → T = 0 (column scrolls with banner)
-        //   • BannerHeight < Y < scroll_max          → T = Y - BannerHeight (pinned at viewport top)
-        //   • Y ≥ scroll_max                          → T = T_max (already at viewport top, scroll can't go further)
-        //
-        // Earlier revisions used LeftColHeight in the cap so the column's
-        // BOTTOM would reach viewport bottom at max scroll. That collapsed to 0
-        // whenever LeftColHeight > ExtentH - BannerH (small track list, big
-        // sidebar) — the column then never stuck at all after the banner
-        // cleared, which is the "stops after a few px" symptom users saw on
-        // playlists with few tracks. Viewport-based cap keeps the column
-        // pinned at viewport top through max scroll for every size ratio;
-        // sidebars taller than the viewport just get their bottom clipped
-        // (acceptable — release info / collaborator stack remain at the
-        // bottom of a usually-shorter metadata column).
-        //
-        // scroll.Position.Y / Extent.Y / Viewport.Y are all sourced from the
-        // ExpressionAnimationSources so the expression re-evaluates reactively
-        // when content grows or the window resizes.
-        _stickyAnimation = compositor.CreateExpressionAnimation(
-            "Vector3(0, Clamp(scroll.Position.Y - source.BannerHeight, 0, Max(scroll.Extent.Y - source.BannerHeight - scroll.Viewport.Y, 0)), 0)");
-        _stickyAnimation.SetReferenceParameter("scroll", PageScrollView.ExpressionAnimationSources);
-        _stickyAnimation.SetReferenceParameter("source", _stickyProps);
-        visual.StartAnimation("Translation", _stickyAnimation);
-
-        // LeftColumnHost.SizeChanged is no longer load-bearing for the cap
-        // (we use scroll.Viewport.Y reactively) but we keep the hook so any
-        // future tweak that re-introduces a column-height term picks it up.
-        LeftColumnHost.SizeChanged += StickyAnchors_SizeChanged;
-        PageScrollView.SizeChanged += StickyAnchors_SizeChanged;
-        HeroBannerRow.SizeChanged  += StickyAnchors_SizeChanged;
-    }
-
-    private void DetachParallax()
-    {
-        if (!_parallaxAttached) return;
-        _parallaxAttached = false;
-
-        if (LeftColumnHost is not null)
-            LeftColumnHost.SizeChanged -= StickyAnchors_SizeChanged;
-        if (PageScrollView is not null)
-            PageScrollView.SizeChanged -= StickyAnchors_SizeChanged;
-        if (HeroBannerRow is not null)
-            HeroBannerRow.SizeChanged -= StickyAnchors_SizeChanged;
-
-        if (LeftColumnHost is not null)
-        {
-            var visual = ElementCompositionPreview.GetElementVisual(LeftColumnHost);
-            visual.StopAnimation("Translation");
-            ElementCompositionPreview.SetIsTranslationEnabled(LeftColumnHost, true);
-            visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
-        }
-
-        _stickyAnimation?.Dispose();
-        _stickyAnimation = null;
-        _stickyProps?.Dispose();
-        _stickyProps = null;
-    }
-
-    private void StickyAnchors_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        if (_stickyProps is null || HeroBannerRow is null || LeftColumnHost is null) return;
-        _stickyProps.InsertScalar("BannerHeight", (float)HeroBannerRow.ActualHeight);
+        DetachShyHeader();
+        AttachShyHeader();
     }
 
     // ── Shy-header (banner → pinned PlaylistShyPill morph) ──────────────────
     //
-    // Mirrors ArtistPage's shy-header pattern: as the user scrolls past the
-    // banner, the composition image/scrim fade out (ApplyBannerScrollFade) and
-    // the matched-ID leaves on the banner overlay (playlist-name,
-    // playlist-owner, card-shell) morph via TransitionHelper into the
-    // floating PlaylistShyPill that's pinned at top-center of the page.
+    // Banner-mode playlists keep the compact shy pill, but it is driven by
+    // TrackDataGrid's row scroller instead of a page-level ScrollView so the
+    // rows stay virtualized.
     //
     // PlaylistPage's banner is built from custom composition visuals (image
     // + scrim) plus a XAML procedural-gradient fallback, so it doesn't expose
@@ -427,25 +295,38 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     // drives both layers directly.
 
     private ShyHeaderController? _shyHeader;
-    private int _navigationRevision;
 
     private void AttachShyHeader()
     {
         if (_shyHeader is not null) return;
-        if (PageScrollView is null || HeroBannerRow is null || BannerOverlayPanel is null || PlaylistShyPill is null) return;
+        if (ViewModel.Header.LayoutMode != PlaylistLayoutMode.Banner)
+        {
+            ApplyBannerScrollFade(0);
+            if (PlaylistShyPill is not null)
+                PlaylistShyPill.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (TrackGrid.RowsScrollView is not { } rowsScrollView ||
+            HeroBannerRow is null ||
+            BannerOverlayPanel is null ||
+            PlaylistShyPill is null)
+        {
+            return;
+        }
 
         var transition = Resources["PlaylistShyHeaderTransition"] as global::CommunityToolkit.WinUI.TransitionHelper;
         if (transition is null) return;
 
         _shyHeader = new ShyHeaderController(
-            PageScrollView,
+            rowsScrollView,
             HeroBannerRow,
             BannerOverlayPanel,
             PlaylistShyPill,
             transition,
             ApplyBannerScrollFade,
             ShyHeaderPinOffset.Below(HeroBannerRow, 90),
-            canEvaluate: () => !PageController.IsNavigatingAway,
+            canEvaluate: () => !PageController.IsNavigatingAway && ViewModel.Header.LayoutMode == PlaylistLayoutMode.Banner,
             logger: _logger);
         _shyHeader.Attach();
         _shyHeader.Reset();
@@ -680,6 +561,8 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         HeaderBackgroundHost.Loaded -= HeaderBackgroundHost_Loaded;
         HeaderBackgroundHost.Unloaded -= HeaderBackgroundHost_Unloaded;
         ActualThemeChanged -= PlaylistPage_ActualThemeChanged;
+        TrackGrid.RowsScrollViewChanged -= TrackGrid_RowsScrollViewChanged;
+        DetachShyHeader();
         SelectionBar.Detach();
         TrackGrid.Dispose();
         _heroImageSurface?.Dispose();
@@ -806,8 +689,8 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         using var _stage = Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent("page.playlist.onEntered");
 
         // Suppress the shy-header evaluator through the entire navigation
-        // reset. Without this, ScrollView.ViewChanged events queued by the
-        // ScrollTo(0,0) below can fire while _isPinned still reads true from
+        // reset. Without this, TrackGrid row-scroll events queued by the
+        // scroll-to-top below can fire while _isPinned still reads true from
         // the previous playlist's deep scroll — the controller would then
         // call _transition.ReverseAsync() to morph the pill back to the
         // banner overlay, the matched-IDs interpolate from pill geometry to
@@ -828,9 +711,10 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         // Mirrors ArtistPage's pattern.
         try
         {
-            PageScrollView?.ScrollTo(
+            LeftColumnScrollView?.ScrollTo(
                 0, 0,
                 new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
+            TrackGrid?.ScrollRowsToTop();
         }
         catch (Exception ex)
         {
@@ -1026,14 +910,6 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         _lastRestoredPlaylistId = ViewModel.PlaylistId;
         ViewModel.Hibernate();
         ReleaseHeaderBackgroundSurface();
-        // NOTE: do NOT DetachParallax here. Under PageHost the page is kept
-        // rooted with Visibility=Collapsed on leave (not detached from the
-        // visual tree like Frame did) — the composition ExpressionAnimation
-        // can safely keep evaluating against the still-rooted ScrollView while
-        // the page is hidden. Detaching here would break sticky on the next
-        // cache-hit re-entry because Loaded does NOT re-fire under PageHost
-        // (page Visibility flips but it never leaves the tree). DetachParallax
-        // stays in PlaylistPage_Unloaded for true teardown.
         // Detach compiled x:Bind from VM.PropertyChanged so the BindingsTracking
         // sibling is no longer rooted by the (singleton-store-subscribed) VM —
         // without this the entire page tree is pinned across navigations.
@@ -1105,6 +981,9 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     private async void OnLayoutModeChanged()
     {
         if (_isDisposed) return;
+
+        DetachShyHeader();
+        AttachShyHeader();
 
         FrameworkElement? target = ViewModel.Header.LayoutMode switch
         {

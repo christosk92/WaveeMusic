@@ -444,13 +444,13 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         switch (state)
         {
             case EntityState<ArtistOverviewResult>.Initial:
-                IsLoading = true;
+                IsLoading = !HasRenderableArtistSnapshot();
                 break;
             case EntityState<ArtistOverviewResult>.Loading loading:
-                IsLoading = loading.Previous is null;
+                IsLoading = loading.Previous is null && !HasRenderableArtistSnapshot();
                 break;
             case EntityState<ArtistOverviewResult>.Ready ready:
-                if (_appliedOverviewFor != expectedArtistId || !ReferenceEquals(_appliedOverview, ready.Value))
+                if (NeedsOverviewReplay(ready.Value, expectedArtistId))
                 {
                     _backgroundWork.Run(_ => LoadAsync(ready.Value, expectedArtistId), "ArtistViewModel.LoadAsync");
                 }
@@ -472,6 +472,26 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
                 _logger?.LogError(error.Exception, "ArtistStore reported error for {ArtistId}", expectedArtistId);
                 break;
         }
+    }
+
+    private bool HasRenderableArtistSnapshot()
+        => !string.IsNullOrWhiteSpace(Header.ArtistName)
+           && TopTracks.Tracks.Count > 0;
+
+    private bool NeedsOverviewReplay(ArtistOverviewResult overview, string expectedArtistId)
+    {
+        if (_appliedOverviewFor != expectedArtistId || !ReferenceEquals(_appliedOverview, overview))
+            return true;
+
+        if (overview.TopTracks.Count > 0 && TopTracks.Tracks.Count == 0)
+            return true;
+
+        if (overview.PopularReleases.Count > 0 && !Discography.HasPopularReleases)
+            return true;
+
+        return Bio.IsAiBioGenerating
+               && !Bio.IsBioSummaryLoading
+               && !Bio.IsBioSummaryStreaming;
     }
 
     /// <summary>

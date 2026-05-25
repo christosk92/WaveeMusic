@@ -12,6 +12,7 @@ using Microsoft.UI.Text;
 using Windows.Foundation;
 using Windows.UI;
 using Microsoft.UI;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Controls.Playback;
@@ -31,6 +32,8 @@ namespace Wavee.UI.WinUI.Controls.Playback;
 ///
 /// Bind <see cref="PositionMs"/> to <c>PlayerBarViewModel.AnchorPositionMs</c>;
 /// bind <see cref="Segments"/> to <c>PlayerBarViewModel.Chapters</c>.
+/// Bind <see cref="HoverPreviewItems"/> for tooltip-only timeline previews that
+/// should not affect the rendered rail.
 /// </summary>
 public sealed class CompositionProgressBar : UserControl
 {
@@ -70,7 +73,7 @@ public sealed class CompositionProgressBar : UserControl
     private double _pressX;
     private bool _hasDraggedPastThreshold;
 
-    // ── Chapter hover tooltip ─────────────────────────────────────────────
+    // ── Timeline hover tooltip ────────────────────────────────────────────
     // Custom Popup-based tooltip — replaces ToolTipService which has a fixed
     // ~500 ms show delay + low-contrast platform chrome. This one shows
     // instantly, follows the pointer, and reads against any palette wash.
@@ -78,7 +81,7 @@ public sealed class CompositionProgressBar : UserControl
     private readonly Border _chapterTooltipBorder;
     private readonly TextBlock _chapterTooltipTitle;
     private readonly TextBlock _chapterTooltipMeta;
-    private EpisodeChapterVm? _activeTooltipChapter;
+    private object? _activeTooltipSource;
 
     public CompositionProgressBar()
     {
@@ -227,6 +230,19 @@ public sealed class CompositionProgressBar : UserControl
         DependencyProperty.Register(nameof(Segments), typeof(IReadOnlyList<EpisodeChapterVm>), typeof(CompositionProgressBar),
             new PropertyMetadata(null, OnSegmentsChanged));
 
+    /// <summary>
+    /// Tooltip-only timeline preview items. These do not split the rail or
+    /// affect click-snap seeking; they only provide hover copy for a position.
+    /// </summary>
+    public IReadOnlyList<TimelineHoverPreviewItem>? HoverPreviewItems
+    {
+        get => (IReadOnlyList<TimelineHoverPreviewItem>?)GetValue(HoverPreviewItemsProperty);
+        set => SetValue(HoverPreviewItemsProperty, value);
+    }
+    public static readonly DependencyProperty HoverPreviewItemsProperty =
+        DependencyProperty.Register(nameof(HoverPreviewItems), typeof(IReadOnlyList<TimelineHoverPreviewItem>),
+            typeof(CompositionProgressBar), new PropertyMetadata(null, OnHoverPreviewItemsChanged));
+
     // ── Events ───────────────────────────────────────────────────────────
 
     public event EventHandler? SeekStarted;
@@ -245,6 +261,14 @@ public sealed class CompositionProgressBar : UserControl
         {
             bar.RebuildSegments();
             bar.Resync();
+        }
+    }
+
+    private static void OnHoverPreviewItemsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is CompositionProgressBar bar)
+        {
+            bar.HideHoverTooltip();
         }
     }
 
@@ -529,13 +553,13 @@ public sealed class CompositionProgressBar : UserControl
         _isHovering = true;
         SetBarHeight(TrackHeightHover);
         if (_thumbVisual != null) _thumbVisual.Opacity = 1f;
-        UpdateChapterTooltip(e);
+        UpdateHoverTooltip(e);
     }
 
     private void OnPointerExited(object sender, PointerRoutedEventArgs e)
     {
         _isHovering = false;
-        HideChapterTooltip();
+        HideHoverTooltip();
         // Keep the bar/thumb expanded while a drag is in flight even if the
         // pointer leaves the bar's bounds — matches Spotify/Apple Music seek
         // ergonomics. Final cleanup runs in ReleaseDragWithCommit.
@@ -566,7 +590,7 @@ public sealed class CompositionProgressBar : UserControl
     {
         // Tooltip tracks the cursor whenever the pointer is over the bar,
         // not only during drag — Pointer{Entered,Exited} bracket the show/hide.
-        UpdateChapterTooltip(e);
+        UpdateHoverTooltip(e);
 
         if (!_isDragging) return;
         var x = e.GetCurrentPoint(this).Position.X;
@@ -650,21 +674,14 @@ public sealed class CompositionProgressBar : UserControl
         // Resync re-fires when the VM re-anchors after Seek round-trips.
     }
 
-    // ── Chapter hover tooltip ────────────────────────────────────────────
+    // ── Timeline hover tooltip ───────────────────────────────────────────
 
-    private void UpdateChapterTooltip(PointerRoutedEventArgs e)
+    private void UpdateHoverTooltip(PointerRoutedEventArgs e)
     {
-        var segments = Segments;
-        if (segments is null || segments.Count == 0)
-        {
-            HideChapterTooltip();
-            return;
-        }
-
         var width = ActualWidth;
         if (width <= 0 || DurationMs <= 0)
         {
-            HideChapterTooltip();
+            HideHoverTooltip();
             return;
         }
 
@@ -672,38 +689,25 @@ public sealed class CompositionProgressBar : UserControl
         var ratio = Math.Clamp(pointerX / width, 0.0, 1.0);
         var pointerMs = ratio * DurationMs;
 
-        EpisodeChapterVm? hit = null;
-        foreach (var chapter in segments)
+        if (!TryResolveHoverTooltip(pointerMs, out var title, out var meta, out var source))
         {
-            if (pointerMs >= chapter.StartMilliseconds && pointerMs < chapter.StopMilliseconds)
-            {
-                hit = chapter;
-                break;
-            }
-        }
-        // Past the last chapter's stop (or rounding gap) → snap to nearest by ms.
-        if (hit is null)
-        {
-            for (var i = segments.Count - 1; i >= 0; i--)
-            {
-                if (pointerMs >= segments[i].StartMilliseconds) { hit = segments[i]; break; }
-            }
-            hit ??= segments[0];
+            HideHoverTooltip();
+            return;
         }
 
         if (XamlRoot is null)
         {
-            HideChapterTooltip();
+            HideHoverTooltip();
             return;
         }
 
-        // Update content only when the chapter under the cursor changes —
-        // re-binding TextBlock.Text forces an unnecessary layout pass otherwise.
-        if (!ReferenceEquals(_activeTooltipChapter, hit))
+        // Update content only when the item under the cursor changes; rebinding
+        // TextBlock.Text forces an unnecessary layout pass otherwise.
+        if (!ReferenceEquals(_activeTooltipSource, source))
         {
-            _activeTooltipChapter = hit;
-            _chapterTooltipTitle.Text = hit.Title ?? "";
-            _chapterTooltipMeta.Text = hit.TimeRange ?? "";
+            _activeTooltipSource = source;
+            _chapterTooltipTitle.Text = title;
+            _chapterTooltipMeta.Text = meta;
             // Force a measure so HorizontalOffset can centre the popup on the
             // pointer using the freshly-measured size.
             _chapterTooltipBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
@@ -730,10 +734,90 @@ public sealed class CompositionProgressBar : UserControl
         _chapterTooltipPopup.VerticalOffset = origin.Y - popupHeight - 8.0;
     }
 
-    private void HideChapterTooltip()
+    private bool TryResolveHoverTooltip(
+        double pointerMs,
+        out string title,
+        out string meta,
+        out object source)
+    {
+        var previewItems = HoverPreviewItems;
+        if (previewItems is { Count: > 0 }
+            && TryFindTimelinePreview(previewItems, pointerMs, out var preview))
+        {
+            title = preview.Title;
+            meta = string.IsNullOrWhiteSpace(preview.Subtitle)
+                ? preview.TimeRange
+                : $"{preview.Subtitle} · {preview.TimeRange}";
+            source = preview;
+            return true;
+        }
+
+        var segments = Segments;
+        if (segments is { Count: > 0 }
+            && TryFindChapterPreview(segments, pointerMs, out var chapter))
+        {
+            title = chapter.Title ?? "";
+            meta = chapter.TimeRange ?? "";
+            source = chapter;
+            return true;
+        }
+
+        title = "";
+        meta = "";
+        source = new object();
+        return false;
+    }
+
+    private static bool TryFindTimelinePreview(
+        IReadOnlyList<TimelineHoverPreviewItem> items,
+        double pointerMs,
+        out TimelineHoverPreviewItem preview)
+    {
+        foreach (var item in items)
+        {
+            if (pointerMs >= item.StartMilliseconds && pointerMs < item.StopMilliseconds)
+            {
+                preview = item;
+                return true;
+            }
+        }
+
+        preview = default!;
+        return false;
+    }
+
+    private static bool TryFindChapterPreview(
+        IReadOnlyList<EpisodeChapterVm> segments,
+        double pointerMs,
+        out EpisodeChapterVm chapter)
+    {
+        foreach (var segment in segments)
+        {
+            if (pointerMs >= segment.StartMilliseconds && pointerMs < segment.StopMilliseconds)
+            {
+                chapter = segment;
+                return true;
+            }
+        }
+
+        // Past the last chapter's stop (or rounding gap) -> snap to nearest by ms.
+        for (var i = segments.Count - 1; i >= 0; i--)
+        {
+            if (pointerMs >= segments[i].StartMilliseconds)
+            {
+                chapter = segments[i];
+                return true;
+            }
+        }
+
+        chapter = segments[0];
+        return true;
+    }
+
+    private void HideHoverTooltip()
     {
         if (_chapterTooltipPopup.IsOpen) _chapterTooltipPopup.IsOpen = false;
-        _activeTooltipChapter = null;
+        _activeTooltipSource = null;
     }
 
     private static Brush ResolveBrush(string resourceKey, Color fallback)

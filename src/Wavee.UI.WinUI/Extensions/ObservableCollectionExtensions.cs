@@ -108,4 +108,24 @@ public static class ObservableCollectionExtensions
         onPropChanged.Invoke(collection, new object[] { new PropertyChangedEventArgs("Item[]") });
         onChanged.Invoke(collection, new object[] { new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset) });
     }
+
+    public static void ClearWithoutNotify<T>(this ObservableCollection<T> collection)
+    {
+        var backing = CollectionReflection<T>.ItemsProperty?.GetValue(collection) as IList<T>;
+        if (backing is not null)
+        {
+            backing.Clear();
+            return;
+        }
+
+        try
+        {
+            collection.Clear();
+        }
+        catch
+        {
+            // Best-effort teardown path. If reflection is unavailable and a
+            // disconnected WinUI listener throws during Clear, leave cleanup to GC.
+        }
+    }
 }

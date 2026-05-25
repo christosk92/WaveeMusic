@@ -49,6 +49,8 @@ public sealed class LyricsService : ILyricsService
     private static readonly TimeSpan ProviderTimeout = TimeSpan.FromSeconds(10);
     private const string LyricsCacheVersion = "syllable-v3";
     private const string PreviousLyricsCacheVersion = "timing-v2";
+    private const string OfficialSpotifyLyricsCacheVersion = "spotify-official-v1";
+    private const string OfficialSpotifyProviderName = "Spotify-Official";
     private const string TranscriptCacheVersion = "transcript-v1";
     private const string TranscriptProviderName = "Spotify-Transcript";
     private static readonly Regex CollapseWhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
@@ -296,6 +298,113 @@ public sealed class LyricsService : ILyricsService
         return (spotifyResult?.Data, BuildDiagnostics(trackId, title, artist, durationMs, providerDiags, selectedProvider, selectionReason, sw.Elapsed));
     }
 
+    public async Task<(ControlsLyricsData? Lyrics, LyricsSearchDiagnostics Diagnostics)> GetOfficialSpotifyLyricsForTrackAsync(
+        string trackIdOrUri,
+        string? title,
+        string? artist,
+        double durationMs,
+        string? imageUrl,
+        CancellationToken ct = default)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var providerDiags = new List<ProviderDiagnostic>();
+
+        if (!TryExtractTrackId(trackIdOrUri, out var trackId))
+            return (null, BuildDiagnostics(trackIdOrUri, title, artist, durationMs, providerDiags, null, "Not a Spotify track", sw.Elapsed));
+
+        if (string.IsNullOrEmpty(imageUrl))
+        {
+            providerDiags.Add(new ProviderDiagnostic
+            {
+                Name = OfficialSpotifyProviderName,
+                Status = ProviderStatus.NoResult,
+                Error = "album art URL missing",
+            });
+            return (null, BuildDiagnostics(trackId, title, artist, durationMs, providerDiags, null, "Spotify lyrics require album art", sw.Elapsed));
+        }
+
+        var cacheKey = BuildOfficialSpotifyLyricsCacheKey(trackId);
+
+        if (_memoryCache.TryGetValue(cacheKey, out var cached))
+        {
+            _logger?.LogDebug("Official Spotify lyrics cache hit (memory) for {TrackId}", trackId);
+            return (cached.Data, BuildCachedDiagnostics(trackId, title, artist, durationMs, cached.Provider));
+        }
+
+        if (_db != null)
+        {
+            try
+            {
+                var dbResult = await _db.GetLyricsCacheAsync(cacheKey, ct);
+                if (dbResult != null)
+                {
+                    var dto = JsonSerializer.Deserialize(dbResult.Value.JsonData, LyricsCacheJsonContext.Default.CachedLyricsDto);
+                    if (dto != null)
+                    {
+                        var data = LyricsCacheConverter.FromDto(dto);
+                        var provider = dbResult.Value.Provider ?? OfficialSpotifyProviderName;
+                        _memoryCache[cacheKey] = (data, provider);
+                        _logger?.LogDebug("Official Spotify lyrics cache hit (SQLite) for {TrackId}", trackId);
+                        return (data, BuildCachedDiagnostics(trackId, title, artist, durationMs, provider));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to read official Spotify lyrics from SQLite cache");
+            }
+        }
+
+        try
+        {
+            var response = await _session.SpClient.GetLyricsAsync(trackId, imageUrl, ct);
+            ct.ThrowIfCancellationRequested();
+
+            var lines = response?.Lyrics?.Lines;
+            if (lines is not { Count: > 0 } || response?.Lyrics?.IsSynced != true)
+            {
+                providerDiags.Add(new ProviderDiagnostic
+                {
+                    Name = OfficialSpotifyProviderName,
+                    Status = ProviderStatus.NoResult,
+                    LineCount = lines?.Count ?? 0,
+                    RawPreview = lines is { Count: > 0 }
+                        ? string.Join("\n", lines.Take(5).Select(l => l.Words))
+                        : null,
+                });
+                return (null, BuildDiagnostics(trackId, title, artist, durationMs, providerDiags, null, "No synced official Spotify lyrics", sw.Elapsed));
+            }
+
+            var data = ConvertApiLineLyrics(response.Lyrics);
+            providerDiags.Add(new ProviderDiagnostic
+            {
+                Name = OfficialSpotifyProviderName,
+                Status = ProviderStatus.Success,
+                LineCount = data.LyricsLines.Count,
+                HasSyllableSync = false,
+                RawPreview = string.Join("\n", data.LyricsLines.Take(5).Select(l => l.PrimaryText)),
+            });
+
+            CacheLyricsByCacheKey(cacheKey, data, OfficialSpotifyProviderName);
+            return (data, BuildDiagnostics(trackId, title, artist, durationMs, providerDiags, OfficialSpotifyProviderName, "Official Spotify synced lyrics", sw.Elapsed));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Official Spotify lyrics fetch failed for {TrackId}", trackId);
+            providerDiags.Add(new ProviderDiagnostic
+            {
+                Name = OfficialSpotifyProviderName,
+                Status = ProviderStatus.Error,
+                Error = ex.Message,
+            });
+            return (null, BuildDiagnostics(trackId, title, artist, durationMs, providerDiags, null, "Official Spotify lyrics fetch failed", sw.Elapsed));
+        }
+    }
+
     /// <summary>
     /// Scores an external lyrics result against Spotify's (ground truth) lyrics.
     /// Compares normalized text of sampled lines. Returns 0.0–1.0 overlap ratio.
@@ -388,8 +497,34 @@ public sealed class LyricsService : ILyricsService
     private static string BuildLyricsCacheKey(string trackId, string version)
         => $"{BuildLegacyLyricsCacheKey(trackId)}#{version}";
 
+    private static string BuildOfficialSpotifyLyricsCacheKey(string trackId)
+        => $"{BuildLegacyLyricsCacheKey(trackId)}#{OfficialSpotifyLyricsCacheVersion}";
+
     private static string BuildLegacyLyricsCacheKey(string trackId)
         => $"spotify:track:{trackId}";
+
+    private static bool TryExtractTrackId(string? trackIdOrUri, out string trackId)
+    {
+        trackId = "";
+
+        if (string.IsNullOrWhiteSpace(trackIdOrUri))
+            return false;
+
+        if (SpotifyUriHelper.TryParse(trackIdOrUri, out var kind, out var id))
+        {
+            if (kind != SpotifyEntityKind.Track || string.IsNullOrWhiteSpace(id))
+                return false;
+
+            trackId = id;
+            return true;
+        }
+
+        if (trackIdOrUri.Contains(':', StringComparison.Ordinal))
+            return false;
+
+        trackId = trackIdOrUri;
+        return true;
+    }
 
     // Episode transcripts live in a separate cache namespace so they never
     // collide with a track id that happened to base62-match an episode id,
@@ -540,6 +675,13 @@ public sealed class LyricsService : ILyricsService
         }
 
         _memoryCache.TryRemove(trackId, out _);
+        if (TryExtractTrackId(trackId, out var bareTrackId))
+        {
+            var officialKey = BuildOfficialSpotifyLyricsCacheKey(bareTrackId);
+            _memoryCache.TryRemove(officialKey, out _);
+            if (_db != null)
+                await _db.DeleteLyricsCacheAsync(officialKey, ct);
+        }
 
         if (_db != null)
         {
@@ -563,6 +705,29 @@ public sealed class LyricsService : ILyricsService
                     var json = JsonSerializer.Serialize(dto, LyricsCacheJsonContext.Default.CachedLyricsDto);
                     bool hasSyllable = data.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo);
                     await _db.SetLyricsCacheAsync(BuildLyricsCacheKey(trackId), provider, json, hasSyllable);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to persist lyrics to SQLite");
+                }
+            });
+        }
+    }
+
+    private void CacheLyricsByCacheKey(string cacheKey, ControlsLyricsData data, string provider)
+    {
+        _memoryCache[cacheKey] = (data, provider);
+
+        if (_db != null)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var dto = LyricsCacheConverter.ToDto(data);
+                    var json = JsonSerializer.Serialize(dto, LyricsCacheJsonContext.Default.CachedLyricsDto);
+                    bool hasSyllable = data.LyricsLines.Any(l => l.IsPrimaryHasRealSyllableInfo);
+                    await _db.SetLyricsCacheAsync(cacheKey, provider, json, hasSyllable);
                 }
                 catch (Exception ex)
                 {

@@ -20,6 +20,12 @@ public sealed record ArtistAiQuestionRequest(
     IProgress<string>? DeltaProgress = null,
     IAiActivitySink? ActivitySink = null);
 
+public sealed record ArtistAiSuggestionRequest(
+    string ArtistUri,
+    string ArtistName,
+    string? Biography = null,
+    IReadOnlyList<string>? KnownTopTrackNames = null);
+
 public enum ArtistAiQuestionResultKind
 {
     Ok,
@@ -209,6 +215,47 @@ public sealed class ArtistAiQuestionService
                 ArtistAiQuestionResult.Ok(BuildFallbackAnswer(plan, recommendations), recommendations),
             _ => ArtistAiQuestionResult.Error(response.ErrorMessage ?? response.Status.ToString()),
         };
+    }
+
+    public async Task<IReadOnlyList<string>> SuggestQuestionsAsync(
+        ArtistAiSuggestionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (string.IsNullOrWhiteSpace(request.ArtistUri) || string.IsNullOrWhiteSpace(request.ArtistName))
+            return [];
+        if (!_settings.AiFeaturesEnabled || !_settings.AiBioSummarizeEnabled || !_model.IsSupported)
+            return [];
+
+        try
+        {
+            if (!await _model.EnsureReadyAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
+                return [];
+
+            var response = await _model.GenerateStructuredJsonAsync(
+                new AiStructuredGenerationRequest(
+                    BuildSuggestionPrompt(request),
+                    SuggestionJsonSchema,
+                    Temperature: 0.55f,
+                    Operation: "ArtistQuestionSuggestions"),
+                cancellationToken).ConfigureAwait(false);
+
+            if (response.IsComplete
+                && TryParseSuggestedQuestions(response.RawResponseText ?? response.Text, out var questions))
+            {
+                return questions;
+            }
+
+            _logger?.LogDebug("Artist question suggestions returned {Status}: {Error}",
+                response.Status, response.ErrorMessage);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogDebug(ex, "Artist question suggestion generation failed.");
+        }
+
+        return [];
     }
 
     private async Task<ArtistQuestionPlan> BuildPlanAsync(
@@ -753,6 +800,33 @@ public sealed class ArtistAiQuestionService
            "Use artist.top_tracks for best, biggest, most popular, hit, or recommendation questions.\n\n" +
            $"Artist: {request.ArtistName}\nQuestion: {request.Question}\n";
 
+    private static string BuildSuggestionPrompt(ArtistAiSuggestionRequest request)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Generate short suggested action chips for an artist assistant inside a Spotify desktop client.");
+        sb.AppendLine("Return questions a listener would tap to ask about this artist's catalog.");
+        sb.AppendLine("Return 4 suggestions. Each should be concise, natural, and under 70 characters.");
+        sb.AppendLine("Prefer artist-specific wording. Use the artist name or a clearly fitting pronoun such as his/her when the biography makes that safe.");
+        sb.AppendLine("Never use the word 'their'.");
+        sb.AppendLine("Cover a mix of: oldest songs, best song, lesser-known songs, releases, or where to start.");
+        sb.AppendLine();
+        sb.Append("ARTIST: ").AppendLine(request.ArtistName);
+
+        if (!string.IsNullOrWhiteSpace(request.Biography))
+        {
+            sb.AppendLine("BIOGRAPHY:");
+            sb.AppendLine(TrimForPrompt(request.Biography!, 900));
+        }
+
+        if (request.KnownTopTrackNames is { Count: > 0 })
+        {
+            sb.Append("VISIBLE_TOP_TRACKS: ");
+            sb.AppendLine(string.Join(", ", request.KnownTopTrackNames.Take(8)));
+        }
+
+        return TrimForPrompt(sb.ToString(), 2400);
+    }
+
     private static bool TryParsePlan(string? json, out ArtistQuestionPlan plan)
     {
         plan = ArtistQuestionPlan.Default;
@@ -795,6 +869,57 @@ public sealed class ArtistAiQuestionService
         {
             return false;
         }
+    }
+
+    private static bool TryParseSuggestedQuestions(string? json, out IReadOnlyList<string> questions)
+    {
+        questions = [];
+        if (string.IsNullOrWhiteSpace(json))
+            return false;
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("questions", out var questionsEl)
+                || questionsEl.ValueKind != JsonValueKind.Array)
+            {
+                return false;
+            }
+
+            var values = new List<string>(4);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in questionsEl.EnumerateArray())
+            {
+                var question = CleanSuggestedQuestion(item.GetString());
+                if (question is null || !seen.Add(question))
+                    continue;
+
+                values.Add(question);
+                if (values.Count >= 4)
+                    break;
+            }
+
+            questions = values;
+            return values.Count > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string? CleanSuggestedQuestion(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var question = value.Trim().Trim('"', '\'', '“', '”');
+        if (question.Length is < 8 or > 90)
+            return null;
+        if (question.Contains("their", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return question;
     }
 
     private static ArtistQuestionIntent ParseIntent(string? value)
@@ -854,6 +979,23 @@ public sealed class ArtistAiQuestionService
         }
       },
       "required": [ "intent", "tools" ]
+    }
+    """;
+
+    private const string SuggestionJsonSchema = """
+    {
+      "type": "object",
+      "properties": {
+        "questions": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [ "questions" ]
     }
     """;
 

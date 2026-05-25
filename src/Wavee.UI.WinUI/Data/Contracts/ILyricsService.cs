@@ -20,6 +20,19 @@ public interface ILyricsService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Fetches only Spotify's official synced line lyrics for a track.
+    /// External providers are intentionally excluded because the playerbar hover
+    /// preview should mirror Spotify's own timeline.
+    /// </summary>
+    Task<(LyricsData? Lyrics, LyricsSearchDiagnostics Diagnostics)> GetOfficialSpotifyLyricsForTrackAsync(
+        string trackIdOrUri,
+        string? title,
+        string? artist,
+        double durationMs,
+        string? imageUrl,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Clears cached lyrics for a track so the next fetch re-queries all providers.
     /// </summary>
     Task ClearCacheForTrackAsync(string trackId, CancellationToken ct = default);

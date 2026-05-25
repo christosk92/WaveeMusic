@@ -4,8 +4,9 @@ using Microsoft.UI.Xaml.Controls;
 namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
 
 /// <summary>
-/// Switches between the regular per-track row template and the group-header
-/// template inside <see cref="TrackDataGrid"/>'s <see cref="ItemsView"/>.
+/// Switches between the regular per-track row template, group-header template,
+/// and optional footer template inside <see cref="TrackDataGrid"/>'s
+/// <see cref="ItemsView"/>.
 /// <see cref="TrackDataGridGroupRow"/> markers picked up by
 /// <c>BuildFlatRowsWithHeaders</c> route to <see cref="GroupHeaderTemplate"/>;
 /// everything else (the <c>ITrackItem</c>s) routes to <see cref="RowTemplate"/>.
@@ -21,8 +22,17 @@ public sealed class TrackDataGridItemTemplateSelector : DataTemplateSelector
     /// consumer's existing header markup keeps working unchanged.</summary>
     public DataTemplate? GroupHeaderTemplate { get; set; }
 
+    /// <summary>Template used for <see cref="TrackDataGridFooterRow"/> markers
+    /// when a consumer wants the footer to scroll with the rows.</summary>
+    public DataTemplate? FooterTemplate { get; set; }
+
     protected override DataTemplate? SelectTemplateCore(object item)
-        => item is TrackDataGridGroupRow ? GroupHeaderTemplate : RowTemplate;
+        => item switch
+        {
+            TrackDataGridFooterRow => FooterTemplate,
+            TrackDataGridGroupRow => GroupHeaderTemplate,
+            _ => RowTemplate,
+        };
 
     protected override DataTemplate? SelectTemplateCore(object item, DependencyObject container)
         => SelectTemplateCore(item);

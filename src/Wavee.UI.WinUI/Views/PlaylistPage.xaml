@@ -33,10 +33,8 @@
             <homeViews:BrowseChip Item="{x:Bind}"/>
         </DataTemplate>
 
-        <!-- Shy-header slide/fade: banner overlay -> floating compact pill.
-             Matched ids anchor the motion without scaling the title, owner,
-             or card chrome. Cover thumb + Play button fade in via the
-             Independent* show window. Mirrors ArtistShyHeaderTransition. -->
+        <!-- Banner-mode shy header: the track-list scroller drives this now,
+             so playlist rows stay virtualized while the compact pill remains. -->
         <transitions:TransitionHelper x:Key="PlaylistShyHeaderTransition"
                                       Duration="0:0:0.30"
                                       ReverseDuration="0:0:0.24"
@@ -51,6 +49,7 @@
             <transitions:TransitionConfig Id="playlist-name" ScaleMode="None"/>
             <transitions:TransitionConfig Id="playlist-owner" ScaleMode="None"/>
         </transitions:TransitionHelper>
+
     </UserControl.Resources>
 
     <Grid x:Name="RootGrid" SizeChanged="RootGrid_SizeChanged">
@@ -68,7 +67,7 @@
                              threw XamlUnhandledException on every SizeChanged that flipped
                              between Wide/Narrow. If a narrow-mode header is reintroduced
                              later, re-add matching setters referencing the real name. -->
-                        <Setter Target="LeftColumnHost.Visibility" Value="Collapsed"/>
+                        <Setter Target="LeftColumnScrollView.Visibility" Value="Collapsed"/>
                         <Setter Target="ShimmerContainer.Visibility" Value="Collapsed"/>
                         <Setter Target="PlaylistSplitter.Visibility" Value="Collapsed"/>
                     </VisualState.Setters>
@@ -82,34 +81,19 @@
         <Border IsHitTestVisible="False"
                 Background="{x:Bind ViewModel.Header.PaletteBackdropBrush, Mode=OneWay}"/>
 
-        <!-- Unified page-level scroller. Wraps the banner row + the two-column
-             content so the banner, left sidebar, and track table all scroll
-             together as a single document. The left sidebar's composition
-             Translation is bound to this scroller's ExpressionAnimationSources
-             in code-behind so it locks in place once the user scrolls past the
-             banner ("sticky left column"). The TrackDataGrid's
-             IsParentScrolling=true disables its internal ItemsView scroll so
-             it measures to natural height inside this scroller. -->
-        <ScrollView x:Name="PageScrollView"
-                    VerticalScrollMode="Auto"
-                    HorizontalScrollMode="Disabled"
-                    ZoomMode="Disabled"
-                    ContentOrientation="Vertical"
-                    Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
         <Grid x:Name="TwoColumnGrid"
               MaxWidth="2400"
-              HorizontalAlignment="Stretch">
+              HorizontalAlignment="Stretch"
+              Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
             <Grid.RowDefinitions>
                 <!-- Banner row: 280 px hero band spanning all three columns.
                      Either composition image (HeaderImageUrl present) or a
                      procedural gradient (AnimatedHeroBackground), with the
                      title overlaid at the bottom-left. -->
                 <RowDefinition Height="Auto"/>
-                <!-- Content row: was Height="*" when the page had a fixed
-                     viewport; now Auto so the row measures to natural content
-                     height (sidebar + track table + footer) and the outer
-                     PageScrollView handles all vertical motion. -->
-                <RowDefinition Height="Auto"/>
+                <!-- Content row stays finite so the metadata column and track
+                     table can each own their own vertical scroll surface. -->
+                <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="LeftPanelColumn" Width="200" MinWidth="200" MaxWidth="500"/>
@@ -172,15 +156,11 @@
                      in its new home — click the title to edit (owners only).
                      Title shimmer occupies the same Y position so the swap
                      when PlaylistName arrives is opacity-only, no shift.
-                     BannerOverlayPanel is the ShyHeaderController's `source`
-                     element; matched-IDs (card-shell, playlist-name,
-                     playlist-owner) interpolate with the PlaylistShyPill. -->
+                     BannerOverlayPanel is the shy-header transition source for
+                     banner-mode playlists. -->
                 <Grid x:Name="BannerOverlayPanel"
                       HorizontalAlignment="Stretch"
                       VerticalAlignment="Stretch">
-                    <!-- Invisible card-shell anchor — gives the TransitionHelper
-                         a source rectangle to morph the pill's outer Border in
-                         from. Mirrors ArtistPage's HeroOverlayPanel pattern. -->
                     <Border transitions:TransitionHelper.Id="card-shell"
                             Background="Transparent"
                             HorizontalAlignment="Stretch"
@@ -290,29 +270,27 @@
                 </StackPanel>
             </Grid>
 
-            <!-- Wide left panel: shown once metadata has arrived. The cover Grid
-                 + title block at the top are gated on LayoutMode == Cover (user
+            <!-- Wide left panel: metadata owns its own scroll surface. The cover
+                 Grid + title block are gated on LayoutMode == Cover (user
                  playlists). Banner-mode playlists hide both — their title lives
-                 in the banner row's overlay above, and there is no square cover.
-                 Previously wrapped in its own ScrollView (WidePlaylistScroller);
-                 now a direct Grid child so the page-level PageScrollView is the
-                 single scroll source. LeftColumnHost is the composition target —
-                 code-behind binds its Translation to PageScrollView's
-                 ExpressionAnimationSources to make it pin once the banner has
-                 scrolled past. -->
+                 in the banner row's overlay above, and there is no square cover. -->
+            <ScrollView x:Name="LeftColumnScrollView"
+                        Grid.Row="1"
+                        Grid.Column="0"
+                        HorizontalScrollMode="Disabled"
+                        VerticalScrollMode="Auto"
+                        VerticalScrollBarVisibility="Auto"
+                        ZoomMode="Disabled"
+                        ContentOrientation="Vertical">
             <StackPanel x:Name="LeftColumnHost"
-                        Grid.Row="1" Grid.Column="0"
                         Padding="16,20,8,20" Spacing="14" HorizontalAlignment="Stretch"
                         VerticalAlignment="Top">
 
-                <!-- ════ PINNED ZONE — never scrolls ═════════════════
-                     Cover + title + owner/meta + primary CTAs stay at
-                     the top of the sticky left column. Secondary
-                     actions, description, chips, collaborators go to
-                     LeftScrollableContainer below. -->
+                <!-- ════ PRIMARY METADATA ════════════════════════════
+                     Cover + title + owner/meta + primary CTAs stay grouped
+                     above secondary actions in the left-column scroller. -->
                 <StackPanel x:Name="LeftPinnedZone"
-                            Spacing="14"
-                            SizeChanged="LeftPinnedZone_SizeChanged">
+                            Spacing="14">
 
                 <!-- 1. Cover art (Cover mode only). Square; SizeChanged keeps it
                      square as the panel resizes. Hidden in Banner mode — the
@@ -482,20 +460,10 @@
                 </StackPanel>
 
                 </StackPanel>
-                <!-- ════ END PINNED ZONE ═════════════════════════════ -->
+                <!-- ════ END PRIMARY METADATA ════════════════════════ -->
 
-                <!-- ════ SCROLLABLE ZONE — overflows in place ════════
-                     MaxHeight is set in code-behind to
-                     (PageScrollView.ActualHeight − LeftPinnedZone.ActualHeight − 24)
-                     so secondary actions, description, session chips and
-                     collaborators remain reachable even when the sticky
-                     column would otherwise clip past the viewport. -->
-                <Grid x:Name="LeftScrollableContainer">
-                    <ScrollView x:Name="LeftScrollableZone"
-                                VerticalScrollChainMode="Always"
-                                ZoomMode="Disabled"
-                                ContentOrientation="Vertical">
-                        <StackPanel Spacing="14">
+                <!-- ════ SECONDARY METADATA ═══════════════════════════ -->
+                <StackPanel Spacing="14">
 
                 <!-- 5b. Secondary action cluster — labeled pill buttons mirroring
                      AlbumPage's `.action-cluster`. WrapPanel so the row spills to a
@@ -710,12 +678,10 @@
                                 Spacing="8"/>
                 </controls1:ClickableBorder>
 
-                        </StackPanel>
-                    </ScrollView>
-
-                    </Grid>
-                <!-- ════ END SCROLLABLE ZONE ═════════════════════════ -->
+                </StackPanel>
+                <!-- ════ END SECONDARY METADATA ═══════════════════════ -->
             </StackPanel>
+            </ScrollView>
 
             <controls1:GridSplitter
                 x:Name="PlaylistSplitter"
@@ -735,7 +701,7 @@
                 VerticalAlignment="Stretch"
                 Margin="0,0,0,0"
                 PageKey="playlist"
-                IsParentScrolling="True"
+                FooterPlacement="InRowsScroll"
                 IsLoading="{x:Bind ViewModel.TrackList.IsLoadingTracks, Mode=OneWay}"
                 LoadingRowCount="{x:Bind ViewModel.TrackList.TotalTracks, Mode=OneWay}"
                 AddedByVisible="{x:Bind ViewModel.Header.ShouldShowAddedByColumn, Mode=OneWay}"
@@ -1013,7 +979,6 @@
             </Grid>
 
         </Grid>
-        </ScrollView>
 
         <!-- Error overlay: shown when detail fetch or track fetch fails.
              Retry re-invalidates the PlaylistStore and resets track-load state. -->
@@ -1022,10 +987,8 @@
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
             RetryCommand="{x:Bind ViewModel.RetryCommand}"/>
 
-        <!-- Floating shy pill — pinned at top-center of the page, outside the
-             PageScrollView so it doesn't scroll. ShyHeaderController flips it
-             Visible once the user scrolls past ~190 px (banner pin offset)
-             and morphs the matched-ID leaves with the banner overlay above. -->
+        <!-- Banner-mode shy pill. It is driven by TrackGrid's row scroller,
+             not an outer page scroller, so row virtualization stays intact. -->
         <playlist:PlaylistShyPill
             x:Name="PlaylistShyPill"
             HorizontalAlignment="Center"
@@ -1040,9 +1003,8 @@
             PlayCommand="{x:Bind ViewModel.TrackList.PlayAllCommand}"/>
 
         <!-- Floating multi-select command bar — viewport-pinned sibling of
-             PageScrollView (same pattern as PlaylistShyPill) so it stays at the
-             bottom of the viewport while the track table scrolls. Wired to
-             TrackGrid in code-behind. -->
+             the two-column layout so it stays at the bottom of the viewport
+             while the track table scrolls. Wired to TrackGrid in code-behind. -->
         <tdg:TrackSelectionBar x:Name="SelectionBar"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Bottom"
