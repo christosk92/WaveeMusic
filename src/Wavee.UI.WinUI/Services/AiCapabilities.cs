@@ -127,10 +127,10 @@ public sealed class AiCapabilities
         IsAiAvailableAndEnabled && _settings.Settings.AiLyricsSummarizeEnabled;
 
     /// <summary>
-    /// Per-feature gate: artist-page "About this artist" excerpt synthesised on-device
-    /// when Spotify's ArtistOverview returns no biography. The artist page hides the
-    /// excerpt entirely when this gate is closed (so the surface is honest about why
-    /// it can't summarise — no half-rendered placeholder).
+    /// Per-feature gate: artist-page "About this artist" excerpt synthesised
+    /// on-device. The artist page hides the AI card entirely when this gate is
+    /// closed (so the surface is honest about why it can't summarise — no
+    /// half-rendered placeholder).
     /// </summary>
     public bool IsArtistBioSummarizeEnabled =>
         IsAiAvailableAndEnabled && _settings.Settings.AiBioSummarizeEnabled;

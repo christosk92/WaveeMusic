@@ -180,7 +180,7 @@ public sealed partial class PlayerBar : UserControl
     {
         var showWide = state is "Wide" or "Compact" or "Narrow";
         var showInlinePanels = state is "Wide" or "Compact";
-        var showOverflow = state != "Wide";
+        var showOverflow = true;
         var showNarrowAlbumArt = !ViewModel.IsAlbumArtExpanded;
         var showNarrowRemote = state != "VeryNarrow" && ViewModel.IsPlayingRemotely;
         var showInlineModes = state is "Wide" or "Compact" or "Narrow";
@@ -201,8 +201,7 @@ public sealed partial class PlayerBar : UserControl
         WideLayoutRoot.Height = showWide ? 56 : double.NaN;
         PlayerBarLayoutRoot.MinHeight = state switch
         {
-            "Wide" or "Compact" => 56,
-            "Narrow" => 84,
+            "Wide" or "Compact" or "Narrow" => 56,
             _ => 76
         };
 

@@ -265,6 +265,16 @@ public sealed partial class HomeFeedViewModel : ObservableObject, IDisposable
                 item.AlbumMetadataSubtitle = message.DisplaySubtitle;
             if (message.TotalTracks > 0)
                 item.AlbumTotalTracks = message.TotalTracks;
+            if (!string.IsNullOrWhiteSpace(message.ArtistName))
+            {
+                item.Subtitle = message.ArtistName;
+                item.SubtitleNavigationTitle = message.ArtistName;
+            }
+            if (!string.IsNullOrWhiteSpace(message.ArtistUri)
+                && message.ArtistUri.StartsWith("spotify:artist:", StringComparison.OrdinalIgnoreCase))
+            {
+                item.SubtitleNavigationUri = message.ArtistUri;
+            }
         }
     }
 

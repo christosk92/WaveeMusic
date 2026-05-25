@@ -1,0 +1,183 @@
+[
+  {
+    "path": "src/Wavee.Controls.Lyrics/Helper/ImageHelper.cs",
+    "description": "Static utility class for image loading and conversion. Provides async methods to retrieve album art placeholder, extract palette colors from BitmapDecoder via PaletteHelper (dispatching to OctTree/MedianCut/KMeans/Auto generators), convert IBuffer/byte[]/data URLs to WinRT stream types, download images from HTTP/file URLs, and generate random BGRA noise pixel data.",
+    "exports": ["ImageHelper"],
+    "imports": ["PaletteHelper", "PathHelper", "PaletteGeneratorType enum", "Impressionist.Abstractions.PaletteResult"],
+    "role": "utility",
+    "notes": "Entry point for image-to-palette pipeline; routes to PaletteHelper which delegates to the three generator implementations."
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Helper/LanguageHelper.cs",
+    "description": "Static CJK/transliteration language detection and conversion utility. Detects language codes including special phonetic codes (zh-cmn-pinyin, zh-yue-jyutping, ja-latin) via regex heuristics before falling back to NTextCat statistical detection (lazy-loaded Wiki82.profile.xml, ~14.6 MB). Provides Hanzi-to-Pinyin/Jyutping conversion, Traditional/Simplified Chinese conversion, Romaji detection, and localized display name resolution for supported translation/display languages.",
+    "exports": ["LanguageHelper", "PinyinCode/JyutpingCode/RomanCode constants", "SupportedTranslationTargetLanguages/SupportedDisplayLanguages lists"],
+    "imports": ["ExtendedLanguage", "ILocalizationService", "NTextCat.RankedLanguageIdentifier", "WanaKanaNet.WanaKana", "PathHelper"],
+    "role": "utility",
+    "notes": "Lazy-loads Wiki82.profile.xml on first NTextCat call. Multi-line detection joins lines (capped at 4096 chars) for a single Identify() call, cutting cost ~50x over per-line approach."
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Helper/LatestOnlyTaskRunner.cs",
+    "description": "Tiny async task serializer that cancels any in-flight operation before starting a new one. Used by SpectrumAnalyzer for audio device-change debouncing.",
+    "exports": ["LatestOnlyTaskRunner"],
+    "imports": [],
+    "role": "utility"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Helper/Lyrics/LyricsAnimator.cs",
+    "description": "Per-frame lyrics animation engine. For each visible RenderLyricsLine, computes distance-factor from the active line, then drives ValueTransition targets for blur, scale, opacity (phonetic/played/unplayed/translated), fill colors, stroke colors, fan angle, and Y-scroll offset. Handles layout-snap (JumpTo on resize) vs animated transitions. Per-character animations include float (sink-then-rise), glow (keyframe sequences for long syllables or line-start-to-current scope), and scale on syllable play/end. All parameters sourced from LyricsStyleSettings and LyricsEffectSettings.",
+    "exports": ["LyricsAnimator"],
+    "imports": ["ValueTransition", "RenderLyricsLine", "NowPlayingPalette", "LyricsStyleSettings", "LyricsEffectSettings", "Time constants"],
+    "role": "animation-engine",
+    "notes": "Hot path called every Win2D CanvasAnimatedControl frame. Allocation-free overloads on ValueTransition.Start are critical for Gen0 churn reduction."
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Helper/Lyrics/LyricsLayoutHelper.cs",
+    "description": "Static responsive font-size calculator. Maps canvas width/height to a base font size (14-80 px) using width-breakpoint target-chars-per-line heuristics, then derives scaled sizes for translation (0.7x), transliteration (0.55x), song title (1.0x), artist (0.85x), and album (0.75x) layers. Returns a LyricsLayoutMetrics struct.",
+    "exports": ["LyricsLayoutHelper", "LyricsLayoutMetrics"],
+    "imports": [],
+    "role": "layout-helper"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Helper/Lyrics/LyricsLayoutManager.cs",
+    "description": "Static lyrics measure-and-arrange engine. MeasureAndArrange() resolves font sizes (dynamic or fixed), calls RecreateTextLayout/RecreateTextGeometry on each RenderLyricsLine, stacks tertiary (phonetic) / primary / secondary (translation) layers with proportional line spacing, applies left/center/right alignment offsets. Additional static methods: CalculateTargetScrollOffset (center active line at playingLineTopOffsetFactor), CalculateVisibleRange/CalculateMaxRange (binary-search first/last visible lines), CalculateActualHeight, CalculateLanes (overlap-aware lane assignment with tolerance), FindMouseHoverLineIndex (binary-search hit-test).",
+    "exports": ["LyricsLayoutManager"],
+    "imports": ["RenderLyricsLine", "LyricsLayoutHelper", "LyricsWindowStatus", "TranslationSettings"],
+    "role": "layout-engine",
+    "notes": "Uses index-based array access instead of LINQ .Last()/.ElementAtOrDefault() on hot paths to avoid per-frame enumerator allocations."
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Helper/Lyrics/LyricsSynchronizer.cs",
+    "description": "Stateful lyrics time-to-line resolver. GetCurrentLineIndex() uses a cached _lastFoundIndex fast-path for lane-0 lines, then falls back to a linear scan with early-exit when start > currentTime+1s. Prefers lane-0 lines (primary vocalist) over higher lanes when multiple lines are simultaneously active, enabling dual-vocalist lyrics display.",
+    "exports": ["LyricsSynchronizer"],
+    "imports": ["RenderLyricsLine"],
+    "role": "synchronization"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Helper/PaletteHelper.cs",
+    "description": "Bridge between ImageHelper and the palette generator implementations. GetPixelColorAsync() samples every 10th pixel from a BitmapDecoder into a Dictionary<Vector3,int> frequency map (skipping fully-transparent pixels). Routes to OctTreePaletteGenerator, KMeansPaletteGenerator, AutoPaletteGenerator, or ColorThief MedianCut based on PaletteGeneratorType. Returns PaletteResult.",
+    "exports": ["PaletteHelper"],
+    "imports": ["OctTreePaletteGenerator", "KMeansPaletteGenerator", "AutoPaletteGenerator", "ColorThiefDotNet.ColorThief"],
+    "role": "palette-dispatcher"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Helper/PathHelper.cs",
+    "description": "Static path constants for album-art placeholder and language profile (Wiki82.profile.xml) file locations.",
+    "exports": ["PathHelper"],
+    "imports": [],
+    "role": "utility"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Helper/SpectrumAnalyzer.cs",
+    "description": "WASAPI loopback audio spectrum analyzer. Captures system audio via WasapiLoopbackCapture, applies Hamming windowing, runs NAudio FFT (2048-point, separate L+R channels), applies a precomputed perceptual compensation map (frequency-gain curve 20 Hz to 20 kHz), mirrors L/R channels symmetrically, maps to configurable BarCount bins, and exposes SmoothSpectrum (exponential smoothing, fast-rise slow-fall) and CurrentBassEnergy. Implements IMMNotificationClient to restart capture on default-device changes (debounced via LatestOnlyTaskRunner). IDisposable.",
+    "exports": ["SpectrumAnalyzer"],
+    "imports": ["LatestOnlyTaskRunner", "NAudio.CoreAudioApi", "NAudio.Dsp.FastFourierTransform"],
+    "role": "audio-analysis",
+    "notes": "Visualization-only; does not touch the Wavee audio pipeline. COM interop failures silently swallowed for trimmed/AOT build compatibility."
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Helper/StringHelper.cs",
+    "description": "Minimal string utilities providing NewLine constant and helpers for lyrics text joining.",
+    "exports": ["StringHelper"],
+    "imports": [],
+    "role": "utility"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Helper/ValueTransition.cs",
+    "description": "Generic interpolating transition engine for lyrics animation. Maintains a Keyframe<T> queue; supports explicit keyframes with per-segment durations (for multi-step glow/scale sequences) and auto-split mode (single target, uniform duration). Allocation-free single-value and 1/2/3-keyframe overloads avoid per-frame heap allocations. SetDelay() inserts a hold frame at queue head. JumpTo() snaps without animation. Update(TimeSpan) advances through segments with sub-frame remainder carry-over. Interpolator is a pluggable Func<T,T,double,T>; GetInterpolatorByEasingType() builds typed easing closures for double (Sine/Quad/Cubic/Quart/Quint/Expo/Circle/Back/Elastic/Bounce/SmoothStep/Linear).",
+    "exports": ["ValueTransition<T>"],
+    "imports": ["Keyframe<T>", "EasingHelper"],
+    "role": "animation-primitive",
+    "notes": "Only double is supported by the built-in interpolator factory; Color requires caller-injected interpolator (see LineTransitions). Generic constraint is struct but runtime type check is needed for interpolator dispatch."
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Hooks/SpoutTextureHook.cs",
+    "description": "Optional Spout texture sender hook for sharing the lyrics canvas frame with external Spout-compatible applications (e.g. OBS, VJ software). Wraps SpoutDx.Net SpoutSender; Initialize() extracts underlying ID3D11Device from Win2D CanvasDevice via DXGI interface access; SendTexture() extracts ID3D11Texture2D from CanvasRenderTarget and posts to Spout. IDisposable.",
+    "exports": ["SpoutTextureHook"],
+    "imports": ["SpoutDx.Net.Interop", "Vanara.PInvoke", "Vortice.Direct3D11"],
+    "role": "integration-hook"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Implementations/AutoPaletteGenerator.cs",
+    "description": "Meta palette generator that runs both KMeans and OctTree, then selects the result with higher LAB color-space variance (more spread-out palette is considered more representative). Implements tie-breaking strategy between the two quantization algorithms.",
+    "exports": ["AutoPaletteGenerator"],
+    "imports": ["KMeansPaletteGenerator", "OctTreePaletteGenerator", "ColorUtilities"],
+    "role": "palette-generator"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Implementations/ColorUtilities.cs",
+    "description": "Extension methods for Vector3-encoded RGB color conversions: RGB<->HSV, RGB<->XYZ (D65), XYZ<->LAB (CIE L*a*b* with D65 white point), RGB<->LAB (composed), and RGBVectorLStarIsDark() (L* <= 55 threshold). All colors represented as Vector3 with components in [0,255] range for RGB.",
+    "exports": ["ColorUtilities extension methods on Vector3"],
+    "imports": ["Impressionist.Abstractions.HSVColor"],
+    "role": "color-math"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Implementations/KMeansPaletteGenerator.cs",
+    "description": "K-Means palette quantizer implementing IThemeColorGenrator and IPaletteGenrator. Supports standard random init and KMeans++ seeding. Clusters pixels (weighted by frequency) in RGB or LAB space. Returns PaletteResult with theme color (1-cluster centroid) and dominant colors filtered by isDark luminance threshold. Fills palette to clusterCount by cycling if fewer unique colors found.",
+    "exports": ["KMeansPaletteGenerator"],
+    "imports": ["ColorUtilities", "Impressionist.Abstractions (PaletteResult, ThemeColorResult, IThemeColorGenrator, IPaletteGenrator)"],
+    "role": "palette-generator"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Implementations/OctTreePaletteGenerator.cs",
+    "description": "Octree color quantizer implementing IThemeColorGenrator and IPaletteGenrator. Builds an 8-level RGB octree, quantizes by merging leaf nodes from level 6 downward until target color count reached. GetPaletteResult() orders leaves by frequency. Theme color is population-weighted centroid. Fills palette by cycling if fewer leaves than clusterCount.",
+    "exports": ["OctTreePaletteGenerator", "PaletteQuantizer (private nested)", "Node (private nested)"],
+    "imports": ["Impressionist.Abstractions", "ColorUtilities"],
+    "role": "palette-generator"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Implementations/PaletteGenerators.cs",
+    "description": "Static singleton registry holding shared instances of KMeansPaletteGenerator and OctTreePaletteGenerator.",
+    "exports": ["PaletteGenerators"],
+    "imports": ["KMeansPaletteGenerator", "OctTreePaletteGenerator"],
+    "role": "registry"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Models/ExtendedLanguage.cs",
+    "description": "Simple model pairing a BCP-47 language code with a Windows Globalization.Language display name (falls back to code string on invalid tags).",
+    "exports": ["ExtendedLanguage"],
+    "imports": ["Windows.Globalization.Language"],
+    "role": "model"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Models/Keyframe.cs",
+    "description": "Simple value-duration keyframe record used by ValueTransition to describe one animation segment.",
+    "exports": ["Keyframe<T>"],
+    "imports": [],
+    "role": "model"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Models/LinePlaybackState.cs",
+    "description": "Small model or enum representing the playback state of a lyrics line (pre-play, playing, played).",
+    "exports": ["LinePlaybackState"],
+    "imports": [],
+    "role": "model"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Models/Lyrics/BaseLyrics.cs",
+    "description": "Base data model for a timed lyrics segment: StartMs, EndMs, DurationMs, Text, and StartIndex/EndIndex character range within a containing text.",
+    "exports": ["BaseLyrics"],
+    "imports": [],
+    "role": "model"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Models/Lyrics/BaseRenderLyrics.cs",
+    "description": "Extends BaseLyrics with IsPlayingLastFrame state bit and helpers GetIsPlaying(ms) and GetPlayProgress(ms) for per-frame state tracking used by the animator.",
+    "exports": ["BaseRenderLyrics"],
+    "imports": ["BaseLyrics"],
+    "role": "model"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Models/Lyrics/LineTransitions.cs",
+    "description": "Aggregates all ValueTransition instances for one RenderLyricsLine: Angle, Blur, PhoneticOpacity, PlayedOpacity, UnplayedOpacity, TranslatedOpacity, Scale, YOffset (all double with Sine easing), and PlayedFill/UnplayedFill/PlayedStroke/UnplayedStroke (Color with linear color interpolation). Update(TimeSpan) advances all transitions in one call.",
+    "exports": ["LineTransitions"],
+    "imports": ["ValueTransition<double>", "ValueTransition<Color>", "EasingHelper", "ColorHelper"],
+    "role": "model"
+  },
+  {
+    "path": "src/Wavee.Controls.Lyrics/Models/Lyrics/LyricsData.cs",
+    "description": "Top-level lyrics container. Holds a list of LyricsLine objects. LanguageCode auto-detects via LanguageHelper.DetectLanguageCode() if not explicitly set. Exposes WrappedOriginalText (joined lines) and IsWordByWord (any line has real syllable info).",
+    "exports": ["LyricsData"],
+    "imports": ["LyricsLine", "LanguageHelper", "StringHelper"],
+    "role": "model"
+  }
+]

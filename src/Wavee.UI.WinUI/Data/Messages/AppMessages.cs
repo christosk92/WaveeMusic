@@ -215,12 +215,20 @@ public sealed class HomeFeedLoadedMessage(int sectionCount, int itemCount)
 /// Fired when viewport album-prefetch has enough AlbumV4 metadata to enrich
 /// matching Home album cards without waiting for another Home fetch.
 /// </summary>
-public sealed class AlbumMetadataPrefetchedMessage(string albumUri, string? displaySubtitle, int totalTracks)
-    : ValueChangedMessage<(string AlbumUri, string? DisplaySubtitle, int TotalTracks)>((albumUri, displaySubtitle, totalTracks))
+public sealed class AlbumMetadataPrefetchedMessage(
+    string albumUri,
+    string? displaySubtitle,
+    int totalTracks,
+    string? artistName,
+    string? artistUri)
+    : ValueChangedMessage<(string AlbumUri, string? DisplaySubtitle, int TotalTracks, string? ArtistName, string? ArtistUri)>(
+        (albumUri, displaySubtitle, totalTracks, artistName, artistUri))
 {
     public string AlbumUri => Value.AlbumUri;
     public string? DisplaySubtitle => Value.DisplaySubtitle;
     public int TotalTracks => Value.TotalTracks;
+    public string? ArtistName => Value.ArtistName;
+    public string? ArtistUri => Value.ArtistUri;
 }
 
 /// <summary>

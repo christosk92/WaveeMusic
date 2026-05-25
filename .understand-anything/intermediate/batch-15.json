@@ -1,0 +1,498 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.AudioHost/PreviewAnalysisService.cs",
+      "type": "file",
+      "name": "PreviewAnalysisService.cs",
+      "filePath": "src/Wavee.AudioHost/PreviewAnalysisService.cs",
+      "summary": "Implements real-time audio preview analysis: decodes a preview URL stream, applies FFT with a Hann window, and emits per-frame amplitude data over a callback for waveform visualization.",
+      "tags": ["service", "audio", "signal-processing", "async"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/PreviewAnalysisService.cs:PreviewAnalysisService",
+      "type": "class",
+      "name": "PreviewAnalysisService",
+      "filePath": "src/Wavee.AudioHost/PreviewAnalysisService.cs",
+      "lineRange": [11, 416],
+      "summary": "Manages preview audio decode sessions, running FFT-based frequency-bucket analysis and sending animation frames via a delegate; supports concurrent session replacement and async disposal.",
+      "tags": ["service", "audio", "signal-processing", "async"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Program.cs",
+      "type": "file",
+      "name": "Program.cs",
+      "filePath": "src/Wavee.AudioHost/Program.cs",
+      "summary": "Entry point for the Wavee.AudioHost out-of-process audio runtime: parses CLI args, configures Serilog, builds a generic host, and starts the named-pipe IPC server for communication with the WinUI process.",
+      "tags": ["entry-point", "service", "host-configuration", "ipc"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:src/Wavee.AudioHost/README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "src/Wavee.AudioHost/README.md",
+      "summary": "Developer reference for the out-of-process audio runtime: explains the x64-only process model, named-pipe IPC protocol, audio decode stack, folder layout, PlayPlay key emulator, and build/run instructions.",
+      "tags": ["documentation", "architecture", "audio", "ipc"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:src/Wavee.AudioHost/Wavee.AudioHost.csproj",
+      "type": "config",
+      "name": "Wavee.AudioHost.csproj",
+      "filePath": "src/Wavee.AudioHost/Wavee.AudioHost.csproj",
+      "summary": "MSBuild project file for the x64-only audio host process, configuring .NET 10 target, x64 platform constraint, NuGet references, and source-include of IpcMessages.cs from Wavee.Playback.Contracts.",
+      "tags": ["configuration", "build-system", "msbuild", "audio"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.Console/ConnectConsole.cs",
+      "type": "file",
+      "name": "ConnectConsole.cs",
+      "filePath": "src/Wavee.Console/ConnectConsole.cs",
+      "summary": "Full-featured interactive Spotify Connect console controller: handles playback commands (play, pause, seek, skip), library sync, playlist browsing, search, device and volume management, and reactive Dealer/playback event subscriptions.",
+      "tags": ["service", "spotify-connect", "playback", "interactive"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.Console/ConnectConsole.cs:ConnectConsole",
+      "type": "class",
+      "name": "ConnectConsole",
+      "filePath": "src/Wavee.Console/ConnectConsole.cs",
+      "lineRange": [27, 1699],
+      "summary": "Orchestrates the CLI Spotify session: wires playback pipeline, library service, Rx event subscriptions, and delegates user input commands to specialized async handlers.",
+      "tags": ["service", "spotify-connect", "playback", "event-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.Console/Program.cs",
+      "type": "file",
+      "name": "Program.cs",
+      "filePath": "src/Wavee.Console/Program.cs",
+      "summary": "Entry point for the AOT-compiled CLI client: configures Serilog with Spectre sink, establishes a Spotify Session with OAuth, and starts the ConnectConsole interactive loop.",
+      "tags": ["entry-point", "cli", "spotify", "authentication"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:src/Wavee.Console/README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "src/Wavee.Console/README.md",
+      "summary": "Overview of the AOT CLI client: what it does, its four source files, run/publish commands, and dependency list (Spectre.Console, Serilog, System.Reactive).",
+      "tags": ["documentation", "cli", "aot", "overview"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.Console/SpectreLogSink.cs",
+      "type": "file",
+      "name": "SpectreLogSink.cs",
+      "filePath": "src/Wavee.Console/SpectreLogSink.cs",
+      "summary": "Serilog sink adapter that routes log events into the SpectreUI in-memory log queue, plus an ILoggerSinkConfiguration extension method for fluent registration.",
+      "tags": ["utility", "logging", "adapter", "serilog"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.Console/SpectreUI.cs",
+      "type": "file",
+      "name": "SpectreUI.cs",
+      "filePath": "src/Wavee.Console/SpectreUI.cs",
+      "summary": "Terminal UI for the CLI client using Spectre.Console: maintains a live-rendered dashboard with now-playing panel, seek/volume bars, lyrics pane, device/dealer status, and a scrolling log, plus keyboard input handling.",
+      "tags": ["component", "ui", "terminal", "spectre-console"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.Console/SpectreUI.cs:SpectreUI",
+      "type": "class",
+      "name": "SpectreUI",
+      "filePath": "src/Wavee.Console/SpectreUI.cs",
+      "lineRange": [12, 783],
+      "summary": "Renders a full terminal dashboard via Spectre.Console with thread-safe state updates, virtual-terminal processing, and async render/input loops.",
+      "tags": ["component", "ui", "terminal", "async"],
+      "complexity": "complex"
+    },
+    {
+      "id": "config:src/Wavee.Console/Wavee.Console.csproj",
+      "type": "config",
+      "name": "Wavee.Console.csproj",
+      "filePath": "src/Wavee.Console/Wavee.Console.csproj",
+      "summary": "MSBuild project for the AOT-capable CLI client, enabling PublishAot and NativeAOT-compatible packages (Spectre.Console, Serilog), with references to Wavee and Wavee.UI.",
+      "tags": ["configuration", "build-system", "aot", "msbuild"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/Abstractions/HSVColor.cs",
+      "type": "file",
+      "name": "HSVColor.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/Abstractions/HSVColor.cs",
+      "summary": "Minimal record/struct defining HSV color components (hue, saturation, value) used in the palette generation pipeline.",
+      "tags": ["type-definition", "color", "data-model"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/Abstractions/IPaletteGenrator.cs",
+      "type": "file",
+      "name": "IPaletteGenrator.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/Abstractions/IPaletteGenrator.cs",
+      "summary": "Interface contract for palette generators that produce a PaletteResult from an image source, used for album-art-driven lyric background theming.",
+      "tags": ["type-definition", "interface", "color", "lyrics"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/Abstractions/IThemeColorGenrator.cs",
+      "type": "file",
+      "name": "IThemeColorGenrator.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/Abstractions/IThemeColorGenrator.cs",
+      "summary": "Interface contract for theme color generators that extract a dominant or vibrant color from an image for dynamic UI theming in the lyrics control.",
+      "tags": ["type-definition", "interface", "color", "lyrics"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/Abstractions/PaletteResult.cs",
+      "type": "file",
+      "name": "PaletteResult.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/Abstractions/PaletteResult.cs",
+      "summary": "Data transfer records PaletteResult and ThemeColorResult that carry extracted palette swatches, darkness flags, and the dominant theme color from album artwork analysis.",
+      "tags": ["data-model", "color", "type-definition"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/ColorThief/CMap.cs",
+      "type": "file",
+      "name": "CMap.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/ColorThief/CMap.cs",
+      "summary": "Color map data structure holding quantized VBox entries, providing palette generation, nearest-color lookup, and vibrant/muted color search by luma and saturation target ranges.",
+      "tags": ["utility", "color", "data-model", "algorithm"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.Controls.Lyrics/ColorThief/CMap.cs:CMap",
+      "type": "class",
+      "name": "CMap",
+      "filePath": "src/Wavee.Controls.Lyrics/ColorThief/CMap.cs",
+      "lineRange": [10, 110],
+      "summary": "Stores quantized color buckets and exposes palette generation, nearest-color matching, and FindColor for targeted vibrant/muted swatch selection.",
+      "tags": ["utility", "color", "algorithm"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/ColorThief/Color.cs",
+      "type": "file",
+      "name": "Color.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/ColorThief/Color.cs",
+      "summary": "RGBA color struct for the ColorThief library with HSL conversion, hex-string serialization, and luminance helpers used during palette extraction.",
+      "tags": ["data-model", "color", "type-definition"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/ColorThief/ColorThief.cs",
+      "type": "file",
+      "name": "ColorThief.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/ColorThief/ColorThief.cs",
+      "summary": "Core ColorThief class providing pixel array quantization via MMCQ to extract dominant color palettes from raw pixel data.",
+      "tags": ["utility", "color", "algorithm"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.Controls.Lyrics/ColorThief/ColorThief.cs:ColorThief",
+      "type": "class",
+      "name": "ColorThief",
+      "filePath": "src/Wavee.Controls.Lyrics/ColorThief/ColorThief.cs",
+      "lineRange": [5, 76],
+      "summary": "Provides GetColorMap and ConvertPixels to transform raw RGBA pixel arrays into quantized CMap color palettes using MMCQ.",
+      "tags": ["utility", "color", "algorithm"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/ColorThief/ColorThief.WinUI3.cs",
+      "type": "file",
+      "name": "ColorThief.WinUI3.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/ColorThief/ColorThief.WinUI3.cs",
+      "summary": "WinUI 3 partial extension of ColorThief adding GetColor and GetPalette methods that decode a SoftwareBitmap via BitmapDecoder into pixel data for quantization.",
+      "tags": ["utility", "color", "winui", "algorithm"],
+      "complexity": "moderate",
+      "languageNotes": "Partial class pattern extends ColorThief.cs for WinUI-specific BitmapDecoder pixel extraction."
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/ColorThief/HslColor.cs",
+      "type": "file",
+      "name": "HslColor.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/ColorThief/HslColor.cs",
+      "summary": "Simple HSL color record carrying hue, saturation, and lightness values used in the palette luma/saturation scoring pipeline.",
+      "tags": ["data-model", "color", "type-definition"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/ColorThief/Mmcq.cs",
+      "type": "file",
+      "name": "Mmcq.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/ColorThief/Mmcq.cs",
+      "summary": "Modified Median Cut Quantization (MMCQ) algorithm implementation: histogramming, VBox splitting with DoCut/MedianCutApply, iterative refinement via Iter, and the public Quantize entry point.",
+      "tags": ["algorithm", "color", "utility"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.Controls.Lyrics/ColorThief/Mmcq.cs:Mmcq",
+      "type": "class",
+      "name": "Mmcq",
+      "filePath": "src/Wavee.Controls.Lyrics/ColorThief/Mmcq.cs",
+      "lineRange": [6, 386],
+      "summary": "Implements the MMCQ color quantization algorithm: builds a histogram, creates VBoxes, applies median cuts, and returns a sorted CMap palette for a given pixel array.",
+      "tags": ["algorithm", "color", "utility"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/ColorThief/QuantizedColor.cs",
+      "type": "file",
+      "name": "QuantizedColor.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/ColorThief/QuantizedColor.cs",
+      "summary": "QuantizedColor result type pairing a Color with its pixel population count and a computed YIQ luma-based darkness flag.",
+      "tags": ["data-model", "color", "type-definition"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/ColorThief/VBox.cs",
+      "type": "file",
+      "name": "VBox.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/ColorThief/VBox.cs",
+      "summary": "VBox (color volume box) used by MMCQ to represent a 3D RGB sub-cube with pixel count, average color, containment check, and IComparer implementations for sorted splitting.",
+      "tags": ["data-model", "algorithm", "color"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.Controls.Lyrics/ColorThief/VBox.cs:VBox",
+      "type": "class",
+      "name": "VBox",
+      "filePath": "src/Wavee.Controls.Lyrics/ColorThief/VBox.cs",
+      "lineRange": [9, 136],
+      "summary": "Represents a 3-dimensional RGB color volume bucket with lazy-computed pixel count, average color calculation, and clone support for MMCQ median-cut splitting.",
+      "tags": ["data-model", "algorithm", "color"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/Constants/App.cs",
+      "type": "file",
+      "name": "App.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/Constants/App.cs",
+      "summary": "Static constants class holding application metadata for the lyrics control library: author names, app name, startup task ID, and Store ID.",
+      "tags": ["config", "constants", "type-definition"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.Controls.Lyrics/Constants/ExtendedGenreFiled.cs",
+      "type": "file",
+      "name": "ExtendedGenreFiled.cs",
+      "filePath": "src/Wavee.Controls.Lyrics/Constants/ExtendedGenreFiled.cs",
+      "summary": "Constants for extended ID3-like genre field keys: NetEase Cloud Music track ID, QQ Music track ID, and file name fields used in lyrics metadata lookups.",
+      "tags": ["config", "constants", "metadata"],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:src/Wavee.Controls.Lyrics/Assets/Wiki82.profile.xml",
+      "type": "config",
+      "name": "Wiki82.profile.xml",
+      "filePath": "src/Wavee.Controls.Lyrics/Assets/Wiki82.profile.xml",
+      "summary": "NTextCat language identification ngram profile (Wikipedia 82-language model) used for lyrics language detection in the controls library.",
+      "tags": ["data", "language-detection", "nlp", "configuration"],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.AudioHost/PreviewAnalysisService.cs",
+      "target": "class:src/Wavee.AudioHost/PreviewAnalysisService.cs:PreviewAnalysisService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/PreviewAnalysisService.cs",
+      "target": "class:src/Wavee.AudioHost/PreviewAnalysisService.cs:PreviewAnalysisService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.Console/ConnectConsole.cs",
+      "target": "class:src/Wavee.Console/ConnectConsole.cs:ConnectConsole",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.Console/ConnectConsole.cs",
+      "target": "class:src/Wavee.Console/ConnectConsole.cs:ConnectConsole",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.Console/SpectreUI.cs",
+      "target": "class:src/Wavee.Console/SpectreUI.cs:SpectreUI",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.Console/SpectreUI.cs",
+      "target": "class:src/Wavee.Console/SpectreUI.cs:SpectreUI",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/CMap.cs",
+      "target": "class:src/Wavee.Controls.Lyrics/ColorThief/CMap.cs:CMap",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/CMap.cs",
+      "target": "class:src/Wavee.Controls.Lyrics/ColorThief/CMap.cs:CMap",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/ColorThief.cs",
+      "target": "class:src/Wavee.Controls.Lyrics/ColorThief/ColorThief.cs:ColorThief",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/ColorThief.cs",
+      "target": "class:src/Wavee.Controls.Lyrics/ColorThief/ColorThief.cs:ColorThief",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/Mmcq.cs",
+      "target": "class:src/Wavee.Controls.Lyrics/ColorThief/Mmcq.cs:Mmcq",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/Mmcq.cs",
+      "target": "class:src/Wavee.Controls.Lyrics/ColorThief/Mmcq.cs:Mmcq",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/VBox.cs",
+      "target": "class:src/Wavee.Controls.Lyrics/ColorThief/VBox.cs:VBox",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/VBox.cs",
+      "target": "class:src/Wavee.Controls.Lyrics/ColorThief/VBox.cs:VBox",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "document:src/Wavee.AudioHost/README.md",
+      "target": "file:src/Wavee.AudioHost/Program.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:src/Wavee.Console/README.md",
+      "target": "file:src/Wavee.Console/Program.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:src/Wavee.AudioHost/Wavee.AudioHost.csproj",
+      "target": "file:src/Wavee.AudioHost/Program.cs",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:src/Wavee.Console/Wavee.Console.csproj",
+      "target": "file:src/Wavee.Console/Program.cs",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.Console/ConnectConsole.cs",
+      "target": "file:src/Wavee.Console/SpectreUI.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.Console/SpectreLogSink.cs",
+      "target": "file:src/Wavee.Console/SpectreUI.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.Console/Program.cs",
+      "target": "file:src/Wavee.Console/ConnectConsole.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.Console/Program.cs",
+      "target": "file:src/Wavee.Console/SpectreLogSink.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/ColorThief.cs",
+      "target": "file:src/Wavee.Controls.Lyrics/ColorThief/Mmcq.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/ColorThief.WinUI3.cs",
+      "target": "file:src/Wavee.Controls.Lyrics/ColorThief/ColorThief.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/CMap.cs",
+      "target": "file:src/Wavee.Controls.Lyrics/ColorThief/Mmcq.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/CMap.cs",
+      "target": "file:src/Wavee.Controls.Lyrics/ColorThief/VBox.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/Mmcq.cs",
+      "target": "file:src/Wavee.Controls.Lyrics/ColorThief/VBox.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.Controls.Lyrics/ColorThief/QuantizedColor.cs",
+      "target": "file:src/Wavee.Controls.Lyrics/ColorThief/Color.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}

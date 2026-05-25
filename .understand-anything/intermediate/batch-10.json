@@ -1,0 +1,188 @@
+{
+  "nodes": [
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/client_info.proto",
+      "type": "schema",
+      "name": "client_info.proto",
+      "filePath": "src/Wavee/Protocol/Protos/spotify/login5/v3/client_info.proto",
+      "summary": "Defines the Login5 ClientInfo protobuf message carrying client_id and device_id, used as part of the Login5 authentication request.",
+      "tags": ["schema-definition", "protobuf", "authentication", "login5"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/client_info.proto:ClientInfo",
+      "type": "schema",
+      "name": "ClientInfo",
+      "filePath": "src/Wavee/Protocol/Protos/spotify/login5/v3/client_info.proto",
+      "summary": "Protobuf message identifying the Spotify client by client_id and device_id, embedded in every Login5 LoginRequest.",
+      "tags": ["schema-definition", "protobuf", "authentication", "login5"],
+      "complexity": "simple",
+      "lineRange": [6, 9]
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "type": "schema",
+      "name": "login5.proto",
+      "filePath": "src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "summary": "Core Login5 protocol schema defining LoginRequest/LoginResponse/LoginOk messages, the LoginError enum, and challenge/solution message pairs that implement Spotify's modern authentication protocol.",
+      "tags": ["schema-definition", "protobuf", "authentication", "login5"],
+      "complexity": "moderate",
+      "languageNotes": "Uses oneof-style credential fields at high field numbers (100-106) to support multiple credential types (stored credential, password, OAuth tokens, phone, Apple Sign-In) within a single LoginRequest."
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto:LoginError",
+      "type": "schema",
+      "name": "LoginError",
+      "filePath": "src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "summary": "Enum of Login5 error codes covering invalid credentials, rate limiting, unsupported protocol, phone number issues, and transient errors.",
+      "tags": ["schema-definition", "protobuf", "authentication", "error-handling"],
+      "complexity": "simple",
+      "lineRange": [13, 23]
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto:Challenges",
+      "type": "schema",
+      "name": "Challenges",
+      "filePath": "src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "summary": "Protobuf message wrapping a repeated list of Challenge messages for hashcash and code-based challenge-response flows.",
+      "tags": ["schema-definition", "protobuf", "authentication", "challenge-response"],
+      "complexity": "simple",
+      "lineRange": [25, 27]
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto:LoginRequest",
+      "type": "schema",
+      "name": "LoginRequest",
+      "filePath": "src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "summary": "Protobuf message sent to Spotify's Login5 endpoint containing ClientInfo, challenge solutions, and one of several credential types (stored credential, password, Facebook token, phone, OTT, parent-child, Apple).",
+      "tags": ["schema-definition", "protobuf", "authentication", "login5"],
+      "complexity": "moderate",
+      "lineRange": [43, 54]
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto:LoginOk",
+      "type": "schema",
+      "name": "LoginOk",
+      "filePath": "src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "summary": "Protobuf message returned on successful Login5 authentication, carrying username, access_token, stored_credential bytes, and token expiry.",
+      "tags": ["schema-definition", "protobuf", "authentication", "login5"],
+      "complexity": "simple",
+      "lineRange": [56, 61]
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto:LoginResponse",
+      "type": "schema",
+      "name": "LoginResponse",
+      "filePath": "src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "summary": "Protobuf message returned by Login5, containing either a LoginOk success payload, a LoginError code, or Challenges requiring further resolution.",
+      "tags": ["schema-definition", "protobuf", "authentication", "login5"],
+      "complexity": "moderate",
+      "lineRange": [63, 75]
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/user_info.proto",
+      "type": "schema",
+      "name": "user_info.proto",
+      "filePath": "src/Wavee/Protocol/Protos/spotify/login5/v3/user_info.proto",
+      "summary": "Defines the Login5 UserInfo protobuf message exposing name, email, birthdate, gender, phone number, and verification flags returned inside LoginResponse.",
+      "tags": ["schema-definition", "protobuf", "authentication", "user-data"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/user_info.proto:UserInfo",
+      "type": "schema",
+      "name": "UserInfo",
+      "filePath": "src/Wavee/Protocol/Protos/spotify/login5/v3/user_info.proto",
+      "summary": "Protobuf message describing the authenticated Spotify user with profile fields (name, email, gender, birthdate, phone) and email/phone verification status.",
+      "tags": ["schema-definition", "protobuf", "authentication", "user-data"],
+      "complexity": "simple",
+      "lineRange": [6, 21]
+    }
+  ],
+  "edges": [
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/client_info.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/client_info.proto:ClientInfo",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto:LoginError",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto:Challenges",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto:LoginRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto:LoginOk",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto:LoginResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/user_info.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/user_info.proto:UserInfo",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/client_info.proto",
+      "target": "file:src/Wavee/Core/Http/Login5Client.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "target": "file:src/Wavee/Core/Http/Login5Client.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/user_info.proto",
+      "target": "file:src/Wavee/Core/Http/Login5Client.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/client_info.proto",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/login5.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/spotify/login5/v3/user_info.proto",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ]
+}

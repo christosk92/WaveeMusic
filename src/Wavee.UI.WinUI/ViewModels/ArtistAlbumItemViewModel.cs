@@ -15,8 +15,10 @@ namespace Wavee.UI.WinUI.ViewModels;
 public sealed partial class ArtistAlbumItemViewModel : ObservableObject
 {
     private readonly Action<ArtistAlbumItemViewModel>? _onSelect;
+    private readonly Action<ArtistAlbumItemViewModel>? _onPlay;
 
     public LibraryArtistAlbumDto Album { get; }
+    public string Subtitle => Album.Year > 0 ? Album.Year.ToString() : "";
 
     [ObservableProperty]
     private ObservableCollection<AlbumTrackDto> _tracks = [];
@@ -27,10 +29,14 @@ public sealed partial class ArtistAlbumItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasLoadedTracks;
 
-    public ArtistAlbumItemViewModel(LibraryArtistAlbumDto album, Action<ArtistAlbumItemViewModel>? onSelect = null)
+    public ArtistAlbumItemViewModel(
+        LibraryArtistAlbumDto album,
+        Action<ArtistAlbumItemViewModel>? onSelect = null,
+        Action<ArtistAlbumItemViewModel>? onPlay = null)
     {
         Album = album;
         _onSelect = onSelect;
+        _onPlay = onPlay;
     }
 
     [RelayCommand]
@@ -43,6 +49,16 @@ public sealed partial class ArtistAlbumItemViewModel : ObservableObject
     public void OnTapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
         _onSelect?.Invoke(this);
+    }
+
+    public void OnCardClick(object? sender, EventArgs e)
+    {
+        _onSelect?.Invoke(this);
+    }
+
+    public void OnPlayRequested(object? sender, EventArgs e)
+    {
+        _onPlay?.Invoke(this);
     }
 
     public async Task LoadTracksAsync(IAlbumService albumService)

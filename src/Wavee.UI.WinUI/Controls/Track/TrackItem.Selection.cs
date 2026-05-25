@@ -1,5 +1,6 @@
 using System;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Input;
 
 namespace Wavee.UI.WinUI.Controls.Track;
 
@@ -19,6 +20,7 @@ public sealed partial class TrackItem
     // Guards the programmatic IsChecked write in UpdateSelectionAffordance from
     // re-entering RowSelectCheckBox_Toggled and raising a spurious request.
     private bool _suppressSelectionCheckEvent;
+    private bool _selectionPointerHandled;
 
     /// <summary>
     /// Repaint the checkbox from the current selection / hover / mode state.
@@ -79,5 +81,47 @@ public sealed partial class TrackItem
     {
         // Stop the tap before it reaches the ItemContainer — see WireRowHandlers.
         e.Handled = true;
+    }
+
+    private void OnSelectionPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!SupportsSelectionMode || Track is null)
+            return;
+
+        if (IsInteractiveElement(e.OriginalSource as DependencyObject))
+            return;
+
+        var point = e.GetCurrentPoint(this);
+        if (point.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse
+            && !point.Properties.IsLeftButtonPressed)
+            return;
+
+        if (IsSelectionMode)
+        {
+            SelectionToggleRequested?.Invoke(this, !IsSelected);
+            MarkSelectionPointerHandled(e);
+            return;
+        }
+
+        if (IsCtrlDown())
+        {
+            EnterSelectionRequested?.Invoke(this, EventArgs.Empty);
+            MarkSelectionPointerHandled(e);
+        }
+    }
+
+    private void MarkSelectionPointerHandled(PointerRoutedEventArgs e)
+    {
+        _selectionPointerHandled = true;
+        e.Handled = true;
+    }
+
+    private bool TryConsumeSelectionPointerHandled()
+    {
+        if (!_selectionPointerHandled)
+            return false;
+
+        _selectionPointerHandled = false;
+        return true;
     }
 }

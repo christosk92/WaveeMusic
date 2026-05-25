@@ -1,0 +1,1530 @@
+{
+  "nodes": [
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/played_state.proto",
+      "type": "schema",
+      "name": "played_state.proto",
+      "filePath": "src/Wavee/Protocol/Protos/played_state.proto",
+      "summary": "Protobuf schema for Spotify podcast played state tracking, holding episode resume points, last played timestamps, and fully-played status.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "podcast",
+        "resume"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/played_state.proto:PlayedStateItem",
+      "type": "schema",
+      "name": "PlayedStateItem",
+      "filePath": "src/Wavee/Protocol/Protos/played_state.proto",
+      "lineRange": [
+        8,
+        17
+      ],
+      "summary": "Protobuf definition PlayedStateItem for podcast played state.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "podcast"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/played_state.proto:PlayedStateItems",
+      "type": "schema",
+      "name": "PlayedStateItems",
+      "filePath": "src/Wavee/Protocol/Protos/played_state.proto",
+      "lineRange": [
+        19,
+        22
+      ],
+      "summary": "Protobuf definition PlayedStateItems for podcast played state.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "podcast"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "type": "schema",
+      "name": "player.proto",
+      "filePath": "src/Wavee/Protocol/Protos/player.proto",
+      "summary": "Protobuf schema for Spotify Connect PlayerState, defining the full player state message (context, track, options, restrictions, prev/next tracks, playback quality) exchanged in PutState.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback",
+        "connect"
+      ],
+      "complexity": "complex",
+      "languageNotes": "PlayerState is the central structure in Spotify Connect cluster state; embedded in PutStateRequest and returned in cluster updates."
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player.proto:PlayerState",
+      "type": "schema",
+      "name": "PlayerState",
+      "filePath": "src/Wavee/Protocol/Protos/player.proto",
+      "lineRange": [
+        8,
+        38
+      ],
+      "summary": "Protobuf definition PlayerState in the Spotify Connect player state schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback",
+        "connect"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player.proto:ProvidedTrack",
+      "type": "schema",
+      "name": "ProvidedTrack",
+      "filePath": "src/Wavee/Protocol/Protos/player.proto",
+      "lineRange": [
+        40,
+        52
+      ],
+      "summary": "Protobuf definition ProvidedTrack in the Spotify Connect player state schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback",
+        "connect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player.proto:ContextIndex",
+      "type": "schema",
+      "name": "ContextIndex",
+      "filePath": "src/Wavee/Protocol/Protos/player.proto",
+      "lineRange": [
+        54,
+        57
+      ],
+      "summary": "Protobuf definition ContextIndex in the Spotify Connect player state schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback",
+        "connect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player.proto:Restrictions",
+      "type": "schema",
+      "name": "Restrictions",
+      "filePath": "src/Wavee/Protocol/Protos/player.proto",
+      "lineRange": [
+        59,
+        83
+      ],
+      "summary": "Protobuf definition Restrictions in the Spotify Connect player state schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback",
+        "connect"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player.proto:PlayOrigin",
+      "type": "schema",
+      "name": "PlayOrigin",
+      "filePath": "src/Wavee/Protocol/Protos/player.proto",
+      "lineRange": [
+        85,
+        93
+      ],
+      "summary": "Protobuf definition PlayOrigin in the Spotify Connect player state schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback",
+        "connect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player.proto:ContextPlayerOptions",
+      "type": "schema",
+      "name": "ContextPlayerOptions",
+      "filePath": "src/Wavee/Protocol/Protos/player.proto",
+      "lineRange": [
+        95,
+        99
+      ],
+      "summary": "Protobuf definition ContextPlayerOptions in the Spotify Connect player state schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback",
+        "connect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player.proto:Suppressions",
+      "type": "schema",
+      "name": "Suppressions",
+      "filePath": "src/Wavee/Protocol/Protos/player.proto",
+      "lineRange": [
+        101,
+        103
+      ],
+      "summary": "Protobuf definition Suppressions in the Spotify Connect player state schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback",
+        "connect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player.proto:PlaybackQuality",
+      "type": "schema",
+      "name": "PlaybackQuality",
+      "filePath": "src/Wavee/Protocol/Protos/player.proto",
+      "lineRange": [
+        129,
+        135
+      ],
+      "summary": "Protobuf definition PlaybackQuality in the Spotify Connect player state schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback",
+        "connect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player.proto:BitrateLevel",
+      "type": "schema",
+      "name": "BitrateLevel",
+      "filePath": "src/Wavee/Protocol/Protos/player.proto",
+      "lineRange": [
+        105,
+        112
+      ],
+      "summary": "Protobuf definition BitrateLevel in the Spotify Connect player state schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback",
+        "connect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player.proto:BitrateStrategy",
+      "type": "schema",
+      "name": "BitrateStrategy",
+      "filePath": "src/Wavee/Protocol/Protos/player.proto",
+      "lineRange": [
+        114,
+        121
+      ],
+      "summary": "Protobuf definition BitrateStrategy in the Spotify Connect player state schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback",
+        "connect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player.proto:HiFiStatus",
+      "type": "schema",
+      "name": "HiFiStatus",
+      "filePath": "src/Wavee/Protocol/Protos/player.proto",
+      "lineRange": [
+        123,
+        127
+      ],
+      "summary": "Protobuf definition HiFiStatus in the Spotify Connect player state schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback",
+        "connect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player_license.proto",
+      "type": "schema",
+      "name": "player_license.proto",
+      "filePath": "src/Wavee/Protocol/Protos/player_license.proto",
+      "summary": "Minimal protobuf schema defining the PlayerLicense message carrying a license identifier for Spotify playback.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/player_license.proto:PlayerLicense",
+      "type": "schema",
+      "name": "PlayerLicense",
+      "filePath": "src/Wavee/Protocol/Protos/player_license.proto",
+      "lineRange": [
+        8,
+        10
+      ],
+      "summary": "Protobuf message carrying a license identifier for Spotify playback.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "type": "schema",
+      "name": "playlist4_external.proto",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "summary": "Comprehensive protobuf schema for Spotify playlist4 external API covering list items, attributes, CRUD operations (Add/Rem/Mov), delta/diff/sync, subscription, modification notifications, and geoblock.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist",
+        "api-schema"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Item",
+      "type": "schema",
+      "name": "Item",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        9,
+        12
+      ],
+      "summary": "Protobuf definition Item in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:MetaItem",
+      "type": "schema",
+      "name": "MetaItem",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        14,
+        21
+      ],
+      "summary": "Protobuf definition MetaItem in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ListItems",
+      "type": "schema",
+      "name": "ListItems",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        23,
+        35
+      ],
+      "summary": "Protobuf definition ListItems in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:AvailableSignal",
+      "type": "schema",
+      "name": "AvailableSignal",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        37,
+        39
+      ],
+      "summary": "Protobuf definition AvailableSignal in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:FormatListAttribute",
+      "type": "schema",
+      "name": "FormatListAttribute",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        41,
+        44
+      ],
+      "summary": "Protobuf definition FormatListAttribute in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:PictureSize",
+      "type": "schema",
+      "name": "PictureSize",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        46,
+        49
+      ],
+      "summary": "Protobuf definition PictureSize in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ListAttributes",
+      "type": "schema",
+      "name": "ListAttributes",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        51,
+        62
+      ],
+      "summary": "Protobuf definition ListAttributes in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ItemAttributes",
+      "type": "schema",
+      "name": "ItemAttributes",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        64,
+        71
+      ],
+      "summary": "Protobuf definition ItemAttributes in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Add",
+      "type": "schema",
+      "name": "Add",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        73,
+        78
+      ],
+      "summary": "Protobuf definition Add in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Rem",
+      "type": "schema",
+      "name": "Rem",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        80,
+        85
+      ],
+      "summary": "Protobuf definition Rem in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Mov",
+      "type": "schema",
+      "name": "Mov",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        87,
+        91
+      ],
+      "summary": "Protobuf definition Mov in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ItemAttributesPartialState",
+      "type": "schema",
+      "name": "ItemAttributesPartialState",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        93,
+        96
+      ],
+      "summary": "Protobuf definition ItemAttributesPartialState in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ListAttributesPartialState",
+      "type": "schema",
+      "name": "ListAttributesPartialState",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        98,
+        101
+      ],
+      "summary": "Protobuf definition ListAttributesPartialState in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:UpdateItemAttributes",
+      "type": "schema",
+      "name": "UpdateItemAttributes",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        103,
+        107
+      ],
+      "summary": "Protobuf definition UpdateItemAttributes in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:UpdateListAttributes",
+      "type": "schema",
+      "name": "UpdateListAttributes",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        109,
+        112
+      ],
+      "summary": "Protobuf definition UpdateListAttributes in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Op",
+      "type": "schema",
+      "name": "Op",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        114,
+        130
+      ],
+      "summary": "Protobuf definition Op in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:OpList",
+      "type": "schema",
+      "name": "OpList",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        132,
+        134
+      ],
+      "summary": "Protobuf definition OpList in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ChangeInfo",
+      "type": "schema",
+      "name": "ChangeInfo",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        136,
+        147
+      ],
+      "summary": "Protobuf definition ChangeInfo in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:SourceInfo",
+      "type": "schema",
+      "name": "SourceInfo",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        149,
+        164
+      ],
+      "summary": "Protobuf definition SourceInfo in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Delta",
+      "type": "schema",
+      "name": "Delta",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        166,
+        170
+      ],
+      "summary": "Protobuf definition Delta in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Diff",
+      "type": "schema",
+      "name": "Diff",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        172,
+        176
+      ],
+      "summary": "Protobuf definition Diff in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ListChanges",
+      "type": "schema",
+      "name": "ListChanges",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        178,
+        184
+      ],
+      "summary": "Protobuf definition ListChanges in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:SelectedListContent",
+      "type": "schema",
+      "name": "SelectedListContent",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        186,
+        202
+      ],
+      "summary": "Protobuf definition SelectedListContent in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:CreateListReply",
+      "type": "schema",
+      "name": "CreateListReply",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        204,
+        207
+      ],
+      "summary": "Protobuf definition CreateListReply in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:PlaylistV1UriRequest",
+      "type": "schema",
+      "name": "PlaylistV1UriRequest",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        209,
+        211
+      ],
+      "summary": "Protobuf definition PlaylistV1UriRequest in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:PlaylistV1UriReply",
+      "type": "schema",
+      "name": "PlaylistV1UriReply",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        213,
+        215
+      ],
+      "summary": "Protobuf definition PlaylistV1UriReply in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ListUpdateRequest",
+      "type": "schema",
+      "name": "ListUpdateRequest",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        217,
+        222
+      ],
+      "summary": "Protobuf definition ListUpdateRequest in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:RegisterPlaylistImageRequest",
+      "type": "schema",
+      "name": "RegisterPlaylistImageRequest",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        224,
+        226
+      ],
+      "summary": "Protobuf definition RegisterPlaylistImageRequest in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:RegisterPlaylistImageResponse",
+      "type": "schema",
+      "name": "RegisterPlaylistImageResponse",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        228,
+        230
+      ],
+      "summary": "Protobuf definition RegisterPlaylistImageResponse in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ResolvedPersonalizedPlaylist",
+      "type": "schema",
+      "name": "ResolvedPersonalizedPlaylist",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        232,
+        235
+      ],
+      "summary": "Protobuf definition ResolvedPersonalizedPlaylist in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:PlaylistUriResolverResponse",
+      "type": "schema",
+      "name": "PlaylistUriResolverResponse",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        237,
+        239
+      ],
+      "summary": "Protobuf definition PlaylistUriResolverResponse in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:SubscribeRequest",
+      "type": "schema",
+      "name": "SubscribeRequest",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        241,
+        243
+      ],
+      "summary": "Protobuf definition SubscribeRequest in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:UnsubscribeRequest",
+      "type": "schema",
+      "name": "UnsubscribeRequest",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        245,
+        247
+      ],
+      "summary": "Protobuf definition UnsubscribeRequest in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:PlaylistModificationInfo",
+      "type": "schema",
+      "name": "PlaylistModificationInfo",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        249,
+        254
+      ],
+      "summary": "Protobuf definition PlaylistModificationInfo in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:RootlistModificationInfo",
+      "type": "schema",
+      "name": "RootlistModificationInfo",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        256,
+        260
+      ],
+      "summary": "Protobuf definition RootlistModificationInfo in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:FollowerUpdate",
+      "type": "schema",
+      "name": "FollowerUpdate",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        262,
+        267
+      ],
+      "summary": "Protobuf definition FollowerUpdate in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ListAttributeKind",
+      "type": "schema",
+      "name": "ListAttributeKind",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        269,
+        281
+      ],
+      "summary": "Protobuf definition ListAttributeKind in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ItemAttributeKind",
+      "type": "schema",
+      "name": "ItemAttributeKind",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        283,
+        291
+      ],
+      "summary": "Protobuf definition ItemAttributeKind in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:GeoblockBlockingType",
+      "type": "schema",
+      "name": "GeoblockBlockingType",
+      "filePath": "src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "lineRange": [
+        293,
+        298
+      ],
+      "summary": "Protobuf definition GeoblockBlockingType in the playlist4 external schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "type": "schema",
+      "name": "playlist_annotate3.proto",
+      "filePath": "src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "summary": "Protobuf schema for Spotify playlist annotation v3, covering takedown requests, image transcoding, playlist annotations with abuse reporting, and render feature flags.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto:TakedownRequest",
+      "type": "schema",
+      "name": "TakedownRequest",
+      "filePath": "src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "lineRange": [
+        8,
+        10
+      ],
+      "summary": "Protobuf definition TakedownRequest for playlist annotation v3.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto:AnnotateRequest",
+      "type": "schema",
+      "name": "AnnotateRequest",
+      "filePath": "src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "lineRange": [
+        12,
+        15
+      ],
+      "summary": "Protobuf definition AnnotateRequest for playlist annotation v3.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto:TranscodedPicture",
+      "type": "schema",
+      "name": "TranscodedPicture",
+      "filePath": "src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "lineRange": [
+        17,
+        20
+      ],
+      "summary": "Protobuf definition TranscodedPicture for playlist annotation v3.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto:PlaylistAnnotation",
+      "type": "schema",
+      "name": "PlaylistAnnotation",
+      "filePath": "src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "lineRange": [
+        22,
+        29
+      ],
+      "summary": "Protobuf definition PlaylistAnnotation for playlist annotation v3.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto:RenderFeatures",
+      "type": "schema",
+      "name": "RenderFeatures",
+      "filePath": "src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "lineRange": [
+        31,
+        34
+      ],
+      "summary": "Protobuf definition RenderFeatures for playlist annotation v3.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto:AbuseReportState",
+      "type": "schema",
+      "name": "AbuseReportState",
+      "filePath": "src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "lineRange": [
+        36,
+        39
+      ],
+      "summary": "Protobuf definition AbuseReportState for playlist annotation v3.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/played_state.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/played_state.proto:PlayedStateItem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/played_state.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/played_state.proto:PlayedStateItems",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/player.proto:PlayerState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/player.proto:ProvidedTrack",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/player.proto:ContextIndex",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/player.proto:Restrictions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/player.proto:PlayOrigin",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/player.proto:ContextPlayerOptions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/player.proto:Suppressions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/player.proto:PlaybackQuality",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/player.proto:BitrateLevel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/player.proto:BitrateStrategy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/player.proto:HiFiStatus",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player_license.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/player_license.proto:PlayerLicense",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Item",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:MetaItem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ListItems",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:AvailableSignal",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:FormatListAttribute",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:PictureSize",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ListAttributes",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ItemAttributes",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Add",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Rem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Mov",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ItemAttributesPartialState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ListAttributesPartialState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:UpdateItemAttributes",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:UpdateListAttributes",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Op",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:OpList",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ChangeInfo",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:SourceInfo",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Delta",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:Diff",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ListChanges",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:SelectedListContent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:CreateListReply",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:PlaylistV1UriRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:PlaylistV1UriReply",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ListUpdateRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:RegisterPlaylistImageRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:RegisterPlaylistImageResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ResolvedPersonalizedPlaylist",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:PlaylistUriResolverResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:SubscribeRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:UnsubscribeRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:PlaylistModificationInfo",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:RootlistModificationInfo",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:FollowerUpdate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ListAttributeKind",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:ItemAttributeKind",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto:GeoblockBlockingType",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto:TakedownRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto:AnnotateRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto:TranscodedPicture",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto:PlaylistAnnotation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto:RenderFeatures",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist_annotate3.proto:AbuseReportState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "target": "file:src/Wavee/Audio/PlaybackOrchestrator.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/player.proto",
+      "target": "file:src/Wavee/Connect/DeviceStateManager.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "file:src/Wavee/Core/Playlists/PlaylistCacheService.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist4_external.proto",
+      "target": "file:src/Wavee/Core/Playlists/PlaylistDiffApplier.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

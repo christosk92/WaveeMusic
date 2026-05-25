@@ -9,6 +9,7 @@
     xmlns:local="using:Wavee.Controls.Lyrics.Controls"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Unloaded="UserControl_Unloaded"
+    SizeChanged="UserControl_SizeChanged"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -18,6 +19,8 @@
     <Grid>
         <canvas:CanvasAnimatedControl
             x:Name="Canvas"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
             CreateResources="Canvas_CreateResources"
             Draw="Canvas_Draw"
             TargetElapsedTime="{x:Bind LyricsWindowStatus.FPS, Mode=OneWay, Converter={StaticResource FPSToTimeSpanConverter}}"

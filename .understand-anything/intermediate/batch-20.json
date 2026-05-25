@@ -1,0 +1,105 @@
+{
+  "batchId": 20,
+  "files": [
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/Lyrics/LyricsLine.cs",
+      "summary": "Data model for a single lyrics line with primary/secondary/tertiary syllables, per-character timing metadata derived from syllable durations, and an IsSectionHeader flag for podcast chapter titles."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/Lyrics/RenderLyricsChar.cs",
+      "summary": "GPU render state for one character: layout rect, eased ValueTransitions for scale/glow/float, and a pre-built CropEffect+ColorMatrixEffect+GaussianBlurEffect chain for the per-char glow halo."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/Lyrics/RenderLyricsLine.cs",
+      "summary": "Core render object for one lyrics line. Owns Win2D CanvasTextLayout/Geometry for primary+secondary+tertiary text tracks, cached fill/stroke CanvasCommandList layers used as alpha-mask sources, per-line ValueTransition animations (angle, blur, opacity, scale, Y-offset, fill/stroke colors), per-char RenderLyricsChar list, and RenderLyricsRegion gradient-mask slots. Contains fallback linear-timing logic so lines with incomplete syllable metadata still animate correctly."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/Lyrics/RenderLyricsRegion.cs",
+      "summary": "Gradient-region mask for one character-region slot: holds 4-stop fill and stroke CanvasGradientStop arrays, AlphaMaskEffects that composite gradient layers against the cached white-fill/stroke CanvasCommandLists, and per-frame CanvasCommandList recreation to avoid Win2D image-source reuse issues."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/Lyrics/RenderLyricsSyllable.cs",
+      "summary": "Thin wrapper around BaseLyrics for a syllable; holds a list of child RenderLyricsChar instances for per-character animation linkage."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/LyricsLayoutMetrics.cs",
+      "summary": "Plain struct carrying font-size metrics for main lyrics, translation, transliteration, and song-info (title/artist/album) plus album-art padding thickness."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/NowPlayingPalette.cs",
+      "summary": "Struct holding the adaptive color palette derived from album art: spectrum color, non-current/played/unplayed fill and stroke colors, underlay, four accent colors, and the active ElementTheme."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/Settings/AlbumArtAreaEffectSettings.cs",
+      "summary": "MVVM ObservableRecipient settings for album-art area effects: image switch type (crossfade etc.) and song-info auto-scroll toggle."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/Settings/AlbumArtAreaStyleSettings.cs",
+      "summary": "MVVM settings for album-art area layout: song-info alignment, auto/manual cover height, corner radius, shadow amount, auto/manual song-info font size, and show/hide title/artist/album toggles."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/Settings/LyricsBackgroundSettings.cs",
+      "summary": "Comprehensive MVVM settings bag for all background overlay layers: pure-color, cover-art (blur, speed, rotation, crossfade), fluid shader, spectrum visualizer, snowflake, fog, and raindrop overlays — each with opacity, breathing-effect intensity, and enable flags. Implements ICloneable."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/Settings/LyricsCardConfig.cs",
+      "summary": "Minimal config for a lyrics card style: resource key string and font-family name."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/Settings/LyricsEffectSettings.cs",
+      "summary": "MVVM settings for per-line and per-character visual effects: word-by-word mode, blur/fade/out-of-sight flags, glow (scope, duration, amount), shadow, scale, float animation, scroll easing/duration/delay, fan-lyrics angle, 3-D perspective (X/Y/Z angles, depth), and breathing effect. Implements ICloneable."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/Settings/LyricsStyleSettings.cs",
+      "summary": "MVVM settings for typography: dynamic font size, size per track (phonetic/original/translated), opacity (played/unplayed/phonetic/translated), alignment, stroke width, custom colors with color-type enum, font weight, line-spacing factor, CJK and Western font family, and playing-line top offset percentage."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/Settings/LyricsWindowStatus.cs",
+      "summary": "Root MVVM settings object for the detached lyrics window: monitor placement, always-on-top/wallpaper/locked/borderless modes, taskbar pinning, maximize/fullscreen, layout orientation, display type, window/dock bounds, FPS, edge-feathering, padding, palette generation type, auto show/hide, and aggregated sub-settings (LyricsStyleSettings, LyricsEffectSettings, LyricsBackgroundSettings, AlbumArtAreaStyleSettings, AlbumArtAreaEffectSettings). Forwards sub-setting PropertyChanged events up to keep bindings live after replacement."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/Settings/TranslationSettings.cs",
+      "summary": "MVVM settings for lyrics translation: LibreTranslate server toggle/URL, translation enable, target language code, Chinese romanization mode, Japanese romanization toggle, Chinese conversion (simplified/traditional), and profanity filter."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Models/SongInfo.cs",
+      "summary": "MVVM ObservableRecipient DTO for currently-playing song metadata: title, artist, album, duration ms, player ID, song ID, linked local file name, and started-at timestamp. Passed into the lyrics canvas as track context."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/README.md",
+      "summary": "Documentation overview for the Wavee.Controls.Lyrics library: purpose, key classes, and integration points with the WinUI host."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/BreathingRendererBase.cs",
+      "summary": "Abstract base for renderers that support bass-reactive breathing: maintains current/target scale with fast-attack/slow-decay smoothing driven by bass energy (0-1) and intensity (0-100), and provides ApplyBreathingTransform/ResetTransform helpers for CanvasDrawingSession."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/CompositionRenderer.cs",
+      "summary": "Utility that owns a lazily-created CanvasRenderTarget (recreated on size/DPI change) and exposes a Render() method that clears it, invokes a draw-commands Action, and returns the target for use as a texture source."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/CoverBackgroundRenderer.cs",
+      "summary": "IBackgroundRenderer that draws album art as a blurred, optionally-rotating, crossfading background layer. Caches a pre-scaled and blurred CanvasRenderTarget per bitmap, crossfades between previous and current via a ValueTransition, and delegates breathing scale to BreathingRendererBase."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/EdgeFadeMaskRenderer.cs",
+      "summary": "Generates and caches a CanvasImageBrush alpha-mask with smooth linear-gradient edge feathering on all four sides and radial-gradient rounded corners. Used to fade lyrics text toward window edges; regenerates only when size or feather percentages change."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/FluidBackgroundRenderer.cs",
+      "summary": "IBackgroundRenderer implementing the animated fluid color-gradient background via a ComputeSharp D2D1 PixelShaderEffect<FluidBackgroundEffect>. Accepts four accent colors and a time accumulator; supports HSV blending, light-wave, dithering, opacity, and breathing scale."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/FogRenderer.cs",
+      "summary": "IBackgroundRenderer wrapping a ComputeSharp D2D1 PixelShaderEffect<FogEffect> driven by a time accumulator and screen dimensions. Supports breathing scale from BreathingRendererBase."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/IBackgroundRenderer.cs",
+      "summary": "Interface for all background overlay renderers: IsEnabled, LoadResources(ICanvasResourceCreator), Update(in RenderContext), Draw(CanvasDrawingSession, in RenderContext), and IDisposable."
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/LyricsRenderer.cs",
+      "summary": "Main lyrics draw loop. Iterates the visible RenderLyricsLine range, applies per-line transforms (scale, fan-rotation, Y/X offset, 3-D perspective via Transform3DEffect), delegates to PlayingLineRenderer or UnplayingLineRenderer per line, draws mouse-hover highlight rectangles, and renders Apple-Music-style countdown dots during instrumental intros."
+    }
+  ]
+}

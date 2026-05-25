@@ -1,0 +1,182 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/LazyItemVm.cs",
+      "language": "csharp",
+      "sizeLines": 208,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Library/DualSourceLibraryViewModelBase.cs",
+      "language": "csharp",
+      "sizeLines": 177,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Library/LibrarySource.cs",
+      "language": "csharp",
+      "sizeLines": 11,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Library/LibraryViewModelBase.cs",
+      "language": "csharp",
+      "sizeLines": 266,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/LibraryPageViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 66,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/LikedSongsViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 693,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Local/LocalCollectionDetailViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 56,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Local/LocalItemDetailFlyoutViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 193,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Local/LocalLandingViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 279,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Local/LocalLikedSongsViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 46,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Local/LocalMovieDetailViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 88,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Local/LocalMoviesViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 63,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Local/LocalMusicVideosViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 238,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Local/LocalMusicViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 51,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Local/LocalOtherViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 46,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Local/LocalPersonDetailViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 94,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Local/LocalShowDetailViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 129,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Local/LocalShowsViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 64,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Local/UpNextEpisodeOverlayViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 423,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/LocalFilesViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 375,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/LocalLibraryViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 174,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/LyricsAiPanelViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 270,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/LyricsViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 561,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/MainWindowViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/MiniVideoPlayerViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 274,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "src/Wavee.UI.WinUI/ViewModels/LazyItemVm.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Library/DualSourceLibraryViewModelBase.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Library/LibrarySource.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Library/LibraryViewModelBase.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/LibraryPageViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/LikedSongsViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Local/LocalCollectionDetailViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Local/LocalItemDetailFlyoutViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Local/LocalLandingViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Local/LocalLikedSongsViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Local/LocalMovieDetailViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Local/LocalMoviesViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Local/LocalMusicVideosViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Local/LocalMusicViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Local/LocalOtherViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Local/LocalPersonDetailViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Local/LocalShowDetailViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Local/LocalShowsViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Local/UpNextEpisodeOverlayViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/LocalFilesViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/LocalLibraryViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/LyricsAiPanelViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/LyricsViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/MainWindowViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/MiniVideoPlayerViewModel.cs": []
+  }
+}

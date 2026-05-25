@@ -1,0 +1,182 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Sidebar/ISidebarItemModel.cs",
+      "language": "csharp",
+      "sizeLines": 57,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Sidebar/ISidebarViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 13,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarDisplayMode.cs",
+      "language": "csharp",
+      "sizeLines": 22,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarItem.cs",
+      "language": "csharp",
+      "sizeLines": 1493,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarItem.Properties.cs",
+      "language": "csharp",
+      "sizeLines": 127,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarItemAutomationPeer.cs",
+      "language": "csharp",
+      "sizeLines": 115,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarItemDropPosition.cs",
+      "language": "csharp",
+      "sizeLines": 22,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarItemModel.cs",
+      "language": "csharp",
+      "sizeLines": 314,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarStyles.xaml",
+      "language": "xaml",
+      "sizeLines": 922,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarView.Properties.cs",
+      "language": "csharp",
+      "sizeLines": 118,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarView.xaml",
+      "language": "xaml",
+      "sizeLines": 402,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarView.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 369,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarViewAutomationPeer.cs",
+      "language": "csharp",
+      "sizeLines": 38,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml",
+      "language": "xaml",
+      "sizeLines": 714,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 1006,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerContentMode.cs",
+      "language": "csharp",
+      "sizeLines": 15,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml",
+      "language": "xaml",
+      "sizeLines": 279,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 1364,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/LyricsAiPanel.xaml",
+      "language": "xaml",
+      "sizeLines": 183,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/LyricsAiPanel.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 259,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml",
+      "language": "xaml",
+      "sizeLines": 876,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 694,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Splash/BootSplash.xaml",
+      "language": "xaml",
+      "sizeLines": 76,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Splash/BootSplash.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 72,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml",
+      "language": "xaml",
+      "sizeLines": 201,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "src/Wavee.UI.WinUI/Controls/Sidebar/ISidebarItemModel.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Sidebar/ISidebarViewModel.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarDisplayMode.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarItem.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarItem.Properties.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarItemAutomationPeer.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarItemDropPosition.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarItemModel.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarStyles.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarView.Properties.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarView.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarView.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Sidebar/SidebarViewAutomationPeer.cs": [],
+    "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerContentMode.cs": [],
+    "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/SidebarPlayer/LyricsAiPanel.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/SidebarPlayer/LyricsAiPanel.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Splash/BootSplash.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/Splash/BootSplash.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml": []
+  }
+}

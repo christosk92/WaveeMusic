@@ -1,0 +1,1309 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml",
+      "type": "file",
+      "name": "VideoGripperView.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml",
+      "summary": "XAML layout for the mini video player gripper overlay, defining the drag handle and restore button surface.",
+      "tags": [
+        "component",
+        "xaml",
+        "video-player",
+        "mini-player"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml.cs",
+      "type": "file",
+      "name": "VideoGripperView.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml.cs",
+      "summary": "Code-behind for VideoGripperView that manages surface attachment/detachment lifecycle, responds to ViewModel property changes, and routes media surface ownership between MediaPlayer and UIElement modes.",
+      "tags": [
+        "component",
+        "video-player",
+        "surface-management",
+        "mini-player"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml.cs:VideoGripperView",
+      "type": "class",
+      "name": "VideoGripperView",
+      "filePath": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml.cs",
+      "lineRange": [
+        24,
+        162
+      ],
+      "summary": "WinUI UserControl hosting the floating mini-player gripper, handling surface ownership changes and attaching/detaching video surfaces from the composition tree.",
+      "tags": [
+        "component",
+        "video-player",
+        "surface-management"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml",
+      "type": "file",
+      "name": "VideoSurfaceHost.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml",
+      "summary": "XAML layout for VideoSurfaceHost defining the host container for the video composition surface and artwork overlay.",
+      "tags": [
+        "component",
+        "xaml",
+        "video-player",
+        "surface-management"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs",
+      "type": "file",
+      "name": "VideoSurfaceHost.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs",
+      "summary": "Code-behind for VideoSurfaceHost: manages WinUI Composition tree setup, implicit opacity animations, nav-cache surface release/restore, album-art/poster-URL loading, corner radius, and first-frame-ready state transitions.",
+      "tags": [
+        "component",
+        "video-player",
+        "surface-management",
+        "composition"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Uses Windows.UI.Composition APIs directly to host video surfaces and apply implicit animations; integrates with nav-cache lifecycle via ReleaseForNavCache/RestoreForNavCache."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs:VideoSurfaceHost",
+      "type": "class",
+      "name": "VideoSurfaceHost",
+      "filePath": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs",
+      "lineRange": [
+        27,
+        425
+      ],
+      "summary": "WinUI UserControl that hosts a video composition surface alongside album-art imagery, managing the full composition lifecycle including opacity animations, nav-cache integration, and poster loading.",
+      "tags": [
+        "component",
+        "video-player",
+        "composition",
+        "surface-management"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs:ReleaseForNavCache",
+      "type": "function",
+      "name": "ReleaseForNavCache",
+      "filePath": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs",
+      "lineRange": [
+        189,
+        196
+      ],
+      "summary": "Releases the GPU composition surface and hides the video host when a page is removed from the nav cache.",
+      "tags": [
+        "surface-management",
+        "nav-cache",
+        "lifecycle"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs:RestoreForNavCache",
+      "type": "function",
+      "name": "RestoreForNavCache",
+      "filePath": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs",
+      "lineRange": [
+        198,
+        209
+      ],
+      "summary": "Restores the video composition surface and fades in the host when a previously cached page becomes active again.",
+      "tags": [
+        "surface-management",
+        "nav-cache",
+        "lifecycle"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs:EnsureComposition",
+      "type": "function",
+      "name": "EnsureComposition",
+      "filePath": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs",
+      "lineRange": [
+        244,
+        264
+      ],
+      "summary": "Lazily initializes the Windows.UI.Composition tree for hosting the video surface, creating ContainerVisuals and SpriteVisuals as needed.",
+      "tags": [
+        "composition",
+        "surface-management",
+        "initialization"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml",
+      "type": "file",
+      "name": "NavigationToolbar.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml",
+      "summary": "XAML layout for the app navigation toolbar including back/forward/home buttons, the search omnibar, theme toggle, friends button, and profile menu.",
+      "tags": [
+        "component",
+        "xaml",
+        "navigation",
+        "toolbar"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml.cs",
+      "type": "file",
+      "name": "NavigationToolbar.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml.cs",
+      "summary": "Code-behind for NavigationToolbar: wires back/forward/home navigation, search omnibar events, sidebar toggle pointer states, auth visual-state transitions, theme toggle, and profile/sign-out menu commands.",
+      "tags": [
+        "component",
+        "navigation",
+        "toolbar",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml.cs:NavigationToolbar",
+      "type": "class",
+      "name": "NavigationToolbar",
+      "filePath": "src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml.cs",
+      "lineRange": [
+        13,
+        422
+      ],
+      "summary": "WinUI UserControl for the main app navigation bar, coordinating navigation actions, search input, auth state display, and user profile interactions.",
+      "tags": [
+        "component",
+        "navigation",
+        "toolbar"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml",
+      "type": "file",
+      "name": "NotificationToast.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml",
+      "summary": "XAML layout for in-app notification toasts, defining severity icon, message text, optional action button, and close button.",
+      "tags": [
+        "component",
+        "xaml",
+        "notifications",
+        "toast"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml.cs",
+      "type": "file",
+      "name": "NotificationToast.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml.cs",
+      "summary": "Code-behind for NotificationToast: handles open/close animation, severity icon/color mapping, message and action label updates, and action click routing.",
+      "tags": [
+        "component",
+        "notifications",
+        "toast",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml.cs:NotificationToast",
+      "type": "class",
+      "name": "NotificationToast",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml.cs",
+      "lineRange": [
+        16,
+        128
+      ],
+      "summary": "WinUI UserControl for in-app notification toasts with informational/warning/error severity variants, an optional action button, and animated open/close transitions.",
+      "tags": [
+        "component",
+        "notifications",
+        "toast"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs",
+      "type": "file",
+      "name": "BoldMatchTextBlock.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs",
+      "summary": "Custom TextBlock control that renders a search query match in bold by splitting text into run segments based on a Query dependency property.",
+      "tags": [
+        "component",
+        "omnibar",
+        "text-rendering",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs:BoldMatchTextBlock",
+      "type": "class",
+      "name": "BoldMatchTextBlock",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs",
+      "lineRange": [
+        12,
+        92
+      ],
+      "summary": "WinUI Control that boldifies the portion of displayed text matching a Query string, used in search suggestion items to highlight matched terms.",
+      "tags": [
+        "component",
+        "omnibar",
+        "text-rendering"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs:UpdateText",
+      "type": "function",
+      "name": "UpdateText",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs",
+      "lineRange": [
+        53,
+        91
+      ],
+      "summary": "Rebuilds the TextBlock Run segments to apply bold formatting to the matched query substring within the full text.",
+      "tags": [
+        "text-rendering",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "type": "file",
+      "name": "Omnibar.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "summary": "Custom templated search control combining a text box with a flyout panel for live suggestions, groups, loading/error states, and keyboard-driven selection; exposes TextChanged, QuerySubmitted, SuggestionChosen, ActionButtonClicked, and RetryRequested events.",
+      "tags": [
+        "component",
+        "omnibar",
+        "search",
+        "event-handler"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Contains four inner types (Omnibar plus three EventArgs); uses DispatcherQueue for async focus restore and Popup for the suggestion flyout."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:Omnibar",
+      "type": "class",
+      "name": "Omnibar",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "lineRange": [
+        18,
+        546
+      ],
+      "summary": "Core templated WinUI control for the search/omnibar, managing suggestion flyout visibility, keyboard navigation, loading indicators, and error states.",
+      "tags": [
+        "component",
+        "omnibar",
+        "search"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:OmnibarTextChangedEventArgs",
+      "type": "class",
+      "name": "OmnibarTextChangedEventArgs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "lineRange": [
+        548,
+        551
+      ],
+      "summary": "Event args carrying the new search text when the omnibar text changes.",
+      "tags": [
+        "type-definition",
+        "omnibar",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:OmnibarQuerySubmittedEventArgs",
+      "type": "class",
+      "name": "OmnibarQuerySubmittedEventArgs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "lineRange": [
+        553,
+        557
+      ],
+      "summary": "Event args for a committed search query, carrying the submitted text string.",
+      "tags": [
+        "type-definition",
+        "omnibar",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:OmnibarSuggestionChosenEventArgs",
+      "type": "class",
+      "name": "OmnibarSuggestionChosenEventArgs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "lineRange": [
+        559,
+        562
+      ],
+      "summary": "Event args carrying the chosen suggestion item when the user selects a result from the flyout.",
+      "tags": [
+        "type-definition",
+        "omnibar",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:ShowPopup",
+      "type": "function",
+      "name": "ShowPopup",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "lineRange": [
+        249,
+        288
+      ],
+      "summary": "Opens the suggestions flyout, positions it below the search box, and triggers state evaluation.",
+      "tags": [
+        "omnibar",
+        "search",
+        "ui-interaction"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:UpdateFlyoutState",
+      "type": "function",
+      "name": "UpdateFlyoutState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "lineRange": [
+        296,
+        349
+      ],
+      "summary": "Determines which visual state to show in the flyout (loading shimmer, error, results, groups, or empty) based on current bound data.",
+      "tags": [
+        "omnibar",
+        "search",
+        "state-management"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:TryShowCurrentState",
+      "type": "function",
+      "name": "TryShowCurrentState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "lineRange": [
+        381,
+        423
+      ],
+      "summary": "Delegates to SearchFlyoutPanel to render the correct UI state, coordinating between result items, suggestion groups, and loading/error conditions.",
+      "tags": [
+        "omnibar",
+        "search",
+        "state-management"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.xaml",
+      "type": "file",
+      "name": "Omnibar.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.xaml",
+      "summary": "XAML control template for Omnibar: defines the TextBox, action/search buttons, loading ring, and the Popup container hosting SearchFlyoutPanel.",
+      "tags": [
+        "component",
+        "xaml",
+        "omnibar",
+        "search"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml",
+      "type": "file",
+      "name": "SearchFlyoutPanel.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml",
+      "summary": "XAML layout for the search suggestion flyout panel containing shimmer placeholders, error state, item ListView, grouped results ListView, and a retry button.",
+      "tags": [
+        "component",
+        "xaml",
+        "omnibar",
+        "search"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs",
+      "type": "file",
+      "name": "SearchFlyoutPanel.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs",
+      "summary": "Code-behind for SearchFlyoutPanel: manages keyboard selection movement, shimmer/error/result rendering, bold-match text application, suggestion image prefetching, action button visibility, and group header logic.",
+      "tags": [
+        "component",
+        "omnibar",
+        "search",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs:SearchFlyoutPanel",
+      "type": "class",
+      "name": "SearchFlyoutPanel",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs",
+      "lineRange": [
+        14,
+        348
+      ],
+      "summary": "WinUI UserControl for the search suggestion dropdown, handling item rendering, keyboard focus movement, shimmer states, and bold-match text highlighting.",
+      "tags": [
+        "component",
+        "omnibar",
+        "search"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs:MoveSelection",
+      "type": "function",
+      "name": "MoveSelection",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs",
+      "lineRange": [
+        38,
+        72
+      ],
+      "summary": "Moves keyboard focus up/down through the suggestion list, skipping non-selectable group headers and wrapping around the edges.",
+      "tags": [
+        "omnibar",
+        "keyboard-navigation",
+        "ui-interaction"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs:ApplyBoldMatching",
+      "type": "function",
+      "name": "ApplyBoldMatching",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs",
+      "lineRange": [
+        233,
+        249
+      ],
+      "summary": "Walks the visual tree of a rendered suggestion item to find BoldMatchTextBlock controls and sets their Text/Query for bold-match rendering.",
+      "tags": [
+        "omnibar",
+        "text-rendering",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs",
+      "type": "file",
+      "name": "SearchSuggestionTemplateSelector.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs",
+      "summary": "DataTemplateSelector and ItemContainerStyleSelector for search suggestions, routing each result type (track, album, artist, playlist, etc.) to its appropriate DataTemplate and container style.",
+      "tags": [
+        "component",
+        "omnibar",
+        "search",
+        "factory"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs:SearchSuggestionTemplateSelector",
+      "type": "class",
+      "name": "SearchSuggestionTemplateSelector",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs",
+      "lineRange": [
+        7,
+        34
+      ],
+      "summary": "DataTemplateSelector that maps search result item types to the correct DataTemplate for rendering in the suggestion list.",
+      "tags": [
+        "factory",
+        "omnibar",
+        "search"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs:SearchSuggestionContainerStyleSelector",
+      "type": "class",
+      "name": "SearchSuggestionContainerStyleSelector",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs",
+      "lineRange": [
+        41,
+        60
+      ],
+      "summary": "StyleSelector that applies a distinct ListViewItemStyle to non-selectable group header items in the search suggestion list.",
+      "tags": [
+        "factory",
+        "omnibar",
+        "search"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PageHost/IPageHostAware.cs",
+      "type": "file",
+      "name": "IPageHostAware.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/IPageHostAware.cs",
+      "summary": "Interface marking a page as aware of its PageHost container, enabling pages to respond to hosting lifecycle events.",
+      "tags": [
+        "type-definition",
+        "page-host",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/PageHost/IPageHostAware.cs:IPageHostAware",
+      "type": "class",
+      "name": "IPageHostAware",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/IPageHostAware.cs",
+      "lineRange": [
+        3,
+        16
+      ],
+      "summary": "Marker interface for pages that need to observe PageHost lifecycle callbacks.",
+      "tags": [
+        "type-definition",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs",
+      "type": "file",
+      "name": "PageHost.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs",
+      "summary": "Custom WinUI navigation control implementing an LRU-cached page stack: navigates, maintains back/forward stacks, pre-warms pages, evicts least-recently-used cached pages, and raises navigating/navigated events.",
+      "tags": [
+        "component",
+        "navigation",
+        "page-host",
+        "caching"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Implements its own LRU eviction with configurable MaxCacheSize and pre-warming; uses Dictionary + ordering list rather than a standard NavigationView."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs:PageHost",
+      "type": "class",
+      "name": "PageHost",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs",
+      "lineRange": [
+        25,
+        386
+      ],
+      "summary": "Core navigation panel managing cached page instances with LRU eviction, back/forward stacks, pre-warming, and IPageHostAware lifecycle notifications.",
+      "tags": [
+        "component",
+        "navigation",
+        "page-host"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs:NavigateCore",
+      "type": "function",
+      "name": "NavigateCore",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs",
+      "lineRange": [
+        261,
+        332
+      ],
+      "summary": "Core navigation implementation: resolves target page from cache or creates a new instance, updates back/forward stacks, fires navigating/navigated events, and triggers LRU eviction.",
+      "tags": [
+        "navigation",
+        "page-host",
+        "caching"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs:EvictLruIfNeeded",
+      "type": "function",
+      "name": "EvictLruIfNeeded",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs",
+      "lineRange": [
+        356,
+        385
+      ],
+      "summary": "Checks the cached page count against MaxCacheSize and evicts the least-recently-used pages until within the limit.",
+      "tags": [
+        "navigation",
+        "caching",
+        "memory-management"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs:Prewarm",
+      "type": "function",
+      "name": "Prewarm",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs",
+      "lineRange": [
+        220,
+        242
+      ],
+      "summary": "Pre-instantiates and hides pages for registered routes so first navigation has no creation cost.",
+      "tags": [
+        "navigation",
+        "performance",
+        "page-host"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHostExtensions.cs",
+      "type": "file",
+      "name": "PageHostExtensions.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostExtensions.cs",
+      "summary": "Extension method to walk the WinUI visual tree upward from any element to find the nearest ancestor PageHost.",
+      "tags": [
+        "utility",
+        "page-host",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHostExtensions.cs:PageHostExtensions",
+      "type": "class",
+      "name": "PageHostExtensions",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostExtensions.cs",
+      "lineRange": [
+        6,
+        24
+      ],
+      "summary": "Static extensions class providing FindHostingPageHost to locate a PageHost ancestor in the visual tree.",
+      "tags": [
+        "utility",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatedEventArgs.cs",
+      "type": "file",
+      "name": "PageHostNavigatedEventArgs.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatedEventArgs.cs",
+      "summary": "Event args emitted after a PageHost navigation completes, carrying the target page type and parameter.",
+      "tags": [
+        "type-definition",
+        "navigation",
+        "page-host"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatedEventArgs.cs:PageHostNavigatedEventArgs",
+      "type": "class",
+      "name": "PageHostNavigatedEventArgs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatedEventArgs.cs",
+      "lineRange": [
+        5,
+        17
+      ],
+      "summary": "Carries page type and parameter for the Navigated event of PageHost.",
+      "tags": [
+        "type-definition",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatingEventArgs.cs",
+      "type": "file",
+      "name": "PageHostNavigatingEventArgs.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatingEventArgs.cs",
+      "summary": "Event args emitted before a PageHost navigation, carrying the target page type and a Cancel property.",
+      "tags": [
+        "type-definition",
+        "navigation",
+        "page-host"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatingEventArgs.cs:PageHostNavigatingEventArgs",
+      "type": "class",
+      "name": "PageHostNavigatingEventArgs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatingEventArgs.cs",
+      "lineRange": [
+        5,
+        18
+      ],
+      "summary": "Carries page type and cancellation flag for the Navigating event of PageHost.",
+      "tags": [
+        "type-definition",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationFailedEventArgs.cs",
+      "type": "file",
+      "name": "PageHostNavigationFailedEventArgs.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationFailedEventArgs.cs",
+      "summary": "Event args emitted when a PageHost navigation fails, carrying the exception and target page type.",
+      "tags": [
+        "type-definition",
+        "navigation",
+        "page-host"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationFailedEventArgs.cs:PageHostNavigationFailedEventArgs",
+      "type": "class",
+      "name": "PageHostNavigationFailedEventArgs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationFailedEventArgs.cs",
+      "lineRange": [
+        5,
+        18
+      ],
+      "summary": "Carries the exception and target page type for the NavigationFailed event of PageHost.",
+      "tags": [
+        "type-definition",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationMode.cs",
+      "type": "file",
+      "name": "PageHostNavigationMode.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationMode.cs",
+      "summary": "Enum defining PageHost navigation modes: New, Back, Forward, and Refresh.",
+      "tags": [
+        "type-definition",
+        "navigation",
+        "page-host"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageRegistration.cs",
+      "type": "file",
+      "name": "PageRegistration.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageRegistration.cs",
+      "summary": "Static class containing RegisterAll that bulk-registers all application page types with PageRegistry, serving as the page factory registry initializer.",
+      "tags": [
+        "factory",
+        "navigation",
+        "page-host"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageRegistration.cs:PageRegistration",
+      "type": "class",
+      "name": "PageRegistration",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageRegistration.cs",
+      "lineRange": [
+        11,
+        61
+      ],
+      "summary": "Startup registration class that maps all view model and page types to their factory functions in PageRegistry.",
+      "tags": [
+        "factory",
+        "navigation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageRegistry.cs",
+      "type": "file",
+      "name": "PageRegistry.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageRegistry.cs",
+      "summary": "Dictionary-based registry mapping page type keys to factory functions, used by PageHost to instantiate pages without reflection.",
+      "tags": [
+        "factory",
+        "navigation",
+        "page-host"
+      ],
+      "complexity": "simple",
+      "languageNotes": "Follows the factory-registry pattern to avoid Activator.CreateInstance reflection overhead."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageRegistry.cs:PageRegistry",
+      "type": "class",
+      "name": "PageRegistry",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageRegistry.cs",
+      "lineRange": [
+        14,
+        32
+      ],
+      "summary": "Thread-safe dictionary registry for page factory delegates keyed by type, used by PageHost for page instantiation.",
+      "tags": [
+        "factory",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageStackEntry.cs",
+      "type": "file",
+      "name": "PageStackEntry.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageStackEntry.cs",
+      "summary": "Immutable record representing a single entry in the PageHost back/forward stack, holding page type and parameter.",
+      "tags": [
+        "type-definition",
+        "navigation",
+        "page-host"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageStackEntry.cs:PageStackEntry",
+      "type": "class",
+      "name": "PageStackEntry",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PageHost/PageStackEntry.cs",
+      "lineRange": [
+        5,
+        14
+      ],
+      "summary": "Holds a page type and its navigation parameter for the PageHost navigation stack.",
+      "tags": [
+        "type-definition",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs",
+      "type": "file",
+      "name": "PlayActionDialog.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs",
+      "summary": "ContentDialog that presents playback action options (Play now, Add to queue, etc.) for a given content URI, returning the user-chosen PlayAction result.",
+      "tags": [
+        "component",
+        "dialog",
+        "playback",
+        "ui-interaction"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs:PlayActionDialog",
+      "type": "class",
+      "name": "PlayActionDialog",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs",
+      "lineRange": [
+        24,
+        142
+      ],
+      "summary": "Static helper class that builds and shows a ContentDialog offering playback action choices, returning the selected option asynchronously.",
+      "tags": [
+        "component",
+        "dialog",
+        "playback"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs:ShowAsync",
+      "type": "function",
+      "name": "ShowAsync",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs",
+      "lineRange": [
+        30,
+        118
+      ],
+      "summary": "Builds the list of available play actions from a URI and shows a ContentDialog; awaits user selection and returns the chosen PlayAction or null on cancel.",
+      "tags": [
+        "dialog",
+        "playback",
+        "async"
+      ],
+      "complexity": "complex"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml.cs:VideoGripperView",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml.cs:VideoGripperView",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs:VideoSurfaceHost",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs:VideoSurfaceHost",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs:ReleaseForNavCache",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs:RestoreForNavCache",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs:EnsureComposition",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml.cs:NavigationToolbar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml.cs:NavigationToolbar",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml.cs:NotificationToast",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml.cs:NotificationToast",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs:BoldMatchTextBlock",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs:BoldMatchTextBlock",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs:UpdateText",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:Omnibar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:Omnibar",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:OmnibarTextChangedEventArgs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:OmnibarQuerySubmittedEventArgs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:OmnibarSuggestionChosenEventArgs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:ShowPopup",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:UpdateFlyoutState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs:TryShowCurrentState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs:SearchFlyoutPanel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs:SearchFlyoutPanel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs:MoveSelection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs:ApplyBoldMatching",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs:SearchSuggestionTemplateSelector",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs:SearchSuggestionTemplateSelector",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs:SearchSuggestionContainerStyleSelector",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/IPageHostAware.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/IPageHostAware.cs:IPageHostAware",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/IPageHostAware.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/IPageHostAware.cs:IPageHostAware",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs:PageHost",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs:PageHost",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs:NavigateCore",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs:EvictLruIfNeeded",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs:Prewarm",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHostExtensions.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHostExtensions.cs:PageHostExtensions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHostExtensions.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHostExtensions.cs:PageHostExtensions",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatedEventArgs.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatedEventArgs.cs:PageHostNavigatedEventArgs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatedEventArgs.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatedEventArgs.cs:PageHostNavigatedEventArgs",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatingEventArgs.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatingEventArgs.cs:PageHostNavigatingEventArgs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatingEventArgs.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatingEventArgs.cs:PageHostNavigatingEventArgs",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationFailedEventArgs.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationFailedEventArgs.cs:PageHostNavigationFailedEventArgs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationFailedEventArgs.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationFailedEventArgs.cs:PageHostNavigationFailedEventArgs",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageRegistration.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageRegistration.cs:PageRegistration",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageRegistration.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageRegistration.cs:PageRegistration",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageRegistry.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageRegistry.cs:PageRegistry",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageRegistry.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageRegistry.cs:PageRegistry",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageStackEntry.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageStackEntry.cs:PageStackEntry",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PageHost/PageStackEntry.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PageHost/PageStackEntry.cs:PageStackEntry",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs:PlayActionDialog",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs:PlayActionDialog",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs:ShowAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    }
+  ]
+}

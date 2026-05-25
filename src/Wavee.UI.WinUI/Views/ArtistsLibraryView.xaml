@@ -16,11 +16,17 @@
     xmlns:media="using:CommunityToolkit.WinUI.Media"
     xmlns:behaviors="using:Wavee.UI.WinUI.Behaviors"
     xmlns:controls1="using:Wavee.UI.WinUI.Controls"
+    xmlns:cards="using:Wavee.UI.WinUI.Controls.Cards"
     xmlns:libcontrols="using:Wavee.UI.WinUI.Controls.Library"
     mc:Ignorable="d"
     Background="Transparent">
 
     <UserControl.Resources>
+        <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="ms-appx:///CommunityToolkit.WinUI.Controls.Segmented/Segmented/Segmented.xaml"/>
+        </ResourceDictionary.MergedDictionaries>
+
         <media:AttachedCardShadow x:Key="CardShadow"
                                    Offset="4"
                                    BlurRadius="16"
@@ -122,73 +128,206 @@
 
         <DataTemplate x:Key="ArtistCompactGridItemTemplate" x:DataType="dto:LibraryArtistDto">
             <ItemContainer>
-                <Grid Width="100" Height="100">
-                    <Ellipse Fill="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                             Width="100" Height="100"/>
-                    <FontIcon Glyph="&#xE77B;" FontSize="28" Opacity="0.3"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"
-                              Visibility="{x:Bind ImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                    <Ellipse Width="100" Height="100"
-                             Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}">
-                        <Ellipse.Fill>
-                            <ImageBrush
-                                ImageSource="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='200'}"
-                                Stretch="UniformToFill"/>
-                        </Ellipse.Fill>
-                    </Ellipse>
-                    <ToolTipService.ToolTip>
-                        <TextBlock Text="{x:Bind Name}"/>
-                    </ToolTipService.ToolTip>
-                </Grid>
+                <cards:ContentCard
+                    Style="{StaticResource CompactContentCardStyle}"
+                    ImageUrl="{x:Bind ImageUrl}"
+                    Title="{x:Bind Name}"
+                    NavigationUri="{x:Bind Id}"
+                    NavigationTitle="{x:Bind Name}"
+                    PlaceholderGlyph="&#xE77B;"
+                    IsCircularImage="True"
+                    CenterText="True"
+                    IsPassive="True"
+                    ShowPlaybackOverlay="False"/>
             </ItemContainer>
         </DataTemplate>
 
         <DataTemplate x:Key="ArtistDefaultGridItemTemplate" x:DataType="dto:LibraryArtistDto">
             <ItemContainer>
-                <StackPanel Spacing="4" Padding="4">
-                    <Grid Width="88" Height="88" HorizontalAlignment="Center">
-                        <Ellipse Fill="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                 Width="88" Height="88"/>
-                        <FontIcon Glyph="&#xE77B;" FontSize="24" Opacity="0.3"
+                <cards:ContentCard
+                    Style="{StaticResource CompactContentCardStyle}"
+                    ImageUrl="{x:Bind ImageUrl}"
+                    Title="{x:Bind Name}"
+                    Badge="{x:Bind RecentsSubtitle}"
+                    NavigationUri="{x:Bind Id}"
+                    NavigationTitle="{x:Bind Name}"
+                    PlaceholderGlyph="&#xE77B;"
+                    IsCircularImage="True"
+                    CenterText="True"
+                    IsPassive="True"
+                    ShowPlaybackOverlay="False"/>
+            </ItemContainer>
+        </DataTemplate>
+
+        <DataTemplate x:Key="LikedArtistDefaultListItemTemplate" x:DataType="dto:LikedArtistDto">
+            <ItemContainer RightTapped="LikedArtistItem_RightTapped">
+                <Grid Padding="8" ColumnSpacing="12" CornerRadius="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="48"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Grid
+                        Grid.Column="0"
+                        Width="48"
+                        Height="48"
+                        CornerRadius="24"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                        <FontIcon Glyph="&#xE77B;" FontSize="20" Opacity="0.3"
                                   HorizontalAlignment="Center" VerticalAlignment="Center"
                                   Visibility="{x:Bind ImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                        <Ellipse Width="88" Height="88"
+                        <Ellipse Width="48" Height="48"
                                  Visibility="{x:Bind ImageUrl, Converter={StaticResource NullToVisibilityConverter}}">
                             <Ellipse.Fill>
                                 <ImageBrush
-                                    ImageSource="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='200'}"
+                                    ImageSource="{x:Bind ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='96'}"
                                     Stretch="UniformToFill"/>
                             </Ellipse.Fill>
                         </Ellipse>
                     </Grid>
-                    <TextBlock
-                        Text="{x:Bind Name}"
-                        TextAlignment="Center"
-                        TextTrimming="CharacterEllipsis"
-                        MaxLines="1"
-                        FontSize="12"/>
-                    <!-- Accent "Played X ago" pill under the name when VM stamps RecentsSubtitle. -->
-                    <TextBlock
-                        Text="{x:Bind RecentsSubtitle}"
-                        TextAlignment="Center"
-                        TextTrimming="CharacterEllipsis"
-                        MaxLines="1"
-                        FontSize="10"
-                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                        Visibility="{x:Bind RecentsSubtitle, Converter={StaticResource NullToVisibilityConverter}}"/>
-                </StackPanel>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock
+                            Text="{x:Bind Name}"
+                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                            TextTrimming="CharacterEllipsis"
+                            MaxLines="1"/>
+                        <TextBlock
+                            Text="{x:Bind Subtitle}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextTrimming="CharacterEllipsis"
+                            MaxLines="1"/>
+                        <TextBlock
+                            Text="{x:Bind RecentsSubtitle}"
+                            FontSize="11"
+                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                            TextTrimming="CharacterEllipsis"
+                            MaxLines="1"
+                            Visibility="{x:Bind RecentsSubtitle, Converter={StaticResource NullToVisibilityConverter}}"/>
+                    </StackPanel>
+                </Grid>
             </ItemContainer>
         </DataTemplate>
+
+        <DataTemplate x:Key="LikedArtistCompactListItemTemplate" x:DataType="dto:LikedArtistDto">
+            <ItemContainer RightTapped="LikedArtistItem_RightTapped">
+                <Grid Padding="8,4" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        Grid.Column="0"
+                        Text="{x:Bind Name}"
+                        TextTrimming="CharacterEllipsis"
+                        MaxLines="1"/>
+                    <TextBlock
+                        Grid.Column="1"
+                        Text="{x:Bind LikedSongCountLabel}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        FontSize="11"
+                        Margin="8,0,0,0"/>
+                </Grid>
+            </ItemContainer>
+        </DataTemplate>
+
+        <DataTemplate x:Key="LikedArtistCompactGridItemTemplate" x:DataType="dto:LikedArtistDto">
+            <ItemContainer RightTapped="LikedArtistItem_RightTapped">
+                <cards:ContentCard
+                    Style="{StaticResource CompactContentCardStyle}"
+                    ImageUrl="{x:Bind ImageUrl}"
+                    Title="{x:Bind Name}"
+                    NavigationUri="{x:Bind Id}"
+                    NavigationTitle="{x:Bind Name}"
+                    PlaceholderGlyph="&#xE77B;"
+                    IsCircularImage="True"
+                    CenterText="True"
+                    IsPassive="True"
+                    ShowPlaybackOverlay="False"
+                    CardRightTapped="LikedArtistItem_RightTapped"/>
+            </ItemContainer>
+        </DataTemplate>
+
+        <DataTemplate x:Key="LikedArtistDefaultGridItemTemplate" x:DataType="dto:LikedArtistDto">
+            <ItemContainer RightTapped="LikedArtistItem_RightTapped">
+                <cards:ContentCard
+                    Style="{StaticResource CompactContentCardStyle}"
+                    ImageUrl="{x:Bind ImageUrl}"
+                    Title="{x:Bind Name}"
+                    Subtitle="{x:Bind LikedSongCountLabel}"
+                    Badge="{x:Bind RecentsSubtitle}"
+                    NavigationUri="{x:Bind Id}"
+                    NavigationTitle="{x:Bind Name}"
+                    PlaceholderGlyph="&#xE77B;"
+                    IsCircularImage="True"
+                    CenterText="True"
+                    IsPassive="True"
+                    ShowPlaybackOverlay="False"
+                    CardRightTapped="LikedArtistItem_RightTapped"/>
+            </ItemContainer>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ArtistDiscographyContentCardTemplate" x:DataType="vm:ArtistAlbumItemViewModel">
+            <ItemContainer>
+                <cards:ContentCard
+                    Style="{StaticResource CompactContentCardStyle}"
+                    ImageUrl="{x:Bind Album.ImageUrl}"
+                    Title="{x:Bind Album.Name}"
+                    Subtitle="{x:Bind Subtitle}"
+                    NavigationUri="{x:Bind Album.Id}"
+                    NavigationTitle="{x:Bind Album.Name}"
+                    PlaceholderGlyph="&#xE93C;"
+                    IsCircularImage="False"
+                    AutoNavigateOnTap="False"
+                    SecondaryActionVisible="True"
+                    SecondaryActionTooltip="Open album"
+                    CardClick="{x:Bind OnCardClick}"
+                    PlayRequested="{x:Bind OnPlayRequested}"/>
+            </ItemContainer>
+        </DataTemplate>
+        </ResourceDictionary>
     </UserControl.Resources>
 
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <primitives:Segmented
+            Grid.Row="0"
+            x:Name="SourceSelector"
+            Margin="0,0,0,12"
+            HorizontalAlignment="Left"
+            SelectionChanged="SourceSelector_SelectionChanged">
+            <primitives:SegmentedItem Tag="Saved">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE73E;" FontSize="14"/>
+                    <TextBlock Text="Following"/>
+                </StackPanel>
+            </primitives:SegmentedItem>
+            <primitives:SegmentedItem Tag="FromLikedSongs">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xEB52;" FontSize="14"/>
+                    <TextBlock Text="From Liked Songs"/>
+                </StackPanel>
+            </primitives:SegmentedItem>
+        </primitives:Segmented>
+
         <Grid
             x:Name="RootGrid"
+            Grid.Row="1"
             Visibility="{x:Bind ViewModel.IsWideLayout, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="280" MinWidth="200" MaxWidth="400"/>
+                <!-- Artist list column. Was fixed at 280 px which left the grid
+                     stuck at 2-3 circular cards regardless of how wide the
+                     window grew. Now proportional (1* with detail at 3*) so
+                     the column grows with the window — more cards per row on
+                     wide displays — with sensible MinWidth/MaxWidth bounds. -->
+                <ColumnDefinition Width="1*" MinWidth="240" MaxWidth="500"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="3*"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition x:Name="TracksPanelColumn" Width="0"/>
             </Grid.ColumnDefinitions>
@@ -221,12 +360,29 @@
                 <!-- Layout + ItemTemplate are set in code-behind on Loaded / ViewMode change. -->
                 <ItemsView
                     x:Name="ArtistsView"
+                    x:Load="{x:Bind ViewModel.IsSavedWide, Mode=OneWay}"
                     Grid.Row="1"
                     ItemsSource="{x:Bind ViewModel.FilteredArtists, Mode=OneWay}"
                     ItemTemplate="{StaticResource ArtistDefaultListItemTemplate}"
                     SelectionMode="Single"
                     SelectionChanged="ArtistsView_SelectionChanged"
-                    DoubleTapped="ArtistsView_DoubleTapped">
+                    DoubleTapped="ArtistsView_DoubleTapped"
+                    Visibility="{x:Bind ViewModel.IsSavedSource, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <ItemsView.Layout>
+                        <StackLayout Orientation="Vertical" Spacing="2"/>
+                    </ItemsView.Layout>
+                </ItemsView>
+
+                <ItemsView
+                    x:Name="LikedArtistsView"
+                    x:Load="{x:Bind ViewModel.IsLikedWide, Mode=OneWay}"
+                    Grid.Row="1"
+                    ItemsSource="{x:Bind ViewModel.FilteredLikedArtists, Mode=OneWay}"
+                    ItemTemplate="{StaticResource LikedArtistDefaultListItemTemplate}"
+                    SelectionMode="Single"
+                    SelectionChanged="LikedArtistsView_SelectionChanged"
+                    DoubleTapped="LikedArtistsView_DoubleTapped"
+                    Visibility="{x:Bind ViewModel.IsLikedSource, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <ItemsView.Layout>
                         <StackLayout Orientation="Vertical" Spacing="2"/>
                     </ItemsView.Layout>
@@ -309,7 +465,7 @@
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         Spacing="12"
-                        Visibility="{x:Bind ViewModel.SelectedArtist, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}">
+                        Visibility="{x:Bind ViewModel.ShowSavedArtistPlaceholder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <FontIcon Glyph="&#xE77B;" FontSize="48" Opacity="0.3"/>
                         <TextBlock x:Uid="Views_ArtistsLibraryView__TextBlock_2"
                             Text="Select an artist to see details"
@@ -318,7 +474,7 @@
                             TextAlignment="Center"/>
                     </StackPanel>
 
-                    <Grid Visibility="{x:Bind ViewModel.SelectedArtist, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                    <Grid Visibility="{x:Bind ViewModel.ShowSavedArtistDetails, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
@@ -375,22 +531,30 @@
                                         </StackPanel>
                                     </Button>
                                     <Button
-                                        Command="{x:Bind ViewModel.ShuffleArtistCommand}"
-                                        Padding="12,6">
+                                        Style="{StaticResource LibraryActionPillButtonStyle}"
+                                        Command="{x:Bind ViewModel.ShuffleArtistCommand}">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
                                             <TextBlock x:Uid="Views_ArtistsLibraryView__TextBlock_4" Text="Shuffle"/>
                                         </StackPanel>
                                     </Button>
                                     <Button
-                                        Click="ViewArtistButton_Click"
-                                        Padding="12,6">
+                                        Style="{StaticResource LibraryActionPillButtonStyle}"
+                                        Click="ViewArtistButton_Click">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <FontIcon Glyph="&#xE7B3;" FontSize="14"/>
                                             <TextBlock x:Uid="Views_ArtistsLibraryView__TextBlock_5" Text="View artist"/>
                                         </StackPanel>
                                     </Button>
                                     <controls1:FollowButton ItemUri="{x:Bind ViewModel.SelectedArtist.Id, Mode=OneWay}"/>
+                                    <ToggleButton
+                                        Style="{StaticResource LibraryActionPillButtonStyle}"
+                                        IsChecked="{x:Bind ViewModel.ShowSavedOnly, Mode=TwoWay}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE728;" FontSize="14"/>
+                                            <TextBlock Text="{x:Bind ViewModel.SavedOnlyButtonLabel, Mode=OneWay}"/>
+                                        </StackPanel>
+                                    </ToggleButton>
                                 </primitives:WrapPanel>
                             </StackPanel>
                         </Grid>
@@ -398,15 +562,6 @@
                         <Grid Grid.Row="1">
                             <ScrollView>
                                 <StackPanel Spacing="12">
-                                    <ToggleButton
-                                        IsChecked="{x:Bind ViewModel.ShowSavedOnly, Mode=TwoWay}"
-                                        Padding="12,6"
-                                        HorizontalAlignment="Left">
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <FontIcon Glyph="&#xE728;" FontSize="14"/>
-                                            <TextBlock x:Uid="Views_ArtistsLibraryView__TextBlock_6" Text="Saved only"/>
-                                        </StackPanel>
-                                    </ToggleButton>
                                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.AlbumGroups, Mode=OneWay}">
                                         <ItemsRepeater.Layout>
                                             <StackLayout Orientation="Vertical" Spacing="24"/>
@@ -446,60 +601,14 @@
 
                                                     <ItemsView
                                                         ItemsSource="{x:Bind Albums}"
+                                                        ItemTemplate="{StaticResource ArtistDiscographyContentCardTemplate}"
                                                         SelectionMode="Single"
                                                         Visibility="{x:Bind IsListView, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                                         <ItemsView.Layout>
-                                                            <UniformGridLayout MinItemWidth="120" MinItemHeight="180"
-                                                                               MinColumnSpacing="12" MinRowSpacing="12"
+                                                            <UniformGridLayout MinItemWidth="150" MinItemHeight="200"
+                                                                               MinColumnSpacing="16" MinRowSpacing="20"
                                                                                ItemsStretch="None"/>
                                                         </ItemsView.Layout>
-                                                        <ItemsView.ItemTemplate>
-                                                            <DataTemplate x:DataType="vm:ArtistAlbumItemViewModel">
-                                                                <ItemContainer>
-                                                                    <Grid Width="120" RowSpacing="6" Padding="4"
-                                                                        Tapped="{x:Bind OnTapped}">
-                                                                        <Grid.RowDefinitions>
-                                                                            <RowDefinition Height="120"/>
-                                                                            <RowDefinition Height="Auto"/>
-                                                                            <RowDefinition Height="Auto"/>
-                                                                        </Grid.RowDefinitions>
-
-                                                                        <Border
-                                                                            Grid.Row="0"
-                                                                            CornerRadius="6"
-                                                                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                                                                            <Grid>
-                                                                                <FontIcon
-                                                                                    Glyph="&#xE93C;"
-                                                                                    FontSize="32"
-                                                                                    Opacity="0.3"
-                                                                                    Visibility="{x:Bind Album.ImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                                                                <Image
-                                                                                    Source="{x:Bind Album.ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='120'}"
-                                                                                    Stretch="UniformToFill"
-                                                                                    Visibility="{x:Bind Album.ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
-                                                                                    behaviors:ImageFallbackBehavior.HideOnError="True"
-                                                                                    behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                                                                    behaviors:ImageFallbackBehavior.DecodePixelWidth="240"/>
-                                                                            </Grid>
-                                                                        </Border>
-
-                                                                        <TextBlock
-                                                                            Grid.Row="1"
-                                                                            Text="{x:Bind Album.Name}"
-                                                                            Style="{StaticResource CaptionTextBlockStyle}"
-                                                                            TextTrimming="CharacterEllipsis"
-                                                                            MaxLines="2"/>
-
-                                                                        <TextBlock
-                                                                            Grid.Row="2"
-                                                                            Text="{x:Bind Album.Year}"
-                                                                            Style="{StaticResource CaptionTextBlockStyle}"
-                                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                                                    </Grid>
-                                                                </ItemContainer>
-                                                            </DataTemplate>
-                                                        </ItemsView.ItemTemplate>
                                                     </ItemsView>
 
                                                     <ItemsRepeater
@@ -659,6 +768,153 @@
                             </StackPanel>
                         </Grid>
                     </Grid>
+
+                    <StackPanel
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="12"
+                        Visibility="{x:Bind ViewModel.ShowLikedArtistPlaceholder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <FontIcon Glyph="&#xE728;" FontSize="48" Opacity="0.3"/>
+                        <TextBlock
+                            Text="Select an artist to see liked songs"
+                            Style="{StaticResource BodyTextBlockStyle}"
+                            Opacity="0.5"
+                            TextAlignment="Center"/>
+                    </StackPanel>
+
+                    <Grid Visibility="{x:Bind ViewModel.ShowLikedArtistDetails, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="80"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Grid
+                                Grid.Column="0"
+                                Width="80"
+                                Height="80"
+                                CornerRadius="40"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                <FontIcon
+                                    Glyph="&#xE77B;"
+                                    FontSize="32"
+                                    Opacity="0.3"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Visibility="{x:Bind ViewModel.SelectedArtistImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                                <Image
+                                    Source="{x:Bind ViewModel.SelectedArtistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='80'}"
+                                    Stretch="UniformToFill"
+                                    Visibility="{x:Bind ViewModel.SelectedArtistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                                    behaviors:ImageFallbackBehavior.HideOnError="True"
+                                    behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                                    behaviors:ImageFallbackBehavior.DecodePixelWidth="160"/>
+                            </Grid>
+
+                            <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.SelectedArtistName, Mode=OneWay}"
+                                    Style="{StaticResource SubtitleTextBlockStyle}"
+                                    TextTrimming="CharacterEllipsis"
+                                    MaxLines="2"/>
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.SelectedArtistAddedAt, Mode=OneWay}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+
+                                <primitives:WrapPanel Orientation="Horizontal" HorizontalSpacing="8" VerticalSpacing="6" Margin="0,8,0,0">
+                                    <Button
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        Command="{x:Bind ViewModel.PlayLikedArtistTracksCommand}"
+                                        Padding="12,6">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE768;" FontSize="14"/>
+                                            <TextBlock Text="Play liked"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        Command="{x:Bind ViewModel.ShuffleLikedArtistTracksCommand}"
+                                        Padding="12,6">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
+                                            <TextBlock Text="Shuffle"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        Command="{x:Bind ViewModel.OpenArtistDetailsCommand}"
+                                        Padding="12,6">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE7B3;" FontSize="14"/>
+                                            <TextBlock Text="Open artist"/>
+                                        </StackPanel>
+                                    </Button>
+                                </primitives:WrapPanel>
+                            </StackPanel>
+                        </Grid>
+
+                        <tracklist:TrackListView
+                            Grid.Row="1"
+                            ViewModel="{x:Bind ViewModel}"
+                            ItemsSource="{x:Bind ViewModel.SelectedLikedArtistTracks, Mode=OneWay}"
+                            IsLoading="{x:Bind ViewModel.IsLoadingDetails, Mode=OneWay}"
+                            IsCompact="True"
+                            ShowColumnHeaders="False"
+                            ShowAlbumArtColumn="True"
+                            ShowArtistColumn="False"
+                            ShowAlbumColumn="True"
+                            ShowDateAddedColumn="False"/>
+                    </Grid>
+
+                    <Grid
+                        x:Name="WideArtistDetailLoadingOverlay"
+                        x:Load="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                        Canvas.ZIndex="20"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Spacing="18">
+                            <Grid ColumnSpacing="14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <controls:Shimmer Width="80" Height="80" CornerRadius="40"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8">
+                                    <controls:Shimmer Height="20" Width="170" HorizontalAlignment="Left"/>
+                                    <controls:Shimmer Height="14" Width="120" HorizontalAlignment="Left"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+                                        <controls:Shimmer Width="84" Height="32" CornerRadius="16"/>
+                                        <controls:Shimmer Width="96" Height="32" CornerRadius="16"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+
+                            <StackPanel Spacing="12">
+                                <controls:Shimmer Height="20" Width="90" HorizontalAlignment="Left"/>
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <StackPanel Width="120" Spacing="6">
+                                        <controls:Shimmer Height="120" CornerRadius="6"/>
+                                        <controls:Shimmer Height="14" Width="100"/>
+                                        <controls:Shimmer Height="12" Width="50"/>
+                                    </StackPanel>
+                                    <StackPanel Width="120" Spacing="6">
+                                        <controls:Shimmer Height="120" CornerRadius="6"/>
+                                        <controls:Shimmer Height="14" Width="86"/>
+                                        <controls:Shimmer Height="12" Width="50"/>
+                                    </StackPanel>
+                                    <StackPanel Width="120" Spacing="6">
+                                        <controls:Shimmer Height="120" CornerRadius="6"/>
+                                        <controls:Shimmer Height="14" Width="108"/>
+                                        <controls:Shimmer Height="12" Width="50"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
                 </Grid>
             </Border>
 
@@ -758,7 +1014,9 @@
             </Border>
         </Grid>
 
-        <Grid Visibility="{x:Bind ViewModel.IsNarrowLayout, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+        <Grid
+            Grid.Row="1"
+            Visibility="{x:Bind ViewModel.IsNarrowLayout, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -798,7 +1056,8 @@
             <Grid Grid.Row="1">
                 <Grid
                     x:Name="NarrowArtistsStage"
-                    Visibility="{x:Bind ViewModel.ShowNarrowArtistsStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    x:Load="{x:Bind ViewModel.ShowSavedNarrowArtistsStage, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.ShowSavedNarrowArtistsStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
@@ -919,8 +1178,65 @@
                 </Grid>
 
                 <Grid
+                    x:Name="NarrowLikedArtistsStage"
+                    x:Load="{x:Bind ViewModel.ShowLikedNarrowArtistsStage, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.ShowLikedNarrowArtistsStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBox
+                        Grid.Row="0"
+                        PlaceholderText="Filter artists..."
+                        Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        Margin="0,0,0,12"/>
+
+                    <Grid Grid.Row="1">
+                        <ItemsView
+                            ItemsSource="{x:Bind ViewModel.FilteredLikedArtists, Mode=OneWay}"
+                            SelectionMode="Single"
+                            SelectionChanged="NarrowLikedArtistsView_SelectionChanged"
+                            ItemTemplate="{StaticResource LikedArtistDefaultListItemTemplate}"
+                            Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                            <ItemsView.Layout>
+                                <StackLayout Orientation="Vertical" Spacing="2"/>
+                            </ItemsView.Layout>
+                        </ItemsView>
+
+                        <StackPanel
+                            Spacing="2"
+                            Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Grid Padding="8" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="48"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <controls:Shimmer Width="48" Height="48" CornerRadius="24"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                                    <controls:Shimmer Height="16" HorizontalAlignment="Left" Width="120"/>
+                                    <controls:Shimmer Height="12" HorizontalAlignment="Left" Width="80"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid Padding="8" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="48"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <controls:Shimmer Width="48" Height="48" CornerRadius="24"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                                    <controls:Shimmer Height="16" HorizontalAlignment="Left" Width="140"/>
+                                    <controls:Shimmer Height="12" HorizontalAlignment="Left" Width="70"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+
+                <Grid
                     x:Name="NarrowArtistDetailsStage"
-                    Visibility="{x:Bind ViewModel.ShowNarrowArtistDetailsStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    x:Load="{x:Bind ViewModel.ShowSavedNarrowArtistDetailsStage, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.ShowSavedNarrowArtistDetailsStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
@@ -1043,60 +1359,14 @@
 
                                             <ItemsView
                                                 ItemsSource="{x:Bind Albums}"
+                                                ItemTemplate="{StaticResource ArtistDiscographyContentCardTemplate}"
                                                 SelectionMode="Single"
                                                 Visibility="{x:Bind IsListView, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                                 <ItemsView.Layout>
-                                                    <UniformGridLayout MinItemWidth="120" MinItemHeight="180"
-                                                                       MinColumnSpacing="12" MinRowSpacing="12"
+                                                    <UniformGridLayout MinItemWidth="150" MinItemHeight="200"
+                                                                       MinColumnSpacing="16" MinRowSpacing="20"
                                                                        ItemsStretch="None"/>
                                                 </ItemsView.Layout>
-                                                <ItemsView.ItemTemplate>
-                                                    <DataTemplate x:DataType="vm:ArtistAlbumItemViewModel">
-                                                        <ItemContainer>
-                                                            <Grid Width="120" RowSpacing="6" Padding="4"
-                                                                Tapped="{x:Bind OnTapped}">
-                                                                <Grid.RowDefinitions>
-                                                                    <RowDefinition Height="120"/>
-                                                                    <RowDefinition Height="Auto"/>
-                                                                    <RowDefinition Height="Auto"/>
-                                                                </Grid.RowDefinitions>
-
-                                                                <Border
-                                                                    Grid.Row="0"
-                                                                    CornerRadius="6"
-                                                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                                                                    <Grid>
-                                                                        <FontIcon
-                                                                            Glyph="&#xE93C;"
-                                                                            FontSize="32"
-                                                                            Opacity="0.3"
-                                                                            Visibility="{x:Bind Album.ImageUrl, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
-                                                                        <Image
-                                                                            Source="{x:Bind Album.ImageUrl, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='120'}"
-                                                                            Stretch="UniformToFill"
-                                                                            Visibility="{x:Bind Album.ImageUrl, Converter={StaticResource NullToVisibilityConverter}}"
-                                                                            behaviors:ImageFallbackBehavior.HideOnError="True"
-                                                                            behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
-                                                                            behaviors:ImageFallbackBehavior.DecodePixelWidth="240"/>
-                                                                    </Grid>
-                                                                </Border>
-
-                                                                <TextBlock
-                                                                    Grid.Row="1"
-                                                                    Text="{x:Bind Album.Name}"
-                                                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                                                    TextTrimming="CharacterEllipsis"
-                                                                    MaxLines="2"/>
-
-                                                                <TextBlock
-                                                                    Grid.Row="2"
-                                                                    Text="{x:Bind Album.Year}"
-                                                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                                            </Grid>
-                                                        </ItemContainer>
-                                                    </DataTemplate>
-                                                </ItemsView.ItemTemplate>
                                             </ItemsView>
                                         </StackPanel>
                                     </DataTemplate>
@@ -1107,8 +1377,101 @@
                 </Grid>
 
                 <Grid
+                    x:Name="NarrowLikedArtistDetailsStage"
+                    x:Load="{x:Bind ViewModel.ShowLikedNarrowArtistDetailsStage, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.ShowLikedNarrowArtistDetailsStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Grid
+                            Grid.Column="0"
+                            Width="80"
+                            Height="80"
+                            CornerRadius="40"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                            <FontIcon
+                                Glyph="&#xE77B;"
+                                FontSize="32"
+                                Opacity="0.3"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Visibility="{x:Bind ViewModel.SelectedArtistImageUrl, Mode=OneWay, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                            <Image
+                                Source="{x:Bind ViewModel.SelectedArtistImageUrl, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}, ConverterParameter='80'}"
+                                Stretch="UniformToFill"
+                                Visibility="{x:Bind ViewModel.SelectedArtistImageUrl, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}"
+                                behaviors:ImageFallbackBehavior.HideOnError="True"
+                                behaviors:ImageFallbackBehavior.FadeInOnLoad="True"
+                                behaviors:ImageFallbackBehavior.DecodePixelWidth="160"/>
+                        </Grid>
+
+                        <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="4" VerticalAlignment="Center">
+                            <TextBlock
+                                Text="{x:Bind ViewModel.SelectedArtistName, Mode=OneWay}"
+                                Style="{StaticResource SubtitleTextBlockStyle}"
+                                TextTrimming="CharacterEllipsis"
+                                MaxLines="2"/>
+                            <TextBlock
+                                Text="{x:Bind ViewModel.SelectedArtistAddedAt, Mode=OneWay}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+
+                            <primitives:WrapPanel Orientation="Horizontal" HorizontalSpacing="8" VerticalSpacing="6" Margin="0,8,0,0">
+                                <Button
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    Command="{x:Bind ViewModel.PlayLikedArtistTracksCommand}"
+                                    Padding="12,6">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE768;" FontSize="14"/>
+                                        <TextBlock Text="Play liked"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    Command="{x:Bind ViewModel.ShuffleLikedArtistTracksCommand}"
+                                    Padding="12,6">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
+                                        <TextBlock Text="Shuffle"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    Command="{x:Bind ViewModel.OpenArtistDetailsCommand}"
+                                    Padding="12,6">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE7B3;" FontSize="14"/>
+                                        <TextBlock Text="Open artist"/>
+                                    </StackPanel>
+                                </Button>
+                            </primitives:WrapPanel>
+                        </StackPanel>
+                    </Grid>
+
+                    <tracklist:TrackListView
+                        Grid.Row="1"
+                        ViewModel="{x:Bind ViewModel}"
+                        ItemsSource="{x:Bind ViewModel.SelectedLikedArtistTracks, Mode=OneWay}"
+                        IsLoading="{x:Bind ViewModel.IsLoadingDetails, Mode=OneWay}"
+                        IsCompact="True"
+                        HorizontalAlignment="Stretch"
+                        ShowColumnHeaders="False"
+                        ShowAlbumArtColumn="True"
+                        ShowArtistColumn="False"
+                        ShowAlbumColumn="True"
+                        ShowDateAddedColumn="False"/>
+                </Grid>
+
+                <Grid
                     x:Name="NarrowAlbumTracksStage"
-                    Visibility="{x:Bind ViewModel.ShowNarrowAlbumTracksStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    x:Load="{x:Bind ViewModel.ShowSavedNarrowAlbumTracksStage, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.ShowSavedNarrowAlbumTracksStage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>

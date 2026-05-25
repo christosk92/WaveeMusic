@@ -224,13 +224,16 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
             .FirstOrDefault()?.Url;
 
         var colorHex = data.CoverArt?.ExtractedColors?.ColorDark?.Hex;
-        var artistName = data.Artists?.Items?.FirstOrDefault()?.Profile?.Name;
+        var firstArtist = data.Artists?.Items?.FirstOrDefault();
+        var artistName = firstArtist?.Profile?.Name;
 
         return new HomeSectionItem
         {
             Uri = data.Uri ?? uri,
             Title = data.Name,
             Subtitle = artistName ?? "Album",
+            SubtitleNavigationTitle = artistName,
+            SubtitleNavigationUri = ArtistUriOrNull(firstArtist?.Uri),
             ImageUrl = imageUrl,
             ContentType = HomeContentType.Album,
             ColorHex = colorHex
@@ -525,5 +528,13 @@ public sealed class HomeResponseParserV1 : IHomeResponseParser
         if (uri.Contains(":show:", StringComparison.Ordinal)) return HomeContentType.Podcast;
         if (uri.Contains(":episode:", StringComparison.Ordinal)) return HomeContentType.Episode;
         return HomeContentType.Unknown;
+    }
+
+    private static string? ArtistUriOrNull(string? uri)
+    {
+        return !string.IsNullOrWhiteSpace(uri)
+               && uri.StartsWith("spotify:artist:", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : null;
     }
 }

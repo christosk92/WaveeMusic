@@ -516,6 +516,12 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             grid.ApplyLoadingRowCount();
     }
 
+    private void LoadingRowsRepeater_Loaded(object sender, RoutedEventArgs e)
+    {
+        ApplyLoadingRowCount();
+        ApplyLoadingRowsVisibility();
+    }
+
     private void ApplyLoadingRowCount()
     {
         if (LoadingRowsRepeater is null)
@@ -1368,8 +1374,9 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             return;
         }
 
-        // Ctrl+A is handled by the KeyboardAccelerator on Root (OnSelectAllAccelerator)
-        // so it works regardless of which sub-element holds focus.
+        // Ctrl+A is handled by OnProcessKeyboardAccelerators so it works
+        // regardless of which sub-element holds focus without WinUI exposing a
+        // hover tooltip for a real KeyboardAccelerator.
 
         if ((e.Key == VirtualKey.Enter || e.Key == VirtualKey.Space) &&
             SelectedRowItem() is ITrackItem track)
@@ -1377,6 +1384,19 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             PlayCommand?.Execute(track);
             e.Handled = true;
         }
+    }
+
+    protected override void OnProcessKeyboardAccelerators(ProcessKeyboardAcceleratorEventArgs args)
+    {
+        if (args.Modifiers == VirtualKeyModifiers.Control
+            && args.Key == VirtualKey.A
+            && TryHandleSelectAllShortcut())
+        {
+            args.Handled = true;
+            return;
+        }
+
+        base.OnProcessKeyboardAccelerators(args);
     }
 
     public void Dispose()
@@ -1433,7 +1453,8 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
         HeaderHost.ColumnDefinitions.Clear();
         RowsItemsView.DeselectAll();
         RowsItemsView.ItemsSource = null;
-        LoadingRowsRepeater.ItemsSource = null;
+        if (LoadingRowsRepeater != null)
+            LoadingRowsRepeater.ItemsSource = null;
         _visibleRows.Clear();
         _sourceSnapshot = Array.Empty<ITrackItem>();
 

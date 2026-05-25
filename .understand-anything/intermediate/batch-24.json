@@ -1,0 +1,561 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml",
+      "type": "file",
+      "name": "ActivityBell.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml",
+      "summary": "XAML layout for the notification bell flyout control, defining the bell button, unread badge, empty-state panel, and scrollable activity list with per-item action buttons.",
+      "tags": ["component", "ui", "notifications"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml.cs",
+      "type": "file",
+      "name": "ActivityBell.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml.cs",
+      "summary": "Code-behind for the ActivityBell notification bell control; subscribes to IActivityService for unread count and collection changes, drives badge visibility, empty-state, mark-all-read, clear-all, and async per-action callbacks.",
+      "tags": ["component", "notifications", "event-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml.cs:ActivityBell",
+      "type": "class",
+      "name": "ActivityBell",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml.cs",
+      "lineRange": [13, 131],
+      "summary": "UserControl that shows a notification bell button with unread badge and a flyout list of activity items; lifecycle-safe subscription management via Loaded/Unloaded guards.",
+      "tags": ["component", "notifications", "event-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityItemTemplateSelector.cs",
+      "type": "file",
+      "name": "ActivityItemTemplateSelector.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityItemTemplateSelector.cs",
+      "summary": "DataTemplateSelector that routes activity items in the ActivityBell flyout list to the correct XAML template based on item type.",
+      "tags": ["component", "factory", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityItemTemplateSelector.cs:ActivityItemTemplateSelector",
+      "type": "class",
+      "name": "ActivityItemTemplateSelector",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityItemTemplateSelector.cs",
+      "lineRange": [1, 30],
+      "summary": "DataTemplateSelector implementation for picking the correct DataTemplate per activity item type inside the ActivityBell ListView.",
+      "tags": ["component", "factory"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml",
+      "type": "file",
+      "name": "AddToPlaylistBar.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml",
+      "summary": "XAML layout for the persistent add-to-playlist floating bar; includes target thumbnail, track count label, stacked thumbnail strip, Add/Cancel buttons, and a pending-song flyout list.",
+      "tags": ["component", "ui", "playlist"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml.cs",
+      "type": "file",
+      "name": "AddToPlaylistBar.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml.cs",
+      "summary": "Code-behind for the floating add-to-playlist bar; mirrors IAddToPlaylistSession state into INotifyPropertyChanged properties for x:Bind, handles submit/cancel/remove-pending actions with in-flight spinner guarding, and navigates to the target playlist on success.",
+      "tags": ["component", "playlist", "event-handler", "service"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml.cs:AddToPlaylistBar",
+      "type": "class",
+      "name": "AddToPlaylistBar",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml.cs",
+      "lineRange": [28, 296],
+      "summary": "UserControl + INotifyPropertyChanged that bridges IAddToPlaylistSession to x:Bind; persists above the nav frame in ShellPage so it survives navigation, manages thumbnail strip, submit spinner, and error notifications.",
+      "tags": ["component", "playlist", "event-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml",
+      "type": "file",
+      "name": "AddToPlaylistChip.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml",
+      "summary": "Minimal XAML chip button for toggling a track into or out of the active add-to-playlist session.",
+      "tags": ["component", "ui", "playlist"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml.cs",
+      "type": "file",
+      "name": "AddToPlaylistChip.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml.cs",
+      "summary": "Code-behind for the AddToPlaylistChip toggle button; connects to IAddToPlaylistSession, reflects pending state per track, and dispatches Toggle calls through the session.",
+      "tags": ["component", "playlist", "event-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml.cs:AddToPlaylistChip",
+      "type": "class",
+      "name": "AddToPlaylistChip",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml.cs",
+      "lineRange": [1, 155],
+      "summary": "Lightweight chip that per-track tracks pending state from IAddToPlaylistSession and toggles inclusion on click.",
+      "tags": ["component", "playlist"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml",
+      "type": "file",
+      "name": "AiSparkleIcon.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml",
+      "summary": "Minimal XAML host grid for the AI sparkle icon glyph; all animation is driven by Composition API from code-behind.",
+      "tags": ["component", "ui", "animation"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml.cs",
+      "type": "file",
+      "name": "AiSparkleIcon.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml.cs",
+      "summary": "Composition-animation-driven AI sparkle icon control with five named states (Normal, PointerOver, Pressed, Generating, Done) implemented as scale/rotation key-frame animations; respects system Reduce Animations setting.",
+      "tags": ["component", "animation", "ai-feature"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml.cs:AiSparkleIcon",
+      "type": "class",
+      "name": "AiSparkleIcon",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml.cs",
+      "lineRange": [26, 211],
+      "summary": "UserControl with a State DependencyProperty that drives five Composition animation states (pulse/wiggle/rotate/done) on the sparkle glyph visual; auto-resets from Done to Normal via ScopedBatch completion.",
+      "tags": ["component", "animation", "ai-feature"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml",
+      "type": "file",
+      "name": "AlbumDetailPanel.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml",
+      "summary": "XAML for the inline album detail overlay inside the artist discography expander; includes album art with composition mask fade, tinted background band, track list, Play/Shuffle/View Album actions, and a close notch.",
+      "tags": ["component", "ui", "album"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml.cs",
+      "type": "file",
+      "name": "AlbumDetailPanel.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml.cs",
+      "summary": "Code-behind for AlbumDetailPanel; manages Composition alpha-mask art surface, palette-tinted background blending, NavCache surface lifecycle (release/restore), track list binding, playback commands, and notch geometry alignment.",
+      "tags": ["component", "album", "composition-api", "event-handler"],
+      "complexity": "complex",
+      "languageNotes": "Implements INavCacheSurfaceParticipant to release GPU surfaces when the containing page leaves the nav cache."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml.cs:AlbumDetailPanel",
+      "type": "class",
+      "name": "AlbumDetailPanel",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml.cs",
+      "lineRange": [25, 406],
+      "summary": "Inline album detail panel with Composition alpha-mask, palette-derived tinted background, and a per-album play-count TrackList column; participates in the NavCache GPU surface lifecycle.",
+      "tags": ["component", "album", "composition-api"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml",
+      "type": "file",
+      "name": "ExpandableAlbumGrid.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml",
+      "summary": "XAML host for the discography grid; contains a single ItemsRepeater backed by ExpandingGridLayout with an AlbumDetailPanel overlay child for the inline expansion panel.",
+      "tags": ["component", "ui", "discography"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml.cs",
+      "type": "file",
+      "name": "ExpandableAlbumGrid.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml.cs",
+      "summary": "Code-behind for ExpandableAlbumGrid; manages the identity-diff source mirror for ItemsRepeater, expands/collapses the AlbumDetailPanel overlay by updating ExpandingGridLayout, fetches dominant color via IColorService, and animates card glide with ImplicitAnimationCollection.",
+      "tags": ["component", "discography", "animation", "event-handler"],
+      "complexity": "complex",
+      "languageNotes": "Uses an identity-diff algorithm (SyncFromSource) to avoid rebuilding card containers on pagination appends, keeping artwork flicker-free."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml.cs:ExpandableAlbumGrid",
+      "type": "class",
+      "name": "ExpandableAlbumGrid",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml.cs",
+      "lineRange": [34, 426],
+      "summary": "Discography grid that expands an inline AlbumDetailPanel between rows without recycling card containers; drives layout via ExpandingGridLayout and applies implicit glide animations on card repositioning.",
+      "tags": ["component", "discography", "animation"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandingGridLayout.cs",
+      "type": "file",
+      "name": "ExpandingGridLayout.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandingGridLayout.cs",
+      "summary": "Custom NonVirtualizingLayout for the discography grid; computes a multi-column grid with an optional reserved horizontal band for the detail panel, firing ExpanderGeometryChanged events so the overlay can reposition.",
+      "tags": ["component", "layout", "discography"],
+      "complexity": "complex",
+      "languageNotes": "Derives from NonVirtualizingLayout; the reserved band is tracked via ExpandedRow + ExpanderBandHeight so the panel overlay can be offset-positioned without disrupting card containers."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandingGridLayout.cs:ExpandingGridLayout",
+      "type": "class",
+      "name": "ExpandingGridLayout",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandingGridLayout.cs",
+      "lineRange": [1, 202],
+      "summary": "Custom layout panel that performs a multi-column grid arrange with an insertable band for an inline overlay; raises ExpanderGeometryChanged (position + size) whenever the expanded row changes.",
+      "tags": ["component", "layout"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AnimatedVisuals/LightRedEqualizer.cs",
+      "type": "file",
+      "name": "LightRedEqualizer.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AnimatedVisuals/LightRedEqualizer.cs",
+      "summary": "Generated IAnimatedVisualSource2 implementing the light-red equalizer bar Lottie animation used to indicate active playback; wraps a Composition API animation tree with a themable accent color property.",
+      "tags": ["component", "animation", "lottie"],
+      "complexity": "complex",
+      "languageNotes": "Code-generated from a Lottie JSON by LottieGen; implements IAnimatedVisualSource2 and IThemableAnimatedVisualSource for WinUI AnimatedVisualPlayer."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/AnimatedVisuals/LightRedEqualizer.cs:LightRedEqualizer",
+      "type": "class",
+      "name": "LightRedEqualizer",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AnimatedVisuals/LightRedEqualizer.cs",
+      "lineRange": [1, 714],
+      "summary": "IAnimatedVisualSource2 implementing a 3-bar equalizer Lottie animation for now-playing indication, with a Color_FF3F3F theme property for accent color override.",
+      "tags": ["component", "animation", "lottie"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml",
+      "type": "file",
+      "name": "ArtistSummaryCard.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml",
+      "summary": "XAML layout for the shared artist summary card; includes avatar image, verified badge, artist name, bio excerpt, follow button, AI sparkle icon, and a ContentPresenter for page-specific additional content.",
+      "tags": ["component", "ui", "artist"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml.cs",
+      "type": "file",
+      "name": "ArtistSummaryCard.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml.cs",
+      "summary": "Code-behind for the reusable ArtistSummaryCard; exposes DependencyProperties for all artist data fields, owns the AI bio fallback via Phi Silica (MaybeTriggerAiSummary), handles follow/unfollow with visual update, pointer-driven hover animations, and tapped navigation.",
+      "tags": ["component", "artist", "ai-feature", "event-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml.cs:ArtistSummaryCard",
+      "type": "class",
+      "name": "ArtistSummaryCard",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml.cs",
+      "lineRange": [28, 331],
+      "summary": "Shared artist summary card UserControl covering avatar, name, bio, verified badge, follow pill, and optional AI-generated bio via Phi Silica; reusable across artist page, search results, and profile views.",
+      "tags": ["component", "artist", "ai-feature"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml",
+      "type": "file",
+      "name": "AvatarStack.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml",
+      "summary": "Minimal XAML skeleton for the AvatarStack control; the visual is built entirely in code-behind via Rebuild.",
+      "tags": ["component", "ui", "avatar"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml.cs",
+      "type": "file",
+      "name": "AvatarStack.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml.cs",
+      "summary": "Code-behind for the stacked-avatar strip with overlapping PersonPicture rings and an overflow badge; programmatically builds the visual tree from AvatarStackItem records on Items or MaxVisible changes.",
+      "tags": ["component", "avatar", "ui"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml.cs:AvatarStack",
+      "type": "class",
+      "name": "AvatarStack",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml.cs",
+      "lineRange": [33, 202],
+      "summary": "Reusable overlapping avatar strip with 28 DIP PersonPicture items, 2 DIP ring halos, 12 DIP negative overlap, and a +N overflow badge; rebuilds programmatically from AvatarStackItem list.",
+      "tags": ["component", "avatar"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml",
+      "type": "file",
+      "name": "StackedThumbnails.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml",
+      "summary": "Minimal XAML skeleton for the StackedThumbnails control; visual is built in code-behind.",
+      "tags": ["component", "ui", "avatar"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml.cs",
+      "type": "file",
+      "name": "StackedThumbnails.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml.cs",
+      "summary": "Stacked square-thumbnail strip variant of AvatarStack; uses Image tiles instead of PersonPicture, used by AddToPlaylistBar to show the pending-track artwork strip.",
+      "tags": ["component", "avatar", "playlist"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml.cs:StackedThumbnails",
+      "type": "class",
+      "name": "StackedThumbnails",
+      "filePath": "src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml.cs",
+      "lineRange": [1, 202],
+      "summary": "Overlapping square-tile strip with BitmapImage thumbnails and a +N overflow badge; parallel to AvatarStack but using Image controls instead of PersonPicture.",
+      "tags": ["component", "avatar"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Branding/WaveeLogo.xaml",
+      "type": "file",
+      "name": "WaveeLogo.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Branding/WaveeLogo.xaml",
+      "summary": "XAML for the Wavee wordmark/logo control; renders the branding text at configurable size.",
+      "tags": ["component", "branding", "ui"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Branding/WaveeLogo.xaml.cs",
+      "type": "file",
+      "name": "WaveeLogo.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Branding/WaveeLogo.xaml.cs",
+      "summary": "Minimal code-behind for the WaveeLogo branding control; applies size-dependent typography scaling on load.",
+      "tags": ["component", "branding"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml",
+      "type": "file",
+      "name": "BrowseGrid.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml",
+      "summary": "XAML for the responsive chip/category grid using ItemsRepeater + UniformGridLayout; callers bind ItemsSource and ItemTemplate.",
+      "tags": ["component", "ui", "browse"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml.cs",
+      "type": "file",
+      "name": "BrowseGrid.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml.cs",
+      "summary": "Reusable ItemsRepeater+UniformGridLayout wrapper for browse/category chip grids; exposes ItemsSource, ItemTemplate, MinItemWidth/Height, spacing, and stretch as DependencyProperties for per-surface customization.",
+      "tags": ["component", "browse", "layout"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml.cs:BrowseGrid",
+      "type": "class",
+      "name": "BrowseGrid",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml.cs",
+      "lineRange": [11, 101],
+      "summary": "Configurable ItemsRepeater grid control for browse/category surfaces; DependencyProperty-driven layout parameters shared across all browse chip grids.",
+      "tags": ["component", "browse"],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml.cs:ActivityBell",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityItemTemplateSelector.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityItemTemplateSelector.cs:ActivityItemTemplateSelector",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml.cs:AddToPlaylistBar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml.cs:AddToPlaylistChip",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml.cs:AiSparkleIcon",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml.cs:AlbumDetailPanel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml.cs:ExpandableAlbumGrid",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandingGridLayout.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandingGridLayout.cs:ExpandingGridLayout",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AnimatedVisuals/LightRedEqualizer.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/AnimatedVisuals/LightRedEqualizer.cs:LightRedEqualizer",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml.cs:ArtistSummaryCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml.cs:AvatarStack",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml.cs:StackedThumbnails",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Branding/WaveeLogo.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/Branding/WaveeLogo.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml.cs:BrowseGrid",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml.cs",
+      "target": "file:src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml.cs",
+      "target": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandingGridLayout.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml.cs",
+      "target": "file:src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml.cs",
+      "target": "file:src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}

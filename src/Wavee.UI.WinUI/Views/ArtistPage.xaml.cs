@@ -21,6 +21,7 @@ using Wavee.UI.Services.DragDrop;
 using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.WinUI.Controls.AlbumDetailPanel;
 using Wavee.UI.WinUI.Controls.Cards;
+using Wavee.UI.WinUI.Controls.Ai;
 using Wavee.UI.WinUI.Controls.HeroHeader;
 using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.DragDrop;
@@ -88,6 +89,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     private bool _crossfadeScheduled;
     private int _navigationRevision;
     private int _heroArrangeRefreshRevision;
+    private BiographySource _selectedBiographySource = BiographySource.Spotify;
 
     public ArtistViewModel ViewModel { get; }
 
@@ -96,6 +98,15 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     public bool ReuseForParameterNavigation => false;
 
     public event EventHandler<TabItemParameter>? ContentChanged;
+
+    public bool IsSpotifyBiographySelected => _selectedBiographySource == BiographySource.Spotify;
+    public bool IsAiBiographySelected => _selectedBiographySource == BiographySource.Ai;
+
+    private enum BiographySource
+    {
+        Spotify,
+        Ai,
+    }
 
     public ArtistPage()
     {
@@ -106,7 +117,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         ViewModel.ContentChanged += ViewModel_ContentChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         // The page used to switch on a handful of parent VM properties (Artist,
-        // BioSummaryText, HasPopularReleases, HasGallery). After the
+        // bio state, HasPopularReleases, HasGallery). After the
         // ArtistViewModel decomposition those properties live on the children;
         // hook each child's PropertyChanged into the same dispatcher so the
         // existing per-property logic continues to fire.
@@ -215,6 +226,9 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         // RestoreFromNavigationCache and leaving stale bindings on cross-
         // artist navs.
         var artistChanged = !string.Equals(_lastRestoredArtistId, uri, StringComparison.Ordinal);
+
+        if (artistChanged)
+            _selectedBiographySource = BiographySource.Spotify;
 
         if (!string.IsNullOrEmpty(uri))
             ViewModel.Initialize(uri);
@@ -338,7 +352,6 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
                 AttachScrollParallax();
                 AttachSectionRevealAnimations();
                 FireHeroPlayPulseOnce();
-                RebuildBioRuns();
                 AttachHeroSizeHandlers();
                 AttachHeroDragSource();
                 ApplyResponsiveHeroName();
@@ -477,7 +490,6 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
                     FireHeroPlayPulseOnce();
                     ApplyResponsiveHeroName();
                     ScheduleHeroArrangeRefresh();
-                    RebuildBioRuns();
                     ApplyPopularReleasesColumnWidth();
                     TryShowContentNow();
                     break;
@@ -487,8 +499,15 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
 
         if (ReferenceEquals(sender, ViewModel.Bio))
         {
-            if (e.PropertyName == nameof(ArtistBioViewModel.BioSummaryText))
-                RebuildBioRuns();
+            switch (e.PropertyName)
+            {
+                case nameof(ArtistBioViewModel.HasBiography):
+                case nameof(ArtistBioViewModel.HasBiographyOrAi):
+                case nameof(ArtistBioViewModel.IsAiBioCardVisible):
+                    UpdateBiographySourceForAvailability();
+                    Bindings?.Update();
+                    break;
+            }
             return;
         }
 
@@ -657,28 +676,64 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         => (hasPopularReleases || isLoading) ? Visibility.Visible : Visibility.Collapsed;
 
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    private void SpotifyBiographyToggle_Click(object sender, RoutedEventArgs e)
+        => SetBiographySource(BiographySource.Spotify);
+
+    private void AiBiographyToggle_Click(object sender, RoutedEventArgs e)
+        => SetBiographySource(BiographySource.Ai);
+
+    private void SetBiographySource(BiographySource source)
+    {
+        if (source == BiographySource.Spotify && !ViewModel.Bio.HasBiography)
+            source = ViewModel.Bio.IsAiBioCardVisible ? BiographySource.Ai : BiographySource.Spotify;
+
+        if (source == BiographySource.Ai && !ViewModel.Bio.IsAiBioCardVisible)
+            source = BiographySource.Spotify;
+
+        if (_selectedBiographySource != source)
+            _selectedBiographySource = source;
+
+        Bindings?.Update();
+    }
+
+    private void UpdateBiographySourceForAvailability()
+    {
+        if (_selectedBiographySource == BiographySource.Ai && !ViewModel.Bio.IsAiBioCardVisible)
+        {
+            _selectedBiographySource = BiographySource.Spotify;
+            return;
+        }
+
+        if (_selectedBiographySource == BiographySource.Spotify
+            && !ViewModel.Bio.HasBiography
+            && ViewModel.Bio.IsAiBioCardVisible)
+        {
+            _selectedBiographySource = BiographySource.Ai;
+        }
+    }
+
     // About-this-artist bio â€” heuristic em-styling
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>
-    /// Rebuilds <see cref="BioExcerptTextBlock"/>'s inline runs, emphasising
-    /// the artist's own name + the names of the top 5 top tracks against the
-    /// bio text. Spotify ships biographies as plain text, so we infer "what
-    /// would be styled" by matching known proper nouns we already have on
-    /// the VM. The accent foreground + SemiBold weight is applied to matches;
-    /// the rest of the text renders plain.
+    /// Applies the existing artist/top-track emphasis pass after the reusable
+    /// AI card finishes its word-by-word reveal.
     /// </summary>
-    private void RebuildBioRuns()
+    private void OnBioRevealCompleted(object sender, RevealCompletedEventArgs e)
     {
-        if (BioExcerptTextBlock is null) return;
-        BioExcerptTextBlock.Inlines.Clear();
+        if (sender is not AiTextCard card)
+            return;
 
-        // The About-excerpt card is gated on the on-device AI summary
-        // (HasAboutExcerpt => HasBioSummary), so feed that here exclusively.
-        // The full biography lives in the dedicated Biography card below.
-        var bio = FlattenBioForExcerpt(ViewModel.Bio.BioSummaryText);
-        if (string.IsNullOrEmpty(bio)) return;
+        card.BodyInlines.Clear();
+        var bio = FlattenBioForExcerpt(e.Text);
+        if (string.IsNullOrEmpty(bio))
+            return;
 
+        AppendBioRuns(card.BodyInlines, bio, BuildBioEmphasisTokens());
+    }
+
+    private System.Collections.Generic.IReadOnlyList<string> BuildBioEmphasisTokens()
+    {
         var emphasize = new System.Collections.Generic.List<string>(8);
         if (!string.IsNullOrWhiteSpace(ViewModel.Header.ArtistName))
             emphasize.Add(ViewModel.Header.ArtistName!);
@@ -695,8 +750,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
 
         // Longest-first so multi-word matches like "Strategy 2.0" win over "Strategy".
         emphasize.Sort((a, b) => b.Length.CompareTo(a.Length));
-
-        AppendBioRuns(BioExcerptTextBlock, bio, emphasize);
+        return emphasize;
     }
 
     /// <summary>
@@ -713,7 +767,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
         return System.Text.RegularExpressions.Regex.Replace(decoded, @"\s+", " ").Trim();
     }
 
-    private static void AppendBioRuns(TextBlock target, string text, System.Collections.Generic.IReadOnlyList<string> emphasize)
+    private static void AppendBioRuns(InlineCollection target, string text, System.Collections.Generic.IReadOnlyList<string> emphasize)
     {
         var i = 0;
         while (i < text.Length)
@@ -735,12 +789,12 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
             if (matchStart < 0 || matchValue is null)
             {
                 if (i < text.Length)
-                    target.Inlines.Add(new Run { Text = text[i..] });
+                    target.Add(new Run { Text = text[i..] });
                 break;
             }
 
             if (matchStart > i)
-                target.Inlines.Add(new Run { Text = text[i..matchStart] });
+                target.Add(new Run { Text = text[i..matchStart] });
 
             var accentRun = new Run
             {
@@ -748,7 +802,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
                 FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                 Foreground = (Microsoft.UI.Xaml.Media.Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentTextFillColorPrimaryBrush"],
             };
-            target.Inlines.Add(accentRun);
+            target.Add(accentRun);
             i = matchStart + matchValue.Length;
         }
     }
@@ -1349,6 +1403,9 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     private void ReadFullBioLink_Click(object sender, RoutedEventArgs e)
     {
         if (AboutLinksSection is null) return;
+        if (ViewModel.Bio.IsAiBioCardVisible)
+            SetBiographySource(BiographySource.Ai);
+
         try
         {
             var transform = AboutLinksSection.TransformToVisual(ContentRoot);

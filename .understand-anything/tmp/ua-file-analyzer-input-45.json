@@ -1,0 +1,182 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/Services/IVideoSurfaceProvider.cs",
+      "language": "csharp",
+      "sizeLines": 79,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LibraryRecentsService.cs",
+      "language": "csharp",
+      "sizeLines": 166,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LocalEpisodeChapterScanner.cs",
+      "language": "csharp",
+      "sizeLines": 131,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LocalItemContextMenuPresenter.cs",
+      "language": "csharp",
+      "sizeLines": 291,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LocalLibraryFacade.cs",
+      "language": "csharp",
+      "sizeLines": 316,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LocalMediaPlayer.cs",
+      "language": "csharp",
+      "sizeLines": 598,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LocalPlaybackLauncher.cs",
+      "language": "csharp",
+      "sizeLines": 77,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LocalPlaybackProgressTracker.cs",
+      "language": "csharp",
+      "sizeLines": 113,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LocalShowEpisodeQueue.cs",
+      "language": "csharp",
+      "sizeLines": 63,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LyricsAi/LyricsAiEvidenceParser.cs",
+      "language": "csharp",
+      "sizeLines": 366,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LyricsAi/LyricsAiOutputNormalizer.cs",
+      "language": "csharp",
+      "sizeLines": 89,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LyricsAi/LyricsAiPrompts.cs",
+      "language": "csharp",
+      "sizeLines": 129,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LyricsAi/LyricsAiResult.cs",
+      "language": "csharp",
+      "sizeLines": 72,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LyricsAi/LyricsAiService.cs",
+      "language": "csharp",
+      "sizeLines": 163,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LyricsCacheModels.cs",
+      "language": "csharp",
+      "sizeLines": 102,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LyricsSearchDiagnostics.cs",
+      "language": "csharp",
+      "sizeLines": 33,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/LyricsService.cs",
+      "language": "csharp",
+      "sizeLines": 1205,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/MediaFoundationEmbeddedTrackProber.cs",
+      "language": "csharp",
+      "sizeLines": 122,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/MediaOverrideService.cs",
+      "language": "csharp",
+      "sizeLines": 408,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/MemoryBudgetService.cs",
+      "language": "csharp",
+      "sizeLines": 510,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/MemoryReleaseHelper.cs",
+      "language": "csharp",
+      "sizeLines": 119,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/MusicVideos/IMusicVideoCatalogCache.cs",
+      "language": "csharp",
+      "sizeLines": 72,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/MusicVideos/IMusicVideoDiscoveryService.cs",
+      "language": "csharp",
+      "sizeLines": 43,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/MusicVideos/IMusicVideoMetadataService.cs",
+      "language": "csharp",
+      "sizeLines": 57,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/MusicVideos/MusicVideoAssociationParser.cs",
+      "language": "csharp",
+      "sizeLines": 84,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "src/Wavee.UI.WinUI/Services/IVideoSurfaceProvider.cs": [],
+    "src/Wavee.UI.WinUI/Services/LibraryRecentsService.cs": [],
+    "src/Wavee.UI.WinUI/Services/LocalEpisodeChapterScanner.cs": [],
+    "src/Wavee.UI.WinUI/Services/LocalItemContextMenuPresenter.cs": [],
+    "src/Wavee.UI.WinUI/Services/LocalLibraryFacade.cs": [],
+    "src/Wavee.UI.WinUI/Services/LocalMediaPlayer.cs": [],
+    "src/Wavee.UI.WinUI/Services/LocalPlaybackLauncher.cs": [],
+    "src/Wavee.UI.WinUI/Services/LocalPlaybackProgressTracker.cs": [],
+    "src/Wavee.UI.WinUI/Services/LocalShowEpisodeQueue.cs": [],
+    "src/Wavee.UI.WinUI/Services/LyricsAi/LyricsAiEvidenceParser.cs": [],
+    "src/Wavee.UI.WinUI/Services/LyricsAi/LyricsAiOutputNormalizer.cs": [],
+    "src/Wavee.UI.WinUI/Services/LyricsAi/LyricsAiPrompts.cs": [],
+    "src/Wavee.UI.WinUI/Services/LyricsAi/LyricsAiResult.cs": [],
+    "src/Wavee.UI.WinUI/Services/LyricsAi/LyricsAiService.cs": [],
+    "src/Wavee.UI.WinUI/Services/LyricsCacheModels.cs": [],
+    "src/Wavee.UI.WinUI/Services/LyricsSearchDiagnostics.cs": [],
+    "src/Wavee.UI.WinUI/Services/LyricsService.cs": [],
+    "src/Wavee.UI.WinUI/Services/MediaFoundationEmbeddedTrackProber.cs": [],
+    "src/Wavee.UI.WinUI/Services/MediaOverrideService.cs": [],
+    "src/Wavee.UI.WinUI/Services/MemoryBudgetService.cs": [],
+    "src/Wavee.UI.WinUI/Services/MemoryReleaseHelper.cs": [],
+    "src/Wavee.UI.WinUI/Services/MusicVideos/IMusicVideoCatalogCache.cs": [],
+    "src/Wavee.UI.WinUI/Services/MusicVideos/IMusicVideoDiscoveryService.cs": [],
+    "src/Wavee.UI.WinUI/Services/MusicVideos/IMusicVideoMetadataService.cs": [],
+    "src/Wavee.UI.WinUI/Services/MusicVideos/MusicVideoAssociationParser.cs": []
+  }
+}

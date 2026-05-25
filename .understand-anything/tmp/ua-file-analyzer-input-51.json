@@ -1,0 +1,182 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/PlayerBarViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 1505,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Playlist/PlaylistHeaderViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 1221,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Playlist/PlaylistMutationCoordinator.cs",
+      "language": "csharp",
+      "sizeLines": 461,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Playlist/PlaylistTrackListViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 1260,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/PlaylistViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 1025,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/PodcastBrowseViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 592,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/PodcastCommentViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 414,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/ProfileViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 389,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/SearchViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 655,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/SectionFeedViewModelBase.cs",
+      "language": "csharp",
+      "sizeLines": 57,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/SettingsViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 1679,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Shell/LinkPreviewCoordinator.cs",
+      "language": "csharp",
+      "sizeLines": 131,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Shell/OmnibarViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 675,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Shell/SidebarViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 1429,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/ShellViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 1087,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/ShowViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 1246,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/SpotifyConnectViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 461,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/StartPageViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 63,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/TrackDetails/ContributorVm.cs",
+      "language": "csharp",
+      "sizeLines": 11,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/TrackDetails/CreditGroupVm.cs",
+      "language": "csharp",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/TrackDetails/EpisodeChapterVm.cs",
+      "language": "csharp",
+      "sizeLines": 60,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/TrackDetails/ExternalLinkVm.cs",
+      "language": "csharp",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/TrackDetails/RelatedVideoVm.cs",
+      "language": "csharp",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/TrackDetailsViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 1040,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/YourEpisodesViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 1635,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "src/Wavee.UI.WinUI/ViewModels/PlayerBarViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Playlist/PlaylistHeaderViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Playlist/PlaylistMutationCoordinator.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Playlist/PlaylistTrackListViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/PlaylistViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/PodcastBrowseViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/PodcastCommentViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/ProfileViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/SearchViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/SectionFeedViewModelBase.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/SettingsViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Shell/LinkPreviewCoordinator.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Shell/OmnibarViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Shell/SidebarViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/ShellViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/ShowViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/SpotifyConnectViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/StartPageViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/TrackDetails/ContributorVm.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/TrackDetails/CreditGroupVm.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/TrackDetails/EpisodeChapterVm.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/TrackDetails/ExternalLinkVm.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/TrackDetails/RelatedVideoVm.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/TrackDetailsViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/YourEpisodesViewModel.cs": []
+  }
+}

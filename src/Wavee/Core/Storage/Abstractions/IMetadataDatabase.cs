@@ -602,6 +602,20 @@ public interface IMetadataDatabase : IAsyncDisposable
     Task FailOutboxAsync(long id, string? error, CancellationToken ct = default);
 
     #endregion
+
+    #region User Action Activity Operations
+
+    Task UpsertUserActionActivityAsync(UserActionActivityEntry entry, CancellationToken ct = default);
+
+    Task<List<UserActionActivityEntry>> GetUserActionActivitiesAsync(int limit = 50, CancellationToken ct = default);
+
+    Task MarkUserActionActivityUndoneAsync(string id, CancellationToken ct = default);
+
+    Task DeleteUserActionActivityAsync(string id, CancellationToken ct = default);
+
+    Task ClearUserActionActivitiesAsync(CancellationToken ct = default);
+
+    #endregion
 }
 
 /// <summary>
@@ -694,6 +708,20 @@ public sealed record OutboxEntry
     public long CreatedAt { get; init; }
     public int RetryCount { get; init; }
     public string? LastError { get; init; }
+}
+
+public sealed record UserActionActivityEntry
+{
+    public required string Id { get; init; }
+    public required string Category { get; init; }
+    public required string Title { get; init; }
+    public string? Message { get; init; }
+    public string? IconGlyph { get; init; }
+    public required string UndoLabel { get; init; }
+    public required string ActionKind { get; init; }
+    public required string DescriptorJson { get; init; }
+    public long CreatedAt { get; init; }
+    public bool IsUndone { get; init; }
 }
 
 /// <summary>

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Wavee.Core.Http.Pathfinder;
@@ -165,19 +166,30 @@ internal static class BrowseResponseMapper
         var (small, medium, large) = SpotifyImageHelper.BucketSources(
             data.CoverArt?.Sources, s => s.Url, s => s.Width);
 
-        var artistName = data.Artists?.Items?.FirstOrDefault()?.Profile?.Name;
+        var firstArtist = data.Artists?.Items?.FirstOrDefault();
+        var artistName = firstArtist?.Profile?.Name;
 
         return new HomeSectionItem
         {
             Uri = data.Uri ?? entry.Uri,
             Title = data.Name,
             Subtitle = artistName ?? "Album",
+            SubtitleNavigationTitle = artistName,
+            SubtitleNavigationUri = ArtistUriOrNull(firstArtist?.Uri),
             ImageUrl = large ?? medium ?? small,
             ImageSmallUrl = small,
             ImageMediumUrl = medium,
             ImageLargeUrl = large,
             ContentType = HomeContentType.Album
         };
+    }
+
+    private static string? ArtistUriOrNull(string? uri)
+    {
+        return !string.IsNullOrWhiteSpace(uri)
+               && uri.StartsWith("spotify:artist:", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : null;
     }
 
     private static HomeSectionItem MapPodcast(PathfinderBrowseSectionItem entry, PathfinderBrowseContentData data)

@@ -95,6 +95,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
         ITrackLikeService? likeService = null,
         ISettingsService? settingsService = null,
         ArtistBioSummarizer? bioSummarizer = null,
+        AiCapabilities? aiCapabilities = null,
         IMusicVideoMetadataService? musicVideoMetadataService = null,
         Wavee.UI.Services.Infra.IBackgroundWorkRunner? backgroundWorkRunner = null,
         ILogger<ArtistViewModel>? logger = null)
@@ -149,6 +150,7 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
 
         Bio = new ArtistBioViewModel(
             bioSummarizer,
+            aiCapabilities,
             logger,
             biographyProvider: () => Header.Artist?.Biography,
             artistNameProvider: () => Header.ArtistName,
@@ -732,14 +734,10 @@ public sealed partial class ArtistViewModel : ObservableObject, ITabBarItemConte
             _backgroundWork.Run(_ => ApplySecondaryArtistSectionsAsync(artistId, generation, overview),
                 "ArtistViewModel.ApplySecondaryArtistSections");
 
-            // V4A: kick off the on-device "about this artist" excerpt when
-            // Spotify's ArtistOverview has no biography. Gated through
-            // AiCapabilities.IsArtistBioSummarizeEnabled inside the summarizer
-            // so a thin artist on a non-Copilot+ PC or with AI disabled is a
-            // cheap no-op. Fire-and-forget — the result lands on a bound
-            // observable property, the page reveals it via implicit animation.
-            if (string.IsNullOrWhiteSpace(overview.Biography))
-                _backgroundWork.Run(_ => Bio.LoadBioSummaryAsync(artistId), "ArtistViewModel.LoadBioSummary");
+            // V4A: kick off the on-device "about this artist" excerpt for
+            // every artist. Gated through AiCapabilities inside the summarizer
+            // so non-Copilot+ PCs or disabled AI stay a cheap no-op.
+            _backgroundWork.Run(_ => Bio.LoadBioSummaryAsync(artistId), "ArtistViewModel.LoadBioSummary");
         }
         catch (Wavee.Core.Session.SessionException)
         {

@@ -1,0 +1,304 @@
+{
+  "nodes": [
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/connectivity.proto",
+      "type": "schema",
+      "name": "connectivity.proto",
+      "filePath": "src/Wavee/Protocol/Protos/connectivity.proto",
+      "summary": "Protobuf schema for Spotify's connectivity SDK data: defines platform-specific hardware fingerprint messages for Android, iOS, desktop Windows/macOS/Linux, and screen dimensions used in client token requests.",
+      "tags": ["schema-definition", "protobuf", "authentication", "data-pipeline"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/connectivity.proto:ConnectivitySdkData",
+      "type": "schema",
+      "name": "ConnectivitySdkData",
+      "filePath": "src/Wavee/Protocol/Protos/connectivity.proto",
+      "summary": "Root connectivity SDK data message bundling platform-specific hardware info and the device_id.",
+      "tags": ["schema-definition", "protobuf", "authentication"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/connectivity.proto:NativeDesktopWindowsData",
+      "type": "schema",
+      "name": "NativeDesktopWindowsData",
+      "filePath": "src/Wavee/Protocol/Protos/connectivity.proto",
+      "summary": "Windows-specific hardware fingerprint: OS version/build, platform ID, PE machine type, and reserved unknown fields used in anti-fraud client token requests.",
+      "tags": ["schema-definition", "protobuf", "authentication"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/context.proto",
+      "type": "schema",
+      "name": "context.proto",
+      "filePath": "src/Wavee/Protocol/Protos/context.proto",
+      "summary": "Protobuf schema defining the Context message which represents a Spotify playback context (playlist, album, artist) with URI, URL, restrictions, and pages of tracks.",
+      "tags": ["schema-definition", "protobuf", "playback", "data-pipeline"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/context.proto:Context",
+      "type": "schema",
+      "name": "Context",
+      "filePath": "src/Wavee/Protocol/Protos/context.proto",
+      "summary": "Playback context message carrying the context URI, resolver URL, restriction metadata, paginated track pages, and loading flag.",
+      "tags": ["schema-definition", "protobuf", "playback"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/context_page.proto",
+      "type": "schema",
+      "name": "context_page.proto",
+      "filePath": "src/Wavee/Protocol/Protos/context_page.proto",
+      "summary": "Protobuf schema defining ContextPage, a paginated page of tracks within a playback context, with page_url, next_page_url, tracks, and loading state.",
+      "tags": ["schema-definition", "protobuf", "playback", "data-pipeline"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/context_page.proto:ContextPage",
+      "type": "schema",
+      "name": "ContextPage",
+      "filePath": "src/Wavee/Protocol/Protos/context_page.proto",
+      "summary": "A single paginated page of ContextTrack entries within a playback context, with URL cursors for pagination and a loading flag.",
+      "tags": ["schema-definition", "protobuf", "playback"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/context_player_options.proto",
+      "type": "schema",
+      "name": "context_player_options.proto",
+      "filePath": "src/Wavee/Protocol/Protos/context_player_options.proto",
+      "summary": "Protobuf schema for playback player options and their override variants: shuffle, repeat-context, repeat-track, and playback speed settings.",
+      "tags": ["schema-definition", "protobuf", "playback", "data-pipeline"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/context_player_options.proto:ContextPlayerOptions",
+      "type": "schema",
+      "name": "ContextPlayerOptions",
+      "filePath": "src/Wavee/Protocol/Protos/context_player_options.proto",
+      "summary": "Player option flags embedded in player state: shuffling_context, repeating_context, repeating_track, and playback_speed.",
+      "tags": ["schema-definition", "protobuf", "playback"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/context_player_options.proto:ContextPlayerOptionOverrides",
+      "type": "schema",
+      "name": "ContextPlayerOptionOverrides",
+      "filePath": "src/Wavee/Protocol/Protos/context_player_options.proto",
+      "summary": "Override message carrying the same fields as ContextPlayerOptions but as optional overrides applied on top of context defaults.",
+      "tags": ["schema-definition", "protobuf", "playback"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/context_track.proto",
+      "type": "schema",
+      "name": "context_track.proto",
+      "filePath": "src/Wavee/Protocol/Protos/context_track.proto",
+      "summary": "Protobuf schema defining ContextTrack, the minimal track reference within a playback context, carrying URI, uid, and gid.",
+      "tags": ["schema-definition", "protobuf", "playback", "data-pipeline"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/context_track.proto:ContextTrack",
+      "type": "schema",
+      "name": "ContextTrack",
+      "filePath": "src/Wavee/Protocol/Protos/context_track.proto",
+      "summary": "Minimal track reference within a playback context page: Spotify URI, UID for queue addressing, and GID for gapless lookup.",
+      "tags": ["schema-definition", "protobuf", "playback"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/devices.proto",
+      "type": "schema",
+      "name": "devices.proto",
+      "filePath": "src/Wavee/Protocol/Protos/devices.proto",
+      "summary": "Protobuf schema defining DeviceAlias (named alias group for a Connect device) and the DeviceType enum covering all Spotify Connect device categories from COMPUTER to HOME_THING.",
+      "tags": ["schema-definition", "protobuf", "connect", "data-pipeline"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/devices.proto:DeviceType",
+      "type": "schema",
+      "name": "DeviceType",
+      "filePath": "src/Wavee/Protocol/Protos/devices.proto",
+      "summary": "Enum of all Spotify Connect device categories including COMPUTER, SPEAKER, TV, SMARTPHONE, GAME_CONSOLE, AUTOMOBILE, CAR_THING, HOME_THING, and more.",
+      "tags": ["schema-definition", "protobuf", "connect"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/entity_extension_data.proto",
+      "type": "schema",
+      "name": "entity_extension_data.proto",
+      "filePath": "src/Wavee/Protocol/Protos/entity_extension_data.proto",
+      "summary": "Protobuf schema for Spotify entity extension data: defines a response header with HTTP status, etag, locale, and cache TTLs, plus a base EntityExtensionData message with entity_uri.",
+      "tags": ["schema-definition", "protobuf", "data-pipeline"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/entity_extension_data.proto:EntityExtensionDataHeader",
+      "type": "schema",
+      "name": "EntityExtensionDataHeader",
+      "filePath": "src/Wavee/Protocol/Protos/entity_extension_data.proto",
+      "summary": "Response header for entity extension data carrying HTTP status code, etag, locale, online and offline cache TTL values.",
+      "tags": ["schema-definition", "protobuf", "data-pipeline"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/es_optional.proto",
+      "type": "schema",
+      "name": "es_optional.proto",
+      "filePath": "src/Wavee/Protocol/Protos/es_optional.proto",
+      "summary": "Protobuf schema providing optional wrapper messages for primitive types (OptionalInt64, OptionalDouble, OptionalBoolean) used across Spotify protocols that predate proto3 optional fields.",
+      "tags": ["schema-definition", "protobuf", "utility", "data-pipeline"],
+      "complexity": "simple",
+      "languageNotes": "Pre-proto3 optional field pattern: wrapping a primitive in a message makes presence detectable via HasValue checks in generated code."
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/es_optional.proto:OptionalInt64",
+      "type": "schema",
+      "name": "OptionalInt64",
+      "filePath": "src/Wavee/Protocol/Protos/es_optional.proto",
+      "summary": "Optional int64 wrapper message with a single value field, enabling null/absent distinction for integer fields.",
+      "tags": ["schema-definition", "protobuf", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/es_optional.proto:OptionalBoolean",
+      "type": "schema",
+      "name": "OptionalBoolean",
+      "filePath": "src/Wavee/Protocol/Protos/es_optional.proto",
+      "summary": "Optional boolean wrapper message enabling nullable boolean semantics in Spotify protocol messages.",
+      "tags": ["schema-definition", "protobuf", "utility"],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/connectivity.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/connectivity.proto:ConnectivitySdkData",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/connectivity.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/connectivity.proto:NativeDesktopWindowsData",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/connectivity.proto",
+      "target": "file:src/Wavee/Core/Http/ClientTokenManager.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/context.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/context.proto:Context",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/context.proto",
+      "target": "file:src/Wavee/Connect/PlaybackState.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/context_page.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/context_page.proto:ContextPage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/context_page.proto",
+      "target": "file:src/Wavee/Connect/PlaybackState.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/context_player_options.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/context_player_options.proto:ContextPlayerOptions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/context_player_options.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/context_player_options.proto:ContextPlayerOptionOverrides",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/context_player_options.proto",
+      "target": "file:src/Wavee/Connect/PlaybackState.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/context_track.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/context_track.proto:ContextTrack",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/context_track.proto",
+      "target": "file:src/Wavee/Connect/PlaybackState.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/devices.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/devices.proto:DeviceType",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/devices.proto",
+      "target": "file:src/Wavee/Connect/DeviceStateManager.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/entity_extension_data.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/entity_extension_data.proto:EntityExtensionDataHeader",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/entity_extension_data.proto",
+      "target": "file:src/Wavee/Core/Http/ExtendedMetadataClient.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/es_optional.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/es_optional.proto:OptionalInt64",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/es_optional.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/es_optional.proto:OptionalBoolean",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    }
+  ]
+}

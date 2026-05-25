@@ -1,0 +1,847 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Gallery/MarqueeGalleryStrip.xaml",
+      "type": "file",
+      "name": "MarqueeGalleryStrip.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Gallery/MarqueeGalleryStrip.xaml",
+      "summary": "XAML template for the MarqueeGalleryStrip control defining the rail and host grid containers for composition-layer marquee animation.",
+      "tags": [
+        "component",
+        "markup",
+        "gallery"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Gallery/MarqueeGalleryStrip.xaml.cs",
+      "type": "file",
+      "name": "MarqueeGalleryStrip.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Gallery/MarqueeGalleryStrip.xaml.cs",
+      "summary": "WinUI 3 UserControl implementing a horizontally scrolling marquee gallery strip with composition-layer animation, edge fade gradients, halo effect, and tap-to-navigate image tiles.",
+      "tags": [
+        "component",
+        "animation",
+        "gallery",
+        "composition"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/GridSplitter/GridSplitter.cs",
+      "type": "file",
+      "name": "GridSplitter.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/GridSplitter/GridSplitter.cs",
+      "summary": "Custom WinUI 3 GridSplitter control that handles drag manipulation to resize adjacent Grid rows or columns with hover/drag visual states and a ResizeCompleted event.",
+      "tags": [
+        "component",
+        "layout",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/GridSplitter/GridSplitter.xaml",
+      "type": "file",
+      "name": "GridSplitter.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/GridSplitter/GridSplitter.xaml",
+      "summary": "XAML ControlTemplate for the GridSplitter declaring visual states for Normal, PointerOver, Pressed, and Dragging.",
+      "tags": [
+        "component",
+        "markup",
+        "layout"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/HeartButton.xaml",
+      "type": "file",
+      "name": "HeartButton.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeartButton.xaml",
+      "summary": "XAML template for the HeartButton like/unlike toggle control.",
+      "tags": [
+        "component",
+        "markup"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/HeartButton.xaml.cs",
+      "type": "file",
+      "name": "HeartButton.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeartButton.xaml.cs",
+      "summary": "WinUI 3 UserControl implementing a heart-shaped like/unlike toggle with IsLiked, Command, and CommandParameter dependency properties and visual state management.",
+      "tags": [
+        "component",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ArtistShyPill.xaml",
+      "type": "file",
+      "name": "ArtistShyPill.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeroHeader/ArtistShyPill.xaml",
+      "summary": "XAML layout for the ArtistShyPill overlay showing artist image, name, monthly listeners, play and follow buttons with palette-accent styling.",
+      "tags": [
+        "component",
+        "markup",
+        "hero-header"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ArtistShyPill.xaml.cs",
+      "type": "file",
+      "name": "ArtistShyPill.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeroHeader/ArtistShyPill.xaml.cs",
+      "summary": "Code-behind for ArtistShyPill exposing dependency properties for artist image, name, monthly listeners, play state, follow state, palette accent brushes, and commands.",
+      "tags": [
+        "component",
+        "hero-header"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/HeroHeader.xaml",
+      "type": "file",
+      "name": "HeroHeader.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeroHeader/HeroHeader.xaml",
+      "summary": "XAML template defining the image border, overlay content presenter, and scrim layer structure for the HeroHeader control.",
+      "tags": [
+        "component",
+        "markup",
+        "hero-header"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/HeroHeader.xaml.cs",
+      "type": "file",
+      "name": "HeroHeader.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeroHeader/HeroHeader.xaml.cs",
+      "summary": "WinUI 3 UserControl implementing a GPU-backed full-bleed hero image header with multi-layer composition scrim, color-blend overlay, scroll-fade, pop-in animation, and nav-cache surface lifecycle.",
+      "tags": [
+        "component",
+        "animation",
+        "composition",
+        "hero-header"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderController.cs",
+      "type": "file",
+      "name": "ShyHeaderController.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderController.cs",
+      "summary": "Controller that listens to ScrollView position changes and drives a shy-header pin/unpin transition, updating hero scroll-fade and animating between expanded and collapsed header states.",
+      "tags": [
+        "component",
+        "animation",
+        "hero-header",
+        "service"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderFade.cs",
+      "type": "file",
+      "name": "ShyHeaderFade.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderFade.cs",
+      "summary": "Static factory providing fade-callback delegates that map scroll progress to hero or element opacity for scroll-driven fade effects.",
+      "tags": [
+        "factory",
+        "hero-header",
+        "animation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderPinOffset.cs",
+      "type": "file",
+      "name": "ShyHeaderPinOffset.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderPinOffset.cs",
+      "summary": "Static factory returning pin-offset-threshold delegates based on hero height or a reference element for use by ShyHeaderController.",
+      "tags": [
+        "factory",
+        "hero-header"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/HtmlTextBlock.cs",
+      "type": "file",
+      "name": "HtmlTextBlock.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HtmlTextBlock.cs",
+      "summary": "WinUI 3 UserControl parsing an HTML subset into RichTextBlock paragraphs with hyperlinks, bullet lists, bold/italic, and Spotify URI navigation.",
+      "tags": [
+        "component",
+        "serialization",
+        "utility"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Imaging/CompositionImage.xaml",
+      "type": "file",
+      "name": "CompositionImage.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Imaging/CompositionImage.xaml",
+      "summary": "XAML template for CompositionImage providing a host element and placeholder layer for GPU-resident image rendering.",
+      "tags": [
+        "component",
+        "markup",
+        "imaging"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Imaging/CompositionImage.xaml.cs",
+      "type": "file",
+      "name": "CompositionImage.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Imaging/CompositionImage.xaml.cs",
+      "summary": "GPU-resident image primitive using Windows.UI.Composition SpriteVisual and ImageCacheService with round/ellipse clip, fade-in, nav-cache surface release/restore, and per-instance diagnostic tracing.",
+      "tags": [
+        "component",
+        "composition",
+        "imaging",
+        "cache"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Imaging/CrossFadeImage.xaml",
+      "type": "file",
+      "name": "CrossFadeImage.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Imaging/CrossFadeImage.xaml",
+      "summary": "XAML template for CrossFadeImage defining two image layers for animated cross-fade transitions.",
+      "tags": [
+        "component",
+        "markup",
+        "imaging"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Imaging/CrossFadeImage.xaml.cs",
+      "type": "file",
+      "name": "CrossFadeImage.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Imaging/CrossFadeImage.xaml.cs",
+      "summary": "WinUI 3 control cross-fading between two CompositionImage layers on source change with scale-and-fade animation, fallback source, and async palette-color placeholder loading.",
+      "tags": [
+        "component",
+        "animation",
+        "imaging"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/InlineEditableText.xaml",
+      "type": "file",
+      "name": "InlineEditableText.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/InlineEditableText.xaml",
+      "summary": "XAML layout for InlineEditableText with a display frame, edit affordance button, TextBox, and Save/Cancel action buttons.",
+      "tags": [
+        "component",
+        "markup"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/InlineEditableText.xaml.cs",
+      "type": "file",
+      "name": "InlineEditableText.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/InlineEditableText.xaml.cs",
+      "summary": "Click-to-edit-in-place text control with Escape/Enter/Ctrl+Enter keyboard handling, pointer hover affordance, optional multi-line support, and Committed/Cancelled events.",
+      "tags": [
+        "component",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/InPageFilter/IInPageFilterable.cs",
+      "type": "file",
+      "name": "IInPageFilterable.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/InPageFilter/IInPageFilterable.cs",
+      "summary": "Interface contract for views supporting in-page text filtering, exposing FilterQuery, FilterPlaceholder, CanFilter, and an OnFilterClosed callback.",
+      "tags": [
+        "type-definition"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/InPageFilter/InPageFilterOverlay.xaml",
+      "type": "file",
+      "name": "InPageFilterOverlay.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/InPageFilter/InPageFilterOverlay.xaml",
+      "summary": "XAML layout for the in-page filter overlay with a search input box, close button, and slide-in animation.",
+      "tags": [
+        "component",
+        "markup"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/InPageFilter/InPageFilterOverlay.xaml.cs",
+      "type": "file",
+      "name": "InPageFilterOverlay.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/InPageFilter/InPageFilterOverlay.xaml.cs",
+      "summary": "Code-behind for the in-page filter overlay synchronizing query text with InPageFilterController and handling keyboard focus and Escape/close gestures.",
+      "tags": [
+        "component",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/InPageFilter/IRedirectsCtrlFToOmnibar.cs",
+      "type": "file",
+      "name": "IRedirectsCtrlFToOmnibar.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/InPageFilter/IRedirectsCtrlFToOmnibar.cs",
+      "summary": "Marker interface pages implement to signal that Ctrl+F keystrokes should redirect to the global omnibar instead of opening an in-page filter.",
+      "tags": [
+        "type-definition"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/JsonRichTextBlock.cs",
+      "type": "file",
+      "name": "JsonRichTextBlock.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/JsonRichTextBlock.cs",
+      "summary": "Code-built WinUI 3 control rendering JSON in a RichEditBox with syntax highlighting, search highlighting, line numbers, word-wrap toggle, async background tokenization, and clipboard copy.",
+      "tags": [
+        "component",
+        "utility",
+        "serialization"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Gallery/MarqueeGalleryStrip.xaml.cs:MarqueeGalleryStrip",
+      "type": "class",
+      "name": "MarqueeGalleryStrip",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Gallery/MarqueeGalleryStrip.xaml.cs",
+      "lineRange": [
+        28,
+        426
+      ],
+      "summary": "UserControl rendering a horizontally scrolling marquee strip of image tiles using composition animation, edge fade gradients, and halo glow.",
+      "tags": [
+        "component",
+        "animation",
+        "gallery",
+        "composition"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/GridSplitter/GridSplitter.cs:GridSplitter",
+      "type": "class",
+      "name": "GridSplitter",
+      "filePath": "src/Wavee.UI.WinUI/Controls/GridSplitter/GridSplitter.cs",
+      "lineRange": [
+        19,
+        184
+      ],
+      "summary": "WinUI 3 Control for drag-resizing adjacent Grid rows or columns, supporting horizontal and vertical orientations with visual state feedback.",
+      "tags": [
+        "component",
+        "layout",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/HeartButton.xaml.cs:HeartButton",
+      "type": "class",
+      "name": "HeartButton",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeartButton.xaml.cs",
+      "lineRange": [
+        11,
+        79
+      ],
+      "summary": "Toggleable heart icon button with IsLiked, Command, and CommandParameter dependency properties and tooltip update on state change.",
+      "tags": [
+        "component",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/ArtistShyPill.xaml.cs:ArtistShyPill",
+      "type": "class",
+      "name": "ArtistShyPill",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeroHeader/ArtistShyPill.xaml.cs",
+      "lineRange": [
+        18,
+        120
+      ],
+      "summary": "Overlay pill control for artist pages exposing image, name, monthly listeners, play/follow state, palette accent brushes, and commands as dependency properties.",
+      "tags": [
+        "component",
+        "hero-header"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/HeroHeader.xaml.cs:HeroHeader",
+      "type": "class",
+      "name": "HeroHeader",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeroHeader/HeroHeader.xaml.cs",
+      "lineRange": [
+        19,
+        742
+      ],
+      "summary": "Full-bleed hero image control with multi-layer composition scrim, color-blend gradient, scroll fade, pop-in animation, and nav-cache GPU surface lifecycle management.",
+      "tags": [
+        "component",
+        "animation",
+        "composition",
+        "hero-header"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderController.cs:ShyHeaderController",
+      "type": "class",
+      "name": "ShyHeaderController",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderController.cs",
+      "lineRange": [
+        26,
+        241
+      ],
+      "summary": "IDisposable controller attaching to a ScrollView to evaluate pin-offset thresholds and drive shy-header pin/unpin transition animations.",
+      "tags": [
+        "component",
+        "hero-header",
+        "animation",
+        "service"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderFade.cs:ShyHeaderFade",
+      "type": "class",
+      "name": "ShyHeaderFade",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderFade.cs",
+      "lineRange": [
+        14,
+        44
+      ],
+      "summary": "Static factory providing fade callbacks for HeroHeader scroll-fade, composition-visual opacity, and element opacity.",
+      "tags": [
+        "factory",
+        "hero-header"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderPinOffset.cs:ShyHeaderPinOffset",
+      "type": "class",
+      "name": "ShyHeaderPinOffset",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderPinOffset.cs",
+      "lineRange": [
+        12,
+        47
+      ],
+      "summary": "Static factory returning pin-offset threshold delegates based on hero height or a reference element.",
+      "tags": [
+        "factory",
+        "hero-header"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/HtmlTextBlock.cs:HtmlTextBlock",
+      "type": "class",
+      "name": "HtmlTextBlock",
+      "filePath": "src/Wavee.UI.WinUI/Controls/HtmlTextBlock.cs",
+      "lineRange": [
+        16,
+        234
+      ],
+      "summary": "RichTextBlock-backed control parsing HTML fragments into styled paragraphs with hyperlinks, bullet lists, and Spotify URI navigation.",
+      "tags": [
+        "component",
+        "serialization",
+        "utility"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Imaging/CompositionImage.xaml.cs:CompositionImage",
+      "type": "class",
+      "name": "CompositionImage",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Imaging/CompositionImage.xaml.cs",
+      "lineRange": [
+        36,
+        857
+      ],
+      "summary": "Core GPU-resident image primitive managing a SpriteVisual via ImageCacheService with round/circle clip, placeholder fade-out, and nav-cache lifecycle.",
+      "tags": [
+        "component",
+        "composition",
+        "imaging",
+        "cache"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Imaging/CrossFadeImage.xaml.cs:CrossFadeImage",
+      "type": "class",
+      "name": "CrossFadeImage",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Imaging/CrossFadeImage.xaml.cs",
+      "lineRange": [
+        40,
+        357
+      ],
+      "summary": "Two-layer cross-fade image control using composition opacity/scale animations with palette-color placeholder loading.",
+      "tags": [
+        "component",
+        "animation",
+        "imaging"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/InlineEditableText.xaml.cs:InlineEditableText",
+      "type": "class",
+      "name": "InlineEditableText",
+      "filePath": "src/Wavee.UI.WinUI/Controls/InlineEditableText.xaml.cs",
+      "lineRange": [
+        22,
+        377
+      ],
+      "summary": "Click-to-edit-in-place text control with keyboard handling, hover affordance, multi-line support, and Committed/Cancelled events.",
+      "tags": [
+        "component",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/InPageFilter/IInPageFilterable.cs:IInPageFilterable",
+      "type": "class",
+      "name": "IInPageFilterable",
+      "filePath": "src/Wavee.UI.WinUI/Controls/InPageFilter/IInPageFilterable.cs",
+      "lineRange": [
+        15,
+        32
+      ],
+      "summary": "Interface for filterable views exposing FilterQuery, FilterPlaceholder, CanFilter, and OnFilterClosed.",
+      "tags": [
+        "type-definition"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/InPageFilter/InPageFilterOverlay.xaml.cs:InPageFilterOverlay",
+      "type": "class",
+      "name": "InPageFilterOverlay",
+      "filePath": "src/Wavee.UI.WinUI/Controls/InPageFilter/InPageFilterOverlay.xaml.cs",
+      "lineRange": [
+        18,
+        123
+      ],
+      "summary": "In-page filter overlay UserControl bound to InPageFilterController handling query sync, keyboard focus, and Escape/close.",
+      "tags": [
+        "component",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/JsonRichTextBlock.cs:JsonRichTextBlock",
+      "type": "class",
+      "name": "JsonRichTextBlock",
+      "filePath": "src/Wavee.UI.WinUI/Controls/JsonRichTextBlock.cs",
+      "lineRange": [
+        21,
+        642
+      ],
+      "summary": "JSON syntax-highlighting RichEditBox control with async tokenization, search highlighting, line numbers, word-wrap toggle, and clipboard copy.",
+      "tags": [
+        "component",
+        "utility",
+        "serialization"
+      ],
+      "complexity": "complex"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Gallery/MarqueeGalleryStrip.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Gallery/MarqueeGalleryStrip.xaml.cs:MarqueeGalleryStrip",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Gallery/MarqueeGalleryStrip.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Gallery/MarqueeGalleryStrip.xaml.cs:MarqueeGalleryStrip",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/GridSplitter/GridSplitter.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/GridSplitter/GridSplitter.cs:GridSplitter",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/GridSplitter/GridSplitter.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/GridSplitter/GridSplitter.cs:GridSplitter",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeartButton.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HeartButton.xaml.cs:HeartButton",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeartButton.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HeartButton.xaml.cs:HeartButton",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ArtistShyPill.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/ArtistShyPill.xaml.cs:ArtistShyPill",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ArtistShyPill.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/ArtistShyPill.xaml.cs:ArtistShyPill",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/HeroHeader.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/HeroHeader.xaml.cs:HeroHeader",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/HeroHeader.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/HeroHeader.xaml.cs:HeroHeader",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderController.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderController.cs:ShyHeaderController",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderController.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderController.cs:ShyHeaderController",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderFade.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderFade.cs:ShyHeaderFade",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderFade.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderFade.cs:ShyHeaderFade",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderPinOffset.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderPinOffset.cs:ShyHeaderPinOffset",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderPinOffset.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HeroHeader/ShyHeaderPinOffset.cs:ShyHeaderPinOffset",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HtmlTextBlock.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HtmlTextBlock.cs:HtmlTextBlock",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HtmlTextBlock.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/HtmlTextBlock.cs:HtmlTextBlock",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Imaging/CompositionImage.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Imaging/CompositionImage.xaml.cs:CompositionImage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Imaging/CompositionImage.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Imaging/CompositionImage.xaml.cs:CompositionImage",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Imaging/CrossFadeImage.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Imaging/CrossFadeImage.xaml.cs:CrossFadeImage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Imaging/CrossFadeImage.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Imaging/CrossFadeImage.xaml.cs:CrossFadeImage",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/InlineEditableText.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/InlineEditableText.xaml.cs:InlineEditableText",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/InlineEditableText.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/InlineEditableText.xaml.cs:InlineEditableText",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/InPageFilter/IInPageFilterable.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/InPageFilter/IInPageFilterable.cs:IInPageFilterable",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/InPageFilter/IInPageFilterable.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/InPageFilter/IInPageFilterable.cs:IInPageFilterable",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/InPageFilter/InPageFilterOverlay.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/InPageFilter/InPageFilterOverlay.xaml.cs:InPageFilterOverlay",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/InPageFilter/InPageFilterOverlay.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/InPageFilter/InPageFilterOverlay.xaml.cs:InPageFilterOverlay",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/JsonRichTextBlock.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/JsonRichTextBlock.cs:JsonRichTextBlock",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/JsonRichTextBlock.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/JsonRichTextBlock.cs:JsonRichTextBlock",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Gallery/MarqueeGalleryStrip.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/Gallery/MarqueeGalleryStrip.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/GridSplitter/GridSplitter.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/GridSplitter/GridSplitter.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeartButton.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/HeartButton.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ArtistShyPill.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/ArtistShyPill.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/HeroHeader.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/HeroHeader/HeroHeader.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Imaging/CompositionImage.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/Imaging/CompositionImage.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Imaging/CrossFadeImage.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/Imaging/CrossFadeImage.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/InlineEditableText.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/InlineEditableText.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/InPageFilter/InPageFilterOverlay.xaml",
+      "target": "file:src/Wavee.UI.WinUI/Controls/InPageFilter/InPageFilterOverlay.xaml.cs",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ]
+}

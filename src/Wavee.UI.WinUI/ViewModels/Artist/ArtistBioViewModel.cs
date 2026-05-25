@@ -13,9 +13,8 @@ namespace Wavee.UI.WinUI.ViewModels.Artist;
 
 /// <summary>
 /// Owns the biography surfaces: the long-form Spotify biography, the hero
-/// peek-line projection, and the optional on-device AI summary that runs
-/// when Spotify ships no biography (Copilot+ + opt-in gated, all the work
-/// hidden inside <see cref="ArtistBioSummarizer"/>).
+/// peek-line projection, and the optional on-device AI summary (Copilot+ +
+/// opt-in gated, all the work hidden inside <see cref="ArtistBioSummarizer"/>).
 ///
 /// <para>The biography text itself comes from the parent's
 /// <see cref="ArtistView"/> envelope — the bio VM stores no copy, only
@@ -27,7 +26,9 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
     private const int HeroBioMaxLength = 150;
 
     private readonly ArtistBioSummarizer? _bioSummarizer;
+    private readonly AiCapabilities? _capabilities;
     private readonly ILogger? _logger;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
 
     private readonly Func<string?> _biographyProvider;
     private readonly Func<string?> _artistNameProvider;
@@ -38,6 +39,7 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
 
     public ArtistBioViewModel(
         ArtistBioSummarizer? bioSummarizer,
+        AiCapabilities? capabilities,
         ILogger? logger,
         Func<string?> biographyProvider,
         Func<string?> artistNameProvider,
@@ -45,7 +47,9 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         Func<IReadOnlyList<string>> topTrackNamesProvider)
     {
         _bioSummarizer = bioSummarizer;
+        _capabilities = capabilities;
         _logger = logger;
+        _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         _biographyProvider = biographyProvider;
         _artistNameProvider = artistNameProvider;
         _monthlyListenersProvider = monthlyListenersProvider;
@@ -79,18 +83,39 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasBioSummary))]
-    [NotifyPropertyChangedFor(nameof(HasAboutExcerpt))]
-    [NotifyPropertyChangedFor(nameof(IsBioFromAi))]
+    [NotifyPropertyChangedFor(nameof(IsAiBioGenerating))]
+    [NotifyPropertyChangedFor(nameof(IsAiBioReady))]
+    [NotifyPropertyChangedFor(nameof(IsAiBioUnavailable))]
     [NotifyPropertyChangedFor(nameof(BioExcerptText))]
     [NotifyPropertyChangedFor(nameof(HeroBioLine))]
     [NotifyPropertyChangedFor(nameof(HasHeroBioLine))]
     private string? _bioSummaryText;
 
-    [ObservableProperty] private bool _isBioSummaryLoading;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAiBioGenerating))]
+    [NotifyPropertyChangedFor(nameof(IsAiBioUnavailable))]
+    private bool _isBioSummaryLoading;
+
+    [ObservableProperty]
+    private bool _wasLastBioFromCache;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAiBioGenerating))]
+    private bool _isBioSummaryStreaming;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAiBioGenerating))]
+    [NotifyPropertyChangedFor(nameof(IsAiBioUnavailable))]
+    private string? _bioSummaryUnavailableText;
 
     public bool HasBioSummary => !string.IsNullOrWhiteSpace(BioSummaryText);
-    public bool HasAboutExcerpt => HasBioSummary;
-    public bool IsBioFromAi => HasBioSummary && !HasBiography;
+    public bool IsAiBioCardVisible => _capabilities?.IsArtistBioSummarizeEnabled == true;
+    public bool HasBiographyOrAi => HasBiography || IsAiBioCardVisible;
+    public bool IsAiBioGenerating =>
+        IsAiBioCardVisible && !HasBioSummary && string.IsNullOrWhiteSpace(BioSummaryUnavailableText);
+    public bool IsAiBioReady => HasBioSummary;
+    public bool IsAiBioUnavailable =>
+        IsAiBioCardVisible && !IsBioSummaryLoading && !HasBioSummary && !string.IsNullOrWhiteSpace(BioSummaryUnavailableText);
 
     public string BioExcerptText => HasBioPeekLine
         ? BioPeekLine!
@@ -116,13 +141,20 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(BioExcerptText));
         OnPropertyChanged(nameof(HeroBioLine));
         OnPropertyChanged(nameof(HasHeroBioLine));
-        OnPropertyChanged(nameof(IsBioFromAi));
+        OnPropertyChanged(nameof(IsAiBioCardVisible));
+        OnPropertyChanged(nameof(HasBiographyOrAi));
+        OnPropertyChanged(nameof(IsAiBioGenerating));
+        OnPropertyChanged(nameof(IsAiBioReady));
+        OnPropertyChanged(nameof(IsAiBioUnavailable));
     }
 
     public void ResetForNewArtist()
     {
         _bioSummaryCts?.Cancel();
         BioSummaryText = null;
+        WasLastBioFromCache = false;
+        IsBioSummaryStreaming = false;
+        BioSummaryUnavailableText = null;
         IsBioSummaryLoading = false;
         NotifyBiographyChanged();
     }
@@ -139,11 +171,23 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task LoadBioSummaryAsync(string artistId)
     {
-        if (_bioSummarizer is null) return;
-        if (string.IsNullOrEmpty(artistId)) return;
+        if (_bioSummarizer is null)
+        {
+            BioSummaryUnavailableText = "On-device AI is not available right now.";
+            return;
+        }
+        if (string.IsNullOrEmpty(artistId))
+        {
+            BioSummaryUnavailableText = "There is not enough artist context to generate a description yet.";
+            return;
+        }
 
         var artistName = _artistNameProvider();
-        if (string.IsNullOrEmpty(artistName)) return;
+        if (string.IsNullOrEmpty(artistName))
+        {
+            BioSummaryUnavailableText = "There is not enough artist context to generate a description yet.";
+            return;
+        }
 
         _bioSummaryCts?.Cancel();
         var cts = _bioSummaryCts = new CancellationTokenSource();
@@ -152,12 +196,42 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         {
             IsBioSummaryLoading = true;
             BioSummaryText = null;
+            WasLastBioFromCache = false;
+            IsBioSummaryStreaming = false;
+            BioSummaryUnavailableText = null;
 
             var topTrackNames = _topTrackNamesProvider();
             var monthlyListeners = _monthlyListenersProvider();
             var monthlyDisplay = string.IsNullOrEmpty(monthlyListeners)
                 ? null
                 : $"{monthlyListeners} monthly listeners";
+            var streamedText = string.Empty;
+            var streamCompleted = 0;
+            var progress = new Progress<string>(delta =>
+            {
+                if (cts.IsCancellationRequested
+                    || Interlocked.CompareExchange(ref streamCompleted, 0, 0) != 0)
+                {
+                    return;
+                }
+
+                streamedText = MergeStreamingText(streamedText, delta);
+                var preview = streamedText.TrimStart();
+                if (string.IsNullOrWhiteSpace(preview))
+                    return;
+
+                RunOnDispatcher(() =>
+                {
+                    if (cts.IsCancellationRequested
+                        || Interlocked.CompareExchange(ref streamCompleted, 0, 0) != 0)
+                    {
+                        return;
+                    }
+
+                    IsBioSummaryStreaming = true;
+                    BioSummaryText = preview;
+                });
+            });
 
             var result = await _bioSummarizer.SummarizeBioAsync(
                 artistId,
@@ -165,23 +239,78 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
                 genres: null, // Not on overview today; passed when available
                 monthlyListenersDisplay: monthlyDisplay,
                 topTrackNames: topTrackNames,
-                deltaProgress: null,
+                deltaProgress: progress,
                 ct: cts.Token);
 
             if (cts.IsCancellationRequested) return;
+            Interlocked.Exchange(ref streamCompleted, 1);
             if (result.Kind == LyricsAiResultKind.Ok)
+            {
+                WasLastBioFromCache = result.FromCache;
                 BioSummaryText = result.Text;
+                IsBioSummaryStreaming = false;
+            }
+            else
+            {
+                IsBioSummaryStreaming = false;
+                BioSummaryUnavailableText = result.Kind switch
+                {
+                    LyricsAiResultKind.Filtered => "The on-device model could not describe this artist safely.",
+                    LyricsAiResultKind.Unavailable => "On-device AI is not available for this artist right now.",
+                    LyricsAiResultKind.Empty => "There is not enough artist context to generate a description yet.",
+                    _ => "The on-device model could not describe this artist right now.",
+                };
+            }
         }
         catch (OperationCanceledException) { /* artist switched */ }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "LoadBioSummaryAsync failed for {ArtistId}", artistId);
+            if (!cts.IsCancellationRequested)
+            {
+                IsBioSummaryStreaming = false;
+                BioSummaryUnavailableText = "The on-device model could not describe this artist right now.";
+            }
         }
         finally
         {
             if (!cts.IsCancellationRequested)
+            {
+                IsBioSummaryStreaming = false;
                 IsBioSummaryLoading = false;
+            }
         }
+    }
+
+    private void RunOnDispatcher(Action action)
+    {
+        var dispatcher = _dispatcherQueue;
+        if (dispatcher is null || dispatcher.HasThreadAccess)
+        {
+            action();
+            return;
+        }
+
+        if (!dispatcher.TryEnqueue(() => action()))
+            action();
+    }
+
+    private static string MergeStreamingText(string current, string delta)
+    {
+        if (string.IsNullOrEmpty(delta))
+            return current;
+
+        var next = delta.Replace("\r\n", "\n", StringComparison.Ordinal);
+        if (string.IsNullOrEmpty(current))
+            return next;
+
+        if (next.StartsWith(current, StringComparison.Ordinal))
+            return next;
+
+        if (current.EndsWith(next, StringComparison.Ordinal))
+            return current;
+
+        return current + next;
     }
 
     public void Dispose()

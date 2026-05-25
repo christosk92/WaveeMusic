@@ -123,10 +123,10 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
 
         await RunGenerationAsync(
             captionOnDone: "Lyrics meaning",
-            invoke: ct => _aiService.GetLyricsMeaningAsync(
+            invoke: (progress, ct) => _aiService.GetLyricsMeaningAsync(
                 trackUri: BuildTrackUri(_lyrics.PlaybackState.CurrentTrackId),
                 fullLyric: fullText,
-                deltaProgress: null,
+                deltaProgress: progress,
                 ct: ct,
                 trackTitle: _lyrics.CurrentSongInfo?.Title,
                 artistName: _lyrics.CurrentSongInfo?.Artist));
@@ -153,7 +153,7 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
 
     private async Task RunGenerationAsync(
         string captionOnDone,
-        Func<CancellationToken, Task<LyricsAiResult>> invoke)
+        Func<IProgress<string>, CancellationToken, Task<LyricsAiResult>> invoke)
     {
         // Cancel any prior in-flight call (track-change also flows through
         // CancelActive via DismissResult). Result card stays hidden — HasResult
@@ -165,9 +165,32 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
         {
             IsBusy = true;
             SparkleState = "Generating";
+            ResultText = string.Empty;
+            ResultCaption = "Generating";
+            HasResult = false;
+            var streamedText = string.Empty;
+            var streamCompleted = 0;
+            var progress = new Progress<string>(delta =>
+            {
+                if (cts.IsCancellationRequested
+                    || Interlocked.CompareExchange(ref streamCompleted, 0, 0) != 0)
+                {
+                    return;
+                }
 
-            var result = await invoke(cts.Token);
+                streamedText = MergeStreamingText(streamedText, delta);
+                var preview = streamedText.TrimStart();
+                if (string.IsNullOrWhiteSpace(preview))
+                    return;
+
+                ResultText = preview;
+                ResultCaption = "Generating";
+                HasResult = true;
+            });
+
+            var result = await invoke(progress, cts.Token);
             if (cts.IsCancellationRequested) return;
+            Interlocked.Exchange(ref streamCompleted, 1);
 
             switch (result.Kind)
             {
@@ -224,6 +247,24 @@ public sealed partial class LyricsAiPanelViewModel : ObservableObject, IDisposab
             if (cts == _activeCts) _activeCts = null;
             cts.Dispose();
         }
+    }
+
+    private static string MergeStreamingText(string current, string delta)
+    {
+        if (string.IsNullOrEmpty(delta))
+            return current;
+
+        var next = delta.Replace("\r\n", "\n", StringComparison.Ordinal);
+        if (string.IsNullOrEmpty(current))
+            return next;
+
+        if (next.StartsWith(current, StringComparison.Ordinal))
+            return next;
+
+        if (current.EndsWith(next, StringComparison.Ordinal))
+            return current;
+
+        return current + next;
     }
 
     private void CancelActive()

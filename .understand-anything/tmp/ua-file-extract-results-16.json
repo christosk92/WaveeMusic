@@ -1,0 +1,2454 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 25,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": "src/Wavee.Controls.Lyrics/Constants/Link.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 31,
+      "nonEmptyLines": 25,
+      "classes": [
+        {
+          "name": "Link",
+          "startLine": 3,
+          "endLine": 30,
+          "methods": [],
+          "properties": [
+            "MicrosoftStore",
+            "StorePage",
+            "AuthorGitHub",
+            "Crowdin",
+            "BetterLyricsGitHub",
+            "ShareHub",
+            "TermsOfService",
+            "PrivacyPolicy",
+            "OfficialWebsite",
+            "UserGuide",
+            "PluginDevGuide",
+            "PluginsStore",
+            "AppleMusicCfg",
+            "QQGroup",
+            "Discord",
+            "Telegram",
+            "BuyMeACoffee",
+            "PayPal",
+            "Afdian"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "MicrosoftStore",
+          "line": 5,
+          "isDefault": false
+        },
+        {
+          "name": "StorePage",
+          "line": 6,
+          "isDefault": false
+        },
+        {
+          "name": "AuthorGitHub",
+          "line": 8,
+          "isDefault": false
+        },
+        {
+          "name": "Crowdin",
+          "line": 10,
+          "isDefault": false
+        },
+        {
+          "name": "BetterLyricsGitHub",
+          "line": 12,
+          "isDefault": false
+        },
+        {
+          "name": "ShareHub",
+          "line": 14,
+          "isDefault": false
+        },
+        {
+          "name": "TermsOfService",
+          "line": 15,
+          "isDefault": false
+        },
+        {
+          "name": "PrivacyPolicy",
+          "line": 16,
+          "isDefault": false
+        },
+        {
+          "name": "OfficialWebsite",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "UserGuide",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "PluginDevGuide",
+          "line": 19,
+          "isDefault": false
+        },
+        {
+          "name": "PluginsStore",
+          "line": 20,
+          "isDefault": false
+        },
+        {
+          "name": "AppleMusicCfg",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "QQGroup",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "Discord",
+          "line": 24,
+          "isDefault": false
+        },
+        {
+          "name": "Telegram",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "BuyMeACoffee",
+          "line": 27,
+          "isDefault": false
+        },
+        {
+          "name": "PayPal",
+          "line": 28,
+          "isDefault": false
+        },
+        {
+          "name": "Afdian",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "Link",
+          "line": 3,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 20,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Constants/Time.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 13,
+      "nonEmptyLines": 12,
+      "classes": [
+        {
+          "name": "Time",
+          "startLine": 5,
+          "endLine": 12,
+          "methods": [],
+          "properties": [
+            "DebounceTimeout",
+            "LongDebounceTimeout",
+            "AnimationDuration",
+            "LongAnimationDuration",
+            "WaitingDuration"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "DebounceTimeout",
+          "line": 7,
+          "isDefault": false
+        },
+        {
+          "name": "LongDebounceTimeout",
+          "line": 8,
+          "isDefault": false
+        },
+        {
+          "name": "AnimationDuration",
+          "line": 9,
+          "isDefault": false
+        },
+        {
+          "name": "LongAnimationDuration",
+          "line": 10,
+          "isDefault": false
+        },
+        {
+          "name": "WaitingDuration",
+          "line": 11,
+          "isDefault": false
+        },
+        {
+          "name": "Time",
+          "line": 5,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 6,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 31,
+      "nonEmptyLines": 30,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 142,
+      "nonEmptyLines": 121,
+      "functions": [
+        {
+          "name": "ImageSwitcher",
+          "startLine": 58,
+          "endLine": 61,
+          "params": []
+        },
+        {
+          "name": "UpdateSource",
+          "startLine": 63,
+          "endLine": 76,
+          "params": []
+        },
+        {
+          "name": "UpdateSourceCrossfade",
+          "startLine": 78,
+          "endLine": 101,
+          "params": []
+        },
+        {
+          "name": "UpdateSourceSlide",
+          "startLine": 103,
+          "endLine": 130,
+          "params": []
+        },
+        {
+          "name": "OnDependencyPropertyChanged",
+          "startLine": 132,
+          "endLine": 141,
+          "params": [
+            "d",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ImageSwitcher",
+          "startLine": 11,
+          "endLine": 142,
+          "methods": [
+            "ImageSwitcher",
+            "UpdateSource",
+            "UpdateSourceCrossfade",
+            "UpdateSourceSlide",
+            "OnDependencyPropertyChanged"
+          ],
+          "properties": [
+            "CornerRadiusAmount",
+            "CornerRadiusAmountProperty",
+            "ShadowAmount",
+            "ShadowAmountProperty",
+            "Source",
+            "SourceProperty",
+            "Stretch",
+            "StretchProperty",
+            "SwitchType",
+            "SwitchTypeProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "CornerRadiusAmount",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "CornerRadiusAmountProperty",
+          "line": 19,
+          "isDefault": false
+        },
+        {
+          "name": "ShadowAmount",
+          "line": 22,
+          "isDefault": false
+        },
+        {
+          "name": "ShadowAmountProperty",
+          "line": 28,
+          "isDefault": false
+        },
+        {
+          "name": "Source",
+          "line": 31,
+          "isDefault": false
+        },
+        {
+          "name": "SourceProperty",
+          "line": 37,
+          "isDefault": false
+        },
+        {
+          "name": "Stretch",
+          "line": 40,
+          "isDefault": false
+        },
+        {
+          "name": "StretchProperty",
+          "line": 46,
+          "isDefault": false
+        },
+        {
+          "name": "SwitchType",
+          "line": 49,
+          "isDefault": false
+        },
+        {
+          "name": "SwitchTypeProperty",
+          "line": 55,
+          "isDefault": false
+        },
+        {
+          "name": "ImageSwitcher",
+          "line": 58,
+          "isDefault": false
+        },
+        {
+          "name": "ImageSwitcher",
+          "line": 11,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ImageSwitcher",
+          "callee": "InitializeComponent",
+          "lineNumber": 60
+        },
+        {
+          "caller": "UpdateSource",
+          "callee": "UpdateSourceCrossfade",
+          "lineNumber": 68
+        },
+        {
+          "caller": "UpdateSource",
+          "callee": "UpdateSourceSlide",
+          "lineNumber": 71
+        },
+        {
+          "caller": "UpdateSourceCrossfade",
+          "callee": "new ScalarTransition",
+          "lineNumber": 87
+        },
+        {
+          "caller": "UpdateSourceCrossfade",
+          "callee": "new ScalarTransition",
+          "lineNumber": 94
+        },
+        {
+          "caller": "UpdateSourceSlide",
+          "callee": "new Vector3Transition",
+          "lineNumber": 112
+        },
+        {
+          "caller": "UpdateSourceSlide",
+          "callee": "new ScalarTransition",
+          "lineNumber": 113
+        },
+        {
+          "caller": "UpdateSourceSlide",
+          "callee": "new Vector3Transition",
+          "lineNumber": 120
+        },
+        {
+          "caller": "UpdateSourceSlide",
+          "callee": "new ScalarTransition",
+          "lineNumber": 121
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "imageSwitcher.UpdateSource",
+          "lineNumber": 138
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 12,
+        "functionCount": 5,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 29,
+      "nonEmptyLines": 27,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 241,
+      "nonEmptyLines": 196,
+      "functions": [
+        {
+          "name": "NowPlayingCanvas",
+          "startLine": 146,
+          "endLine": 149,
+          "params": []
+        },
+        {
+          "name": "FireSeekIfHovering",
+          "startLine": 151,
+          "endLine": 151,
+          "params": []
+        },
+        {
+          "name": "RefreshHoveringLineIndex",
+          "startLine": 152,
+          "endLine": 152,
+          "params": []
+        },
+        {
+          "name": "TryRefreshHoveringLine",
+          "startLine": 153,
+          "endLine": 154,
+          "params": [
+            "lineIndex",
+            "bounds"
+          ]
+        },
+        {
+          "name": "SetClearColor",
+          "startLine": 156,
+          "endLine": 161,
+          "params": [
+            "color"
+          ]
+        },
+        {
+          "name": "OnDependencyPropertyChanged",
+          "startLine": 163,
+          "endLine": 192,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "Canvas_Draw",
+          "startLine": 195,
+          "endLine": 196,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "Canvas_Update",
+          "startLine": 198,
+          "endLine": 199,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "Canvas_CreateResources",
+          "startLine": 201,
+          "endLine": 202,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "SetRenderingActive",
+          "startLine": 204,
+          "endLine": 209,
+          "params": [
+            "isActive"
+          ]
+        },
+        {
+          "name": "UserControl_Unloaded",
+          "startLine": 211,
+          "endLine": 222,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UserControl_SizeChanged",
+          "startLine": 224,
+          "endLine": 230,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SetLyricsData",
+          "startLine": 233,
+          "endLine": 233,
+          "params": [
+            "lyricsData"
+          ]
+        },
+        {
+          "name": "SetSongInfo",
+          "startLine": 234,
+          "endLine": 234,
+          "params": [
+            "songInfo"
+          ]
+        },
+        {
+          "name": "SetPosition",
+          "startLine": 235,
+          "endLine": 235,
+          "params": [
+            "position"
+          ]
+        },
+        {
+          "name": "SetIsPlaying",
+          "startLine": 236,
+          "endLine": 236,
+          "params": [
+            "isPlaying"
+          ]
+        },
+        {
+          "name": "SetAlbumArtBytes",
+          "startLine": 237,
+          "endLine": 237,
+          "params": [
+            "imageBytes"
+          ]
+        },
+        {
+          "name": "SetPositionOffset",
+          "startLine": 238,
+          "endLine": 238,
+          "params": [
+            "positionOffsetMs"
+          ]
+        },
+        {
+          "name": "SetNowPlayingPalette",
+          "startLine": 239,
+          "endLine": 239,
+          "params": [
+            "nowPlayingPalette"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "NowPlayingCanvas",
+          "startLine": 17,
+          "endLine": 240,
+          "methods": [
+            "NowPlayingCanvas",
+            "FireSeekIfHovering",
+            "RefreshHoveringLineIndex",
+            "TryRefreshHoveringLine",
+            "SetClearColor",
+            "OnDependencyPropertyChanged",
+            "Canvas_Draw",
+            "Canvas_Update",
+            "Canvas_CreateResources",
+            "SetRenderingActive",
+            "UserControl_Unloaded",
+            "UserControl_SizeChanged",
+            "SetLyricsData",
+            "SetSongInfo",
+            "SetPosition",
+            "SetIsPlaying",
+            "SetAlbumArtBytes",
+            "SetPositionOffset",
+            "SetNowPlayingPalette"
+          ],
+          "properties": [
+            "_engine",
+            "SongPosition",
+            "CurrentCanvasYScroll",
+            "ActualLyricsHeight",
+            "CurrentHoveringLineIndex",
+            "LyricsWindowStatus",
+            "LyricsWindowStatusProperty",
+            "AlbumArtRect",
+            "AlbumArtRectProperty",
+            "LyricsStartX",
+            "LyricsStartXProperty",
+            "LyricsStartY",
+            "LyricsStartYProperty",
+            "LyricsWidth",
+            "LyricsWidthProperty",
+            "LyricsHeight",
+            "LyricsHeightProperty",
+            "LyricsOpacity",
+            "LyricsOpacityProperty",
+            "MouseScrollOffset",
+            "MouseScrollOffsetProperty",
+            "MousePosition",
+            "MousePositionProperty",
+            "IsMouseInLyricsArea",
+            "IsMouseInLyricsAreaProperty",
+            "IsMousePressing",
+            "IsMousePressingProperty",
+            "IsMouseScrolling",
+            "IsMouseScrollingProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "SongPosition",
+          "line": 22,
+          "isDefault": false
+        },
+        {
+          "name": "CurrentCanvasYScroll",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "ActualLyricsHeight",
+          "line": 24,
+          "isDefault": false
+        },
+        {
+          "name": "CurrentHoveringLineIndex",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsWindowStatus",
+          "line": 36,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsWindowStatusProperty",
+          "line": 42,
+          "isDefault": false
+        },
+        {
+          "name": "AlbumArtRect",
+          "line": 45,
+          "isDefault": false
+        },
+        {
+          "name": "AlbumArtRectProperty",
+          "line": 51,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsStartX",
+          "line": 54,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsStartXProperty",
+          "line": 60,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsStartY",
+          "line": 63,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsStartYProperty",
+          "line": 69,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsWidth",
+          "line": 72,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsWidthProperty",
+          "line": 78,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsHeight",
+          "line": 81,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsHeightProperty",
+          "line": 87,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsOpacity",
+          "line": 90,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsOpacityProperty",
+          "line": 96,
+          "isDefault": false
+        },
+        {
+          "name": "MouseScrollOffset",
+          "line": 99,
+          "isDefault": false
+        },
+        {
+          "name": "MouseScrollOffsetProperty",
+          "line": 105,
+          "isDefault": false
+        },
+        {
+          "name": "MousePosition",
+          "line": 108,
+          "isDefault": false
+        },
+        {
+          "name": "MousePositionProperty",
+          "line": 114,
+          "isDefault": false
+        },
+        {
+          "name": "IsMouseInLyricsArea",
+          "line": 117,
+          "isDefault": false
+        },
+        {
+          "name": "IsMouseInLyricsAreaProperty",
+          "line": 123,
+          "isDefault": false
+        },
+        {
+          "name": "IsMousePressing",
+          "line": 126,
+          "isDefault": false
+        },
+        {
+          "name": "IsMousePressingProperty",
+          "line": 132,
+          "isDefault": false
+        },
+        {
+          "name": "IsMouseScrolling",
+          "line": 135,
+          "isDefault": false
+        },
+        {
+          "name": "IsMouseScrollingProperty",
+          "line": 141,
+          "isDefault": false
+        },
+        {
+          "name": "NowPlayingCanvas",
+          "line": 146,
+          "isDefault": false
+        },
+        {
+          "name": "FireSeekIfHovering",
+          "line": 151,
+          "isDefault": false
+        },
+        {
+          "name": "RefreshHoveringLineIndex",
+          "line": 152,
+          "isDefault": false
+        },
+        {
+          "name": "TryRefreshHoveringLine",
+          "line": 153,
+          "isDefault": false
+        },
+        {
+          "name": "SetClearColor",
+          "line": 156,
+          "isDefault": false
+        },
+        {
+          "name": "SetRenderingActive",
+          "line": 204,
+          "isDefault": false
+        },
+        {
+          "name": "SetLyricsData",
+          "line": 233,
+          "isDefault": false
+        },
+        {
+          "name": "SetSongInfo",
+          "line": 234,
+          "isDefault": false
+        },
+        {
+          "name": "SetPosition",
+          "line": 235,
+          "isDefault": false
+        },
+        {
+          "name": "SetIsPlaying",
+          "line": 236,
+          "isDefault": false
+        },
+        {
+          "name": "SetAlbumArtBytes",
+          "line": 237,
+          "isDefault": false
+        },
+        {
+          "name": "SetPositionOffset",
+          "line": 238,
+          "isDefault": false
+        },
+        {
+          "name": "SetNowPlayingPalette",
+          "line": 239,
+          "isDefault": false
+        },
+        {
+          "name": "NowPlayingCanvas",
+          "line": 17,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "NowPlayingCanvas",
+          "callee": "InitializeComponent",
+          "lineNumber": 148
+        },
+        {
+          "caller": "FireSeekIfHovering",
+          "callee": "_engine.FireSeekIfHovering",
+          "lineNumber": 151
+        },
+        {
+          "caller": "RefreshHoveringLineIndex",
+          "callee": "_engine.RefreshHoveringLineIndex",
+          "lineNumber": 152
+        },
+        {
+          "caller": "TryRefreshHoveringLine",
+          "callee": "_engine.TryRefreshHoveringLine",
+          "lineNumber": 154
+        },
+        {
+          "caller": "SetClearColor",
+          "callee": "_engine.SetClearColor",
+          "lineNumber": 158
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "engine.SetSettings",
+          "lineNumber": 169
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "engine.SetAlbumArtRect",
+          "lineNumber": 171
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "engine.SetLyricsStartX",
+          "lineNumber": 173
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "Convert.ToDouble",
+          "lineNumber": 173
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "engine.SetLyricsStartY",
+          "lineNumber": 175
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "Convert.ToDouble",
+          "lineNumber": 175
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "engine.SetLyricsWidth",
+          "lineNumber": 177
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "Convert.ToDouble",
+          "lineNumber": 177
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "engine.SetLyricsHeight",
+          "lineNumber": 179
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "Convert.ToDouble",
+          "lineNumber": 179
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "engine.SetLyricsOpacity",
+          "lineNumber": 181
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "Convert.ToDouble",
+          "lineNumber": 181
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "engine.SetMouseScrollOffset",
+          "lineNumber": 183
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "Convert.ToDouble",
+          "lineNumber": 183
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "engine.SetMousePosition",
+          "lineNumber": 185
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "engine.SetIsMouseInLyricsArea",
+          "lineNumber": 187
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "engine.SetIsMousePressing",
+          "lineNumber": 189
+        },
+        {
+          "caller": "OnDependencyPropertyChanged",
+          "callee": "engine.SetIsMouseScrolling",
+          "lineNumber": 191
+        },
+        {
+          "caller": "Canvas_Draw",
+          "callee": "_engine.Draw",
+          "lineNumber": 196
+        },
+        {
+          "caller": "Canvas_Update",
+          "callee": "_engine.Update",
+          "lineNumber": 199
+        },
+        {
+          "caller": "Canvas_CreateResources",
+          "callee": "_engine.CreateResources",
+          "lineNumber": 202
+        },
+        {
+          "caller": "SetRenderingActive",
+          "callee": "_engine.SetIsActive",
+          "lineNumber": 208
+        },
+        {
+          "caller": "UserControl_Unloaded",
+          "callee": "Canvas.RemoveFromVisualTree",
+          "lineNumber": 218
+        },
+        {
+          "caller": "UserControl_Unloaded",
+          "callee": "_engine.Dispose",
+          "lineNumber": 221
+        },
+        {
+          "caller": "UserControl_SizeChanged",
+          "callee": "Math.Max",
+          "lineNumber": 228
+        },
+        {
+          "caller": "UserControl_SizeChanged",
+          "callee": "Math.Max",
+          "lineNumber": 229
+        },
+        {
+          "caller": "SetLyricsData",
+          "callee": "_engine.SetLyricsData",
+          "lineNumber": 233
+        },
+        {
+          "caller": "SetSongInfo",
+          "callee": "_engine.SetSongInfo",
+          "lineNumber": 234
+        },
+        {
+          "caller": "SetPosition",
+          "callee": "_engine.SetPosition",
+          "lineNumber": 235
+        },
+        {
+          "caller": "SetIsPlaying",
+          "callee": "_engine.SetIsPlaying",
+          "lineNumber": 236
+        },
+        {
+          "caller": "SetAlbumArtBytes",
+          "callee": "_engine.SetAlbumArtBytes",
+          "lineNumber": 237
+        },
+        {
+          "caller": "SetPositionOffset",
+          "callee": "_engine.SetPositionOffset",
+          "lineNumber": 238
+        },
+        {
+          "caller": "SetNowPlayingPalette",
+          "callee": "_engine.SetNowPlayingPalette",
+          "lineNumber": 239
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 42,
+        "functionCount": 19,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 34,
+      "nonEmptyLines": 32,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 85,
+      "nonEmptyLines": 68,
+      "functions": [
+        {
+          "name": "ShadowImage",
+          "startLine": 46,
+          "endLine": 49,
+          "params": []
+        },
+        {
+          "name": "ShadowCastGrid_SizeChanged",
+          "startLine": 51,
+          "endLine": 54,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ShadowRect_Loaded",
+          "startLine": 56,
+          "endLine": 60,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ShadowRect_SizeChanged",
+          "startLine": 62,
+          "endLine": 65,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateShadowLayout",
+          "startLine": 67,
+          "endLine": 79,
+          "params": []
+        },
+        {
+          "name": "OnLayoutPropertyChanged",
+          "startLine": 81,
+          "endLine": 84,
+          "params": [
+            "d",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ShadowImage",
+          "startLine": 8,
+          "endLine": 85,
+          "methods": [
+            "ShadowImage",
+            "ShadowCastGrid_SizeChanged",
+            "ShadowRect_Loaded",
+            "ShadowRect_SizeChanged",
+            "UpdateShadowLayout",
+            "OnLayoutPropertyChanged"
+          ],
+          "properties": [
+            "Source",
+            "SourceProperty",
+            "Stretch",
+            "StretchProperty",
+            "CornerRadiusAmount",
+            "CornerRadiusAmountProperty",
+            "ShadowAmount",
+            "ShadowAmountProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Source",
+          "line": 10,
+          "isDefault": false
+        },
+        {
+          "name": "SourceProperty",
+          "line": 16,
+          "isDefault": false
+        },
+        {
+          "name": "Stretch",
+          "line": 19,
+          "isDefault": false
+        },
+        {
+          "name": "StretchProperty",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "CornerRadiusAmount",
+          "line": 28,
+          "isDefault": false
+        },
+        {
+          "name": "CornerRadiusAmountProperty",
+          "line": 34,
+          "isDefault": false
+        },
+        {
+          "name": "ShadowAmount",
+          "line": 37,
+          "isDefault": false
+        },
+        {
+          "name": "ShadowAmountProperty",
+          "line": 43,
+          "isDefault": false
+        },
+        {
+          "name": "ShadowImage",
+          "line": 46,
+          "isDefault": false
+        },
+        {
+          "name": "ShadowImage",
+          "line": 8,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ShadowImage",
+          "callee": "InitializeComponent",
+          "lineNumber": 48
+        },
+        {
+          "caller": "ShadowCastGrid_SizeChanged",
+          "callee": "UpdateShadowLayout",
+          "lineNumber": 53
+        },
+        {
+          "caller": "ShadowRect_Loaded",
+          "callee": "DropShadow.Receivers.Add",
+          "lineNumber": 58
+        },
+        {
+          "caller": "ShadowRect_Loaded",
+          "callee": "UpdateShadowLayout",
+          "lineNumber": 59
+        },
+        {
+          "caller": "ShadowRect_SizeChanged",
+          "callee": "UpdateShadowLayout",
+          "lineNumber": 64
+        },
+        {
+          "caller": "UpdateShadowLayout",
+          "callee": "new CornerRadius",
+          "lineNumber": 77
+        },
+        {
+          "caller": "UpdateShadowLayout",
+          "callee": "new Vector3",
+          "lineNumber": 78
+        },
+        {
+          "caller": "OnLayoutPropertyChanged",
+          "callee": "si.UpdateShadowLayout",
+          "lineNumber": 83
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 10,
+        "functionCount": 6,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Converters/FPSToTimeSpanConverter.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 23,
+      "nonEmptyLines": 21,
+      "functions": [
+        {
+          "name": "Convert",
+          "startLine": 9,
+          "endLine": 16,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        },
+        {
+          "name": "ConvertBack",
+          "startLine": 18,
+          "endLine": 21,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "FPSToTimeSpanConverter",
+          "startLine": 7,
+          "endLine": 22,
+          "methods": [
+            "Convert",
+            "ConvertBack"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "Convert",
+          "line": 9,
+          "isDefault": false
+        },
+        {
+          "name": "ConvertBack",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "FPSToTimeSpanConverter",
+          "line": 7,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Convert",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 13
+        },
+        {
+          "caller": "Convert",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 15
+        },
+        {
+          "caller": "ConvertBack",
+          "callee": "new NotImplementedException",
+          "lineNumber": 20
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 202,
+      "nonEmptyLines": 172,
+      "functions": [
+        {
+          "name": "InitializeAsync",
+          "startLine": 134,
+          "endLine": 139,
+          "params": [
+            "context"
+          ]
+        },
+        {
+          "name": "OnInitializeAsync",
+          "startLine": 140,
+          "endLine": 140,
+          "params": []
+        },
+        {
+          "name": "DisposeAsync",
+          "startLine": 142,
+          "endLine": 151,
+          "params": []
+        },
+        {
+          "name": "OnShutdownAsync",
+          "startLine": 152,
+          "endLine": 155,
+          "params": []
+        },
+        {
+          "name": "GetSettingDefDict",
+          "startLine": 157,
+          "endLine": 199,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "PluginBase",
+          "startLine": 15,
+          "endLine": 201,
+          "methods": [
+            "InitializeAsync",
+            "OnInitializeAsync",
+            "DisposeAsync",
+            "OnShutdownAsync",
+            "GetSettingDefDict"
+          ],
+          "properties": [
+            "_isDisposed",
+            "Config",
+            "Title",
+            "Description",
+            "Author",
+            "Id",
+            "LastUpdated",
+            "Version",
+            "RepositoryUrl",
+            "_context",
+            "Context"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Config",
+          "line": 19,
+          "isDefault": false
+        },
+        {
+          "name": "Title",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "Description",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "Author",
+          "line": 37,
+          "isDefault": false
+        },
+        {
+          "name": "Id",
+          "line": 58,
+          "isDefault": false
+        },
+        {
+          "name": "LastUpdated",
+          "line": 65,
+          "isDefault": false
+        },
+        {
+          "name": "Version",
+          "line": 87,
+          "isDefault": false
+        },
+        {
+          "name": "RepositoryUrl",
+          "line": 110,
+          "isDefault": false
+        },
+        {
+          "name": "InitializeAsync",
+          "line": 134,
+          "isDefault": false
+        },
+        {
+          "name": "DisposeAsync",
+          "line": 142,
+          "isDefault": false
+        },
+        {
+          "name": "GetSettingDefDict",
+          "line": 157,
+          "isDefault": false
+        },
+        {
+          "name": "PluginBase",
+          "line": 15,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "InitializeAsync",
+          "callee": "Config.BindConfigurator",
+          "lineNumber": 137
+        },
+        {
+          "caller": "InitializeAsync",
+          "callee": "OnInitializeAsync",
+          "lineNumber": 138
+        },
+        {
+          "caller": "DisposeAsync",
+          "callee": "OnShutdownAsync",
+          "lineNumber": 146
+        },
+        {
+          "caller": "DisposeAsync",
+          "callee": "GC.SuppressFinalize",
+          "lineNumber": 150
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "new Dictionary<string, SettingDef>",
+          "lineNumber": 159
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "typeof(TConfig).GetProperties",
+          "lineNumber": 161
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "prop.GetValue",
+          "lineNumber": 165
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "Context.Configurator.Get",
+          "lineNumber": 165
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "SettingBuilder.Text",
+          "lineNumber": 172
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "SettingBuilder.Bool",
+          "lineNumber": 175
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "SettingBuilder.Number",
+          "lineNumber": 178
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "SettingBuilder.Number",
+          "lineNumber": 181
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "SettingBuilder.Number",
+          "lineNumber": 184
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "SettingBuilder.Choice",
+          "lineNumber": 187
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "((Array)value).Cast<string>().ToList",
+          "lineNumber": 187
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "((Array)value).Cast<string>",
+          "lineNumber": 187
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "((Array)value).GetValue(0)?.ToString",
+          "lineNumber": 187
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "((Array)value).GetValue",
+          "lineNumber": 187
+        },
+        {
+          "caller": "GetSettingDefDict",
+          "callee": "dict.Add",
+          "lineNumber": 195
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 12,
+        "functionCount": 5,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Abstractions/PluginConfigBase.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 34,
+      "nonEmptyLines": 29,
+      "functions": [
+        {
+          "name": "BindConfigurator",
+          "startLine": 11,
+          "endLine": 14,
+          "params": [
+            "configurator"
+          ]
+        },
+        {
+          "name": "Get",
+          "startLine": 16,
+          "endLine": 26,
+          "params": [
+            "defaultValue",
+            "key"
+          ]
+        },
+        {
+          "name": "Set",
+          "startLine": 28,
+          "endLine": 31,
+          "params": [
+            "value",
+            "key"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "PluginConfigBase",
+          "startLine": 7,
+          "endLine": 33,
+          "methods": [
+            "BindConfigurator",
+            "Get",
+            "Set"
+          ],
+          "properties": [
+            "_configurator"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "BindConfigurator",
+          "line": 11,
+          "isDefault": false
+        },
+        {
+          "name": "PluginConfigBase",
+          "line": 7,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Get",
+          "callee": "Convert.ChangeType",
+          "lineNumber": 20
+        },
+        {
+          "caller": "Get",
+          "callee": "_configurator.Get",
+          "lineNumber": 20
+        },
+        {
+          "caller": "Set",
+          "callee": "_configurator.Set",
+          "lineNumber": 30
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 3,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/DirtyFlags.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 14,
+      "nonEmptyLines": 13,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Enums/ConfigChangedBy.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 8,
+      "nonEmptyLines": 8,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Enums/LyricsSearchProvider.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 18,
+      "nonEmptyLines": 17,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 119,
+      "nonEmptyLines": 100,
+      "functions": [
+        {
+          "name": "Run",
+          "startLine": 12,
+          "endLine": 29,
+          "params": [
+            "configType",
+            "langsDir",
+            "targetLanguages",
+            "defaultLang"
+          ]
+        },
+        {
+          "name": "Run",
+          "startLine": 31,
+          "endLine": 35,
+          "params": [
+            "langsDir",
+            "targetLanguages",
+            "defaultLang"
+          ]
+        },
+        {
+          "name": "SyncTargetLanguage",
+          "startLine": 37,
+          "endLine": 58,
+          "params": [
+            "codeMap",
+            "filePath"
+          ]
+        },
+        {
+          "name": "ExtractFromCode",
+          "startLine": 60,
+          "endLine": 88,
+          "params": [
+            "type"
+          ]
+        },
+        {
+          "name": "ExtractFromCode",
+          "startLine": 90,
+          "endLine": 93,
+          "params": []
+        },
+        {
+          "name": "ReadJson",
+          "startLine": 95,
+          "endLine": 104,
+          "params": [
+            "path"
+          ]
+        },
+        {
+          "name": "SaveJson",
+          "startLine": 106,
+          "endLine": 114,
+          "params": [
+            "data",
+            "path"
+          ]
+        },
+        {
+          "name": "SplitCamelCase",
+          "startLine": 116,
+          "endLine": 117,
+          "params": [
+            "str"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "LangGenerator",
+          "startLine": 10,
+          "endLine": 119,
+          "methods": [
+            "Run",
+            "Run",
+            "SyncTargetLanguage",
+            "ExtractFromCode",
+            "ExtractFromCode",
+            "ReadJson",
+            "SaveJson",
+            "SplitCamelCase"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "Run",
+          "line": 12,
+          "isDefault": false
+        },
+        {
+          "name": "Run",
+          "line": 31,
+          "isDefault": false
+        },
+        {
+          "name": "LangGenerator",
+          "line": 10,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Run",
+          "callee": "Directory.CreateDirectory",
+          "lineNumber": 14
+        },
+        {
+          "caller": "Run",
+          "callee": "ExtractFromCode",
+          "lineNumber": 15
+        },
+        {
+          "caller": "Run",
+          "callee": "Path.Combine",
+          "lineNumber": 18
+        },
+        {
+          "caller": "Run",
+          "callee": "lang.Equals",
+          "lineNumber": 20
+        },
+        {
+          "caller": "Run",
+          "callee": "SaveJson",
+          "lineNumber": 22
+        },
+        {
+          "caller": "Run",
+          "callee": "SyncTargetLanguage",
+          "lineNumber": 26
+        },
+        {
+          "caller": "Run",
+          "callee": "Run",
+          "lineNumber": 34
+        },
+        {
+          "caller": "SyncTargetLanguage",
+          "callee": "ReadJson",
+          "lineNumber": 39
+        },
+        {
+          "caller": "SyncTargetLanguage",
+          "callee": "new SortedDictionary<string, string>",
+          "lineNumber": 40
+        },
+        {
+          "caller": "SyncTargetLanguage",
+          "callee": "currentMap.TryGetValue",
+          "lineNumber": 47
+        },
+        {
+          "caller": "SyncTargetLanguage",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 47
+        },
+        {
+          "caller": "SyncTargetLanguage",
+          "callee": "SaveJson",
+          "lineNumber": 57
+        },
+        {
+          "caller": "ExtractFromCode",
+          "callee": "new SortedDictionary<string, string>",
+          "lineNumber": 62
+        },
+        {
+          "caller": "ExtractFromCode",
+          "callee": "type.GetProperties",
+          "lineNumber": 63
+        },
+        {
+          "caller": "ExtractFromCode",
+          "callee": "prop.GetCustomAttribute<DisplayAttribute>",
+          "lineNumber": 71
+        },
+        {
+          "caller": "ExtractFromCode",
+          "callee": "SplitCamelCase",
+          "lineNumber": 72
+        },
+        {
+          "caller": "ExtractFromCode",
+          "callee": "Enum.GetNames",
+          "lineNumber": 80
+        },
+        {
+          "caller": "ExtractFromCode",
+          "callee": "ExtractFromCode",
+          "lineNumber": 92
+        },
+        {
+          "caller": "ReadJson",
+          "callee": "File.ReadAllText",
+          "lineNumber": 99
+        },
+        {
+          "caller": "ReadJson",
+          "callee": "new JsonSerializerOptions",
+          "lineNumber": 100
+        },
+        {
+          "caller": "ReadJson",
+          "callee": "JsonSerializer.Deserialize<Dictionary<string, string>>",
+          "lineNumber": 101
+        },
+        {
+          "caller": "SaveJson",
+          "callee": "new JsonSerializerOptions",
+          "lineNumber": 108
+        },
+        {
+          "caller": "SaveJson",
+          "callee": "File.WriteAllText",
+          "lineNumber": 113
+        },
+        {
+          "caller": "SaveJson",
+          "callee": "JsonSerializer.Serialize",
+          "lineNumber": 113
+        },
+        {
+          "caller": "SplitCamelCase",
+          "callee": "System.Text.RegularExpressions.Regex.Replace(str, \"([A-Z])\", \" $1\").Trim",
+          "lineNumber": 117
+        },
+        {
+          "caller": "SplitCamelCase",
+          "callee": "System.Text.RegularExpressions.Regex.Replace",
+          "lineNumber": 117
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 8,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Helpers/SettingBuilder.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 90,
+      "nonEmptyLines": 83,
+      "functions": [
+        {
+          "name": "Bool",
+          "startLine": 11,
+          "endLine": 21,
+          "params": [
+            "propertyInfo",
+            "loc",
+            "defaultValue"
+          ]
+        },
+        {
+          "name": "Text",
+          "startLine": 23,
+          "endLine": 33,
+          "params": [
+            "propertyInfo",
+            "loc",
+            "defaultValue"
+          ]
+        },
+        {
+          "name": "Password",
+          "startLine": 35,
+          "endLine": 46,
+          "params": [
+            "propertyInfo",
+            "loc",
+            "defaultValue"
+          ]
+        },
+        {
+          "name": "Number",
+          "startLine": 48,
+          "endLine": 61,
+          "params": [
+            "propertyInfo",
+            "loc",
+            "defaultValue",
+            "min",
+            "max",
+            "step"
+          ]
+        },
+        {
+          "name": "Choice",
+          "startLine": 63,
+          "endLine": 74,
+          "params": [
+            "propertyInfo",
+            "loc",
+            "options",
+            "defaultValue"
+          ]
+        },
+        {
+          "name": "Action",
+          "startLine": 76,
+          "endLine": 87,
+          "params": [
+            "propertyInfo",
+            "loc",
+            "action"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "SettingBuilder",
+          "startLine": 9,
+          "endLine": 89,
+          "methods": [
+            "Bool",
+            "Text",
+            "Password",
+            "Number",
+            "Choice",
+            "Action"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "Bool",
+          "line": 11,
+          "isDefault": false
+        },
+        {
+          "name": "Text",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "Password",
+          "line": 35,
+          "isDefault": false
+        },
+        {
+          "name": "Number",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "Choice",
+          "line": 63,
+          "isDefault": false
+        },
+        {
+          "name": "Action",
+          "line": 76,
+          "isDefault": false
+        },
+        {
+          "name": "SettingBuilder",
+          "line": 9,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Bool",
+          "callee": "new BoolSettingDef",
+          "lineNumber": 14
+        },
+        {
+          "caller": "Text",
+          "callee": "new TextSettingDef",
+          "lineNumber": 26
+        },
+        {
+          "caller": "Password",
+          "callee": "new TextSettingDef",
+          "lineNumber": 38
+        },
+        {
+          "caller": "Number",
+          "callee": "new NumberSettingDef",
+          "lineNumber": 51
+        },
+        {
+          "caller": "Choice",
+          "callee": "new ChoiceSettingDef",
+          "lineNumber": 66
+        },
+        {
+          "caller": "Action",
+          "callee": "new ActionSettingDef",
+          "lineNumber": 79
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 7,
+        "functionCount": 6,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Helpers/SettingsIO.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 27,
+      "nonEmptyLines": 22,
+      "functions": [
+        {
+          "name": "SaveSettings",
+          "startLine": 8,
+          "endLine": 11,
+          "params": [
+            "path",
+            "settings",
+            "jsonTypeInfo"
+          ]
+        },
+        {
+          "name": "ReadSettings",
+          "startLine": 13,
+          "endLine": 25,
+          "params": [
+            "path",
+            "jsonTypeInfo"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "SettingsIO",
+          "startLine": 6,
+          "endLine": 26,
+          "methods": [
+            "SaveSettings",
+            "ReadSettings"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "SaveSettings",
+          "line": 8,
+          "isDefault": false
+        },
+        {
+          "name": "ReadSettings",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "SettingsIO",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "SaveSettings",
+          "callee": "File.WriteAllText",
+          "lineNumber": 10
+        },
+        {
+          "caller": "SaveSettings",
+          "callee": "System.Text.Json.JsonSerializer.Serialize",
+          "lineNumber": 10
+        },
+        {
+          "caller": "ReadSettings",
+          "callee": "File.Exists",
+          "lineNumber": 15
+        },
+        {
+          "caller": "ReadSettings",
+          "callee": "new T",
+          "lineNumber": 16
+        },
+        {
+          "caller": "ReadSettings",
+          "callee": "File.ReadAllText",
+          "lineNumber": 18
+        },
+        {
+          "caller": "ReadSettings",
+          "callee": "System.Text.Json.JsonSerializer.Deserialize",
+          "lineNumber": 19
+        },
+        {
+          "caller": "ReadSettings",
+          "callee": "new T",
+          "lineNumber": 22
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsSource.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 22,
+      "nonEmptyLines": 21,
+      "classes": [
+        {
+          "name": "ILyricsSource",
+          "startLine": 8,
+          "endLine": 21,
+          "methods": [
+            "GetLyricsAsync"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "ILyricsSource",
+          "line": 8,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsTranslator.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 9,
+      "nonEmptyLines": 8,
+      "classes": [
+        {
+          "name": "ILyricsTranslator",
+          "startLine": 5,
+          "endLine": 8,
+          "methods": [
+            "GetTranslationAsync"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "ILyricsTranslator",
+          "line": 5,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsTransliterator.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 10,
+      "nonEmptyLines": 9,
+      "classes": [
+        {
+          "name": "ILyricsTransliterator",
+          "startLine": 6,
+          "endLine": 9,
+          "methods": [
+            "GetTransliterationAsync"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "ILyricsTransliterator",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Interfaces/IConfigurator.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 13,
+      "nonEmptyLines": 11,
+      "classes": [
+        {
+          "name": "IConfigurator",
+          "startLine": 6,
+          "endLine": 12,
+          "methods": [
+            "Get",
+            "Set"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "IConfigurator",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Interfaces/Infrastructure/IPluginContext.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 19,
+      "nonEmptyLines": 17,
+      "classes": [
+        {
+          "name": "IPluginContext",
+          "startLine": 6,
+          "endLine": 18,
+          "methods": [],
+          "properties": [
+            "PluginDirectory",
+            "AIService",
+            "Localizer",
+            "Configurator"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IPluginContext",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Interfaces/ILocalizer.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 9,
+      "nonEmptyLines": 9,
+      "classes": [
+        {
+          "name": "ILocalizer",
+          "startLine": 3,
+          "endLine": 8,
+          "methods": [
+            "GetString"
+          ],
+          "properties": [
+            "CurrentLanguage"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ILocalizer",
+          "line": 3,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Interfaces/IPlugin.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 24,
+      "nonEmptyLines": 20,
+      "classes": [
+        {
+          "name": "IPlugin",
+          "startLine": 9,
+          "endLine": 23,
+          "methods": [
+            "InitializeAsync",
+            "GetSettingDefDict"
+          ],
+          "properties": [
+            "Title",
+            "Description",
+            "Author",
+            "Id",
+            "Version",
+            "LastUpdated",
+            "RepositoryUrl"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IPlugin",
+          "line": 9,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Interfaces/Services/IAIService.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 9,
+      "nonEmptyLines": 8,
+      "classes": [
+        {
+          "name": "IAIService",
+          "startLine": 5,
+          "endLine": 8,
+          "methods": [
+            "ChatAsync"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "IAIService",
+          "line": 5,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    }
+  ]
+}

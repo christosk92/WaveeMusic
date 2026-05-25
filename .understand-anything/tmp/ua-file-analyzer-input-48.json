@@ -1,0 +1,156 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/Styles/TabbedCommandBarStyles.xaml",
+      "language": "xaml",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Styles/TextBlockStyles.xaml",
+      "language": "xaml",
+      "sizeLines": 41,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Styles/ThemeDictionaries.xaml",
+      "language": "xaml",
+      "sizeLines": 67,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Themes/AiBrandTheme.xaml",
+      "language": "xaml",
+      "sizeLines": 159,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Themes/ContextMenu.xaml",
+      "language": "xaml",
+      "sizeLines": 86,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/AiSettingsViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 279,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/AlbumsLibraryViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 1207,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/AlbumViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 2058,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistBioViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 193,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistDiscographyViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 745,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistExtrasViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 212,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistHeaderViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 341,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistPlaylistVm.cs",
+      "language": "csharp",
+      "sizeLines": 11,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistRelatedArtistsViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 51,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistReleaseVm.cs",
+      "language": "csharp",
+      "sizeLines": 46,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistSocialLinkVm.cs",
+      "language": "csharp",
+      "sizeLines": 7,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopCityVm.cs",
+      "language": "csharp",
+      "sizeLines": 9,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 677,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTrackVm.cs",
+      "language": "csharp",
+      "sizeLines": 98,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/ConcertVm.cs",
+      "language": "csharp",
+      "sizeLines": 7,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/MerchItemVm.cs",
+      "language": "csharp",
+      "sizeLines": 10,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/MusicVideoVm.cs",
+      "language": "csharp",
+      "sizeLines": 18,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Artist/RelatedArtistVm.cs",
+      "language": "csharp",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/ArtistAlbumGroupViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 145,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/ArtistAlbumItemViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 85,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {}
+}

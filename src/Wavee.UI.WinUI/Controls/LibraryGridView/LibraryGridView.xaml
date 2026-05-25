@@ -67,6 +67,8 @@
             <ItemsRepeater
                 x:Name="ShimmerOverlay"
                 Grid.Row="2"
+                x:Load="{x:Bind IsLoading, Mode=OneWay}"
+                Loaded="ShimmerOverlay_Loaded"
                 Visibility="Collapsed">
                 <ItemsRepeater.Layout>
                     <UniformGridLayout
@@ -131,6 +133,39 @@
                 x:Name="DetailContentPresenter"
                 Content="{x:Bind DetailContent, Mode=OneWay}"
                 Visibility="{x:Bind SelectedItem, Converter={StaticResource NullToVisibilityConverter}, Mode=OneWay}"/>
+
+            <Grid
+                x:Name="DetailLoadingOverlay"
+                x:Load="{x:Bind IsLoading, Mode=OneWay}"
+                Loaded="DetailLoadingOverlay_Loaded"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                Visibility="Collapsed">
+                <StackPanel Spacing="18">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <controls1:Shimmer Width="80" Height="80" CornerRadius="6"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8">
+                            <controls1:Shimmer Height="20" Width="180" HorizontalAlignment="Left"/>
+                            <controls1:Shimmer Height="14" Width="120" HorizontalAlignment="Left"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+                                <controls1:Shimmer Width="84" Height="32" CornerRadius="16"/>
+                                <controls1:Shimmer Width="96" Height="32" CornerRadius="16"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Spacing="10">
+                        <controls1:Shimmer Height="14" Width="70" HorizontalAlignment="Left"/>
+                        <controls1:Shimmer Height="42" CornerRadius="6"/>
+                        <controls1:Shimmer Height="42" CornerRadius="6"/>
+                        <controls1:Shimmer Height="42" CornerRadius="6"/>
+                        <controls1:Shimmer Height="42" CornerRadius="6"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
         </Grid>
 
     </Grid>

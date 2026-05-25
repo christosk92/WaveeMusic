@@ -13,6 +13,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Extensions;
 using Wavee.UI.WinUI.Services;
@@ -28,7 +29,7 @@ public enum LikedSongsSortColumn { Title, Artist, Album, AddedAt }
 /// <summary>
 /// ViewModel for the Liked Songs page with imperative filtering and sorting.
 /// </summary>
-public sealed partial class LikedSongsViewModel : Wavee.UI.ViewModels.Helpers.TrackListViewModelBase, ITrackListViewModel, IDisposable
+public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackListViewModel, IDisposable
 {
     private readonly ILibraryDataService _libraryDataService;
     private readonly Wavee.UI.Services.Infra.IReloadCoordinator _reloadCoordinator;
@@ -61,9 +62,6 @@ public sealed partial class LikedSongsViewModel : Wavee.UI.ViewModels.Helpers.Tr
     private readonly DispatcherTimer _searchDebounceTimer;
 
     [ObservableProperty]
-    private string _searchQuery = "";
-
-    [ObservableProperty]
     private bool _showOnlyVideoTracks;
 
     [ObservableProperty]
@@ -71,9 +69,6 @@ public sealed partial class LikedSongsViewModel : Wavee.UI.ViewModels.Helpers.Tr
 
     [ObservableProperty]
     private bool _isSortDescending = true;
-
-    [ObservableProperty]
-    private bool _isLoading;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasFilterChipsOrShimmer))]
@@ -131,7 +126,10 @@ public sealed partial class LikedSongsViewModel : Wavee.UI.ViewModels.Helpers.Tr
         Wavee.UI.Services.Infra.IReloadCoordinator reloadCoordinator,
         IAuthState? authState = null,
         IMusicVideoMetadataService? musicVideoMetadata = null,
-        ILogger<LikedSongsViewModel>? logger = null)
+        ILogger<LikedSongsViewModel>? logger = null,
+        ITrackLikeService? likeService = null,
+        ISettingsService? settingsService = null)
+        : base(settingsService, likeService, libraryRecents: null, DispatcherQueue.GetForCurrentThread())
     {
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
@@ -149,8 +147,12 @@ public sealed partial class LikedSongsViewModel : Wavee.UI.ViewModels.Helpers.Tr
             ApplyFilterAndSort();
         };
 
+        LoadPreferences();
         AttachLongLivedServices();
     }
+
+    protected override string? PreferencesKey => "liked-songs";
+    protected override bool UsesGridScale => false;
 
     private bool _longLivedAttached;
 
@@ -203,8 +205,9 @@ public sealed partial class LikedSongsViewModel : Wavee.UI.ViewModels.Helpers.Tr
         });
     }
 
-    partial void OnSearchQueryChanged(string value)
+    protected override void OnSearchQueryChangedCore(string value)
     {
+        base.OnSearchQueryChangedCore(value);
         _searchDebounceTimer.Stop();
         _searchDebounceTimer.Start();
     }
@@ -604,6 +607,32 @@ public sealed partial class LikedSongsViewModel : Wavee.UI.ViewModels.Helpers.Tr
     private void RemoveSelected()
     {
         if (!HasSelection) return;
+    }
+
+    [RelayCommand]
+    private void RemoveTracksFromLikedSongs(IReadOnlyList<ITrackItem>? tracks)
+    {
+        if (tracks is null || tracks.Count == 0 || LikeService is null)
+            return;
+
+        var uris = tracks
+            .Select(t => t.Uri)
+            .Where(uri => !string.IsNullOrWhiteSpace(uri))
+            .Select(uri => uri!)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (uris.Length == 0)
+            return;
+
+        foreach (var uri in uris)
+            LikeService.ToggleSave(SavedItemType.Track, uri, currentlySaved: true);
+
+        var removed = uris.ToHashSet(StringComparer.Ordinal);
+        _allSongs.RemoveAll(song => !string.IsNullOrWhiteSpace(song.Uri) && removed.Contains(song.Uri));
+        ApplyFilterAndSort();
+        UpdateAggregates();
+        NotifyVideoFilterProperties();
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]

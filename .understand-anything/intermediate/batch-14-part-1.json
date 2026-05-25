@@ -1,0 +1,516 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs",
+      "type": "file",
+      "name": "NormalizationProcessor.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs",
+      "summary": "Implements ReplayGain/pre-amp normalization as an audio processor that adjusts per-sample gain across Int16/Int24/Int32 PCM formats with optional soft-clipping.",
+      "tags": ["audio-processing", "dsp", "normalization", "service"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs:NormalizationProcessor",
+      "type": "class",
+      "name": "NormalizationProcessor",
+      "filePath": "src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs",
+      "lineRange": [10, 235],
+      "summary": "Audio processor implementing ReplayGain normalization with configurable modes (Track/Album/Off), pre-amp dB, and soft-clip prevention across multiple PCM bit depths.",
+      "tags": ["audio-processing", "dsp", "normalization"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs:SetTrackGain",
+      "type": "function",
+      "name": "SetTrackGain",
+      "filePath": "src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs",
+      "lineRange": [63, 82],
+      "summary": "Updates the current gain from track metadata, converting dB values to linear scale for the configured normalization mode.",
+      "tags": ["audio-processing", "normalization", "utility"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs:Process",
+      "type": "function",
+      "name": "Process",
+      "filePath": "src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs",
+      "lineRange": [84, 114],
+      "summary": "Allocates an output buffer and dispatches normalization processing to the appropriate per-bit-depth implementation (Int16/Int24/Int32).",
+      "tags": ["audio-processing", "dsp"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Processors/VolumeProcessor.cs",
+      "type": "file",
+      "name": "VolumeProcessor.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Processors/VolumeProcessor.cs",
+      "summary": "Implements linear volume scaling as an audio processor, applying a user-controlled volume level to PCM samples across Int16/Int24/Int32 formats with dB/linear conversion helpers.",
+      "tags": ["audio-processing", "dsp", "volume", "service"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/Processors/VolumeProcessor.cs:VolumeProcessor",
+      "type": "class",
+      "name": "VolumeProcessor",
+      "filePath": "src/Wavee.AudioHost/Audio/Processors/VolumeProcessor.cs",
+      "lineRange": [10, 171],
+      "summary": "Audio processor that scales PCM amplitude by a configurable linear volume factor, with dB-to-linear and linear-to-dB conversion and support for in-place processing.",
+      "tags": ["audio-processing", "dsp", "volume"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/SingleThreadedSynchronizationContext.cs",
+      "type": "file",
+      "name": "SingleThreadedSynchronizationContext.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/SingleThreadedSynchronizationContext.cs",
+      "summary": "Provides a single-threaded SynchronizationContext backed by a blocking collection, used to run async tasks on a dedicated audio thread without a thread pool.",
+      "tags": ["threading", "async", "utility"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/SingleThreadedSynchronizationContext.cs:SingleThreadedSynchronizationContext",
+      "type": "class",
+      "name": "SingleThreadedSynchronizationContext",
+      "filePath": "src/Wavee.AudioHost/Audio/SingleThreadedSynchronizationContext.cs",
+      "lineRange": [10, 54],
+      "summary": "Serializes async continuations onto a single thread by queuing callbacks through a BlockingCollection and running them via RunUntilComplete.",
+      "tags": ["threading", "async", "utility"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Sinks/AudioSinkFactory.cs",
+      "type": "file",
+      "name": "AudioSinkFactory.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Sinks/AudioSinkFactory.cs",
+      "summary": "Factory that creates IAudioSink instances, defaulting to PortAudioSink and dispatching by an AudioSinkType enum to produce PortAudio or Stub sinks.",
+      "tags": ["factory", "audio-processing", "sink"],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/Sinks/AudioSinkFactory.cs:AudioSinkFactory",
+      "type": "class",
+      "name": "AudioSinkFactory",
+      "filePath": "src/Wavee.AudioHost/Audio/Sinks/AudioSinkFactory.cs",
+      "lineRange": [9, 42],
+      "summary": "Static factory providing CreateDefault (PortAudioSink) and Create(sinkType) methods to instantiate concrete IAudioSink implementations.",
+      "tags": ["factory", "audio-processing"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs",
+      "type": "file",
+      "name": "PortAudioSink.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs",
+      "summary": "Full-featured PortAudio-backed audio output sink that manages WASAPI device enumeration, stream lifecycle (open/pause/resume/drain), device switching, and a lock-free circular audio buffer for the callback thread.",
+      "tags": ["audio-processing", "sink", "portaudio", "wasapi"],
+      "complexity": "complex",
+      "languageNotes": "Contains two classes: PortAudioSink (the main output sink using P/Invoke into PortAudioSharp) and CircularAudioBuffer (a lock-free ring buffer designed for the low-latency callback path)."
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs:PortAudioSink",
+      "type": "class",
+      "name": "PortAudioSink",
+      "filePath": "src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs",
+      "lineRange": [15, 1112],
+      "summary": "PortAudio WASAPI output sink implementing the full IAudioSink contract: async write, pause/resume, drain, seek-mute, real-time volume processing via a callback-thread processor, and hot device switching without stopping playback.",
+      "tags": ["audio-processing", "sink", "portaudio", "wasapi"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs:InitializeAsync",
+      "type": "function",
+      "name": "InitializeAsync",
+      "filePath": "src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs",
+      "lineRange": [146, 228],
+      "summary": "Opens a PortAudio stream on the specified device with the given PCM format and buffer size, wires the stream callback, and optionally initializes a realtime volume processor.",
+      "tags": ["audio-processing", "initialization"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs:StreamCallback",
+      "type": "function",
+      "name": "StreamCallback",
+      "filePath": "src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs",
+      "lineRange": [233, 297],
+      "summary": "PortAudio callback running on the audio thread: reads from the circular buffer, applies realtime volume, tracks underrun metrics, and handles seek-mute fading.",
+      "tags": ["audio-processing", "callback", "real-time"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs:SwitchToDeviceInternal",
+      "type": "function",
+      "name": "SwitchToDeviceInternal",
+      "filePath": "src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs",
+      "lineRange": [511, 599],
+      "summary": "Atomically drains current stream state, replaces the PortAudio stream with one targeting the new device, and restores in-flight audio data into the new circular buffer.",
+      "tags": ["audio-processing", "device-switch"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs:CircularAudioBuffer",
+      "type": "class",
+      "name": "CircularAudioBuffer",
+      "filePath": "src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs",
+      "lineRange": [1117, 1252],
+      "summary": "Lock-free ring buffer designed for the producer-consumer audio path: async WriteAsync with back-pressure via ManualResetEventSlim, synchronous Read for the PortAudio callback thread, and immediate Write for device-switch state restoration.",
+      "tags": ["audio-processing", "ring-buffer", "concurrency"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Sinks/StubAudioSink.cs",
+      "type": "file",
+      "name": "StubAudioSink.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Sinks/StubAudioSink.cs",
+      "summary": "No-op IAudioSink implementation that silently consumes audio data and advances a virtual playback clock, used for testing or headless modes.",
+      "tags": ["audio-processing", "sink", "stub", "test"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/Sinks/StubAudioSink.cs:StubAudioSink",
+      "type": "class",
+      "name": "StubAudioSink",
+      "filePath": "src/Wavee.AudioHost/Audio/Sinks/StubAudioSink.cs",
+      "lineRange": [9, 89],
+      "summary": "Stub audio sink that accepts writes, advances a virtual position counter, and returns idle status — useful for headless/test environments without real audio output.",
+      "tags": ["audio-processing", "stub", "test"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs",
+      "type": "file",
+      "name": "AudioDecryptStream.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs",
+      "summary": "Seekable decryption stream wrapping a raw Spotify audio stream: applies AES-128 CTR mode decryption from a configurable byte offset, with SIMD-optimized XOR and block-aligned keystream generation.",
+      "tags": ["streaming", "crypto", "audio-processing", "decryption"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs:AudioDecryptStream",
+      "type": "class",
+      "name": "AudioDecryptStream",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs",
+      "lineRange": [13, 271],
+      "summary": "Stream decorator that transparently decrypts Spotify AES-128-CTR encrypted audio on read, maintaining keystream block position across seeks so decryption is correct at arbitrary file offsets.",
+      "tags": ["streaming", "crypto", "decryption"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs:ApplySpotifyCtr",
+      "type": "function",
+      "name": "ApplySpotifyCtr",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs",
+      "lineRange": [177, 207],
+      "summary": "Core CTR-mode decryption kernel: generates AES keystream blocks on demand and XORs them against the data buffer while tracking block position across the stream.",
+      "tags": ["crypto", "decryption", "dsp"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Streaming/AudioFetchParams.cs",
+      "type": "file",
+      "name": "AudioFetchParams.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/AudioFetchParams.cs",
+      "summary": "Record/struct bundle carrying all parameters needed to open an audio fetch operation: CDN URL, audio key, file size, cache config, and playback token.",
+      "tags": ["data-model", "streaming", "configuration"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Streaming/BufferedHttpStream.cs",
+      "type": "file",
+      "name": "BufferedHttpStream.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/BufferedHttpStream.cs",
+      "summary": "Buffered read-only HTTP stream that additionally parses inline ICY metadata (Icecast-protocol stream titles) encountered in the byte stream at configured intervals.",
+      "tags": ["streaming", "http", "buffering"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/Streaming/BufferedHttpStream.cs:BufferedHttpStream",
+      "type": "class",
+      "name": "BufferedHttpStream",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/BufferedHttpStream.cs",
+      "lineRange": [9, 237],
+      "summary": "Stream wrapper that buffers reads from an HTTP response body and intercepts ICY metadata blocks to surface stream title changes via a MetadataReceived event.",
+      "tags": ["streaming", "http", "buffering"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Streaming/DeferredResolutionRegistry.cs",
+      "type": "file",
+      "name": "DeferredResolutionRegistry.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/DeferredResolutionRegistry.cs",
+      "summary": "Registry for deferred CDN/audio-key resolution: issues timed TaskCompletionSource entries by ID that the UI process completes or cancels over IPC.",
+      "tags": ["async", "streaming", "registry"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/Streaming/DeferredResolutionRegistry.cs:DeferredResolutionRegistry",
+      "type": "class",
+      "name": "DeferredResolutionRegistry",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/DeferredResolutionRegistry.cs",
+      "lineRange": [17, 114],
+      "summary": "Thread-safe map of pending deferred audio-resolution requests; CreateDeferred issues a timeout-backed task, Complete/CompleteFromCache/Cancel resolve or reject it by ID.",
+      "tags": ["async", "streaming", "concurrency"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Streaming/FileId.cs",
+      "type": "file",
+      "name": "FileId.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/FileId.cs",
+      "summary": "Immutable value type wrapping a raw Spotify file-ID byte array with hex encoding/decoding helpers, equality semantics, and stable hash codes.",
+      "tags": ["data-model", "streaming", "utility"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs",
+      "type": "file",
+      "name": "LazyProgressiveDownloader.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs",
+      "summary": "Seekable stream that defers CDN resource acquisition until first read: uses head bytes already available, then awaits an IPC-driven deferred task to obtain CDN URL and audio key before delegating to ProgressiveDownloader.",
+      "tags": ["streaming", "lazy-loading", "audio-processing"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs:LazyProgressiveDownloader",
+      "type": "class",
+      "name": "LazyProgressiveDownloader",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs",
+      "lineRange": [16, 569],
+      "summary": "On-demand progressive download stream: serves head bytes immediately, awaits deferred IPC resolution for CDN URL + audio key, then transparently delegates all reads and seeks to a fully-initialized ProgressiveDownloader.",
+      "tags": ["streaming", "lazy-loading", "audio-processing"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs:InitializeCdnResourcesAsync",
+      "type": "function",
+      "name": "InitializeCdnResourcesAsync",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs",
+      "lineRange": [292, 400],
+      "summary": "Resolves CDN URL and audio key from the deferred task, locates the Ogg stream start via magic scanning, opens AudioDecryptStream, and initializes ProgressiveDownloader — the core lazy-init path.",
+      "tags": ["streaming", "initialization", "lazy-loading"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs",
+      "type": "file",
+      "name": "ProgressiveDownloader.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs",
+      "summary": "Core progressive CDN download engine: manages a RangeSet of already-fetched byte ranges, a background download loop that fills gaps ahead of the read cursor, chunk fetching with retry, local cache persistence, and seek handling.",
+      "tags": ["streaming", "downloading", "caching", "audio-processing"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs:ProgressiveDownloader",
+      "type": "class",
+      "name": "ProgressiveDownloader",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs",
+      "lineRange": [21, 968],
+      "summary": "Seekable download stream for Spotify CDN audio: tracks fetched byte ranges, pre-fetches ahead with configurable chunk sizes, handles redirects and retries, persists to a local disk cache, and responds to seek events by resuming download at the new position.",
+      "tags": ["streaming", "downloading", "caching"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs:BackgroundDownloadLoopAsync",
+      "type": "function",
+      "name": "BackgroundDownloadLoopAsync",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs",
+      "lineRange": [0, 0],
+      "summary": "Background task that continuously identifies gaps in the fetched range set and downloads the next contiguous chunk until the entire file is buffered.",
+      "tags": ["streaming", "downloading", "background-task"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs:FetchChunkAsync",
+      "type": "function",
+      "name": "FetchChunkAsync",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs",
+      "lineRange": [0, 0],
+      "summary": "Downloads a single byte-range chunk from the CDN, follows URL redirects, writes to the in-memory file buffer, and notifies waiting readers.",
+      "tags": ["streaming", "downloading", "http"],
+      "complexity": "complex"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs:NormalizationProcessor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs",
+      "target": "function:src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs:SetTrackGain",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs",
+      "target": "function:src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs:Process",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Processors/VolumeProcessor.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/Processors/VolumeProcessor.cs:VolumeProcessor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/SingleThreadedSynchronizationContext.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/SingleThreadedSynchronizationContext.cs:SingleThreadedSynchronizationContext",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Sinks/AudioSinkFactory.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/Sinks/AudioSinkFactory.cs:AudioSinkFactory",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs:PortAudioSink",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs",
+      "target": "function:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs:InitializeAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs",
+      "target": "function:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs:StreamCallback",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs",
+      "target": "function:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs:SwitchToDeviceInternal",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs:CircularAudioBuffer",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Sinks/StubAudioSink.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/Sinks/StubAudioSink.cs:StubAudioSink",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs:AudioDecryptStream",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs",
+      "target": "function:src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs:ApplySpotifyCtr",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Streaming/BufferedHttpStream.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/Streaming/BufferedHttpStream.cs:BufferedHttpStream",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Streaming/DeferredResolutionRegistry.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/Streaming/DeferredResolutionRegistry.cs:DeferredResolutionRegistry",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs:LazyProgressiveDownloader",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs",
+      "target": "function:src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs:InitializeCdnResourcesAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs:ProgressiveDownloader",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs",
+      "target": "function:src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs:BackgroundDownloadLoopAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs",
+      "target": "function:src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs:FetchChunkAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs:LazyProgressiveDownloader",
+      "target": "class:src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs:ProgressiveDownloader",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs:LazyProgressiveDownloader",
+      "target": "class:src/Wavee.AudioHost/Audio/Streaming/AudioDecryptStream.cs:AudioDecryptStream",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs:LazyProgressiveDownloader",
+      "target": "class:src/Wavee.AudioHost/Audio/Streaming/DeferredResolutionRegistry.cs:DeferredResolutionRegistry",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/Audio/Sinks/AudioSinkFactory.cs:AudioSinkFactory",
+      "target": "class:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs:PortAudioSink",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/Audio/Sinks/AudioSinkFactory.cs:AudioSinkFactory",
+      "target": "class:src/Wavee.AudioHost/Audio/Sinks/StubAudioSink.cs:StubAudioSink",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

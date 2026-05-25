@@ -122,6 +122,8 @@ public sealed partial class ActivityBell : UserControl
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Activity action failed: {ex.Message}");
+            Ioc.Default.GetService<INotificationService>()?
+                .Show(ex.Message, NotificationSeverity.Error, TimeSpan.FromSeconds(4));
         }
         finally
         {

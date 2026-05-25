@@ -61,6 +61,33 @@ internal static class LyricsAiPrompts
             numberedLyrics;
     }
 
+    internal static string BuildLyricsMeaningPlainTextPrompt(string numberedLyrics, string trackContext)
+    {
+        return
+            "Interpret song lyrics with the numbered lyrics as primary evidence. " +
+            "Use trained music-domain knowledge about the artist, genre, song, idioms, " +
+            "references, and cultural context when it helps, but never override the lyrics. " +
+            "Do not invent facts.\n\n" +
+            "Write one tight paragraph in English: 2 sentences, 35 to 55 words, naming " +
+            "who speaks, to whom, what they feel, and what they want. No bullets, lists, " +
+            "headings, markdown, line breaks, citations, or quoted lyric text. Paraphrase only.\n\n" +
+            trackContext +
+            "LYRICS WITH LINE NUMBERS:\n" +
+            numberedLyrics;
+    }
+
+    internal static string BuildLyricsMeaningPlainTextFallbackPrompt(string numberedLyrics, string trackContext)
+    {
+        return
+            "Interpret these numbered lyrics in English in one concise paragraph " +
+            "(2 sentences, 35 to 50 words). Lyrics are the primary evidence; trained " +
+            "music-domain knowledge and track context may disambiguate only. Do not invent facts, quote lyrics, use " +
+            "markdown, or add line breaks. If context is too thin, say so plainly.\n\n" +
+            trackContext +
+            "LYRICS WITH LINE NUMBERS:\n" +
+            numberedLyrics;
+    }
+
     internal static string BuildTrackContext(string? trackTitle, string? artistName)
     {
         trackTitle = NormalizePromptMetadata(trackTitle);

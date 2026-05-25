@@ -1,0 +1,183 @@
+{
+  "batch": 17,
+  "files": [
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/LyricsEngine.cs",
+      "role": "core-engine",
+      "summary": "Central coordinator for the Win2D-based lyrics render loop. Owns all renderers (LyricsRenderer, CoverBackgroundRenderer, FluidBackgroundRenderer, SpectrumRenderer, SnowRenderer, FogRenderer, RaindropRenderer, EdgeFadeMaskRenderer), helpers (LyricsSynchronizer, LyricsAnimator, SpectrumAnalyzer), and animated ValueTransition<T> instances for color/scroll/opacity. Implements the CanvasAnimatedControl Create/Update/Draw lifecycle: Update() atomically snapshots dirty flags via Interlocked.Exchange, advances all transitions, calls LyricsLayoutManager for scroll target and visible-range math, builds a zero-alloc RenderContext readonly struct, and dispatches every renderer. Draw() routes through optional edge-feathering layer (CanvasLayer with gradient mask brush) and optional Spout texture output. State setters (SetLyricsData, SetPosition, SetSettings, SetAlbumArtBytes, SetIsMouseScrolling, etc.) are called from NowPlayingCanvas on the UI thread; dirty flags use Interlocked.Or for thread safety. Exposes SeekRequested event when user clicks a hovered lyric line. Debug overlay renders perf counters (update/draw Hz, CPU ms, relayout rate) via Win2D text layout.",
+      "exports": ["LyricsEngine"],
+      "significance": "high",
+      "patterns": [
+        "Win2D CanvasAnimatedControl",
+        "dirty-flag update loop (Interlocked)",
+        "ValueTransition<T> animated state",
+        "readonly RenderContext struct (zero alloc per frame)",
+        "Spout texture hook output",
+        "spectrum analyzer integration",
+        "edge-feathering via CanvasLayer + gradient brush"
+      ]
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Models/Domain/LyricsSearchResult.cs",
+      "role": "dto",
+      "summary": "Immutable record returned by lyrics search: title, artist, album, duration, raw lyrics text, and optional translation/transliteration/reference strings.",
+      "exports": ["LyricsSearchResult"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Models/SettingsSchema/ActionSettingDef.cs",
+      "role": "schema",
+      "summary": "Settings schema definition for an action/button setting entry.",
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Models/SettingsSchema/BoolSettingDef.cs",
+      "role": "schema",
+      "summary": "Settings schema definition for a boolean toggle setting.",
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Models/SettingsSchema/ChoiceSettingDef.cs",
+      "role": "schema",
+      "summary": "Settings schema definition for a multi-choice (enum/dropdown) setting.",
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Models/SettingsSchema/NumberSettingDef.cs",
+      "role": "schema",
+      "summary": "Settings schema definition for a numeric slider/spinner setting.",
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Models/SettingsSchema/SettingsDef.cs",
+      "role": "schema",
+      "summary": "Base or composite type for the lyrics plugin settings schema definitions.",
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Models/SettingsSchema/TextSettingDef.cs",
+      "role": "schema",
+      "summary": "Settings schema definition for a free-text string setting.",
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Core/Serialization/SourceGenerationContext.cs",
+      "role": "serialization",
+      "summary": "AOT-safe System.Text.Json source-generation context for JsonElement, used for generic JSON payload handling in the lyrics subsystem.",
+      "exports": ["SourceGenerationContext"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/BackdropType.cs",
+      "role": "enum",
+      "summary": "Window backdrop material: None, Mica, MicaAlt, DesktopAcrylic, Transparent.",
+      "exports": ["BackdropType"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/ChineseConversion.cs",
+      "role": "enum",
+      "summary": "Simplified/Traditional Chinese conversion mode for lyrics display.",
+      "exports": ["ChineseConversion"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/ChineseRomanization.cs",
+      "role": "enum",
+      "summary": "Romanization scheme (Pinyin variants) for lyrics transliteration.",
+      "exports": ["ChineseRomanization"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/DockPlacement.cs",
+      "role": "enum",
+      "summary": "Dock placement for the lyrics panel within the now-playing layout.",
+      "exports": ["DockPlacement"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/EaseMode.cs",
+      "role": "enum",
+      "summary": "Easing mode for animated transitions: In, Out, InOut.",
+      "exports": ["EaseMode"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/EasingType.cs",
+      "role": "enum",
+      "summary": "Easing curve presets (Linear, Sine, Quad, Cubic, Quart, Quint, Expo, Circ, Back, Elastic, Bounce) for ValueTransition animations.",
+      "exports": ["EasingType"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/FPS.cs",
+      "role": "enum",
+      "summary": "Target frame-rate presets for the CanvasAnimatedControl render loop.",
+      "exports": ["FPS"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/ImageSwitchType.cs",
+      "role": "enum",
+      "summary": "Transition style for album-art image switches in the background renderer.",
+      "exports": ["ImageSwitchType"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/LyricsDisplayType.cs",
+      "role": "enum",
+      "summary": "Layout mode: AlbumArtOnly, LyricsOnly, or SplitView.",
+      "exports": ["LyricsDisplayType"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/LyricsEffectScope.cs",
+      "role": "enum",
+      "summary": "Scope of per-line visual effects: playing line only vs. all visible lines.",
+      "exports": ["LyricsEffectScope"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/LyricsFontColorType.cs",
+      "role": "enum",
+      "summary": "Font color source for lyrics text: palette accent colors vs. custom fixed color.",
+      "exports": ["LyricsFontColorType"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/LyricsFontWeight.cs",
+      "role": "enum",
+      "summary": "Named font weight presets (Thin through Black) mapped to numeric values for the lyrics text renderer.",
+      "exports": ["LyricsFontWeight"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/LyricsFormat.cs",
+      "role": "enum",
+      "summary": "Lyrics file format: Lrc, Eslrc, Ttml, Qrc, Krc, NotSpecified.",
+      "exports": ["LyricsFormat"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/LyricsLayoutOrientation.cs",
+      "role": "enum",
+      "summary": "Text flow orientation for lyrics lines: Horizontal or Vertical.",
+      "exports": ["LyricsLayoutOrientation"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/MemoryValueType.cs",
+      "role": "enum",
+      "summary": "Discriminated type tag for settings value variants (bool, int, double, string, etc.).",
+      "exports": ["MemoryValueType"],
+      "significance": "low"
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/PaletteGeneratorType.cs",
+      "role": "enum",
+      "summary": "Algorithm for extracting the accent color palette from album art (dominant, vibrant, muted, etc.).",
+      "exports": ["PaletteGeneratorType"],
+      "significance": "low"
+    }
+  ]
+}

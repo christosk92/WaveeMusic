@@ -1,0 +1,76 @@
+{
+  "nodes": [
+    {
+      "id": "document:test/Wavee.Tests/README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "test/Wavee.Tests/README.md",
+      "summary": "Documentation for the Wavee.Tests xUnit v3 suite covering the core Wavee library, with folder map, crypto validation notes (ShannonCipher/AudioDecryptStream against librespot vectors), run commands, and project references.",
+      "tags": [
+        "documentation",
+        "test",
+        "overview",
+        "entry-point"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:test/Wavee.Tests/Wavee.Tests.csproj",
+      "type": "config",
+      "name": "Wavee.Tests.csproj",
+      "filePath": "test/Wavee.Tests/Wavee.Tests.csproj",
+      "summary": ".NET 10 xUnit v3 test project targeting net10.0-windows10.0.26100.0 with AnyCPU/x64/ARM64 platforms, referencing Wavee and Wavee.Controls.Lyrics, using FluentAssertions and Moq for the core library test suite.",
+      "tags": [
+        "configuration",
+        "test",
+        "build-system",
+        "dotnet"
+      ],
+      "complexity": "simple",
+      "languageNotes": "OutputType=Exe is required by xUnit v3; project supports three platform targets (AnyCPU, x64, ARM64)."
+    },
+    {
+      "id": "config:test/Wavee.Tests/xunit.runner.json",
+      "type": "config",
+      "name": "xunit.runner.json",
+      "filePath": "test/Wavee.Tests/xunit.runner.json",
+      "summary": "Minimal xUnit runner configuration file that specifies the schema reference; copied to output directory during build.",
+      "tags": [
+        "configuration",
+        "test",
+        "xunit"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "document:test/Wavee.Tests/README.md",
+      "target": "config:test/Wavee.Tests/Wavee.Tests.csproj",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:test/Wavee.Tests/Wavee.Tests.csproj",
+      "target": "config:test/Wavee.Tests/xunit.runner.json",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:test/Wavee.Tests/Wavee.Tests.csproj",
+      "target": "file:src/Wavee/Wavee.csproj",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:test/Wavee.Tests/Wavee.Tests.csproj",
+      "target": "file:src/Wavee.Controls.Lyrics/Wavee.Controls.Lyrics.csproj",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}

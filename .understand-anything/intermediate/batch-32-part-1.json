@@ -1,0 +1,854 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml",
+      "type": "file",
+      "name": "FriendsTabView.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml",
+      "summary": "XAML layout for the Friends tab in the right panel, defining the friend feed list items with glow overlay slots and social Jam affordances.",
+      "tags": [
+        "component",
+        "markup",
+        "ui"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs",
+      "type": "file",
+      "name": "FriendsTabView.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs",
+      "summary": "Code-behind for FriendsTabView: wires IFriendsFeedService, animates friend-upsert highlights with scale/opacity composition animations, and handles Jam start/dismiss actions.",
+      "tags": [
+        "component",
+        "event-handler",
+        "animation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml",
+      "type": "file",
+      "name": "LyricsCanvasHost.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml",
+      "summary": "XAML layout for the lyrics canvas host control hosting the NowPlayingCanvas with pointer-input overlay and sync/debug button affordances.",
+      "tags": [
+        "component",
+        "markup",
+        "lyrics"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "type": "file",
+      "name": "LyricsCanvasHost.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "summary": "Bridge control that connects LyricsViewModel to NowPlayingCanvas: manages position-sync timers, palette application, pointer-driven manual scroll with auto-resume, and lyric state transitions.",
+      "tags": [
+        "component",
+        "lyrics",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml",
+      "type": "file",
+      "name": "PodcastChapterTimelineRail.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml",
+      "summary": "XAML layout for a single podcast chapter segment rail, defining top/bottom progress segments and the active-chapter dot/halo indicator.",
+      "tags": [
+        "component",
+        "markup",
+        "podcast"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs",
+      "type": "file",
+      "name": "PodcastChapterTimelineRail.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs",
+      "summary": "Custom control animating a podcast chapter progress rail via Composition ScaleX animations on two segment visuals and a pulsing dot/halo indicator.",
+      "tags": [
+        "component",
+        "animation",
+        "podcast"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/QueueTabView.xaml",
+      "type": "file",
+      "name": "QueueTabView.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/QueueTabView.xaml",
+      "summary": "Minimal XAML shell for the Queue tab view inside the right panel.",
+      "tags": [
+        "component",
+        "markup",
+        "queue"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/QueueTabView.xaml.cs",
+      "type": "file",
+      "name": "QueueTabView.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/QueueTabView.xaml.cs",
+      "summary": "Trivial code-behind for QueueTabView that only calls InitializeComponent.",
+      "tags": [
+        "component",
+        "queue"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml",
+      "type": "file",
+      "name": "RightPanelTabPager.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml",
+      "summary": "XAML layout for the right-panel tab header pager, including horizontally scrollable tab chips, left/right scroll chevrons, and a pop-out button.",
+      "tags": [
+        "component",
+        "markup",
+        "navigation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs",
+      "type": "file",
+      "name": "RightPanelTabPager.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs",
+      "summary": "Tab pager control managing right-panel tab selection with scroll affordance chevrons, edge-fade indicators, and a pop-out request event.",
+      "tags": [
+        "component",
+        "navigation",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "type": "file",
+      "name": "RightPanelThemeResolver.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "summary": "Static utility class providing color-resolution helpers for the right panel: blends extracted album colors with theme resources, computes tint, surface, fade-target, and canvas-clear colors.",
+      "tags": [
+        "utility",
+        "theming",
+        "color"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.OutputDevice.cs",
+      "type": "file",
+      "name": "RightPanelView.OutputDevice.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.OutputDevice.cs",
+      "summary": "Partial class fragment for RightPanelView handling output-device card initialization and teardown.",
+      "tags": [
+        "component",
+        "partial-class"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.Properties.cs",
+      "type": "file",
+      "name": "RightPanelView.Properties.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.Properties.cs",
+      "summary": "Partial class containing DependencyProperty declarations and property-changed callbacks for RightPanelView, including panel width, open state, selected mode, and embedded-chrome tint.",
+      "tags": [
+        "component",
+        "data-model",
+        "partial-class"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs:FriendsTabView",
+      "type": "class",
+      "name": "FriendsTabView",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs",
+      "lineRange": [
+        17,
+        189
+      ],
+      "summary": "WinUI UserControl for the friends activity feed; subscribes to IFriendsFeedService, animates new-activity highlights, and surfaces Jam controls.",
+      "tags": [
+        "component",
+        "event-handler",
+        "animation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:LyricsCanvasHost",
+      "type": "class",
+      "name": "LyricsCanvasHost",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "lineRange": [
+        39,
+        614
+      ],
+      "summary": "UserControl bridging LyricsViewModel to NowPlayingCanvas with position timers, palette syncing, and pointer-driven manual scroll with auto-resume.",
+      "tags": [
+        "component",
+        "lyrics",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs:PodcastChapterTimelineRail",
+      "type": "class",
+      "name": "PodcastChapterTimelineRail",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs",
+      "lineRange": [
+        10,
+        207
+      ],
+      "summary": "Custom UserControl rendering an animated chapter segment rail with Composition Scale animations and an active-dot/halo indicator.",
+      "tags": [
+        "component",
+        "animation",
+        "podcast"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs:RightPanelTabPager",
+      "type": "class",
+      "name": "RightPanelTabPager",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs",
+      "lineRange": [
+        33,
+        263
+      ],
+      "summary": "UserControl managing tab selection in the right panel header with scroll chevrons, edge-fade affordances, and a pop-out request event.",
+      "tags": [
+        "component",
+        "navigation",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs:RightPanelThemeResolver",
+      "type": "class",
+      "name": "RightPanelThemeResolver",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "lineRange": [
+        23,
+        343
+      ],
+      "summary": "Static utility class computing all panel color values by blending extracted album palette with WinUI theme resources; includes hex parsing and color math helpers.",
+      "tags": [
+        "utility",
+        "theming",
+        "color"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs:OnFriendUpserted",
+      "type": "function",
+      "name": "OnFriendUpserted",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs",
+      "lineRange": [
+        54,
+        84
+      ],
+      "summary": "Handles a friend activity update: finds the matching item in the repeater and triggers AnimateHighlight scale/glow pulse.",
+      "tags": [
+        "event-handler",
+        "animation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs:AnimateHighlight",
+      "type": "function",
+      "name": "AnimateHighlight",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs",
+      "lineRange": [
+        86,
+        121
+      ],
+      "summary": "Runs a two-phase scale bounce and opacity-flash glow overlay on a friend card using CommunityToolkit AnimationBuilder.",
+      "tags": [
+        "animation",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs:UpdateStateVisuals",
+      "type": "function",
+      "name": "UpdateStateVisuals",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs",
+      "lineRange": [
+        147,
+        164
+      ],
+      "summary": "Updates the friends tab visual state (loading/error/content) based on current IFriendsFeedService properties.",
+      "tags": [
+        "event-handler",
+        "ui"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:InitializeLyrics",
+      "type": "function",
+      "name": "InitializeLyrics",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "lineRange": [
+        135,
+        169
+      ],
+      "summary": "Sets up the position-sync DispatcherTimer, wires playback and VM property-change handlers, and applies initial lyrics state.",
+      "tags": [
+        "initialization",
+        "lyrics"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:TeardownLyrics",
+      "type": "function",
+      "name": "TeardownLyrics",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "lineRange": [
+        172,
+        211
+      ],
+      "summary": "Stops timers, unsubscribes all event handlers, and clears the NowPlayingCanvas data on lyrics teardown.",
+      "tags": [
+        "cleanup",
+        "lyrics"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:ApplyCurrentLyricsState",
+      "type": "function",
+      "name": "ApplyCurrentLyricsState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "lineRange": [
+        292,
+        394
+      ],
+      "summary": "Applies the current LyricsViewModel state to NowPlayingCanvas, deciding between empty/unavailable/active states and setting data, song info, play state, and position.",
+      "tags": [
+        "lyrics",
+        "state-management"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:UpdateTimerState",
+      "type": "function",
+      "name": "UpdateTimerState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "lineRange": [
+        401,
+        442
+      ],
+      "summary": "Starts or stops the position-sync timer and sets canvas rendering/playing state based on whether sync should run.",
+      "tags": [
+        "timer",
+        "lyrics"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:LyricsOverlay_PointerWheelChanged",
+      "type": "function",
+      "name": "LyricsOverlay_PointerWheelChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "lineRange": [
+        534,
+        562
+      ],
+      "summary": "Handles mouse-wheel scroll on the lyrics overlay: clamps delta, passes offset to canvas, and schedules auto-resume scroll-reset timer.",
+      "tags": [
+        "event-handler",
+        "scroll"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs:ApplyProgress",
+      "type": "function",
+      "name": "ApplyProgress",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs",
+      "lineRange": [
+        113,
+        129
+      ],
+      "summary": "Clamps progress into top/bottom segment values and delegates to ApplySegmentProgress for each visual.",
+      "tags": [
+        "animation",
+        "podcast"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs:ApplySegmentProgress",
+      "type": "function",
+      "name": "ApplySegmentProgress",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs",
+      "lineRange": [
+        131,
+        160
+      ],
+      "summary": "Animates a segment visual ScaleX to reflect progress via a Composition CubicBezier keyframe animation.",
+      "tags": [
+        "animation",
+        "composition"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs:ApplyDotState",
+      "type": "function",
+      "name": "ApplyDotState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs",
+      "lineRange": [
+        162,
+        206
+      ],
+      "summary": "Animates dot scale/opacity and halo scale/opacity using Composition keyframe animations to reflect active/inactive/completed chapter state.",
+      "tags": [
+        "animation",
+        "composition"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs:SyncVisualState",
+      "type": "function",
+      "name": "SyncVisualState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs",
+      "lineRange": [
+        142,
+        168
+      ],
+      "summary": "Synchronizes the selected tab header chip and content presenter to the current SelectedMode DP value.",
+      "tags": [
+        "state-management",
+        "navigation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs:TabHeader_SelectionChanged",
+      "type": "function",
+      "name": "TabHeader_SelectionChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs",
+      "lineRange": [
+        239,
+        262
+      ],
+      "summary": "Handles tab header chip selection change and maps the selected index back to a RightPanelMode enum value on SelectedMode.",
+      "tags": [
+        "event-handler",
+        "navigation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs:UpdateTabHeaderEdgeAffordances",
+      "type": "function",
+      "name": "UpdateTabHeaderEdgeAffordances",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs",
+      "lineRange": [
+        203,
+        218
+      ],
+      "summary": "Shows or hides the left/right scroll chevrons based on the scroll viewer position and content extent.",
+      "tags": [
+        "ui",
+        "navigation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs:GetBackgroundTintColor",
+      "type": "function",
+      "name": "GetBackgroundTintColor",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "lineRange": [
+        49,
+        64
+      ],
+      "summary": "Returns the background tint color by blending the extracted album color with a theme resource, with light/dark mode weighting.",
+      "tags": [
+        "utility",
+        "theming",
+        "color"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs:TryParseHexColor",
+      "type": "function",
+      "name": "TryParseHexColor",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "lineRange": [
+        143,
+        170
+      ],
+      "summary": "Parses a hex color string in 3-, 6-, or 8-digit form into a Windows.UI.Color, returning false on failure.",
+      "tags": [
+        "utility",
+        "color"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs:ResolveTabFadeTargetColor",
+      "type": "function",
+      "name": "ResolveTabFadeTargetColor",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "lineRange": [
+        177,
+        214
+      ],
+      "summary": "Resolves the tab-strip edge-fade gradient target color for both embedded and standalone panel modes.",
+      "tags": [
+        "utility",
+        "theming"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs:ComputeCanvasClearColor",
+      "type": "function",
+      "name": "ComputeCanvasClearColor",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "lineRange": [
+        257,
+        286
+      ],
+      "summary": "Computes the Composition canvas clear color for both embedded (transparent) and standalone panel modes in light/dark theme.",
+      "tags": [
+        "utility",
+        "theming"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs:TryResolveColorFromResources",
+      "type": "function",
+      "name": "TryResolveColorFromResources",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "lineRange": [
+        288,
+        320
+      ],
+      "summary": "Walks a ResourceDictionary tree (including merged dicts) to find a named color resource by key.",
+      "tags": [
+        "utility",
+        "theming"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.Properties.cs:OnIsOpenChanged",
+      "type": "function",
+      "name": "OnIsOpenChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.Properties.cs",
+      "lineRange": [
+        97,
+        138
+      ],
+      "summary": "Responds to the panel open/close state change with enter/exit implicit animations and informs the lyrics host of panel visibility.",
+      "tags": [
+        "animation",
+        "state-management"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.Properties.cs:ApplyEmbeddedChrome",
+      "type": "function",
+      "name": "ApplyEmbeddedChrome",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.Properties.cs",
+      "lineRange": [
+        182,
+        209
+      ],
+      "summary": "Applies embedded-chrome styling by setting acrylic tint from the provided hex color and toggling transparent-host visual state.",
+      "tags": [
+        "theming",
+        "ui"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs:FriendsTabView",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs:FriendsTabView",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs:OnFriendUpserted",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs:AnimateHighlight",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs:UpdateStateVisuals",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:LyricsCanvasHost",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:LyricsCanvasHost",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:InitializeLyrics",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:TeardownLyrics",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:ApplyCurrentLyricsState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:UpdateTimerState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:LyricsOverlay_PointerWheelChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:InitializeLyrics",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:TeardownLyrics",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:ApplyCurrentLyricsState",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs:UpdateTimerState",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs:PodcastChapterTimelineRail",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs:PodcastChapterTimelineRail",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs:ApplyProgress",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs:ApplySegmentProgress",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs:ApplyDotState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs:RightPanelTabPager",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs:RightPanelTabPager",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs:SyncVisualState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs:TabHeader_SelectionChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs:UpdateTabHeaderEdgeAffordances",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs:SyncVisualState",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs:RightPanelThemeResolver",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs:GetBackgroundTintColor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs:TryParseHexColor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs:ResolveTabFadeTargetColor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs:ComputeCanvasClearColor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs:TryResolveColorFromResources",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.Properties.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.xaml.cs:RightPanelView",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.Properties.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.Properties.cs:OnIsOpenChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.Properties.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.Properties.cs:ApplyEmbeddedChrome",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.OutputDevice.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.xaml.cs:RightPanelView",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    }
+  ]
+}

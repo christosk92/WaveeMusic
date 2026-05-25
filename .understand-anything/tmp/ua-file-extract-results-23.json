@@ -1,0 +1,6089 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 25,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": "src/Wavee.Local/Subtitles/LocalSubtitleDiscoverer.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 298,
+      "nonEmptyLines": 263,
+      "functions": [
+        {
+          "name": "Discover",
+          "startLine": 27,
+          "endLine": 73,
+          "params": [
+            "videoPath",
+            "fs"
+          ]
+        },
+        {
+          "name": "CollectFromSubsDir",
+          "startLine": 75,
+          "endLine": 116,
+          "params": [
+            "subsDir",
+            "baseName",
+            "fs",
+            "results"
+          ]
+        },
+        {
+          "name": "MatchesBase",
+          "startLine": 118,
+          "endLine": 145,
+          "params": [
+            "stem",
+            "baseName",
+            "langSuffix",
+            "flags"
+          ]
+        },
+        {
+          "name": "ParseFromPath",
+          "startLine": 154,
+          "endLine": 172,
+          "params": [
+            "subtitlePath"
+          ]
+        },
+        {
+          "name": "DetectLanguage",
+          "startLine": 178,
+          "endLine": 196,
+          "params": [
+            "suffix",
+            "parentDirName"
+          ]
+        },
+        {
+          "name": "DirectoryExists",
+          "startLine": 227,
+          "endLine": 227,
+          "params": [
+            "path"
+          ]
+        },
+        {
+          "name": "FileExists",
+          "startLine": 228,
+          "endLine": 228,
+          "params": [
+            "path"
+          ]
+        },
+        {
+          "name": "EnumerateFiles",
+          "startLine": 229,
+          "endLine": 230,
+          "params": [
+            "dir"
+          ]
+        },
+        {
+          "name": "EnumerateDirectories",
+          "startLine": 231,
+          "endLine": 232,
+          "params": [
+            "dir"
+          ]
+        },
+        {
+          "name": "NormalizeToIso639_1",
+          "startLine": 277,
+          "endLine": 285,
+          "params": [
+            "code"
+          ]
+        },
+        {
+          "name": "FromLanguageName",
+          "startLine": 287,
+          "endLine": 290,
+          "params": [
+            "name"
+          ]
+        },
+        {
+          "name": "IsoLetters",
+          "startLine": 292,
+          "endLine": 297,
+          "params": [
+            "s"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "LocalSubtitleDiscoverer",
+          "startLine": 17,
+          "endLine": 203,
+          "methods": [
+            "Discover",
+            "CollectFromSubsDir",
+            "MatchesBase",
+            "ParseFromPath",
+            "DetectLanguage"
+          ],
+          "properties": [
+            "SubtitleExtensions"
+          ]
+        },
+        {
+          "name": "IFileSystem",
+          "startLine": 216,
+          "endLine": 222,
+          "methods": [
+            "DirectoryExists",
+            "FileExists",
+            "EnumerateFiles",
+            "EnumerateDirectories"
+          ],
+          "properties": []
+        },
+        {
+          "name": "DefaultFileSystem",
+          "startLine": 224,
+          "endLine": 233,
+          "methods": [
+            "DirectoryExists",
+            "FileExists",
+            "EnumerateFiles",
+            "EnumerateDirectories"
+          ],
+          "properties": [
+            "Instance"
+          ]
+        },
+        {
+          "name": "LanguageCodes",
+          "startLine": 240,
+          "endLine": 298,
+          "methods": [
+            "NormalizeToIso639_1",
+            "FromLanguageName",
+            "IsoLetters"
+          ],
+          "properties": [
+            "NameToIso"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Discover",
+          "line": 27,
+          "isDefault": false
+        },
+        {
+          "name": "ParseFromPath",
+          "line": 154,
+          "isDefault": false
+        },
+        {
+          "name": "DetectLanguage",
+          "line": 178,
+          "isDefault": false
+        },
+        {
+          "name": "LocalSubtitleDiscoverer",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "IFileSystem",
+          "line": 216,
+          "isDefault": false
+        },
+        {
+          "name": "Instance",
+          "line": 226,
+          "isDefault": false
+        },
+        {
+          "name": "DirectoryExists",
+          "line": 227,
+          "isDefault": false
+        },
+        {
+          "name": "FileExists",
+          "line": 228,
+          "isDefault": false
+        },
+        {
+          "name": "EnumerateFiles",
+          "line": 229,
+          "isDefault": false
+        },
+        {
+          "name": "EnumerateDirectories",
+          "line": 231,
+          "isDefault": false
+        },
+        {
+          "name": "NormalizeToIso639_1",
+          "line": 277,
+          "isDefault": false
+        },
+        {
+          "name": "FromLanguageName",
+          "line": 287,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Discover",
+          "callee": "new List<DiscoveredSubtitle>",
+          "lineNumber": 30
+        },
+        {
+          "caller": "Discover",
+          "callee": "Path.GetDirectoryName",
+          "lineNumber": 32
+        },
+        {
+          "caller": "Discover",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 33
+        },
+        {
+          "caller": "Discover",
+          "callee": "fs.DirectoryExists",
+          "lineNumber": 33
+        },
+        {
+          "caller": "Discover",
+          "callee": "Path.GetFileNameWithoutExtension",
+          "lineNumber": 36
+        },
+        {
+          "caller": "Discover",
+          "callee": "fs.EnumerateFiles",
+          "lineNumber": 39
+        },
+        {
+          "caller": "Discover",
+          "callee": "SubtitleExtensions.Contains",
+          "lineNumber": 41
+        },
+        {
+          "caller": "Discover",
+          "callee": "Path.GetExtension",
+          "lineNumber": 41
+        },
+        {
+          "caller": "Discover",
+          "callee": "Path.GetFileNameWithoutExtension",
+          "lineNumber": 42
+        },
+        {
+          "caller": "Discover",
+          "callee": "MatchesBase",
+          "lineNumber": 43
+        },
+        {
+          "caller": "Discover",
+          "callee": "results.Add",
+          "lineNumber": 45
+        },
+        {
+          "caller": "Discover",
+          "callee": "new DiscoveredSubtitle",
+          "lineNumber": 45
+        },
+        {
+          "caller": "Discover",
+          "callee": "Path.Combine",
+          "lineNumber": 46
+        },
+        {
+          "caller": "Discover",
+          "callee": "DetectLanguage",
+          "lineNumber": 47
+        },
+        {
+          "caller": "Discover",
+          "callee": "Path.Combine",
+          "lineNumber": 54
+        },
+        {
+          "caller": "Discover",
+          "callee": "fs.DirectoryExists",
+          "lineNumber": 55
+        },
+        {
+          "caller": "Discover",
+          "callee": "CollectFromSubsDir",
+          "lineNumber": 57
+        },
+        {
+          "caller": "Discover",
+          "callee": "Path.GetDirectoryName",
+          "lineNumber": 62
+        },
+        {
+          "caller": "Discover",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 63
+        },
+        {
+          "caller": "Discover",
+          "callee": "fs.DirectoryExists",
+          "lineNumber": 63
+        },
+        {
+          "caller": "Discover",
+          "callee": "Path.Combine",
+          "lineNumber": 65
+        },
+        {
+          "caller": "Discover",
+          "callee": "fs.DirectoryExists",
+          "lineNumber": 66
+        },
+        {
+          "caller": "Discover",
+          "callee": "CollectFromSubsDir",
+          "lineNumber": 68
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "fs.EnumerateFiles",
+          "lineNumber": 82
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "SubtitleExtensions.Contains",
+          "lineNumber": 84
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "Path.GetExtension",
+          "lineNumber": 84
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "Path.GetFileNameWithoutExtension",
+          "lineNumber": 85
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "MatchesBase",
+          "lineNumber": 86
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "results.Add",
+          "lineNumber": 88
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "new DiscoveredSubtitle",
+          "lineNumber": 88
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "Path.Combine",
+          "lineNumber": 89
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "DetectLanguage",
+          "lineNumber": 90
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "fs.EnumerateDirectories",
+          "lineNumber": 97
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "subDir.StartsWith",
+          "lineNumber": 100
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "Path.Combine",
+          "lineNumber": 101
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "fs.EnumerateFiles",
+          "lineNumber": 102
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "SubtitleExtensions.Contains",
+          "lineNumber": 104
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "Path.GetExtension",
+          "lineNumber": 104
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "Path.GetFileNameWithoutExtension",
+          "lineNumber": 105
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "results.Add",
+          "lineNumber": 106
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "new DiscoveredSubtitle",
+          "lineNumber": 106
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "Path.Combine",
+          "lineNumber": 107
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "DetectLanguage",
+          "lineNumber": 108
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "stem.Contains",
+          "lineNumber": 109
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "stem.Contains",
+          "lineNumber": 110
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "stem.Contains",
+          "lineNumber": 111
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "stem.Contains",
+          "lineNumber": 112
+        },
+        {
+          "caller": "CollectFromSubsDir",
+          "callee": "stem.Contains",
+          "lineNumber": 113
+        },
+        {
+          "caller": "MatchesBase",
+          "callee": "new SubtitleFlags",
+          "lineNumber": 121
+        },
+        {
+          "caller": "MatchesBase",
+          "callee": "stem.StartsWith",
+          "lineNumber": 123
+        },
+        {
+          "caller": "MatchesBase",
+          "callee": "stem.Substring",
+          "lineNumber": 130
+        },
+        {
+          "caller": "MatchesBase",
+          "callee": "suffix.TrimStart",
+          "lineNumber": 134
+        },
+        {
+          "caller": "MatchesBase",
+          "callee": "Regex.IsMatch",
+          "lineNumber": 137
+        },
+        {
+          "caller": "MatchesBase",
+          "callee": "Regex.IsMatch",
+          "lineNumber": 138
+        },
+        {
+          "caller": "MatchesBase",
+          "callee": "suffix.Split",
+          "lineNumber": 141
+        },
+        {
+          "caller": "ParseFromPath",
+          "callee": "Path.GetFileNameWithoutExtension",
+          "lineNumber": 156
+        },
+        {
+          "caller": "ParseFromPath",
+          "callee": "DetectLanguage",
+          "lineNumber": 162
+        },
+        {
+          "caller": "ParseFromPath",
+          "callee": "Path.GetFileName",
+          "lineNumber": 162
+        },
+        {
+          "caller": "ParseFromPath",
+          "callee": "Path.GetDirectoryName",
+          "lineNumber": 162
+        },
+        {
+          "caller": "ParseFromPath",
+          "callee": "Regex.IsMatch",
+          "lineNumber": 164
+        },
+        {
+          "caller": "ParseFromPath",
+          "callee": "Regex.IsMatch",
+          "lineNumber": 165
+        },
+        {
+          "caller": "ParseFromPath",
+          "callee": "new DiscoveredSubtitle",
+          "lineNumber": 167
+        },
+        {
+          "caller": "DetectLanguage",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 180
+        },
+        {
+          "caller": "DetectLanguage",
+          "callee": "LanguageCodes.NormalizeToIso639_1",
+          "lineNumber": 182
+        },
+        {
+          "caller": "DetectLanguage",
+          "callee": "LanguageCodes.FromLanguageName",
+          "lineNumber": 185
+        },
+        {
+          "caller": "DetectLanguage",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 189
+        },
+        {
+          "caller": "DetectLanguage",
+          "callee": "LanguageCodes.FromLanguageName",
+          "lineNumber": 191
+        },
+        {
+          "caller": "DirectoryExists",
+          "callee": "Directory.Exists",
+          "lineNumber": 227
+        },
+        {
+          "caller": "FileExists",
+          "callee": "File.Exists",
+          "lineNumber": 228
+        },
+        {
+          "caller": "EnumerateFiles",
+          "callee": "Directory.EnumerateFiles(dir).Select",
+          "lineNumber": 230
+        },
+        {
+          "caller": "EnumerateFiles",
+          "callee": "Directory.EnumerateFiles",
+          "lineNumber": 230
+        },
+        {
+          "caller": "EnumerateDirectories",
+          "callee": "Directory.EnumerateDirectories(dir).Select",
+          "lineNumber": 232
+        },
+        {
+          "caller": "EnumerateDirectories",
+          "callee": "Directory.EnumerateDirectories",
+          "lineNumber": 232
+        },
+        {
+          "caller": "NormalizeToIso639_1",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 279
+        },
+        {
+          "caller": "NormalizeToIso639_1",
+          "callee": "IsoLetters",
+          "lineNumber": 281
+        },
+        {
+          "caller": "NormalizeToIso639_1",
+          "callee": "code.ToLowerInvariant",
+          "lineNumber": 281
+        },
+        {
+          "caller": "NormalizeToIso639_1",
+          "callee": "IsoLetters",
+          "lineNumber": 283
+        },
+        {
+          "caller": "NormalizeToIso639_1",
+          "callee": "NameToIso.TryGetValue",
+          "lineNumber": 283
+        },
+        {
+          "caller": "FromLanguageName",
+          "callee": "NameToIso.TryGetValue",
+          "lineNumber": 289
+        },
+        {
+          "caller": "FromLanguageName",
+          "callee": "name.Trim",
+          "lineNumber": 289
+        },
+        {
+          "caller": "IsoLetters",
+          "callee": "char.IsLetter",
+          "lineNumber": 295
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 12,
+        "functionCount": 12,
+        "classCount": 4
+      }
+    },
+    {
+      "path": "src/Wavee.Local/Thumbnails/IVideoThumbnailExtractor.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 29,
+      "nonEmptyLines": 28,
+      "classes": [
+        {
+          "name": "IVideoThumbnailExtractor",
+          "startLine": 22,
+          "endLine": 29,
+          "methods": [
+            "Extract"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "IVideoThumbnailExtractor",
+          "line": 22,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Local/Wavee.Local.csproj",
+      "language": "csproj",
+      "fileCategory": "config",
+      "totalLines": 36,
+      "nonEmptyLines": 30,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.Playback.Contracts/AudioFileCache.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 77,
+      "nonEmptyLines": 67,
+      "functions": [
+        {
+          "name": "GetCachedFilePath",
+          "startLine": 18,
+          "endLine": 19,
+          "params": [
+            "cacheDirectory",
+            "fileIdHex"
+          ]
+        },
+        {
+          "name": "IsCached",
+          "startLine": 24,
+          "endLine": 39,
+          "params": [
+            "cacheDirectory",
+            "fileIdHex"
+          ]
+        },
+        {
+          "name": "GetCachedFileSize",
+          "startLine": 44,
+          "endLine": 54,
+          "params": [
+            "cacheDirectory",
+            "fileIdHex"
+          ]
+        },
+        {
+          "name": "EnsureDirectoryExists",
+          "startLine": 59,
+          "endLine": 64,
+          "params": [
+            "cacheDirectory"
+          ]
+        },
+        {
+          "name": "TryTouch",
+          "startLine": 66,
+          "endLine": 76,
+          "params": [
+            "info"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "AudioFileCache",
+          "startLine": 8,
+          "endLine": 77,
+          "methods": [
+            "GetCachedFilePath",
+            "IsCached",
+            "GetCachedFileSize",
+            "EnsureDirectoryExists",
+            "TryTouch"
+          ],
+          "properties": [
+            "AudioSubDir",
+            "CacheExtension"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "GetCachedFilePath",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "IsCached",
+          "line": 24,
+          "isDefault": false
+        },
+        {
+          "name": "GetCachedFileSize",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "EnsureDirectoryExists",
+          "line": 59,
+          "isDefault": false
+        },
+        {
+          "name": "AudioFileCache",
+          "line": 8,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetCachedFilePath",
+          "callee": "Path.Combine",
+          "lineNumber": 19
+        },
+        {
+          "caller": "IsCached",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 26
+        },
+        {
+          "caller": "IsCached",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 26
+        },
+        {
+          "caller": "IsCached",
+          "callee": "GetCachedFilePath",
+          "lineNumber": 29
+        },
+        {
+          "caller": "IsCached",
+          "callee": "File.Exists",
+          "lineNumber": 30
+        },
+        {
+          "caller": "IsCached",
+          "callee": "new FileInfo",
+          "lineNumber": 33
+        },
+        {
+          "caller": "IsCached",
+          "callee": "TryTouch",
+          "lineNumber": 37
+        },
+        {
+          "caller": "GetCachedFileSize",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 46
+        },
+        {
+          "caller": "GetCachedFileSize",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 46
+        },
+        {
+          "caller": "GetCachedFileSize",
+          "callee": "GetCachedFilePath",
+          "lineNumber": 49
+        },
+        {
+          "caller": "GetCachedFileSize",
+          "callee": "File.Exists",
+          "lineNumber": 50
+        },
+        {
+          "caller": "GetCachedFileSize",
+          "callee": "new FileInfo",
+          "lineNumber": 51
+        },
+        {
+          "caller": "GetCachedFileSize",
+          "callee": "TryTouch",
+          "lineNumber": 52
+        },
+        {
+          "caller": "EnsureDirectoryExists",
+          "callee": "Path.Combine",
+          "lineNumber": 61
+        },
+        {
+          "caller": "EnsureDirectoryExists",
+          "callee": "Directory.Exists",
+          "lineNumber": 62
+        },
+        {
+          "caller": "EnsureDirectoryExists",
+          "callee": "Directory.CreateDirectory",
+          "lineNumber": 63
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 5,
+        "functionCount": 5,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Playback.Contracts/IpcMessages.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 690,
+      "nonEmptyLines": 538,
+      "classes": [
+        {
+          "name": "IpcMessage",
+          "startLine": 10,
+          "endLine": 20,
+          "methods": [],
+          "properties": [
+            "Type",
+            "Id",
+            "Payload"
+          ]
+        },
+        {
+          "name": "PlayResolvedTrackCommand",
+          "startLine": 29,
+          "endLine": 66,
+          "methods": [],
+          "properties": [
+            "CdnUrl",
+            "AudioKey",
+            "FileId",
+            "Codec",
+            "BitrateKbps",
+            "NormalizationGain",
+            "NormalizationPeak",
+            "TrackUri",
+            "TrackUid",
+            "DurationMs",
+            "PositionMs",
+            "Metadata"
+          ]
+        },
+        {
+          "name": "PrepareNextTrackCommand",
+          "startLine": 72,
+          "endLine": 106,
+          "methods": [],
+          "properties": [
+            "CdnUrl",
+            "AudioKey",
+            "FileId",
+            "Codec",
+            "BitrateKbps",
+            "NormalizationGain",
+            "NormalizationPeak",
+            "TrackUri",
+            "TrackUid",
+            "DurationMs",
+            "Metadata"
+          ]
+        },
+        {
+          "name": "TrackMetadataDto",
+          "startLine": 111,
+          "endLine": 139,
+          "methods": [],
+          "properties": [
+            "Title",
+            "Artist",
+            "Album",
+            "AlbumUri",
+            "ArtistUri",
+            "ImageUrl",
+            "ImageLargeUrl",
+            "ImageSmallUrl",
+            "ImageXLargeUrl"
+          ]
+        },
+        {
+          "name": "SeekCommand",
+          "startLine": 141,
+          "endLine": 145,
+          "methods": [],
+          "properties": [
+            "PositionMs"
+          ]
+        },
+        {
+          "name": "SetVolumeCommand",
+          "startLine": 147,
+          "endLine": 151,
+          "methods": [],
+          "properties": [
+            "VolumePercent"
+          ]
+        },
+        {
+          "name": "SetShuffleCommand",
+          "startLine": 153,
+          "endLine": 157,
+          "methods": [],
+          "properties": [
+            "Enabled"
+          ]
+        },
+        {
+          "name": "SetRepeatCommand",
+          "startLine": 159,
+          "endLine": 163,
+          "methods": [],
+          "properties": [
+            "State"
+          ]
+        },
+        {
+          "name": "AddToQueueCommand",
+          "startLine": 165,
+          "endLine": 169,
+          "methods": [],
+          "properties": [
+            "TrackUri"
+          ]
+        },
+        {
+          "name": "SetNormalizationCommand",
+          "startLine": 171,
+          "endLine": 175,
+          "methods": [],
+          "properties": [
+            "Enabled"
+          ]
+        },
+        {
+          "name": "SwitchQualityCommand",
+          "startLine": 177,
+          "endLine": 181,
+          "methods": [],
+          "properties": [
+            "Quality"
+          ]
+        },
+        {
+          "name": "SetEqualizerCommand",
+          "startLine": 183,
+          "endLine": 190,
+          "methods": [],
+          "properties": [
+            "Enabled",
+            "BandGains"
+          ]
+        },
+        {
+          "name": "EqualizerApplyResult",
+          "startLine": 192,
+          "endLine": 205,
+          "methods": [],
+          "properties": [
+            "Installed",
+            "ObservedAudioBuffer",
+            "Version",
+            "Message"
+          ]
+        },
+        {
+          "name": "SwitchAudioOutputCommand",
+          "startLine": 210,
+          "endLine": 214,
+          "methods": [],
+          "properties": [
+            "DeviceIndex"
+          ]
+        },
+        {
+          "name": "AudioOutputDeviceDto",
+          "startLine": 219,
+          "endLine": 229,
+          "methods": [],
+          "properties": [
+            "DeviceIndex",
+            "Name",
+            "IsDefault"
+          ]
+        },
+        {
+          "name": "StartPreviewAnalysisCommand",
+          "startLine": 231,
+          "endLine": 238,
+          "methods": [],
+          "properties": [
+            "SessionId",
+            "PreviewUrl"
+          ]
+        },
+        {
+          "name": "StopPreviewAnalysisCommand",
+          "startLine": 240,
+          "endLine": 244,
+          "methods": [],
+          "properties": [
+            "SessionId"
+          ]
+        },
+        {
+          "name": "DerivePlayPlayKeyCommand",
+          "startLine": 249,
+          "endLine": 262,
+          "methods": [],
+          "properties": [
+            "ObfuscatedKeyHex",
+            "ContentIdHex",
+            "SpotifyDllPath",
+            "PackJson"
+          ]
+        },
+        {
+          "name": "DerivePlayPlayKeyResult",
+          "startLine": 264,
+          "endLine": 268,
+          "methods": [],
+          "properties": [
+            "AesKeyHex"
+          ]
+        },
+        {
+          "name": "PlaybackStateSnapshot",
+          "startLine": 272,
+          "endLine": 374,
+          "methods": [],
+          "properties": [
+            "Source",
+            "TrackUri",
+            "TrackUid",
+            "TrackTitle",
+            "TrackArtist",
+            "TrackAlbum",
+            "NormalizationGainDb",
+            "NormalizationPeak",
+            "AlbumUri",
+            "ArtistUri",
+            "ImageUrl",
+            "ImageLargeUrl",
+            "ContextUri",
+            "PositionMs",
+            "DurationMs",
+            "IsPlaying",
+            "IsPaused",
+            "IsBuffering",
+            "Shuffling",
+            "RepeatingContext",
+            "RepeatingTrack",
+            "Volume",
+            "IsVolumeRestricted",
+            "CanSeek",
+            "Changes",
+            "ActiveDeviceId",
+            "ActiveDeviceName",
+            "Timestamp",
+            "UnderrunCount",
+            "ActiveAudioDeviceName",
+            "AvailableAudioDevices"
+          ]
+        },
+        {
+          "name": "PlaybackErrorMessage",
+          "startLine": 376,
+          "endLine": 383,
+          "methods": [],
+          "properties": [
+            "ErrorType",
+            "Message"
+          ]
+        },
+        {
+          "name": "CommandResultMessage",
+          "startLine": 385,
+          "endLine": 399,
+          "methods": [],
+          "properties": [
+            "RequestId",
+            "Success",
+            "ErrorMessage",
+            "Result"
+          ]
+        },
+        {
+          "name": "TrackFinishedMessage",
+          "startLine": 405,
+          "endLine": 412,
+          "methods": [],
+          "properties": [
+            "TrackUri",
+            "Reason"
+          ]
+        },
+        {
+          "name": "PreviewVisualizationFrame",
+          "startLine": 414,
+          "endLine": 427,
+          "methods": [],
+          "properties": [
+            "SessionId",
+            "Amplitudes",
+            "Sequence",
+            "Completed"
+          ]
+        },
+        {
+          "name": "PlayTrackCommand",
+          "startLine": 433,
+          "endLine": 464,
+          "methods": [],
+          "properties": [
+            "DeferredId",
+            "TrackUri",
+            "TrackUid",
+            "Codec",
+            "DurationMs",
+            "PositionMs",
+            "NormalizationGain",
+            "NormalizationPeak",
+            "HeadData",
+            "Metadata"
+          ]
+        },
+        {
+          "name": "NormalizationDataDto",
+          "startLine": 470,
+          "endLine": 483,
+          "methods": [],
+          "properties": [
+            "TrackGainDb",
+            "TrackPeak",
+            "AlbumGainDb",
+            "AlbumPeak"
+          ]
+        },
+        {
+          "name": "PlayLocalFileCommand",
+          "startLine": 490,
+          "endLine": 509,
+          "methods": [],
+          "properties": [
+            "TrackUri",
+            "FilePath",
+            "DurationMs",
+            "StartPositionMs",
+            "Metadata",
+            "Normalization"
+          ]
+        },
+        {
+          "name": "DeferredResolvedCommand",
+          "startLine": 515,
+          "endLine": 544,
+          "methods": [],
+          "properties": [
+            "DeferredId",
+            "CdnUrl",
+            "AudioKey",
+            "FileSize",
+            "SpotifyFileId",
+            "LocalCacheFileId"
+          ]
+        },
+        {
+          "name": "AudioHostReady",
+          "startLine": 548,
+          "endLine": 561,
+          "methods": [],
+          "properties": [
+            "DeviceId",
+            "PipeName",
+            "ParentProcessId",
+            "SessionId"
+          ]
+        },
+        {
+          "name": "AudioHostConfig",
+          "startLine": 566,
+          "endLine": 609,
+          "methods": [],
+          "properties": [
+            "DeviceId",
+            "ParentProcessId",
+            "SessionId",
+            "LaunchToken",
+            "NormalizationEnabled",
+            "AudioPreset",
+            "EqualizerEnabled",
+            "EqualizerBandGains",
+            "InitialVolumePercent",
+            "AudioCacheDirectory",
+            "AudioCacheMaxBytes"
+          ]
+        },
+        {
+          "name": "IpcMessageTypes",
+          "startLine": 613,
+          "endLine": 651,
+          "methods": [],
+          "properties": [
+            "PlayResolved",
+            "PlayTrack",
+            "PlayLocalFile",
+            "DeferredResolved",
+            "PrepareNext",
+            "Resume",
+            "Pause",
+            "Stop",
+            "SkipNext",
+            "SkipPrevious",
+            "Seek",
+            "SetVolume",
+            "SetShuffle",
+            "SetRepeat",
+            "AddToQueue",
+            "SetNormalization",
+            "SwitchQuality",
+            "SetEqualizer",
+            "SwitchAudioOutput",
+            "RefreshAudioDevices",
+            "StartPreviewAnalysis",
+            "StopPreviewAnalysis",
+            "DerivePlayPlayKey",
+            "Configure",
+            "Shutdown",
+            "Ping",
+            "StateUpdate",
+            "Error",
+            "CommandResult",
+            "TrackFinished",
+            "PreviewVisualizationFrame",
+            "Ready",
+            "Pong"
+          ]
+        },
+        {
+          "name": "IpcJsonContext",
+          "startLine": 656,
+          "endLine": 690,
+          "methods": [],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "Type",
+          "line": 12,
+          "isDefault": false
+        },
+        {
+          "name": "Id",
+          "line": 15,
+          "isDefault": false
+        },
+        {
+          "name": "Payload",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "IpcMessage",
+          "line": 10,
+          "isDefault": false
+        },
+        {
+          "name": "CdnUrl",
+          "line": 31,
+          "isDefault": false
+        },
+        {
+          "name": "AudioKey",
+          "line": 34,
+          "isDefault": false
+        },
+        {
+          "name": "FileId",
+          "line": 37,
+          "isDefault": false
+        },
+        {
+          "name": "Codec",
+          "line": 40,
+          "isDefault": false
+        },
+        {
+          "name": "BitrateKbps",
+          "line": 43,
+          "isDefault": false
+        },
+        {
+          "name": "NormalizationGain",
+          "line": 46,
+          "isDefault": false
+        },
+        {
+          "name": "NormalizationPeak",
+          "line": 49,
+          "isDefault": false
+        },
+        {
+          "name": "TrackUri",
+          "line": 52,
+          "isDefault": false
+        },
+        {
+          "name": "TrackUid",
+          "line": 55,
+          "isDefault": false
+        },
+        {
+          "name": "DurationMs",
+          "line": 58,
+          "isDefault": false
+        },
+        {
+          "name": "PositionMs",
+          "line": 61,
+          "isDefault": false
+        },
+        {
+          "name": "Metadata",
+          "line": 64,
+          "isDefault": false
+        },
+        {
+          "name": "PlayResolvedTrackCommand",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "CdnUrl",
+          "line": 74,
+          "isDefault": false
+        },
+        {
+          "name": "AudioKey",
+          "line": 77,
+          "isDefault": false
+        },
+        {
+          "name": "FileId",
+          "line": 80,
+          "isDefault": false
+        },
+        {
+          "name": "Codec",
+          "line": 83,
+          "isDefault": false
+        },
+        {
+          "name": "BitrateKbps",
+          "line": 86,
+          "isDefault": false
+        },
+        {
+          "name": "NormalizationGain",
+          "line": 89,
+          "isDefault": false
+        },
+        {
+          "name": "NormalizationPeak",
+          "line": 92,
+          "isDefault": false
+        },
+        {
+          "name": "TrackUri",
+          "line": 95,
+          "isDefault": false
+        },
+        {
+          "name": "TrackUid",
+          "line": 98,
+          "isDefault": false
+        },
+        {
+          "name": "DurationMs",
+          "line": 101,
+          "isDefault": false
+        },
+        {
+          "name": "Metadata",
+          "line": 104,
+          "isDefault": false
+        },
+        {
+          "name": "PrepareNextTrackCommand",
+          "line": 72,
+          "isDefault": false
+        },
+        {
+          "name": "Title",
+          "line": 113,
+          "isDefault": false
+        },
+        {
+          "name": "Artist",
+          "line": 116,
+          "isDefault": false
+        },
+        {
+          "name": "Album",
+          "line": 119,
+          "isDefault": false
+        },
+        {
+          "name": "AlbumUri",
+          "line": 122,
+          "isDefault": false
+        },
+        {
+          "name": "ArtistUri",
+          "line": 125,
+          "isDefault": false
+        },
+        {
+          "name": "ImageUrl",
+          "line": 128,
+          "isDefault": false
+        },
+        {
+          "name": "ImageLargeUrl",
+          "line": 131,
+          "isDefault": false
+        },
+        {
+          "name": "ImageSmallUrl",
+          "line": 134,
+          "isDefault": false
+        },
+        {
+          "name": "ImageXLargeUrl",
+          "line": 137,
+          "isDefault": false
+        },
+        {
+          "name": "TrackMetadataDto",
+          "line": 111,
+          "isDefault": false
+        },
+        {
+          "name": "PositionMs",
+          "line": 143,
+          "isDefault": false
+        },
+        {
+          "name": "SeekCommand",
+          "line": 141,
+          "isDefault": false
+        },
+        {
+          "name": "VolumePercent",
+          "line": 149,
+          "isDefault": false
+        },
+        {
+          "name": "SetVolumeCommand",
+          "line": 147,
+          "isDefault": false
+        },
+        {
+          "name": "Enabled",
+          "line": 155,
+          "isDefault": false
+        },
+        {
+          "name": "SetShuffleCommand",
+          "line": 153,
+          "isDefault": false
+        },
+        {
+          "name": "State",
+          "line": 161,
+          "isDefault": false
+        },
+        {
+          "name": "SetRepeatCommand",
+          "line": 159,
+          "isDefault": false
+        },
+        {
+          "name": "TrackUri",
+          "line": 167,
+          "isDefault": false
+        },
+        {
+          "name": "AddToQueueCommand",
+          "line": 165,
+          "isDefault": false
+        },
+        {
+          "name": "Enabled",
+          "line": 173,
+          "isDefault": false
+        },
+        {
+          "name": "SetNormalizationCommand",
+          "line": 171,
+          "isDefault": false
+        },
+        {
+          "name": "Quality",
+          "line": 179,
+          "isDefault": false
+        },
+        {
+          "name": "SwitchQualityCommand",
+          "line": 177,
+          "isDefault": false
+        },
+        {
+          "name": "Enabled",
+          "line": 185,
+          "isDefault": false
+        },
+        {
+          "name": "BandGains",
+          "line": 188,
+          "isDefault": false
+        },
+        {
+          "name": "SetEqualizerCommand",
+          "line": 183,
+          "isDefault": false
+        },
+        {
+          "name": "Installed",
+          "line": 194,
+          "isDefault": false
+        },
+        {
+          "name": "ObservedAudioBuffer",
+          "line": 197,
+          "isDefault": false
+        },
+        {
+          "name": "Version",
+          "line": 200,
+          "isDefault": false
+        },
+        {
+          "name": "Message",
+          "line": 203,
+          "isDefault": false
+        },
+        {
+          "name": "EqualizerApplyResult",
+          "line": 192,
+          "isDefault": false
+        },
+        {
+          "name": "DeviceIndex",
+          "line": 212,
+          "isDefault": false
+        },
+        {
+          "name": "SwitchAudioOutputCommand",
+          "line": 210,
+          "isDefault": false
+        },
+        {
+          "name": "DeviceIndex",
+          "line": 221,
+          "isDefault": false
+        },
+        {
+          "name": "Name",
+          "line": 224,
+          "isDefault": false
+        },
+        {
+          "name": "IsDefault",
+          "line": 227,
+          "isDefault": false
+        },
+        {
+          "name": "AudioOutputDeviceDto",
+          "line": 219,
+          "isDefault": false
+        },
+        {
+          "name": "SessionId",
+          "line": 233,
+          "isDefault": false
+        },
+        {
+          "name": "PreviewUrl",
+          "line": 236,
+          "isDefault": false
+        },
+        {
+          "name": "StartPreviewAnalysisCommand",
+          "line": 231,
+          "isDefault": false
+        },
+        {
+          "name": "SessionId",
+          "line": 242,
+          "isDefault": false
+        },
+        {
+          "name": "StopPreviewAnalysisCommand",
+          "line": 240,
+          "isDefault": false
+        },
+        {
+          "name": "ObfuscatedKeyHex",
+          "line": 251,
+          "isDefault": false
+        },
+        {
+          "name": "ContentIdHex",
+          "line": 254,
+          "isDefault": false
+        },
+        {
+          "name": "SpotifyDllPath",
+          "line": 257,
+          "isDefault": false
+        },
+        {
+          "name": "PackJson",
+          "line": 260,
+          "isDefault": false
+        },
+        {
+          "name": "DerivePlayPlayKeyCommand",
+          "line": 249,
+          "isDefault": false
+        },
+        {
+          "name": "AesKeyHex",
+          "line": 266,
+          "isDefault": false
+        },
+        {
+          "name": "DerivePlayPlayKeyResult",
+          "line": 264,
+          "isDefault": false
+        },
+        {
+          "name": "Source",
+          "line": 274,
+          "isDefault": false
+        },
+        {
+          "name": "TrackUri",
+          "line": 277,
+          "isDefault": false
+        },
+        {
+          "name": "TrackUid",
+          "line": 280,
+          "isDefault": false
+        },
+        {
+          "name": "TrackTitle",
+          "line": 283,
+          "isDefault": false
+        },
+        {
+          "name": "TrackArtist",
+          "line": 286,
+          "isDefault": false
+        },
+        {
+          "name": "TrackAlbum",
+          "line": 289,
+          "isDefault": false
+        },
+        {
+          "name": "NormalizationGainDb",
+          "line": 292,
+          "isDefault": false
+        },
+        {
+          "name": "NormalizationPeak",
+          "line": 295,
+          "isDefault": false
+        },
+        {
+          "name": "AlbumUri",
+          "line": 298,
+          "isDefault": false
+        },
+        {
+          "name": "ArtistUri",
+          "line": 301,
+          "isDefault": false
+        },
+        {
+          "name": "ImageUrl",
+          "line": 304,
+          "isDefault": false
+        },
+        {
+          "name": "ImageLargeUrl",
+          "line": 307,
+          "isDefault": false
+        },
+        {
+          "name": "ContextUri",
+          "line": 310,
+          "isDefault": false
+        },
+        {
+          "name": "PositionMs",
+          "line": 313,
+          "isDefault": false
+        },
+        {
+          "name": "DurationMs",
+          "line": 316,
+          "isDefault": false
+        },
+        {
+          "name": "IsPlaying",
+          "line": 319,
+          "isDefault": false
+        },
+        {
+          "name": "IsPaused",
+          "line": 322,
+          "isDefault": false
+        },
+        {
+          "name": "IsBuffering",
+          "line": 325,
+          "isDefault": false
+        },
+        {
+          "name": "Shuffling",
+          "line": 328,
+          "isDefault": false
+        },
+        {
+          "name": "RepeatingContext",
+          "line": 331,
+          "isDefault": false
+        },
+        {
+          "name": "RepeatingTrack",
+          "line": 334,
+          "isDefault": false
+        },
+        {
+          "name": "Volume",
+          "line": 337,
+          "isDefault": false
+        },
+        {
+          "name": "IsVolumeRestricted",
+          "line": 340,
+          "isDefault": false
+        },
+        {
+          "name": "CanSeek",
+          "line": 343,
+          "isDefault": false
+        },
+        {
+          "name": "Changes",
+          "line": 346,
+          "isDefault": false
+        },
+        {
+          "name": "ActiveDeviceId",
+          "line": 349,
+          "isDefault": false
+        },
+        {
+          "name": "ActiveDeviceName",
+          "line": 352,
+          "isDefault": false
+        },
+        {
+          "name": "Timestamp",
+          "line": 355,
+          "isDefault": false
+        },
+        {
+          "name": "UnderrunCount",
+          "line": 358,
+          "isDefault": false
+        },
+        {
+          "name": "ActiveAudioDeviceName",
+          "line": 365,
+          "isDefault": false
+        },
+        {
+          "name": "AvailableAudioDevices",
+          "line": 372,
+          "isDefault": false
+        },
+        {
+          "name": "PlaybackStateSnapshot",
+          "line": 272,
+          "isDefault": false
+        },
+        {
+          "name": "ErrorType",
+          "line": 378,
+          "isDefault": false
+        },
+        {
+          "name": "Message",
+          "line": 381,
+          "isDefault": false
+        },
+        {
+          "name": "PlaybackErrorMessage",
+          "line": 376,
+          "isDefault": false
+        },
+        {
+          "name": "RequestId",
+          "line": 387,
+          "isDefault": false
+        },
+        {
+          "name": "Success",
+          "line": 390,
+          "isDefault": false
+        },
+        {
+          "name": "ErrorMessage",
+          "line": 393,
+          "isDefault": false
+        },
+        {
+          "name": "Result",
+          "line": 397,
+          "isDefault": false
+        },
+        {
+          "name": "CommandResultMessage",
+          "line": 385,
+          "isDefault": false
+        },
+        {
+          "name": "TrackUri",
+          "line": 407,
+          "isDefault": false
+        },
+        {
+          "name": "Reason",
+          "line": 410,
+          "isDefault": false
+        },
+        {
+          "name": "TrackFinishedMessage",
+          "line": 405,
+          "isDefault": false
+        },
+        {
+          "name": "SessionId",
+          "line": 416,
+          "isDefault": false
+        },
+        {
+          "name": "Amplitudes",
+          "line": 419,
+          "isDefault": false
+        },
+        {
+          "name": "Sequence",
+          "line": 422,
+          "isDefault": false
+        },
+        {
+          "name": "Completed",
+          "line": 425,
+          "isDefault": false
+        },
+        {
+          "name": "PreviewVisualizationFrame",
+          "line": 414,
+          "isDefault": false
+        },
+        {
+          "name": "DeferredId",
+          "line": 435,
+          "isDefault": false
+        },
+        {
+          "name": "TrackUri",
+          "line": 438,
+          "isDefault": false
+        },
+        {
+          "name": "TrackUid",
+          "line": 441,
+          "isDefault": false
+        },
+        {
+          "name": "Codec",
+          "line": 444,
+          "isDefault": false
+        },
+        {
+          "name": "DurationMs",
+          "line": 447,
+          "isDefault": false
+        },
+        {
+          "name": "PositionMs",
+          "line": 450,
+          "isDefault": false
+        },
+        {
+          "name": "NormalizationGain",
+          "line": 453,
+          "isDefault": false
+        },
+        {
+          "name": "NormalizationPeak",
+          "line": 456,
+          "isDefault": false
+        },
+        {
+          "name": "HeadData",
+          "line": 459,
+          "isDefault": false
+        },
+        {
+          "name": "Metadata",
+          "line": 462,
+          "isDefault": false
+        },
+        {
+          "name": "PlayTrackCommand",
+          "line": 433,
+          "isDefault": false
+        },
+        {
+          "name": "TrackGainDb",
+          "line": 472,
+          "isDefault": false
+        },
+        {
+          "name": "TrackPeak",
+          "line": 475,
+          "isDefault": false
+        },
+        {
+          "name": "AlbumGainDb",
+          "line": 478,
+          "isDefault": false
+        },
+        {
+          "name": "AlbumPeak",
+          "line": 481,
+          "isDefault": false
+        },
+        {
+          "name": "NormalizationDataDto",
+          "line": 470,
+          "isDefault": false
+        },
+        {
+          "name": "TrackUri",
+          "line": 492,
+          "isDefault": false
+        },
+        {
+          "name": "FilePath",
+          "line": 495,
+          "isDefault": false
+        },
+        {
+          "name": "DurationMs",
+          "line": 498,
+          "isDefault": false
+        },
+        {
+          "name": "StartPositionMs",
+          "line": 501,
+          "isDefault": false
+        },
+        {
+          "name": "Metadata",
+          "line": 504,
+          "isDefault": false
+        },
+        {
+          "name": "Normalization",
+          "line": 507,
+          "isDefault": false
+        },
+        {
+          "name": "PlayLocalFileCommand",
+          "line": 490,
+          "isDefault": false
+        },
+        {
+          "name": "DeferredId",
+          "line": 517,
+          "isDefault": false
+        },
+        {
+          "name": "CdnUrl",
+          "line": 521,
+          "isDefault": false
+        },
+        {
+          "name": "AudioKey",
+          "line": 524,
+          "isDefault": false
+        },
+        {
+          "name": "FileSize",
+          "line": 527,
+          "isDefault": false
+        },
+        {
+          "name": "SpotifyFileId",
+          "line": 534,
+          "isDefault": false
+        },
+        {
+          "name": "LocalCacheFileId",
+          "line": 542,
+          "isDefault": false
+        },
+        {
+          "name": "DeferredResolvedCommand",
+          "line": 515,
+          "isDefault": false
+        },
+        {
+          "name": "DeviceId",
+          "line": 550,
+          "isDefault": false
+        },
+        {
+          "name": "PipeName",
+          "line": 553,
+          "isDefault": false
+        },
+        {
+          "name": "ParentProcessId",
+          "line": 556,
+          "isDefault": false
+        },
+        {
+          "name": "SessionId",
+          "line": 559,
+          "isDefault": false
+        },
+        {
+          "name": "AudioHostReady",
+          "line": 548,
+          "isDefault": false
+        },
+        {
+          "name": "DeviceId",
+          "line": 568,
+          "isDefault": false
+        },
+        {
+          "name": "ParentProcessId",
+          "line": 571,
+          "isDefault": false
+        },
+        {
+          "name": "SessionId",
+          "line": 574,
+          "isDefault": false
+        },
+        {
+          "name": "LaunchToken",
+          "line": 577,
+          "isDefault": false
+        },
+        {
+          "name": "NormalizationEnabled",
+          "line": 580,
+          "isDefault": false
+        },
+        {
+          "name": "AudioPreset",
+          "line": 583,
+          "isDefault": false
+        },
+        {
+          "name": "EqualizerEnabled",
+          "line": 586,
+          "isDefault": false
+        },
+        {
+          "name": "EqualizerBandGains",
+          "line": 589,
+          "isDefault": false
+        },
+        {
+          "name": "InitialVolumePercent",
+          "line": 593,
+          "isDefault": false
+        },
+        {
+          "name": "AudioCacheDirectory",
+          "line": 601,
+          "isDefault": false
+        },
+        {
+          "name": "AudioCacheMaxBytes",
+          "line": 607,
+          "isDefault": false
+        },
+        {
+          "name": "AudioHostConfig",
+          "line": 566,
+          "isDefault": false
+        },
+        {
+          "name": "PlayResolved",
+          "line": 616,
+          "isDefault": false
+        },
+        {
+          "name": "PlayTrack",
+          "line": 617,
+          "isDefault": false
+        },
+        {
+          "name": "PlayLocalFile",
+          "line": 618,
+          "isDefault": false
+        },
+        {
+          "name": "DeferredResolved",
+          "line": 619,
+          "isDefault": false
+        },
+        {
+          "name": "PrepareNext",
+          "line": 620,
+          "isDefault": false
+        },
+        {
+          "name": "Resume",
+          "line": 621,
+          "isDefault": false
+        },
+        {
+          "name": "Pause",
+          "line": 622,
+          "isDefault": false
+        },
+        {
+          "name": "Stop",
+          "line": 623,
+          "isDefault": false
+        },
+        {
+          "name": "SkipNext",
+          "line": 624,
+          "isDefault": false
+        },
+        {
+          "name": "SkipPrevious",
+          "line": 625,
+          "isDefault": false
+        },
+        {
+          "name": "Seek",
+          "line": 626,
+          "isDefault": false
+        },
+        {
+          "name": "SetVolume",
+          "line": 627,
+          "isDefault": false
+        },
+        {
+          "name": "SetShuffle",
+          "line": 628,
+          "isDefault": false
+        },
+        {
+          "name": "SetRepeat",
+          "line": 629,
+          "isDefault": false
+        },
+        {
+          "name": "AddToQueue",
+          "line": 630,
+          "isDefault": false
+        },
+        {
+          "name": "SetNormalization",
+          "line": 631,
+          "isDefault": false
+        },
+        {
+          "name": "SwitchQuality",
+          "line": 632,
+          "isDefault": false
+        },
+        {
+          "name": "SetEqualizer",
+          "line": 633,
+          "isDefault": false
+        },
+        {
+          "name": "SwitchAudioOutput",
+          "line": 634,
+          "isDefault": false
+        },
+        {
+          "name": "RefreshAudioDevices",
+          "line": 635,
+          "isDefault": false
+        },
+        {
+          "name": "StartPreviewAnalysis",
+          "line": 636,
+          "isDefault": false
+        },
+        {
+          "name": "StopPreviewAnalysis",
+          "line": 637,
+          "isDefault": false
+        },
+        {
+          "name": "DerivePlayPlayKey",
+          "line": 638,
+          "isDefault": false
+        },
+        {
+          "name": "Configure",
+          "line": 639,
+          "isDefault": false
+        },
+        {
+          "name": "Shutdown",
+          "line": 640,
+          "isDefault": false
+        },
+        {
+          "name": "Ping",
+          "line": 641,
+          "isDefault": false
+        },
+        {
+          "name": "StateUpdate",
+          "line": 644,
+          "isDefault": false
+        },
+        {
+          "name": "Error",
+          "line": 645,
+          "isDefault": false
+        },
+        {
+          "name": "CommandResult",
+          "line": 646,
+          "isDefault": false
+        },
+        {
+          "name": "TrackFinished",
+          "line": 647,
+          "isDefault": false
+        },
+        {
+          "name": "PreviewVisualizationFrame",
+          "line": 648,
+          "isDefault": false
+        },
+        {
+          "name": "Ready",
+          "line": 649,
+          "isDefault": false
+        },
+        {
+          "name": "Pong",
+          "line": 650,
+          "isDefault": false
+        },
+        {
+          "name": "IpcMessageTypes",
+          "line": 613,
+          "isDefault": false
+        },
+        {
+          "name": "IpcJsonContext",
+          "line": 656,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 209,
+        "functionCount": 0,
+        "classCount": 32
+      }
+    },
+    {
+      "path": "src/Wavee.Playback.Contracts/IpcPipeTransport.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 183,
+      "nonEmptyLines": 161,
+      "functions": [
+        {
+          "name": "IpcPipeTransport",
+          "startLine": 23,
+          "endLine": 27,
+          "params": [
+            "pipe",
+            "logger"
+          ]
+        },
+        {
+          "name": "SendAsync",
+          "startLine": 34,
+          "endLine": 38,
+          "params": [
+            "messageType",
+            "payload",
+            "id",
+            "ct"
+          ]
+        },
+        {
+          "name": "SendAsync",
+          "startLine": 44,
+          "endLine": 49,
+          "params": [
+            "messageType",
+            "payloadJsonUtf8",
+            "id",
+            "ct"
+          ]
+        },
+        {
+          "name": "SendAsync",
+          "startLine": 54,
+          "endLine": 58,
+          "params": [
+            "messageType",
+            "id",
+            "ct"
+          ]
+        },
+        {
+          "name": "ReceiveAsync",
+          "startLine": 63,
+          "endLine": 104,
+          "params": [
+            "ct"
+          ]
+        },
+        {
+          "name": "SendRawAsync",
+          "startLine": 106,
+          "endLine": 132,
+          "params": [
+            "message",
+            "ct"
+          ]
+        },
+        {
+          "name": "ReadExactAsync",
+          "startLine": 134,
+          "endLine": 145,
+          "params": [
+            "buffer",
+            "offset",
+            "count",
+            "ct"
+          ]
+        },
+        {
+          "name": "DisposeAsync",
+          "startLine": 147,
+          "endLine": 162,
+          "params": []
+        },
+        {
+          "name": "Deserialize",
+          "startLine": 170,
+          "endLine": 174,
+          "params": [
+            "message"
+          ]
+        },
+        {
+          "name": "SerializeToUtf8",
+          "startLine": 179,
+          "endLine": 182,
+          "params": [
+            "value"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "IpcPipeTransport",
+          "startLine": 13,
+          "endLine": 163,
+          "methods": [
+            "IpcPipeTransport",
+            "SendAsync",
+            "SendAsync",
+            "SendAsync",
+            "ReceiveAsync",
+            "SendRawAsync",
+            "ReadExactAsync",
+            "DisposeAsync"
+          ],
+          "properties": [
+            "_pipe",
+            "_logger",
+            "_writeLock",
+            "_readLock",
+            "_writeLengthBuffer",
+            "_readLengthBuffer",
+            "_disposed",
+            "IsConnected"
+          ]
+        },
+        {
+          "name": "IpcPayloadHelper",
+          "startLine": 168,
+          "endLine": 183,
+          "methods": [
+            "Deserialize",
+            "SerializeToUtf8"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "IpcPipeTransport",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "IsConnected",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "SendAsync",
+          "line": 34,
+          "isDefault": false
+        },
+        {
+          "name": "SendAsync",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "SendAsync",
+          "line": 54,
+          "isDefault": false
+        },
+        {
+          "name": "ReceiveAsync",
+          "line": 63,
+          "isDefault": false
+        },
+        {
+          "name": "DisposeAsync",
+          "line": 147,
+          "isDefault": false
+        },
+        {
+          "name": "IpcPipeTransport",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "Deserialize",
+          "line": 170,
+          "isDefault": false
+        },
+        {
+          "name": "SerializeToUtf8",
+          "line": 179,
+          "isDefault": false
+        },
+        {
+          "name": "IpcPayloadHelper",
+          "line": 168,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "IpcPipeTransport",
+          "callee": "new ArgumentNullException",
+          "lineNumber": 25
+        },
+        {
+          "caller": "IpcPipeTransport",
+          "callee": "nameof",
+          "lineNumber": 25
+        },
+        {
+          "caller": "SendAsync",
+          "callee": "new IpcMessage",
+          "lineNumber": 36
+        },
+        {
+          "caller": "SendAsync",
+          "callee": "SendRawAsync(envelope, ct).ConfigureAwait",
+          "lineNumber": 37
+        },
+        {
+          "caller": "SendAsync",
+          "callee": "SendRawAsync",
+          "lineNumber": 37
+        },
+        {
+          "caller": "SendAsync",
+          "callee": "JsonDocument.Parse",
+          "lineNumber": 46
+        },
+        {
+          "caller": "SendAsync",
+          "callee": "new IpcMessage",
+          "lineNumber": 47
+        },
+        {
+          "caller": "SendAsync",
+          "callee": "doc.RootElement.Clone",
+          "lineNumber": 47
+        },
+        {
+          "caller": "SendAsync",
+          "callee": "SendRawAsync(envelope, ct).ConfigureAwait",
+          "lineNumber": 48
+        },
+        {
+          "caller": "SendAsync",
+          "callee": "SendRawAsync",
+          "lineNumber": 48
+        },
+        {
+          "caller": "SendAsync",
+          "callee": "new IpcMessage",
+          "lineNumber": 56
+        },
+        {
+          "caller": "SendAsync",
+          "callee": "SendRawAsync(envelope, ct).ConfigureAwait",
+          "lineNumber": 57
+        },
+        {
+          "caller": "SendAsync",
+          "callee": "SendRawAsync",
+          "lineNumber": 57
+        },
+        {
+          "caller": "ReceiveAsync",
+          "callee": "_readLock.WaitAsync(ct).ConfigureAwait",
+          "lineNumber": 65
+        },
+        {
+          "caller": "ReceiveAsync",
+          "callee": "_readLock.WaitAsync",
+          "lineNumber": 65
+        },
+        {
+          "caller": "ReceiveAsync",
+          "callee": "ReadExactAsync(_readLengthBuffer, 0, 4, ct).ConfigureAwait",
+          "lineNumber": 69
+        },
+        {
+          "caller": "ReceiveAsync",
+          "callee": "ReadExactAsync",
+          "lineNumber": 69
+        },
+        {
+          "caller": "ReceiveAsync",
+          "callee": "_logger?.LogError",
+          "lineNumber": 80
+        },
+        {
+          "caller": "ReceiveAsync",
+          "callee": "ArrayPool<byte>.Shared.Rent",
+          "lineNumber": 85
+        },
+        {
+          "caller": "ReceiveAsync",
+          "callee": "ReadExactAsync(buffer, 0, length, ct).ConfigureAwait",
+          "lineNumber": 88
+        },
+        {
+          "caller": "ReceiveAsync",
+          "callee": "ReadExactAsync",
+          "lineNumber": 88
+        },
+        {
+          "caller": "ReceiveAsync",
+          "callee": "JsonSerializer.Deserialize",
+          "lineNumber": 91
+        },
+        {
+          "caller": "ReceiveAsync",
+          "callee": "buffer.AsSpan",
+          "lineNumber": 92
+        },
+        {
+          "caller": "ReceiveAsync",
+          "callee": "ArrayPool<byte>.Shared.Return",
+          "lineNumber": 97
+        },
+        {
+          "caller": "ReceiveAsync",
+          "callee": "_readLock.Release",
+          "lineNumber": 102
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "JsonSerializer.SerializeToUtf8Bytes",
+          "lineNumber": 108
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "CancellationTokenSource.CreateLinkedTokenSource",
+          "lineNumber": 111
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "timeoutCts.CancelAfter",
+          "lineNumber": 112
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 112
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "_writeLock.WaitAsync(timeoutCts.Token).ConfigureAwait",
+          "lineNumber": 114
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "_writeLock.WaitAsync",
+          "lineNumber": 114
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "_pipe.WriteAsync(_writeLengthBuffer.AsMemory(0, 4), timeoutCts.Token).ConfigureAwait",
+          "lineNumber": 124
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "_pipe.WriteAsync",
+          "lineNumber": 124
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "_writeLengthBuffer.AsMemory",
+          "lineNumber": 124
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "_pipe.WriteAsync(json, timeoutCts.Token).ConfigureAwait",
+          "lineNumber": 125
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "_pipe.WriteAsync",
+          "lineNumber": 125
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "_pipe.FlushAsync(timeoutCts.Token).ConfigureAwait",
+          "lineNumber": 126
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "_pipe.FlushAsync",
+          "lineNumber": 126
+        },
+        {
+          "caller": "SendRawAsync",
+          "callee": "_writeLock.Release",
+          "lineNumber": 130
+        },
+        {
+          "caller": "ReadExactAsync",
+          "callee": "_pipe.ReadAsync(\r\n                buffer.AsMemory(offset + totalRead, count - totalRead), ct).ConfigureAwait",
+          "lineNumber": 139
+        },
+        {
+          "caller": "ReadExactAsync",
+          "callee": "_pipe.ReadAsync",
+          "lineNumber": 139
+        },
+        {
+          "caller": "ReadExactAsync",
+          "callee": "buffer.AsMemory",
+          "lineNumber": 140
+        },
+        {
+          "caller": "DisposeAsync",
+          "callee": "server.Disconnect",
+          "lineNumber": 155
+        },
+        {
+          "caller": "DisposeAsync",
+          "callee": "_pipe.DisposeAsync().ConfigureAwait",
+          "lineNumber": 159
+        },
+        {
+          "caller": "DisposeAsync",
+          "callee": "_pipe.DisposeAsync",
+          "lineNumber": 159
+        },
+        {
+          "caller": "DisposeAsync",
+          "callee": "_writeLock.Dispose",
+          "lineNumber": 160
+        },
+        {
+          "caller": "DisposeAsync",
+          "callee": "_readLock.Dispose",
+          "lineNumber": 161
+        },
+        {
+          "caller": "Deserialize",
+          "callee": "element.Deserialize",
+          "lineNumber": 173
+        },
+        {
+          "caller": "SerializeToUtf8",
+          "callee": "JsonSerializer.SerializeToUtf8Bytes",
+          "lineNumber": 181
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 11,
+        "functionCount": 10,
+        "classCount": 2
+      }
+    },
+    {
+      "path": "src/Wavee.Playback.Contracts/README.md",
+      "language": "markdown",
+      "fileCategory": "docs",
+      "totalLines": 37,
+      "nonEmptyLines": 25,
+      "sections": [
+        {
+          "heading": "Wavee.Playback.Contracts — IPC contracts for the audio process",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "What's in here",
+          "level": 2,
+          "line": 7
+        },
+        {
+          "heading": "Two consumption modes",
+          "level": 2,
+          "line": 17
+        },
+        {
+          "heading": "Adding a new command / event",
+          "level": 2,
+          "line": 33
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "sectionCount": 4
+      }
+    },
+    {
+      "path": "src/Wavee.Playback.Contracts/Wavee.Playback.Contracts.csproj",
+      "language": "csproj",
+      "fileCategory": "config",
+      "totalLines": 18,
+      "nonEmptyLines": 14,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/app.manifest",
+      "language": "manifest",
+      "fileCategory": "config",
+      "totalLines": 19,
+      "nonEmptyLines": 17,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/App.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 278,
+      "nonEmptyLines": 260,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/App.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 398,
+      "nonEmptyLines": 359,
+      "functions": [
+        {
+          "name": "App",
+          "startLine": 36,
+          "endLine": 43,
+          "params": []
+        },
+        {
+          "name": "OnUnhandledException",
+          "startLine": 45,
+          "endLine": 50,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnCurrentDomainUnhandledException",
+          "startLine": 52,
+          "endLine": 55,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnTaskSchedulerUnobservedTaskException",
+          "startLine": 57,
+          "endLine": 61,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "LogUnhandledException",
+          "startLine": 63,
+          "endLine": 100,
+          "params": [
+            "source",
+            "ex"
+          ]
+        },
+        {
+          "name": "OnLaunched",
+          "startLine": 102,
+          "endLine": 253,
+          "params": [
+            "args"
+          ]
+        },
+        {
+          "name": "UnwrapMigrationException",
+          "startLine": 260,
+          "endLine": 268,
+          "params": [
+            "ex"
+          ]
+        },
+        {
+          "name": "ShowMigrationErrorWindow",
+          "startLine": 270,
+          "endLine": 277,
+          "params": [
+            "migrationEx"
+          ]
+        },
+        {
+          "name": "OnUserChoseRebuild",
+          "startLine": 279,
+          "endLine": 316,
+          "params": [
+            "migrationEx"
+          ]
+        },
+        {
+          "name": "OnUserChoseQuit",
+          "startLine": 318,
+          "endLine": 324,
+          "params": []
+        },
+        {
+          "name": "ShutdownHostAsync",
+          "startLine": 326,
+          "endLine": 334,
+          "params": []
+        },
+        {
+          "name": "OnAppNotificationInvoked",
+          "startLine": 346,
+          "endLine": 359,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "ShutdownHostCoreAsync",
+          "startLine": 361,
+          "endLine": 397,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "App",
+          "startLine": 19,
+          "endLine": 398,
+          "methods": [
+            "App",
+            "OnUnhandledException",
+            "OnCurrentDomainUnhandledException",
+            "OnTaskSchedulerUnobservedTaskException",
+            "LogUnhandledException",
+            "OnLaunched",
+            "UnwrapMigrationException",
+            "ShowMigrationErrorWindow",
+            "OnUserChoseRebuild",
+            "OnUserChoseQuit",
+            "ShutdownHostAsync",
+            "OnAppNotificationInvoked",
+            "ShutdownHostCoreAsync"
+          ],
+          "properties": [
+            "_host",
+            "_shutdownGate",
+            "_shutdownTask",
+            "_shutdownStarted",
+            "_localVideoStateSubscription",
+            "AppModel",
+            "IsHostShuttingDown"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "AppModel",
+          "line": 32,
+          "isDefault": false
+        },
+        {
+          "name": "App",
+          "line": 36,
+          "isDefault": false
+        },
+        {
+          "name": "App",
+          "line": 19,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "App",
+          "callee": "AppLocalization.ApplyLanguageOverride",
+          "lineNumber": 38
+        },
+        {
+          "caller": "App",
+          "callee": "SettingsService.PeekLanguage",
+          "lineNumber": 38
+        },
+        {
+          "caller": "App",
+          "callee": "InitializeComponent",
+          "lineNumber": 39
+        },
+        {
+          "caller": "OnUnhandledException",
+          "callee": "LogUnhandledException",
+          "lineNumber": 47
+        },
+        {
+          "caller": "OnCurrentDomainUnhandledException",
+          "callee": "LogUnhandledException",
+          "lineNumber": 53
+        },
+        {
+          "caller": "OnCurrentDomainUnhandledException",
+          "callee": "new Exception",
+          "lineNumber": 55
+        },
+        {
+          "caller": "OnCurrentDomainUnhandledException",
+          "callee": "e.ExceptionObject?.ToString",
+          "lineNumber": 55
+        },
+        {
+          "caller": "OnTaskSchedulerUnobservedTaskException",
+          "callee": "LogUnhandledException",
+          "lineNumber": 59
+        },
+        {
+          "caller": "OnTaskSchedulerUnobservedTaskException",
+          "callee": "e.SetObserved",
+          "lineNumber": 60
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "ex.GetType",
+          "lineNumber": 69
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 70
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 71
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 72
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 74
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "System.IO.Directory.CreateDirectory",
+          "lineNumber": 84
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "System.IO.Path.GetDirectoryName",
+          "lineNumber": 84
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "PiiRedactor.Redact",
+          "lineNumber": 85
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "PiiRedactor.Redact",
+          "lineNumber": 86
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "PiiRedactor.Redact",
+          "lineNumber": 88
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "ex.InnerException.ToString",
+          "lineNumber": 88
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "System.IO.File.AppendAllText",
+          "lineNumber": 91
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "ex.GetType",
+          "lineNumber": 93
+        },
+        {
+          "caller": "LogUnhandledException",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 94
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Microsoft.Windows.AppNotifications.AppNotificationManager.Default.Register",
+          "lineNumber": 112
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "LogUnhandledException",
+          "lineNumber": 118
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "AppLifecycleHelper.ConfigureHost",
+          "lineNumber": 122
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.ConfigureServices",
+          "lineNumber": 123
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Wavee.UI.WinUI.Controls.PageHost.PageRegistration.RegisterAll",
+          "lineNumber": 128
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetRequiredService<Wavee.Core.Storage.Abstractions.IMetadataDatabase>",
+          "lineNumber": 141
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "UnwrapMigrationException",
+          "lineNumber": 143
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "LogUnhandledException",
+          "lineNumber": 145
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "ShowMigrationErrorWindow",
+          "lineNumber": 146
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetRequiredService<AppModel>",
+          "lineNumber": 151
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetRequiredService<CacheCleanupService>().Start",
+          "lineNumber": 154
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetRequiredService<CacheCleanupService>",
+          "lineNumber": 154
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetRequiredService<MemoryBudgetService>().Start",
+          "lineNumber": 155
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetRequiredService<MemoryBudgetService>",
+          "lineNumber": 155
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>",
+          "lineNumber": 164
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetRequiredService<Wavee.Local.LocalIndexerHostedService>",
+          "lineNumber": 167
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "indexer.StartAsync",
+          "lineNumber": 168
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "LogUnhandledException",
+          "lineNumber": 173
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetService<Wavee.Audio.ILocalMediaPlayer>",
+          "lineNumber": 186
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "videoEngine.StateChanges.Subscribe",
+          "lineNumber": 201
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 204
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "VideoAutoNavigationSuppressor.TryConsume",
+          "lineNumber": 205
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "LogUnhandledException",
+          "lineNumber": 211
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetService<Wavee.UI.WinUI.Data.Contracts.ISettingsService>",
+          "lineNumber": 220
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "AppLifecycleHelper.SetMemoryDiagnostics",
+          "lineNumber": 222
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "MainWindow.Instance.Activate",
+          "lineNumber": 232
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "MainWindow.Instance.InitializeApplicationAsync",
+          "lineNumber": 233
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "MainWindow.Instance.DispatcherQueue.TryEnqueue",
+          "lineNumber": 235
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetRequiredService<Data.Contexts.LibrarySyncOrchestrator>",
+          "lineNumber": 243
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetRequiredService<Wavee.UI.WinUI.Data.Contracts.IActivityService>",
+          "lineNumber": 244
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetRequiredService<Services.UiOperationProfiler>",
+          "lineNumber": 245
+        },
+        {
+          "caller": "OnLaunched",
+          "callee": "Ioc.Default.GetRequiredService<Diagnostics.NavigationDiagnostics>",
+          "lineNumber": 246
+        },
+        {
+          "caller": "ShowMigrationErrorWindow",
+          "callee": "OnUserChoseRebuild",
+          "lineNumber": 274
+        },
+        {
+          "caller": "ShowMigrationErrorWindow",
+          "callee": "window.Activate",
+          "lineNumber": 276
+        },
+        {
+          "caller": "OnUserChoseRebuild",
+          "callee": "OnUserChoseQuit",
+          "lineNumber": 288
+        },
+        {
+          "caller": "OnUserChoseRebuild",
+          "callee": "Ioc.Default.GetRequiredService<Wavee.Core.DependencyInjection.WaveeCacheOptions>",
+          "lineNumber": 297
+        },
+        {
+          "caller": "OnUserChoseRebuild",
+          "callee": "_host?.Dispose",
+          "lineNumber": 302
+        },
+        {
+          "caller": "OnUserChoseRebuild",
+          "callee": "MetadataDatabase.DeleteDatabaseFile",
+          "lineNumber": 305
+        },
+        {
+          "caller": "OnUserChoseRebuild",
+          "callee": "OnLaunched",
+          "lineNumber": 309
+        },
+        {
+          "caller": "OnUserChoseRebuild",
+          "callee": "LogUnhandledException",
+          "lineNumber": 313
+        },
+        {
+          "caller": "OnUserChoseRebuild",
+          "callee": "OnUserChoseQuit",
+          "lineNumber": 314
+        },
+        {
+          "caller": "OnUserChoseQuit",
+          "callee": "Interlocked.Exchange",
+          "lineNumber": 320
+        },
+        {
+          "caller": "OnUserChoseQuit",
+          "callee": "_host?.Dispose",
+          "lineNumber": 321
+        },
+        {
+          "caller": "OnUserChoseQuit",
+          "callee": "Exit",
+          "lineNumber": 323
+        },
+        {
+          "caller": "ShutdownHostAsync",
+          "callee": "Interlocked.Exchange",
+          "lineNumber": 328
+        },
+        {
+          "caller": "ShutdownHostAsync",
+          "callee": "ShutdownHostCoreAsync",
+          "lineNumber": 331
+        },
+        {
+          "caller": "OnAppNotificationInvoked",
+          "callee": "AppNotificationActivationRouter.Route",
+          "lineNumber": 353
+        },
+        {
+          "caller": "OnAppNotificationInvoked",
+          "callee": "args.Arguments.ToImmutableDictionary",
+          "lineNumber": 353
+        },
+        {
+          "caller": "OnAppNotificationInvoked",
+          "callee": "LogUnhandledException",
+          "lineNumber": 357
+        },
+        {
+          "caller": "ShutdownHostCoreAsync",
+          "callee": "_shutdownGate.WaitAsync",
+          "lineNumber": 363
+        },
+        {
+          "caller": "ShutdownHostCoreAsync",
+          "callee": "Interlocked.Exchange(ref _localVideoStateSubscription, null)?.Dispose",
+          "lineNumber": 368
+        },
+        {
+          "caller": "ShutdownHostCoreAsync",
+          "callee": "Interlocked.Exchange",
+          "lineNumber": 368
+        },
+        {
+          "caller": "ShutdownHostCoreAsync",
+          "callee": "LogUnhandledException",
+          "lineNumber": 369
+        },
+        {
+          "caller": "ShutdownHostCoreAsync",
+          "callee": "Interlocked.Exchange",
+          "lineNumber": 371
+        },
+        {
+          "caller": "ShutdownHostCoreAsync",
+          "callee": "host.StopAsync",
+          "lineNumber": 377
+        },
+        {
+          "caller": "ShutdownHostCoreAsync",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 377
+        },
+        {
+          "caller": "ShutdownHostCoreAsync",
+          "callee": "LogUnhandledException",
+          "lineNumber": 381
+        },
+        {
+          "caller": "ShutdownHostCoreAsync",
+          "callee": "host.Dispose",
+          "lineNumber": 386
+        },
+        {
+          "caller": "ShutdownHostCoreAsync",
+          "callee": "LogUnhandledException",
+          "lineNumber": 390
+        },
+        {
+          "caller": "ShutdownHostCoreAsync",
+          "callee": "_shutdownGate.Release",
+          "lineNumber": 395
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 13,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Assets/Animations/LightRedEqualizer.json",
+      "language": "json",
+      "fileCategory": "config",
+      "totalLines": 1,
+      "nonEmptyLines": 1,
+      "sections": [
+        {
+          "heading": "nm",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "ddd",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "h",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "w",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "meta",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "layers",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "v",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "fr",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "op",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "ip",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "assets",
+          "level": 1,
+          "line": 1
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "sectionCount": 11
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Assets/Logo/wavee-logo.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 2,
+      "nonEmptyLines": 2,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Behaviors/Card/CardEffectiveViewportBehavior.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 246,
+      "nonEmptyLines": 216,
+      "functions": [
+        {
+          "name": "GetIsAttached",
+          "startLine": 70,
+          "endLine": 70,
+          "params": [
+            "obj"
+          ]
+        },
+        {
+          "name": "SetIsAttached",
+          "startLine": 71,
+          "endLine": 71,
+          "params": [
+            "obj",
+            "value"
+          ]
+        },
+        {
+          "name": "OnIsAttachedChanged",
+          "startLine": 73,
+          "endLine": 88,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "AttachLifecycle",
+          "startLine": 90,
+          "endLine": 103,
+          "params": [
+            "card"
+          ]
+        },
+        {
+          "name": "DetachLifecycle",
+          "startLine": 105,
+          "endLine": 113,
+          "params": [
+            "card"
+          ]
+        },
+        {
+          "name": "AttachViewport",
+          "startLine": 115,
+          "endLine": 127,
+          "params": [
+            "card"
+          ]
+        },
+        {
+          "name": "DetachViewport",
+          "startLine": 129,
+          "endLine": 152,
+          "params": [
+            "card"
+          ]
+        },
+        {
+          "name": "OnEffectiveViewportChanged",
+          "startLine": 154,
+          "endLine": 225,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "TryGetEffectiveViewportIntersection",
+          "startLine": 227,
+          "endLine": 245,
+          "params": [
+            "element",
+            "effectiveViewport",
+            "intersects"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "CardEffectiveViewportBehavior",
+          "startLine": 36,
+          "endLine": 246,
+          "methods": [
+            "GetIsAttached",
+            "SetIsAttached",
+            "OnIsAttachedChanged",
+            "AttachLifecycle",
+            "DetachLifecycle",
+            "AttachViewport",
+            "DetachViewport",
+            "OnEffectiveViewportChanged",
+            "TryGetEffectiveViewportIntersection"
+          ],
+          "properties": [
+            "AlbumPrefetchTriggerDistance",
+            "AlbumUriPrefix",
+            "PlaylistUriPrefix",
+            "_states",
+            "_logger",
+            "IsAttachedProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IsAttachedProperty",
+          "line": 63,
+          "isDefault": false
+        },
+        {
+          "name": "GetIsAttached",
+          "line": 70,
+          "isDefault": false
+        },
+        {
+          "name": "SetIsAttached",
+          "line": 71,
+          "isDefault": false
+        },
+        {
+          "name": "CardEffectiveViewportBehavior",
+          "line": 36,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetIsAttached",
+          "callee": "obj.GetValue",
+          "lineNumber": 70
+        },
+        {
+          "caller": "SetIsAttached",
+          "callee": "obj.SetValue",
+          "lineNumber": 71
+        },
+        {
+          "caller": "OnIsAttachedChanged",
+          "callee": "DetachLifecycle",
+          "lineNumber": 77
+        },
+        {
+          "caller": "OnIsAttachedChanged",
+          "callee": "AttachLifecycle",
+          "lineNumber": 82
+        },
+        {
+          "caller": "OnIsAttachedChanged",
+          "callee": "AttachViewport",
+          "lineNumber": 87
+        },
+        {
+          "caller": "AttachLifecycle",
+          "callee": "_states.GetValue",
+          "lineNumber": 92
+        },
+        {
+          "caller": "AttachLifecycle",
+          "callee": "new ViewportState",
+          "lineNumber": 92
+        },
+        {
+          "caller": "AttachLifecycle",
+          "callee": "AttachViewport",
+          "lineNumber": 95
+        },
+        {
+          "caller": "AttachLifecycle",
+          "callee": "DetachViewport",
+          "lineNumber": 99
+        },
+        {
+          "caller": "DetachLifecycle",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 107
+        },
+        {
+          "caller": "DetachLifecycle",
+          "callee": "DetachViewport",
+          "lineNumber": 112
+        },
+        {
+          "caller": "AttachViewport",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 117
+        },
+        {
+          "caller": "DetachViewport",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 131
+        },
+        {
+          "caller": "DetachViewport",
+          "callee": "card.HandleViewportReset",
+          "lineNumber": 151
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 157
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 169
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "navUri.StartsWith",
+          "lineNumber": 173
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "card.HandleViewportPrefetch",
+          "lineNumber": 176
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "navUri.StartsWith",
+          "lineNumber": 178
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "card.HandleViewportPrefetch",
+          "lineNumber": 181
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "TryGetEffectiveViewportIntersection",
+          "lineNumber": 186
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 196
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "card.HandleViewportIntersectionChanged",
+          "lineNumber": 208
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 216
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "card.HandleViewportIntersectionChanged",
+          "lineNumber": 224
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 9,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Behaviors/Card/CardImageRetryBehavior.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 148,
+      "nonEmptyLines": 130,
+      "functions": [
+        {
+          "name": "GetEnable",
+          "startLine": 52,
+          "endLine": 52,
+          "params": [
+            "obj"
+          ]
+        },
+        {
+          "name": "SetEnable",
+          "startLine": 53,
+          "endLine": 53,
+          "params": [
+            "obj",
+            "value"
+          ]
+        },
+        {
+          "name": "OnEnableChanged",
+          "startLine": 55,
+          "endLine": 64,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "Attach",
+          "startLine": 66,
+          "endLine": 72,
+          "params": [
+            "image"
+          ]
+        },
+        {
+          "name": "Detach",
+          "startLine": 74,
+          "endLine": 85,
+          "params": [
+            "image"
+          ]
+        },
+        {
+          "name": "OnImageFailed",
+          "startLine": 87,
+          "endLine": 119,
+          "params": [
+            "image",
+            "state"
+          ]
+        },
+        {
+          "name": "NotifyLoadStarted",
+          "startLine": 125,
+          "endLine": 133,
+          "params": [
+            "image",
+            "url"
+          ]
+        },
+        {
+          "name": "AddRetryHandler",
+          "startLine": 137,
+          "endLine": 141,
+          "params": [
+            "image",
+            "handler"
+          ]
+        },
+        {
+          "name": "RemoveRetryHandler",
+          "startLine": 143,
+          "endLine": 147,
+          "params": [
+            "image"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "CardImageRetryBehavior",
+          "startLine": 33,
+          "endLine": 148,
+          "methods": [
+            "GetEnable",
+            "SetEnable",
+            "OnEnableChanged",
+            "Attach",
+            "Detach",
+            "OnImageFailed",
+            "NotifyLoadStarted",
+            "AddRetryHandler",
+            "RemoveRetryHandler"
+          ],
+          "properties": [
+            "_states",
+            "EnableProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "EnableProperty",
+          "line": 45,
+          "isDefault": false
+        },
+        {
+          "name": "GetEnable",
+          "line": 52,
+          "isDefault": false
+        },
+        {
+          "name": "SetEnable",
+          "line": 53,
+          "isDefault": false
+        },
+        {
+          "name": "NotifyLoadStarted",
+          "line": 125,
+          "isDefault": false
+        },
+        {
+          "name": "AddRetryHandler",
+          "line": 137,
+          "isDefault": false
+        },
+        {
+          "name": "RemoveRetryHandler",
+          "line": 143,
+          "isDefault": false
+        },
+        {
+          "name": "CardImageRetryBehavior",
+          "line": 33,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetEnable",
+          "callee": "obj.GetValue",
+          "lineNumber": 52
+        },
+        {
+          "caller": "SetEnable",
+          "callee": "obj.SetValue",
+          "lineNumber": 53
+        },
+        {
+          "caller": "OnEnableChanged",
+          "callee": "Detach",
+          "lineNumber": 60
+        },
+        {
+          "caller": "OnEnableChanged",
+          "callee": "Attach",
+          "lineNumber": 63
+        },
+        {
+          "caller": "Attach",
+          "callee": "new RetryState",
+          "lineNumber": 68
+        },
+        {
+          "caller": "Attach",
+          "callee": "OnImageFailed",
+          "lineNumber": 69
+        },
+        {
+          "caller": "Attach",
+          "callee": "_states.AddOrUpdate",
+          "lineNumber": 71
+        },
+        {
+          "caller": "Detach",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 76
+        },
+        {
+          "caller": "Detach",
+          "callee": "_states.Remove",
+          "lineNumber": 84
+        },
+        {
+          "caller": "OnImageFailed",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 94
+        },
+        {
+          "caller": "OnImageFailed",
+          "callee": "DispatcherQueue.GetForCurrentThread",
+          "lineNumber": 108
+        },
+        {
+          "caller": "OnImageFailed",
+          "callee": "dispatcher?.TryEnqueue",
+          "lineNumber": 109
+        },
+        {
+          "caller": "OnImageFailed",
+          "callee": "handler",
+          "lineNumber": 117
+        },
+        {
+          "caller": "NotifyLoadStarted",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 127
+        },
+        {
+          "caller": "NotifyLoadStarted",
+          "callee": "string.Equals",
+          "lineNumber": 128
+        },
+        {
+          "caller": "AddRetryHandler",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 139
+        },
+        {
+          "caller": "RemoveRetryHandler",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 145
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 7,
+        "functionCount": 9,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Behaviors/Card/CardPassivePointerBehavior.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 134,
+      "nonEmptyLines": 114,
+      "functions": [
+        {
+          "name": "GetIsAttached",
+          "startLine": 51,
+          "endLine": 51,
+          "params": [
+            "obj"
+          ]
+        },
+        {
+          "name": "SetIsAttached",
+          "startLine": 52,
+          "endLine": 52,
+          "params": [
+            "obj",
+            "value"
+          ]
+        },
+        {
+          "name": "OnIsAttachedChanged",
+          "startLine": 54,
+          "endLine": 76,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnCardLoaded",
+          "startLine": 78,
+          "endLine": 82,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnCardUnloaded",
+          "startLine": 84,
+          "endLine": 88,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "TryAttachIfPassive",
+          "startLine": 90,
+          "endLine": 114,
+          "params": [
+            "card"
+          ]
+        },
+        {
+          "name": "Detach",
+          "startLine": 116,
+          "endLine": 133,
+          "params": [
+            "card"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "CardPassivePointerBehavior",
+          "startLine": 31,
+          "endLine": 134,
+          "methods": [
+            "GetIsAttached",
+            "SetIsAttached",
+            "OnIsAttachedChanged",
+            "OnCardLoaded",
+            "OnCardUnloaded",
+            "TryAttachIfPassive",
+            "Detach"
+          ],
+          "properties": [
+            "_holders",
+            "IsAttachedProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IsAttachedProperty",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "GetIsAttached",
+          "line": 51,
+          "isDefault": false
+        },
+        {
+          "name": "SetIsAttached",
+          "line": 52,
+          "isDefault": false
+        },
+        {
+          "name": "CardPassivePointerBehavior",
+          "line": 31,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetIsAttached",
+          "callee": "obj.GetValue",
+          "lineNumber": 51
+        },
+        {
+          "caller": "SetIsAttached",
+          "callee": "obj.SetValue",
+          "lineNumber": 52
+        },
+        {
+          "caller": "OnIsAttachedChanged",
+          "callee": "Detach",
+          "lineNumber": 64
+        },
+        {
+          "caller": "OnIsAttachedChanged",
+          "callee": "TryAttachIfPassive",
+          "lineNumber": 75
+        },
+        {
+          "caller": "OnCardLoaded",
+          "callee": "TryAttachIfPassive",
+          "lineNumber": 81
+        },
+        {
+          "caller": "OnCardUnloaded",
+          "callee": "Detach",
+          "lineNumber": 87
+        },
+        {
+          "caller": "TryAttachIfPassive",
+          "callee": "_holders.TryGetValue",
+          "lineNumber": 93
+        },
+        {
+          "caller": "TryAttachIfPassive",
+          "callee": "new HandlerHolder",
+          "lineNumber": 95
+        },
+        {
+          "caller": "TryAttachIfPassive",
+          "callee": "new PointerEventHandler",
+          "lineNumber": 100
+        },
+        {
+          "caller": "TryAttachIfPassive",
+          "callee": "new PointerEventHandler",
+          "lineNumber": 101
+        },
+        {
+          "caller": "TryAttachIfPassive",
+          "callee": "new PointerEventHandler",
+          "lineNumber": 102
+        },
+        {
+          "caller": "TryAttachIfPassive",
+          "callee": "new PointerEventHandler",
+          "lineNumber": 103
+        },
+        {
+          "caller": "TryAttachIfPassive",
+          "callee": "card.AddHandler",
+          "lineNumber": 107
+        },
+        {
+          "caller": "TryAttachIfPassive",
+          "callee": "card.AddHandler",
+          "lineNumber": 108
+        },
+        {
+          "caller": "TryAttachIfPassive",
+          "callee": "card.AddHandler",
+          "lineNumber": 109
+        },
+        {
+          "caller": "TryAttachIfPassive",
+          "callee": "card.AddHandler",
+          "lineNumber": 110
+        },
+        {
+          "caller": "TryAttachIfPassive",
+          "callee": "_holders.AddOrUpdate",
+          "lineNumber": 113
+        },
+        {
+          "caller": "Detach",
+          "callee": "_holders.TryGetValue",
+          "lineNumber": 118
+        },
+        {
+          "caller": "Detach",
+          "callee": "card.RemoveHandler",
+          "lineNumber": 122
+        },
+        {
+          "caller": "Detach",
+          "callee": "card.RemoveHandler",
+          "lineNumber": 124
+        },
+        {
+          "caller": "Detach",
+          "callee": "card.RemoveHandler",
+          "lineNumber": 126
+        },
+        {
+          "caller": "Detach",
+          "callee": "card.RemoveHandler",
+          "lineNumber": 128
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 7,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Behaviors/CardHoverScaleBehavior.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 119,
+      "nonEmptyLines": 105,
+      "functions": [
+        {
+          "name": "GetEnable",
+          "startLine": 46,
+          "endLine": 46,
+          "params": [
+            "obj"
+          ]
+        },
+        {
+          "name": "SetEnable",
+          "startLine": 47,
+          "endLine": 47,
+          "params": [
+            "obj",
+            "value"
+          ]
+        },
+        {
+          "name": "OnEnableChanged",
+          "startLine": 49,
+          "endLine": 57,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "Attach",
+          "startLine": 59,
+          "endLine": 77,
+          "params": [
+            "fe"
+          ]
+        },
+        {
+          "name": "Detach",
+          "startLine": 78,
+          "endLine": 91,
+          "params": [
+            "fe"
+          ]
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 93,
+          "endLine": 97,
+          "params": [
+            "sender",
+            "_"
+          ]
+        },
+        {
+          "name": "OnSizeChanged",
+          "startLine": 99,
+          "endLine": 103,
+          "params": [
+            "sender",
+            "_"
+          ]
+        },
+        {
+          "name": "UpdateCenterPoint",
+          "startLine": 105,
+          "endLine": 109,
+          "params": [
+            "fe"
+          ]
+        },
+        {
+          "name": "Animate",
+          "startLine": 110,
+          "endLine": 118,
+          "params": [
+            "fe",
+            "target"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "CardHoverScaleBehavior",
+          "startLine": 24,
+          "endLine": 119,
+          "methods": [
+            "GetEnable",
+            "SetEnable",
+            "OnEnableChanged",
+            "Attach",
+            "Detach",
+            "OnLoaded",
+            "OnSizeChanged",
+            "UpdateCenterPoint",
+            "Animate"
+          ],
+          "properties": [
+            "HoverScale",
+            "Duration",
+            "_holders",
+            "EnableProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "EnableProperty",
+          "line": 39,
+          "isDefault": false
+        },
+        {
+          "name": "GetEnable",
+          "line": 46,
+          "isDefault": false
+        },
+        {
+          "name": "SetEnable",
+          "line": 47,
+          "isDefault": false
+        },
+        {
+          "name": "CardHoverScaleBehavior",
+          "line": 24,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetEnable",
+          "callee": "obj.GetValue",
+          "lineNumber": 46
+        },
+        {
+          "caller": "SetEnable",
+          "callee": "obj.SetValue",
+          "lineNumber": 47
+        },
+        {
+          "caller": "OnEnableChanged",
+          "callee": "Detach",
+          "lineNumber": 53
+        },
+        {
+          "caller": "OnEnableChanged",
+          "callee": "Attach",
+          "lineNumber": 56
+        },
+        {
+          "caller": "Attach",
+          "callee": "new HandlerHolder",
+          "lineNumber": 61
+        },
+        {
+          "caller": "Attach",
+          "callee": "Animate",
+          "lineNumber": 62
+        },
+        {
+          "caller": "Attach",
+          "callee": "Animate",
+          "lineNumber": 63
+        },
+        {
+          "caller": "Attach",
+          "callee": "_holders.AddOrUpdate",
+          "lineNumber": 72
+        },
+        {
+          "caller": "Attach",
+          "callee": "UpdateCenterPoint",
+          "lineNumber": 76
+        },
+        {
+          "caller": "Detach",
+          "callee": "_holders.TryGetValue",
+          "lineNumber": 80
+        },
+        {
+          "caller": "Detach",
+          "callee": "_holders.Remove",
+          "lineNumber": 90
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "UpdateCenterPoint",
+          "lineNumber": 96
+        },
+        {
+          "caller": "OnSizeChanged",
+          "callee": "UpdateCenterPoint",
+          "lineNumber": 102
+        },
+        {
+          "caller": "UpdateCenterPoint",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 107
+        },
+        {
+          "caller": "UpdateCenterPoint",
+          "callee": "new Vector3",
+          "lineNumber": 108
+        },
+        {
+          "caller": "Animate",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 112
+        },
+        {
+          "caller": "Animate",
+          "callee": "compositor.CreateVector3KeyFrameAnimation",
+          "lineNumber": 114
+        },
+        {
+          "caller": "Animate",
+          "callee": "anim.InsertKeyFrame",
+          "lineNumber": 115
+        },
+        {
+          "caller": "Animate",
+          "callee": "new Vector3",
+          "lineNumber": 115
+        },
+        {
+          "caller": "Animate",
+          "callee": "visual.StartAnimation",
+          "lineNumber": 117
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 9,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Behaviors/DragToDetachBehavior.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 195,
+      "nonEmptyLines": 167,
+      "functions": [
+        {
+          "name": "GetPanel",
+          "startLine": 60,
+          "endLine": 60,
+          "params": [
+            "obj"
+          ]
+        },
+        {
+          "name": "SetPanel",
+          "startLine": 62,
+          "endLine": 62,
+          "params": [
+            "obj",
+            "value"
+          ]
+        },
+        {
+          "name": "OnPanelChanged",
+          "startLine": 64,
+          "endLine": 82,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "TryParsePanel",
+          "startLine": 84,
+          "endLine": 90,
+          "params": [
+            "value",
+            "panel"
+          ]
+        },
+        {
+          "name": "OnPointerPressed",
+          "startLine": 92,
+          "endLine": 106,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPointerMoved",
+          "startLine": 108,
+          "endLine": 150,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPointerReleased",
+          "startLine": 152,
+          "endLine": 156,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPointerCaptureLost",
+          "startLine": 158,
+          "endLine": 162,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ResetState",
+          "startLine": 164,
+          "endLine": 172,
+          "params": [
+            "element",
+            "state"
+          ]
+        },
+        {
+          "name": "IsCursorOutsideMainWindow",
+          "startLine": 174,
+          "endLine": 191,
+          "params": [
+            "pt",
+            "marginPx"
+          ]
+        },
+        {
+          "name": "MakeLParam",
+          "startLine": 193,
+          "endLine": 194,
+          "params": [
+            "low",
+            "high"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "DragToDetachBehavior",
+          "startLine": 34,
+          "endLine": 195,
+          "methods": [
+            "GetPanel",
+            "SetPanel",
+            "OnPanelChanged",
+            "TryParsePanel",
+            "OnPointerPressed",
+            "OnPointerMoved",
+            "OnPointerReleased",
+            "OnPointerCaptureLost",
+            "ResetState",
+            "IsCursorOutsideMainWindow",
+            "MakeLParam"
+          ],
+          "properties": [
+            "DetachMarginPx",
+            "WM_NCLBUTTONDOWN",
+            "HTCAPTION",
+            "_states",
+            "PanelProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "PanelProperty",
+          "line": 54,
+          "isDefault": false
+        },
+        {
+          "name": "GetPanel",
+          "line": 60,
+          "isDefault": false
+        },
+        {
+          "name": "SetPanel",
+          "line": 62,
+          "isDefault": false
+        },
+        {
+          "name": "DragToDetachBehavior",
+          "line": 34,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetPanel",
+          "callee": "obj.GetValue",
+          "lineNumber": 60
+        },
+        {
+          "caller": "SetPanel",
+          "callee": "obj.SetValue",
+          "lineNumber": 62
+        },
+        {
+          "caller": "OnPanelChanged",
+          "callee": "TryParsePanel",
+          "lineNumber": 74
+        },
+        {
+          "caller": "TryParsePanel",
+          "callee": "Enum.TryParse",
+          "lineNumber": 86
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "e.GetCurrentPoint",
+          "lineNumber": 99
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "_states.GetValue",
+          "lineNumber": 102
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "new DragState",
+          "lineNumber": 102
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "element.CapturePointer",
+          "lineNumber": 105
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 111
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "TryParsePanel",
+          "lineNumber": 112
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "GetPanel",
+          "lineNumber": 112
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "User32.GetCursorPos",
+          "lineNumber": 114
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "IsCursorOutsideMainWindow",
+          "lineNumber": 116
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "ResetState",
+          "lineNumber": 120
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "Ioc.Default.GetService<IPanelDockingService>",
+          "lineNumber": 122
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "new PointInt32",
+          "lineNumber": 127
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "Math.Max",
+          "lineNumber": 128
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "Math.Max",
+          "lineNumber": 129
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "docking.Detach",
+          "lineNumber": 131
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "docking.GetWindowFor",
+          "lineNumber": 135
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "Win32Interop.GetWindowFromWindowId",
+          "lineNumber": 140
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "User32.GetCursorPos",
+          "lineNumber": 142
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "MakeLParam",
+          "lineNumber": 143
+        },
+        {
+          "caller": "OnPointerMoved",
+          "callee": "User32.PostMessage",
+          "lineNumber": 144
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 155
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "ResetState",
+          "lineNumber": 155
+        },
+        {
+          "caller": "OnPointerCaptureLost",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 161
+        },
+        {
+          "caller": "OnPointerCaptureLost",
+          "callee": "ResetState",
+          "lineNumber": 161
+        },
+        {
+          "caller": "ResetState",
+          "callee": "element.ReleasePointerCapture",
+          "lineNumber": 169
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 11,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Behaviors/ImageFallbackBehavior.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 344,
+      "nonEmptyLines": 291,
+      "functions": [
+        {
+          "name": "GetHideOnError",
+          "startLine": 38,
+          "endLine": 39,
+          "params": [
+            "obj"
+          ]
+        },
+        {
+          "name": "SetHideOnError",
+          "startLine": 41,
+          "endLine": 42,
+          "params": [
+            "obj",
+            "value"
+          ]
+        },
+        {
+          "name": "GetFadeInOnLoad",
+          "startLine": 55,
+          "endLine": 56,
+          "params": [
+            "obj"
+          ]
+        },
+        {
+          "name": "SetFadeInOnLoad",
+          "startLine": 58,
+          "endLine": 59,
+          "params": [
+            "obj",
+            "value"
+          ]
+        },
+        {
+          "name": "GetDecodePixelWidth",
+          "startLine": 72,
+          "endLine": 73,
+          "params": [
+            "obj"
+          ]
+        },
+        {
+          "name": "SetDecodePixelWidth",
+          "startLine": 75,
+          "endLine": 76,
+          "params": [
+            "obj",
+            "value"
+          ]
+        },
+        {
+          "name": "GetDecodePixelHeight",
+          "startLine": 89,
+          "endLine": 90,
+          "params": [
+            "obj"
+          ]
+        },
+        {
+          "name": "SetDecodePixelHeight",
+          "startLine": 92,
+          "endLine": 93,
+          "params": [
+            "obj",
+            "value"
+          ]
+        },
+        {
+          "name": "OnHideOnErrorChanged",
+          "startLine": 99,
+          "endLine": 114,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnFadeInOnLoadChanged",
+          "startLine": 116,
+          "endLine": 147,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSourceChangedForFade",
+          "startLine": 149,
+          "endLine": 183,
+          "params": [
+            "sender",
+            "dp"
+          ]
+        },
+        {
+          "name": "Image_ImageFailed",
+          "startLine": 189,
+          "endLine": 198,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Image_ImageOpened",
+          "startLine": 200,
+          "endLine": 207,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Image_FadeIn",
+          "startLine": 209,
+          "endLine": 218,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Image_ResetOpacity",
+          "startLine": 220,
+          "endLine": 227,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "InvalidateFailedCacheEntry",
+          "startLine": 229,
+          "endLine": 253,
+          "params": [
+            "image"
+          ]
+        },
+        {
+          "name": "AnimateFadeIn",
+          "startLine": 259,
+          "endLine": 297,
+          "params": [
+            "image"
+          ]
+        },
+        {
+          "name": "ApplyDecodePixelSize",
+          "startLine": 303,
+          "endLine": 341,
+          "params": [
+            "image"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ImageFallbackBehavior",
+          "startLine": 18,
+          "endLine": 344,
+          "methods": [
+            "GetHideOnError",
+            "SetHideOnError",
+            "GetFadeInOnLoad",
+            "SetFadeInOnLoad",
+            "GetDecodePixelWidth",
+            "SetDecodePixelWidth",
+            "GetDecodePixelHeight",
+            "SetDecodePixelHeight",
+            "OnHideOnErrorChanged",
+            "OnFadeInOnLoadChanged",
+            "OnSourceChangedForFade",
+            "Image_ImageFailed",
+            "Image_ImageOpened",
+            "Image_FadeIn",
+            "Image_ResetOpacity",
+            "InvalidateFailedCacheEntry",
+            "AnimateFadeIn",
+            "ApplyDecodePixelSize"
+          ],
+          "properties": [
+            "_callbackTokens",
+            "HideOnErrorProperty",
+            "FadeInOnLoadProperty",
+            "DecodePixelWidthProperty",
+            "DecodePixelHeightProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "HideOnErrorProperty",
+          "line": 31,
+          "isDefault": false
+        },
+        {
+          "name": "GetHideOnError",
+          "line": 38,
+          "isDefault": false
+        },
+        {
+          "name": "SetHideOnError",
+          "line": 41,
+          "isDefault": false
+        },
+        {
+          "name": "FadeInOnLoadProperty",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "GetFadeInOnLoad",
+          "line": 55,
+          "isDefault": false
+        },
+        {
+          "name": "SetFadeInOnLoad",
+          "line": 58,
+          "isDefault": false
+        },
+        {
+          "name": "DecodePixelWidthProperty",
+          "line": 65,
+          "isDefault": false
+        },
+        {
+          "name": "GetDecodePixelWidth",
+          "line": 72,
+          "isDefault": false
+        },
+        {
+          "name": "SetDecodePixelWidth",
+          "line": 75,
+          "isDefault": false
+        },
+        {
+          "name": "DecodePixelHeightProperty",
+          "line": 82,
+          "isDefault": false
+        },
+        {
+          "name": "GetDecodePixelHeight",
+          "line": 89,
+          "isDefault": false
+        },
+        {
+          "name": "SetDecodePixelHeight",
+          "line": 92,
+          "isDefault": false
+        },
+        {
+          "name": "ImageFallbackBehavior",
+          "line": 18,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetHideOnError",
+          "callee": "obj.GetValue",
+          "lineNumber": 39
+        },
+        {
+          "caller": "SetHideOnError",
+          "callee": "obj.SetValue",
+          "lineNumber": 42
+        },
+        {
+          "caller": "GetFadeInOnLoad",
+          "callee": "obj.GetValue",
+          "lineNumber": 56
+        },
+        {
+          "caller": "SetFadeInOnLoad",
+          "callee": "obj.SetValue",
+          "lineNumber": 59
+        },
+        {
+          "caller": "GetDecodePixelWidth",
+          "callee": "obj.GetValue",
+          "lineNumber": 73
+        },
+        {
+          "caller": "SetDecodePixelWidth",
+          "callee": "obj.SetValue",
+          "lineNumber": 76
+        },
+        {
+          "caller": "GetDecodePixelHeight",
+          "callee": "obj.GetValue",
+          "lineNumber": 90
+        },
+        {
+          "caller": "SetDecodePixelHeight",
+          "callee": "obj.SetValue",
+          "lineNumber": 93
+        },
+        {
+          "caller": "OnFadeInOnLoadChanged",
+          "callee": "image.RegisterPropertyChangedCallback",
+          "lineNumber": 128
+        },
+        {
+          "caller": "OnFadeInOnLoadChanged",
+          "callee": "_callbackTokens.AddOrUpdate",
+          "lineNumber": 129
+        },
+        {
+          "caller": "OnFadeInOnLoadChanged",
+          "callee": "new CallbackTokenHolder",
+          "lineNumber": 129
+        },
+        {
+          "caller": "OnFadeInOnLoadChanged",
+          "callee": "_callbackTokens.TryGetValue",
+          "lineNumber": 137
+        },
+        {
+          "caller": "OnFadeInOnLoadChanged",
+          "callee": "image.UnregisterPropertyChangedCallback",
+          "lineNumber": 139
+        },
+        {
+          "caller": "OnFadeInOnLoadChanged",
+          "callee": "_callbackTokens.Remove",
+          "lineNumber": 140
+        },
+        {
+          "caller": "OnSourceChangedForFade",
+          "callee": "GetFadeInOnLoad",
+          "lineNumber": 151
+        },
+        {
+          "caller": "OnSourceChangedForFade",
+          "callee": "ApplyDecodePixelSize",
+          "lineNumber": 162
+        },
+        {
+          "caller": "OnSourceChangedForFade",
+          "callee": "image.DispatcherQueue?.TryEnqueue",
+          "lineNumber": 169
+        },
+        {
+          "caller": "OnSourceChangedForFade",
+          "callee": "AnimateFadeIn",
+          "lineNumber": 169
+        },
+        {
+          "caller": "Image_ImageFailed",
+          "callee": "InvalidateFailedCacheEntry",
+          "lineNumber": 193
+        },
+        {
+          "caller": "Image_FadeIn",
+          "callee": "image.DispatcherQueue?.TryEnqueue",
+          "lineNumber": 216
+        },
+        {
+          "caller": "Image_FadeIn",
+          "callee": "AnimateFadeIn",
+          "lineNumber": 216
+        },
+        {
+          "caller": "InvalidateFailedCacheEntry",
+          "callee": "GetDecodePixelWidth",
+          "lineNumber": 239
+        },
+        {
+          "caller": "InvalidateFailedCacheEntry",
+          "callee": "GetDecodePixelHeight",
+          "lineNumber": 243
+        },
+        {
+          "caller": "InvalidateFailedCacheEntry",
+          "callee": "Ioc.Default.GetService<ImageCacheService>()?.Invalidate",
+          "lineNumber": 247
+        },
+        {
+          "caller": "InvalidateFailedCacheEntry",
+          "callee": "Ioc.Default.GetService<ImageCacheService>",
+          "lineNumber": 247
+        },
+        {
+          "caller": "AnimateFadeIn",
+          "callee": "AnimateFadeIn",
+          "lineNumber": 268
+        },
+        {
+          "caller": "AnimateFadeIn",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 286
+        },
+        {
+          "caller": "AnimateFadeIn",
+          "callee": "visual.Compositor.CreateScalarKeyFrameAnimation",
+          "lineNumber": 287
+        },
+        {
+          "caller": "AnimateFadeIn",
+          "callee": "animation.InsertKeyFrame",
+          "lineNumber": 288
+        },
+        {
+          "caller": "AnimateFadeIn",
+          "callee": "animation.InsertKeyFrame",
+          "lineNumber": 289
+        },
+        {
+          "caller": "AnimateFadeIn",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 290
+        },
+        {
+          "caller": "AnimateFadeIn",
+          "callee": "visual.StartAnimation",
+          "lineNumber": 291
+        },
+        {
+          "caller": "ApplyDecodePixelSize",
+          "callee": "GetDecodePixelWidth",
+          "lineNumber": 308
+        },
+        {
+          "caller": "ApplyDecodePixelSize",
+          "callee": "GetDecodePixelHeight",
+          "lineNumber": 309
+        },
+        {
+          "caller": "ApplyDecodePixelSize",
+          "callee": "new BitmapImage",
+          "lineNumber": 322
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 13,
+        "functionCount": 18,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Behaviors/RevealSpotlightBehavior.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 132,
+      "nonEmptyLines": 115,
+      "functions": [
+        {
+          "name": "GetEnable",
+          "startLine": 44,
+          "endLine": 44,
+          "params": [
+            "obj"
+          ]
+        },
+        {
+          "name": "SetEnable",
+          "startLine": 45,
+          "endLine": 45,
+          "params": [
+            "obj",
+            "value"
+          ]
+        },
+        {
+          "name": "GetSpotlightColor",
+          "startLine": 55,
+          "endLine": 55,
+          "params": [
+            "obj"
+          ]
+        },
+        {
+          "name": "SetSpotlightColor",
+          "startLine": 56,
+          "endLine": 56,
+          "params": [
+            "obj",
+            "value"
+          ]
+        },
+        {
+          "name": "OnEnableChanged",
+          "startLine": 58,
+          "endLine": 66,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "Attach",
+          "startLine": 68,
+          "endLine": 115,
+          "params": [
+            "border"
+          ]
+        },
+        {
+          "name": "Detach",
+          "startLine": 117,
+          "endLine": 131,
+          "params": [
+            "border"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "RevealSpotlightBehavior",
+          "startLine": 24,
+          "endLine": 132,
+          "methods": [
+            "GetEnable",
+            "SetEnable",
+            "GetSpotlightColor",
+            "SetSpotlightColor",
+            "OnEnableChanged",
+            "Attach",
+            "Detach"
+          ],
+          "properties": [
+            "_holders",
+            "EnableProperty",
+            "SpotlightColorProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "EnableProperty",
+          "line": 37,
+          "isDefault": false
+        },
+        {
+          "name": "GetEnable",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "SetEnable",
+          "line": 45,
+          "isDefault": false
+        },
+        {
+          "name": "SpotlightColorProperty",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "GetSpotlightColor",
+          "line": 55,
+          "isDefault": false
+        },
+        {
+          "name": "SetSpotlightColor",
+          "line": 56,
+          "isDefault": false
+        },
+        {
+          "name": "RevealSpotlightBehavior",
+          "line": 24,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetEnable",
+          "callee": "obj.GetValue",
+          "lineNumber": 44
+        },
+        {
+          "caller": "SetEnable",
+          "callee": "obj.SetValue",
+          "lineNumber": 45
+        },
+        {
+          "caller": "GetSpotlightColor",
+          "callee": "obj.GetValue",
+          "lineNumber": 55
+        },
+        {
+          "caller": "SetSpotlightColor",
+          "callee": "obj.SetValue",
+          "lineNumber": 56
+        },
+        {
+          "caller": "OnEnableChanged",
+          "callee": "Detach",
+          "lineNumber": 62
+        },
+        {
+          "caller": "OnEnableChanged",
+          "callee": "Attach",
+          "lineNumber": 65
+        },
+        {
+          "caller": "Attach",
+          "callee": "new HandlerHolder",
+          "lineNumber": 70
+        },
+        {
+          "caller": "Attach",
+          "callee": "GetSpotlightColor",
+          "lineNumber": 77
+        },
+        {
+          "caller": "Attach",
+          "callee": "new RadialGradientBrush",
+          "lineNumber": 78
+        },
+        {
+          "caller": "Attach",
+          "callee": "new Point",
+          "lineNumber": 81
+        },
+        {
+          "caller": "Attach",
+          "callee": "new Point",
+          "lineNumber": 82
+        },
+        {
+          "caller": "Attach",
+          "callee": "holder.TrackingBrush.GradientStops.Add",
+          "lineNumber": 86
+        },
+        {
+          "caller": "Attach",
+          "callee": "new GradientStop",
+          "lineNumber": 86
+        },
+        {
+          "caller": "Attach",
+          "callee": "holder.TrackingBrush.GradientStops.Add",
+          "lineNumber": 87
+        },
+        {
+          "caller": "Attach",
+          "callee": "new GradientStop",
+          "lineNumber": 87
+        },
+        {
+          "caller": "Attach",
+          "callee": "Color.FromArgb",
+          "lineNumber": 87
+        },
+        {
+          "caller": "Attach",
+          "callee": "args.GetCurrentPoint",
+          "lineNumber": 94
+        },
+        {
+          "caller": "Attach",
+          "callee": "new Point",
+          "lineNumber": 98
+        },
+        {
+          "caller": "Attach",
+          "callee": "_holders.AddOrUpdate",
+          "lineNumber": 114
+        },
+        {
+          "caller": "Detach",
+          "callee": "_holders.TryGetValue",
+          "lineNumber": 119
+        },
+        {
+          "caller": "Detach",
+          "callee": "_holders.Remove",
+          "lineNumber": 130
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 7,
+        "functionCount": 7,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Behaviors/Track/TrackColorHintBehavior.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 144,
+      "nonEmptyLines": 129,
+      "functions": [
+        {
+          "name": "Resolve",
+          "startLine": 57,
+          "endLine": 107,
+          "params": [
+            "host",
+            "rawImageUrl",
+            "explicitPlaceholderHex",
+            "useImageColorHint",
+            "applyColor"
+          ]
+        },
+        {
+          "name": "ResolveAsync",
+          "startLine": 109,
+          "endLine": 130,
+          "params": [
+            "host",
+            "httpsUrl",
+            "version",
+            "applyColor"
+          ]
+        },
+        {
+          "name": "Reset",
+          "startLine": 137,
+          "endLine": 143,
+          "params": [
+            "host"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "TrackColorHintBehavior",
+          "startLine": 27,
+          "endLine": 144,
+          "methods": [
+            "Resolve",
+            "ResolveAsync",
+            "Reset"
+          ],
+          "properties": [
+            "_states",
+            "_service",
+            "_logger"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Resolve",
+          "line": 57,
+          "isDefault": false
+        },
+        {
+          "name": "Reset",
+          "line": 137,
+          "isDefault": false
+        },
+        {
+          "name": "TrackColorHintBehavior",
+          "line": 27,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Resolve",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 68
+        },
+        {
+          "caller": "Resolve",
+          "callee": "_states.GetValue",
+          "lineNumber": 72
+        },
+        {
+          "caller": "Resolve",
+          "callee": "new State",
+          "lineNumber": 72
+        },
+        {
+          "caller": "Resolve",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 74
+        },
+        {
+          "caller": "Resolve",
+          "callee": "applyColor",
+          "lineNumber": 77
+        },
+        {
+          "caller": "Resolve",
+          "callee": "SpotifyImageHelper.ToHttpsUrl",
+          "lineNumber": 81
+        },
+        {
+          "caller": "Resolve",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 82
+        },
+        {
+          "caller": "Resolve",
+          "callee": "applyColor",
+          "lineNumber": 85
+        },
+        {
+          "caller": "Resolve",
+          "callee": "string.Equals",
+          "lineNumber": 89
+        },
+        {
+          "caller": "Resolve",
+          "callee": "Interlocked.Increment",
+          "lineNumber": 93
+        },
+        {
+          "caller": "Resolve",
+          "callee": "_service.TryGet",
+          "lineNumber": 96
+        },
+        {
+          "caller": "Resolve",
+          "callee": "applyColor",
+          "lineNumber": 98
+        },
+        {
+          "caller": "Resolve",
+          "callee": "applyColor",
+          "lineNumber": 104
+        },
+        {
+          "caller": "Resolve",
+          "callee": "ResolveAsync",
+          "lineNumber": 106
+        },
+        {
+          "caller": "ResolveAsync",
+          "callee": "_service!.GetOrResolveAsync(httpsUrl).ConfigureAwait",
+          "lineNumber": 117
+        },
+        {
+          "caller": "ResolveAsync",
+          "callee": "_service!.GetOrResolveAsync",
+          "lineNumber": 117
+        },
+        {
+          "caller": "ResolveAsync",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 118
+        },
+        {
+          "caller": "ResolveAsync",
+          "callee": "applyColor",
+          "lineNumber": 120
+        },
+        {
+          "caller": "ResolveAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 128
+        },
+        {
+          "caller": "Reset",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 140
+        },
+        {
+          "caller": "Reset",
+          "callee": "Interlocked.Increment",
+          "lineNumber": 142
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 3,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Behaviors/Track/TrackImageRetryBehavior.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 93,
+      "nonEmptyLines": 83,
+      "functions": [
+        {
+          "name": "Attach",
+          "startLine": 46,
+          "endLine": 56,
+          "params": [
+            "image",
+            "onRetry"
+          ]
+        },
+        {
+          "name": "Reset",
+          "startLine": 62,
+          "endLine": 67,
+          "params": [
+            "image"
+          ]
+        },
+        {
+          "name": "OnImageFailed",
+          "startLine": 69,
+          "endLine": 92,
+          "params": [
+            "sender",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "TrackImageRetryBehavior",
+          "startLine": 27,
+          "endLine": 93,
+          "methods": [
+            "Attach",
+            "Reset",
+            "OnImageFailed"
+          ],
+          "properties": [
+            "_states"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Attach",
+          "line": 46,
+          "isDefault": false
+        },
+        {
+          "name": "Reset",
+          "line": 62,
+          "isDefault": false
+        },
+        {
+          "name": "TrackImageRetryBehavior",
+          "line": 27,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Attach",
+          "callee": "_states.GetValue",
+          "lineNumber": 49
+        },
+        {
+          "caller": "Attach",
+          "callee": "new State",
+          "lineNumber": 49
+        },
+        {
+          "caller": "Reset",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 65
+        },
+        {
+          "caller": "OnImageFailed",
+          "callee": "_states.TryGetValue",
+          "lineNumber": 72
+        },
+        {
+          "caller": "OnImageFailed",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 78
+        },
+        {
+          "caller": "OnImageFailed",
+          "callee": "string.Equals",
+          "lineNumber": 80
+        },
+        {
+          "caller": "OnImageFailed",
+          "callee": "image.DispatcherQueue?.TryEnqueue",
+          "lineNumber": 91
+        },
+        {
+          "caller": "OnImageFailed",
+          "callee": "callback",
+          "lineNumber": 91
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 3,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Collections/FullyObservableCollection.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 82,
+      "nonEmptyLines": 66,
+      "functions": [
+        {
+          "name": "FullyObservableCollection",
+          "startLine": 14,
+          "endLine": 14,
+          "params": []
+        },
+        {
+          "name": "FullyObservableCollection",
+          "startLine": 16,
+          "endLine": 19,
+          "params": [
+            "list"
+          ]
+        },
+        {
+          "name": "FullyObservableCollection",
+          "startLine": 21,
+          "endLine": 24,
+          "params": [
+            "enumerable"
+          ]
+        },
+        {
+          "name": "OnCollectionChanged",
+          "startLine": 26,
+          "endLine": 41,
+          "params": [
+            "e"
+          ]
+        },
+        {
+          "name": "ClearItems",
+          "startLine": 43,
+          "endLine": 49,
+          "params": []
+        },
+        {
+          "name": "ObserveAll",
+          "startLine": 51,
+          "endLine": 55,
+          "params": []
+        },
+        {
+          "name": "ChildPropertyChanged",
+          "startLine": 57,
+          "endLine": 68,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ItemPropertyChangedEventArgs",
+          "startLine": 75,
+          "endLine": 78,
+          "params": [
+            "index",
+            "name"
+          ]
+        },
+        {
+          "name": "ItemPropertyChangedEventArgs",
+          "startLine": 80,
+          "endLine": 81,
+          "params": [
+            "index",
+            "args"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "FullyObservableCollection",
+          "startLine": 9,
+          "endLine": 69,
+          "methods": [
+            "FullyObservableCollection",
+            "FullyObservableCollection",
+            "FullyObservableCollection",
+            "OnCollectionChanged",
+            "ClearItems",
+            "ObserveAll",
+            "ChildPropertyChanged"
+          ],
+          "properties": []
+        },
+        {
+          "name": "ItemPropertyChangedEventArgs",
+          "startLine": 71,
+          "endLine": 82,
+          "methods": [
+            "ItemPropertyChangedEventArgs",
+            "ItemPropertyChangedEventArgs"
+          ],
+          "properties": [
+            "CollectionIndex"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "FullyObservableCollection",
+          "line": 14,
+          "isDefault": false
+        },
+        {
+          "name": "FullyObservableCollection",
+          "line": 16,
+          "isDefault": false
+        },
+        {
+          "name": "FullyObservableCollection",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "FullyObservableCollection",
+          "line": 9,
+          "isDefault": false
+        },
+        {
+          "name": "CollectionIndex",
+          "line": 73,
+          "isDefault": false
+        },
+        {
+          "name": "ItemPropertyChangedEventArgs",
+          "line": 75,
+          "isDefault": false
+        },
+        {
+          "name": "ItemPropertyChangedEventArgs",
+          "line": 80,
+          "isDefault": false
+        },
+        {
+          "name": "ItemPropertyChangedEventArgs",
+          "line": 71,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "FullyObservableCollection",
+          "callee": "ObserveAll",
+          "lineNumber": 18
+        },
+        {
+          "caller": "FullyObservableCollection",
+          "callee": "ObserveAll",
+          "lineNumber": 23
+        },
+        {
+          "caller": "OnCollectionChanged",
+          "callee": "base.OnCollectionChanged",
+          "lineNumber": 40
+        },
+        {
+          "caller": "ClearItems",
+          "callee": "base.ClearItems",
+          "lineNumber": 48
+        },
+        {
+          "caller": "ChildPropertyChanged",
+          "callee": "Items.IndexOf",
+          "lineNumber": 64
+        },
+        {
+          "caller": "ChildPropertyChanged",
+          "callee": "ItemPropertyChanged?.Invoke",
+          "lineNumber": 66
+        },
+        {
+          "caller": "ChildPropertyChanged",
+          "callee": "new ItemPropertyChangedEventArgs",
+          "lineNumber": 66
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 8,
+        "functionCount": 9,
+        "classCount": 2
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AccentIcon/AccentIcon.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 61,
+      "nonEmptyLines": 53,
+      "functions": [
+        {
+          "name": "AccentIcon",
+          "startLine": 17,
+          "endLine": 21,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "AccentIcon",
+          "startLine": 15,
+          "endLine": 61,
+          "methods": [
+            "AccentIcon"
+          ],
+          "properties": [
+            "IconSizeProperty",
+            "IconSize",
+            "BasePathDataProperty",
+            "BasePathData",
+            "AccentPathDataProperty",
+            "AccentPathData"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "AccentIcon",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "IconSizeProperty",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "IconSize",
+          "line": 30,
+          "isDefault": false
+        },
+        {
+          "name": "BasePathDataProperty",
+          "line": 36,
+          "isDefault": false
+        },
+        {
+          "name": "BasePathData",
+          "line": 43,
+          "isDefault": false
+        },
+        {
+          "name": "AccentPathDataProperty",
+          "line": 49,
+          "isDefault": false
+        },
+        {
+          "name": "AccentPathData",
+          "line": 56,
+          "isDefault": false
+        },
+        {
+          "name": "AccentIcon",
+          "line": 15,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 8,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AccentIcon/AccentIcon.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 155,
+      "nonEmptyLines": 146,
+      "metrics": {}
+    }
+  ]
+}

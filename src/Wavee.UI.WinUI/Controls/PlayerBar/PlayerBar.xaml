@@ -99,7 +99,7 @@
                     <Setter Target="InlinePanelGroup.Visibility" Value="Visible" />
                     <Setter Target="InlineModeGroup.Visibility" Value="Visible" />
                     <Setter Target="InlineVolumeGroup.Visibility" Value="Visible" />
-                    <Setter Target="OverflowButton.Visibility" Value="Collapsed" />
+                    <Setter Target="OverflowButton.Visibility" Value="Visible" />
                     <Setter Target="WideLayoutRoot.Height" Value="56" />
                     <Setter Target="PlayerBarLayoutRoot.MinHeight" Value="56" />
                 </VisualState.Setters>

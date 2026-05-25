@@ -1,0 +1,7128 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 25,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 390,
+      "nonEmptyLines": 371,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/FriendsTabView.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 189,
+      "nonEmptyLines": 166,
+      "functions": [
+        {
+          "name": "FriendsTabView",
+          "startLine": 22,
+          "endLine": 35,
+          "params": []
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 37,
+          "endLine": 44,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnUnloaded",
+          "startLine": 46,
+          "endLine": 52,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnFriendUpserted",
+          "startLine": 54,
+          "endLine": 84,
+          "params": [
+            "userUri"
+          ]
+        },
+        {
+          "name": "AnimateHighlight",
+          "startLine": 86,
+          "endLine": 121,
+          "params": [
+            "element"
+          ]
+        },
+        {
+          "name": "FindGlowOverlay",
+          "startLine": 123,
+          "endLine": 136,
+          "params": [
+            "root"
+          ]
+        },
+        {
+          "name": "OnServicePropertyChanged",
+          "startLine": 138,
+          "endLine": 145,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateStateVisuals",
+          "startLine": 147,
+          "endLine": 164,
+          "params": []
+        },
+        {
+          "name": "Retry_Click",
+          "startLine": 166,
+          "endLine": 169,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "JamDismiss_Click",
+          "startLine": 171,
+          "endLine": 174,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "StartJam_Click",
+          "startLine": 176,
+          "endLine": 187,
+          "params": [
+            "sender",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "FriendsTabView",
+          "startLine": 17,
+          "endLine": 189,
+          "methods": [
+            "FriendsTabView",
+            "OnLoaded",
+            "OnUnloaded",
+            "OnFriendUpserted",
+            "AnimateHighlight",
+            "FindGlowOverlay",
+            "OnServicePropertyChanged",
+            "UpdateStateVisuals",
+            "Retry_Click",
+            "JamDismiss_Click",
+            "StartJam_Click"
+          ],
+          "properties": [
+            "_service",
+            "_serviceNpc"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "FriendsTabView",
+          "line": 22,
+          "isDefault": false
+        },
+        {
+          "name": "FriendsTabView",
+          "line": 17,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "FriendsTabView",
+          "callee": "InitializeComponent",
+          "lineNumber": 24
+        },
+        {
+          "caller": "FriendsTabView",
+          "callee": "Ioc.Default.GetService<IFriendsFeedService>",
+          "lineNumber": 26
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "UpdateStateVisuals",
+          "lineNumber": 42
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "_service.SetActive",
+          "lineNumber": 43
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "_service.SetActive",
+          "lineNumber": 51
+        },
+        {
+          "caller": "OnFriendUpserted",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 56
+        },
+        {
+          "caller": "OnFriendUpserted",
+          "callee": "string.Equals",
+          "lineNumber": 62
+        },
+        {
+          "caller": "OnFriendUpserted",
+          "callee": "FriendsRepeater.TryGetElement",
+          "lineNumber": 72
+        },
+        {
+          "caller": "OnFriendUpserted",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 75
+        },
+        {
+          "caller": "OnFriendUpserted",
+          "callee": "FriendsRepeater.TryGetElement",
+          "lineNumber": 77
+        },
+        {
+          "caller": "OnFriendUpserted",
+          "callee": "AnimateHighlight",
+          "lineNumber": 78
+        },
+        {
+          "caller": "OnFriendUpserted",
+          "callee": "AnimateHighlight",
+          "lineNumber": 83
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale(\r\n                to: new Vector3(1.025f, 1.025f, 1f),\r\n                duration: TimeSpan.FromMilliseconds(140),\r\n                easingType: EasingType.Cubic,\r\n                easingMode: EasingMode.EaseOut)\r\n            .Scale(\r\n                to: new Vector3(1f, 1f, 1f),\r\n                delay: TimeSpan.FromMilliseconds(140),\r\n                duration: TimeSpan.FromMilliseconds(340),\r\n                easingType: EasingType.Cubic,\r\n                easingMode: EasingMode.EaseInOut)\r\n            .Start",
+          "lineNumber": 89
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale(\r\n                to: new Vector3(1.025f, 1.025f, 1f),\r\n                duration: TimeSpan.FromMilliseconds(140),\r\n                easingType: EasingType.Cubic,\r\n                easingMode: EasingMode.EaseOut)\r\n            .Scale",
+          "lineNumber": 89
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale",
+          "lineNumber": 89
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "AnimationBuilder.Create",
+          "lineNumber": 89
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "new Vector3",
+          "lineNumber": 91
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 92
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "new Vector3",
+          "lineNumber": 96
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 97
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 98
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "FindGlowOverlay",
+          "lineNumber": 104
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "AnimationBuilder.Create()\r\n                .Opacity(\r\n                    to: 0.35,\r\n                    duration: TimeSpan.FromMilliseconds(160),\r\n                    easingType: EasingType.Cubic,\r\n                    easingMode: EasingMode.EaseOut)\r\n                .Opacity(\r\n                    to: 0.0,\r\n                    delay: TimeSpan.FromMilliseconds(220),\r\n                    duration: TimeSpan.FromMilliseconds(520),\r\n                    easingType: EasingType.Cubic,\r\n                    easingMode: EasingMode.EaseInOut)\r\n                .Start",
+          "lineNumber": 107
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "AnimationBuilder.Create()\r\n                .Opacity(\r\n                    to: 0.35,\r\n                    duration: TimeSpan.FromMilliseconds(160),\r\n                    easingType: EasingType.Cubic,\r\n                    easingMode: EasingMode.EaseOut)\r\n                .Opacity",
+          "lineNumber": 107
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "AnimationBuilder.Create()\r\n                .Opacity",
+          "lineNumber": 107
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "AnimationBuilder.Create",
+          "lineNumber": 107
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 110
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 115
+        },
+        {
+          "caller": "AnimateHighlight",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 116
+        },
+        {
+          "caller": "FindGlowOverlay",
+          "callee": "VisualTreeHelper.GetChildrenCount",
+          "lineNumber": 125
+        },
+        {
+          "caller": "FindGlowOverlay",
+          "callee": "VisualTreeHelper.GetChild",
+          "lineNumber": 128
+        },
+        {
+          "caller": "FindGlowOverlay",
+          "callee": "FindGlowOverlay",
+          "lineNumber": 132
+        },
+        {
+          "caller": "OnServicePropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 140
+        },
+        {
+          "caller": "OnServicePropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 141
+        },
+        {
+          "caller": "OnServicePropertyChanged",
+          "callee": "UpdateStateVisuals",
+          "lineNumber": 143
+        },
+        {
+          "caller": "UpdateStateVisuals",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 162
+        },
+        {
+          "caller": "Retry_Click",
+          "callee": "_service?.RefreshAsync",
+          "lineNumber": 168
+        },
+        {
+          "caller": "StartJam_Click",
+          "callee": "new ContentDialog",
+          "lineNumber": 178
+        },
+        {
+          "caller": "StartJam_Click",
+          "callee": "dialog.ShowAsync",
+          "lineNumber": 186
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 11,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 98,
+      "nonEmptyLines": 91,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/Lyrics/LyricsCanvasHost.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 614,
+      "nonEmptyLines": 531,
+      "functions": [
+        {
+          "name": "LyricsCanvasHost",
+          "startLine": 53,
+          "endLine": 57,
+          "params": []
+        },
+        {
+          "name": "OnNowPlayingCanvasChanged",
+          "startLine": 115,
+          "endLine": 121,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnReactiveDpChanged",
+          "startLine": 123,
+          "endLine": 127,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "InitializeLyrics",
+          "startLine": 135,
+          "endLine": 169,
+          "params": []
+        },
+        {
+          "name": "TeardownLyrics",
+          "startLine": 172,
+          "endLine": 211,
+          "params": []
+        },
+        {
+          "name": "ApplyLyricsPalette",
+          "startLine": 220,
+          "endLine": 242,
+          "params": [
+            "actualTheme"
+          ]
+        },
+        {
+          "name": "OnPlaybackStateChanged",
+          "startLine": 246,
+          "endLine": 257,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnLyricsVmPropertyChanged",
+          "startLine": 261,
+          "endLine": 278,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyCurrentLyricsState",
+          "startLine": 292,
+          "endLine": 394,
+          "params": []
+        },
+        {
+          "name": "UpdateTimerState",
+          "startLine": 401,
+          "endLine": 442,
+          "params": []
+        },
+        {
+          "name": "ShouldRunLyricsTimelineSyncTimer",
+          "startLine": 444,
+          "endLine": 455,
+          "params": []
+        },
+        {
+          "name": "OnPositionTimerTick",
+          "startLine": 457,
+          "endLine": 461,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "OnSeekRequested",
+          "startLine": 465,
+          "endLine": 471,
+          "params": [
+            "sender",
+            "position"
+          ]
+        },
+        {
+          "name": "SyncNowPlayingCanvasPosition",
+          "startLine": 478,
+          "endLine": 494,
+          "params": []
+        },
+        {
+          "name": "LyricsOverlay_PointerEntered",
+          "startLine": 498,
+          "endLine": 503,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "LyricsOverlay_PointerExited",
+          "startLine": 505,
+          "endLine": 510,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "LyricsOverlay_PointerMoved",
+          "startLine": 512,
+          "endLine": 517,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "LyricsOverlay_PointerPressed",
+          "startLine": 519,
+          "endLine": 524,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "LyricsOverlay_PointerReleased",
+          "startLine": 526,
+          "endLine": 532,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "LyricsOverlay_PointerWheelChanged",
+          "startLine": 534,
+          "endLine": 562,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "CreateScrollResetTimer",
+          "startLine": 566,
+          "endLine": 572,
+          "params": []
+        },
+        {
+          "name": "OnScrollResetTimerTick",
+          "startLine": 574,
+          "endLine": 577,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "LyricsSyncButton_Click",
+          "startLine": 579,
+          "endLine": 583,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ResumeSync",
+          "startLine": 585,
+          "endLine": 593,
+          "params": []
+        },
+        {
+          "name": "LyricsContent_SizeChanged",
+          "startLine": 597,
+          "endLine": 600,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "LyricsDebugButton_Click",
+          "startLine": 610,
+          "endLine": 613,
+          "params": [
+            "sender",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "LyricsCanvasHost",
+          "startLine": 39,
+          "endLine": 614,
+          "methods": [
+            "LyricsCanvasHost",
+            "OnNowPlayingCanvasChanged",
+            "OnReactiveDpChanged",
+            "InitializeLyrics",
+            "TeardownLyrics",
+            "ApplyLyricsPalette",
+            "OnPlaybackStateChanged",
+            "OnLyricsVmPropertyChanged",
+            "ApplyCurrentLyricsState",
+            "UpdateTimerState",
+            "ShouldRunLyricsTimelineSyncTimer",
+            "OnPositionTimerTick",
+            "OnSeekRequested",
+            "SyncNowPlayingCanvasPosition",
+            "LyricsOverlay_PointerEntered",
+            "LyricsOverlay_PointerExited",
+            "LyricsOverlay_PointerMoved",
+            "LyricsOverlay_PointerPressed",
+            "LyricsOverlay_PointerReleased",
+            "LyricsOverlay_PointerWheelChanged",
+            "CreateScrollResetTimer",
+            "OnScrollResetTimerTick",
+            "LyricsSyncButton_Click",
+            "ResumeSync",
+            "LyricsContent_SizeChanged",
+            "LyricsDebugButton_Click"
+          ],
+          "properties": [
+            "_lyricsVm",
+            "_positionTimer",
+            "_scrollResetTimer",
+            "_lastCanvasPositionMs",
+            "_lyricsInitialized",
+            "_appliedLyricsData",
+            "_appliedSongInfo",
+            "_lyricsCanvasDataCleared",
+            "_canvas",
+            "LyricsSyncTimerIntervalMs",
+            "NowPlayingCanvas",
+            "NowPlayingCanvasProperty",
+            "IsLyricsTabActive",
+            "IsLyricsTabActiveProperty",
+            "IsPanelVisible",
+            "IsPanelVisibleProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "LyricsCanvasHost",
+          "line": 53,
+          "isDefault": false
+        },
+        {
+          "name": "NowPlayingCanvas",
+          "line": 64,
+          "isDefault": false
+        },
+        {
+          "name": "NowPlayingCanvasProperty",
+          "line": 69,
+          "isDefault": false
+        },
+        {
+          "name": "IsLyricsTabActive",
+          "line": 80,
+          "isDefault": false
+        },
+        {
+          "name": "IsLyricsTabActiveProperty",
+          "line": 85,
+          "isDefault": false
+        },
+        {
+          "name": "IsPanelVisible",
+          "line": 96,
+          "isDefault": false
+        },
+        {
+          "name": "IsPanelVisibleProperty",
+          "line": 101,
+          "isDefault": false
+        },
+        {
+          "name": "InitializeLyrics",
+          "line": 135,
+          "isDefault": false
+        },
+        {
+          "name": "TeardownLyrics",
+          "line": 172,
+          "isDefault": false
+        },
+        {
+          "name": "ApplyLyricsPalette",
+          "line": 220,
+          "isDefault": false
+        },
+        {
+          "name": "ApplyCurrentLyricsState",
+          "line": 292,
+          "isDefault": false
+        },
+        {
+          "name": "UpdateTimerState",
+          "line": 401,
+          "isDefault": false
+        },
+        {
+          "name": "SyncNowPlayingCanvasPosition",
+          "line": 478,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsCanvasHost",
+          "line": 39,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "LyricsCanvasHost",
+          "callee": "InitializeComponent",
+          "lineNumber": 55
+        },
+        {
+          "caller": "LyricsCanvasHost",
+          "callee": "Ioc.Default.GetService<LyricsViewModel>",
+          "lineNumber": 56
+        },
+        {
+          "caller": "OnReactiveDpChanged",
+          "callee": "host.UpdateTimerState",
+          "lineNumber": 126
+        },
+        {
+          "caller": "InitializeLyrics",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 139
+        },
+        {
+          "caller": "InitializeLyrics",
+          "callee": "DispatcherQueue.GetForCurrentThread().CreateTimer",
+          "lineNumber": 162
+        },
+        {
+          "caller": "InitializeLyrics",
+          "callee": "DispatcherQueue.GetForCurrentThread",
+          "lineNumber": 162
+        },
+        {
+          "caller": "InitializeLyrics",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 163
+        },
+        {
+          "caller": "InitializeLyrics",
+          "callee": "ApplyCurrentLyricsState",
+          "lineNumber": 167
+        },
+        {
+          "caller": "InitializeLyrics",
+          "callee": "UpdateTimerState",
+          "lineNumber": 168
+        },
+        {
+          "caller": "TeardownLyrics",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 176
+        },
+        {
+          "caller": "TeardownLyrics",
+          "callee": "_positionTimer.Stop",
+          "lineNumber": 179
+        },
+        {
+          "caller": "TeardownLyrics",
+          "callee": "_scrollResetTimer.Stop",
+          "lineNumber": 186
+        },
+        {
+          "caller": "TeardownLyrics",
+          "callee": "_canvas.SetIsPlaying",
+          "lineNumber": 200
+        },
+        {
+          "caller": "TeardownLyrics",
+          "callee": "_canvas.SetRenderingActive",
+          "lineNumber": 201
+        },
+        {
+          "caller": "TeardownLyrics",
+          "callee": "_canvas.SetLyricsData",
+          "lineNumber": 203
+        },
+        {
+          "caller": "ApplyLyricsPalette",
+          "callee": "Color.FromArgb",
+          "lineNumber": 230
+        },
+        {
+          "caller": "ApplyLyricsPalette",
+          "callee": "Color.FromArgb",
+          "lineNumber": 231
+        },
+        {
+          "caller": "ApplyLyricsPalette",
+          "callee": "_canvas.SetNowPlayingPalette",
+          "lineNumber": 241
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "nameof",
+          "lineNumber": 248
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "SyncNowPlayingCanvasPosition",
+          "lineNumber": 250
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "UpdateTimerState",
+          "lineNumber": 251
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "nameof",
+          "lineNumber": 253
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "SyncNowPlayingCanvasPosition",
+          "lineNumber": 255
+        },
+        {
+          "caller": "OnLyricsVmPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 265
+        },
+        {
+          "caller": "OnLyricsVmPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 266
+        },
+        {
+          "caller": "OnLyricsVmPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 267
+        },
+        {
+          "caller": "OnLyricsVmPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 268
+        },
+        {
+          "caller": "OnLyricsVmPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 269
+        },
+        {
+          "caller": "OnLyricsVmPropertyChanged",
+          "callee": "ApplyCurrentLyricsState",
+          "lineNumber": 270
+        },
+        {
+          "caller": "OnLyricsVmPropertyChanged",
+          "callee": "LyricsStateChanged?.Invoke",
+          "lineNumber": 271
+        },
+        {
+          "caller": "OnLyricsVmPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 273
+        },
+        {
+          "caller": "OnLyricsVmPropertyChanged",
+          "callee": "_canvas.SetNowPlayingPalette",
+          "lineNumber": 275
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 303
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 328
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 329
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 343
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "CanvasLayoutInvalidated?.Invoke",
+          "lineNumber": 354
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "ReferenceEquals",
+          "lineNumber": 359
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "_canvas.SetLyricsData",
+          "lineNumber": 361
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "ReferenceEquals",
+          "lineNumber": 367
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "_canvas.SetSongInfo",
+          "lineNumber": 369
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "_canvas.SetIsPlaying",
+          "lineNumber": 373
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "_lyricsVm.GetInterpolatedPosition",
+          "lineNumber": 374
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "_canvas.SetPosition",
+          "lineNumber": 376
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "_canvas.SetLyricsData",
+          "lineNumber": 384
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "_canvas.SetIsPlaying",
+          "lineNumber": 390
+        },
+        {
+          "caller": "ApplyCurrentLyricsState",
+          "callee": "UpdateTimerState",
+          "lineNumber": 393
+        },
+        {
+          "caller": "UpdateTimerState",
+          "callee": "_positionTimer?.Stop",
+          "lineNumber": 405
+        },
+        {
+          "caller": "UpdateTimerState",
+          "callee": "_canvas?.SetRenderingActive",
+          "lineNumber": 406
+        },
+        {
+          "caller": "UpdateTimerState",
+          "callee": "ShouldRunLyricsTimelineSyncTimer",
+          "lineNumber": 415
+        },
+        {
+          "caller": "UpdateTimerState",
+          "callee": "_canvas.SetRenderingActive",
+          "lineNumber": 423
+        },
+        {
+          "caller": "UpdateTimerState",
+          "callee": "_canvas.SetIsPlaying",
+          "lineNumber": 424
+        },
+        {
+          "caller": "UpdateTimerState",
+          "callee": "_positionTimer?.Start",
+          "lineNumber": 427
+        },
+        {
+          "caller": "UpdateTimerState",
+          "callee": "_positionTimer?.Stop",
+          "lineNumber": 429
+        },
+        {
+          "caller": "UpdateTimerState",
+          "callee": "_scrollResetTimer?.Stop",
+          "lineNumber": 433
+        },
+        {
+          "caller": "UpdateTimerState",
+          "callee": "_canvas.SetIsPlaying",
+          "lineNumber": 434
+        },
+        {
+          "caller": "UpdateTimerState",
+          "callee": "_canvas.SetIsPlaying",
+          "lineNumber": 439
+        },
+        {
+          "caller": "OnPositionTimerTick",
+          "callee": "ShouldRunLyricsTimelineSyncTimer",
+          "lineNumber": 459
+        },
+        {
+          "caller": "OnPositionTimerTick",
+          "callee": "SyncNowPlayingCanvasPosition",
+          "lineNumber": 460
+        },
+        {
+          "caller": "OnSeekRequested",
+          "callee": "_canvas.SetPosition",
+          "lineNumber": 468
+        },
+        {
+          "caller": "OnSeekRequested",
+          "callee": "_lyricsVm?.PlaybackState.Seek",
+          "lineNumber": 470
+        },
+        {
+          "caller": "SyncNowPlayingCanvasPosition",
+          "callee": "_lyricsVm.GetInterpolatedPosition",
+          "lineNumber": 491
+        },
+        {
+          "caller": "SyncNowPlayingCanvasPosition",
+          "callee": "_canvas.SetPosition",
+          "lineNumber": 493
+        },
+        {
+          "caller": "LyricsOverlay_PointerEntered",
+          "callee": "UpdateTimerState",
+          "lineNumber": 502
+        },
+        {
+          "caller": "LyricsOverlay_PointerExited",
+          "callee": "UpdateTimerState",
+          "lineNumber": 509
+        },
+        {
+          "caller": "LyricsOverlay_PointerMoved",
+          "callee": "e.GetCurrentPoint",
+          "lineNumber": 515
+        },
+        {
+          "caller": "LyricsOverlay_PointerPressed",
+          "callee": "UpdateTimerState",
+          "lineNumber": 523
+        },
+        {
+          "caller": "LyricsOverlay_PointerReleased",
+          "callee": "_canvas.FireSeekIfHovering",
+          "lineNumber": 530
+        },
+        {
+          "caller": "LyricsOverlay_PointerReleased",
+          "callee": "UpdateTimerState",
+          "lineNumber": 531
+        },
+        {
+          "caller": "LyricsOverlay_PointerWheelChanged",
+          "callee": "UpdateTimerState",
+          "lineNumber": 539
+        },
+        {
+          "caller": "LyricsOverlay_PointerWheelChanged",
+          "callee": "e.GetCurrentPoint",
+          "lineNumber": 541
+        },
+        {
+          "caller": "LyricsOverlay_PointerWheelChanged",
+          "callee": "Math.Min",
+          "lineNumber": 547
+        },
+        {
+          "caller": "LyricsOverlay_PointerWheelChanged",
+          "callee": "Math.Max",
+          "lineNumber": 549
+        },
+        {
+          "caller": "LyricsOverlay_PointerWheelChanged",
+          "callee": "CreateScrollResetTimer",
+          "lineNumber": 556
+        },
+        {
+          "caller": "LyricsOverlay_PointerWheelChanged",
+          "callee": "_scrollResetTimer.Stop",
+          "lineNumber": 557
+        },
+        {
+          "caller": "LyricsOverlay_PointerWheelChanged",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 558
+        },
+        {
+          "caller": "LyricsOverlay_PointerWheelChanged",
+          "callee": "_scrollResetTimer.Start",
+          "lineNumber": 559
+        },
+        {
+          "caller": "CreateScrollResetTimer",
+          "callee": "DispatcherQueue.GetForCurrentThread().CreateTimer",
+          "lineNumber": 568
+        },
+        {
+          "caller": "CreateScrollResetTimer",
+          "callee": "DispatcherQueue.GetForCurrentThread",
+          "lineNumber": 568
+        },
+        {
+          "caller": "OnScrollResetTimerTick",
+          "callee": "ResumeSync",
+          "lineNumber": 576
+        },
+        {
+          "caller": "LyricsSyncButton_Click",
+          "callee": "_scrollResetTimer?.Stop",
+          "lineNumber": 581
+        },
+        {
+          "caller": "LyricsSyncButton_Click",
+          "callee": "ResumeSync",
+          "lineNumber": 582
+        },
+        {
+          "caller": "ResumeSync",
+          "callee": "UpdateTimerState",
+          "lineNumber": 592
+        },
+        {
+          "caller": "LyricsContent_SizeChanged",
+          "callee": "CanvasLayoutInvalidated?.Invoke",
+          "lineNumber": 599
+        },
+        {
+          "caller": "LyricsDebugButton_Click",
+          "callee": "DebugRequested?.Invoke",
+          "lineNumber": 612
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 14,
+        "functionCount": 26,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 79,
+      "nonEmptyLines": 72,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/PodcastChapterTimelineRail.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 207,
+      "nonEmptyLines": 175,
+      "functions": [
+        {
+          "name": "PodcastChapterTimelineRail",
+          "startLine": 51,
+          "endLine": 56,
+          "params": []
+        },
+        {
+          "name": "OnVisualStatePropertyChanged",
+          "startLine": 88,
+          "endLine": 92,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 94,
+          "endLine": 98,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSizeChanged",
+          "startLine": 100,
+          "endLine": 105,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyVisualState",
+          "startLine": 107,
+          "endLine": 111,
+          "params": [
+            "animate"
+          ]
+        },
+        {
+          "name": "ApplyProgress",
+          "startLine": 113,
+          "endLine": 129,
+          "params": [
+            "animate"
+          ]
+        },
+        {
+          "name": "ApplySegmentProgress",
+          "startLine": 131,
+          "endLine": 160,
+          "params": [
+            "segment",
+            "progress",
+            "appliedProgress",
+            "animate"
+          ]
+        },
+        {
+          "name": "ApplyDotState",
+          "startLine": 162,
+          "endLine": 206,
+          "params": [
+            "animate"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "PodcastChapterTimelineRail",
+          "startLine": 10,
+          "endLine": 207,
+          "methods": [
+            "PodcastChapterTimelineRail",
+            "OnVisualStatePropertyChanged",
+            "OnLoaded",
+            "OnSizeChanged",
+            "ApplyVisualState",
+            "ApplyProgress",
+            "ApplySegmentProgress",
+            "ApplyDotState"
+          ],
+          "properties": [
+            "ProgressProperty",
+            "IsActiveProperty",
+            "IsCompletedProperty",
+            "IsFirstProperty",
+            "IsLastProperty",
+            "_appliedTopProgress",
+            "_appliedBottomProgress",
+            "_loaded",
+            "Progress",
+            "IsActive",
+            "IsCompleted",
+            "IsFirst",
+            "IsLast"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ProgressProperty",
+          "line": 12,
+          "isDefault": false
+        },
+        {
+          "name": "IsActiveProperty",
+          "line": 19,
+          "isDefault": false
+        },
+        {
+          "name": "IsCompletedProperty",
+          "line": 26,
+          "isDefault": false
+        },
+        {
+          "name": "IsFirstProperty",
+          "line": 33,
+          "isDefault": false
+        },
+        {
+          "name": "IsLastProperty",
+          "line": 40,
+          "isDefault": false
+        },
+        {
+          "name": "PodcastChapterTimelineRail",
+          "line": 51,
+          "isDefault": false
+        },
+        {
+          "name": "Progress",
+          "line": 58,
+          "isDefault": false
+        },
+        {
+          "name": "IsActive",
+          "line": 64,
+          "isDefault": false
+        },
+        {
+          "name": "IsCompleted",
+          "line": 70,
+          "isDefault": false
+        },
+        {
+          "name": "IsFirst",
+          "line": 76,
+          "isDefault": false
+        },
+        {
+          "name": "IsLast",
+          "line": 82,
+          "isDefault": false
+        },
+        {
+          "name": "PodcastChapterTimelineRail",
+          "line": 10,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "PodcastChapterTimelineRail",
+          "callee": "InitializeComponent",
+          "lineNumber": 53
+        },
+        {
+          "caller": "OnVisualStatePropertyChanged",
+          "callee": "rail.ApplyVisualState",
+          "lineNumber": 91
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "ApplyVisualState",
+          "lineNumber": 97
+        },
+        {
+          "caller": "OnSizeChanged",
+          "callee": "Math.Max",
+          "lineNumber": 102
+        },
+        {
+          "caller": "OnSizeChanged",
+          "callee": "Math.Max",
+          "lineNumber": 103
+        },
+        {
+          "caller": "OnSizeChanged",
+          "callee": "ApplyProgress",
+          "lineNumber": 104
+        },
+        {
+          "caller": "ApplyVisualState",
+          "callee": "ApplyProgress",
+          "lineNumber": 109
+        },
+        {
+          "caller": "ApplyVisualState",
+          "callee": "ApplyDotState",
+          "lineNumber": 110
+        },
+        {
+          "caller": "ApplyProgress",
+          "callee": "Math.Clamp",
+          "lineNumber": 115
+        },
+        {
+          "caller": "ApplyProgress",
+          "callee": "Math.Clamp",
+          "lineNumber": 116
+        },
+        {
+          "caller": "ApplyProgress",
+          "callee": "Math.Clamp",
+          "lineNumber": 117
+        },
+        {
+          "caller": "ApplyProgress",
+          "callee": "Math.Max",
+          "lineNumber": 124
+        },
+        {
+          "caller": "ApplyProgress",
+          "callee": "Math.Max",
+          "lineNumber": 125
+        },
+        {
+          "caller": "ApplyProgress",
+          "callee": "ApplySegmentProgress",
+          "lineNumber": 127
+        },
+        {
+          "caller": "ApplyProgress",
+          "callee": "ApplySegmentProgress",
+          "lineNumber": 128
+        },
+        {
+          "caller": "ApplySegmentProgress",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 137
+        },
+        {
+          "caller": "ApplySegmentProgress",
+          "callee": "new Vector3",
+          "lineNumber": 138
+        },
+        {
+          "caller": "ApplySegmentProgress",
+          "callee": "Math.Max",
+          "lineNumber": 139
+        },
+        {
+          "caller": "ApplySegmentProgress",
+          "callee": "new Vector3",
+          "lineNumber": 143
+        },
+        {
+          "caller": "ApplySegmentProgress",
+          "callee": "Math.Abs",
+          "lineNumber": 144
+        },
+        {
+          "caller": "ApplySegmentProgress",
+          "callee": "compositor.CreateCubicBezierEasingFunction",
+          "lineNumber": 152
+        },
+        {
+          "caller": "ApplySegmentProgress",
+          "callee": "new Vector2",
+          "lineNumber": 153
+        },
+        {
+          "caller": "ApplySegmentProgress",
+          "callee": "new Vector2",
+          "lineNumber": 154
+        },
+        {
+          "caller": "ApplySegmentProgress",
+          "callee": "compositor.CreateVector3KeyFrameAnimation",
+          "lineNumber": 155
+        },
+        {
+          "caller": "ApplySegmentProgress",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 156
+        },
+        {
+          "caller": "ApplySegmentProgress",
+          "callee": "animation.InsertKeyFrame",
+          "lineNumber": 157
+        },
+        {
+          "caller": "ApplySegmentProgress",
+          "callee": "visual.StartAnimation",
+          "lineNumber": 158
+        },
+        {
+          "caller": "ApplySegmentProgress",
+          "callee": "nameof",
+          "lineNumber": 158
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 164
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 165
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "new Vector3",
+          "lineNumber": 170
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "new Vector3",
+          "lineNumber": 171
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "new Vector3",
+          "lineNumber": 175
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "new Vector3",
+          "lineNumber": 177
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "compositor.CreateCubicBezierEasingFunction",
+          "lineNumber": 183
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "new Vector2",
+          "lineNumber": 184
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "new Vector2",
+          "lineNumber": 185
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "compositor.CreateVector3KeyFrameAnimation",
+          "lineNumber": 187
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 188
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "dotScale.InsertKeyFrame",
+          "lineNumber": 189
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "new Vector3",
+          "lineNumber": 189
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "dotVisual.StartAnimation",
+          "lineNumber": 190
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "nameof",
+          "lineNumber": 190
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "compositor.CreateScalarKeyFrameAnimation",
+          "lineNumber": 192
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 193
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "dotOpacity.InsertKeyFrame",
+          "lineNumber": 194
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "dotVisual.StartAnimation",
+          "lineNumber": 195
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "nameof",
+          "lineNumber": 195
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "compositor.CreateVector3KeyFrameAnimation",
+          "lineNumber": 197
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 198
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "haloScale.InsertKeyFrame",
+          "lineNumber": 199
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "new Vector3",
+          "lineNumber": 199
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "haloVisual.StartAnimation",
+          "lineNumber": 200
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "nameof",
+          "lineNumber": 200
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "compositor.CreateScalarKeyFrameAnimation",
+          "lineNumber": 202
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 203
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "haloFade.InsertKeyFrame",
+          "lineNumber": 204
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "haloVisual.StartAnimation",
+          "lineNumber": 205
+        },
+        {
+          "caller": "ApplyDotState",
+          "callee": "nameof",
+          "lineNumber": 205
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 12,
+        "functionCount": 8,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/QueueTabView.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 22,
+      "nonEmptyLines": 21,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/QueueTabView.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 11,
+      "nonEmptyLines": 9,
+      "functions": [
+        {
+          "name": "QueueTabView",
+          "startLine": 7,
+          "endLine": 10,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "QueueTabView",
+          "startLine": 5,
+          "endLine": 11,
+          "methods": [
+            "QueueTabView"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "QueueTabView",
+          "line": 7,
+          "isDefault": false
+        },
+        {
+          "name": "QueueTabView",
+          "line": 5,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "QueueTabView",
+          "callee": "InitializeComponent",
+          "lineNumber": 9
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 124,
+      "nonEmptyLines": 118,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelTabPager.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 263,
+      "nonEmptyLines": 231,
+      "functions": [
+        {
+          "name": "RightPanelTabPager",
+          "startLine": 50,
+          "endLine": 53,
+          "params": []
+        },
+        {
+          "name": "OnLyricsTabContentChanged",
+          "startLine": 114,
+          "endLine": 118,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "ReleaseInitialSelectionSuppression",
+          "startLine": 132,
+          "endLine": 135,
+          "params": []
+        },
+        {
+          "name": "SyncVisualState",
+          "startLine": 142,
+          "endLine": 168,
+          "params": []
+        },
+        {
+          "name": "OnSelectedModeChanged",
+          "startLine": 170,
+          "endLine": 184,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnIsTrackDetailsTabVisibleChanged",
+          "startLine": 186,
+          "endLine": 190,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "TabHeaderScroller_ViewChanged",
+          "startLine": 197,
+          "endLine": 198,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "TabHeaderScroller_SizeChanged",
+          "startLine": 200,
+          "endLine": 201,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateTabHeaderEdgeAffordances",
+          "startLine": 203,
+          "endLine": 218,
+          "params": []
+        },
+        {
+          "name": "TabPagerLeft_Click",
+          "startLine": 220,
+          "endLine": 225,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "TabPagerRight_Click",
+          "startLine": 227,
+          "endLine": 232,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "PopOutButton_Click",
+          "startLine": 234,
+          "endLine": 237,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "TabHeader_SelectionChanged",
+          "startLine": 239,
+          "endLine": 262,
+          "params": [
+            "sender",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "RightPanelTabPager",
+          "startLine": 33,
+          "endLine": 263,
+          "methods": [
+            "RightPanelTabPager",
+            "OnLyricsTabContentChanged",
+            "ReleaseInitialSelectionSuppression",
+            "SyncVisualState",
+            "OnSelectedModeChanged",
+            "OnIsTrackDetailsTabVisibleChanged",
+            "TabHeaderScroller_ViewChanged",
+            "TabHeaderScroller_SizeChanged",
+            "UpdateTabHeaderEdgeAffordances",
+            "TabPagerLeft_Click",
+            "TabPagerRight_Click",
+            "PopOutButton_Click",
+            "TabHeader_SelectionChanged"
+          ],
+          "properties": [
+            "TabPagerScrollStepPx",
+            "_suppressTabHeaderSelectionChanged",
+            "_inSelectedModeChange",
+            "SelectedMode",
+            "SelectedModeProperty",
+            "IsTrackDetailsTabVisible",
+            "IsTrackDetailsTabVisibleProperty",
+            "LyricsTabContent",
+            "LyricsTabContentProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "RightPanelTabPager",
+          "line": 50,
+          "isDefault": false
+        },
+        {
+          "name": "SelectedMode",
+          "line": 55,
+          "isDefault": false
+        },
+        {
+          "name": "SelectedModeProperty",
+          "line": 71,
+          "isDefault": false
+        },
+        {
+          "name": "IsTrackDetailsTabVisible",
+          "line": 83,
+          "isDefault": false
+        },
+        {
+          "name": "IsTrackDetailsTabVisibleProperty",
+          "line": 88,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsTabContent",
+          "line": 102,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsTabContentProperty",
+          "line": 107,
+          "isDefault": false
+        },
+        {
+          "name": "ReleaseInitialSelectionSuppression",
+          "line": 132,
+          "isDefault": false
+        },
+        {
+          "name": "SyncVisualState",
+          "line": 142,
+          "isDefault": false
+        },
+        {
+          "name": "RightPanelTabPager",
+          "line": 33,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "RightPanelTabPager",
+          "callee": "InitializeComponent",
+          "lineNumber": 52
+        },
+        {
+          "caller": "SyncVisualState",
+          "callee": "ReferenceEquals",
+          "lineNumber": 156
+        },
+        {
+          "caller": "OnSelectedModeChanged",
+          "callee": "pager.SyncVisualState",
+          "lineNumber": 178
+        },
+        {
+          "caller": "TabHeaderScroller_ViewChanged",
+          "callee": "UpdateTabHeaderEdgeAffordances",
+          "lineNumber": 198
+        },
+        {
+          "caller": "TabHeaderScroller_SizeChanged",
+          "callee": "UpdateTabHeaderEdgeAffordances",
+          "lineNumber": 201
+        },
+        {
+          "caller": "TabPagerLeft_Click",
+          "callee": "Math.Max",
+          "lineNumber": 223
+        },
+        {
+          "caller": "TabPagerLeft_Click",
+          "callee": "TabHeaderScroller.ChangeView",
+          "lineNumber": 224
+        },
+        {
+          "caller": "TabPagerRight_Click",
+          "callee": "Math.Min",
+          "lineNumber": 230
+        },
+        {
+          "caller": "TabPagerRight_Click",
+          "callee": "TabHeaderScroller.ChangeView",
+          "lineNumber": 231
+        },
+        {
+          "caller": "PopOutButton_Click",
+          "callee": "PopOutRequested?.Invoke",
+          "lineNumber": 236
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 10,
+        "functionCount": 13,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelThemeResolver.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 343,
+      "nonEmptyLines": 304,
+      "functions": [
+        {
+          "name": "ResolveThemeColor",
+          "startLine": 30,
+          "endLine": 43,
+          "params": [
+            "actualTheme",
+            "resourceKey",
+            "fallback"
+          ]
+        },
+        {
+          "name": "GetBackgroundTintColor",
+          "startLine": 49,
+          "endLine": 64,
+          "params": [
+            "actualTheme",
+            "themeColors",
+            "extractedColor"
+          ]
+        },
+        {
+          "name": "GetPanelSurfaceColor",
+          "startLine": 70,
+          "endLine": 84,
+          "params": [
+            "actualTheme",
+            "themeColors"
+          ]
+        },
+        {
+          "name": "GetBackgroundTintHex",
+          "startLine": 90,
+          "endLine": 101,
+          "params": [
+            "actualTheme",
+            "extractedColor"
+          ]
+        },
+        {
+          "name": "BlendColors",
+          "startLine": 107,
+          "endLine": 117,
+          "params": [
+            "baseColor",
+            "overlayColor",
+            "overlayWeight"
+          ]
+        },
+        {
+          "name": "Darken",
+          "startLine": 122,
+          "endLine": 131,
+          "params": [
+            "color",
+            "amount"
+          ]
+        },
+        {
+          "name": "WithAlpha",
+          "startLine": 134,
+          "endLine": 137,
+          "params": [
+            "color",
+            "alpha"
+          ]
+        },
+        {
+          "name": "TryParseHexColor",
+          "startLine": 143,
+          "endLine": 170,
+          "params": [
+            "hex",
+            "color"
+          ]
+        },
+        {
+          "name": "ResolveTabFadeTargetColor",
+          "startLine": 177,
+          "endLine": 214,
+          "params": [
+            "actualTheme",
+            "isEmbeddedChromeTransparent",
+            "embeddedHostTintHex",
+            "themeColors",
+            "extractedColor"
+          ]
+        },
+        {
+          "name": "ResolveEmbeddedTabFadeTargetColor",
+          "startLine": 221,
+          "endLine": 250,
+          "params": [
+            "actualTheme",
+            "embeddedHostTintHex",
+            "themeColors",
+            "extractedColor"
+          ]
+        },
+        {
+          "name": "ComputeCanvasClearColor",
+          "startLine": 257,
+          "endLine": 286,
+          "params": [
+            "actualTheme",
+            "isEmbeddedChromeTransparent",
+            "themeColors"
+          ]
+        },
+        {
+          "name": "TryResolveColorFromResources",
+          "startLine": 288,
+          "endLine": 320,
+          "params": [
+            "resources",
+            "resourceKey",
+            "themeKey",
+            "color"
+          ]
+        },
+        {
+          "name": "TryResolveColorFromDictionary",
+          "startLine": 322,
+          "endLine": 342,
+          "params": [
+            "dictionary",
+            "resourceKey",
+            "color"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "RightPanelThemeResolver",
+          "startLine": 23,
+          "endLine": 343,
+          "methods": [
+            "ResolveThemeColor",
+            "GetBackgroundTintColor",
+            "GetPanelSurfaceColor",
+            "GetBackgroundTintHex",
+            "BlendColors",
+            "Darken",
+            "WithAlpha",
+            "TryParseHexColor",
+            "ResolveTabFadeTargetColor",
+            "ResolveEmbeddedTabFadeTargetColor",
+            "ComputeCanvasClearColor",
+            "TryResolveColorFromResources",
+            "TryResolveColorFromDictionary"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "ResolveThemeColor",
+          "line": 30,
+          "isDefault": false
+        },
+        {
+          "name": "GetBackgroundTintColor",
+          "line": 49,
+          "isDefault": false
+        },
+        {
+          "name": "GetPanelSurfaceColor",
+          "line": 70,
+          "isDefault": false
+        },
+        {
+          "name": "GetBackgroundTintHex",
+          "line": 90,
+          "isDefault": false
+        },
+        {
+          "name": "BlendColors",
+          "line": 107,
+          "isDefault": false
+        },
+        {
+          "name": "Darken",
+          "line": 122,
+          "isDefault": false
+        },
+        {
+          "name": "WithAlpha",
+          "line": 134,
+          "isDefault": false
+        },
+        {
+          "name": "TryParseHexColor",
+          "line": 143,
+          "isDefault": false
+        },
+        {
+          "name": "ResolveTabFadeTargetColor",
+          "line": 177,
+          "isDefault": false
+        },
+        {
+          "name": "ResolveEmbeddedTabFadeTargetColor",
+          "line": 221,
+          "isDefault": false
+        },
+        {
+          "name": "ComputeCanvasClearColor",
+          "line": 257,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ResolveThemeColor",
+          "callee": "TryResolveColorFromResources",
+          "lineNumber": 39
+        },
+        {
+          "caller": "GetBackgroundTintColor",
+          "callee": "GetBackgroundTintHex",
+          "lineNumber": 54
+        },
+        {
+          "caller": "GetBackgroundTintColor",
+          "callee": "TryParseHexColor",
+          "lineNumber": 55
+        },
+        {
+          "caller": "GetBackgroundTintColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 62
+        },
+        {
+          "caller": "GetBackgroundTintColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 63
+        },
+        {
+          "caller": "GetPanelSurfaceColor",
+          "callee": "Application.Current.Resources.TryGetValue",
+          "lineNumber": 75
+        },
+        {
+          "caller": "GetPanelSurfaceColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 82
+        },
+        {
+          "caller": "GetPanelSurfaceColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 83
+        },
+        {
+          "caller": "BlendColors",
+          "callee": "Math.Clamp",
+          "lineNumber": 109
+        },
+        {
+          "caller": "BlendColors",
+          "callee": "Color.FromArgb",
+          "lineNumber": 112
+        },
+        {
+          "caller": "BlendColors",
+          "callee": "Math.Clamp",
+          "lineNumber": 114
+        },
+        {
+          "caller": "BlendColors",
+          "callee": "Math.Clamp",
+          "lineNumber": 115
+        },
+        {
+          "caller": "BlendColors",
+          "callee": "Math.Clamp",
+          "lineNumber": 116
+        },
+        {
+          "caller": "Darken",
+          "callee": "Math.Clamp",
+          "lineNumber": 124
+        },
+        {
+          "caller": "Darken",
+          "callee": "Color.FromArgb",
+          "lineNumber": 126
+        },
+        {
+          "caller": "Darken",
+          "callee": "Math.Clamp",
+          "lineNumber": 128
+        },
+        {
+          "caller": "Darken",
+          "callee": "Math.Clamp",
+          "lineNumber": 129
+        },
+        {
+          "caller": "Darken",
+          "callee": "Math.Clamp",
+          "lineNumber": 130
+        },
+        {
+          "caller": "WithAlpha",
+          "callee": "Color.FromArgb",
+          "lineNumber": 136
+        },
+        {
+          "caller": "TryParseHexColor",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 146
+        },
+        {
+          "caller": "TryParseHexColor",
+          "callee": "hex.Trim().TrimStart",
+          "lineNumber": 149
+        },
+        {
+          "caller": "TryParseHexColor",
+          "callee": "hex.Trim",
+          "lineNumber": 149
+        },
+        {
+          "caller": "TryParseHexColor",
+          "callee": "byte.TryParse",
+          "lineNumber": 151
+        },
+        {
+          "caller": "TryParseHexColor",
+          "callee": "byte.TryParse",
+          "lineNumber": 152
+        },
+        {
+          "caller": "TryParseHexColor",
+          "callee": "byte.TryParse",
+          "lineNumber": 153
+        },
+        {
+          "caller": "TryParseHexColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 155
+        },
+        {
+          "caller": "TryParseHexColor",
+          "callee": "byte.TryParse",
+          "lineNumber": 160
+        },
+        {
+          "caller": "TryParseHexColor",
+          "callee": "byte.TryParse",
+          "lineNumber": 161
+        },
+        {
+          "caller": "TryParseHexColor",
+          "callee": "byte.TryParse",
+          "lineNumber": 162
+        },
+        {
+          "caller": "TryParseHexColor",
+          "callee": "byte.TryParse",
+          "lineNumber": 163
+        },
+        {
+          "caller": "TryParseHexColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 165
+        },
+        {
+          "caller": "ResolveTabFadeTargetColor",
+          "callee": "ResolveEmbeddedTabFadeTargetColor",
+          "lineNumber": 185
+        },
+        {
+          "caller": "ResolveTabFadeTargetColor",
+          "callee": "Application.Current.Resources.TryGetValue",
+          "lineNumber": 192
+        },
+        {
+          "caller": "ResolveTabFadeTargetColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 200
+        },
+        {
+          "caller": "ResolveTabFadeTargetColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 201
+        },
+        {
+          "caller": "ResolveTabFadeTargetColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 207
+        },
+        {
+          "caller": "ResolveEmbeddedTabFadeTargetColor",
+          "callee": "TryParseHexColor",
+          "lineNumber": 227
+        },
+        {
+          "caller": "ResolveEmbeddedTabFadeTargetColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 231
+        },
+        {
+          "caller": "ResolveEmbeddedTabFadeTargetColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 239
+        },
+        {
+          "caller": "ResolveEmbeddedTabFadeTargetColor",
+          "callee": "GetBackgroundTintColor",
+          "lineNumber": 246
+        },
+        {
+          "caller": "ResolveEmbeddedTabFadeTargetColor",
+          "callee": "BlendColors",
+          "lineNumber": 248
+        },
+        {
+          "caller": "ResolveEmbeddedTabFadeTargetColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 248
+        },
+        {
+          "caller": "ResolveEmbeddedTabFadeTargetColor",
+          "callee": "Darken",
+          "lineNumber": 249
+        },
+        {
+          "caller": "ComputeCanvasClearColor",
+          "callee": "Application.Current.Resources.TryGetValue",
+          "lineNumber": 269
+        },
+        {
+          "caller": "ComputeCanvasClearColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 277
+        },
+        {
+          "caller": "ComputeCanvasClearColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 278
+        },
+        {
+          "caller": "ComputeCanvasClearColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 282
+        },
+        {
+          "caller": "TryResolveColorFromResources",
+          "callee": "TryResolveColorFromDictionary",
+          "lineNumber": 294
+        },
+        {
+          "caller": "TryResolveColorFromResources",
+          "callee": "resources.ThemeDictionaries.TryGetValue",
+          "lineNumber": 297
+        },
+        {
+          "caller": "TryResolveColorFromResources",
+          "callee": "TryResolveColorFromDictionary",
+          "lineNumber": 299
+        },
+        {
+          "caller": "TryResolveColorFromResources",
+          "callee": "resources.ThemeDictionaries.TryGetValue",
+          "lineNumber": 305
+        },
+        {
+          "caller": "TryResolveColorFromResources",
+          "callee": "TryResolveColorFromDictionary",
+          "lineNumber": 307
+        },
+        {
+          "caller": "TryResolveColorFromResources",
+          "callee": "TryResolveColorFromResources",
+          "lineNumber": 314
+        },
+        {
+          "caller": "TryResolveColorFromDictionary",
+          "callee": "dictionary.TryGetValue",
+          "lineNumber": 327
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 11,
+        "functionCount": 13,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.OutputDevice.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 12,
+      "nonEmptyLines": 10,
+      "functions": [
+        {
+          "name": "InitializeOutputDeviceCard",
+          "startLine": 5,
+          "endLine": 7,
+          "params": []
+        },
+        {
+          "name": "TeardownOutputDeviceCard",
+          "startLine": 9,
+          "endLine": 11,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "RightPanelView",
+          "startLine": 3,
+          "endLine": 12,
+          "methods": [
+            "InitializeOutputDeviceCard",
+            "TeardownOutputDeviceCard"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "RightPanelView",
+          "line": 3,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.Properties.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 210,
+      "nonEmptyLines": 186,
+      "functions": [
+        {
+          "name": "OnPanelWidthChanged",
+          "startLine": 91,
+          "endLine": 95,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnIsOpenChanged",
+          "startLine": 97,
+          "endLine": 138,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSelectedModeChanged",
+          "startLine": 140,
+          "endLine": 162,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnIsTabHeaderVisibleChanged",
+          "startLine": 164,
+          "endLine": 168,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnIsEmbeddedChromeTransparentChanged",
+          "startLine": 170,
+          "endLine": 174,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnEmbeddedHostTintColorChanged",
+          "startLine": 176,
+          "endLine": 180,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyEmbeddedChrome",
+          "startLine": 182,
+          "endLine": 209,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "RightPanelView",
+          "startLine": 10,
+          "endLine": 210,
+          "methods": [
+            "OnPanelWidthChanged",
+            "OnIsOpenChanged",
+            "OnSelectedModeChanged",
+            "OnIsTabHeaderVisibleChanged",
+            "OnIsEmbeddedChromeTransparentChanged",
+            "OnEmbeddedHostTintColorChanged",
+            "ApplyEmbeddedChrome"
+          ],
+          "properties": [
+            "PanelWidth",
+            "PanelWidthProperty",
+            "IsOpen",
+            "IsOpenProperty",
+            "SelectedMode",
+            "SelectedModeProperty",
+            "IsTabHeaderVisible",
+            "IsTabHeaderVisibleProperty",
+            "IsEmbeddedChromeTransparent",
+            "IsEmbeddedChromeTransparentProperty",
+            "EmbeddedHostTintColor",
+            "EmbeddedHostTintColorProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "PanelWidth",
+          "line": 12,
+          "isDefault": false
+        },
+        {
+          "name": "PanelWidthProperty",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "IsOpen",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "IsOpenProperty",
+          "line": 26,
+          "isDefault": false
+        },
+        {
+          "name": "SelectedMode",
+          "line": 30,
+          "isDefault": false
+        },
+        {
+          "name": "SelectedModeProperty",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "IsTabHeaderVisible",
+          "line": 54,
+          "isDefault": false
+        },
+        {
+          "name": "IsTabHeaderVisibleProperty",
+          "line": 59,
+          "isDefault": false
+        },
+        {
+          "name": "IsEmbeddedChromeTransparent",
+          "line": 68,
+          "isDefault": false
+        },
+        {
+          "name": "IsEmbeddedChromeTransparentProperty",
+          "line": 73,
+          "isDefault": false
+        },
+        {
+          "name": "EmbeddedHostTintColor",
+          "line": 82,
+          "isDefault": false
+        },
+        {
+          "name": "EmbeddedHostTintColorProperty",
+          "line": 87,
+          "isDefault": false
+        },
+        {
+          "name": "RightPanelView",
+          "line": 10,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "OnIsOpenChanged",
+          "callee": "view.UpdateContentVisibility",
+          "lineNumber": 112
+        },
+        {
+          "caller": "OnIsOpenChanged",
+          "callee": "view.UpdateLyricsConsumerActivity",
+          "lineNumber": 116
+        },
+        {
+          "caller": "OnIsOpenChanged",
+          "callee": "view.TeardownLyrics",
+          "lineNumber": 117
+        },
+        {
+          "caller": "OnIsOpenChanged",
+          "callee": "view.CancelBackgroundTintRefresh",
+          "lineNumber": 118
+        },
+        {
+          "caller": "OnIsOpenChanged",
+          "callee": "view.ApplySharedLyricsCanvasBackgroundState",
+          "lineNumber": 121
+        },
+        {
+          "caller": "OnIsOpenChanged",
+          "callee": "view.DispatcherQueue.TryEnqueue",
+          "lineNumber": 130
+        },
+        {
+          "caller": "OnIsOpenChanged",
+          "callee": "view.UpdateCanvasLayout",
+          "lineNumber": 133
+        },
+        {
+          "caller": "OnIsOpenChanged",
+          "callee": "view.ScheduleCanvasLayoutSettledPass",
+          "lineNumber": 135
+        },
+        {
+          "caller": "OnSelectedModeChanged",
+          "callee": "view.UpdateContentVisibility",
+          "lineNumber": 156
+        },
+        {
+          "caller": "OnIsTabHeaderVisibleChanged",
+          "callee": "view.ApplyTabHeaderVisibility",
+          "lineNumber": 167
+        },
+        {
+          "caller": "OnIsEmbeddedChromeTransparentChanged",
+          "callee": "view.ApplyEmbeddedChrome",
+          "lineNumber": 173
+        },
+        {
+          "caller": "OnEmbeddedHostTintColorChanged",
+          "callee": "view.UpdateTabContentFadeColor",
+          "lineNumber": 179
+        },
+        {
+          "caller": "ApplyEmbeddedChrome",
+          "callee": "new SolidColorBrush",
+          "lineNumber": 187
+        },
+        {
+          "caller": "ApplyEmbeddedChrome",
+          "callee": "UpdateCanvasClearColor",
+          "lineNumber": 205
+        },
+        {
+          "caller": "ApplyEmbeddedChrome",
+          "callee": "ApplySharedLyricsCanvasBackgroundState",
+          "lineNumber": 206
+        },
+        {
+          "caller": "ApplyEmbeddedChrome",
+          "callee": "UpdateTabContentFadeColor",
+          "lineNumber": 207
+        },
+        {
+          "caller": "ApplyEmbeddedChrome",
+          "callee": "UpdateBackgroundChrome",
+          "lineNumber": 208
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 13,
+        "functionCount": 7,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 278,
+      "nonEmptyLines": 254,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/RightPanel/RightPanelView.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 1248,
+      "nonEmptyLines": 1061,
+      "functions": [
+        {
+          "name": "RightPanelView",
+          "startLine": 94,
+          "endLine": 103,
+          "params": []
+        },
+        {
+          "name": "RightPanelView_Loaded",
+          "startLine": 107,
+          "endLine": 154,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPanelSizeChanged",
+          "startLine": 156,
+          "endLine": 168,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RightPanelView_Unloaded",
+          "startLine": 170,
+          "endLine": 215,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnThemeColorsChanged",
+          "startLine": 217,
+          "endLine": 228,
+          "params": []
+        },
+        {
+          "name": "OnActualThemeChanged",
+          "startLine": 230,
+          "endLine": 238,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "UpdateLyricsPaletteForTheme",
+          "startLine": 240,
+          "endLine": 241,
+          "params": []
+        },
+        {
+          "name": "InitializeLyrics",
+          "startLine": 249,
+          "endLine": 254,
+          "params": []
+        },
+        {
+          "name": "TeardownLyrics",
+          "startLine": 256,
+          "endLine": 259,
+          "params": []
+        },
+        {
+          "name": "ShouldInitializeLyricsForMode",
+          "startLine": 261,
+          "endLine": 262,
+          "params": []
+        },
+        {
+          "name": "ShouldKeepLyricsVmActive",
+          "startLine": 264,
+          "endLine": 265,
+          "params": []
+        },
+        {
+          "name": "UpdateLyricsConsumerActivity",
+          "startLine": 267,
+          "endLine": 268,
+          "params": []
+        },
+        {
+          "name": "UpdateLyricsConsumerActivity",
+          "startLine": 270,
+          "endLine": 277,
+          "params": [
+            "active"
+          ]
+        },
+        {
+          "name": "OnLyricsHostCanvasLayoutInvalidated",
+          "startLine": 279,
+          "endLine": 280,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnLyricsDebugRequested",
+          "startLine": 282,
+          "endLine": 283,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnParentPlaybackStateChanged",
+          "startLine": 293,
+          "endLine": 320,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateLyricsTabLabelForCurrentItem",
+          "startLine": 329,
+          "endLine": 341,
+          "params": []
+        },
+        {
+          "name": "RequestThrottledCanvasLayout",
+          "startLine": 358,
+          "endLine": 378,
+          "params": []
+        },
+        {
+          "name": "OnResizeThrottleTick",
+          "startLine": 380,
+          "endLine": 394,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateCanvasLayout",
+          "startLine": 396,
+          "endLine": 449,
+          "params": []
+        },
+        {
+          "name": "GetStablePanelWidth",
+          "startLine": 451,
+          "endLine": 463,
+          "params": []
+        },
+        {
+          "name": "ScheduleCanvasLayoutRetry",
+          "startLine": 465,
+          "endLine": 496,
+          "params": []
+        },
+        {
+          "name": "ScheduleCanvasLayoutSettledPass",
+          "startLine": 498,
+          "endLine": 520,
+          "params": []
+        },
+        {
+          "name": "UpdateCanvasClearColor",
+          "startLine": 522,
+          "endLine": 529,
+          "params": []
+        },
+        {
+          "name": "ApplySharedLyricsCanvasBackgroundState",
+          "startLine": 531,
+          "endLine": 564,
+          "params": [
+            "pulse"
+          ]
+        },
+        {
+          "name": "ShouldShowSharedLyricsCanvasBackground",
+          "startLine": 566,
+          "endLine": 570,
+          "params": []
+        },
+        {
+          "name": "IsDetailsCanvasBackgroundActive",
+          "startLine": 572,
+          "endLine": 576,
+          "params": []
+        },
+        {
+          "name": "ConfigureSidebarLyricsBackground",
+          "startLine": 578,
+          "endLine": 588,
+          "params": [
+            "bg",
+            "actualTheme"
+          ]
+        },
+        {
+          "name": "ResolveSidebarCanvasPalette",
+          "startLine": 590,
+          "endLine": 618,
+          "params": [
+            "palette"
+          ]
+        },
+        {
+          "name": "PulseSharedLyricsCanvasBackground",
+          "startLine": 620,
+          "endLine": 638,
+          "params": []
+        },
+        {
+          "name": "UpdateBackgroundChrome",
+          "startLine": 643,
+          "endLine": 694,
+          "params": []
+        },
+        {
+          "name": "UpdateBackgroundOverlayState",
+          "startLine": 696,
+          "endLine": 720,
+          "params": []
+        },
+        {
+          "name": "UpdateBackgroundMediaVisibility",
+          "startLine": 726,
+          "endLine": 738,
+          "params": []
+        },
+        {
+          "name": "UpdateTabContentFadeColor",
+          "startLine": 740,
+          "endLine": 759,
+          "params": []
+        },
+        {
+          "name": "RefreshBackgroundTint",
+          "startLine": 763,
+          "endLine": 791,
+          "params": []
+        },
+        {
+          "name": "LoadBackgroundTintAsync",
+          "startLine": 793,
+          "endLine": 821,
+          "params": [
+            "imageUrl",
+            "ct"
+          ]
+        },
+        {
+          "name": "GetCurrentAlbumArtUrl",
+          "startLine": 823,
+          "endLine": 828,
+          "params": []
+        },
+        {
+          "name": "ResetBackgroundTint",
+          "startLine": 830,
+          "endLine": 837,
+          "params": []
+        },
+        {
+          "name": "CancelBackgroundTintRefresh",
+          "startLine": 839,
+          "endLine": 844,
+          "params": []
+        },
+        {
+          "name": "UpdateContentVisibility",
+          "startLine": 848,
+          "endLine": 926,
+          "params": []
+        },
+        {
+          "name": "ApplyTabHeaderVisibility",
+          "startLine": 928,
+          "endLine": 932,
+          "params": []
+        },
+        {
+          "name": "TabPager_PopOutRequested",
+          "startLine": 934,
+          "endLine": 937,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "EnsureLyricsTreeLoaded",
+          "startLine": 941,
+          "endLine": 957,
+          "params": []
+        },
+        {
+          "name": "WireLyricsHostEvents",
+          "startLine": 959,
+          "endLine": 967,
+          "params": []
+        },
+        {
+          "name": "UnwireLyricsHostEvents",
+          "startLine": 969,
+          "endLine": 981,
+          "params": []
+        },
+        {
+          "name": "EnsureTrackDetailsTreeLoaded",
+          "startLine": 983,
+          "endLine": 995,
+          "params": []
+        },
+        {
+          "name": "EnsureTrackDetailsShellViewModelSubscription",
+          "startLine": 997,
+          "endLine": 1014,
+          "params": []
+        },
+        {
+          "name": "UnsubscribeTrackDetailsShellViewModel",
+          "startLine": 1016,
+          "endLine": 1023,
+          "params": []
+        },
+        {
+          "name": "RefreshTrackDetailsContent",
+          "startLine": 1025,
+          "endLine": 1057,
+          "params": []
+        },
+        {
+          "name": "EnsureDetailsTreeLoaded",
+          "startLine": 1059,
+          "endLine": 1074,
+          "params": []
+        },
+        {
+          "name": "WireDetailsHostEvents",
+          "startLine": 1076,
+          "endLine": 1085,
+          "params": []
+        },
+        {
+          "name": "UnwireDetailsHostEvents",
+          "startLine": 1087,
+          "endLine": 1100,
+          "params": []
+        },
+        {
+          "name": "DetailsContent_LyricsSnippetTapped",
+          "startLine": 1102,
+          "endLine": 1105,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "DetailsContent_BackgroundChromeInvalidated",
+          "startLine": 1107,
+          "endLine": 1112,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "DetailsContent_BackgroundModeChanged",
+          "startLine": 1114,
+          "endLine": 1120,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Resizer_ManipulationStarted",
+          "startLine": 1124,
+          "endLine": 1130,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Resizer_ManipulationDelta",
+          "startLine": 1132,
+          "endLine": 1138,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Resizer_ManipulationCompleted",
+          "startLine": 1140,
+          "endLine": 1145,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Resizer_PointerEntered",
+          "startLine": 1147,
+          "endLine": 1153,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Resizer_PointerExited",
+          "startLine": 1155,
+          "endLine": 1163,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Resizer_DoubleTapped",
+          "startLine": 1165,
+          "endLine": 1169,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ShowLyricsDebugDialogAsync",
+          "startLine": 1173,
+          "endLine": 1209,
+          "params": []
+        },
+        {
+          "name": "ShowDebugDialog",
+          "startLine": 1211,
+          "endLine": 1247,
+          "params": [
+            "content",
+            "showClearCache"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "RightPanelView",
+          "startLine": 48,
+          "endLine": 1248,
+          "methods": [
+            "RightPanelView",
+            "RightPanelView_Loaded",
+            "OnPanelSizeChanged",
+            "RightPanelView_Unloaded",
+            "OnThemeColorsChanged",
+            "OnActualThemeChanged",
+            "UpdateLyricsPaletteForTheme",
+            "InitializeLyrics",
+            "TeardownLyrics",
+            "ShouldInitializeLyricsForMode",
+            "ShouldKeepLyricsVmActive",
+            "UpdateLyricsConsumerActivity",
+            "UpdateLyricsConsumerActivity",
+            "OnLyricsHostCanvasLayoutInvalidated",
+            "OnLyricsDebugRequested",
+            "OnParentPlaybackStateChanged",
+            "UpdateLyricsTabLabelForCurrentItem",
+            "RequestThrottledCanvasLayout",
+            "OnResizeThrottleTick",
+            "UpdateCanvasLayout",
+            "GetStablePanelWidth",
+            "ScheduleCanvasLayoutRetry",
+            "ScheduleCanvasLayoutSettledPass",
+            "UpdateCanvasClearColor",
+            "ApplySharedLyricsCanvasBackgroundState",
+            "ShouldShowSharedLyricsCanvasBackground",
+            "IsDetailsCanvasBackgroundActive",
+            "ConfigureSidebarLyricsBackground",
+            "ResolveSidebarCanvasPalette",
+            "PulseSharedLyricsCanvasBackground",
+            "UpdateBackgroundChrome",
+            "UpdateBackgroundOverlayState",
+            "UpdateBackgroundMediaVisibility",
+            "UpdateTabContentFadeColor",
+            "RefreshBackgroundTint",
+            "LoadBackgroundTintAsync",
+            "GetCurrentAlbumArtUrl",
+            "ResetBackgroundTint",
+            "CancelBackgroundTintRefresh",
+            "UpdateContentVisibility",
+            "ApplyTabHeaderVisibility",
+            "TabPager_PopOutRequested",
+            "EnsureLyricsTreeLoaded",
+            "WireLyricsHostEvents",
+            "UnwireLyricsHostEvents",
+            "EnsureTrackDetailsTreeLoaded",
+            "EnsureTrackDetailsShellViewModelSubscription",
+            "UnsubscribeTrackDetailsShellViewModel",
+            "RefreshTrackDetailsContent",
+            "EnsureDetailsTreeLoaded",
+            "WireDetailsHostEvents",
+            "UnwireDetailsHostEvents",
+            "DetailsContent_LyricsSnippetTapped",
+            "DetailsContent_BackgroundChromeInvalidated",
+            "DetailsContent_BackgroundModeChanged",
+            "Resizer_ManipulationStarted",
+            "Resizer_ManipulationDelta",
+            "Resizer_ManipulationCompleted",
+            "Resizer_PointerEntered",
+            "Resizer_PointerExited",
+            "Resizer_DoubleTapped",
+            "ShowLyricsDebugDialogAsync",
+            "ShowDebugDialog"
+          ],
+          "properties": [
+            "MinPanelWidth",
+            "MaxPanelWidth",
+            "_draggingResizer",
+            "_preManipulationWidth",
+            "_isOpenCached",
+            "_inSelectedModeChange",
+            "_lyricsTreeLoaded",
+            "_detailsTreeLoaded",
+            "_trackDetailsTreeLoaded",
+            "_lyricsHostEventsSubscribed",
+            "_detailsHostEventsSubscribed",
+            "_shellViewModelTrackDetailsHandler",
+            "_shellViewModelForTrackDetails",
+            "_lyricsVm",
+            "_lyricsConsumerActive",
+            "_pendingCanvasLayoutRetry",
+            "_canvasLayoutSettleGeneration",
+            "_themeColors",
+            "_lyricsService",
+            "_colorService",
+            "_themeColorsSubscribed",
+            "_overlayBehavior",
+            "_parentPlaybackStateSubscribed",
+            "_panelFrameworkEventsSubscribed",
+            "_backgroundTintCts",
+            "_backgroundTintImageUrl",
+            "_backgroundTintExtractedColor",
+            "_sharedLyricsCanvasRenderGeneration",
+            "_resizeThrottleTimer",
+            "_layoutPendingDuringThrottle"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "RightPanelView",
+          "line": 94,
+          "isDefault": false
+        },
+        {
+          "name": "RightPanelView",
+          "line": 48,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "RightPanelView",
+          "callee": "InitializeComponent",
+          "lineNumber": 96
+        },
+        {
+          "caller": "RightPanelView",
+          "callee": "Ioc.Default.GetService<ThemeColorService>",
+          "lineNumber": 97
+        },
+        {
+          "caller": "RightPanelView",
+          "callee": "Ioc.Default.GetService<ILyricsService>",
+          "lineNumber": 98
+        },
+        {
+          "caller": "RightPanelView",
+          "callee": "Ioc.Default.GetService<IColorService>",
+          "lineNumber": 99
+        },
+        {
+          "caller": "RightPanelView",
+          "callee": "Ioc.Default.GetService<LyricsViewModel>",
+          "lineNumber": 100
+        },
+        {
+          "caller": "RightPanelView_Loaded",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 109
+        },
+        {
+          "caller": "RightPanelView_Loaded",
+          "callee": "_overlayBehavior.Attach",
+          "lineNumber": 127
+        },
+        {
+          "caller": "RightPanelView_Loaded",
+          "callee": "UpdateCanvasClearColor",
+          "lineNumber": 135
+        },
+        {
+          "caller": "RightPanelView_Loaded",
+          "callee": "ApplySharedLyricsCanvasBackgroundState",
+          "lineNumber": 136
+        },
+        {
+          "caller": "RightPanelView_Loaded",
+          "callee": "ApplyEmbeddedChrome",
+          "lineNumber": 137
+        },
+        {
+          "caller": "RightPanelView_Loaded",
+          "callee": "UpdateBackgroundChrome",
+          "lineNumber": 138
+        },
+        {
+          "caller": "RightPanelView_Loaded",
+          "callee": "RefreshBackgroundTint",
+          "lineNumber": 139
+        },
+        {
+          "caller": "RightPanelView_Loaded",
+          "callee": "TabPager?.SyncVisualState",
+          "lineNumber": 141
+        },
+        {
+          "caller": "RightPanelView_Loaded",
+          "callee": "TabPager?.ReleaseInitialSelectionSuppression",
+          "lineNumber": 145
+        },
+        {
+          "caller": "RightPanelView_Loaded",
+          "callee": "UpdateContentVisibility",
+          "lineNumber": 148
+        },
+        {
+          "caller": "RightPanelView_Loaded",
+          "callee": "UpdateLyricsConsumerActivity",
+          "lineNumber": 149
+        },
+        {
+          "caller": "RightPanelView_Loaded",
+          "callee": "UpdateLyricsTabLabelForCurrentItem",
+          "lineNumber": 153
+        },
+        {
+          "caller": "OnPanelSizeChanged",
+          "callee": "RequestThrottledCanvasLayout",
+          "lineNumber": 160
+        },
+        {
+          "caller": "OnPanelSizeChanged",
+          "callee": "ScheduleCanvasLayoutSettledPass",
+          "lineNumber": 161
+        },
+        {
+          "caller": "OnPanelSizeChanged",
+          "callee": "ShouldShowSharedLyricsCanvasBackground",
+          "lineNumber": 164
+        },
+        {
+          "caller": "OnPanelSizeChanged",
+          "callee": "PulseSharedLyricsCanvasBackground",
+          "lineNumber": 165
+        },
+        {
+          "caller": "OnPanelSizeChanged",
+          "callee": "UpdateBackgroundChrome",
+          "lineNumber": 167
+        },
+        {
+          "caller": "RightPanelView_Unloaded",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 172
+        },
+        {
+          "caller": "RightPanelView_Unloaded",
+          "callee": "UpdateLyricsConsumerActivity",
+          "lineNumber": 191
+        },
+        {
+          "caller": "RightPanelView_Unloaded",
+          "callee": "TeardownLyrics",
+          "lineNumber": 192
+        },
+        {
+          "caller": "RightPanelView_Unloaded",
+          "callee": "UnwireLyricsHostEvents",
+          "lineNumber": 194
+        },
+        {
+          "caller": "RightPanelView_Unloaded",
+          "callee": "UnwireDetailsHostEvents",
+          "lineNumber": 198
+        },
+        {
+          "caller": "RightPanelView_Unloaded",
+          "callee": "DetailsContent.TeardownDetails",
+          "lineNumber": 199
+        },
+        {
+          "caller": "RightPanelView_Unloaded",
+          "callee": "TeardownOutputDeviceCard",
+          "lineNumber": 200
+        },
+        {
+          "caller": "RightPanelView_Unloaded",
+          "callee": "UnsubscribeTrackDetailsShellViewModel",
+          "lineNumber": 203
+        },
+        {
+          "caller": "RightPanelView_Unloaded",
+          "callee": "CancelBackgroundTintRefresh",
+          "lineNumber": 205
+        },
+        {
+          "caller": "RightPanelView_Unloaded",
+          "callee": "_overlayBehavior.Detach",
+          "lineNumber": 206
+        },
+        {
+          "caller": "RightPanelView_Unloaded",
+          "callee": "_resizeThrottleTimer.Stop",
+          "lineNumber": 210
+        },
+        {
+          "caller": "OnThemeColorsChanged",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 219
+        },
+        {
+          "caller": "OnThemeColorsChanged",
+          "callee": "UpdateCanvasClearColor",
+          "lineNumber": 221
+        },
+        {
+          "caller": "OnThemeColorsChanged",
+          "callee": "ApplySharedLyricsCanvasBackgroundState",
+          "lineNumber": 222
+        },
+        {
+          "caller": "OnThemeColorsChanged",
+          "callee": "UpdateTabContentFadeColor",
+          "lineNumber": 223
+        },
+        {
+          "caller": "OnThemeColorsChanged",
+          "callee": "UpdateLyricsPaletteForTheme",
+          "lineNumber": 224
+        },
+        {
+          "caller": "OnThemeColorsChanged",
+          "callee": "UpdateBackgroundChrome",
+          "lineNumber": 225
+        },
+        {
+          "caller": "OnThemeColorsChanged",
+          "callee": "TabPager?.SyncVisualState",
+          "lineNumber": 226
+        },
+        {
+          "caller": "OnActualThemeChanged",
+          "callee": "UpdateCanvasClearColor",
+          "lineNumber": 232
+        },
+        {
+          "caller": "OnActualThemeChanged",
+          "callee": "ApplySharedLyricsCanvasBackgroundState",
+          "lineNumber": 233
+        },
+        {
+          "caller": "OnActualThemeChanged",
+          "callee": "UpdateTabContentFadeColor",
+          "lineNumber": 234
+        },
+        {
+          "caller": "OnActualThemeChanged",
+          "callee": "UpdateLyricsPaletteForTheme",
+          "lineNumber": 235
+        },
+        {
+          "caller": "OnActualThemeChanged",
+          "callee": "UpdateBackgroundChrome",
+          "lineNumber": 236
+        },
+        {
+          "caller": "OnActualThemeChanged",
+          "callee": "TabPager?.SyncVisualState",
+          "lineNumber": 237
+        },
+        {
+          "caller": "UpdateLyricsPaletteForTheme",
+          "callee": "LyricsContent?.ApplyLyricsPalette",
+          "lineNumber": 241
+        },
+        {
+          "caller": "InitializeLyrics",
+          "callee": "LyricsContent.InitializeLyrics",
+          "lineNumber": 252
+        },
+        {
+          "caller": "InitializeLyrics",
+          "callee": "UpdateLyricsPaletteForTheme",
+          "lineNumber": 253
+        },
+        {
+          "caller": "TeardownLyrics",
+          "callee": "LyricsContent?.TeardownLyrics",
+          "lineNumber": 258
+        },
+        {
+          "caller": "ShouldKeepLyricsVmActive",
+          "callee": "ShouldInitializeLyricsForMode",
+          "lineNumber": 265
+        },
+        {
+          "caller": "UpdateLyricsConsumerActivity",
+          "callee": "UpdateLyricsConsumerActivity",
+          "lineNumber": 268
+        },
+        {
+          "caller": "UpdateLyricsConsumerActivity",
+          "callee": "ShouldKeepLyricsVmActive",
+          "lineNumber": 268
+        },
+        {
+          "caller": "UpdateLyricsConsumerActivity",
+          "callee": "_lyricsVm?.SetConsumerActive",
+          "lineNumber": 276
+        },
+        {
+          "caller": "OnLyricsHostCanvasLayoutInvalidated",
+          "callee": "RequestThrottledCanvasLayout",
+          "lineNumber": 280
+        },
+        {
+          "caller": "OnLyricsDebugRequested",
+          "callee": "ShowLyricsDebugDialogAsync",
+          "lineNumber": 283
+        },
+        {
+          "caller": "OnParentPlaybackStateChanged",
+          "callee": "nameof",
+          "lineNumber": 296
+        },
+        {
+          "caller": "OnParentPlaybackStateChanged",
+          "callee": "nameof",
+          "lineNumber": 297
+        },
+        {
+          "caller": "OnParentPlaybackStateChanged",
+          "callee": "RefreshBackgroundTint",
+          "lineNumber": 299
+        },
+        {
+          "caller": "OnParentPlaybackStateChanged",
+          "callee": "UpdateBackgroundChrome",
+          "lineNumber": 300
+        },
+        {
+          "caller": "OnParentPlaybackStateChanged",
+          "callee": "ApplySharedLyricsCanvasBackgroundState",
+          "lineNumber": 301
+        },
+        {
+          "caller": "OnParentPlaybackStateChanged",
+          "callee": "nameof",
+          "lineNumber": 304
+        },
+        {
+          "caller": "OnParentPlaybackStateChanged",
+          "callee": "_lyricsVm?.RefreshPaletteFromPlaybackColor",
+          "lineNumber": 306
+        },
+        {
+          "caller": "OnParentPlaybackStateChanged",
+          "callee": "ApplySharedLyricsCanvasBackgroundState",
+          "lineNumber": 307
+        },
+        {
+          "caller": "OnParentPlaybackStateChanged",
+          "callee": "nameof",
+          "lineNumber": 312
+        },
+        {
+          "caller": "OnParentPlaybackStateChanged",
+          "callee": "nameof",
+          "lineNumber": 313
+        },
+        {
+          "caller": "OnParentPlaybackStateChanged",
+          "callee": "UpdateBackgroundChrome",
+          "lineNumber": 315
+        },
+        {
+          "caller": "OnParentPlaybackStateChanged",
+          "callee": "nameof",
+          "lineNumber": 318
+        },
+        {
+          "caller": "OnParentPlaybackStateChanged",
+          "callee": "UpdateLyricsTabLabelForCurrentItem",
+          "lineNumber": 319
+        },
+        {
+          "caller": "UpdateLyricsTabLabelForCurrentItem",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 336
+        },
+        {
+          "caller": "UpdateLyricsTabLabelForCurrentItem",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 338
+        },
+        {
+          "caller": "RequestThrottledCanvasLayout",
+          "callee": "new DispatcherTimer",
+          "lineNumber": 362
+        },
+        {
+          "caller": "RequestThrottledCanvasLayout",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 362
+        },
+        {
+          "caller": "RequestThrottledCanvasLayout",
+          "callee": "UpdateCanvasLayout",
+          "lineNumber": 370
+        },
+        {
+          "caller": "RequestThrottledCanvasLayout",
+          "callee": "_resizeThrottleTimer.Start",
+          "lineNumber": 371
+        },
+        {
+          "caller": "OnResizeThrottleTick",
+          "callee": "_resizeThrottleTimer.Stop",
+          "lineNumber": 383
+        },
+        {
+          "caller": "OnResizeThrottleTick",
+          "callee": "UpdateCanvasLayout",
+          "lineNumber": 389
+        },
+        {
+          "caller": "OnResizeThrottleTick",
+          "callee": "_resizeThrottleTimer.Start",
+          "lineNumber": 393
+        },
+        {
+          "caller": "UpdateCanvasLayout",
+          "callee": "GetStablePanelWidth",
+          "lineNumber": 401
+        },
+        {
+          "caller": "UpdateCanvasLayout",
+          "callee": "Math.Max",
+          "lineNumber": 402
+        },
+        {
+          "caller": "UpdateCanvasLayout",
+          "callee": "ScheduleCanvasLayoutRetry",
+          "lineNumber": 410
+        },
+        {
+          "caller": "UpdateCanvasLayout",
+          "callee": "ScheduleCanvasLayoutRetry",
+          "lineNumber": 416
+        },
+        {
+          "caller": "UpdateCanvasLayout",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 418
+        },
+        {
+          "caller": "UpdateCanvasLayout",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 444
+        },
+        {
+          "caller": "GetStablePanelWidth",
+          "callee": "Math.Max",
+          "lineNumber": 454
+        },
+        {
+          "caller": "GetStablePanelWidth",
+          "callee": "double.IsNaN",
+          "lineNumber": 456
+        },
+        {
+          "caller": "GetStablePanelWidth",
+          "callee": "double.IsInfinity",
+          "lineNumber": 456
+        },
+        {
+          "caller": "GetStablePanelWidth",
+          "callee": "Math.Max",
+          "lineNumber": 457
+        },
+        {
+          "caller": "GetStablePanelWidth",
+          "callee": "Math.Max",
+          "lineNumber": 460
+        },
+        {
+          "caller": "ScheduleCanvasLayoutRetry",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 479
+        },
+        {
+          "caller": "ScheduleCanvasLayoutRetry",
+          "callee": "UpdateCanvasLayout",
+          "lineNumber": 487
+        },
+        {
+          "caller": "ScheduleCanvasLayoutRetry",
+          "callee": "LyricsContent?.ApplyCurrentLyricsState",
+          "lineNumber": 494
+        },
+        {
+          "caller": "ScheduleCanvasLayoutSettledPass",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 504
+        },
+        {
+          "caller": "ScheduleCanvasLayoutSettledPass",
+          "callee": "Task.Delay",
+          "lineNumber": 506
+        },
+        {
+          "caller": "ScheduleCanvasLayoutSettledPass",
+          "callee": "UpdateCanvasLayout",
+          "lineNumber": 510
+        },
+        {
+          "caller": "ScheduleCanvasLayoutSettledPass",
+          "callee": "LyricsContent?.ApplyCurrentLyricsState",
+          "lineNumber": 511
+        },
+        {
+          "caller": "ScheduleCanvasLayoutSettledPass",
+          "callee": "Task.Delay",
+          "lineNumber": 513
+        },
+        {
+          "caller": "ScheduleCanvasLayoutSettledPass",
+          "callee": "UpdateCanvasLayout",
+          "lineNumber": 517
+        },
+        {
+          "caller": "ScheduleCanvasLayoutSettledPass",
+          "callee": "LyricsContent?.ApplyCurrentLyricsState",
+          "lineNumber": 518
+        },
+        {
+          "caller": "UpdateCanvasClearColor",
+          "callee": "RightPanelThemeResolver.ComputeCanvasClearColor",
+          "lineNumber": 524
+        },
+        {
+          "caller": "UpdateCanvasClearColor",
+          "callee": "NowPlayingCanvas.SetClearColor",
+          "lineNumber": 528
+        },
+        {
+          "caller": "ApplySharedLyricsCanvasBackgroundState",
+          "callee": "ShouldShowSharedLyricsCanvasBackground",
+          "lineNumber": 536
+        },
+        {
+          "caller": "ApplySharedLyricsCanvasBackgroundState",
+          "callee": "NowPlayingCanvas.SetRenderingActive",
+          "lineNumber": 540
+        },
+        {
+          "caller": "ApplySharedLyricsCanvasBackgroundState",
+          "callee": "_lyricsVm!.RefreshPaletteFromPlaybackColor",
+          "lineNumber": 544
+        },
+        {
+          "caller": "ApplySharedLyricsCanvasBackgroundState",
+          "callee": "ConfigureSidebarLyricsBackground",
+          "lineNumber": 547
+        },
+        {
+          "caller": "ApplySharedLyricsCanvasBackgroundState",
+          "callee": "ResolveSidebarCanvasPalette",
+          "lineNumber": 550
+        },
+        {
+          "caller": "ApplySharedLyricsCanvasBackgroundState",
+          "callee": "NowPlayingCanvas.SetNowPlayingPalette",
+          "lineNumber": 551
+        },
+        {
+          "caller": "ApplySharedLyricsCanvasBackgroundState",
+          "callee": "NowPlayingCanvas.SetIsPlaying",
+          "lineNumber": 559
+        },
+        {
+          "caller": "ApplySharedLyricsCanvasBackgroundState",
+          "callee": "PulseSharedLyricsCanvasBackground",
+          "lineNumber": 563
+        },
+        {
+          "caller": "ShouldShowSharedLyricsCanvasBackground",
+          "callee": "IsDetailsCanvasBackgroundActive",
+          "lineNumber": 570
+        },
+        {
+          "caller": "ResolveSidebarCanvasPalette",
+          "callee": "RightPanelThemeResolver.GetPanelSurfaceColor",
+          "lineNumber": 598
+        },
+        {
+          "caller": "ResolveSidebarCanvasPalette",
+          "callee": "RightPanelThemeResolver.GetBackgroundTintColor",
+          "lineNumber": 599
+        },
+        {
+          "caller": "ResolveSidebarCanvasPalette",
+          "callee": "RightPanelThemeResolver.ResolveThemeColor",
+          "lineNumber": 600
+        },
+        {
+          "caller": "ResolveSidebarCanvasPalette",
+          "callee": "Color.FromArgb",
+          "lineNumber": 603
+        },
+        {
+          "caller": "ResolveSidebarCanvasPalette",
+          "callee": "Color.FromArgb",
+          "lineNumber": 610
+        },
+        {
+          "caller": "ResolveSidebarCanvasPalette",
+          "callee": "RightPanelThemeResolver.BlendColors",
+          "lineNumber": 611
+        },
+        {
+          "caller": "ResolveSidebarCanvasPalette",
+          "callee": "RightPanelThemeResolver.BlendColors",
+          "lineNumber": 612
+        },
+        {
+          "caller": "ResolveSidebarCanvasPalette",
+          "callee": "RightPanelThemeResolver.BlendColors",
+          "lineNumber": 613
+        },
+        {
+          "caller": "ResolveSidebarCanvasPalette",
+          "callee": "RightPanelThemeResolver.BlendColors",
+          "lineNumber": 614
+        },
+        {
+          "caller": "ResolveSidebarCanvasPalette",
+          "callee": "RightPanelThemeResolver.BlendColors",
+          "lineNumber": 615
+        },
+        {
+          "caller": "PulseSharedLyricsCanvasBackground",
+          "callee": "NowPlayingCanvas.SetRenderingActive",
+          "lineNumber": 625
+        },
+        {
+          "caller": "PulseSharedLyricsCanvasBackground",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 627
+        },
+        {
+          "caller": "PulseSharedLyricsCanvasBackground",
+          "callee": "Task.Delay",
+          "lineNumber": 629
+        },
+        {
+          "caller": "PulseSharedLyricsCanvasBackground",
+          "callee": "LyricsContent.UpdateTimerState",
+          "lineNumber": 634
+        },
+        {
+          "caller": "PulseSharedLyricsCanvasBackground",
+          "callee": "NowPlayingCanvas.SetRenderingActive",
+          "lineNumber": 636
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "RightPanelThemeResolver.GetBackgroundTintColor",
+          "lineNumber": 648
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "RightPanelThemeResolver.GetPanelSurfaceColor",
+          "lineNumber": 650
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "RightPanelThemeResolver.BlendColors",
+          "lineNumber": 651
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "RightPanelThemeResolver.Darken",
+          "lineNumber": 655
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "_overlayBehavior.ApplyBackgroundColors",
+          "lineNumber": 659
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "new BackgroundOverlayColors",
+          "lineNumber": 659
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "RightPanelThemeResolver.ResolveThemeColor",
+          "lineNumber": 661
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "Color.FromArgb",
+          "lineNumber": 665
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "Color.FromArgb",
+          "lineNumber": 666
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "RightPanelThemeResolver.ResolveThemeColor",
+          "lineNumber": 667
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "Color.FromArgb",
+          "lineNumber": 670
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "RightPanelThemeResolver.ResolveThemeColor",
+          "lineNumber": 671
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "Color.FromArgb",
+          "lineNumber": 674
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "RightPanelThemeResolver.ResolveThemeColor",
+          "lineNumber": 675
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "Color.FromArgb",
+          "lineNumber": 678
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "RightPanelThemeResolver.ResolveThemeColor",
+          "lineNumber": 679
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "Color.FromArgb",
+          "lineNumber": 682
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "RightPanelThemeResolver.ResolveThemeColor",
+          "lineNumber": 683
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "Color.FromArgb",
+          "lineNumber": 686
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "RightPanelThemeResolver.ResolveThemeColor",
+          "lineNumber": 687
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "Color.FromArgb",
+          "lineNumber": 690
+        },
+        {
+          "caller": "UpdateBackgroundChrome",
+          "callee": "UpdateBackgroundOverlayState",
+          "lineNumber": 693
+        },
+        {
+          "caller": "UpdateBackgroundOverlayState",
+          "callee": "_overlayBehavior.ApplyState",
+          "lineNumber": 700
+        },
+        {
+          "caller": "UpdateBackgroundOverlayState",
+          "callee": "ShouldShowSharedLyricsCanvasBackground",
+          "lineNumber": 708
+        },
+        {
+          "caller": "UpdateBackgroundOverlayState",
+          "callee": "_overlayBehavior.ApplyState",
+          "lineNumber": 710
+        },
+        {
+          "caller": "UpdateBackgroundOverlayState",
+          "callee": "_overlayBehavior.ApplyState",
+          "lineNumber": 719
+        },
+        {
+          "caller": "UpdateBackgroundMediaVisibility",
+          "callee": "ShouldShowSharedLyricsCanvasBackground",
+          "lineNumber": 731
+        },
+        {
+          "caller": "UpdateBackgroundMediaVisibility",
+          "callee": "_overlayBehavior.SetBackgroundContainerOpacity",
+          "lineNumber": 736
+        },
+        {
+          "caller": "UpdateBackgroundMediaVisibility",
+          "callee": "UpdateBackgroundOverlayState",
+          "lineNumber": 737
+        },
+        {
+          "caller": "UpdateTabContentFadeColor",
+          "callee": "ShouldShowSharedLyricsCanvasBackground",
+          "lineNumber": 742
+        },
+        {
+          "caller": "UpdateTabContentFadeColor",
+          "callee": "RightPanelThemeResolver.ResolveTabFadeTargetColor",
+          "lineNumber": 752
+        },
+        {
+          "caller": "UpdateTabContentFadeColor",
+          "callee": "_overlayBehavior.ApplyTabFadeColor",
+          "lineNumber": 758
+        },
+        {
+          "caller": "RefreshBackgroundTint",
+          "callee": "GetCurrentAlbumArtUrl",
+          "lineNumber": 765
+        },
+        {
+          "caller": "RefreshBackgroundTint",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 766
+        },
+        {
+          "caller": "RefreshBackgroundTint",
+          "callee": "ResetBackgroundTint",
+          "lineNumber": 768
+        },
+        {
+          "caller": "RefreshBackgroundTint",
+          "callee": "string.Equals",
+          "lineNumber": 772
+        },
+        {
+          "caller": "RefreshBackgroundTint",
+          "callee": "UpdateBackgroundChrome",
+          "lineNumber": 775
+        },
+        {
+          "caller": "RefreshBackgroundTint",
+          "callee": "UpdateTabContentFadeColor",
+          "lineNumber": 776
+        },
+        {
+          "caller": "RefreshBackgroundTint",
+          "callee": "CancelBackgroundTintRefresh",
+          "lineNumber": 780
+        },
+        {
+          "caller": "RefreshBackgroundTint",
+          "callee": "UpdateBackgroundChrome",
+          "lineNumber": 783
+        },
+        {
+          "caller": "RefreshBackgroundTint",
+          "callee": "UpdateTabContentFadeColor",
+          "lineNumber": 784
+        },
+        {
+          "caller": "RefreshBackgroundTint",
+          "callee": "new CancellationTokenSource",
+          "lineNumber": 789
+        },
+        {
+          "caller": "RefreshBackgroundTint",
+          "callee": "LoadBackgroundTintAsync",
+          "lineNumber": 790
+        },
+        {
+          "caller": "LoadBackgroundTintAsync",
+          "callee": "_colorService!.GetColorAsync",
+          "lineNumber": 797
+        },
+        {
+          "caller": "LoadBackgroundTintAsync",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 801
+        },
+        {
+          "caller": "LoadBackgroundTintAsync",
+          "callee": "string.Equals",
+          "lineNumber": 804
+        },
+        {
+          "caller": "LoadBackgroundTintAsync",
+          "callee": "UpdateBackgroundChrome",
+          "lineNumber": 810
+        },
+        {
+          "caller": "LoadBackgroundTintAsync",
+          "callee": "UpdateTabContentFadeColor",
+          "lineNumber": 811
+        },
+        {
+          "caller": "LoadBackgroundTintAsync",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 819
+        },
+        {
+          "caller": "GetCurrentAlbumArtUrl",
+          "callee": "SpotifyImageHelper.ToHttpsUrl",
+          "lineNumber": 825
+        },
+        {
+          "caller": "ResetBackgroundTint",
+          "callee": "CancelBackgroundTintRefresh",
+          "lineNumber": 832
+        },
+        {
+          "caller": "ResetBackgroundTint",
+          "callee": "UpdateBackgroundChrome",
+          "lineNumber": 835
+        },
+        {
+          "caller": "ResetBackgroundTint",
+          "callee": "UpdateTabContentFadeColor",
+          "lineNumber": 836
+        },
+        {
+          "caller": "CancelBackgroundTintRefresh",
+          "callee": "_backgroundTintCts?.Cancel",
+          "lineNumber": 841
+        },
+        {
+          "caller": "CancelBackgroundTintRefresh",
+          "callee": "_backgroundTintCts?.Dispose",
+          "lineNumber": 842
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "ShouldKeepLyricsVmActive",
+          "lineNumber": 852
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "EnsureLyricsTreeLoaded",
+          "lineNumber": 858
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "EnsureDetailsTreeLoaded",
+          "lineNumber": 859
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "EnsureTrackDetailsTreeLoaded",
+          "lineNumber": 860
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "UpdateLyricsConsumerActivity",
+          "lineNumber": 862
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "InitializeLyrics",
+          "lineNumber": 881
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "TeardownLyrics",
+          "lineNumber": 883
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "RefreshTrackDetailsContent",
+          "lineNumber": 901
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "UpdateBackgroundMediaVisibility",
+          "lineNumber": 904
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "LyricsContent.ApplyCurrentLyricsState",
+          "lineNumber": 907
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "ApplySharedLyricsCanvasBackgroundState",
+          "lineNumber": 909
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "TabPager?.SyncVisualState",
+          "lineNumber": 911
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "_lyricsVm?.LoadLyricsAsync",
+          "lineNumber": 916
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "UpdateCanvasLayout",
+          "lineNumber": 917
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "LyricsContent?.ApplyCurrentLyricsState",
+          "lineNumber": 918
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "ScheduleCanvasLayoutSettledPass",
+          "lineNumber": 919
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "NowPlayingCanvas.SetPosition",
+          "lineNumber": 922
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "_lyricsVm.GetInterpolatedPosition",
+          "lineNumber": 922
+        },
+        {
+          "caller": "UpdateContentVisibility",
+          "callee": "NowPlayingCanvas.SetIsPlaying",
+          "lineNumber": 923
+        },
+        {
+          "caller": "TabPager_PopOutRequested",
+          "callee": "Ioc.Default.GetService<IPanelDockingService>()?.Detach",
+          "lineNumber": 936
+        },
+        {
+          "caller": "TabPager_PopOutRequested",
+          "callee": "Ioc.Default.GetService<IPanelDockingService>",
+          "lineNumber": 936
+        },
+        {
+          "caller": "EnsureLyricsTreeLoaded",
+          "callee": "FindName",
+          "lineNumber": 945
+        },
+        {
+          "caller": "EnsureLyricsTreeLoaded",
+          "callee": "nameof",
+          "lineNumber": 945
+        },
+        {
+          "caller": "EnsureLyricsTreeLoaded",
+          "callee": "WireLyricsHostEvents",
+          "lineNumber": 956
+        },
+        {
+          "caller": "EnsureTrackDetailsTreeLoaded",
+          "callee": "FindName",
+          "lineNumber": 987
+        },
+        {
+          "caller": "EnsureTrackDetailsTreeLoaded",
+          "callee": "nameof",
+          "lineNumber": 987
+        },
+        {
+          "caller": "EnsureTrackDetailsTreeLoaded",
+          "callee": "EnsureTrackDetailsShellViewModelSubscription",
+          "lineNumber": 994
+        },
+        {
+          "caller": "EnsureTrackDetailsShellViewModelSubscription",
+          "callee": "Ioc.Default.GetService<ShellViewModel>",
+          "lineNumber": 1004
+        },
+        {
+          "caller": "EnsureTrackDetailsShellViewModelSubscription",
+          "callee": "nameof",
+          "lineNumber": 1010
+        },
+        {
+          "caller": "EnsureTrackDetailsShellViewModelSubscription",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 1011
+        },
+        {
+          "caller": "RefreshTrackDetailsContent",
+          "callee": "Ioc.Default.GetService<ShellViewModel>",
+          "lineNumber": 1028
+        },
+        {
+          "caller": "RefreshTrackDetailsContent",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 1047
+        },
+        {
+          "caller": "RefreshTrackDetailsContent",
+          "callee": "new Uri",
+          "lineNumber": 1051
+        },
+        {
+          "caller": "EnsureDetailsTreeLoaded",
+          "callee": "FindName",
+          "lineNumber": 1063
+        },
+        {
+          "caller": "EnsureDetailsTreeLoaded",
+          "callee": "nameof",
+          "lineNumber": 1063
+        },
+        {
+          "caller": "EnsureDetailsTreeLoaded",
+          "callee": "WireDetailsHostEvents",
+          "lineNumber": 1070
+        },
+        {
+          "caller": "EnsureDetailsTreeLoaded",
+          "callee": "DetailsContent.InitializeDetails",
+          "lineNumber": 1072
+        },
+        {
+          "caller": "EnsureDetailsTreeLoaded",
+          "callee": "InitializeOutputDeviceCard",
+          "lineNumber": 1073
+        },
+        {
+          "caller": "DetailsContent_BackgroundChromeInvalidated",
+          "callee": "UpdateBackgroundMediaVisibility",
+          "lineNumber": 1111
+        },
+        {
+          "caller": "DetailsContent_BackgroundModeChanged",
+          "callee": "UpdateBackgroundChrome",
+          "lineNumber": 1119
+        },
+        {
+          "caller": "Resizer_ManipulationStarted",
+          "callee": "VisualStateManager.GoToState",
+          "lineNumber": 1128
+        },
+        {
+          "caller": "Resizer_ManipulationDelta",
+          "callee": "Math.Clamp",
+          "lineNumber": 1135
+        },
+        {
+          "caller": "Resizer_ManipulationCompleted",
+          "callee": "VisualStateManager.GoToState",
+          "lineNumber": 1143
+        },
+        {
+          "caller": "Resizer_PointerEntered",
+          "callee": "resizer.ChangeCursor",
+          "lineNumber": 1150
+        },
+        {
+          "caller": "Resizer_PointerEntered",
+          "callee": "InputSystemCursor.Create",
+          "lineNumber": 1150
+        },
+        {
+          "caller": "Resizer_PointerEntered",
+          "callee": "VisualStateManager.GoToState",
+          "lineNumber": 1151
+        },
+        {
+          "caller": "Resizer_PointerExited",
+          "callee": "resizer.ChangeCursor",
+          "lineNumber": 1160
+        },
+        {
+          "caller": "Resizer_PointerExited",
+          "callee": "InputSystemCursor.Create",
+          "lineNumber": 1160
+        },
+        {
+          "caller": "Resizer_PointerExited",
+          "callee": "VisualStateManager.GoToState",
+          "lineNumber": 1161
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "ShowDebugDialog",
+          "lineNumber": 1178
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "sb.AppendLine",
+          "lineNumber": 1183
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "sb.AppendLine",
+          "lineNumber": 1184
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "sb.AppendLine",
+          "lineNumber": 1185
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "sb.AppendLine",
+          "lineNumber": 1186
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "sb.AppendLine",
+          "lineNumber": 1187
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "sb.AppendLine",
+          "lineNumber": 1188
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "sb.AppendLine",
+          "lineNumber": 1192
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "sb.AppendLine",
+          "lineNumber": 1194
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "sb.AppendLine",
+          "lineNumber": 1197
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "sb.AppendLine",
+          "lineNumber": 1200
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "p.RawPreview.Split",
+          "lineNumber": 1201
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "sb.AppendLine",
+          "lineNumber": 1202
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "sb.AppendLine",
+          "lineNumber": 1205
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "ShowDebugDialog",
+          "lineNumber": 1208
+        },
+        {
+          "caller": "ShowLyricsDebugDialogAsync",
+          "callee": "sb.ToString",
+          "lineNumber": 1208
+        },
+        {
+          "caller": "ShowDebugDialog",
+          "callee": "new ContentDialog",
+          "lineNumber": 1213
+        },
+        {
+          "caller": "ShowDebugDialog",
+          "callee": "new ScrollViewer",
+          "lineNumber": 1216
+        },
+        {
+          "caller": "ShowDebugDialog",
+          "callee": "new TextBlock",
+          "lineNumber": 1218
+        },
+        {
+          "caller": "ShowDebugDialog",
+          "callee": "new FontFamily",
+          "lineNumber": 1221
+        },
+        {
+          "caller": "ShowDebugDialog",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 1238
+        },
+        {
+          "caller": "ShowDebugDialog",
+          "callee": "_lyricsService.ClearCacheForTrackAsync",
+          "lineNumber": 1240
+        },
+        {
+          "caller": "ShowDebugDialog",
+          "callee": "_lyricsVm.InvalidateTrack",
+          "lineNumber": 1241
+        },
+        {
+          "caller": "ShowDebugDialog",
+          "callee": "dialog.ShowAsync",
+          "lineNumber": 1246
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 63,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Search/SearchResultHeroCard.AddToPlaylist.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 28,
+      "nonEmptyLines": 26,
+      "functions": [
+        {
+          "name": "ApplyAddChipForItem",
+          "startLine": 12,
+          "endLine": 27,
+          "params": [
+            "item"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "SearchResultHeroCard",
+          "startLine": 10,
+          "endLine": 28,
+          "methods": [
+            "ApplyAddChipForItem"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "SearchResultHeroCard",
+          "line": 10,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Search/SearchResultHeroCard.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 171,
+      "nonEmptyLines": 158,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Search/SearchResultHeroCard.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 705,
+      "nonEmptyLines": 614,
+      "functions": [
+        {
+          "name": "SearchResultHeroCard",
+          "startLine": 96,
+          "endLine": 110,
+          "params": []
+        },
+        {
+          "name": "OnTapped",
+          "startLine": 112,
+          "endLine": 120,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnActualThemeChanged",
+          "startLine": 122,
+          "endLine": 129,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "ApplyHoverBackground",
+          "startLine": 131,
+          "endLine": 143,
+          "params": []
+        },
+        {
+          "name": "OnItemChanged",
+          "startLine": 145,
+          "endLine": 146,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyItem",
+          "startLine": 148,
+          "endLine": 238,
+          "params": [
+            "item"
+          ]
+        },
+        {
+          "name": "SubscribeArtist",
+          "startLine": 242,
+          "endLine": 258,
+          "params": [
+            "artistId"
+          ]
+        },
+        {
+          "name": "ApplyArtistState",
+          "startLine": 260,
+          "endLine": 286,
+          "params": [
+            "state",
+            "expectedArtistId"
+          ]
+        },
+        {
+          "name": "DisposeArtistSubscription",
+          "startLine": 288,
+          "endLine": 295,
+          "params": []
+        },
+        {
+          "name": "ApplyPaletteBrush",
+          "startLine": 305,
+          "endLine": 336,
+          "params": []
+        },
+        {
+          "name": "OnColorHexChanged",
+          "startLine": 340,
+          "endLine": 355,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "ParseHexColor",
+          "startLine": 357,
+          "endLine": 377,
+          "params": [
+            "hex"
+          ]
+        },
+        {
+          "name": "LoadBleedImage",
+          "startLine": 384,
+          "endLine": 423,
+          "params": [
+            "imageUrl"
+          ]
+        },
+        {
+          "name": "EnsureBleedVisual",
+          "startLine": 425,
+          "endLine": 442,
+          "params": []
+        },
+        {
+          "name": "BleedSurfaceHost_SizeChanged",
+          "startLine": 444,
+          "endLine": 448,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ClearBleedSurface",
+          "startLine": 450,
+          "endLine": 457,
+          "params": []
+        },
+        {
+          "name": "ApplyArtworkShape",
+          "startLine": 459,
+          "endLine": 471,
+          "params": [
+            "isArtist"
+          ]
+        },
+        {
+          "name": "ApplyArtwork",
+          "startLine": 473,
+          "endLine": 504,
+          "params": [
+            "imageUrl",
+            "isArtist"
+          ]
+        },
+        {
+          "name": "ExtractId",
+          "startLine": 506,
+          "endLine": 511,
+          "params": [
+            "uri"
+          ]
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 513,
+          "endLine": 528,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnUnloaded",
+          "startLine": 530,
+          "endLine": 556,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPlaybackStateChanged",
+          "startLine": 558,
+          "endLine": 583,
+          "params": []
+        },
+        {
+          "name": "RefreshPlaybackState",
+          "startLine": 585,
+          "endLine": 603,
+          "params": []
+        },
+        {
+          "name": "ApplyTitleAccent",
+          "startLine": 605,
+          "endLine": 611,
+          "params": []
+        },
+        {
+          "name": "UpdateOverlayState",
+          "startLine": 613,
+          "endLine": 646,
+          "params": []
+        },
+        {
+          "name": "OnPointerEntered",
+          "startLine": 648,
+          "endLine": 655,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPointerExited",
+          "startLine": 657,
+          "endLine": 665,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPointerPressed",
+          "startLine": 667,
+          "endLine": 674,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPointerReleased",
+          "startLine": 676,
+          "endLine": 686,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnRightTapped",
+          "startLine": 688,
+          "endLine": 692,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "StartPendingBeam",
+          "startLine": 694,
+          "endLine": 699,
+          "params": []
+        },
+        {
+          "name": "StopPendingBeam",
+          "startLine": 701,
+          "endLine": 704,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "SearchResultHeroCard",
+          "startLine": 28,
+          "endLine": 705,
+          "methods": [
+            "SearchResultHeroCard",
+            "OnTapped",
+            "OnActualThemeChanged",
+            "ApplyHoverBackground",
+            "OnItemChanged",
+            "ApplyItem",
+            "SubscribeArtist",
+            "ApplyArtistState",
+            "DisposeArtistSubscription",
+            "ApplyPaletteBrush",
+            "OnColorHexChanged",
+            "ParseHexColor",
+            "LoadBleedImage",
+            "EnsureBleedVisual",
+            "BleedSurfaceHost_SizeChanged",
+            "ClearBleedSurface",
+            "ApplyArtworkShape",
+            "ApplyArtwork",
+            "ExtractId",
+            "OnLoaded",
+            "OnUnloaded",
+            "OnPlaybackStateChanged",
+            "RefreshPlaybackState",
+            "ApplyTitleAccent",
+            "UpdateOverlayState",
+            "OnPointerEntered",
+            "OnPointerExited",
+            "OnPointerPressed",
+            "OnPointerReleased",
+            "OnRightTapped",
+            "StartPendingBeam",
+            "StopPendingBeam"
+          ],
+          "properties": [
+            "HandCursor",
+            "ItemProperty",
+            "Item",
+            "ColorHexProperty",
+            "ColorHex",
+            "_playbackStateService",
+            "_trackId",
+            "_isTrack",
+            "_isHovered",
+            "_isPressed",
+            "_isThisTrackPlaying",
+            "_isThisTrackPaused",
+            "_isBuffering",
+            "_subscribedToPlayback",
+            "_currentBleedImageUrl",
+            "_bleedVisual",
+            "_bleedBrush",
+            "_bleedSurface",
+            "_artistStore",
+            "_artistSubscription",
+            "_observedArtistId",
+            "_currentPalette"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ItemProperty",
+          "line": 32,
+          "isDefault": false
+        },
+        {
+          "name": "Item",
+          "line": 39,
+          "isDefault": false
+        },
+        {
+          "name": "ColorHexProperty",
+          "line": 50,
+          "isDefault": false
+        },
+        {
+          "name": "ColorHex",
+          "line": 57,
+          "isDefault": false
+        },
+        {
+          "name": "SearchResultHeroCard",
+          "line": 96,
+          "isDefault": false
+        },
+        {
+          "name": "SearchResultHeroCard",
+          "line": 28,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "SearchResultHeroCard",
+          "callee": "InitializeComponent",
+          "lineNumber": 98
+        },
+        {
+          "caller": "OnTapped",
+          "callee": "Ioc.Default.GetService<IPlaybackStateService>",
+          "lineNumber": 118
+        },
+        {
+          "caller": "OnTapped",
+          "callee": "_playbackStateService?.NotifyBuffering",
+          "lineNumber": 119
+        },
+        {
+          "caller": "OnActualThemeChanged",
+          "callee": "ApplyTitleAccent",
+          "lineNumber": 124
+        },
+        {
+          "caller": "OnActualThemeChanged",
+          "callee": "ApplyHoverBackground",
+          "lineNumber": 125
+        },
+        {
+          "caller": "OnActualThemeChanged",
+          "callee": "ApplyPaletteBrush",
+          "lineNumber": 128
+        },
+        {
+          "caller": "OnItemChanged",
+          "callee": "((SearchResultHeroCard)d).ApplyItem",
+          "lineNumber": 146
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "SubtitleText.Inlines.Clear",
+          "lineNumber": 153
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "ApplyArtworkShape",
+          "lineNumber": 162
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "LoadBleedImage",
+          "lineNumber": 163
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "RefreshPlaybackState",
+          "lineNumber": 164
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "UpdateOverlayState",
+          "lineNumber": 165
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "ApplyAddChipForItem",
+          "lineNumber": 166
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "SearchSubtitleBuilder.Build",
+          "lineNumber": 171
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "item.GetTypeTag",
+          "lineNumber": 172
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "item.GetPlaceholderGlyph",
+          "lineNumber": 173
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "item.GetActionGlyph",
+          "lineNumber": 176
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "ApplyArtworkShape",
+          "lineNumber": 183
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "ApplyArtwork",
+          "lineNumber": 184
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 191
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "Ioc.Default.GetService<IAlbumPrefetcher>()?.EnqueueAlbumPrefetch",
+          "lineNumber": 194
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "Ioc.Default.GetService<IAlbumPrefetcher>",
+          "lineNumber": 194
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "Ioc.Default.GetService<IPlaylistMetadataPrefetcher>()?.EnqueuePlaylistPrefetch",
+          "lineNumber": 196
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "Ioc.Default.GetService<IPlaylistMetadataPrefetcher>",
+          "lineNumber": 196
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "item.ArtistUris?.FirstOrDefault",
+          "lineNumber": 206
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "string.Equals",
+          "lineNumber": 215
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 217
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "LoadBleedImage",
+          "lineNumber": 221
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "SubscribeArtist",
+          "lineNumber": 224
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "DisposeArtistSubscription",
+          "lineNumber": 228
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "LoadBleedImage",
+          "lineNumber": 229
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "ExtractId",
+          "lineNumber": 233
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "RefreshPlaybackState",
+          "lineNumber": 235
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "UpdateOverlayState",
+          "lineNumber": 236
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "ApplyAddChipForItem",
+          "lineNumber": 237
+        },
+        {
+          "caller": "SubscribeArtist",
+          "callee": "string.Equals",
+          "lineNumber": 244
+        },
+        {
+          "caller": "SubscribeArtist",
+          "callee": "DisposeArtistSubscription",
+          "lineNumber": 247
+        },
+        {
+          "caller": "SubscribeArtist",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 249
+        },
+        {
+          "caller": "SubscribeArtist",
+          "callee": "Ioc.Default.GetService<ArtistStore>",
+          "lineNumber": 251
+        },
+        {
+          "caller": "SubscribeArtist",
+          "callee": "_artistStore.Observe(artistId)\r\n            .Subscribe",
+          "lineNumber": 254
+        },
+        {
+          "caller": "SubscribeArtist",
+          "callee": "_artistStore.Observe",
+          "lineNumber": 254
+        },
+        {
+          "caller": "SubscribeArtist",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 256
+        },
+        {
+          "caller": "SubscribeArtist",
+          "callee": "ApplyArtistState",
+          "lineNumber": 256
+        },
+        {
+          "caller": "ApplyArtistState",
+          "callee": "string.Equals",
+          "lineNumber": 263
+        },
+        {
+          "caller": "ApplyArtistState",
+          "callee": "LoadBleedImage",
+          "lineNumber": 276
+        },
+        {
+          "caller": "ApplyArtistState",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 282
+        },
+        {
+          "caller": "ApplyArtistState",
+          "callee": "ApplyPaletteBrush",
+          "lineNumber": 285
+        },
+        {
+          "caller": "DisposeArtistSubscription",
+          "callee": "_artistSubscription?.Dispose",
+          "lineNumber": 290
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 321
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 322
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "new LinearGradientBrush",
+          "lineNumber": 326
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "brush.GradientStops.Add",
+          "lineNumber": 331
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "new GradientStop",
+          "lineNumber": 331
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 331
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "brush.GradientStops.Add",
+          "lineNumber": 332
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "new GradientStop",
+          "lineNumber": 332
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 332
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "brush.GradientStops.Add",
+          "lineNumber": 333
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "new GradientStop",
+          "lineNumber": 333
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 333
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "brush.GradientStops.Add",
+          "lineNumber": 334
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "new GradientStop",
+          "lineNumber": 334
+        },
+        {
+          "caller": "ApplyPaletteBrush",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 334
+        },
+        {
+          "caller": "OnColorHexChanged",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 345
+        },
+        {
+          "caller": "OnColorHexChanged",
+          "callee": "new SolidColorBrush",
+          "lineNumber": 349
+        },
+        {
+          "caller": "OnColorHexChanged",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 349
+        },
+        {
+          "caller": "OnColorHexChanged",
+          "callee": "ParseHexColor",
+          "lineNumber": 353
+        },
+        {
+          "caller": "OnColorHexChanged",
+          "callee": "new SolidColorBrush",
+          "lineNumber": 354
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "hex.TrimStart",
+          "lineNumber": 360
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 363
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 364
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 365
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 366
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 370
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 371
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 372
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 373
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 374
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 376
+        },
+        {
+          "caller": "LoadBleedImage",
+          "callee": "string.Equals",
+          "lineNumber": 386
+        },
+        {
+          "caller": "LoadBleedImage",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 390
+        },
+        {
+          "caller": "LoadBleedImage",
+          "callee": "ClearBleedSurface",
+          "lineNumber": 392
+        },
+        {
+          "caller": "LoadBleedImage",
+          "callee": "SpotifyImageHelper.ToHttpsUrl",
+          "lineNumber": 396
+        },
+        {
+          "caller": "LoadBleedImage",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 397
+        },
+        {
+          "caller": "LoadBleedImage",
+          "callee": "ClearBleedSurface",
+          "lineNumber": 399
+        },
+        {
+          "caller": "LoadBleedImage",
+          "callee": "EnsureBleedVisual",
+          "lineNumber": 403
+        },
+        {
+          "caller": "LoadBleedImage",
+          "callee": "_bleedBrush?.Dispose",
+          "lineNumber": 409
+        },
+        {
+          "caller": "LoadBleedImage",
+          "callee": "_bleedSurface?.Dispose",
+          "lineNumber": 411
+        },
+        {
+          "caller": "LoadBleedImage",
+          "callee": "LoadedImageSurface.StartLoadFromUri",
+          "lineNumber": 412
+        },
+        {
+          "caller": "LoadBleedImage",
+          "callee": "new Uri",
+          "lineNumber": 413
+        },
+        {
+          "caller": "LoadBleedImage",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 416
+        },
+        {
+          "caller": "LoadBleedImage",
+          "callee": "compositor.CreateSurfaceBrush",
+          "lineNumber": 417
+        },
+        {
+          "caller": "EnsureBleedVisual",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 434
+        },
+        {
+          "caller": "EnsureBleedVisual",
+          "callee": "compositor.CreateSpriteVisual",
+          "lineNumber": 435
+        },
+        {
+          "caller": "EnsureBleedVisual",
+          "callee": "new Vector2",
+          "lineNumber": 436
+        },
+        {
+          "caller": "EnsureBleedVisual",
+          "callee": "ElementCompositionPreview.SetElementChildVisual",
+          "lineNumber": 440
+        },
+        {
+          "caller": "BleedSurfaceHost_SizeChanged",
+          "callee": "new Vector2",
+          "lineNumber": 447
+        },
+        {
+          "caller": "ClearBleedSurface",
+          "callee": "_bleedBrush?.Dispose",
+          "lineNumber": 453
+        },
+        {
+          "caller": "ClearBleedSurface",
+          "callee": "_bleedSurface?.Dispose",
+          "lineNumber": 455
+        },
+        {
+          "caller": "ApplyArtwork",
+          "callee": "SpotifyImageHelper.ToHttpsUrl",
+          "lineNumber": 478
+        },
+        {
+          "caller": "ApplyArtwork",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 479
+        },
+        {
+          "caller": "ApplyArtwork",
+          "callee": "new BitmapImage",
+          "lineNumber": 486
+        },
+        {
+          "caller": "ApplyArtwork",
+          "callee": "new Uri",
+          "lineNumber": 486
+        },
+        {
+          "caller": "ExtractId",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 508
+        },
+        {
+          "caller": "ExtractId",
+          "callee": "uri.LastIndexOf",
+          "lineNumber": 509
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "TrackStateBehavior.EnsurePlaybackSubscription",
+          "lineNumber": 517
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "WeakReferenceMessenger.Default.Register<SearchResultHeroCard, TrackStateRefreshMessage>",
+          "lineNumber": 521
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "r.OnPlaybackStateChanged",
+          "lineNumber": 522
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "RefreshPlaybackState",
+          "lineNumber": 526
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "UpdateOverlayState",
+          "lineNumber": 527
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "WeakReferenceMessenger.Default.Unregister<TrackStateRefreshMessage>",
+          "lineNumber": 534
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "StopPendingBeam",
+          "lineNumber": 539
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "DisposeArtistSubscription",
+          "lineNumber": 540
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "ElementCompositionPreview.SetElementChildVisual",
+          "lineNumber": 546
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "_bleedVisual.Dispose",
+          "lineNumber": 547
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "ClearBleedSurface",
+          "lineNumber": 550
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 578
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "RefreshPlaybackState",
+          "lineNumber": 580
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "UpdateOverlayState",
+          "lineNumber": 581
+        },
+        {
+          "caller": "RefreshPlaybackState",
+          "callee": "ApplyTitleAccent",
+          "lineNumber": 592
+        },
+        {
+          "caller": "RefreshPlaybackState",
+          "callee": "ApplyTitleAccent",
+          "lineNumber": 602
+        },
+        {
+          "caller": "UpdateOverlayState",
+          "callee": "StartPendingBeam",
+          "lineNumber": 621
+        },
+        {
+          "caller": "UpdateOverlayState",
+          "callee": "StopPendingBeam",
+          "lineNumber": 625
+        },
+        {
+          "caller": "OnPointerEntered",
+          "callee": "ApplyHoverBackground",
+          "lineNumber": 651
+        },
+        {
+          "caller": "OnPointerEntered",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale(to: new System.Numerics.Vector2(1.04f, 1.04f), duration: TimeSpan.FromMilliseconds(180))\r\n            .Start",
+          "lineNumber": 652
+        },
+        {
+          "caller": "OnPointerEntered",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale",
+          "lineNumber": 652
+        },
+        {
+          "caller": "OnPointerEntered",
+          "callee": "AnimationBuilder.Create",
+          "lineNumber": 652
+        },
+        {
+          "caller": "OnPointerEntered",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 653
+        },
+        {
+          "caller": "OnPointerExited",
+          "callee": "ApplyHoverBackground",
+          "lineNumber": 661
+        },
+        {
+          "caller": "OnPointerExited",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale(to: new System.Numerics.Vector2(1.0f, 1.0f), duration: TimeSpan.FromMilliseconds(180))\r\n            .Start",
+          "lineNumber": 662
+        },
+        {
+          "caller": "OnPointerExited",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale",
+          "lineNumber": 662
+        },
+        {
+          "caller": "OnPointerExited",
+          "callee": "AnimationBuilder.Create",
+          "lineNumber": 662
+        },
+        {
+          "caller": "OnPointerExited",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 663
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "ApplyHoverBackground",
+          "lineNumber": 670
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale(to: new Vector2(0.98f, 0.98f), duration: TimeSpan.FromMilliseconds(80))\r\n            .Start",
+          "lineNumber": 671
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale",
+          "lineNumber": 671
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "AnimationBuilder.Create",
+          "lineNumber": 671
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "new Vector2",
+          "lineNumber": 672
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 672
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "ApplyHoverBackground",
+          "lineNumber": 682
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale(to: _isHovered ? new Vector2(1.04f, 1.04f) : Vector2.One, duration: TimeSpan.FromMilliseconds(120))\r\n            .Start",
+          "lineNumber": 683
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale",
+          "lineNumber": 683
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "AnimationBuilder.Create",
+          "lineNumber": 683
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "new Vector2",
+          "lineNumber": 684
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 684
+        },
+        {
+          "caller": "OnRightTapped",
+          "callee": "CardRightTapped?.Invoke",
+          "lineNumber": 690
+        },
+        {
+          "caller": "StartPendingBeam",
+          "callee": "FindName",
+          "lineNumber": 697
+        },
+        {
+          "caller": "StartPendingBeam",
+          "callee": "nameof",
+          "lineNumber": 697
+        },
+        {
+          "caller": "StartPendingBeam",
+          "callee": "PlaybackPendingBeam?.Start",
+          "lineNumber": 698
+        },
+        {
+          "caller": "StopPendingBeam",
+          "callee": "PlaybackPendingBeam?.Stop",
+          "lineNumber": 703
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 6,
+        "functionCount": 32,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Search/SearchResultRowCard.AddToPlaylist.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 72,
+      "nonEmptyLines": 65,
+      "functions": [
+        {
+          "name": "HookAddToPlaylistSession",
+          "startLine": 22,
+          "endLine": 30,
+          "params": []
+        },
+        {
+          "name": "UnhookAddToPlaylistSession",
+          "startLine": 32,
+          "endLine": 37,
+          "params": []
+        },
+        {
+          "name": "OnAddSessionPropertyChanged",
+          "startLine": 39,
+          "endLine": 43,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyAddChipForItem",
+          "startLine": 47,
+          "endLine": 64,
+          "params": [
+            "item"
+          ]
+        },
+        {
+          "name": "ApplyAddSessionVisuals",
+          "startLine": 66,
+          "endLine": 71,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "SearchResultRowCard",
+          "startLine": 17,
+          "endLine": 72,
+          "methods": [
+            "HookAddToPlaylistSession",
+            "UnhookAddToPlaylistSession",
+            "OnAddSessionPropertyChanged",
+            "ApplyAddChipForItem",
+            "ApplyAddSessionVisuals"
+          ],
+          "properties": [
+            "_addSession",
+            "_addSessionHooked"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "SearchResultRowCard",
+          "line": 17,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "HookAddToPlaylistSession",
+          "callee": "Ioc.Default.GetService<IAddToPlaylistSession>",
+          "lineNumber": 25
+        },
+        {
+          "caller": "HookAddToPlaylistSession",
+          "callee": "ApplyAddSessionVisuals",
+          "lineNumber": 29
+        },
+        {
+          "caller": "OnAddSessionPropertyChanged",
+          "callee": "ApplyAddSessionVisuals",
+          "lineNumber": 41
+        },
+        {
+          "caller": "OnAddSessionPropertyChanged",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 42
+        },
+        {
+          "caller": "ApplyAddChipForItem",
+          "callee": "ApplyAddSessionVisuals",
+          "lineNumber": 54
+        },
+        {
+          "caller": "ApplyAddChipForItem",
+          "callee": "ApplyAddSessionVisuals",
+          "lineNumber": 63
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 5,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Search/SearchResultRowCard.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 153,
+      "nonEmptyLines": 142,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Search/SearchResultRowCard.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 463,
+      "nonEmptyLines": 404,
+      "functions": [
+        {
+          "name": "SearchResultRowCard",
+          "startLine": 66,
+          "endLine": 80,
+          "params": []
+        },
+        {
+          "name": "OnEffectiveViewportChanged",
+          "startLine": 82,
+          "endLine": 105,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "OnActualThemeChanged",
+          "startLine": 107,
+          "endLine": 112,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "ApplyInteractionState",
+          "startLine": 114,
+          "endLine": 130,
+          "params": []
+        },
+        {
+          "name": "OnItemChanged",
+          "startLine": 132,
+          "endLine": 133,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyItem",
+          "startLine": 135,
+          "endLine": 176,
+          "params": [
+            "item"
+          ]
+        },
+        {
+          "name": "ApplyThumbnailShape",
+          "startLine": 178,
+          "endLine": 191,
+          "params": [
+            "isArtist"
+          ]
+        },
+        {
+          "name": "ApplyThumbnail",
+          "startLine": 193,
+          "endLine": 224,
+          "params": [
+            "imageUrl",
+            "isArtist"
+          ]
+        },
+        {
+          "name": "ExtractId",
+          "startLine": 226,
+          "endLine": 231,
+          "params": [
+            "uri"
+          ]
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 233,
+          "endLine": 251,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnUnloaded",
+          "startLine": 253,
+          "endLine": 273,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPlaybackStateChanged",
+          "startLine": 275,
+          "endLine": 298,
+          "params": []
+        },
+        {
+          "name": "RefreshPlaybackState",
+          "startLine": 300,
+          "endLine": 318,
+          "params": []
+        },
+        {
+          "name": "ApplyTitleAccent",
+          "startLine": 320,
+          "endLine": 326,
+          "params": []
+        },
+        {
+          "name": "UpdateOverlayState",
+          "startLine": 328,
+          "endLine": 389,
+          "params": []
+        },
+        {
+          "name": "OnPointerEntered",
+          "startLine": 391,
+          "endLine": 399,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPointerExited",
+          "startLine": 401,
+          "endLine": 410,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPointerPressed",
+          "startLine": 412,
+          "endLine": 419,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPointerReleased",
+          "startLine": 421,
+          "endLine": 431,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnTapped",
+          "startLine": 433,
+          "endLine": 444,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnRightTapped",
+          "startLine": 446,
+          "endLine": 450,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "StartPendingBeam",
+          "startLine": 452,
+          "endLine": 457,
+          "params": []
+        },
+        {
+          "name": "StopPendingBeam",
+          "startLine": 459,
+          "endLine": 462,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "SearchResultRowCard",
+          "startLine": 25,
+          "endLine": 463,
+          "methods": [
+            "SearchResultRowCard",
+            "OnEffectiveViewportChanged",
+            "OnActualThemeChanged",
+            "ApplyInteractionState",
+            "OnItemChanged",
+            "ApplyItem",
+            "ApplyThumbnailShape",
+            "ApplyThumbnail",
+            "ExtractId",
+            "OnLoaded",
+            "OnUnloaded",
+            "OnPlaybackStateChanged",
+            "RefreshPlaybackState",
+            "ApplyTitleAccent",
+            "UpdateOverlayState",
+            "OnPointerEntered",
+            "OnPointerExited",
+            "OnPointerPressed",
+            "OnPointerReleased",
+            "OnTapped",
+            "OnRightTapped",
+            "StartPendingBeam",
+            "StopPendingBeam"
+          ],
+          "properties": [
+            "HandCursor",
+            "ItemProperty",
+            "Item",
+            "SquareCornerRadius",
+            "CircleCornerRadius",
+            "_playbackStateService",
+            "_trackId",
+            "_isTrack",
+            "_isHovered",
+            "_isPressed",
+            "_isThisTrackPlaying",
+            "_isThisTrackPaused",
+            "_isBuffering",
+            "_subscribedToPlayback",
+            "_albumPrefetchKicked",
+            "_playlistPrefetchKicked",
+            "AlbumPrefetchTriggerDistance",
+            "AlbumUriPrefix",
+            "PlaylistUriPrefix"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ItemProperty",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "Item",
+          "line": 36,
+          "isDefault": false
+        },
+        {
+          "name": "SearchResultRowCard",
+          "line": 66,
+          "isDefault": false
+        },
+        {
+          "name": "SearchResultRowCard",
+          "line": 25,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "SearchResultRowCard",
+          "callee": "InitializeComponent",
+          "lineNumber": 68
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 87
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "uri.StartsWith",
+          "lineNumber": 93
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "Ioc.Default.GetService<IAlbumPrefetcher>()?.EnqueueAlbumPrefetch",
+          "lineNumber": 96
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "Ioc.Default.GetService<IAlbumPrefetcher>",
+          "lineNumber": 96
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "uri.StartsWith",
+          "lineNumber": 100
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "Ioc.Default.GetService<IPlaylistMetadataPrefetcher>()?.EnqueuePlaylistPrefetch",
+          "lineNumber": 103
+        },
+        {
+          "caller": "OnEffectiveViewportChanged",
+          "callee": "Ioc.Default.GetService<IPlaylistMetadataPrefetcher>",
+          "lineNumber": 103
+        },
+        {
+          "caller": "OnActualThemeChanged",
+          "callee": "ApplyTitleAccent",
+          "lineNumber": 110
+        },
+        {
+          "caller": "OnActualThemeChanged",
+          "callee": "ApplyInteractionState",
+          "lineNumber": 111
+        },
+        {
+          "caller": "OnItemChanged",
+          "callee": "((SearchResultRowCard)d).ApplyItem",
+          "lineNumber": 133
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "SubtitleText.Inlines.Clear",
+          "lineNumber": 145
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "ApplyThumbnailShape",
+          "lineNumber": 153
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "RefreshPlaybackState",
+          "lineNumber": 154
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "UpdateOverlayState",
+          "lineNumber": 155
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "ApplyAddChipForItem",
+          "lineNumber": 156
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "SearchSubtitleBuilder.Build",
+          "lineNumber": 161
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "item.GetTypeTag",
+          "lineNumber": 162
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "item.GetPlaceholderGlyph",
+          "lineNumber": 163
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "item.GetActionGlyph",
+          "lineNumber": 164
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "ApplyThumbnailShape",
+          "lineNumber": 168
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "ApplyThumbnail",
+          "lineNumber": 169
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "ExtractId",
+          "lineNumber": 171
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "RefreshPlaybackState",
+          "lineNumber": 173
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "UpdateOverlayState",
+          "lineNumber": 174
+        },
+        {
+          "caller": "ApplyItem",
+          "callee": "ApplyAddChipForItem",
+          "lineNumber": 175
+        },
+        {
+          "caller": "ApplyThumbnailShape",
+          "callee": "new CornerRadius",
+          "lineNumber": 189
+        },
+        {
+          "caller": "ApplyThumbnail",
+          "callee": "SpotifyImageHelper.ToHttpsUrl",
+          "lineNumber": 198
+        },
+        {
+          "caller": "ApplyThumbnail",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 199
+        },
+        {
+          "caller": "ApplyThumbnail",
+          "callee": "new BitmapImage",
+          "lineNumber": 206
+        },
+        {
+          "caller": "ApplyThumbnail",
+          "callee": "new Uri",
+          "lineNumber": 206
+        },
+        {
+          "caller": "ExtractId",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 228
+        },
+        {
+          "caller": "ExtractId",
+          "callee": "uri.LastIndexOf",
+          "lineNumber": 229
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "TrackStateBehavior.EnsurePlaybackSubscription",
+          "lineNumber": 241
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "WeakReferenceMessenger.Default.Register<SearchResultRowCard, TrackStateRefreshMessage>",
+          "lineNumber": 243
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "r.OnPlaybackStateChanged",
+          "lineNumber": 244
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "RefreshPlaybackState",
+          "lineNumber": 248
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "UpdateOverlayState",
+          "lineNumber": 249
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "HookAddToPlaylistSession",
+          "lineNumber": 250
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "UnhookAddToPlaylistSession",
+          "lineNumber": 257
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "WeakReferenceMessenger.Default.Unregister<TrackStateRefreshMessage>",
+          "lineNumber": 260
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "StopPendingBeam",
+          "lineNumber": 265
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 293
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "RefreshPlaybackState",
+          "lineNumber": 295
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "UpdateOverlayState",
+          "lineNumber": 296
+        },
+        {
+          "caller": "RefreshPlaybackState",
+          "callee": "ApplyTitleAccent",
+          "lineNumber": 307
+        },
+        {
+          "caller": "RefreshPlaybackState",
+          "callee": "ApplyTitleAccent",
+          "lineNumber": 317
+        },
+        {
+          "caller": "UpdateOverlayState",
+          "callee": "StartPendingBeam",
+          "lineNumber": 338
+        },
+        {
+          "caller": "UpdateOverlayState",
+          "callee": "StopPendingBeam",
+          "lineNumber": 342
+        },
+        {
+          "caller": "UpdateOverlayState",
+          "callee": "HoverPlayButton.UpdateLayout",
+          "lineNumber": 357
+        },
+        {
+          "caller": "UpdateOverlayState",
+          "callee": "AnimationBuilder.Create()\r\n                    .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(150))\r\n                    .Start",
+          "lineNumber": 358
+        },
+        {
+          "caller": "UpdateOverlayState",
+          "callee": "AnimationBuilder.Create()\r\n                    .Opacity",
+          "lineNumber": 358
+        },
+        {
+          "caller": "UpdateOverlayState",
+          "callee": "AnimationBuilder.Create",
+          "lineNumber": 358
+        },
+        {
+          "caller": "UpdateOverlayState",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 359
+        },
+        {
+          "caller": "OnPointerEntered",
+          "callee": "ApplyInteractionState",
+          "lineNumber": 394
+        },
+        {
+          "caller": "OnPointerEntered",
+          "callee": "UpdateOverlayState",
+          "lineNumber": 395
+        },
+        {
+          "caller": "OnPointerEntered",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale(to: new Vector2(1.004f, 1.004f), duration: TimeSpan.FromMilliseconds(120))\r\n            .Start",
+          "lineNumber": 396
+        },
+        {
+          "caller": "OnPointerEntered",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale",
+          "lineNumber": 396
+        },
+        {
+          "caller": "OnPointerEntered",
+          "callee": "AnimationBuilder.Create",
+          "lineNumber": 396
+        },
+        {
+          "caller": "OnPointerEntered",
+          "callee": "new Vector2",
+          "lineNumber": 397
+        },
+        {
+          "caller": "OnPointerEntered",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 397
+        },
+        {
+          "caller": "OnPointerExited",
+          "callee": "ApplyInteractionState",
+          "lineNumber": 405
+        },
+        {
+          "caller": "OnPointerExited",
+          "callee": "UpdateOverlayState",
+          "lineNumber": 406
+        },
+        {
+          "caller": "OnPointerExited",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale(to: Vector2.One, duration: TimeSpan.FromMilliseconds(120))\r\n            .Start",
+          "lineNumber": 407
+        },
+        {
+          "caller": "OnPointerExited",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale",
+          "lineNumber": 407
+        },
+        {
+          "caller": "OnPointerExited",
+          "callee": "AnimationBuilder.Create",
+          "lineNumber": 407
+        },
+        {
+          "caller": "OnPointerExited",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 408
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "ApplyInteractionState",
+          "lineNumber": 415
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale(to: new Vector2(0.996f, 0.996f), duration: TimeSpan.FromMilliseconds(80))\r\n            .Start",
+          "lineNumber": 416
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale",
+          "lineNumber": 416
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "AnimationBuilder.Create",
+          "lineNumber": 416
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "new Vector2",
+          "lineNumber": 417
+        },
+        {
+          "caller": "OnPointerPressed",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 417
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "ApplyInteractionState",
+          "lineNumber": 427
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale(to: _isHovered ? new Vector2(1.004f, 1.004f) : Vector2.One, duration: TimeSpan.FromMilliseconds(100))\r\n            .Start",
+          "lineNumber": 428
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "AnimationBuilder.Create()\r\n            .Scale",
+          "lineNumber": 428
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "AnimationBuilder.Create",
+          "lineNumber": 428
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "new Vector2",
+          "lineNumber": 429
+        },
+        {
+          "caller": "OnPointerReleased",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 429
+        },
+        {
+          "caller": "OnTapped",
+          "callee": "Ioc.Default.GetService<IPlaybackStateService>",
+          "lineNumber": 442
+        },
+        {
+          "caller": "OnTapped",
+          "callee": "_playbackStateService?.NotifyBuffering",
+          "lineNumber": 443
+        },
+        {
+          "caller": "OnRightTapped",
+          "callee": "CardRightTapped?.Invoke",
+          "lineNumber": 448
+        },
+        {
+          "caller": "StartPendingBeam",
+          "callee": "FindName",
+          "lineNumber": 455
+        },
+        {
+          "caller": "StartPendingBeam",
+          "callee": "nameof",
+          "lineNumber": 455
+        },
+        {
+          "caller": "StartPendingBeam",
+          "callee": "PlaybackPendingBeam?.Start",
+          "lineNumber": 456
+        },
+        {
+          "caller": "StopPendingBeam",
+          "callee": "PlaybackPendingBeam?.Stop",
+          "lineNumber": 461
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 23,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Search/SearchSubtitleBuilder.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 87,
+      "nonEmptyLines": 73,
+      "functions": [
+        {
+          "name": "Build",
+          "startLine": 16,
+          "endLine": 47,
+          "params": [
+            "target",
+            "item"
+          ]
+        },
+        {
+          "name": "AppendArtistInlines",
+          "startLine": 49,
+          "endLine": 86,
+          "params": [
+            "target",
+            "uris",
+            "names"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "SearchSubtitleBuilder",
+          "startLine": 14,
+          "endLine": 87,
+          "methods": [
+            "Build",
+            "AppendArtistInlines"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "Build",
+          "line": 16,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Build",
+          "callee": "target.Inlines.Clear",
+          "lineNumber": 18
+        },
+        {
+          "caller": "Build",
+          "callee": "target.Inlines.Add",
+          "lineNumber": 23
+        },
+        {
+          "caller": "Build",
+          "callee": "new Run",
+          "lineNumber": 23
+        },
+        {
+          "caller": "Build",
+          "callee": "AppendArtistInlines",
+          "lineNumber": 24
+        },
+        {
+          "caller": "Build",
+          "callee": "target.Inlines.Add",
+          "lineNumber": 28
+        },
+        {
+          "caller": "Build",
+          "callee": "new Run",
+          "lineNumber": 28
+        },
+        {
+          "caller": "Build",
+          "callee": "AppendArtistInlines",
+          "lineNumber": 29
+        },
+        {
+          "caller": "Build",
+          "callee": "target.Inlines.Add",
+          "lineNumber": 31
+        },
+        {
+          "caller": "Build",
+          "callee": "new Run",
+          "lineNumber": 31
+        },
+        {
+          "caller": "Build",
+          "callee": "target.Inlines.Add",
+          "lineNumber": 35
+        },
+        {
+          "caller": "Build",
+          "callee": "new Run",
+          "lineNumber": 35
+        },
+        {
+          "caller": "Build",
+          "callee": "target.Inlines.Add",
+          "lineNumber": 39
+        },
+        {
+          "caller": "Build",
+          "callee": "new Run",
+          "lineNumber": 39
+        },
+        {
+          "caller": "Build",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 41
+        },
+        {
+          "caller": "AppendArtistInlines",
+          "callee": "target.Inlines.Add",
+          "lineNumber": 54
+        },
+        {
+          "caller": "AppendArtistInlines",
+          "callee": "new Run",
+          "lineNumber": 54
+        },
+        {
+          "caller": "AppendArtistInlines",
+          "callee": "target.Inlines.Add",
+          "lineNumber": 59
+        },
+        {
+          "caller": "AppendArtistInlines",
+          "callee": "new Run",
+          "lineNumber": 59
+        },
+        {
+          "caller": "AppendArtistInlines",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 64
+        },
+        {
+          "caller": "AppendArtistInlines",
+          "callee": "target.Inlines.Add",
+          "lineNumber": 66
+        },
+        {
+          "caller": "AppendArtistInlines",
+          "callee": "new Run",
+          "lineNumber": 66
+        },
+        {
+          "caller": "AppendArtistInlines",
+          "callee": "new Hyperlink",
+          "lineNumber": 70
+        },
+        {
+          "caller": "AppendArtistInlines",
+          "callee": "hyperlink.Inlines.Add",
+          "lineNumber": 74
+        },
+        {
+          "caller": "AppendArtistInlines",
+          "callee": "new Run",
+          "lineNumber": 74
+        },
+        {
+          "caller": "AppendArtistInlines",
+          "callee": "NavigationHelpers.OpenArtist",
+          "lineNumber": 82
+        },
+        {
+          "caller": "AppendArtistInlines",
+          "callee": "target.Inlines.Add",
+          "lineNumber": 84
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SessionTokens/Helpers/ControlHelpers.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 11,
+      "nonEmptyLines": 9,
+      "classes": [
+        {
+          "name": "ControlHelpers",
+          "startLine": 8,
+          "endLine": 11,
+          "methods": [],
+          "properties": [
+            "IsXamlRootAvailable"
+          ]
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenItem.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 174,
+      "nonEmptyLines": 152,
+      "functions": [
+        {
+          "name": "SessionTokenItem",
+          "startLine": 33,
+          "endLine": 36,
+          "params": []
+        },
+        {
+          "name": "OnApplyTemplate",
+          "startLine": 38,
+          "endLine": 73,
+          "params": []
+        },
+        {
+          "name": "SessionTokenItem_Loaded",
+          "startLine": 75,
+          "endLine": 95,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "TokenItemRemoveButton_Click",
+          "startLine": 97,
+          "endLine": 103,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnContentChanged",
+          "startLine": 105,
+          "endLine": 109,
+          "params": [
+            "oldContent",
+            "newContent"
+          ]
+        },
+        {
+          "name": "ContentChanged",
+          "startLine": 111,
+          "endLine": 121,
+          "params": []
+        },
+        {
+          "name": "OnIconPropertyChanged",
+          "startLine": 123,
+          "endLine": 126,
+          "params": [
+            "oldValue",
+            "newValue"
+          ]
+        },
+        {
+          "name": "IconChanged",
+          "startLine": 128,
+          "endLine": 138,
+          "params": []
+        },
+        {
+          "name": "OnIsRemoveablePropertyChanged",
+          "startLine": 140,
+          "endLine": 143,
+          "params": [
+            "oldValue",
+            "newValue"
+          ]
+        },
+        {
+          "name": "IsRemoveableChanged",
+          "startLine": 145,
+          "endLine": 155,
+          "params": []
+        },
+        {
+          "name": "OnIsLoadingPropertyChanged",
+          "startLine": 161,
+          "endLine": 164,
+          "params": [
+            "oldValue",
+            "newValue"
+          ]
+        },
+        {
+          "name": "ApplyLoadingState",
+          "startLine": 166,
+          "endLine": 173,
+          "params": [
+            "isLoading"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "SessionTokenItem",
+          "startLine": 16,
+          "endLine": 174,
+          "methods": [
+            "SessionTokenItem",
+            "OnApplyTemplate",
+            "SessionTokenItem_Loaded",
+            "TokenItemRemoveButton_Click",
+            "OnContentChanged",
+            "ContentChanged",
+            "OnIconPropertyChanged",
+            "IconChanged",
+            "OnIsRemoveablePropertyChanged",
+            "IsRemoveableChanged",
+            "OnIsLoadingPropertyChanged",
+            "ApplyLoadingState"
+          ],
+          "properties": [
+            "IconLeftState",
+            "IconOnlyState",
+            "ContentOnlyState",
+            "RemoveButtonVisibleState",
+            "RemoveButtonNotVisibleState",
+            "TokenItemRemoveButtonName",
+            "LoadingBeamName",
+            "_tokenItemRemoveButton",
+            "_loadingBeam"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "SessionTokenItem",
+          "line": 33,
+          "isDefault": false
+        },
+        {
+          "name": "SessionTokenItem",
+          "line": 16,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "OnApplyTemplate",
+          "callee": "base.OnApplyTemplate",
+          "lineNumber": 40
+        },
+        {
+          "caller": "OnApplyTemplate",
+          "callee": "GetTemplateChild",
+          "lineNumber": 47
+        },
+        {
+          "caller": "OnApplyTemplate",
+          "callee": "GetTemplateChild",
+          "lineNumber": 54
+        },
+        {
+          "caller": "OnApplyTemplate",
+          "callee": "IconChanged",
+          "lineNumber": 65
+        },
+        {
+          "caller": "OnApplyTemplate",
+          "callee": "ContentChanged",
+          "lineNumber": 66
+        },
+        {
+          "caller": "OnApplyTemplate",
+          "callee": "IsRemoveableChanged",
+          "lineNumber": 67
+        },
+        {
+          "caller": "SessionTokenItem_Loaded",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 79
+        },
+        {
+          "caller": "SessionTokenItem_Loaded",
+          "callee": "compositor.CreateVector3KeyFrameAnimation",
+          "lineNumber": 82
+        },
+        {
+          "caller": "SessionTokenItem_Loaded",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 84
+        },
+        {
+          "caller": "SessionTokenItem_Loaded",
+          "callee": "offsetAnim.InsertExpressionKeyFrame",
+          "lineNumber": 85
+        },
+        {
+          "caller": "SessionTokenItem_Loaded",
+          "callee": "compositor.CreateImplicitAnimationCollection",
+          "lineNumber": 86
+        },
+        {
+          "caller": "TokenItemRemoveButton_Click",
+          "callee": "Removing?.Invoke",
+          "lineNumber": 101
+        },
+        {
+          "caller": "TokenItemRemoveButton_Click",
+          "callee": "new SessionTokenItemRemovingEventArgs",
+          "lineNumber": 101
+        },
+        {
+          "caller": "OnContentChanged",
+          "callee": "base.OnContentChanged",
+          "lineNumber": 107
+        },
+        {
+          "caller": "OnContentChanged",
+          "callee": "ContentChanged",
+          "lineNumber": 108
+        },
+        {
+          "caller": "ContentChanged",
+          "callee": "VisualStateManager.GoToState",
+          "lineNumber": 115
+        },
+        {
+          "caller": "ContentChanged",
+          "callee": "VisualStateManager.GoToState",
+          "lineNumber": 119
+        },
+        {
+          "caller": "OnIconPropertyChanged",
+          "callee": "IconChanged",
+          "lineNumber": 125
+        },
+        {
+          "caller": "IconChanged",
+          "callee": "VisualStateManager.GoToState",
+          "lineNumber": 132
+        },
+        {
+          "caller": "IconChanged",
+          "callee": "VisualStateManager.GoToState",
+          "lineNumber": 136
+        },
+        {
+          "caller": "OnIsRemoveablePropertyChanged",
+          "callee": "IsRemoveableChanged",
+          "lineNumber": 142
+        },
+        {
+          "caller": "IsRemoveableChanged",
+          "callee": "VisualStateManager.GoToState",
+          "lineNumber": 149
+        },
+        {
+          "caller": "IsRemoveableChanged",
+          "callee": "VisualStateManager.GoToState",
+          "lineNumber": 153
+        },
+        {
+          "caller": "OnIsLoadingPropertyChanged",
+          "callee": "ApplyLoadingState",
+          "lineNumber": 163
+        },
+        {
+          "caller": "ApplyLoadingState",
+          "callee": "_loadingBeam.Start",
+          "lineNumber": 170
+        },
+        {
+          "caller": "ApplyLoadingState",
+          "callee": "_loadingBeam.Stop",
+          "lineNumber": 172
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 12,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenItem.Properties.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 51,
+      "nonEmptyLines": 43,
+      "classes": [
+        {
+          "name": "SessionTokenItem",
+          "startLine": 11,
+          "endLine": 51,
+          "methods": [],
+          "properties": [
+            "IsRemoveableProperty",
+            "IconProperty",
+            "IsLoadingProperty",
+            "IsRemoveable",
+            "Icon",
+            "IsLoading"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IsRemoveableProperty",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "IconProperty",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "IsLoadingProperty",
+          "line": 28,
+          "isDefault": false
+        },
+        {
+          "name": "IsRemoveable",
+          "line": 34,
+          "isDefault": false
+        },
+        {
+          "name": "Icon",
+          "line": 40,
+          "isDefault": false
+        },
+        {
+          "name": "IsLoading",
+          "line": 46,
+          "isDefault": false
+        },
+        {
+          "name": "SessionTokenItem",
+          "line": 11,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 7,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    }
+  ]
+}

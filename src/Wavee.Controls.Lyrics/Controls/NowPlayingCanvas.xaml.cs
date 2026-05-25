@@ -221,6 +221,14 @@ namespace Wavee.Controls.Lyrics.Controls
             _engine.Dispose();
         }
 
+        private void UserControl_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (Canvas == null) return;
+
+            Canvas.Width = Math.Max(0, e.NewSize.Width);
+            Canvas.Height = Math.Max(0, e.NewSize.Height);
+        }
+
         // Public API — passthrough to engine
         public void SetLyricsData(LyricsData? lyricsData) => _engine.SetLyricsData(lyricsData);
         public void SetSongInfo(SongInfo songInfo) => _engine.SetSongInfo(songInfo);

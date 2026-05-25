@@ -1,0 +1,803 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Playlist/PlaylistShyPill.xaml",
+      "type": "file",
+      "name": "PlaylistShyPill.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playlist/PlaylistShyPill.xaml",
+      "summary": "XAML layout for the playlist shy-pill control shown at the bottom of the playlist page during playback.",
+      "tags": [
+        "component",
+        "xaml",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Playlist/PlaylistShyPill.xaml.cs",
+      "type": "file",
+      "name": "PlaylistShyPill.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playlist/PlaylistShyPill.xaml.cs",
+      "summary": "Code-behind for PlaylistShyPill, a compact collapsible playback summary pill that appears at the base of the playlist page.",
+      "tags": [
+        "component",
+        "playlist",
+        "playback"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Playlist/PlaylistShyPill.xaml.cs:PlaylistShyPill",
+      "type": "class",
+      "name": "PlaylistShyPill",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playlist/PlaylistShyPill.xaml.cs",
+      "lineRange": [
+        17,
+        92
+      ],
+      "summary": "UserControl rendering a shy-pill transport summary at the bottom of the playlist view, with dependency properties for track title, artist, and playback state.",
+      "tags": [
+        "component",
+        "playlist",
+        "playback"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PodcastBrowse/PodcastBrowseSectionTemplateSelector.cs",
+      "type": "file",
+      "name": "PodcastBrowseSectionTemplateSelector.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PodcastBrowse/PodcastBrowseSectionTemplateSelector.cs",
+      "summary": "DataTemplateSelector for the podcast browse view, choosing between episode-list and show-header templates based on section type.",
+      "tags": [
+        "component",
+        "podcast",
+        "template-selector"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/PodcastBrowse/PodcastBrowseSectionTemplateSelector.cs:PodcastBrowseSectionTemplateSelector",
+      "type": "class",
+      "name": "PodcastBrowseSectionTemplateSelector",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PodcastBrowse/PodcastBrowseSectionTemplateSelector.cs",
+      "lineRange": [
+        16,
+        43
+      ],
+      "summary": "DataTemplateSelector subclass mapping podcast browse section view model types to their corresponding XAML data templates.",
+      "tags": [
+        "component",
+        "podcast",
+        "template-selector"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml",
+      "type": "file",
+      "name": "QueueControl.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml",
+      "summary": "XAML layout for the queue panel (~462 lines) with now-playing header, user-queue section, context-queue section, drag-drop reorder handles, and an empty-queue state.",
+      "tags": [
+        "component",
+        "xaml",
+        "queue",
+        "playback"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs",
+      "type": "file",
+      "name": "QueueControl.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs",
+      "summary": "Code-behind for the queue panel: manages drag-drop reorder between user-queue and context-queue lists, issues queue-mutation IPC commands, and displays a live queue snapshot from IPlaybackStateService.",
+      "tags": [
+        "component",
+        "queue",
+        "playback",
+        "drag-drop"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs:QueueDisplayItem",
+      "type": "class",
+      "name": "QueueDisplayItem",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs",
+      "lineRange": [
+        37,
+        93
+      ],
+      "summary": "Wrapper view model for a queue entry, adding a display index and computed IsCurrentTrack flag on top of the underlying track data.",
+      "tags": [
+        "data-model",
+        "queue",
+        "playback"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs:QueueControl",
+      "type": "class",
+      "name": "QueueControl",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs",
+      "lineRange": [
+        95,
+        931
+      ],
+      "summary": "UserControl rendering the right-panel queue view with reorderable user-queue and context-queue lists, supporting drag-drop reorder, remove, add-to-queue, and now-playing highlight.",
+      "tags": [
+        "component",
+        "queue",
+        "playback",
+        "drag-drop"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RecentlyPlayedSection.xaml",
+      "type": "file",
+      "name": "RecentlyPlayedSection.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RecentlyPlayedSection.xaml",
+      "summary": "XAML layout for the recently-played shelf section, rendering a horizontal scroll row of content cards for recently played items.",
+      "tags": [
+        "component",
+        "xaml",
+        "recently-played"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RecentlyPlayedSection.xaml.cs",
+      "type": "file",
+      "name": "RecentlyPlayedSection.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RecentlyPlayedSection.xaml.cs",
+      "summary": "Code-behind for RecentlyPlayedSection, loading recently played items from ISpotifyRecentlyPlayedService and binding them to a content card shelf.",
+      "tags": [
+        "component",
+        "recently-played",
+        "service"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/RecentlyPlayedSection.xaml.cs:RecentlyPlayedSection",
+      "type": "class",
+      "name": "RecentlyPlayedSection",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RecentlyPlayedSection.xaml.cs",
+      "lineRange": [
+        9,
+        108
+      ],
+      "summary": "UserControl that fetches and displays the recently played shelf, lazily loading data on first visual-tree attachment.",
+      "tags": [
+        "component",
+        "recently-played"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Reorder/ReorderDropIndicator.cs",
+      "type": "file",
+      "name": "ReorderDropIndicator.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Reorder/ReorderDropIndicator.cs",
+      "summary": "Visual drop-indicator control shown during drag-reorder operations in list views, rendering an insertion line at the target position.",
+      "tags": [
+        "component",
+        "drag-drop",
+        "reorder"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Reorder/ReorderDropIndicator.cs:ReorderDropIndicator",
+      "type": "class",
+      "name": "ReorderDropIndicator",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Reorder/ReorderDropIndicator.cs",
+      "lineRange": [
+        23,
+        151
+      ],
+      "summary": "Custom control rendering a highlighted insertion line for drag-and-drop reorder operations, with animated visibility transitions.",
+      "tags": [
+        "component",
+        "drag-drop",
+        "reorder"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml",
+      "type": "file",
+      "name": "RhythmBreakBanner.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml",
+      "summary": "XAML layout for the RhythmBreak banner shown for live/radio tracks, featuring a pulsing live indicator and track meta.",
+      "tags": [
+        "component",
+        "xaml",
+        "live-radio",
+        "playback"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs",
+      "type": "file",
+      "name": "RhythmBreakBanner.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs",
+      "summary": "Code-behind for RhythmBreakBanner: drives a pulse animation on the live indicator via Composition scale animations and starts/stops it based on IsLive state.",
+      "tags": [
+        "component",
+        "live-radio",
+        "composition",
+        "animation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs:RhythmBreakBanner",
+      "type": "class",
+      "name": "RhythmBreakBanner",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs",
+      "lineRange": [
+        24,
+        245
+      ],
+      "summary": "UserControl for a live-radio event banner with Composition-driven pulse animation on the live badge and dependency properties for track title, artist, and live state.",
+      "tags": [
+        "component",
+        "live-radio",
+        "composition"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs:StartPulse",
+      "type": "function",
+      "name": "StartPulse",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs",
+      "lineRange": [
+        134,
+        167
+      ],
+      "summary": "Creates and starts a looping Composition scale animation on the live indicator dot to produce a pulsing live effect.",
+      "tags": [
+        "animation",
+        "composition",
+        "live-radio"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs:StopPulse",
+      "type": "function",
+      "name": "StopPulse",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs",
+      "lineRange": [
+        169,
+        184
+      ],
+      "summary": "Stops all Composition animations on the live indicator and resets the scale to resting state.",
+      "tags": [
+        "animation",
+        "composition",
+        "live-radio"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs",
+      "type": "file",
+      "name": "BackgroundOverlayCompositionBehavior.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs",
+      "summary": "Attached Behavior that applies a GPU Composition background color overlay and a tab-content edge-fade to the right-panel host, transitioning colors smoothly when the active tab or track changes.",
+      "tags": [
+        "component",
+        "composition",
+        "right-panel",
+        "behavior"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Uses Windows.UI.Composition SpriteVisual with ColorBrush and mask-based InsetClip for the edge-fade overlay; all color transitions are ExpressionAnimation-driven for GPU-resident smoothness."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs:BackgroundOverlayCompositionBehavior",
+      "type": "class",
+      "name": "BackgroundOverlayCompositionBehavior",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs",
+      "lineRange": [
+        46,
+        447
+      ],
+      "summary": "Behavior class attaching GPU Composition overlays to the right panel, providing background color tinting driven by current track artwork and a content-edge fade for tab transitions.",
+      "tags": [
+        "component",
+        "composition",
+        "right-panel",
+        "behavior"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs:EnsureBackgroundOverlayComposition",
+      "type": "function",
+      "name": "EnsureBackgroundOverlayComposition",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs",
+      "lineRange": [
+        234,
+        320
+      ],
+      "summary": "Creates or recreates the SpriteVisual for the background overlay, wiring up size binding and color animation to the host element.",
+      "tags": [
+        "composition",
+        "right-panel",
+        "animation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs:EnsureTabContentFadeComposition",
+      "type": "function",
+      "name": "EnsureTabContentFadeComposition",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs",
+      "lineRange": [
+        365,
+        413
+      ],
+      "summary": "Creates the edge-fade mask composition on the tab content area to produce a soft fade-out at the bottom of the right panel.",
+      "tags": [
+        "composition",
+        "right-panel",
+        "animation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs:ApplyState",
+      "type": "function",
+      "name": "ApplyState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs",
+      "lineRange": [
+        171,
+        200
+      ],
+      "summary": "Applies the current overlay state (colors, visibility) to the Composition visuals, interpolating between previous and new accent colors.",
+      "tags": [
+        "composition",
+        "right-panel",
+        "animation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml",
+      "type": "file",
+      "name": "DetailsTabHost.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml",
+      "summary": "XAML layout (~798 lines) for the right-panel details tab host, combining lyrics, canvas art, AI meaning, podcast chapters, comments, and episode metadata tabs into a single scrollable pane.",
+      "tags": [
+        "component",
+        "xaml",
+        "right-panel",
+        "details"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "type": "file",
+      "name": "DetailsTabHost.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "summary": "Code-behind for DetailsTabHost (~2922 lines): orchestrates the right-panel detail view for tracks, podcasts, and canvas art; manages lyrics scrolling, AI meaning requests, canvas video playback, podcast chapters/comments, and an on-device Phi Silica lyrics analysis pipeline.",
+      "tags": [
+        "component",
+        "right-panel",
+        "details",
+        "lyrics",
+        "ai"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:DetailsTabHost",
+      "type": "class",
+      "name": "DetailsTabHost",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "lineRange": [
+        79,
+        2922
+      ],
+      "summary": "Large UserControl acting as the right-panel details host: renders synced lyrics, Spotify Canvas video, AI-generated song meaning (Phi Silica), podcast chapters and comments, and episode metadata, switching content reactively as playback state changes.",
+      "tags": [
+        "component",
+        "right-panel",
+        "details",
+        "lyrics",
+        "ai"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:InitializeDetails",
+      "type": "function",
+      "name": "InitializeDetails",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "lineRange": [
+        289,
+        313
+      ],
+      "summary": "Wires up event subscriptions and fetches initial state when the details host is loaded and a playback context is available.",
+      "tags": [
+        "component",
+        "right-panel",
+        "details"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:TeardownDetails",
+      "type": "function",
+      "name": "TeardownDetails",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "lineRange": [
+        319,
+        348
+      ],
+      "summary": "Unsubscribes all event handlers and releases composition resources when the details host is unloaded or the track context changes.",
+      "tags": [
+        "component",
+        "right-panel",
+        "details"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:UpdateDetailsContent",
+      "type": "function",
+      "name": "UpdateDetailsContent",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "lineRange": [
+        549,
+        630
+      ],
+      "summary": "Switches the details pane content between track, podcast, and local-media detail views in response to playback state changes.",
+      "tags": [
+        "component",
+        "right-panel",
+        "details"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:UpdatePodcastDetailsContent",
+      "type": "function",
+      "name": "UpdatePodcastDetailsContent",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "lineRange": [
+        632,
+        691
+      ],
+      "summary": "Populates the podcast detail section with episode metadata, chapters, and comments when a podcast episode becomes active.",
+      "tags": [
+        "component",
+        "right-panel",
+        "podcast"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:SyncDetailsAiMeaningForCurrentTrack",
+      "type": "function",
+      "name": "SyncDetailsAiMeaningForCurrentTrack",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "lineRange": [
+        1220,
+        1250
+      ],
+      "summary": "Initiates or cancels an on-device Phi Silica AI meaning request for the current track, throttled to avoid re-running on rapid track changes.",
+      "tags": [
+        "ai",
+        "right-panel",
+        "lyrics"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:RenderDetailsAiMeaningWithCitations",
+      "type": "function",
+      "name": "RenderDetailsAiMeaningWithCitations",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "lineRange": [
+        1337,
+        1382
+      ],
+      "summary": "Renders AI-generated song meaning text with inline citation links as a rich XAML inline collection.",
+      "tags": [
+        "ai",
+        "right-panel",
+        "lyrics"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:BuildCanvasLyricPresentation",
+      "type": "function",
+      "name": "BuildCanvasLyricPresentation",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "lineRange": [
+        1692,
+        1779
+      ],
+      "summary": "Constructs a composition surface for rendering per-line lyric text over the Spotify Canvas video background.",
+      "tags": [
+        "composition",
+        "lyrics",
+        "right-panel"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:RenderCanvasLyricSurface",
+      "type": "function",
+      "name": "RenderCanvasLyricSurface",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "lineRange": [
+        1781,
+        1852
+      ],
+      "summary": "Draws the current lyric line onto a CanvasDrawingSession using Win2D, scaling the text to fit the canvas surface dimensions.",
+      "tags": [
+        "composition",
+        "lyrics",
+        "right-panel",
+        "win2d"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:UpdatePodcastChaptersSource",
+      "type": "function",
+      "name": "UpdatePodcastChaptersSource",
+      "filePath": "src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "lineRange": [
+        815,
+        874
+      ],
+      "summary": "Fetches and binds podcast chapter data from the SpClient, computing chapter durations and current chapter highlight state.",
+      "tags": [
+        "component",
+        "right-panel",
+        "podcast"
+      ],
+      "complexity": "complex"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playlist/PlaylistShyPill.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playlist/PlaylistShyPill.xaml.cs:PlaylistShyPill",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playlist/PlaylistShyPill.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playlist/PlaylistShyPill.xaml.cs:PlaylistShyPill",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PodcastBrowse/PodcastBrowseSectionTemplateSelector.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PodcastBrowse/PodcastBrowseSectionTemplateSelector.cs:PodcastBrowseSectionTemplateSelector",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PodcastBrowse/PodcastBrowseSectionTemplateSelector.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PodcastBrowse/PodcastBrowseSectionTemplateSelector.cs:PodcastBrowseSectionTemplateSelector",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs:QueueDisplayItem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs:QueueDisplayItem",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs:QueueControl",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Queue/QueueControl.xaml.cs:QueueControl",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RecentlyPlayedSection.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RecentlyPlayedSection.xaml.cs:RecentlyPlayedSection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RecentlyPlayedSection.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RecentlyPlayedSection.xaml.cs:RecentlyPlayedSection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Reorder/ReorderDropIndicator.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Reorder/ReorderDropIndicator.cs:ReorderDropIndicator",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Reorder/ReorderDropIndicator.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Reorder/ReorderDropIndicator.cs:ReorderDropIndicator",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs:RhythmBreakBanner",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs:RhythmBreakBanner",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs:StartPulse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RhythmBreakBanner.xaml.cs:StopPulse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs:BackgroundOverlayCompositionBehavior",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs:BackgroundOverlayCompositionBehavior",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs:EnsureBackgroundOverlayComposition",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs:EnsureTabContentFadeComposition",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/BackgroundOverlayCompositionBehavior.cs:ApplyState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:DetailsTabHost",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:DetailsTabHost",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:InitializeDetails",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:TeardownDetails",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:UpdateDetailsContent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:UpdatePodcastDetailsContent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:SyncDetailsAiMeaningForCurrentTrack",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:RenderDetailsAiMeaningWithCitations",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:BuildCanvasLyricPresentation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:RenderCanvasLyricSurface",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/RightPanel/Details/DetailsTabHost.xaml.cs:UpdatePodcastChaptersSource",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    }
+  ]
+}

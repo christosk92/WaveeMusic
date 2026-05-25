@@ -1,0 +1,127 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 4,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": "src/Wavee/Protocol/Protos/played_state/episode_played_state.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 18,
+      "nonEmptyLines": 14,
+      "definitions": [
+        {
+          "name": "EpisodePlayState",
+          "kind": "message",
+          "fields": [
+            "time_left",
+            "is_playable",
+            "is_played",
+            "last_played_at",
+            "playability_restriction"
+          ],
+          "startLine": 12,
+          "endLine": 18
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 1,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/played_state/playability_restriction.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 17,
+      "nonEmptyLines": 14,
+      "definitions": [
+        {
+          "name": "PlayabilityRestriction",
+          "kind": "enum",
+          "fields": [
+            "UNKNOWN",
+            "NO_RESTRICTION",
+            "EXPLICIT_CONTENT",
+            "AGE_RESTRICTED",
+            "NOT_IN_CATALOGUE",
+            "NOT_AVAILABLE_OFFLINE"
+          ],
+          "startLine": 10,
+          "endLine": 17
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 1,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/played_state/show_played_state.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 29,
+      "nonEmptyLines": 23,
+      "definitions": [
+        {
+          "name": "ShowPlayState",
+          "kind": "message",
+          "fields": [
+            "latest_played_episode_link",
+            "played_time",
+            "is_playable",
+            "playability_restriction",
+            "label",
+            "played_percentage",
+            "resume_episode_link"
+          ],
+          "startLine": 13,
+          "endLine": 29
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 1,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/played_state/track_played_state.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 15,
+      "nonEmptyLines": 11,
+      "definitions": [
+        {
+          "name": "TrackPlayState",
+          "kind": "message",
+          "fields": [
+            "is_playable",
+            "playability_restriction"
+          ],
+          "startLine": 12,
+          "endLine": 15
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 1,
+        "endpointCount": 0
+      }
+    }
+  ]
+}

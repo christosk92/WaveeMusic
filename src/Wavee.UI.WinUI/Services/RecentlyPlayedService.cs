@@ -369,17 +369,28 @@ public sealed class RecentlyPlayedService : IDisposable
             .OrderByDescending(s => s.Width ?? 0)
             .FirstOrDefault()?.Url;
 
-        var artistName = data.Artists?.Items?.FirstOrDefault()?.Profile?.Name;
+        var firstArtist = data.Artists?.Items?.FirstOrDefault();
+        var artistName = firstArtist?.Profile?.Name;
 
         return new HomeSectionItem
         {
             Uri = data.Uri ?? uri,
             Title = data.Name,
             Subtitle = artistName ?? "Album",
+            SubtitleNavigationTitle = artistName,
+            SubtitleNavigationUri = ArtistUriOrNull(firstArtist?.Uri),
             ImageUrl = imageUrl,
             ContentType = HomeContentType.Album,
             ColorHex = data.CoverArt?.ExtractedColors?.ColorDark?.Hex
         };
+    }
+
+    private static string? ArtistUriOrNull(string? uri)
+    {
+        return !string.IsNullOrWhiteSpace(uri)
+               && uri.StartsWith("spotify:artist:", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : null;
     }
 
     private static string GetFallbackTitle(string uri)

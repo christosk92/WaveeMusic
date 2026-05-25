@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Wavee.Core.Http;
 using Wavee.Core.Http.Pathfinder;
+using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Models.Settings;
 using Wavee.UI.Contracts;
 using Wavee.UI.Helpers;
@@ -155,7 +156,13 @@ public sealed partial class RightPanelView : UserControl
     private void OnPanelSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (SelectedMode == RightPanelMode.Lyrics)
+        {
             RequestThrottledCanvasLayout();
+            ScheduleCanvasLayoutSettledPass();
+        }
+
+        if (ShouldShowSharedLyricsCanvasBackground())
+            PulseSharedLyricsCanvasBackground();
 
         UpdateBackgroundChrome();
     }
@@ -537,10 +544,10 @@ public sealed partial class RightPanelView : UserControl
         _lyricsVm!.RefreshPaletteFromPlaybackColor();
         var status = _lyricsVm.WindowStatus;
         status.IsAdaptToEnvironment = true;
-        ConfigureSidebarLyricsBackground(status.LyricsBackgroundSettings);
+        ConfigureSidebarLyricsBackground(status.LyricsBackgroundSettings, ActualTheme);
 
         NowPlayingCanvas.LyricsWindowStatus = status;
-        var palette = _lyricsVm.CurrentPalette ?? status.WindowPalette;
+        var palette = ResolveSidebarCanvasPalette(_lyricsVm.CurrentPalette ?? status.WindowPalette);
         NowPlayingCanvas.SetNowPlayingPalette(palette);
         NowPlayingCanvas.Visibility = Visibility.Visible;
 
@@ -568,16 +575,46 @@ public sealed partial class RightPanelView : UserControl
            && DetailsContent.ActiveBackgroundMode == DetailsBackgroundMode.Canvas
            && DetailsContent.IsCanvasMediaVisible;
 
-    private static void ConfigureSidebarLyricsBackground(LyricsBackgroundSettings bg)
+    private void ConfigureSidebarLyricsBackground(LyricsBackgroundSettings bg, ElementTheme actualTheme)
     {
         bg.IsPureColorOverlayEnabled = true;
-        bg.PureColorOverlayOpacity = 78;
+        bg.PureColorOverlayOpacity = actualTheme == ElementTheme.Light ? 42 : 78;
         bg.IsFluidOverlayEnabled = false;
         bg.IsCoverOverlayEnabled = false;
         bg.IsSpectrumOverlayEnabled = false;
         bg.IsFogOverlayEnabled = false;
         bg.IsRaindropOverlayEnabled = false;
         bg.IsSnowFlakeOverlayEnabled = false;
+    }
+
+    private NowPlayingPalette ResolveSidebarCanvasPalette(NowPlayingPalette palette)
+    {
+        if (ActualTheme != ElementTheme.Light)
+        {
+            palette.ThemeType = ElementTheme.Dark;
+            return palette;
+        }
+
+        var surface = RightPanelThemeResolver.GetPanelSurfaceColor(ActualTheme, _themeColors);
+        var tint = RightPanelThemeResolver.GetBackgroundTintColor(ActualTheme, _themeColors, _backgroundTintExtractedColor);
+        var textColor = RightPanelThemeResolver.ResolveThemeColor(
+            ActualTheme,
+            "TextFillColorPrimary",
+            Color.FromArgb(255, 32, 35, 39));
+
+        palette.NonCurrentLineFillColor = textColor;
+        palette.PlayedCurrentLineFillColor = textColor;
+        palette.UnplayedCurrentLineFillColor = textColor;
+        palette.PlayedTextStrokeColor = Microsoft.UI.Colors.Transparent;
+        palette.UnplayedTextStrokeColor = Microsoft.UI.Colors.Transparent;
+        palette.SpectrumColor = Color.FromArgb(112, tint.R, tint.G, tint.B);
+        palette.UnderlayColor = RightPanelThemeResolver.BlendColors(surface, tint, 0.08f);
+        palette.AccentColor1 = RightPanelThemeResolver.BlendColors(surface, tint, 0.20f);
+        palette.AccentColor2 = RightPanelThemeResolver.BlendColors(surface, tint, 0.14f);
+        palette.AccentColor3 = RightPanelThemeResolver.BlendColors(surface, tint, 0.10f);
+        palette.AccentColor4 = RightPanelThemeResolver.BlendColors(surface, tint, 0.06f);
+        palette.ThemeType = ElementTheme.Light;
+        return palette;
     }
 
     private void PulseSharedLyricsCanvasBackground()

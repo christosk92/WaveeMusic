@@ -1,0 +1,531 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs",
+      "type": "file",
+      "name": "SpotifyConnectDialog.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs",
+      "summary": "Code-behind for the Spotify Connect dialog, managing QR code visibility, connect code clipboard copy, and ViewModel property change reactions.",
+      "tags": [
+        "component",
+        "event-handler",
+        "spotify-connect",
+        "dialog"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs:SpotifyConnectDialog",
+      "type": "class",
+      "name": "SpotifyConnectDialog",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs",
+      "lineRange": [
+        11,
+        100
+      ],
+      "summary": "Class SpotifyConnectDialog (SpotifyConnectDialog.xaml.cs). Contains methods: SpotifyConnectDialog, OnUnloaded, OnLoaded, OnRequestClose and 4 more.",
+      "tags": [
+        "component",
+        "event-handler",
+        "spotify-connect",
+        "dialog"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs:OnLoaded",
+      "type": "function",
+      "name": "OnLoaded",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs",
+      "lineRange": [
+        29,
+        41
+      ],
+      "summary": "Function OnLoaded in SpotifyConnectDialog.xaml.cs (lines 29-41).",
+      "tags": [
+        "component",
+        "event-handler",
+        "spotify-connect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs:OnViewModelPropertyChanged",
+      "type": "function",
+      "name": "OnViewModelPropertyChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs",
+      "lineRange": [
+        48,
+        59
+      ],
+      "summary": "Function OnViewModelPropertyChanged in SpotifyConnectDialog.xaml.cs (lines 48-59).",
+      "tags": [
+        "component",
+        "event-handler",
+        "spotify-connect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs:CopyCode_Click",
+      "type": "function",
+      "name": "CopyCode_Click",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs",
+      "lineRange": [
+        81,
+        99
+      ],
+      "summary": "Function CopyCode_Click in SpotifyConnectDialog.xaml.cs (lines 81-99).",
+      "tags": [
+        "component",
+        "event-handler",
+        "spotify-connect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs",
+      "type": "file",
+      "name": "StackedAvatars.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/StackedAvatars.cs",
+      "summary": "Custom WinUI control rendering overlapping circular avatars for a list of collaborators, with configurable overlap, ring thickness, and overflow count badge.",
+      "tags": [
+        "component",
+        "custom-control",
+        "avatars",
+        "ui-layout"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs:StackedAvatars",
+      "type": "class",
+      "name": "StackedAvatars",
+      "filePath": "src/Wavee.UI.WinUI/Controls/StackedAvatars.cs",
+      "lineRange": [
+        23,
+        223
+      ],
+      "summary": "Class StackedAvatars (StackedAvatars.cs). Contains methods: StackedAvatars, OnItemsSourceChanged, OnLayoutPropertyChanged, OnSourceCollectionChanged and 2 more.",
+      "tags": [
+        "component",
+        "custom-control",
+        "avatars",
+        "ui-layout"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs:OnItemsSourceChanged",
+      "type": "function",
+      "name": "OnItemsSourceChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/StackedAvatars.cs",
+      "lineRange": [
+        98,
+        115
+      ],
+      "summary": "Function OnItemsSourceChanged in StackedAvatars.cs (lines 98-115).",
+      "tags": [
+        "component",
+        "custom-control",
+        "avatars"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs:Rebuild",
+      "type": "function",
+      "name": "Rebuild",
+      "filePath": "src/Wavee.UI.WinUI/Controls/StackedAvatars.cs",
+      "lineRange": [
+        124,
+        209
+      ],
+      "summary": "Function Rebuild in StackedAvatars.cs (lines 124-209).",
+      "tags": [
+        "component",
+        "custom-control",
+        "avatars"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs:Materialize",
+      "type": "function",
+      "name": "Materialize",
+      "filePath": "src/Wavee.UI.WinUI/Controls/StackedAvatars.cs",
+      "lineRange": [
+        211,
+        222
+      ],
+      "summary": "Function Materialize in StackedAvatars.cs (lines 211-222).",
+      "tags": [
+        "component",
+        "custom-control",
+        "avatars"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/TabBar/INavCacheSurfaceParticipant.cs",
+      "type": "file",
+      "name": "INavCacheSurfaceParticipant.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/INavCacheSurfaceParticipant.cs",
+      "summary": "Interface for controls that release and restore GPU composition surfaces when their parent tab is placed into the navigation cache.",
+      "tags": [
+        "type-definition",
+        "navigation-cache",
+        "memory-management",
+        "interface"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/TabBar/INavCacheSurfaceParticipant.cs:INavCacheSurfaceParticipant",
+      "type": "class",
+      "name": "INavCacheSurfaceParticipant",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/INavCacheSurfaceParticipant.cs",
+      "lineRange": [
+        24,
+        45
+      ],
+      "summary": "Class INavCacheSurfaceParticipant (INavCacheSurfaceParticipant.cs). Contains methods: ReleaseForNavCache, RestoreForNavCache.",
+      "tags": [
+        "type-definition",
+        "navigation-cache",
+        "memory-management",
+        "interface"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/TabBar/INavigationCacheMemoryParticipant.cs",
+      "type": "file",
+      "name": "INavigationCacheMemoryParticipant.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/INavigationCacheMemoryParticipant.cs",
+      "summary": "Interface for pages that perform multi-step memory trimming and restoration when their tab is deactivated in the navigation cache.",
+      "tags": [
+        "type-definition",
+        "navigation-cache",
+        "memory-management",
+        "interface"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/TabBar/INavigationCacheMemoryParticipant.cs:INavigationCacheMemoryParticipant",
+      "type": "class",
+      "name": "INavigationCacheMemoryParticipant",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/INavigationCacheMemoryParticipant.cs",
+      "lineRange": [
+        10,
+        40
+      ],
+      "summary": "Class INavigationCacheMemoryParticipant (INavigationCacheMemoryParticipant.cs). Contains methods: TrimForNavigationCache, RestoreFromNavigationCache, GetTrimMicroSteps.",
+      "tags": [
+        "type-definition",
+        "navigation-cache",
+        "memory-management",
+        "interface"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/TabBar/ITabBar.cs",
+      "type": "file",
+      "name": "ITabBar.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/ITabBar.cs",
+      "summary": "Contract for the TabBar host control exposing tab collection, selection state, and close/reopen operations.",
+      "tags": [
+        "type-definition",
+        "tab-bar",
+        "navigation",
+        "interface"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/TabBar/ITabBar.cs:ITabBar",
+      "type": "class",
+      "name": "ITabBar",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/ITabBar.cs",
+      "lineRange": [
+        7,
+        18
+      ],
+      "summary": "Class ITabBar (ITabBar.cs). Contains methods: CloseTab, ReopenClosedTabAsync.",
+      "tags": [
+        "type-definition",
+        "tab-bar",
+        "navigation",
+        "interface"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/TabBar/ITabBarItem.cs",
+      "type": "file",
+      "name": "ITabBarItem.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/ITabBarItem.cs",
+      "summary": "Interface defining the public surface of a single tab bar item: header, icon, tooltip, content host, and navigation parameter.",
+      "tags": [
+        "type-definition",
+        "tab-bar",
+        "navigation",
+        "interface"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/TabBar/ITabBarItemContent.cs",
+      "type": "file",
+      "name": "ITabBarItemContent.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/ITabBarItemContent.cs",
+      "summary": "Interface for page content hosted in a tab, enabling parameter-based navigation refresh and same-parameter reuse optimisation.",
+      "tags": [
+        "type-definition",
+        "tab-bar",
+        "navigation",
+        "interface"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/TabBar/ITabSleepParticipant.cs",
+      "type": "file",
+      "name": "ITabSleepParticipant.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/ITabSleepParticipant.cs",
+      "summary": "Interface for pages that capture and restore visual state across the tab Sleep and Wake lifecycle.",
+      "tags": [
+        "type-definition",
+        "tab-bar",
+        "lifecycle",
+        "interface"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/TabBar/ITabSleepParticipant.cs:ITabSleepParticipant",
+      "type": "class",
+      "name": "ITabSleepParticipant",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/ITabSleepParticipant.cs",
+      "lineRange": [
+        6,
+        10
+      ],
+      "summary": "Class ITabSleepParticipant (ITabSleepParticipant.cs). Contains methods: CaptureSleepState, RestoreSleepState.",
+      "tags": [
+        "type-definition",
+        "tab-bar",
+        "lifecycle",
+        "interface"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs",
+      "type": "file",
+      "name": "NavCacheSurfaces.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs",
+      "summary": "Static utility walking the visual tree to orchestrate INavCacheSurfaceParticipant GPU surface release and restore, and to sum estimated off-screen composition memory.",
+      "tags": [
+        "utility",
+        "navigation-cache",
+        "gpu-surface",
+        "memory-management"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs:NavCacheSurfaces",
+      "type": "class",
+      "name": "NavCacheSurfaces",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs",
+      "lineRange": [
+        20,
+        93
+      ],
+      "summary": "Class NavCacheSurfaces (NavCacheSurfaces.cs). Contains methods: VisitParticipants, ReleaseAll, RestoreAll, SumEstimatedBytes.",
+      "tags": [
+        "utility",
+        "navigation-cache",
+        "gpu-surface",
+        "memory-management"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs:VisitParticipants",
+      "type": "function",
+      "name": "VisitParticipants",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs",
+      "lineRange": [
+        27,
+        69
+      ],
+      "summary": "Function VisitParticipants in NavCacheSurfaces.cs (lines 27-69).",
+      "tags": [
+        "utility",
+        "navigation-cache",
+        "gpu-surface"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs:SpotifyConnectDialog",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs:SpotifyConnectDialog",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs:SpotifyConnectDialog",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs:OnLoaded",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs:SpotifyConnectDialog",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs:OnViewModelPropertyChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs:SpotifyConnectDialog",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml.cs:CopyCode_Click",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs:StackedAvatars",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs:StackedAvatars",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs:StackedAvatars",
+      "target": "function:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs:OnItemsSourceChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs:StackedAvatars",
+      "target": "function:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs:Rebuild",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs:StackedAvatars",
+      "target": "function:src/Wavee.UI.WinUI/Controls/StackedAvatars.cs:Materialize",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/INavCacheSurfaceParticipant.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/INavCacheSurfaceParticipant.cs:INavCacheSurfaceParticipant",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/INavCacheSurfaceParticipant.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/INavCacheSurfaceParticipant.cs:INavCacheSurfaceParticipant",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/INavigationCacheMemoryParticipant.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/INavigationCacheMemoryParticipant.cs:INavigationCacheMemoryParticipant",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/INavigationCacheMemoryParticipant.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/INavigationCacheMemoryParticipant.cs:INavigationCacheMemoryParticipant",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/ITabBar.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/ITabBar.cs:ITabBar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/ITabBar.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/ITabBar.cs:ITabBar",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/ITabSleepParticipant.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/ITabSleepParticipant.cs:ITabSleepParticipant",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/ITabSleepParticipant.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/ITabSleepParticipant.cs:ITabSleepParticipant",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs:NavCacheSurfaces",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs:NavCacheSurfaces",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs:NavCacheSurfaces",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs:VisitParticipants",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/NavCacheSurfaces.cs:VisitParticipants",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

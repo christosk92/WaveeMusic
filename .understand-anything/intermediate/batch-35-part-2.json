@@ -1,0 +1,1362 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml",
+      "type": "file",
+      "name": "ExpandedNowPlayingLayout.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml",
+      "summary": "XAML layout for the expanded now-playing panel used inside the sidebar player, including audio/video chrome areas, album art, metadata, seek bar, and player action controls.",
+      "tags": [
+        "component",
+        "ui-control",
+        "player",
+        "markup"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "type": "file",
+      "name": "ExpandedNowPlayingLayout.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "summary": "Code-behind for ExpandedNowPlayingLayout managing responsive audio/video sizing, video surface attachment/detachment, video takeover UX, heart/save state, seek callbacks, and composition-layer animations.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler",
+        "animation",
+        "video"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:ExpandedNowPlayingLayout",
+      "type": "class",
+      "name": "ExpandedNowPlayingLayout",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        1,
+        1006
+      ],
+      "summary": "Controls the expanded now-playing panel: orchestrates video surface ownership, theater mode, responsive layout scaling for audio art, animated metadata transitions, heart-state tracking, and video overlay auto-hide.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler",
+        "animation",
+        "video"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:OnLoaded",
+      "type": "function",
+      "name": "OnLoaded",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        99,
+        108
+      ],
+      "summary": "Handles OnLoaded logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:OnUnloaded",
+      "type": "function",
+      "name": "OnUnloaded",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        110,
+        126
+      ],
+      "summary": "Handles OnUnloaded logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:OnViewModelPropertyChanged",
+      "type": "function",
+      "name": "OnViewModelPropertyChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        164,
+        168
+      ],
+      "summary": "Handles OnViewModelPropertyChanged logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:SetVideoSurfaceEnabled",
+      "type": "function",
+      "name": "SetVideoSurfaceEnabled",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        220,
+        227
+      ],
+      "summary": "Handles SetVideoSurfaceEnabled logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:SetVideoPresentationMode",
+      "type": "function",
+      "name": "SetVideoPresentationMode",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        238,
+        245
+      ],
+      "summary": "Handles SetVideoPresentationMode logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:SetTheaterMode",
+      "type": "function",
+      "name": "SetTheaterMode",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        247,
+        255
+      ],
+      "summary": "Handles SetTheaterMode logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:OnActiveVideoSurfaceChanged",
+      "type": "function",
+      "name": "OnActiveVideoSurfaceChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        273,
+        278
+      ],
+      "summary": "Handles OnActiveVideoSurfaceChanged logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:UpdateVideoSurfaceOwnership",
+      "type": "function",
+      "name": "UpdateVideoSurfaceOwnership",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        314,
+        325
+      ],
+      "summary": "Handles UpdateVideoSurfaceOwnership logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:AttachSurface",
+      "type": "function",
+      "name": "AttachSurface",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        341,
+        359
+      ],
+      "summary": "Handles AttachSurface logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:DetachSurface",
+      "type": "function",
+      "name": "DetachSurface",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        375,
+        380
+      ],
+      "summary": "Handles DetachSurface logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:ApplyResponsiveAudioSizing",
+      "type": "function",
+      "name": "ApplyResponsiveAudioSizing",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        547,
+        599
+      ],
+      "summary": "Handles ApplyResponsiveAudioSizing logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:UpdateHeartStateAsync",
+      "type": "function",
+      "name": "UpdateHeartStateAsync",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        976,
+        987
+      ],
+      "summary": "Handles UpdateHeartStateAsync logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:UpdateVideoTakeoverSeenState",
+      "type": "function",
+      "name": "UpdateVideoTakeoverSeenState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        525,
+        545
+      ],
+      "summary": "Handles UpdateVideoTakeoverSeenState logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:ApplyVideoOverlayMode",
+      "type": "function",
+      "name": "ApplyVideoOverlayMode",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        833,
+        847
+      ],
+      "summary": "Handles ApplyVideoOverlayMode logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:FadeVideoOverlay",
+      "type": "function",
+      "name": "FadeVideoOverlay",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "lineRange": [
+        881,
+        901
+      ],
+      "summary": "Handles FadeVideoOverlay logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerContentMode.cs",
+      "type": "file",
+      "name": "ExpandedPlayerContentMode.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerContentMode.cs",
+      "summary": "Enum defining the content modes (Audio, Video, Lyrics, Queue) available in the expanded player view panel.",
+      "tags": [
+        "type-definition",
+        "enum",
+        "player",
+        "component"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml",
+      "type": "file",
+      "name": "ExpandedPlayerView.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml",
+      "summary": "XAML template for the full expanded player view, hosting the now-playing layout alongside optional lyrics canvas and queue panel in a responsive column layout.",
+      "tags": [
+        "component",
+        "player",
+        "ui-control",
+        "markup"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "type": "file",
+      "name": "ExpandedPlayerView.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "summary": "Code-behind for ExpandedPlayerView orchestrating mode switching (compact/focus/two-column), lyrics canvas lifecycle with color-palette tinting and timeline sync, queue panel integration, and responsive layout measurement passes.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler",
+        "animation",
+        "lyrics"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Manages both the lyrics NowPlayingCanvas and the video surface concurrently; uses DispatcherTimer for lyrics sync and tint animation loops."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:ExpandedPlayerView",
+      "type": "class",
+      "name": "ExpandedPlayerView",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        1,
+        1364
+      ],
+      "summary": "Full expanded player host controlling adaptive layout width, lyrics canvas initialization/teardown with color tinting, queue panel toggle, video surface coordination, and compact-header mode transitions.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler",
+        "animation",
+        "lyrics"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:OnLoaded",
+      "type": "function",
+      "name": "OnLoaded",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        118,
+        127
+      ],
+      "summary": "Handles OnLoaded logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:OnUnloaded",
+      "type": "function",
+      "name": "OnUnloaded",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        129,
+        136
+      ],
+      "summary": "Handles OnUnloaded logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:ReleaseHeavyResources",
+      "type": "function",
+      "name": "ReleaseHeavyResources",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        138,
+        195
+      ],
+      "summary": "Handles ReleaseHeavyResources logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:OnViewModelPropertyChanged",
+      "type": "function",
+      "name": "OnViewModelPropertyChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        247,
+        254
+      ],
+      "summary": "Handles OnViewModelPropertyChanged logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:ApplyMode",
+      "type": "function",
+      "name": "ApplyMode",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        363,
+        477
+      ],
+      "summary": "Handles ApplyMode logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:SyncContentHostWidth",
+      "type": "function",
+      "name": "SyncContentHostWidth",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        353,
+        361
+      ],
+      "summary": "Handles SyncContentHostWidth logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:UpdateLyricsConsumerActivity",
+      "type": "function",
+      "name": "UpdateLyricsConsumerActivity",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        669,
+        677
+      ],
+      "summary": "Handles UpdateLyricsConsumerActivity logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:EnsureLyricsCanvasRealized",
+      "type": "function",
+      "name": "EnsureLyricsCanvasRealized",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        729,
+        736
+      ],
+      "summary": "Handles EnsureLyricsCanvasRealized logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:InitializeLyricsCanvas",
+      "type": "function",
+      "name": "InitializeLyricsCanvas",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        751,
+        768
+      ],
+      "summary": "Handles InitializeLyricsCanvas logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:TeardownLyricsCanvas",
+      "type": "function",
+      "name": "TeardownLyricsCanvas",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        770,
+        800
+      ],
+      "summary": "Handles TeardownLyricsCanvas logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:ApplyCurrentLyricsState",
+      "type": "function",
+      "name": "ApplyCurrentLyricsState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        839,
+        875
+      ],
+      "summary": "Handles ApplyCurrentLyricsState logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:UpdateLyricsRenderState",
+      "type": "function",
+      "name": "UpdateLyricsRenderState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        877,
+        891
+      ],
+      "summary": "Handles UpdateLyricsRenderState logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:OnLyricsTimelineSyncTimerTick",
+      "type": "function",
+      "name": "OnLyricsTimelineSyncTimerTick",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        922,
+        935
+      ],
+      "summary": "Handles OnLyricsTimelineSyncTimerTick logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:ApplyCanvasSurfaceTint",
+      "type": "function",
+      "name": "ApplyCanvasSurfaceTint",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        1127,
+        1155
+      ],
+      "summary": "Handles ApplyCanvasSurfaceTint logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:AnimateAmbient",
+      "type": "function",
+      "name": "AnimateAmbient",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "lineRange": [
+        1322,
+        1342
+      ],
+      "summary": "Handles AnimateAmbient logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/LyricsAiPanel.xaml",
+      "type": "file",
+      "name": "LyricsAiPanel.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/LyricsAiPanel.xaml",
+      "summary": "XAML layout for the on-device AI lyrics panel, showing AI-generated lyric summaries or explanations in a collapsible card within the expanded player.",
+      "tags": [
+        "component",
+        "player",
+        "lyrics",
+        "markup"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/LyricsAiPanel.xaml.cs",
+      "type": "file",
+      "name": "LyricsAiPanel.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/LyricsAiPanel.xaml.cs",
+      "summary": "Code-behind for LyricsAiPanel managing animated card height transitions between compact and expanded states driven by the AI lyrics view model.",
+      "tags": [
+        "component",
+        "player",
+        "lyrics",
+        "animation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/SidebarPlayer/LyricsAiPanel.xaml.cs:LyricsAiPanel",
+      "type": "class",
+      "name": "LyricsAiPanel",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/LyricsAiPanel.xaml.cs",
+      "lineRange": [
+        1,
+        259
+      ],
+      "summary": "Animatable panel for the on-device AI lyrics feature; calculates compact/expanded card dimensions responsively and drives smooth height animations via CompositionAnimation.",
+      "tags": [
+        "component",
+        "player",
+        "lyrics",
+        "animation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml",
+      "type": "file",
+      "name": "SidebarPlayerWidget.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml",
+      "summary": "XAML template for the compact sidebar player widget showing album art, track metadata, seek bar, and transport controls in the sidebar gutter, with video surface support.",
+      "tags": [
+        "component",
+        "player",
+        "ui-control",
+        "markup"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "type": "file",
+      "name": "SidebarPlayerWidget.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "summary": "Code-behind for SidebarPlayerWidget managing video surface attachment, hover-reveal animations, album art tap navigation, heart/save state, end-of-context dismissal, and tint color application.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler",
+        "animation",
+        "video"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:SidebarPlayerWidget",
+      "type": "class",
+      "name": "SidebarPlayerWidget",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        1,
+        694
+      ],
+      "summary": "Compact sidebar player widget: coordinates video surface ownership with the expanded player, applies hover-reveal composition animations, handles transport control events, and routes album-art taps to album/context navigation.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler",
+        "animation",
+        "video"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:OnWidgetLoaded",
+      "type": "function",
+      "name": "OnWidgetLoaded",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        82,
+        93
+      ],
+      "summary": "Handles OnWidgetLoaded logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:OnWidgetUnloaded",
+      "type": "function",
+      "name": "OnWidgetUnloaded",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        95,
+        101
+      ],
+      "summary": "Handles OnWidgetUnloaded logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:OnViewModelPropertyChanged",
+      "type": "function",
+      "name": "OnViewModelPropertyChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        148,
+        158
+      ],
+      "summary": "Handles OnViewModelPropertyChanged logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:ApplyCollapseState",
+      "type": "function",
+      "name": "ApplyCollapseState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        174,
+        183
+      ],
+      "summary": "Handles ApplyCollapseState logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:SetFloatingVideoSurfaceEnabled",
+      "type": "function",
+      "name": "SetFloatingVideoSurfaceEnabled",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        216,
+        224
+      ],
+      "summary": "Handles SetFloatingVideoSurfaceEnabled logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:UpdateVideoSurfaceOwnership",
+      "type": "function",
+      "name": "UpdateVideoSurfaceOwnership",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        226,
+        238
+      ],
+      "summary": "Handles UpdateVideoSurfaceOwnership logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:ReleaseVideoSurfaceOwnership",
+      "type": "function",
+      "name": "ReleaseVideoSurfaceOwnership",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        240,
+        252
+      ],
+      "summary": "Handles ReleaseVideoSurfaceOwnership logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:AttachSurface",
+      "type": "function",
+      "name": "AttachSurface",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        365,
+        383
+      ],
+      "summary": "Handles AttachSurface logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:DetachSurface",
+      "type": "function",
+      "name": "DetachSurface",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        399,
+        404
+      ],
+      "summary": "Handles DetachSurface logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:ApplyHoverReveal",
+      "type": "function",
+      "name": "ApplyHoverReveal",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        312,
+        322
+      ],
+      "summary": "Handles ApplyHoverReveal logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:EnsureHoverAnimationsAttached",
+      "type": "function",
+      "name": "EnsureHoverAnimationsAttached",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        331,
+        350
+      ],
+      "summary": "Handles EnsureHoverAnimationsAttached logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:UpdateHeartStateAsync",
+      "type": "function",
+      "name": "UpdateHeartStateAsync",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        604,
+        615
+      ],
+      "summary": "Handles UpdateHeartStateAsync logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:ApplyTintColor",
+      "type": "function",
+      "name": "ApplyTintColor",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        638,
+        694
+      ],
+      "summary": "Handles ApplyTintColor logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:NavigateToAlbum",
+      "type": "function",
+      "name": "NavigateToAlbum",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "lineRange": [
+        485,
+        511
+      ],
+      "summary": "Handles NavigateToAlbum logic.",
+      "tags": [
+        "component",
+        "player",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Splash/BootSplash.xaml",
+      "type": "file",
+      "name": "BootSplash.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Splash/BootSplash.xaml",
+      "summary": "XAML template for the app boot splash screen shown during startup, with branding and a delayed loading ring.",
+      "tags": [
+        "component",
+        "ui-control",
+        "markup",
+        "entry-point"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Splash/BootSplash.xaml.cs",
+      "type": "file",
+      "name": "BootSplash.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Splash/BootSplash.xaml.cs",
+      "summary": "Code-behind for BootSplash showing a delayed progress ring and then fading out the splash screen once initialization completes.",
+      "tags": [
+        "component",
+        "ui-control",
+        "animation",
+        "entry-point"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Splash/BootSplash.xaml.cs:BootSplash",
+      "type": "class",
+      "name": "BootSplash",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Splash/BootSplash.xaml.cs",
+      "lineRange": [
+        1,
+        72
+      ],
+      "summary": "Startup splash control that delays the loading ring by a short interval, then fades out smoothly when the app initialization finishes.",
+      "tags": [
+        "component",
+        "ui-control",
+        "animation",
+        "entry-point"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml",
+      "type": "file",
+      "name": "SpotifyConnectDialog.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/SpotifyConnectDialog.xaml",
+      "summary": "XAML template for the Spotify Connect device-picker dialog, listing available remote playback devices with selection and transfer controls.",
+      "tags": [
+        "component",
+        "ui-control",
+        "markup",
+        "connect"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:ExpandedNowPlayingLayout",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:OnLoaded",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:OnUnloaded",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:OnViewModelPropertyChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:SetVideoSurfaceEnabled",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:SetVideoPresentationMode",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:SetTheaterMode",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:OnActiveVideoSurfaceChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:UpdateVideoSurfaceOwnership",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:AttachSurface",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:DetachSurface",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:ApplyResponsiveAudioSizing",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:UpdateHeartStateAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:UpdateVideoTakeoverSeenState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:ApplyVideoOverlayMode",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedNowPlayingLayout.xaml.cs:FadeVideoOverlay",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:ExpandedPlayerView",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:OnLoaded",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:OnUnloaded",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:ReleaseHeavyResources",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:OnViewModelPropertyChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:ApplyMode",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:SyncContentHostWidth",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:UpdateLyricsConsumerActivity",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:EnsureLyricsCanvasRealized",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:InitializeLyricsCanvas",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:TeardownLyricsCanvas",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:ApplyCurrentLyricsState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:UpdateLyricsRenderState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:OnLyricsTimelineSyncTimerTick",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:ApplyCanvasSurfaceTint",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/ExpandedPlayerView.xaml.cs:AnimateAmbient",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/LyricsAiPanel.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/SidebarPlayer/LyricsAiPanel.xaml.cs:LyricsAiPanel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:SidebarPlayerWidget",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:OnWidgetLoaded",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:OnWidgetUnloaded",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:OnViewModelPropertyChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:ApplyCollapseState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:SetFloatingVideoSurfaceEnabled",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:UpdateVideoSurfaceOwnership",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:ReleaseVideoSurfaceOwnership",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:AttachSurface",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:DetachSurface",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:ApplyHoverReveal",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:EnsureHoverAnimationsAttached",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:UpdateHeartStateAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:ApplyTintColor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/SidebarPlayer/SidebarPlayerWidget.xaml.cs:NavigateToAlbum",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Splash/BootSplash.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Splash/BootSplash.xaml.cs:BootSplash",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    }
+  ]
+}

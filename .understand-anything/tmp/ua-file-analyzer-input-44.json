@@ -1,0 +1,182 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/Services/DispatcherService.cs",
+      "language": "csharp",
+      "sizeLines": 21,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/Docking/DetachablePanel.cs",
+      "language": "csharp",
+      "sizeLines": 12,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/Docking/IPanelDockingService.cs",
+      "language": "csharp",
+      "sizeLines": 53,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/Docking/PanelDockingService.cs",
+      "language": "csharp",
+      "sizeLines": 290,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/DpapiTmdbTokenStore.cs",
+      "language": "csharp",
+      "sizeLines": 133,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/FeedbackService.cs",
+      "language": "csharp",
+      "sizeLines": 49,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/HeroSlideFactory.cs",
+      "language": "csharp",
+      "sizeLines": 91,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/HomeFeedCache.cs",
+      "language": "csharp",
+      "sizeLines": 515,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/HomeRawJsonHelper.cs",
+      "language": "csharp",
+      "sizeLines": 42,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/HomeResponseParserFactory.cs",
+      "language": "csharp",
+      "sizeLines": 120,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/HomeResponseParserV1.cs",
+      "language": "csharp",
+      "sizeLines": 528,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/HomeResponseParserV2.cs",
+      "language": "csharp",
+      "sizeLines": 955,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/IActiveVideoSurfaceService.cs",
+      "language": "csharp",
+      "sizeLines": 91,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/IHomeFeedCache.cs",
+      "language": "csharp",
+      "sizeLines": 31,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ImageCacheCleanupAdapter.cs",
+      "language": "csharp",
+      "sizeLines": 35,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ImageCacheService.cs",
+      "language": "csharp",
+      "sizeLines": 432,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ImageLoadingSuspension.cs",
+      "language": "csharp",
+      "sizeLines": 33,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/IMediaSurfaceConsumer.cs",
+      "language": "csharp",
+      "sizeLines": 49,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/InMemoryLoggerProvider.cs",
+      "language": "csharp",
+      "sizeLines": 133,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/INowPlayingPresentationService.cs",
+      "language": "csharp",
+      "sizeLines": 61,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/InPageFilterController.cs",
+      "language": "csharp",
+      "sizeLines": 114,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/IProfileCache.cs",
+      "language": "csharp",
+      "sizeLines": 21,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ISharedCardCanvasPreviewService.cs",
+      "language": "csharp",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ISpotifyVideoPlaybackDetails.cs",
+      "language": "csharp",
+      "sizeLines": 33,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/IUpdateService.cs",
+      "language": "csharp",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "src/Wavee.UI.WinUI/Services/DispatcherService.cs": [],
+    "src/Wavee.UI.WinUI/Services/Docking/DetachablePanel.cs": [],
+    "src/Wavee.UI.WinUI/Services/Docking/IPanelDockingService.cs": [],
+    "src/Wavee.UI.WinUI/Services/Docking/PanelDockingService.cs": [],
+    "src/Wavee.UI.WinUI/Services/DpapiTmdbTokenStore.cs": [],
+    "src/Wavee.UI.WinUI/Services/FeedbackService.cs": [],
+    "src/Wavee.UI.WinUI/Services/HeroSlideFactory.cs": [],
+    "src/Wavee.UI.WinUI/Services/HomeFeedCache.cs": [],
+    "src/Wavee.UI.WinUI/Services/HomeRawJsonHelper.cs": [],
+    "src/Wavee.UI.WinUI/Services/HomeResponseParserFactory.cs": [],
+    "src/Wavee.UI.WinUI/Services/HomeResponseParserV1.cs": [],
+    "src/Wavee.UI.WinUI/Services/HomeResponseParserV2.cs": [],
+    "src/Wavee.UI.WinUI/Services/IActiveVideoSurfaceService.cs": [],
+    "src/Wavee.UI.WinUI/Services/IHomeFeedCache.cs": [],
+    "src/Wavee.UI.WinUI/Services/ImageCacheCleanupAdapter.cs": [],
+    "src/Wavee.UI.WinUI/Services/ImageCacheService.cs": [],
+    "src/Wavee.UI.WinUI/Services/ImageLoadingSuspension.cs": [],
+    "src/Wavee.UI.WinUI/Services/IMediaSurfaceConsumer.cs": [],
+    "src/Wavee.UI.WinUI/Services/InMemoryLoggerProvider.cs": [],
+    "src/Wavee.UI.WinUI/Services/INowPlayingPresentationService.cs": [],
+    "src/Wavee.UI.WinUI/Services/InPageFilterController.cs": [],
+    "src/Wavee.UI.WinUI/Services/IProfileCache.cs": [],
+    "src/Wavee.UI.WinUI/Services/ISharedCardCanvasPreviewService.cs": [],
+    "src/Wavee.UI.WinUI/Services/ISpotifyVideoPlaybackDetails.cs": [],
+    "src/Wavee.UI.WinUI/Services/IUpdateService.cs": []
+  }
+}

@@ -312,7 +312,6 @@ public sealed partial class LibraryGridView : UserControl
     public LibraryGridView()
     {
         InitializeComponent();
-        ShimmerOverlay.ItemsSource = ShimmerPlaceholders;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         ItemsGridView.DoubleTapped += ItemsGridView_DoubleTapped;
@@ -395,7 +394,7 @@ public sealed partial class LibraryGridView : UserControl
 
         // Keep the shimmer aligned to the items layout so the placeholder silhouette
         // approximates the actual rendered rows/cards.
-        if (layout is UniformGridLayout uniform)
+        if (ShimmerOverlay != null && layout is UniformGridLayout uniform)
         {
             ShimmerOverlay.Layout = new UniformGridLayout
             {
@@ -406,7 +405,7 @@ public sealed partial class LibraryGridView : UserControl
                 ItemsStretch = uniform.ItemsStretch
             };
         }
-        else if (layout is StackLayout stack)
+        else if (ShimmerOverlay != null && layout is StackLayout stack)
         {
             ShimmerOverlay.Layout = new StackLayout
             {
@@ -445,10 +444,24 @@ public sealed partial class LibraryGridView : UserControl
         return null;
     }
 
+    private void ShimmerOverlay_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is ItemsRepeater repeater)
+            repeater.ItemsSource = ShimmerPlaceholders;
+
+        ApplyViewMode();
+        ApplyLoadingVisualState(IsLoading);
+    }
+
+    private void DetailLoadingOverlay_Loaded(object sender, RoutedEventArgs e)
+        => ApplyLoadingVisualState(IsLoading);
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (_observedItemsSource is null)
             AttachItemsSourceCollectionChanged(ItemsSource);
+
+        ApplyLoadingVisualState(IsLoading);
 
         // Sync selection when control is loaded (important for page cache restoration)
         SyncSelectionToItemsView();
@@ -533,9 +546,20 @@ public sealed partial class LibraryGridView : UserControl
     {
         if (d is LibraryGridView control && e.NewValue is bool loading)
         {
-            control.ShimmerOverlay.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
-            control.ItemsGridView.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+            control.ApplyLoadingVisualState(loading);
         }
+    }
+
+    private void ApplyLoadingVisualState(bool loading)
+    {
+        if (ShimmerOverlay != null)
+            ShimmerOverlay.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+
+        if (ItemsGridView != null)
+            ItemsGridView.Visibility = loading ? Visibility.Collapsed : Visibility.Visible;
+
+        if (DetailLoadingOverlay != null)
+            DetailLoadingOverlay.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static void OnSelectedItemChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

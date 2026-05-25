@@ -178,7 +178,7 @@ public static class TrackBehavior
     /// is found. Cheap because the tree is shallow (a few dozen elements
     /// at most) and the check short-circuits on first hit.
     /// </summary>
-    private static bool IsSingleTapPlayDisabledForElement(DependencyObject? from)
+    internal static bool IsSingleTapPlayDisabledForElement(DependencyObject? from)
     {
         for (var node = from; node is not null; node = VisualTreeHelper.GetParent(node))
         {

@@ -1,0 +1,326 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 5,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": ".dockerignore",
+      "language": "unknown",
+      "fileCategory": "infra",
+      "totalLines": 25,
+      "nonEmptyLines": 25,
+      "metrics": {}
+    },
+    {
+      "path": "AGENTS.md",
+      "language": "markdown",
+      "fileCategory": "docs",
+      "totalLines": 120,
+      "nonEmptyLines": 104,
+      "sections": [
+        {
+          "heading": "Wavee Agent Docs",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "Index",
+          "level": 2,
+          "line": 8
+        },
+        {
+          "heading": "How To Add A New Component Guide",
+          "level": 2,
+          "line": 46
+        },
+        {
+          "heading": "Protocol-isolation invariant",
+          "level": 2,
+          "line": 76
+        },
+        {
+          "heading": "How This Pairs With CLAUDE.md",
+          "level": 2,
+          "line": 114
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "sectionCount": 5
+      }
+    },
+    {
+      "path": "CLAUDE.md",
+      "language": "markdown",
+      "fileCategory": "docs",
+      "totalLines": 238,
+      "nonEmptyLines": 168,
+      "sections": [
+        {
+          "heading": "Agent component docs",
+          "level": 2,
+          "line": 5
+        },
+        {
+          "heading": "Repository at a glance",
+          "level": 2,
+          "line": 20
+        },
+        {
+          "heading": "Common commands",
+          "level": 2,
+          "line": 37
+        },
+        {
+          "heading": "High-level architecture",
+          "level": 2,
+          "line": 73
+        },
+        {
+          "heading": "Process model",
+          "level": 3,
+          "line": 75
+        },
+        {
+          "heading": "Why a separate audio process",
+          "level": 3,
+          "line": 87
+        },
+        {
+          "heading": "IPC contract",
+          "level": 3,
+          "line": 93
+        },
+        {
+          "heading": "Project layering",
+          "level": 3,
+          "line": 103
+        },
+        {
+          "heading": "Core library entry point — `Session`",
+          "level": 3,
+          "line": 120
+        },
+        {
+          "heading": "WinUI app composition",
+          "level": 3,
+          "line": 126
+        },
+        {
+          "heading": "Spotify Connect / Dealer",
+          "level": 3,
+          "line": 130
+        },
+        {
+          "heading": "Telemetry (gabo events)",
+          "level": 3,
+          "line": 134
+        },
+        {
+          "heading": "AOT / trimming",
+          "level": 3,
+          "line": 140
+        },
+        {
+          "heading": "What's excluded from the public source tree (proprietary)",
+          "level": 2,
+          "line": 146
+        },
+        {
+          "heading": "Audio runtime support pack provisioning",
+          "level": 2,
+          "line": 159
+        },
+        {
+          "heading": "Custom MSBuild targets to be aware of",
+          "level": 2,
+          "line": 202
+        },
+        {
+          "heading": "On-device AI (Phi Silica)",
+          "level": 2,
+          "line": 211
+        },
+        {
+          "heading": "Testing",
+          "level": 2,
+          "line": 221
+        },
+        {
+          "heading": "Conventions worth knowing",
+          "level": 2,
+          "line": 231
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "sectionCount": 19
+      }
+    },
+    {
+      "path": "README.md",
+      "language": "markdown",
+      "fileCategory": "docs",
+      "totalLines": 237,
+      "nonEmptyLines": 181,
+      "sections": [
+        {
+          "heading": "Big todo issues",
+          "level": 2,
+          "line": 11
+        },
+        {
+          "heading": "What it is",
+          "level": 2,
+          "line": 16
+        },
+        {
+          "heading": "Features",
+          "level": 2,
+          "line": 22
+        },
+        {
+          "heading": "Desktop app",
+          "level": 3,
+          "line": 24
+        },
+        {
+          "heading": "Coming soon after the initial beta release",
+          "level": 3,
+          "line": 34
+        },
+        {
+          "heading": "Spotify Connect",
+          "level": 3,
+          "line": 40
+        },
+        {
+          "heading": "Audio",
+          "level": 3,
+          "line": 46
+        },
+        {
+          "heading": "Diagnostics and tooling",
+          "level": 3,
+          "line": 53
+        },
+        {
+          "heading": "Authentication",
+          "level": 3,
+          "line": 58
+        },
+        {
+          "heading": "Architecture highlights",
+          "level": 3,
+          "line": 62
+        },
+        {
+          "heading": "Screenshots",
+          "level": 2,
+          "line": 67
+        },
+        {
+          "heading": "Quick start",
+          "level": 2,
+          "line": 87
+        },
+        {
+          "heading": "Prerequisites",
+          "level": 3,
+          "line": 89
+        },
+        {
+          "heading": "Run the desktop app",
+          "level": 3,
+          "line": 94
+        },
+        {
+          "heading": "Run the console app",
+          "level": 3,
+          "line": 102
+        },
+        {
+          "heading": "Project structure",
+          "level": 2,
+          "line": 108
+        },
+        {
+          "heading": "Building",
+          "level": 2,
+          "line": 142
+        },
+        {
+          "heading": "Technology stack",
+          "level": 2,
+          "line": 157
+        },
+        {
+          "heading": "Gabo events (telemetry)",
+          "level": 2,
+          "line": 172
+        },
+        {
+          "heading": "Events sent — playback only",
+          "level": 3,
+          "line": 178
+        },
+        {
+          "heading": "Events Wavee deliberately does NOT send",
+          "level": 3,
+          "line": 190
+        },
+        {
+          "heading": "How it's wired",
+          "level": 3,
+          "line": 200
+        },
+        {
+          "heading": "Mimicry of the desktop client (anti-fraud avoidance)",
+          "level": 3,
+          "line": 209
+        },
+        {
+          "heading": "What's NOT in this repo (proprietary)",
+          "level": 2,
+          "line": 213
+        },
+        {
+          "heading": "License",
+          "level": 2,
+          "line": 227
+        },
+        {
+          "heading": "Disclaimer",
+          "level": 2,
+          "line": 231
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "sectionCount": 26
+      }
+    },
+    {
+      "path": "decode_gabo.sh",
+      "language": "shell",
+      "fileCategory": "script",
+      "totalLines": 35,
+      "nonEmptyLines": 28,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    }
+  ]
+}

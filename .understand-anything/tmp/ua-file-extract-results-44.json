@@ -1,0 +1,6172 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 25,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": "src/Wavee.UI.WinUI/Services/DispatcherService.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 22,
+      "nonEmptyLines": 17,
+      "functions": [
+        {
+          "name": "DispatcherService",
+          "startLine": 12,
+          "endLine": 15,
+          "params": [
+            "dispatcherQueue"
+          ]
+        },
+        {
+          "name": "TryEnqueue",
+          "startLine": 17,
+          "endLine": 18,
+          "params": [
+            "action"
+          ]
+        },
+        {
+          "name": "TryEnqueue",
+          "startLine": 20,
+          "endLine": 21,
+          "params": [
+            "priority",
+            "action"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "DispatcherService",
+          "startLine": 8,
+          "endLine": 22,
+          "methods": [
+            "DispatcherService",
+            "TryEnqueue",
+            "TryEnqueue"
+          ],
+          "properties": [
+            "_dispatcherQueue"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "DispatcherService",
+          "line": 12,
+          "isDefault": false
+        },
+        {
+          "name": "TryEnqueue",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "TryEnqueue",
+          "line": 20,
+          "isDefault": false
+        },
+        {
+          "name": "DispatcherService",
+          "line": 8,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "TryEnqueue",
+          "callee": "_dispatcherQueue.TryEnqueue",
+          "lineNumber": 18
+        },
+        {
+          "caller": "TryEnqueue",
+          "callee": "action",
+          "lineNumber": 18
+        },
+        {
+          "caller": "TryEnqueue",
+          "callee": "_dispatcherQueue.TryEnqueue",
+          "lineNumber": 21
+        },
+        {
+          "caller": "TryEnqueue",
+          "callee": "action",
+          "lineNumber": 21
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 3,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/Docking/DetachablePanel.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 13,
+      "nonEmptyLines": 12,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/Docking/IPanelDockingService.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 54,
+      "nonEmptyLines": 45,
+      "classes": [
+        {
+          "name": "IPanelDockingService",
+          "startLine": 16,
+          "endLine": 54,
+          "methods": [
+            "GetWindowFor",
+            "Detach",
+            "Dock",
+            "HandleFloatingClose",
+            "NotifyFloatingGeometryChanged",
+            "RehydrateAsync"
+          ],
+          "properties": [
+            "IsPlayerDetached",
+            "IsRightPanelDetached"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IPanelDockingService",
+          "line": 16,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/Docking/PanelDockingService.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 291,
+      "nonEmptyLines": 266,
+      "functions": [
+        {
+          "name": "PanelDockingService",
+          "startLine": 37,
+          "endLine": 44,
+          "params": [
+            "shellSession",
+            "logger"
+          ]
+        },
+        {
+          "name": "GetWindowFor",
+          "startLine": 46,
+          "endLine": 51,
+          "params": [
+            "panel"
+          ]
+        },
+        {
+          "name": "Detach",
+          "startLine": 53,
+          "endLine": 73,
+          "params": [
+            "panel",
+            "spawnAt"
+          ]
+        },
+        {
+          "name": "Dock",
+          "startLine": 75,
+          "endLine": 97,
+          "params": [
+            "panel"
+          ]
+        },
+        {
+          "name": "HandleFloatingClose",
+          "startLine": 99,
+          "endLine": 99,
+          "params": [
+            "panel"
+          ]
+        },
+        {
+          "name": "NotifyFloatingGeometryChanged",
+          "startLine": 101,
+          "endLine": 131,
+          "params": [
+            "panel"
+          ]
+        },
+        {
+          "name": "RehydrateAsync",
+          "startLine": 133,
+          "endLine": 181,
+          "params": []
+        },
+        {
+          "name": "PersistDetached",
+          "startLine": 185,
+          "endLine": 195,
+          "params": [
+            "panel",
+            "detached"
+          ]
+        },
+        {
+          "name": "CreatePlayerWindow",
+          "startLine": 197,
+          "endLine": 207,
+          "params": [
+            "spawnAt",
+            "size"
+          ]
+        },
+        {
+          "name": "CreateRightPanelWindow",
+          "startLine": 209,
+          "endLine": 218,
+          "params": [
+            "spawnAt",
+            "size"
+          ]
+        },
+        {
+          "name": "ApplyInitialPlacement",
+          "startLine": 220,
+          "endLine": 254,
+          "params": [
+            "window",
+            "spawnAt",
+            "size"
+          ]
+        },
+        {
+          "name": "ClampToVisibleMonitor",
+          "startLine": 262,
+          "endLine": 284,
+          "params": [
+            "pos",
+            "size"
+          ]
+        },
+        {
+          "name": "Activate",
+          "startLine": 286,
+          "endLine": 290,
+          "params": [
+            "window"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "PanelDockingService",
+          "startLine": 22,
+          "endLine": 291,
+          "methods": [
+            "PanelDockingService",
+            "GetWindowFor",
+            "Detach",
+            "Dock",
+            "HandleFloatingClose",
+            "NotifyFloatingGeometryChanged",
+            "RehydrateAsync",
+            "PersistDetached",
+            "CreatePlayerWindow",
+            "CreateRightPanelWindow",
+            "ApplyInitialPlacement",
+            "ClampToVisibleMonitor",
+            "Activate"
+          ],
+          "properties": [
+            "_shellSession",
+            "_uiDispatcher",
+            "_logger",
+            "_playerWindow",
+            "_rightPanelWindow",
+            "_isPlayerDetached",
+            "_isRightPanelDetached"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "PanelDockingService",
+          "line": 37,
+          "isDefault": false
+        },
+        {
+          "name": "GetWindowFor",
+          "line": 46,
+          "isDefault": false
+        },
+        {
+          "name": "Detach",
+          "line": 53,
+          "isDefault": false
+        },
+        {
+          "name": "Dock",
+          "line": 75,
+          "isDefault": false
+        },
+        {
+          "name": "HandleFloatingClose",
+          "line": 99,
+          "isDefault": false
+        },
+        {
+          "name": "NotifyFloatingGeometryChanged",
+          "line": 101,
+          "isDefault": false
+        },
+        {
+          "name": "RehydrateAsync",
+          "line": 133,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "PanelDockingService",
+          "callee": "DispatcherQueue.GetForCurrentThread",
+          "lineNumber": 42
+        },
+        {
+          "caller": "Detach",
+          "callee": "Activate",
+          "lineNumber": 58
+        },
+        {
+          "caller": "Detach",
+          "callee": "CreatePlayerWindow",
+          "lineNumber": 59
+        },
+        {
+          "caller": "Detach",
+          "callee": "PersistDetached",
+          "lineNumber": 61
+        },
+        {
+          "caller": "Detach",
+          "callee": "Activate",
+          "lineNumber": 62
+        },
+        {
+          "caller": "Detach",
+          "callee": "Activate",
+          "lineNumber": 66
+        },
+        {
+          "caller": "Detach",
+          "callee": "CreateRightPanelWindow",
+          "lineNumber": 67
+        },
+        {
+          "caller": "Detach",
+          "callee": "PersistDetached",
+          "lineNumber": 69
+        },
+        {
+          "caller": "Detach",
+          "callee": "Activate",
+          "lineNumber": 70
+        },
+        {
+          "caller": "Dock",
+          "callee": "PersistDetached",
+          "lineNumber": 84
+        },
+        {
+          "caller": "Dock",
+          "callee": "pw.RequestClose",
+          "lineNumber": 85
+        },
+        {
+          "caller": "Dock",
+          "callee": "PersistDetached",
+          "lineNumber": 93
+        },
+        {
+          "caller": "Dock",
+          "callee": "rw.RequestClose",
+          "lineNumber": 94
+        },
+        {
+          "caller": "HandleFloatingClose",
+          "callee": "Dock",
+          "lineNumber": 99
+        },
+        {
+          "caller": "NotifyFloatingGeometryChanged",
+          "callee": "_shellSession.UpdateLayout",
+          "lineNumber": 113
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "new TaskCompletionSource",
+          "lineNumber": 137
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "DispatcherQueue.GetForCurrentThread",
+          "lineNumber": 138
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "dispatch.TryEnqueue",
+          "lineNumber": 139
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "_shellSession.GetLayoutSnapshot",
+          "lineNumber": 143
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "_shellSession.UpdateLayout",
+          "lineNumber": 147
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "new SizeInt32",
+          "lineNumber": 148
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "ClampToVisibleMonitor",
+          "lineNumber": 151
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "new PointInt32",
+          "lineNumber": 152
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "CreatePlayerWindow",
+          "lineNumber": 156
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "Activate",
+          "lineNumber": 158
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "ClampToVisibleMonitor",
+          "lineNumber": 162
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "new PointInt32",
+          "lineNumber": 163
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "new SizeInt32",
+          "lineNumber": 164
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "CreateRightPanelWindow",
+          "lineNumber": 165
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "new SizeInt32",
+          "lineNumber": 165
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "Activate",
+          "lineNumber": 168
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 173
+        },
+        {
+          "caller": "RehydrateAsync",
+          "callee": "tcs.TrySetResult",
+          "lineNumber": 177
+        },
+        {
+          "caller": "PersistDetached",
+          "callee": "_shellSession.UpdateLayout",
+          "lineNumber": 187
+        },
+        {
+          "caller": "CreatePlayerWindow",
+          "callee": "_shellSession.UpdateLayout",
+          "lineNumber": 199
+        },
+        {
+          "caller": "CreatePlayerWindow",
+          "callee": "_shellSession.GetLayoutSnapshot",
+          "lineNumber": 200
+        },
+        {
+          "caller": "CreatePlayerWindow",
+          "callee": "new SizeInt32",
+          "lineNumber": 201
+        },
+        {
+          "caller": "CreatePlayerWindow",
+          "callee": "new PlayerFloatingWindow",
+          "lineNumber": 204
+        },
+        {
+          "caller": "CreatePlayerWindow",
+          "callee": "ApplyInitialPlacement",
+          "lineNumber": 205
+        },
+        {
+          "caller": "CreateRightPanelWindow",
+          "callee": "_shellSession.GetLayoutSnapshot",
+          "lineNumber": 211
+        },
+        {
+          "caller": "CreateRightPanelWindow",
+          "callee": "new SizeInt32",
+          "lineNumber": 212
+        },
+        {
+          "caller": "CreateRightPanelWindow",
+          "callee": "new RightPanelFloatingWindow",
+          "lineNumber": 215
+        },
+        {
+          "caller": "CreateRightPanelWindow",
+          "callee": "ApplyInitialPlacement",
+          "lineNumber": 216
+        },
+        {
+          "caller": "ApplyInitialPlacement",
+          "callee": "appWindow.Resize",
+          "lineNumber": 228
+        },
+        {
+          "caller": "ApplyInitialPlacement",
+          "callee": "appWindow.Move",
+          "lineNumber": 232
+        },
+        {
+          "caller": "ApplyInitialPlacement",
+          "callee": "ClampToVisibleMonitor",
+          "lineNumber": 232
+        },
+        {
+          "caller": "ApplyInitialPlacement",
+          "callee": "appWindow.Move",
+          "lineNumber": 244
+        },
+        {
+          "caller": "ApplyInitialPlacement",
+          "callee": "new PointInt32",
+          "lineNumber": 244
+        },
+        {
+          "caller": "ClampToVisibleMonitor",
+          "callee": "DisplayArea.GetFromPoint",
+          "lineNumber": 266
+        },
+        {
+          "caller": "ClampToVisibleMonitor",
+          "callee": "Math.Max",
+          "lineNumber": 276
+        },
+        {
+          "caller": "ClampToVisibleMonitor",
+          "callee": "Math.Max",
+          "lineNumber": 277
+        },
+        {
+          "caller": "ClampToVisibleMonitor",
+          "callee": "new PointInt32",
+          "lineNumber": 278
+        },
+        {
+          "caller": "Activate",
+          "callee": "window.Activate",
+          "lineNumber": 288
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 7,
+        "functionCount": 13,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/DpapiTmdbTokenStore.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 134,
+      "nonEmptyLines": 122,
+      "functions": [
+        {
+          "name": "DpapiTmdbTokenStore",
+          "startLine": 34,
+          "endLine": 44,
+          "params": [
+            "logger"
+          ]
+        },
+        {
+          "name": "GetTokenAsync",
+          "startLine": 49,
+          "endLine": 91,
+          "params": [
+            "ct"
+          ]
+        },
+        {
+          "name": "SetTokenAsync",
+          "startLine": 93,
+          "endLine": 133,
+          "params": [
+            "token",
+            "ct"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "DpapiTmdbTokenStore",
+          "startLine": 23,
+          "endLine": 134,
+          "methods": [
+            "DpapiTmdbTokenStore",
+            "GetTokenAsync",
+            "SetTokenAsync"
+          ],
+          "properties": [
+            "FileName",
+            "_filePath",
+            "_logger",
+            "_gate",
+            "_changes",
+            "_hasToken",
+            "HasToken",
+            "HasTokenChanged"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "DpapiTmdbTokenStore",
+          "line": 34,
+          "isDefault": false
+        },
+        {
+          "name": "HasToken",
+          "line": 46,
+          "isDefault": false
+        },
+        {
+          "name": "HasTokenChanged",
+          "line": 47,
+          "isDefault": false
+        },
+        {
+          "name": "GetTokenAsync",
+          "line": 49,
+          "isDefault": false
+        },
+        {
+          "name": "SetTokenAsync",
+          "line": 93,
+          "isDefault": false
+        },
+        {
+          "name": "DpapiTmdbTokenStore",
+          "line": 23,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "DpapiTmdbTokenStore",
+          "callee": "Path.Combine",
+          "lineNumber": 37
+        },
+        {
+          "caller": "DpapiTmdbTokenStore",
+          "callee": "Directory.CreateDirectory",
+          "lineNumber": 38
+        },
+        {
+          "caller": "DpapiTmdbTokenStore",
+          "callee": "Path.Combine",
+          "lineNumber": 39
+        },
+        {
+          "caller": "DpapiTmdbTokenStore",
+          "callee": "File.Exists",
+          "lineNumber": 43
+        },
+        {
+          "caller": "GetTokenAsync",
+          "callee": "_gate.WaitAsync",
+          "lineNumber": 51
+        },
+        {
+          "caller": "GetTokenAsync",
+          "callee": "File.Exists",
+          "lineNumber": 54
+        },
+        {
+          "caller": "GetTokenAsync",
+          "callee": "_changes.OnNext",
+          "lineNumber": 56
+        },
+        {
+          "caller": "GetTokenAsync",
+          "callee": "File.ReadAllBytesAsync",
+          "lineNumber": 63
+        },
+        {
+          "caller": "GetTokenAsync",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 67
+        },
+        {
+          "caller": "GetTokenAsync",
+          "callee": "ProtectedData.Unprotect",
+          "lineNumber": 73
+        },
+        {
+          "caller": "GetTokenAsync",
+          "callee": "Encoding.UTF8.GetString",
+          "lineNumber": 74
+        },
+        {
+          "caller": "GetTokenAsync",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 81
+        },
+        {
+          "caller": "GetTokenAsync",
+          "callee": "File.Delete",
+          "lineNumber": 82
+        },
+        {
+          "caller": "GetTokenAsync",
+          "callee": "_changes.OnNext",
+          "lineNumber": 83
+        },
+        {
+          "caller": "GetTokenAsync",
+          "callee": "_gate.Release",
+          "lineNumber": 89
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "_gate.WaitAsync",
+          "lineNumber": 95
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 98
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "File.Exists",
+          "lineNumber": 100
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "File.Delete",
+          "lineNumber": 102
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 103
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "_changes.OnNext",
+          "lineNumber": 105
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "Encoding.UTF8.GetBytes",
+          "lineNumber": 109
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "token.Trim",
+          "lineNumber": 109
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "ProtectedData.Protect",
+          "lineNumber": 113
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "_logger?.LogError",
+          "lineNumber": 117
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "File.WriteAllBytesAsync",
+          "lineNumber": 124
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "File.Move",
+          "lineNumber": 125
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "_changes.OnNext",
+          "lineNumber": 127
+        },
+        {
+          "caller": "SetTokenAsync",
+          "callee": "_gate.Release",
+          "lineNumber": 131
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 6,
+        "functionCount": 3,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/FeedbackService.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 50,
+      "nonEmptyLines": 44,
+      "functions": [
+        {
+          "name": "FeedbackService",
+          "startLine": 17,
+          "endLine": 21,
+          "params": [
+            "httpClient",
+            "logger"
+          ]
+        },
+        {
+          "name": "SubmitAsync",
+          "startLine": 23,
+          "endLine": 49,
+          "params": [
+            "request",
+            "ct"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "FeedbackService",
+          "startLine": 12,
+          "endLine": 50,
+          "methods": [
+            "FeedbackService",
+            "SubmitAsync"
+          ],
+          "properties": [
+            "_httpClient",
+            "_logger"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "FeedbackService",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "SubmitAsync",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "FeedbackService",
+          "line": 12,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "SubmitAsync",
+          "callee": "_httpClient.PostAsJsonAsync",
+          "lineNumber": 27
+        },
+        {
+          "caller": "SubmitAsync",
+          "callee": "response.Content.ReadFromJsonAsync",
+          "lineNumber": 35
+        },
+        {
+          "caller": "SubmitAsync",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 37
+        },
+        {
+          "caller": "SubmitAsync",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 41
+        },
+        {
+          "caller": "SubmitAsync",
+          "callee": "_logger?.LogError",
+          "lineNumber": 46
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/HeroSlideFactory.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 92,
+      "nonEmptyLines": 87,
+      "functions": [
+        {
+          "name": "BuildSlide",
+          "startLine": 33,
+          "endLine": 62,
+          "params": [
+            "item",
+            "eyebrow",
+            "primaryCta",
+            "secondaryCta",
+            "primaryCommand",
+            "secondaryCommand",
+            "overrideAccent",
+            "useImageAsBackground"
+          ]
+        },
+        {
+          "name": "ParseAccentOrFallback",
+          "startLine": 68,
+          "endLine": 73,
+          "params": [
+            "hex"
+          ]
+        },
+        {
+          "name": "TryMakeImageUri",
+          "startLine": 81,
+          "endLine": 91,
+          "params": [
+            "raw"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "HeroSlideFactory",
+          "startLine": 19,
+          "endLine": 92,
+          "methods": [
+            "BuildSlide",
+            "ParseAccentOrFallback",
+            "TryMakeImageUri"
+          ],
+          "properties": [
+            "FallbackAccent"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "FallbackAccent",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "BuildSlide",
+          "line": 33,
+          "isDefault": false
+        },
+        {
+          "name": "ParseAccentOrFallback",
+          "line": 68,
+          "isDefault": false
+        },
+        {
+          "name": "TryMakeImageUri",
+          "line": 81,
+          "isDefault": false
+        },
+        {
+          "name": "HeroSlideFactory",
+          "line": 19,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "BuildSlide",
+          "callee": "new HeroCarouselItem",
+          "lineNumber": 44
+        },
+        {
+          "caller": "BuildSlide",
+          "callee": "Color.FromArgb",
+          "lineNumber": 50
+        },
+        {
+          "caller": "BuildSlide",
+          "callee": "TryMakeImageUri",
+          "lineNumber": 51
+        },
+        {
+          "caller": "BuildSlide",
+          "callee": "ParseAccentOrFallback",
+          "lineNumber": 52
+        },
+        {
+          "caller": "ParseAccentOrFallback",
+          "callee": "TintColorHelper.TryParseHex",
+          "lineNumber": 70
+        },
+        {
+          "caller": "TryMakeImageUri",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 83
+        },
+        {
+          "caller": "TryMakeImageUri",
+          "callee": "SpotifyImageHelper.ToHttpsUrl",
+          "lineNumber": 88
+        },
+        {
+          "caller": "TryMakeImageUri",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 89
+        },
+        {
+          "caller": "TryMakeImageUri",
+          "callee": "Uri.TryCreate",
+          "lineNumber": 90
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 5,
+        "functionCount": 3,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/HomeFeedCache.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 515,
+      "nonEmptyLines": 456,
+      "functions": [
+        {
+          "name": "HomeFeedCache",
+          "startLine": 31,
+          "endLine": 38,
+          "params": [
+            "homeFeedService",
+            "parserFactory",
+            "logger"
+          ]
+        },
+        {
+          "name": "FetchCoreAsync",
+          "startLine": 42,
+          "endLine": 60,
+          "params": [
+            "ct"
+          ]
+        },
+        {
+          "name": "MapChips",
+          "startLine": 62,
+          "endLine": 84,
+          "params": [
+            "apiChips"
+          ]
+        },
+        {
+          "name": "ApplyDiff",
+          "startLine": 92,
+          "endLine": 154,
+          "params": [
+            "current",
+            "fresh",
+            "onGreetingChanged",
+            "newGreeting",
+            "onAccentChanged"
+          ]
+        },
+        {
+          "name": "ApplyDiffChunkedAsync",
+          "startLine": 156,
+          "endLine": 227,
+          "params": [
+            "current",
+            "fresh",
+            "onGreetingChanged",
+            "newGreeting",
+            "onAccentChanged",
+            "sectionChunkSize"
+          ]
+        },
+        {
+          "name": "UpdateSectionInPlace",
+          "startLine": 229,
+          "endLine": 259,
+          "params": [
+            "target",
+            "source",
+            "onAccentChanged"
+          ]
+        },
+        {
+          "name": "DiffItems",
+          "startLine": 264,
+          "endLine": 338,
+          "params": [
+            "current",
+            "fresh"
+          ]
+        },
+        {
+          "name": "UpdateItemInPlace",
+          "startLine": 340,
+          "endLine": 377,
+          "params": [
+            "target",
+            "source"
+          ]
+        },
+        {
+          "name": "ShouldReplaceForContentType",
+          "startLine": 379,
+          "endLine": 392,
+          "params": [
+            "current",
+            "fresh"
+          ]
+        },
+        {
+          "name": "PreserveDisplayDataFromPreviousSnapshot",
+          "startLine": 394,
+          "endLine": 416,
+          "params": [
+            "freshSections",
+            "previousSections"
+          ]
+        },
+        {
+          "name": "FillMissingDisplayData",
+          "startLine": 418,
+          "endLine": 466,
+          "params": [
+            "target",
+            "source"
+          ]
+        },
+        {
+          "name": "RemoveUnrenderableItems",
+          "startLine": 468,
+          "endLine": 482,
+          "params": [
+            "sections"
+          ]
+        },
+        {
+          "name": "IsUnrenderable",
+          "startLine": 484,
+          "endLine": 499,
+          "params": [
+            "item"
+          ]
+        },
+        {
+          "name": "SetStringPreservingExisting",
+          "startLine": 501,
+          "endLine": 508,
+          "params": [
+            "current",
+            "next",
+            "set"
+          ]
+        },
+        {
+          "name": "SetMissingString",
+          "startLine": 510,
+          "endLine": 514,
+          "params": [
+            "current",
+            "fallback",
+            "set"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "HomeFeedCache",
+          "startLine": 23,
+          "endLine": 515,
+          "methods": [
+            "HomeFeedCache",
+            "FetchCoreAsync",
+            "MapChips",
+            "ApplyDiff",
+            "ApplyDiffChunkedAsync",
+            "UpdateSectionInPlace",
+            "DiffItems",
+            "UpdateItemInPlace",
+            "ShouldReplaceForContentType",
+            "PreserveDisplayDataFromPreviousSnapshot",
+            "FillMissingDisplayData",
+            "RemoveUnrenderableItems",
+            "IsUnrenderable",
+            "SetStringPreservingExisting",
+            "SetMissingString"
+          ],
+          "properties": [
+            "_parserFactory",
+            "_homeFeedService",
+            "CurrentFacet",
+            "IsAvailable"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "CurrentFacet",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "HomeFeedCache",
+          "line": 31,
+          "isDefault": false
+        },
+        {
+          "name": "ApplyDiff",
+          "line": 92,
+          "isDefault": false
+        },
+        {
+          "name": "ApplyDiffChunkedAsync",
+          "line": 156,
+          "isDefault": false
+        },
+        {
+          "name": "HomeFeedCache",
+          "line": 23,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "HomeFeedCache",
+          "callee": "new HomeResponseParserFactory",
+          "lineNumber": 37
+        },
+        {
+          "caller": "FetchCoreAsync",
+          "callee": "new InvalidOperationException",
+          "lineNumber": 45
+        },
+        {
+          "caller": "FetchCoreAsync",
+          "callee": "_homeFeedService.GetHomeAsync(sectionItemsLimit: 10, facet: CurrentFacet, ct: ct)\r\n            .ConfigureAwait",
+          "lineNumber": 47
+        },
+        {
+          "caller": "FetchCoreAsync",
+          "callee": "_homeFeedService.GetHomeAsync",
+          "lineNumber": 47
+        },
+        {
+          "caller": "FetchCoreAsync",
+          "callee": "new InvalidOperationException",
+          "lineNumber": 49
+        },
+        {
+          "caller": "FetchCoreAsync",
+          "callee": "Task.Run(() => _parserFactory.Parse(response), ct).ConfigureAwait",
+          "lineNumber": 51
+        },
+        {
+          "caller": "FetchCoreAsync",
+          "callee": "Task.Run",
+          "lineNumber": 51
+        },
+        {
+          "caller": "FetchCoreAsync",
+          "callee": "_parserFactory.Parse",
+          "lineNumber": 51
+        },
+        {
+          "caller": "FetchCoreAsync",
+          "callee": "PreserveDisplayDataFromPreviousSnapshot",
+          "lineNumber": 52
+        },
+        {
+          "caller": "FetchCoreAsync",
+          "callee": "GetCached",
+          "lineNumber": 52
+        },
+        {
+          "caller": "FetchCoreAsync",
+          "callee": "RemoveUnrenderableItems",
+          "lineNumber": 53
+        },
+        {
+          "caller": "FetchCoreAsync",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 56
+        },
+        {
+          "caller": "FetchCoreAsync",
+          "callee": "Logger?.LogDebug",
+          "lineNumber": 58
+        },
+        {
+          "caller": "FetchCoreAsync",
+          "callee": "new HomeFeedSnapshot",
+          "lineNumber": 59
+        },
+        {
+          "caller": "MapChips",
+          "callee": "new List<HomeChipViewModel>",
+          "lineNumber": 66
+        },
+        {
+          "caller": "MapChips",
+          "callee": "chips.AddRange",
+          "lineNumber": 72
+        },
+        {
+          "caller": "MapChips",
+          "callee": "apiChips.Select",
+          "lineNumber": 72
+        },
+        {
+          "caller": "MapChips",
+          "callee": "new HomeChipViewModel",
+          "lineNumber": 72
+        },
+        {
+          "caller": "MapChips",
+          "callee": "c.SubChips?.Select(sc => new HomeChipViewModel\r\n            {\r\n                Id = sc.Id ?? \"\",\r\n                Label = sc.Label?.TransformedLabel ?? sc.Id ?? \"\"\r\n            }).ToList",
+          "lineNumber": 76
+        },
+        {
+          "caller": "MapChips",
+          "callee": "c.SubChips?.Select",
+          "lineNumber": 76
+        },
+        {
+          "caller": "MapChips",
+          "callee": "new HomeChipViewModel",
+          "lineNumber": 76
+        },
+        {
+          "caller": "ApplyDiff",
+          "callee": "onGreetingChanged",
+          "lineNumber": 100
+        },
+        {
+          "caller": "ApplyDiff",
+          "callee": "new Dictionary<string, int>",
+          "lineNumber": 103
+        },
+        {
+          "caller": "ApplyDiff",
+          "callee": "new HashSet<string>",
+          "lineNumber": 107
+        },
+        {
+          "caller": "ApplyDiff",
+          "callee": "fresh.Select",
+          "lineNumber": 107
+        },
+        {
+          "caller": "ApplyDiff",
+          "callee": "freshUris.Contains",
+          "lineNumber": 112
+        },
+        {
+          "caller": "ApplyDiff",
+          "callee": "current.RemoveAt",
+          "lineNumber": 113
+        },
+        {
+          "caller": "ApplyDiff",
+          "callee": "UpdateSectionInPlace",
+          "lineNumber": 122
+        },
+        {
+          "caller": "ApplyDiff",
+          "callee": "current.Move",
+          "lineNumber": 140
+        },
+        {
+          "caller": "ApplyDiff",
+          "callee": "Math.Min",
+          "lineNumber": 140
+        },
+        {
+          "caller": "ApplyDiff",
+          "callee": "UpdateSectionInPlace",
+          "lineNumber": 141
+        },
+        {
+          "caller": "ApplyDiff",
+          "callee": "current.Insert",
+          "lineNumber": 146
+        },
+        {
+          "caller": "ApplyDiff",
+          "callee": "Math.Min",
+          "lineNumber": 146
+        },
+        {
+          "caller": "ApplyDiff",
+          "callee": "current.RemoveAt",
+          "lineNumber": 153
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "onGreetingChanged",
+          "lineNumber": 165
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "new HashSet<string>",
+          "lineNumber": 167
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "fresh.Select",
+          "lineNumber": 167
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "freshUris.Contains",
+          "lineNumber": 172
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "current.RemoveAt",
+          "lineNumber": 173
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "Task.Yield",
+          "lineNumber": 178
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "UpdateSectionInPlace",
+          "lineNumber": 186
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "current.Move",
+          "lineNumber": 202
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "Math.Min",
+          "lineNumber": 202
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "UpdateSectionInPlace",
+          "lineNumber": 203
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "current.Insert",
+          "lineNumber": 207
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "Math.Min",
+          "lineNumber": 207
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "Task.Yield",
+          "lineNumber": 214
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "current.RemoveAt",
+          "lineNumber": 220
+        },
+        {
+          "caller": "ApplyDiffChunkedAsync",
+          "callee": "Task.Yield",
+          "lineNumber": 224
+        },
+        {
+          "caller": "UpdateSectionInPlace",
+          "callee": "DiffItems",
+          "lineNumber": 234
+        },
+        {
+          "caller": "UpdateSectionInPlace",
+          "callee": "onAccentChanged?.Invoke",
+          "lineNumber": 257
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "new Dictionary<string, int>",
+          "lineNumber": 268
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "freshByUri.ContainsKey",
+          "lineNumber": 278
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "current.RemoveAt",
+          "lineNumber": 279
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "ShouldReplaceForContentType",
+          "lineNumber": 292
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "current.RemoveAt",
+          "lineNumber": 294
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "current.Insert",
+          "lineNumber": 295
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "UpdateItemInPlace",
+          "lineNumber": 299
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "current.Move",
+          "lineNumber": 317
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "ShouldReplaceForContentType",
+          "lineNumber": 318
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "current.RemoveAt",
+          "lineNumber": 320
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "current.Insert",
+          "lineNumber": 321
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "UpdateItemInPlace",
+          "lineNumber": 325
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "current.Insert",
+          "lineNumber": 330
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "Math.Min",
+          "lineNumber": 330
+        },
+        {
+          "caller": "DiffItems",
+          "callee": "current.RemoveAt",
+          "lineNumber": 337
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 342
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 343
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 344
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 346
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 347
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 348
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 349
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 350
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 354
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 357
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 358
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 359
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 360
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 361
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 362
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "ReferenceEquals",
+          "lineNumber": 363
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "ReferenceEquals",
+          "lineNumber": 367
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 368
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 369
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 370
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 374
+        },
+        {
+          "caller": "UpdateItemInPlace",
+          "callee": "SetStringPreservingExisting",
+          "lineNumber": 376
+        },
+        {
+          "caller": "PreserveDisplayDataFromPreviousSnapshot",
+          "callee": "new Dictionary<string, HomeSectionItem>",
+          "lineNumber": 400
+        },
+        {
+          "caller": "PreserveDisplayDataFromPreviousSnapshot",
+          "callee": "previousSections.SelectMany",
+          "lineNumber": 401
+        },
+        {
+          "caller": "PreserveDisplayDataFromPreviousSnapshot",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 403
+        },
+        {
+          "caller": "PreserveDisplayDataFromPreviousSnapshot",
+          "callee": "previousByUri.ContainsKey",
+          "lineNumber": 403
+        },
+        {
+          "caller": "PreserveDisplayDataFromPreviousSnapshot",
+          "callee": "previousByUri.Add",
+          "lineNumber": 404
+        },
+        {
+          "caller": "PreserveDisplayDataFromPreviousSnapshot",
+          "callee": "freshSections.SelectMany",
+          "lineNumber": 409
+        },
+        {
+          "caller": "PreserveDisplayDataFromPreviousSnapshot",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 411
+        },
+        {
+          "caller": "PreserveDisplayDataFromPreviousSnapshot",
+          "callee": "previousByUri.TryGetValue",
+          "lineNumber": 411
+        },
+        {
+          "caller": "PreserveDisplayDataFromPreviousSnapshot",
+          "callee": "FillMissingDisplayData",
+          "lineNumber": 414
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 423
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 424
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 425
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 428
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 429
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 430
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 431
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 432
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 433
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 434
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 435
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 436
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 437
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 438
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 439
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 440
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 441
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 455
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 456
+        },
+        {
+          "caller": "FillMissingDisplayData",
+          "callee": "SetMissingString",
+          "lineNumber": 457
+        },
+        {
+          "caller": "RemoveUnrenderableItems",
+          "callee": "IsUnrenderable",
+          "lineNumber": 475
+        },
+        {
+          "caller": "RemoveUnrenderableItems",
+          "callee": "items.RemoveAt",
+          "lineNumber": 476
+        },
+        {
+          "caller": "RemoveUnrenderableItems",
+          "callee": "sections.RemoveAt",
+          "lineNumber": 480
+        },
+        {
+          "caller": "IsUnrenderable",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 486
+        },
+        {
+          "caller": "IsUnrenderable",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 487
+        },
+        {
+          "caller": "IsUnrenderable",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 488
+        },
+        {
+          "caller": "IsUnrenderable",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 489
+        },
+        {
+          "caller": "IsUnrenderable",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 490
+        },
+        {
+          "caller": "IsUnrenderable",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 493
+        },
+        {
+          "caller": "IsUnrenderable",
+          "callee": "item.Uri.Contains",
+          "lineNumber": 494
+        },
+        {
+          "caller": "IsUnrenderable",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 498
+        },
+        {
+          "caller": "SetStringPreservingExisting",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 503
+        },
+        {
+          "caller": "SetStringPreservingExisting",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 503
+        },
+        {
+          "caller": "SetStringPreservingExisting",
+          "callee": "set",
+          "lineNumber": 507
+        },
+        {
+          "caller": "SetMissingString",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 512
+        },
+        {
+          "caller": "SetMissingString",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 512
+        },
+        {
+          "caller": "SetMissingString",
+          "callee": "set",
+          "lineNumber": 513
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 5,
+        "functionCount": 15,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/HomeRawJsonHelper.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 43,
+      "nonEmptyLines": 38,
+      "functions": [
+        {
+          "name": "GetRawSectionJsonByIndex",
+          "startLine": 10,
+          "endLine": 42,
+          "params": [
+            "response"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "HomeRawJsonHelper",
+          "startLine": 8,
+          "endLine": 43,
+          "methods": [
+            "GetRawSectionJsonByIndex"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "GetRawSectionJsonByIndex",
+          "line": 10,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetRawSectionJsonByIndex",
+          "callee": "new List<string?>",
+          "lineNumber": 12
+        },
+        {
+          "caller": "GetRawSectionJsonByIndex",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 13
+        },
+        {
+          "caller": "GetRawSectionJsonByIndex",
+          "callee": "JsonDocument.Parse",
+          "lineNumber": 18
+        },
+        {
+          "caller": "GetRawSectionJsonByIndex",
+          "callee": "document.RootElement.TryGetProperty",
+          "lineNumber": 19
+        },
+        {
+          "caller": "GetRawSectionJsonByIndex",
+          "callee": "data.TryGetProperty",
+          "lineNumber": 20
+        },
+        {
+          "caller": "GetRawSectionJsonByIndex",
+          "callee": "home.TryGetProperty",
+          "lineNumber": 21
+        },
+        {
+          "caller": "GetRawSectionJsonByIndex",
+          "callee": "sectionContainer.TryGetProperty",
+          "lineNumber": 22
+        },
+        {
+          "caller": "GetRawSectionJsonByIndex",
+          "callee": "sections.TryGetProperty",
+          "lineNumber": 23
+        },
+        {
+          "caller": "GetRawSectionJsonByIndex",
+          "callee": "items.EnumerateArray",
+          "lineNumber": 29
+        },
+        {
+          "caller": "GetRawSectionJsonByIndex",
+          "callee": "result.Add",
+          "lineNumber": 30
+        },
+        {
+          "caller": "GetRawSectionJsonByIndex",
+          "callee": "section.GetRawText",
+          "lineNumber": 30
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/HomeResponseParserFactory.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 121,
+      "nonEmptyLines": 103,
+      "functions": [
+        {
+          "name": "HomeResponseParserFactory",
+          "startLine": 21,
+          "endLine": 29,
+          "params": [
+            "logger"
+          ]
+        },
+        {
+          "name": "Parse",
+          "startLine": 31,
+          "endLine": 68,
+          "params": [
+            "response"
+          ]
+        },
+        {
+          "name": "CombineBaselineSections",
+          "startLine": 70,
+          "endLine": 120,
+          "params": [
+            "sections"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "HomeResponseParserFactory",
+          "startLine": 16,
+          "endLine": 121,
+          "methods": [
+            "HomeResponseParserFactory",
+            "Parse",
+            "CombineBaselineSections"
+          ],
+          "properties": [
+            "_parsers",
+            "_logger"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "HomeResponseParserFactory",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "Parse",
+          "line": 31,
+          "isDefault": false
+        },
+        {
+          "name": "HomeResponseParserFactory",
+          "line": 16,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "HomeResponseParserFactory",
+          "callee": "new HomeResponseParserV2",
+          "lineNumber": 26
+        },
+        {
+          "caller": "HomeResponseParserFactory",
+          "callee": "new HomeResponseParserV1",
+          "lineNumber": 27
+        },
+        {
+          "caller": "Parse",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 35
+        },
+        {
+          "caller": "Parse",
+          "callee": "parser.GetType",
+          "lineNumber": 39
+        },
+        {
+          "caller": "Parse",
+          "callee": "parser.CanParse",
+          "lineNumber": 42
+        },
+        {
+          "caller": "Parse",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 43
+        },
+        {
+          "caller": "Parse",
+          "callee": "parser.Parse",
+          "lineNumber": 47
+        },
+        {
+          "caller": "Parse",
+          "callee": "new HomeParseResult",
+          "lineNumber": 48
+        },
+        {
+          "caller": "Parse",
+          "callee": "CombineBaselineSections",
+          "lineNumber": 50
+        },
+        {
+          "caller": "Parse",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 52
+        },
+        {
+          "caller": "Parse",
+          "callee": "result.Sections.Sum",
+          "lineNumber": 54
+        },
+        {
+          "caller": "Parse",
+          "callee": "_logger?.LogError",
+          "lineNumber": 59
+        },
+        {
+          "caller": "Parse",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 63
+        },
+        {
+          "caller": "Parse",
+          "callee": "new HomeParseResult",
+          "lineNumber": 64
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "sections\r\n            .Where(section => section.SectionType == HomeSectionType.Baseline)\r\n            .ToList",
+          "lineNumber": 72
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "sections\r\n            .Where",
+          "lineNumber": 72
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "sections.FindIndex",
+          "lineNumber": 85
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "new HomeSection",
+          "lineNumber": 86
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "new HashSet<string>",
+          "lineNumber": 93
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 98
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "seenUris.Add",
+          "lineNumber": 98
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "combined.Items.Add",
+          "lineNumber": 101
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "sections.Where(section => section.SectionType != HomeSectionType.Baseline).ToList",
+          "lineNumber": 106
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "sections.Where",
+          "lineNumber": 106
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "combined.Items\r\n            .FirstOrDefault",
+          "lineNumber": 111
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 112
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "sections\r\n            .Where(section => section.SectionType != HomeSectionType.Baseline)\r\n            .ToList",
+          "lineNumber": 114
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "sections\r\n            .Where",
+          "lineNumber": 114
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "result.Insert",
+          "lineNumber": 118
+        },
+        {
+          "caller": "CombineBaselineSections",
+          "callee": "Math.Clamp",
+          "lineNumber": 118
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 3,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/HomeResponseParserV1.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 529,
+      "nonEmptyLines": 451,
+      "functions": [
+        {
+          "name": "CanParse",
+          "startLine": 22,
+          "endLine": 28,
+          "params": [
+            "response"
+          ]
+        },
+        {
+          "name": "Parse",
+          "startLine": 30,
+          "endLine": 37,
+          "params": [
+            "response"
+          ]
+        },
+        {
+          "name": "MapSections",
+          "startLine": 41,
+          "endLine": 125,
+          "params": [
+            "response"
+          ]
+        },
+        {
+          "name": "MapSectionItem",
+          "startLine": 134,
+          "endLine": 167,
+          "params": [
+            "entry"
+          ]
+        },
+        {
+          "name": "MapArtist",
+          "startLine": 171,
+          "endLine": 191,
+          "params": [
+            "uri",
+            "content"
+          ]
+        },
+        {
+          "name": "MapPlaylist",
+          "startLine": 193,
+          "endLine": 215,
+          "params": [
+            "uri",
+            "content"
+          ]
+        },
+        {
+          "name": "MapAlbum",
+          "startLine": 217,
+          "endLine": 238,
+          "params": [
+            "uri",
+            "content"
+          ]
+        },
+        {
+          "name": "MapPodcast",
+          "startLine": 240,
+          "endLine": 258,
+          "params": [
+            "uri",
+            "content"
+          ]
+        },
+        {
+          "name": "MapEpisode",
+          "startLine": 260,
+          "endLine": 292,
+          "params": [
+            "uri",
+            "content"
+          ]
+        },
+        {
+          "name": "MapEpisodePlayedState",
+          "startLine": 299,
+          "endLine": 305,
+          "params": [
+            "state"
+          ]
+        },
+        {
+          "name": "EnrichFromRawJson",
+          "startLine": 309,
+          "endLine": 339,
+          "params": [
+            "item",
+            "raw"
+          ]
+        },
+        {
+          "name": "ExtractImageUrlFromJson",
+          "startLine": 341,
+          "endLine": 372,
+          "params": [
+            "raw"
+          ]
+        },
+        {
+          "name": "GetLargestSourceUrl",
+          "startLine": 374,
+          "endLine": 400,
+          "params": [
+            "container"
+          ]
+        },
+        {
+          "name": "ExtractColorFromJson",
+          "startLine": 402,
+          "endLine": 431,
+          "params": [
+            "raw"
+          ]
+        },
+        {
+          "name": "MapUnknownType",
+          "startLine": 435,
+          "endLine": 473,
+          "params": [
+            "uri"
+          ]
+        },
+        {
+          "name": "MapChips",
+          "startLine": 477,
+          "endLine": 507,
+          "params": [
+            "response"
+          ]
+        },
+        {
+          "name": "GetSectionType",
+          "startLine": 511,
+          "endLine": 517,
+          "params": [
+            "typeName"
+          ]
+        },
+        {
+          "name": "InferContentType",
+          "startLine": 519,
+          "endLine": 528,
+          "params": [
+            "uri"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "HomeResponseParserV1",
+          "startLine": 20,
+          "endLine": 529,
+          "methods": [
+            "CanParse",
+            "Parse",
+            "MapSections",
+            "MapSectionItem",
+            "MapArtist",
+            "MapPlaylist",
+            "MapAlbum",
+            "MapPodcast",
+            "MapEpisode",
+            "MapEpisodePlayedState",
+            "EnrichFromRawJson",
+            "ExtractImageUrlFromJson",
+            "GetLargestSourceUrl",
+            "ExtractColorFromJson",
+            "MapUnknownType",
+            "MapChips",
+            "GetSectionType",
+            "InferContentType"
+          ],
+          "properties": [
+            "PodcastSectionAccentHex"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "CanParse",
+          "line": 22,
+          "isDefault": false
+        },
+        {
+          "name": "Parse",
+          "line": 30,
+          "isDefault": false
+        },
+        {
+          "name": "HomeResponseParserV1",
+          "line": 20,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "CanParse",
+          "callee": "response.Data?.Home?.SectionContainer?.Sections?.Items?\r\n            .FirstOrDefault()?.SectionItems?.Items?.FirstOrDefault",
+          "lineNumber": 24
+        },
+        {
+          "caller": "CanParse",
+          "callee": "response.Data?.Home?.SectionContainer?.Sections?.Items?\r\n            .FirstOrDefault",
+          "lineNumber": 24
+        },
+        {
+          "caller": "Parse",
+          "callee": "MapSections",
+          "lineNumber": 33
+        },
+        {
+          "caller": "Parse",
+          "callee": "MapChips",
+          "lineNumber": 34
+        },
+        {
+          "caller": "Parse",
+          "callee": "new HomeParseResult",
+          "lineNumber": 36
+        },
+        {
+          "caller": "MapSections",
+          "callee": "new List<HomeSection>",
+          "lineNumber": 43
+        },
+        {
+          "caller": "MapSections",
+          "callee": "HomeRawJsonHelper.GetRawSectionJsonByIndex",
+          "lineNumber": 47
+        },
+        {
+          "caller": "MapSections",
+          "callee": "GetSectionType",
+          "lineNumber": 53
+        },
+        {
+          "caller": "MapSections",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 56
+        },
+        {
+          "caller": "MapSections",
+          "callee": "new HomeSection",
+          "lineNumber": 66
+        },
+        {
+          "caller": "MapSections",
+          "callee": "headerEntity.GetArtistData",
+          "lineNumber": 79
+        },
+        {
+          "caller": "MapSections",
+          "callee": "artistData.Visuals?.AvatarImage?.Sources?\r\n                        .OrderByDescending(s => s.Width ?? 0)\r\n                        .FirstOrDefault",
+          "lineNumber": 84
+        },
+        {
+          "caller": "MapSections",
+          "callee": "artistData.Visuals?.AvatarImage?.Sources?\r\n                        .OrderByDescending",
+          "lineNumber": 84
+        },
+        {
+          "caller": "MapSections",
+          "callee": "MapSectionItem",
+          "lineNumber": 94
+        },
+        {
+          "caller": "MapSections",
+          "callee": "section.Items.Add",
+          "lineNumber": 99
+        },
+        {
+          "caller": "MapSections",
+          "callee": "section.Items.All",
+          "lineNumber": 110
+        },
+        {
+          "caller": "MapSections",
+          "callee": "section.Items.FirstOrDefault",
+          "lineNumber": 119
+        },
+        {
+          "caller": "MapSections",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 119
+        },
+        {
+          "caller": "MapSections",
+          "callee": "sections.Add",
+          "lineNumber": 120
+        },
+        {
+          "caller": "MapSectionItem",
+          "callee": "MapArtist",
+          "lineNumber": 141
+        },
+        {
+          "caller": "MapSectionItem",
+          "callee": "MapPlaylist",
+          "lineNumber": 142
+        },
+        {
+          "caller": "MapSectionItem",
+          "callee": "MapAlbum",
+          "lineNumber": 143
+        },
+        {
+          "caller": "MapSectionItem",
+          "callee": "MapPodcast",
+          "lineNumber": 144
+        },
+        {
+          "caller": "MapSectionItem",
+          "callee": "MapEpisode",
+          "lineNumber": 145
+        },
+        {
+          "caller": "MapSectionItem",
+          "callee": "el.TryGetProperty",
+          "lineNumber": 155
+        },
+        {
+          "caller": "MapSectionItem",
+          "callee": "tn.GetString",
+          "lineNumber": 156
+        },
+        {
+          "caller": "MapSectionItem",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 161
+        },
+        {
+          "caller": "MapSectionItem",
+          "callee": "InferContentType",
+          "lineNumber": 161
+        },
+        {
+          "caller": "MapSectionItem",
+          "callee": "EnrichFromRawJson",
+          "lineNumber": 162
+        },
+        {
+          "caller": "MapSectionItem",
+          "callee": "MapUnknownType",
+          "lineNumber": 166
+        },
+        {
+          "caller": "MapArtist",
+          "callee": "content.GetArtistData",
+          "lineNumber": 173
+        },
+        {
+          "caller": "MapArtist",
+          "callee": "data.Visuals?.AvatarImage?.Sources?\r\n            .OrderByDescending(s => s.Width ?? 0)\r\n            .FirstOrDefault",
+          "lineNumber": 176
+        },
+        {
+          "caller": "MapArtist",
+          "callee": "data.Visuals?.AvatarImage?.Sources?\r\n            .OrderByDescending",
+          "lineNumber": 176
+        },
+        {
+          "caller": "MapArtist",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 182
+        },
+        {
+          "caller": "MapPlaylist",
+          "callee": "content.GetPlaylistData",
+          "lineNumber": 195
+        },
+        {
+          "caller": "MapPlaylist",
+          "callee": "data.Images?.Items?.FirstOrDefault()?.Sources?\r\n            .OrderByDescending(s => s.Width ?? 0)\r\n            .FirstOrDefault",
+          "lineNumber": 198
+        },
+        {
+          "caller": "MapPlaylist",
+          "callee": "data.Images?.Items?.FirstOrDefault()?.Sources?\r\n            .OrderByDescending",
+          "lineNumber": 198
+        },
+        {
+          "caller": "MapPlaylist",
+          "callee": "data.Images?.Items?.FirstOrDefault",
+          "lineNumber": 198
+        },
+        {
+          "caller": "MapPlaylist",
+          "callee": "data.Images?.Items?.FirstOrDefault",
+          "lineNumber": 202
+        },
+        {
+          "caller": "MapPlaylist",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 204
+        },
+        {
+          "caller": "MapPlaylist",
+          "callee": "SpotifyHtmlHelper.StripHtml",
+          "lineNumber": 208
+        },
+        {
+          "caller": "MapAlbum",
+          "callee": "content.GetAlbumData",
+          "lineNumber": 219
+        },
+        {
+          "caller": "MapAlbum",
+          "callee": "data.CoverArt?.Sources?\r\n            .OrderByDescending(s => s.Width ?? 0)\r\n            .FirstOrDefault",
+          "lineNumber": 222
+        },
+        {
+          "caller": "MapAlbum",
+          "callee": "data.CoverArt?.Sources?\r\n            .OrderByDescending",
+          "lineNumber": 222
+        },
+        {
+          "caller": "MapAlbum",
+          "callee": "data.Artists?.Items?.FirstOrDefault",
+          "lineNumber": 227
+        },
+        {
+          "caller": "MapAlbum",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 229
+        },
+        {
+          "caller": "MapPodcast",
+          "callee": "content.GetPodcastData",
+          "lineNumber": 242
+        },
+        {
+          "caller": "MapPodcast",
+          "callee": "data.CoverArt?.Sources?\r\n            .OrderByDescending(s => s.Width ?? 0)\r\n            .FirstOrDefault",
+          "lineNumber": 245
+        },
+        {
+          "caller": "MapPodcast",
+          "callee": "data.CoverArt?.Sources?\r\n            .OrderByDescending",
+          "lineNumber": 245
+        },
+        {
+          "caller": "MapPodcast",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 249
+        },
+        {
+          "caller": "MapEpisode",
+          "callee": "content.GetEpisodeData",
+          "lineNumber": 262
+        },
+        {
+          "caller": "MapEpisode",
+          "callee": "data.CoverArt?.Sources?\r\n                            .OrderByDescending(s => s.Width ?? 0)\r\n                            .FirstOrDefault()?.Url\r\n                       ?? data.PodcastV2?.Data?.CoverArt?.Sources?\r\n                            .OrderByDescending(s => s.Width ?? 0)\r\n                            .FirstOrDefault",
+          "lineNumber": 267
+        },
+        {
+          "caller": "MapEpisode",
+          "callee": "data.CoverArt?.Sources?\r\n                            .OrderByDescending(s => s.Width ?? 0)\r\n                            .FirstOrDefault()?.Url\r\n                       ?? data.PodcastV2?.Data?.CoverArt?.Sources?\r\n                            .OrderByDescending",
+          "lineNumber": 267
+        },
+        {
+          "caller": "MapEpisode",
+          "callee": "data.CoverArt?.Sources?\r\n                            .OrderByDescending(s => s.Width ?? 0)\r\n                            .FirstOrDefault",
+          "lineNumber": 267
+        },
+        {
+          "caller": "MapEpisode",
+          "callee": "data.CoverArt?.Sources?\r\n                            .OrderByDescending",
+          "lineNumber": 267
+        },
+        {
+          "caller": "MapEpisode",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 277
+        },
+        {
+          "caller": "MapEpisode",
+          "callee": "MapEpisodePlayedState",
+          "lineNumber": 286
+        },
+        {
+          "caller": "MapEpisode",
+          "callee": "data.MediaTypes?.Any",
+          "lineNumber": 288
+        },
+        {
+          "caller": "MapEpisode",
+          "callee": "string.Equals",
+          "lineNumber": 289
+        },
+        {
+          "caller": "EnrichFromRawJson",
+          "callee": "raw.TryGetProperty",
+          "lineNumber": 314
+        },
+        {
+          "caller": "EnrichFromRawJson",
+          "callee": "name.GetString",
+          "lineNumber": 315
+        },
+        {
+          "caller": "EnrichFromRawJson",
+          "callee": "raw.TryGetProperty",
+          "lineNumber": 317
+        },
+        {
+          "caller": "EnrichFromRawJson",
+          "callee": "uri.GetString",
+          "lineNumber": 318
+        },
+        {
+          "caller": "EnrichFromRawJson",
+          "callee": "ExtractImageUrlFromJson",
+          "lineNumber": 321
+        },
+        {
+          "caller": "EnrichFromRawJson",
+          "callee": "raw.TryGetProperty",
+          "lineNumber": 323
+        },
+        {
+          "caller": "EnrichFromRawJson",
+          "callee": "SpotifyHtmlHelper.StripHtml",
+          "lineNumber": 325
+        },
+        {
+          "caller": "EnrichFromRawJson",
+          "callee": "desc.GetString",
+          "lineNumber": 325
+        },
+        {
+          "caller": "EnrichFromRawJson",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 326
+        },
+        {
+          "caller": "EnrichFromRawJson",
+          "callee": "ExtractColorFromJson",
+          "lineNumber": 331
+        },
+        {
+          "caller": "EnrichFromRawJson",
+          "callee": "raw.TryGetProperty",
+          "lineNumber": 334
+        },
+        {
+          "caller": "EnrichFromRawJson",
+          "callee": "EnrichFromRawJson",
+          "lineNumber": 337
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "raw.TryGetProperty",
+          "lineNumber": 347
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "images.TryGetProperty",
+          "lineNumber": 348
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "items.GetArrayLength",
+          "lineNumber": 350
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "GetLargestSourceUrl",
+          "lineNumber": 352
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "raw.TryGetProperty",
+          "lineNumber": 357
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "GetLargestSourceUrl",
+          "lineNumber": 359
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "raw.TryGetProperty",
+          "lineNumber": 364
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "visuals.TryGetProperty",
+          "lineNumber": 365
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "GetLargestSourceUrl",
+          "lineNumber": 367
+        },
+        {
+          "caller": "GetLargestSourceUrl",
+          "callee": "container.TryGetProperty",
+          "lineNumber": 379
+        },
+        {
+          "caller": "GetLargestSourceUrl",
+          "callee": "sources.GetArrayLength",
+          "lineNumber": 381
+        },
+        {
+          "caller": "GetLargestSourceUrl",
+          "callee": "sources.EnumerateArray",
+          "lineNumber": 386
+        },
+        {
+          "caller": "GetLargestSourceUrl",
+          "callee": "source.TryGetProperty",
+          "lineNumber": 391
+        },
+        {
+          "caller": "GetLargestSourceUrl",
+          "callee": "w.GetInt32",
+          "lineNumber": 392
+        },
+        {
+          "caller": "GetLargestSourceUrl",
+          "callee": "source.TryGetProperty",
+          "lineNumber": 396
+        },
+        {
+          "caller": "GetLargestSourceUrl",
+          "callee": "url.GetString",
+          "lineNumber": 396
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "raw.TryGetProperty",
+          "lineNumber": 408
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "images.TryGetProperty",
+          "lineNumber": 409
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "items.GetArrayLength",
+          "lineNumber": 411
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "items[0].TryGetProperty",
+          "lineNumber": 413
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "ec.TryGetProperty",
+          "lineNumber": 415
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "cd.TryGetProperty",
+          "lineNumber": 417
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "hex.GetString",
+          "lineNumber": 418
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "raw.TryGetProperty",
+          "lineNumber": 421
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "coverArt.TryGetProperty",
+          "lineNumber": 423
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "ec2.TryGetProperty",
+          "lineNumber": 425
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "cd2.TryGetProperty",
+          "lineNumber": 427
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "hex2.GetString",
+          "lineNumber": 428
+        },
+        {
+          "caller": "MapUnknownType",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 437
+        },
+        {
+          "caller": "MapUnknownType",
+          "callee": "uri.Contains",
+          "lineNumber": 439
+        },
+        {
+          "caller": "MapUnknownType",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 441
+        },
+        {
+          "caller": "MapUnknownType",
+          "callee": "uri.Split",
+          "lineNumber": 451
+        },
+        {
+          "caller": "MapUnknownType",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 455
+        },
+        {
+          "caller": "MapChips",
+          "callee": "new List<HomeChipViewModel>",
+          "lineNumber": 479
+        },
+        {
+          "caller": "MapChips",
+          "callee": "new HomeChipViewModel",
+          "lineNumber": 485
+        },
+        {
+          "caller": "MapChips",
+          "callee": "vm.SubChips.Add",
+          "lineNumber": 495
+        },
+        {
+          "caller": "MapChips",
+          "callee": "new HomeChipViewModel",
+          "lineNumber": 495
+        },
+        {
+          "caller": "MapChips",
+          "callee": "chips.Add",
+          "lineNumber": 503
+        },
+        {
+          "caller": "InferContentType",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 521
+        },
+        {
+          "caller": "InferContentType",
+          "callee": "uri.Contains",
+          "lineNumber": 522
+        },
+        {
+          "caller": "InferContentType",
+          "callee": "uri.Contains",
+          "lineNumber": 523
+        },
+        {
+          "caller": "InferContentType",
+          "callee": "uri.Contains",
+          "lineNumber": 524
+        },
+        {
+          "caller": "InferContentType",
+          "callee": "uri.Contains",
+          "lineNumber": 525
+        },
+        {
+          "caller": "InferContentType",
+          "callee": "uri.Contains",
+          "lineNumber": 526
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 18,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/HomeResponseParserV2.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 955,
+      "nonEmptyLines": 838,
+      "functions": [
+        {
+          "name": "CanParse",
+          "startLine": 26,
+          "endLine": 46,
+          "params": [
+            "response"
+          ]
+        },
+        {
+          "name": "Parse",
+          "startLine": 48,
+          "endLine": 55,
+          "params": [
+            "response"
+          ]
+        },
+        {
+          "name": "MapSections",
+          "startLine": 57,
+          "endLine": 180,
+          "params": [
+            "response"
+          ]
+        },
+        {
+          "name": "UnwrapListItems",
+          "startLine": 184,
+          "endLine": 237,
+          "params": [
+            "listContent"
+          ]
+        },
+        {
+          "name": "MapEntityItem",
+          "startLine": 241,
+          "endLine": 313,
+          "params": [
+            "entity",
+            "fallbackUri",
+            "formatAttributes"
+          ]
+        },
+        {
+          "name": "MapV1ContentItem",
+          "startLine": 317,
+          "endLine": 332,
+          "params": [
+            "entry"
+          ]
+        },
+        {
+          "name": "MapV1Episode",
+          "startLine": 334,
+          "endLine": 361,
+          "params": [
+            "uri",
+            "content"
+          ]
+        },
+        {
+          "name": "MapV1Album",
+          "startLine": 363,
+          "endLine": 380,
+          "params": [
+            "uri",
+            "content"
+          ]
+        },
+        {
+          "name": "MapV1Artist",
+          "startLine": 382,
+          "endLine": 399,
+          "params": [
+            "uri",
+            "content"
+          ]
+        },
+        {
+          "name": "MapV1Playlist",
+          "startLine": 401,
+          "endLine": 420,
+          "params": [
+            "uri",
+            "content"
+          ]
+        },
+        {
+          "name": "MapV1Podcast",
+          "startLine": 422,
+          "endLine": 438,
+          "params": [
+            "uri",
+            "content"
+          ]
+        },
+        {
+          "name": "MapV1FromRawJson",
+          "startLine": 440,
+          "endLine": 449,
+          "params": [
+            "uri",
+            "content"
+          ]
+        },
+        {
+          "name": "MapUnknownType",
+          "startLine": 451,
+          "endLine": 467,
+          "params": [
+            "uri"
+          ]
+        },
+        {
+          "name": "MapLikedSongs",
+          "startLine": 471,
+          "endLine": 527,
+          "params": [
+            "uri",
+            "entityData",
+            "formatAttributes"
+          ]
+        },
+        {
+          "name": "DecodeGroupMetadata",
+          "startLine": 534,
+          "endLine": 567,
+          "params": [
+            "data",
+            "addedCount",
+            "trackUris"
+          ]
+        },
+        {
+          "name": "TryReadVarint",
+          "startLine": 569,
+          "endLine": 582,
+          "params": [
+            "data",
+            "pos",
+            "value"
+          ]
+        },
+        {
+          "name": "IsSpotifyEpisodeUri",
+          "startLine": 586,
+          "endLine": 587,
+          "params": [
+            "uri"
+          ]
+        },
+        {
+          "name": "ResolveContentType",
+          "startLine": 589,
+          "endLine": 620,
+          "params": [
+            "entityData"
+          ]
+        },
+        {
+          "name": "ExtractImageUrl",
+          "startLine": 624,
+          "endLine": 628,
+          "params": [
+            "coverImage"
+          ]
+        },
+        {
+          "name": "ExtractImageUrls",
+          "startLine": 630,
+          "endLine": 668,
+          "params": [
+            "coverImage"
+          ]
+        },
+        {
+          "name": "GetTypedEntityPayload",
+          "startLine": 672,
+          "endLine": 682,
+          "params": [
+            "typedEntity"
+          ]
+        },
+        {
+          "name": "ExtractTitleFromTypedEntityPayload",
+          "startLine": 684,
+          "endLine": 692,
+          "params": [
+            "payload"
+          ]
+        },
+        {
+          "name": "ExtractImageUrlFromJson",
+          "startLine": 694,
+          "endLine": 748,
+          "params": [
+            "payload"
+          ]
+        },
+        {
+          "name": "ExtractSquareCoverImageUrl",
+          "startLine": 750,
+          "endLine": 789,
+          "params": [
+            "squareCover"
+          ]
+        },
+        {
+          "name": "ExtractLargestSourceUrl",
+          "startLine": 791,
+          "endLine": 843,
+          "params": [
+            "container"
+          ]
+        },
+        {
+          "name": "ExtractColorFromJson",
+          "startLine": 845,
+          "endLine": 862,
+          "params": [
+            "payload"
+          ]
+        },
+        {
+          "name": "TryGetString",
+          "startLine": 864,
+          "endLine": 873,
+          "params": [
+            "element",
+            "propertyName"
+          ]
+        },
+        {
+          "name": "TryGetNestedString",
+          "startLine": 875,
+          "endLine": 890,
+          "params": [
+            "element"
+          ]
+        },
+        {
+          "name": "FirstNonWhiteSpace",
+          "startLine": 892,
+          "endLine": 901,
+          "params": []
+        },
+        {
+          "name": "BuildSubtitle",
+          "startLine": 903,
+          "endLine": 926,
+          "params": [
+            "entityData",
+            "contentType",
+            "formatAttributes"
+          ]
+        },
+        {
+          "name": "GetContributorNames",
+          "startLine": 928,
+          "endLine": 934,
+          "params": [
+            "entityData"
+          ]
+        },
+        {
+          "name": "GetSectionType",
+          "startLine": 938,
+          "endLine": 944,
+          "params": [
+            "typeName"
+          ]
+        },
+        {
+          "name": "InferContentType",
+          "startLine": 946,
+          "endLine": 954,
+          "params": [
+            "uri"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "HomeResponseParserV2",
+          "startLine": 21,
+          "endLine": 955,
+          "methods": [
+            "CanParse",
+            "Parse",
+            "MapSections",
+            "UnwrapListItems",
+            "MapEntityItem",
+            "MapV1ContentItem",
+            "MapV1Episode",
+            "MapV1Album",
+            "MapV1Artist",
+            "MapV1Playlist",
+            "MapV1Podcast",
+            "MapV1FromRawJson",
+            "MapUnknownType",
+            "MapLikedSongs",
+            "DecodeGroupMetadata",
+            "TryReadVarint",
+            "IsSpotifyEpisodeUri",
+            "ResolveContentType",
+            "ExtractImageUrl",
+            "ExtractImageUrls",
+            "GetTypedEntityPayload",
+            "ExtractTitleFromTypedEntityPayload",
+            "ExtractImageUrlFromJson",
+            "ExtractSquareCoverImageUrl",
+            "ExtractLargestSourceUrl",
+            "ExtractColorFromJson",
+            "TryGetString",
+            "TryGetNestedString",
+            "FirstNonWhiteSpace",
+            "BuildSubtitle",
+            "GetContributorNames",
+            "GetSectionType",
+            "InferContentType"
+          ],
+          "properties": [
+            "V1Fallback"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "CanParse",
+          "line": 26,
+          "isDefault": false
+        },
+        {
+          "name": "Parse",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "HomeResponseParserV2",
+          "line": 21,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Parse",
+          "callee": "MapSections",
+          "lineNumber": 51
+        },
+        {
+          "caller": "Parse",
+          "callee": "V1Fallback.Parse",
+          "lineNumber": 52
+        },
+        {
+          "caller": "Parse",
+          "callee": "new HomeParseResult",
+          "lineNumber": 54
+        },
+        {
+          "caller": "MapSections",
+          "callee": "new List<HomeSection>",
+          "lineNumber": 59
+        },
+        {
+          "caller": "MapSections",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 61
+        },
+        {
+          "caller": "MapSections",
+          "callee": "HomeRawJsonHelper.GetRawSectionJsonByIndex",
+          "lineNumber": 64
+        },
+        {
+          "caller": "MapSections",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 70
+        },
+        {
+          "caller": "MapSections",
+          "callee": "GetSectionType",
+          "lineNumber": 71
+        },
+        {
+          "caller": "MapSections",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 73
+        },
+        {
+          "caller": "MapSections",
+          "callee": "new HomeSection",
+          "lineNumber": 83
+        },
+        {
+          "caller": "MapSections",
+          "callee": "headerEntity.GetArtistData",
+          "lineNumber": 96
+        },
+        {
+          "caller": "MapSections",
+          "callee": "artistData.Visuals?.AvatarImage?.Sources?\r\n                        .OrderByDescending(s => s.Width ?? 0)\r\n                        .FirstOrDefault",
+          "lineNumber": 101
+        },
+        {
+          "caller": "MapSections",
+          "callee": "artistData.Visuals?.AvatarImage?.Sources?\r\n                        .OrderByDescending",
+          "lineNumber": 101
+        },
+        {
+          "caller": "MapSections",
+          "callee": "translatedBase.Contains",
+          "lineNumber": 107
+        },
+        {
+          "caller": "MapSections",
+          "callee": "translatedBase.Replace(\"{0}\", \"\").Trim",
+          "lineNumber": 109
+        },
+        {
+          "caller": "MapSections",
+          "callee": "translatedBase.Replace",
+          "lineNumber": 109
+        },
+        {
+          "caller": "MapSections",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 110
+        },
+        {
+          "caller": "MapSections",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 123
+        },
+        {
+          "caller": "MapSections",
+          "callee": "UnwrapListItems",
+          "lineNumber": 127
+        },
+        {
+          "caller": "MapSections",
+          "callee": "section.Items.Add",
+          "lineNumber": 132
+        },
+        {
+          "caller": "MapSections",
+          "callee": "MapEntityItem",
+          "lineNumber": 138
+        },
+        {
+          "caller": "MapSections",
+          "callee": "section.Items.Add",
+          "lineNumber": 143
+        },
+        {
+          "caller": "MapSections",
+          "callee": "MapV1ContentItem",
+          "lineNumber": 149
+        },
+        {
+          "caller": "MapSections",
+          "callee": "section.Items.Add",
+          "lineNumber": 154
+        },
+        {
+          "caller": "MapSections",
+          "callee": "section.Items.All",
+          "lineNumber": 165
+        },
+        {
+          "caller": "MapSections",
+          "callee": "section.Items.FirstOrDefault",
+          "lineNumber": 174
+        },
+        {
+          "caller": "MapSections",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 174
+        },
+        {
+          "caller": "MapSections",
+          "callee": "sections.Add",
+          "lineNumber": 175
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "new List<HomeSectionItem>",
+          "lineNumber": 186
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 189
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "rawData.TryGetProperty",
+          "lineNumber": 194
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 196
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "string.Join",
+          "lineNumber": 196
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "rawData.EnumerateObject().Select",
+          "lineNumber": 196
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "rawData.EnumerateObject",
+          "lineNumber": 196
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "itemsWrapper.TryGetProperty",
+          "lineNumber": 199
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 201
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 205
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "itemsArray.GetArrayLength",
+          "lineNumber": 205
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "itemsArray.EnumerateArray",
+          "lineNumber": 207
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "listItem.TryGetProperty",
+          "lineNumber": 211
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "JsonSerializer.Deserialize",
+          "lineNumber": 212
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "listItem.TryGetProperty",
+          "lineNumber": 216
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "new List<HomeFormatListAttribute>",
+          "lineNumber": 219
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "attrsEl.EnumerateArray",
+          "lineNumber": 220
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "a.TryGetProperty",
+          "lineNumber": 222
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "k.GetString",
+          "lineNumber": 222
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "a.TryGetProperty",
+          "lineNumber": 223
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "v.GetString",
+          "lineNumber": 223
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "attrs.Add",
+          "lineNumber": 225
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "new HomeFormatListAttribute",
+          "lineNumber": 225
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "MapEntityItem",
+          "lineNumber": 231
+        },
+        {
+          "caller": "UnwrapListItems",
+          "callee": "results.Add",
+          "lineNumber": 232
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "entityUri.Contains",
+          "lineNumber": 252
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "MapLikedSongs",
+          "lineNumber": 253
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "ResolveContentType",
+          "lineNumber": 255
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "GetTypedEntityPayload",
+          "lineNumber": 256
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "FirstNonWhiteSpace",
+          "lineNumber": 257
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "ExtractTitleFromTypedEntityPayload",
+          "lineNumber": 259
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "ExtractImageUrls",
+          "lineNumber": 261
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "ExtractImageUrlFromJson",
+          "lineNumber": 263
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "BuildSubtitle",
+          "lineNumber": 264
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "ExtractColorFromJson",
+          "lineNumber": 265
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "formatAttributes?.Any",
+          "lineNumber": 266
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 268
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "HomeResponseParserV1.MapEpisodePlayedState",
+          "lineNumber": 292
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "ep.MediaTypes?.Any",
+          "lineNumber": 294
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "string.Equals",
+          "lineNumber": 295
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 301
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "GetContributorNames",
+          "lineNumber": 308
+        },
+        {
+          "caller": "MapEntityItem",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 309
+        },
+        {
+          "caller": "MapV1ContentItem",
+          "callee": "MapV1Album",
+          "lineNumber": 324
+        },
+        {
+          "caller": "MapV1ContentItem",
+          "callee": "MapV1Artist",
+          "lineNumber": 325
+        },
+        {
+          "caller": "MapV1ContentItem",
+          "callee": "MapV1Playlist",
+          "lineNumber": 326
+        },
+        {
+          "caller": "MapV1ContentItem",
+          "callee": "MapV1Podcast",
+          "lineNumber": 327
+        },
+        {
+          "caller": "MapV1ContentItem",
+          "callee": "MapV1Episode",
+          "lineNumber": 328
+        },
+        {
+          "caller": "MapV1ContentItem",
+          "callee": "MapUnknownType",
+          "lineNumber": 329
+        },
+        {
+          "caller": "MapV1ContentItem",
+          "callee": "MapV1FromRawJson",
+          "lineNumber": 330
+        },
+        {
+          "caller": "MapV1Episode",
+          "callee": "content.GetEpisodeData",
+          "lineNumber": 336
+        },
+        {
+          "caller": "MapV1Episode",
+          "callee": "SpotifyImageHelper.BucketSources",
+          "lineNumber": 340
+        },
+        {
+          "caller": "MapV1Episode",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 343
+        },
+        {
+          "caller": "MapV1Episode",
+          "callee": "HomeResponseParserV1.MapEpisodePlayedState",
+          "lineNumber": 355
+        },
+        {
+          "caller": "MapV1Episode",
+          "callee": "data.MediaTypes?.Any",
+          "lineNumber": 357
+        },
+        {
+          "caller": "MapV1Episode",
+          "callee": "string.Equals",
+          "lineNumber": 358
+        },
+        {
+          "caller": "MapV1Album",
+          "callee": "content.GetAlbumData",
+          "lineNumber": 365
+        },
+        {
+          "caller": "MapV1Album",
+          "callee": "SpotifyImageHelper.BucketSources",
+          "lineNumber": 367
+        },
+        {
+          "caller": "MapV1Album",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 368
+        },
+        {
+          "caller": "MapV1Album",
+          "callee": "data.Artists?.Items?.FirstOrDefault",
+          "lineNumber": 372
+        },
+        {
+          "caller": "MapV1Artist",
+          "callee": "content.GetArtistData",
+          "lineNumber": 384
+        },
+        {
+          "caller": "MapV1Artist",
+          "callee": "SpotifyImageHelper.BucketSources",
+          "lineNumber": 386
+        },
+        {
+          "caller": "MapV1Artist",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 387
+        },
+        {
+          "caller": "MapV1Playlist",
+          "callee": "content.GetPlaylistData",
+          "lineNumber": 403
+        },
+        {
+          "caller": "MapV1Playlist",
+          "callee": "data.Images?.Items?.FirstOrDefault",
+          "lineNumber": 405
+        },
+        {
+          "caller": "MapV1Playlist",
+          "callee": "SpotifyImageHelper.BucketSources",
+          "lineNumber": 406
+        },
+        {
+          "caller": "MapV1Playlist",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 407
+        },
+        {
+          "caller": "MapV1Playlist",
+          "callee": "SpotifyHtmlHelper.StripHtml",
+          "lineNumber": 411
+        },
+        {
+          "caller": "MapV1Podcast",
+          "callee": "content.GetPodcastData",
+          "lineNumber": 424
+        },
+        {
+          "caller": "MapV1Podcast",
+          "callee": "SpotifyImageHelper.BucketSources",
+          "lineNumber": 426
+        },
+        {
+          "caller": "MapV1Podcast",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 427
+        },
+        {
+          "caller": "MapV1FromRawJson",
+          "callee": "el.TryGetProperty",
+          "lineNumber": 443
+        },
+        {
+          "caller": "MapV1FromRawJson",
+          "callee": "tn.GetString",
+          "lineNumber": 443
+        },
+        {
+          "caller": "MapV1FromRawJson",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 445
+        },
+        {
+          "caller": "MapV1FromRawJson",
+          "callee": "InferContentType",
+          "lineNumber": 445
+        },
+        {
+          "caller": "MapV1FromRawJson",
+          "callee": "el.TryGetProperty",
+          "lineNumber": 446
+        },
+        {
+          "caller": "MapV1FromRawJson",
+          "callee": "name.GetString",
+          "lineNumber": 446
+        },
+        {
+          "caller": "MapV1FromRawJson",
+          "callee": "el.TryGetProperty",
+          "lineNumber": 447
+        },
+        {
+          "caller": "MapV1FromRawJson",
+          "callee": "u.GetString",
+          "lineNumber": 447
+        },
+        {
+          "caller": "MapUnknownType",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 453
+        },
+        {
+          "caller": "MapUnknownType",
+          "callee": "uri.Contains",
+          "lineNumber": 454
+        },
+        {
+          "caller": "MapUnknownType",
+          "callee": "uri.Contains",
+          "lineNumber": 456
+        },
+        {
+          "caller": "MapUnknownType",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 457
+        },
+        {
+          "caller": "MapLikedSongs",
+          "callee": "ExtractImageUrl",
+          "lineNumber": 474
+        },
+        {
+          "caller": "MapLikedSongs",
+          "callee": "formatAttributes?.Any",
+          "lineNumber": 475
+        },
+        {
+          "caller": "MapLikedSongs",
+          "callee": "uri.Contains(\"your-episodes\", StringComparison.OrdinalIgnoreCase) ||\r\n            formatAttributes?.Any",
+          "lineNumber": 477
+        },
+        {
+          "caller": "MapLikedSongs",
+          "callee": "uri.Contains",
+          "lineNumber": 477
+        },
+        {
+          "caller": "MapLikedSongs",
+          "callee": "a.Key.Contains",
+          "lineNumber": 478
+        },
+        {
+          "caller": "MapLikedSongs",
+          "callee": "Array.Empty<string>",
+          "lineNumber": 487
+        },
+        {
+          "caller": "MapLikedSongs",
+          "callee": "formatAttributes?.FirstOrDefault",
+          "lineNumber": 488
+        },
+        {
+          "caller": "MapLikedSongs",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 489
+        },
+        {
+          "caller": "MapLikedSongs",
+          "callee": "Convert.FromBase64String",
+          "lineNumber": 493
+        },
+        {
+          "caller": "MapLikedSongs",
+          "callee": "DecodeGroupMetadata",
+          "lineNumber": 494
+        },
+        {
+          "caller": "MapLikedSongs",
+          "callee": "thumbnailUris.Any",
+          "lineNumber": 503
+        },
+        {
+          "caller": "MapLikedSongs",
+          "callee": "char.ToUpperInvariant",
+          "lineNumber": 510
+        },
+        {
+          "caller": "MapLikedSongs",
+          "callee": "new HomeSectionItem",
+          "lineNumber": 513
+        },
+        {
+          "caller": "DecodeGroupMetadata",
+          "callee": "new List<string>",
+          "lineNumber": 537
+        },
+        {
+          "caller": "DecodeGroupMetadata",
+          "callee": "TryReadVarint",
+          "lineNumber": 541
+        },
+        {
+          "caller": "DecodeGroupMetadata",
+          "callee": "TryReadVarint",
+          "lineNumber": 546
+        },
+        {
+          "caller": "DecodeGroupMetadata",
+          "callee": "TryReadVarint",
+          "lineNumber": 551
+        },
+        {
+          "caller": "DecodeGroupMetadata",
+          "callee": "System.Text.Encoding.UTF8.GetString",
+          "lineNumber": 555
+        },
+        {
+          "caller": "DecodeGroupMetadata",
+          "callee": "s.StartsWith",
+          "lineNumber": 556
+        },
+        {
+          "caller": "DecodeGroupMetadata",
+          "callee": "s.StartsWith",
+          "lineNumber": 557
+        },
+        {
+          "caller": "DecodeGroupMetadata",
+          "callee": "trackUris.Add",
+          "lineNumber": 558
+        },
+        {
+          "caller": "IsSpotifyEpisodeUri",
+          "callee": "uri?.StartsWith",
+          "lineNumber": 587
+        },
+        {
+          "caller": "ResolveContentType",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 592
+        },
+        {
+          "caller": "ResolveContentType",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 607
+        },
+        {
+          "caller": "ResolveContentType",
+          "callee": "InferContentType",
+          "lineNumber": 619
+        },
+        {
+          "caller": "ExtractImageUrl",
+          "callee": "ExtractImageUrls",
+          "lineNumber": 626
+        },
+        {
+          "caller": "ExtractImageUrls",
+          "callee": "SpotifyImageHelper.BucketSources",
+          "lineNumber": 635
+        },
+        {
+          "caller": "ExtractImageUrls",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 643
+        },
+        {
+          "caller": "GetTypedEntityPayload",
+          "callee": "typedEntity.ExtensionData.TryGetValue",
+          "lineNumber": 677
+        },
+        {
+          "caller": "ExtractTitleFromTypedEntityPayload",
+          "callee": "TryGetString",
+          "lineNumber": 689
+        },
+        {
+          "caller": "ExtractTitleFromTypedEntityPayload",
+          "callee": "TryGetNestedString",
+          "lineNumber": 690
+        },
+        {
+          "caller": "ExtractTitleFromTypedEntityPayload",
+          "callee": "TryGetNestedString",
+          "lineNumber": 691
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "data.TryGetProperty",
+          "lineNumber": 699
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "visualIdentityTrait.TryGetProperty",
+          "lineNumber": 701
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "ExtractSquareCoverImageUrl",
+          "lineNumber": 703
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 704
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "data.TryGetProperty",
+          "lineNumber": 707
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "images.TryGetProperty",
+          "lineNumber": 709
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "items.GetArrayLength",
+          "lineNumber": 711
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "ExtractLargestSourceUrl",
+          "lineNumber": 713
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 714
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "data.TryGetProperty",
+          "lineNumber": 717
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "ExtractLargestSourceUrl",
+          "lineNumber": 719
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 720
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "data.TryGetProperty",
+          "lineNumber": 723
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "visuals.TryGetProperty",
+          "lineNumber": 725
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "ExtractLargestSourceUrl",
+          "lineNumber": 727
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 728
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "data.TryGetProperty",
+          "lineNumber": 733
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "ExtractLargestSourceUrl",
+          "lineNumber": 735
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "ExtractSquareCoverImageUrl",
+          "lineNumber": 735
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 736
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "data.TryGetProperty",
+          "lineNumber": 740
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "ExtractImageUrlFromJson",
+          "lineNumber": 743
+        },
+        {
+          "caller": "ExtractImageUrlFromJson",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 744
+        },
+        {
+          "caller": "ExtractSquareCoverImageUrl",
+          "callee": "squareCover.TryGetProperty",
+          "lineNumber": 755
+        },
+        {
+          "caller": "ExtractSquareCoverImageUrl",
+          "callee": "instances.GetArrayLength",
+          "lineNumber": 757
+        },
+        {
+          "caller": "ExtractSquareCoverImageUrl",
+          "callee": "instances.EnumerateArray",
+          "lineNumber": 760
+        },
+        {
+          "caller": "ExtractSquareCoverImageUrl",
+          "callee": "instance.TryGetProperty",
+          "lineNumber": 766
+        },
+        {
+          "caller": "ExtractSquareCoverImageUrl",
+          "callee": "size.GetString",
+          "lineNumber": 768
+        },
+        {
+          "caller": "ExtractSquareCoverImageUrl",
+          "callee": "TryGetNestedString",
+          "lineNumber": 776
+        },
+        {
+          "caller": "ExtractSquareCoverImageUrl",
+          "callee": "squareCover.TryGetProperty",
+          "lineNumber": 780
+        },
+        {
+          "caller": "ExtractSquareCoverImageUrl",
+          "callee": "image.TryGetProperty",
+          "lineNumber": 782
+        },
+        {
+          "caller": "ExtractSquareCoverImageUrl",
+          "callee": "ExtractLargestSourceUrl",
+          "lineNumber": 784
+        },
+        {
+          "caller": "ExtractSquareCoverImageUrl",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 785
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "container.TryGetProperty",
+          "lineNumber": 796
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "ExtractLargestSourceUrl",
+          "lineNumber": 799
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 800
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "container.TryGetProperty",
+          "lineNumber": 803
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "items.GetArrayLength",
+          "lineNumber": 805
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "ExtractLargestSourceUrl",
+          "lineNumber": 807
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 808
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "container.TryGetProperty",
+          "lineNumber": 811
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "sources.GetArrayLength",
+          "lineNumber": 813
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "sources.EnumerateArray",
+          "lineNumber": 818
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "source.TryGetProperty",
+          "lineNumber": 824
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "widthElement.GetInt32",
+          "lineNumber": 827
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "source.TryGetProperty",
+          "lineNumber": 829
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "maxWidthElement.GetInt32",
+          "lineNumber": 832
+        },
+        {
+          "caller": "ExtractLargestSourceUrl",
+          "callee": "TryGetString",
+          "lineNumber": 839
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "data.TryGetProperty",
+          "lineNumber": 850
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "images.TryGetProperty",
+          "lineNumber": 852
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "items.GetArrayLength",
+          "lineNumber": 854
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "TryGetNestedString",
+          "lineNumber": 855
+        },
+        {
+          "caller": "ExtractColorFromJson",
+          "callee": "TryGetNestedString",
+          "lineNumber": 858
+        },
+        {
+          "caller": "TryGetString",
+          "callee": "element.TryGetProperty",
+          "lineNumber": 867
+        },
+        {
+          "caller": "TryGetString",
+          "callee": "value.GetString",
+          "lineNumber": 871
+        },
+        {
+          "caller": "TryGetString",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 872
+        },
+        {
+          "caller": "TryGetNestedString",
+          "callee": "current.TryGetProperty",
+          "lineNumber": 881
+        },
+        {
+          "caller": "TryGetNestedString",
+          "callee": "current.GetString",
+          "lineNumber": 888
+        },
+        {
+          "caller": "TryGetNestedString",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 889
+        },
+        {
+          "caller": "FirstNonWhiteSpace",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 896
+        },
+        {
+          "caller": "BuildSubtitle",
+          "callee": "formatAttributes?.Any",
+          "lineNumber": 906
+        },
+        {
+          "caller": "BuildSubtitle",
+          "callee": "GetContributorNames",
+          "lineNumber": 909
+        },
+        {
+          "caller": "BuildSubtitle",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 910
+        },
+        {
+          "caller": "BuildSubtitle",
+          "callee": "GetContributorNames",
+          "lineNumber": 913
+        },
+        {
+          "caller": "BuildSubtitle",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 914
+        },
+        {
+          "caller": "BuildSubtitle",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 917
+        },
+        {
+          "caller": "GetContributorNames",
+          "callee": "items.Where(c => !string.IsNullOrEmpty(c.Name)).Select(c => c.Name!).ToList",
+          "lineNumber": 932
+        },
+        {
+          "caller": "GetContributorNames",
+          "callee": "items.Where(c => !string.IsNullOrEmpty(c.Name)).Select",
+          "lineNumber": 932
+        },
+        {
+          "caller": "GetContributorNames",
+          "callee": "items.Where",
+          "lineNumber": 932
+        },
+        {
+          "caller": "GetContributorNames",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 932
+        },
+        {
+          "caller": "GetContributorNames",
+          "callee": "string.Join",
+          "lineNumber": 933
+        },
+        {
+          "caller": "InferContentType",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 948
+        },
+        {
+          "caller": "InferContentType",
+          "callee": "uri.Contains",
+          "lineNumber": 949
+        },
+        {
+          "caller": "InferContentType",
+          "callee": "uri.Contains",
+          "lineNumber": 950
+        },
+        {
+          "caller": "InferContentType",
+          "callee": "uri.Contains",
+          "lineNumber": 951
+        },
+        {
+          "caller": "InferContentType",
+          "callee": "uri.Contains",
+          "lineNumber": 952
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 33,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/IActiveVideoSurfaceService.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 92,
+      "nonEmptyLines": 76,
+      "classes": [
+        {
+          "name": "IActiveVideoSurfaceService",
+          "startLine": 26,
+          "endLine": 92,
+          "methods": [
+            "RegisterProvider",
+            "AcquireSurface",
+            "ReleaseSurface",
+            "IsOwnedBy"
+          ],
+          "properties": [
+            "ActiveProvider",
+            "ActiveSurface",
+            "ActiveElementSurface",
+            "HasActiveSurface",
+            "IsActiveSurfaceLoading",
+            "HasActiveFirstFrame",
+            "IsActiveSurfaceBuffering",
+            "CurrentOwner",
+            "ActiveKind"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IActiveVideoSurfaceService",
+          "line": 26,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/IHomeFeedCache.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 31,
+      "nonEmptyLines": 28,
+      "classes": [
+        {
+          "name": "IHomeFeedCache",
+          "startLine": 12,
+          "endLine": 31,
+          "methods": [
+            "GetCached",
+            "FetchFreshAsync",
+            "Invalidate",
+            "StartBackgroundRefresh",
+            "StopBackgroundRefresh",
+            "SuspendRefresh",
+            "ResumeRefresh",
+            "ApplyDiff"
+          ],
+          "properties": [
+            "HasData",
+            "IsStale"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IHomeFeedCache",
+          "line": 12,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ApplyDiff",
+          "callee": "HomeFeedCache.ApplyDiff",
+          "lineNumber": 30
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ImageCacheCleanupAdapter.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 36,
+      "nonEmptyLines": 31,
+      "functions": [
+        {
+          "name": "CleanupStaleEntriesAsync",
+          "startLine": 19,
+          "endLine": 23,
+          "params": [
+            "maxAge",
+            "ct"
+          ]
+        },
+        {
+          "name": "ClearAsync",
+          "startLine": 25,
+          "endLine": 35,
+          "params": [
+            "ct"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ImageCacheCleanupAdapter",
+          "startLine": 13,
+          "endLine": 36,
+          "methods": [
+            "CleanupStaleEntriesAsync",
+            "ClearAsync"
+          ],
+          "properties": [
+            "CacheName",
+            "CurrentCount"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "CacheName",
+          "line": 15,
+          "isDefault": false
+        },
+        {
+          "name": "CurrentCount",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "CleanupStaleEntriesAsync",
+          "line": 19,
+          "isDefault": false
+        },
+        {
+          "name": "ClearAsync",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "ImageCacheCleanupAdapter",
+          "line": 13,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "CleanupStaleEntriesAsync",
+          "callee": "Ioc.Default.GetService<ImageCacheService>()?.CleanupStale",
+          "lineNumber": 21
+        },
+        {
+          "caller": "CleanupStaleEntriesAsync",
+          "callee": "Ioc.Default.GetService<ImageCacheService>",
+          "lineNumber": 21
+        },
+        {
+          "caller": "CleanupStaleEntriesAsync",
+          "callee": "Task.FromResult",
+          "lineNumber": 22
+        },
+        {
+          "caller": "ClearAsync",
+          "callee": "Ioc.Default.GetService<ImageCacheService>",
+          "lineNumber": 27
+        },
+        {
+          "caller": "ClearAsync",
+          "callee": "Task.FromResult",
+          "lineNumber": 28
+        },
+        {
+          "caller": "ClearAsync",
+          "callee": "Task.FromResult",
+          "lineNumber": 34
+        },
+        {
+          "caller": "ClearAsync",
+          "callee": "svc.ClearUnpinned",
+          "lineNumber": 34
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 5,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ImageCacheService.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 432,
+      "nonEmptyLines": 395,
+      "functions": [
+        {
+          "name": "ImageCacheService",
+          "startLine": 41,
+          "endLine": 51,
+          "params": [
+            "maxSize"
+          ]
+        },
+        {
+          "name": "EstimateBytes",
+          "startLine": 88,
+          "endLine": 92,
+          "params": [
+            "decodeSize"
+          ]
+        },
+        {
+          "name": "SnapToBucket",
+          "startLine": 105,
+          "endLine": 112,
+          "params": [
+            "requested"
+          ]
+        },
+        {
+          "name": "GetOrCreate",
+          "startLine": 128,
+          "endLine": 208,
+          "params": [
+            "uri",
+            "decodePixelSize",
+            "pin"
+          ]
+        },
+        {
+          "name": "BumpPin",
+          "startLine": 210,
+          "endLine": 214,
+          "params": [
+            "key"
+          ]
+        },
+        {
+          "name": "TryGet",
+          "startLine": 224,
+          "endLine": 249,
+          "params": [
+            "uri",
+            "decodePixelSize"
+          ]
+        },
+        {
+          "name": "Pin",
+          "startLine": 257,
+          "endLine": 264,
+          "params": [
+            "uri",
+            "decodePixelSize"
+          ]
+        },
+        {
+          "name": "Unpin",
+          "startLine": 269,
+          "endLine": 285,
+          "params": [
+            "uri",
+            "decodePixelSize"
+          ]
+        },
+        {
+          "name": "TrimToCapacityNoLock",
+          "startLine": 287,
+          "endLine": 319,
+          "params": []
+        },
+        {
+          "name": "EvictNodeNoLock",
+          "startLine": 321,
+          "endLine": 328,
+          "params": [
+            "node"
+          ]
+        },
+        {
+          "name": "Invalidate",
+          "startLine": 337,
+          "endLine": 353,
+          "params": [
+            "uri",
+            "decodePixelSize"
+          ]
+        },
+        {
+          "name": "CleanupStale",
+          "startLine": 360,
+          "endLine": 383,
+          "params": [
+            "maxAge"
+          ]
+        },
+        {
+          "name": "Clear",
+          "startLine": 391,
+          "endLine": 404,
+          "params": []
+        },
+        {
+          "name": "ClearUnpinned",
+          "startLine": 411,
+          "endLine": 431,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "ImageCacheService",
+          "startLine": 15,
+          "endLine": 432,
+          "methods": [
+            "ImageCacheService",
+            "EstimateBytes",
+            "SnapToBucket",
+            "GetOrCreate",
+            "BumpPin",
+            "TryGet",
+            "Pin",
+            "Unpin",
+            "TrimToCapacityNoLock",
+            "EvictNodeNoLock",
+            "Invalidate",
+            "CleanupStale",
+            "Clear",
+            "ClearUnpinned"
+          ],
+          "properties": [
+            "_lruList",
+            "_cache",
+            "_pinCounts",
+            "_rwLock",
+            "_maxSize",
+            "_hardMaxSize",
+            "_maxEstimatedBytes",
+            "_hardMaxEstimatedBytes",
+            "_estimatedBytes",
+            "MinEstimatedByteBudget",
+            "EstimatedByteBudgetPerEntry",
+            "Count",
+            "PinnedCount",
+            "EstimatedBytes"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ImageCacheService",
+          "line": 41,
+          "isDefault": false
+        },
+        {
+          "name": "Count",
+          "line": 53,
+          "isDefault": false
+        },
+        {
+          "name": "PinnedCount",
+          "line": 63,
+          "isDefault": false
+        },
+        {
+          "name": "EstimatedBytes",
+          "line": 78,
+          "isDefault": false
+        },
+        {
+          "name": "GetOrCreate",
+          "line": 128,
+          "isDefault": false
+        },
+        {
+          "name": "TryGet",
+          "line": 224,
+          "isDefault": false
+        },
+        {
+          "name": "Pin",
+          "line": 257,
+          "isDefault": false
+        },
+        {
+          "name": "Unpin",
+          "line": 269,
+          "isDefault": false
+        },
+        {
+          "name": "Invalidate",
+          "line": 337,
+          "isDefault": false
+        },
+        {
+          "name": "CleanupStale",
+          "line": 360,
+          "isDefault": false
+        },
+        {
+          "name": "Clear",
+          "line": 391,
+          "isDefault": false
+        },
+        {
+          "name": "ClearUnpinned",
+          "line": 411,
+          "isDefault": false
+        },
+        {
+          "name": "ImageCacheService",
+          "line": 15,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ImageCacheService",
+          "callee": "Math.Max",
+          "lineNumber": 43
+        },
+        {
+          "caller": "ImageCacheService",
+          "callee": "Math.Max",
+          "lineNumber": 49
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 130
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "SnapToBucket",
+          "lineNumber": 131
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "new CacheKey",
+          "lineNumber": 132
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "_rwLock.EnterUpgradeableReadLock",
+          "lineNumber": 134
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "_cache.TryGetValue",
+          "lineNumber": 137
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "_rwLock.EnterWriteLock",
+          "lineNumber": 139
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "ReferenceEquals",
+          "lineNumber": 143
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "_lruList.Remove",
+          "lineNumber": 145
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "_lruList.AddFirst",
+          "lineNumber": 146
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "BumpPin",
+          "lineNumber": 148
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "_rwLock.ExitWriteLock",
+          "lineNumber": 151
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "_rwLock.ExitUpgradeableReadLock",
+          "lineNumber": 154
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "new Size",
+          "lineNumber": 161
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "LoadedImageSurface.StartLoadFromUri",
+          "lineNumber": 164
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "new Uri",
+          "lineNumber": 164
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "LoadedImageSurface.StartLoadFromUri",
+          "lineNumber": 165
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "new Uri",
+          "lineNumber": 165
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "new CachedImage",
+          "lineNumber": 166
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "_rwLock.EnterWriteLock",
+          "lineNumber": 173
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "_cache.TryGetValue",
+          "lineNumber": 176
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "created.Dispose",
+          "lineNumber": 179
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "ReferenceEquals",
+          "lineNumber": 181
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "_lruList.Remove",
+          "lineNumber": 183
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "_lruList.AddFirst",
+          "lineNumber": 184
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "BumpPin",
+          "lineNumber": 186
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "new CacheEntry",
+          "lineNumber": 190
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "EstimateBytes",
+          "lineNumber": 193
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "_lruList.AddFirst",
+          "lineNumber": 196
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "new KeyValuePair<CacheKey, CacheEntry>",
+          "lineNumber": 196
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "BumpPin",
+          "lineNumber": 201
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "TrimToCapacityNoLock",
+          "lineNumber": 203
+        },
+        {
+          "caller": "GetOrCreate",
+          "callee": "_rwLock.ExitWriteLock",
+          "lineNumber": 207
+        },
+        {
+          "caller": "BumpPin",
+          "callee": "_pinCounts.TryGetValue",
+          "lineNumber": 212
+        },
+        {
+          "caller": "TryGet",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 226
+        },
+        {
+          "caller": "TryGet",
+          "callee": "new CacheKey",
+          "lineNumber": 227
+        },
+        {
+          "caller": "TryGet",
+          "callee": "SnapToBucket",
+          "lineNumber": 227
+        },
+        {
+          "caller": "TryGet",
+          "callee": "_rwLock.EnterUpgradeableReadLock",
+          "lineNumber": 228
+        },
+        {
+          "caller": "TryGet",
+          "callee": "_cache.TryGetValue",
+          "lineNumber": 231
+        },
+        {
+          "caller": "TryGet",
+          "callee": "_rwLock.EnterWriteLock",
+          "lineNumber": 234
+        },
+        {
+          "caller": "TryGet",
+          "callee": "ReferenceEquals",
+          "lineNumber": 238
+        },
+        {
+          "caller": "TryGet",
+          "callee": "_lruList.Remove",
+          "lineNumber": 240
+        },
+        {
+          "caller": "TryGet",
+          "callee": "_lruList.AddFirst",
+          "lineNumber": 241
+        },
+        {
+          "caller": "TryGet",
+          "callee": "_rwLock.ExitWriteLock",
+          "lineNumber": 246
+        },
+        {
+          "caller": "TryGet",
+          "callee": "_rwLock.ExitUpgradeableReadLock",
+          "lineNumber": 248
+        },
+        {
+          "caller": "Pin",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 259
+        },
+        {
+          "caller": "Pin",
+          "callee": "new CacheKey",
+          "lineNumber": 260
+        },
+        {
+          "caller": "Pin",
+          "callee": "SnapToBucket",
+          "lineNumber": 260
+        },
+        {
+          "caller": "Pin",
+          "callee": "_rwLock.EnterWriteLock",
+          "lineNumber": 261
+        },
+        {
+          "caller": "Pin",
+          "callee": "BumpPin",
+          "lineNumber": 262
+        },
+        {
+          "caller": "Pin",
+          "callee": "_rwLock.ExitWriteLock",
+          "lineNumber": 263
+        },
+        {
+          "caller": "Unpin",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 271
+        },
+        {
+          "caller": "Unpin",
+          "callee": "new CacheKey",
+          "lineNumber": 272
+        },
+        {
+          "caller": "Unpin",
+          "callee": "SnapToBucket",
+          "lineNumber": 272
+        },
+        {
+          "caller": "Unpin",
+          "callee": "_rwLock.EnterWriteLock",
+          "lineNumber": 273
+        },
+        {
+          "caller": "Unpin",
+          "callee": "_pinCounts.TryGetValue",
+          "lineNumber": 276
+        },
+        {
+          "caller": "Unpin",
+          "callee": "_pinCounts.Remove",
+          "lineNumber": 278
+        },
+        {
+          "caller": "Unpin",
+          "callee": "TrimToCapacityNoLock",
+          "lineNumber": 282
+        },
+        {
+          "caller": "Unpin",
+          "callee": "_rwLock.ExitWriteLock",
+          "lineNumber": 284
+        },
+        {
+          "caller": "TrimToCapacityNoLock",
+          "callee": "_pinCounts.ContainsKey",
+          "lineNumber": 299
+        },
+        {
+          "caller": "TrimToCapacityNoLock",
+          "callee": "EvictNodeNoLock",
+          "lineNumber": 301
+        },
+        {
+          "caller": "TrimToCapacityNoLock",
+          "callee": "EvictNodeNoLock",
+          "lineNumber": 317
+        },
+        {
+          "caller": "EvictNodeNoLock",
+          "callee": "_cache.Remove",
+          "lineNumber": 323
+        },
+        {
+          "caller": "EvictNodeNoLock",
+          "callee": "_lruList.Remove",
+          "lineNumber": 324
+        },
+        {
+          "caller": "EvictNodeNoLock",
+          "callee": "_pinCounts.Remove",
+          "lineNumber": 325
+        },
+        {
+          "caller": "EvictNodeNoLock",
+          "callee": "node.Value.Value.Image.Dispose",
+          "lineNumber": 327
+        },
+        {
+          "caller": "Invalidate",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 339
+        },
+        {
+          "caller": "Invalidate",
+          "callee": "new CacheKey",
+          "lineNumber": 340
+        },
+        {
+          "caller": "Invalidate",
+          "callee": "SnapToBucket",
+          "lineNumber": 340
+        },
+        {
+          "caller": "Invalidate",
+          "callee": "_rwLock.EnterWriteLock",
+          "lineNumber": 341
+        },
+        {
+          "caller": "Invalidate",
+          "callee": "_cache.TryGetValue",
+          "lineNumber": 344
+        },
+        {
+          "caller": "Invalidate",
+          "callee": "_cache.Remove",
+          "lineNumber": 346
+        },
+        {
+          "caller": "Invalidate",
+          "callee": "_lruList.Remove",
+          "lineNumber": 347
+        },
+        {
+          "caller": "Invalidate",
+          "callee": "node.Value.Value.Image.Dispose",
+          "lineNumber": 349
+        },
+        {
+          "caller": "Invalidate",
+          "callee": "_rwLock.ExitWriteLock",
+          "lineNumber": 352
+        },
+        {
+          "caller": "CleanupStale",
+          "callee": "_rwLock.EnterWriteLock",
+          "lineNumber": 365
+        },
+        {
+          "caller": "CleanupStale",
+          "callee": "_pinCounts.ContainsKey",
+          "lineNumber": 372
+        },
+        {
+          "caller": "CleanupStale",
+          "callee": "EvictNodeNoLock",
+          "lineNumber": 374
+        },
+        {
+          "caller": "CleanupStale",
+          "callee": "_rwLock.ExitWriteLock",
+          "lineNumber": 380
+        },
+        {
+          "caller": "Clear",
+          "callee": "_rwLock.EnterWriteLock",
+          "lineNumber": 393
+        },
+        {
+          "caller": "Clear",
+          "callee": "node.Value.Image.Dispose",
+          "lineNumber": 397
+        },
+        {
+          "caller": "Clear",
+          "callee": "_cache.Clear",
+          "lineNumber": 398
+        },
+        {
+          "caller": "Clear",
+          "callee": "_lruList.Clear",
+          "lineNumber": 399
+        },
+        {
+          "caller": "Clear",
+          "callee": "_pinCounts.Clear",
+          "lineNumber": 400
+        },
+        {
+          "caller": "Clear",
+          "callee": "_rwLock.ExitWriteLock",
+          "lineNumber": 403
+        },
+        {
+          "caller": "ClearUnpinned",
+          "callee": "_rwLock.EnterWriteLock",
+          "lineNumber": 413
+        },
+        {
+          "caller": "ClearUnpinned",
+          "callee": "_pinCounts.ContainsKey",
+          "lineNumber": 421
+        },
+        {
+          "caller": "ClearUnpinned",
+          "callee": "EvictNodeNoLock",
+          "lineNumber": 423
+        },
+        {
+          "caller": "ClearUnpinned",
+          "callee": "_rwLock.ExitWriteLock",
+          "lineNumber": 430
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 13,
+        "functionCount": 14,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ImageLoadingSuspension.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 34,
+      "nonEmptyLines": 30,
+      "classes": [
+        {
+          "name": "ImageLoadingSuspension",
+          "startLine": 17,
+          "endLine": 34,
+          "methods": [],
+          "properties": [
+            "_suspended",
+            "IsSuspended"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IsSuspended",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "ImageLoadingSuspension",
+          "line": 17,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/IMediaSurfaceConsumer.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 50,
+      "nonEmptyLines": 45,
+      "classes": [
+        {
+          "name": "IMediaSurfaceConsumer",
+          "startLine": 15,
+          "endLine": 50,
+          "methods": [
+            "AttachSurface",
+            "AttachElementSurface",
+            "DetachSurface"
+          ],
+          "properties": [
+            "OwnerPriority"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IMediaSurfaceConsumer",
+          "line": 15,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/InMemoryLoggerProvider.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 134,
+      "nonEmptyLines": 113,
+      "functions": [
+        {
+          "name": "InMemorySink",
+          "startLine": 51,
+          "endLine": 54,
+          "params": [
+            "dispatcherQueue"
+          ]
+        },
+        {
+          "name": "Emit",
+          "startLine": 56,
+          "endLine": 95,
+          "params": [
+            "logEvent"
+          ]
+        },
+        {
+          "name": "Clear",
+          "startLine": 97,
+          "endLine": 106,
+          "params": []
+        },
+        {
+          "name": "FlushPendingEntries",
+          "startLine": 108,
+          "endLine": 120,
+          "params": []
+        },
+        {
+          "name": "AddEntry",
+          "startLine": 122,
+          "endLine": 127,
+          "params": [
+            "entry"
+          ]
+        },
+        {
+          "name": "SimplifyCategory",
+          "startLine": 129,
+          "endLine": 133,
+          "params": [
+            "category"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "LogEntry",
+          "startLine": 13,
+          "endLine": 33,
+          "methods": [],
+          "properties": [
+            "Timestamp",
+            "Level",
+            "Category",
+            "Message",
+            "Exception",
+            "TimeString",
+            "LevelShort"
+          ]
+        },
+        {
+          "name": "InMemorySink",
+          "startLine": 39,
+          "endLine": 134,
+          "methods": [
+            "InMemorySink",
+            "Emit",
+            "Clear",
+            "FlushPendingEntries",
+            "AddEntry",
+            "SimplifyCategory"
+          ],
+          "properties": [
+            "MaxEntries",
+            "_entries",
+            "_dispatcherQueue",
+            "_pendingLock",
+            "_pendingEntries",
+            "_flushQueued",
+            "Entries"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Timestamp",
+          "line": 15,
+          "isDefault": false
+        },
+        {
+          "name": "Level",
+          "line": 16,
+          "isDefault": false
+        },
+        {
+          "name": "Category",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "Message",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "Exception",
+          "line": 19,
+          "isDefault": false
+        },
+        {
+          "name": "TimeString",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "LevelShort",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "LogEntry",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "Entries",
+          "line": 49,
+          "isDefault": false
+        },
+        {
+          "name": "InMemorySink",
+          "line": 51,
+          "isDefault": false
+        },
+        {
+          "name": "Emit",
+          "line": 56,
+          "isDefault": false
+        },
+        {
+          "name": "Clear",
+          "line": 97,
+          "isDefault": false
+        },
+        {
+          "name": "InMemorySink",
+          "line": 39,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Emit",
+          "callee": "new LogEntry",
+          "lineNumber": 61
+        },
+        {
+          "caller": "Emit",
+          "callee": "logEvent.Properties.TryGetValue",
+          "lineNumber": 65
+        },
+        {
+          "caller": "Emit",
+          "callee": "SimplifyCategory",
+          "lineNumber": 66
+        },
+        {
+          "caller": "Emit",
+          "callee": "ctx.ToString().Trim",
+          "lineNumber": 66
+        },
+        {
+          "caller": "Emit",
+          "callee": "ctx.ToString",
+          "lineNumber": 66
+        },
+        {
+          "caller": "Emit",
+          "callee": "logEvent.RenderMessage",
+          "lineNumber": 68
+        },
+        {
+          "caller": "Emit",
+          "callee": "logEvent.Exception?.ToString",
+          "lineNumber": 69
+        },
+        {
+          "caller": "Emit",
+          "callee": "AddEntry",
+          "lineNumber": 74
+        },
+        {
+          "caller": "Emit",
+          "callee": "_pendingEntries.Add",
+          "lineNumber": 80
+        },
+        {
+          "caller": "Emit",
+          "callee": "_pendingEntries.RemoveRange",
+          "lineNumber": 82
+        },
+        {
+          "caller": "Emit",
+          "callee": "_dispatcherQueue.TryEnqueue",
+          "lineNumber": 90
+        },
+        {
+          "caller": "Clear",
+          "callee": "_pendingEntries.Clear",
+          "lineNumber": 100
+        },
+        {
+          "caller": "Clear",
+          "callee": "_dispatcherQueue.TryEnqueue",
+          "lineNumber": 103
+        },
+        {
+          "caller": "Clear",
+          "callee": "_entries.Clear",
+          "lineNumber": 105
+        },
+        {
+          "caller": "FlushPendingEntries",
+          "callee": "_pendingEntries.Clear",
+          "lineNumber": 114
+        },
+        {
+          "caller": "FlushPendingEntries",
+          "callee": "AddEntry",
+          "lineNumber": 119
+        },
+        {
+          "caller": "AddEntry",
+          "callee": "_entries.Add",
+          "lineNumber": 124
+        },
+        {
+          "caller": "AddEntry",
+          "callee": "_entries.RemoveAt",
+          "lineNumber": 126
+        },
+        {
+          "caller": "SimplifyCategory",
+          "callee": "category.LastIndexOf",
+          "lineNumber": 131
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 13,
+        "functionCount": 6,
+        "classCount": 2
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/INowPlayingPresentationService.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 62,
+      "nonEmptyLines": 50,
+      "classes": [
+        {
+          "name": "INowPlayingPresentationService",
+          "startLine": 37,
+          "endLine": 62,
+          "methods": [
+            "EnterTheatre",
+            "EnterFullscreen",
+            "ExitToNormal",
+            "ToggleFullscreen",
+            "ToggleTheatre"
+          ],
+          "properties": [
+            "Presentation",
+            "IsExpanded",
+            "IsNormal"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "INowPlayingPresentationService",
+          "line": 37,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/InPageFilterController.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 114,
+      "nonEmptyLines": 102,
+      "functions": [
+        {
+          "name": "OnPageChanged",
+          "startLine": 68,
+          "endLine": 79,
+          "params": [
+            "newTarget"
+          ]
+        },
+        {
+          "name": "RequestFilter",
+          "startLine": 85,
+          "endLine": 95,
+          "params": []
+        },
+        {
+          "name": "Hide",
+          "startLine": 100,
+          "endLine": 106,
+          "params": []
+        },
+        {
+          "name": "SetField",
+          "startLine": 108,
+          "endLine": 113,
+          "params": [
+            "field",
+            "value",
+            "propertyName"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "InPageFilterController",
+          "startLine": 20,
+          "endLine": 114,
+          "methods": [
+            "OnPageChanged",
+            "RequestFilter",
+            "Hide",
+            "SetField"
+          ],
+          "properties": [
+            "_currentTarget",
+            "_isActive",
+            "_query",
+            "CurrentTarget",
+            "IsActive",
+            "Query"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "CurrentTarget",
+          "line": 33,
+          "isDefault": false
+        },
+        {
+          "name": "IsActive",
+          "line": 41,
+          "isDefault": false
+        },
+        {
+          "name": "Query",
+          "line": 49,
+          "isDefault": false
+        },
+        {
+          "name": "OnPageChanged",
+          "line": 68,
+          "isDefault": false
+        },
+        {
+          "name": "RequestFilter",
+          "line": 85,
+          "isDefault": false
+        },
+        {
+          "name": "Hide",
+          "line": 100,
+          "isDefault": false
+        },
+        {
+          "name": "InPageFilterController",
+          "line": 20,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "OnPageChanged",
+          "callee": "ReferenceEquals",
+          "lineNumber": 70
+        },
+        {
+          "caller": "OnPageChanged",
+          "callee": "PropertyChanged?.Invoke",
+          "lineNumber": 76
+        },
+        {
+          "caller": "OnPageChanged",
+          "callee": "new PropertyChangedEventArgs",
+          "lineNumber": 76
+        },
+        {
+          "caller": "OnPageChanged",
+          "callee": "nameof",
+          "lineNumber": 76
+        },
+        {
+          "caller": "RequestFilter",
+          "callee": "PropertyChanged?.Invoke",
+          "lineNumber": 91
+        },
+        {
+          "caller": "RequestFilter",
+          "callee": "new PropertyChangedEventArgs",
+          "lineNumber": 91
+        },
+        {
+          "caller": "RequestFilter",
+          "callee": "nameof",
+          "lineNumber": 91
+        },
+        {
+          "caller": "RequestFilter",
+          "callee": "RequestFocusInput?.Invoke",
+          "lineNumber": 94
+        },
+        {
+          "caller": "Hide",
+          "callee": "t.OnFilterClosed",
+          "lineNumber": 102
+        },
+        {
+          "caller": "Hide",
+          "callee": "PropertyChanged?.Invoke",
+          "lineNumber": 104
+        },
+        {
+          "caller": "Hide",
+          "callee": "new PropertyChangedEventArgs",
+          "lineNumber": 104
+        },
+        {
+          "caller": "Hide",
+          "callee": "nameof",
+          "lineNumber": 104
+        },
+        {
+          "caller": "SetField",
+          "callee": "System.Collections.Generic.EqualityComparer<T>.Default.Equals",
+          "lineNumber": 110
+        },
+        {
+          "caller": "SetField",
+          "callee": "PropertyChanged?.Invoke",
+          "lineNumber": 112
+        },
+        {
+          "caller": "SetField",
+          "callee": "new PropertyChangedEventArgs",
+          "lineNumber": 112
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 7,
+        "functionCount": 4,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/IProfileCache.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 21,
+      "nonEmptyLines": 19,
+      "classes": [
+        {
+          "name": "IProfileCache",
+          "startLine": 10,
+          "endLine": 21,
+          "methods": [
+            "GetCached",
+            "FetchFreshAsync",
+            "Invalidate",
+            "Clear",
+            "StartBackgroundRefresh",
+            "StopBackgroundRefresh"
+          ],
+          "properties": [
+            "HasData",
+            "IsStale"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IProfileCache",
+          "line": 10,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ISharedCardCanvasPreviewService.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 27,
+      "nonEmptyLines": 23,
+      "functions": [
+        {
+          "name": "CanvasPreviewLease",
+          "startLine": 17,
+          "endLine": 22,
+          "params": [
+            "id",
+            "host",
+            "canvasUrl"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ISharedCardCanvasPreviewService",
+          "startLine": 7,
+          "endLine": 13,
+          "methods": [
+            "EnsureInitializedAsync",
+            "AcquireAsync",
+            "ReleaseAsync",
+            "ReleaseHostAsync"
+          ],
+          "properties": []
+        },
+        {
+          "name": "CanvasPreviewLease",
+          "startLine": 15,
+          "endLine": 27,
+          "methods": [
+            "CanvasPreviewLease"
+          ],
+          "properties": [
+            "Id",
+            "Host",
+            "CanvasUrl"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ISharedCardCanvasPreviewService",
+          "line": 7,
+          "isDefault": false
+        },
+        {
+          "name": "Id",
+          "line": 24,
+          "isDefault": false
+        },
+        {
+          "name": "Host",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "CanvasUrl",
+          "line": 26,
+          "isDefault": false
+        },
+        {
+          "name": "CanvasPreviewLease",
+          "line": 15,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 5,
+        "functionCount": 1,
+        "classCount": 2
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ISpotifyVideoPlaybackDetails.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 34,
+      "nonEmptyLines": 29,
+      "classes": [
+        {
+          "name": "ISpotifyVideoPlaybackDetails",
+          "startLine": 8,
+          "endLine": 16,
+          "methods": [
+            "SelectQualityAsync"
+          ],
+          "properties": [
+            "AvailableQualities",
+            "CurrentQuality",
+            "PlaybackMetadata",
+            "CanSelectQuality"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ISpotifyVideoPlaybackDetails",
+          "line": 8,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/IUpdateService.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 27,
+      "nonEmptyLines": 23,
+      "classes": [
+        {
+          "name": "IUpdateService",
+          "startLine": 14,
+          "endLine": 27,
+          "methods": [
+            "CheckForUpdateAsync"
+          ],
+          "properties": [
+            "Status",
+            "CurrentVersion",
+            "LatestVersion",
+            "Changelog",
+            "ReleaseUrl",
+            "ErrorMessage",
+            "LastChecked",
+            "Distribution",
+            "IsUpdateAvailable"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IUpdateService",
+          "line": 14,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    }
+  ]
+}

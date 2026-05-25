@@ -1,0 +1,156 @@
+{
+  "nodes": [
+    {
+      "id": "document:signing/README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "signing/README.md",
+      "summary": "Comprehensive guide for signing Wavee MSIX packages with Azure Artifact Signing, covering one-time setup, the manifest publisher-swap rationale, CI integration, LAF token coupling, and SmartScreen reputation notes.",
+      "tags": [
+        "documentation",
+        "security",
+        "deployment",
+        "code-signing"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:signing/Set-Publisher.ps1",
+      "type": "file",
+      "name": "Set-Publisher.ps1",
+      "filePath": "signing/Set-Publisher.ps1",
+      "summary": "Standalone PowerShell helper that rewrites the Publisher attribute in Package.appxmanifest from the dev self-signed subject (CN=ckara) to the Azure Artifact Signing certificate profile subject, so SignTool's publisher-match check passes at release build time.",
+      "tags": [
+        "script",
+        "security",
+        "code-signing",
+        "build-system"
+      ],
+      "complexity": "simple",
+      "languageNotes": "Uses System.Xml.XmlWriter with UTF-8-BOM encoding to satisfy MSIX tooling's manifest encoding requirements."
+    },
+    {
+      "id": "file:signing/Sign-Msix.ps1",
+      "type": "file",
+      "name": "Sign-Msix.ps1",
+      "filePath": "signing/Sign-Msix.ps1",
+      "summary": "Low-level PowerShell wrapper around SignTool with the Azure.CodeSigning.Dlib plugin; auto-detects the dlib and signtool.exe paths, supports signing a single .msix/.msixbundle or a whole folder, and falls back from SPN env vars to an existing az login session for authentication.",
+      "tags": [
+        "script",
+        "security",
+        "code-signing",
+        "deployment"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Searches multiple known install paths for Azure.CodeSigning.Dlib.dll to handle both per-user LOCALAPPDATA and older Program Files layouts."
+    },
+    {
+      "id": "file:signing/Sign-Release.ps1",
+      "type": "file",
+      "name": "Sign-Release.ps1",
+      "filePath": "signing/Sign-Release.ps1",
+      "summary": "End-to-end local release pipeline for Wavee: swaps the manifest publisher, runs MSBuild to produce an unsigned MSIX (with specific flags to avoid WMC9999), signs with Azure Artifact Signing dlib, verifies the chain via signtool, optionally installs via Add-AppxPackage, and restores the dev publisher in a try/finally even on Ctrl-C.",
+      "tags": [
+        "script",
+        "deployment",
+        "code-signing",
+        "build-system",
+        "entry-point"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Deliberately omits /p:RuntimeIdentifier from MSBuild to avoid WMC9999 XAML compiler error; uses try/finally for publisher restore to guarantee working-tree cleanliness."
+    },
+    {
+      "id": "document:signing/laf-second-request.md",
+      "type": "document",
+      "name": "laf-second-request.md",
+      "filePath": "signing/laf-second-request.md",
+      "summary": "Pre-written email draft for requesting a second Microsoft Limited Access Feature token for Phi Silica against the production Artifact Signing publisher, plus step-by-step instructions for integrating the new token into AiCapabilities.cs once received.",
+      "tags": [
+        "documentation",
+        "security",
+        "on-device-ai",
+        "deployment"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:signing/metadata.template.json",
+      "type": "config",
+      "name": "metadata.template.json",
+      "filePath": "signing/metadata.template.json",
+      "summary": "Committed template for the gitignored metadata.json consumed by SignTool via the Azure.CodeSigning.Dlib plugin; contains placeholder values for the Azure Artifact Signing endpoint URL, account name, and certificate profile name.",
+      "tags": [
+        "configuration",
+        "security",
+        "code-signing"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "document:signing/README.md",
+      "target": "file:signing/Sign-Release.ps1",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:signing/README.md",
+      "target": "file:signing/Sign-Msix.ps1",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:signing/README.md",
+      "target": "file:signing/Set-Publisher.ps1",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:signing/README.md",
+      "target": "config:signing/metadata.template.json",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:signing/README.md",
+      "target": "document:signing/laf-second-request.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:signing/Sign-Release.ps1",
+      "target": "file:signing/Set-Publisher.ps1",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:signing/Sign-Release.ps1",
+      "target": "file:signing/Sign-Msix.ps1",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:signing/Sign-Release.ps1",
+      "target": "config:signing/metadata.template.json",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:signing/Sign-Msix.ps1",
+      "target": "config:signing/metadata.template.json",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}

@@ -1,0 +1,1875 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 25,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/SpectrumPlacement.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 9,
+      "nonEmptyLines": 9,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/SpectrumStyle.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 8,
+      "nonEmptyLines": 8,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/TaskbarPlacement.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 10,
+      "nonEmptyLines": 10,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/TextAlignmentType.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 40,
+      "nonEmptyLines": 36,
+      "functions": [
+        {
+          "name": "ToHorizontalAlignment",
+          "startLine": 18,
+          "endLine": 27,
+          "params": [
+            "alignmentType"
+          ]
+        },
+        {
+          "name": "ToCanvasHorizontalAlignment",
+          "startLine": 29,
+          "endLine": 38,
+          "params": [
+            "alignmentType"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "LyricsAlignmentTypeExtensions",
+          "startLine": 16,
+          "endLine": 39,
+          "methods": [
+            "ToHorizontalAlignment",
+            "ToCanvasHorizontalAlignment"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "ToHorizontalAlignment",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "ToCanvasHorizontalAlignment",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "LyricsAlignmentTypeExtensions",
+          "line": 16,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ToHorizontalAlignment",
+          "callee": "new ArgumentOutOfRangeException",
+          "lineNumber": 25
+        },
+        {
+          "caller": "ToHorizontalAlignment",
+          "callee": "nameof",
+          "lineNumber": 25
+        },
+        {
+          "caller": "ToCanvasHorizontalAlignment",
+          "callee": "new ArgumentOutOfRangeException",
+          "lineNumber": 36
+        },
+        {
+          "caller": "ToCanvasHorizontalAlignment",
+          "callee": "nameof",
+          "lineNumber": 36
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/TitleBarArea.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 9,
+      "nonEmptyLines": 9,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/WindowPixelSampleMode.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 11,
+      "nonEmptyLines": 11,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/WindowStatus.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 8,
+      "nonEmptyLines": 7,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Enums/WordByWordEffectMode.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 9,
+      "nonEmptyLines": 9,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/AppWindowExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 18,
+      "nonEmptyLines": 17,
+      "functions": [
+        {
+          "name": "extension",
+          "startLine": 8,
+          "endLine": 16,
+          "params": [
+            "appWindow"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "AppWindowExtensions",
+          "startLine": 6,
+          "endLine": 17,
+          "methods": [
+            "extension"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "AppWindowExtensions",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "extension",
+          "callee": "appWindow.SetIcon",
+          "lineNumber": 12
+        },
+        {
+          "caller": "extension",
+          "callee": "appWindow.SetTaskbarIcon",
+          "lineNumber": 13
+        },
+        {
+          "caller": "extension",
+          "callee": "appWindow.SetTitleBarIcon",
+          "lineNumber": 14
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/CanvasTextLayoutExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 22,
+      "nonEmptyLines": 20,
+      "functions": [
+        {
+          "name": "extension",
+          "startLine": 8,
+          "endLine": 20,
+          "params": [
+            "canvasTextLayout"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "CanvasTextLayoutExtensions",
+          "startLine": 6,
+          "endLine": 21,
+          "methods": [
+            "extension"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "CanvasTextLayoutExtensions",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "extension",
+          "callee": "canvasTextLayout.SetFontFamily",
+          "lineNumber": 17
+        },
+        {
+          "caller": "extension",
+          "callee": "LanguageHelper.IsCJK",
+          "lineNumber": 17
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/ColorExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 38,
+      "nonEmptyLines": 32,
+      "functions": [
+        {
+          "name": "extension",
+          "startLine": 9,
+          "endLine": 36,
+          "params": [
+            "color"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ColorExtensions",
+          "startLine": 7,
+          "endLine": 37,
+          "methods": [
+            "extension"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "ColorExtensions",
+          "line": 7,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "extension",
+          "callee": "Color.FromArgb",
+          "lineNumber": 13
+        },
+        {
+          "caller": "extension",
+          "callee": "Color.FromArgb",
+          "lineNumber": 18
+        },
+        {
+          "caller": "extension",
+          "callee": "Math.Max",
+          "lineNumber": 23
+        },
+        {
+          "caller": "extension",
+          "callee": "Math.Min",
+          "lineNumber": 23
+        },
+        {
+          "caller": "extension",
+          "callee": "CommunityToolkit.WinUI.Helpers.ColorHelper.ToHsl",
+          "lineNumber": 25
+        },
+        {
+          "caller": "extension",
+          "callee": "CommunityToolkit.WinUI.Helpers.ColorHelper.FromHsl",
+          "lineNumber": 29
+        },
+        {
+          "caller": "extension",
+          "callee": "new Vector3",
+          "lineNumber": 34
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/DisposableObjectExtension.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 53,
+      "nonEmptyLines": 43,
+      "functions": [
+        {
+          "name": "extension",
+          "startLine": 9,
+          "endLine": 51,
+          "params": [
+            "obj"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "DisposableObjectExtension",
+          "startLine": 7,
+          "endLine": 52,
+          "methods": [
+            "extension"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "DisposableObjectExtension",
+          "line": 7,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "extension",
+          "callee": "obj.GetType",
+          "lineNumber": 20
+        },
+        {
+          "caller": "extension",
+          "callee": "objType.GetField",
+          "lineNumber": 24
+        },
+        {
+          "caller": "extension",
+          "callee": "objType.GetField",
+          "lineNumber": 25
+        },
+        {
+          "caller": "extension",
+          "callee": "Convert.ToBoolean",
+          "lineNumber": 27
+        },
+        {
+          "caller": "extension",
+          "callee": "isDisposedField.GetValue",
+          "lineNumber": 27
+        },
+        {
+          "caller": "extension",
+          "callee": "objType.GetField",
+          "lineNumber": 29
+        },
+        {
+          "caller": "extension",
+          "callee": "Convert.ToBoolean",
+          "lineNumber": 31
+        },
+        {
+          "caller": "extension",
+          "callee": "isDisposedField.GetValue",
+          "lineNumber": 31
+        },
+        {
+          "caller": "extension",
+          "callee": "objType.GetField",
+          "lineNumber": 34
+        },
+        {
+          "caller": "extension",
+          "callee": "Convert.ToBoolean",
+          "lineNumber": 35
+        },
+        {
+          "caller": "extension",
+          "callee": "isDisposedField.GetValue",
+          "lineNumber": 35
+        },
+        {
+          "caller": "extension",
+          "callee": "objType.GetField",
+          "lineNumber": 38
+        },
+        {
+          "caller": "extension",
+          "callee": "strategyField.GetValue",
+          "lineNumber": 41
+        },
+        {
+          "caller": "extension",
+          "callee": "strategy.GetType().GetProperty",
+          "lineNumber": 42
+        },
+        {
+          "caller": "extension",
+          "callee": "strategy.GetType",
+          "lineNumber": 42
+        },
+        {
+          "caller": "extension",
+          "callee": "Convert.ToBoolean",
+          "lineNumber": 43
+        },
+        {
+          "caller": "extension",
+          "callee": "isClosedField.GetValue",
+          "lineNumber": 43
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/ElementThemeExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 18,
+      "nonEmptyLines": 17,
+      "functions": [
+        {
+          "name": "extension",
+          "startLine": 8,
+          "endLine": 16,
+          "params": [
+            "elementTheme"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ElementThemeExtensions",
+          "startLine": 6,
+          "endLine": 17,
+          "methods": [
+            "extension"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "ElementThemeExtensions",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/EnumExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 18,
+      "nonEmptyLines": 17,
+      "functions": [
+        {
+          "name": "GetNext",
+          "startLine": 9,
+          "endLine": 15,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "EnumExtensions",
+          "startLine": 5,
+          "endLine": 16,
+          "methods": [
+            "GetNext"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "GetNext",
+          "line": 9,
+          "isDefault": false
+        },
+        {
+          "name": "EnumExtensions",
+          "line": 5,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetNext",
+          "callee": "Enum.GetValues<T>",
+          "lineNumber": 11
+        },
+        {
+          "caller": "GetNext",
+          "callee": "Array.IndexOf",
+          "lineNumber": 12
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/LyricsDataExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 135,
+      "nonEmptyLines": 125,
+      "functions": [
+        {
+          "name": "extension",
+          "startLine": 11,
+          "endLine": 133,
+          "params": [
+            "lyricsData"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "LyricsDataExtensions",
+          "startLine": 9,
+          "endLine": 134,
+          "methods": [
+            "extension"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "LyricsDataExtensions",
+          "line": 9,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "extension",
+          "callee": "new LyricsData",
+          "lineNumber": 15
+        },
+        {
+          "caller": "extension",
+          "callee": "new LyricsLine",
+          "lineNumber": 18
+        },
+        {
+          "caller": "extension",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 21
+        },
+        {
+          "caller": "extension",
+          "callee": "new BaseLyrics",
+          "lineNumber": 23
+        },
+        {
+          "caller": "extension",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 23
+        },
+        {
+          "caller": "extension",
+          "callee": "new LyricsData",
+          "lineNumber": 33
+        },
+        {
+          "caller": "extension",
+          "callee": "new LyricsLine",
+          "lineNumber": 33
+        },
+        {
+          "caller": "extension",
+          "callee": "TimeSpan.FromMinutes",
+          "lineNumber": 36
+        },
+        {
+          "caller": "extension",
+          "callee": "new BaseLyrics",
+          "lineNumber": 38
+        },
+        {
+          "caller": "extension",
+          "callee": "TimeSpan.FromMinutes",
+          "lineNumber": 38
+        },
+        {
+          "caller": "extension",
+          "callee": "translationData.LyricsLines\r\n                        .FirstOrDefault",
+          "lineNumber": 47
+        },
+        {
+          "caller": "extension",
+          "callee": "Math.Abs",
+          "lineNumber": 48
+        },
+        {
+          "caller": "extension",
+          "callee": "phoneticData.LyricsLines\r\n                        .FirstOrDefault",
+          "lineNumber": 68
+        },
+        {
+          "caller": "extension",
+          "callee": "Math.Abs",
+          "lineNumber": 69
+        },
+        {
+          "caller": "extension",
+          "callee": "translation.Split(StringHelper.NewLine).ToList",
+          "lineNumber": 86
+        },
+        {
+          "caller": "extension",
+          "callee": "translation.Split",
+          "lineNumber": 86
+        },
+        {
+          "caller": "extension",
+          "callee": "transliteration.Split(StringHelper.NewLine).ToList",
+          "lineNumber": 104
+        },
+        {
+          "caller": "extension",
+          "callee": "transliteration.Split",
+          "lineNumber": 104
+        },
+        {
+          "caller": "extension",
+          "callee": "lyricsData.LyricsLines.ElementAtOrDefault",
+          "lineNumber": 127
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/LyricsFormatExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 35,
+      "nonEmptyLines": 33,
+      "functions": [
+        {
+          "name": "extension",
+          "startLine": 8,
+          "endLine": 33,
+          "params": [
+            "format"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "LyricsFormatExtensions",
+          "startLine": 6,
+          "endLine": 34,
+          "methods": [
+            "extension"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "LyricsFormatExtensions",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/LyricsLayoutOrientationExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 26,
+      "nonEmptyLines": 24,
+      "functions": [
+        {
+          "name": "extension",
+          "startLine": 9,
+          "endLine": 24,
+          "params": [
+            "orientation"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "LyricsLayoutOrientationExtensions",
+          "startLine": 7,
+          "endLine": 25,
+          "methods": [
+            "extension"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "LyricsLayoutOrientationExtensions",
+          "line": 7,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "extension",
+          "callee": "new ArgumentOutOfRangeException",
+          "lineNumber": 15
+        },
+        {
+          "caller": "extension",
+          "callee": "nameof",
+          "lineNumber": 15
+        },
+        {
+          "caller": "extension",
+          "callee": "new ArgumentOutOfRangeException",
+          "lineNumber": 22
+        },
+        {
+          "caller": "extension",
+          "callee": "nameof",
+          "lineNumber": 22
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/PointExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 19,
+      "nonEmptyLines": 16,
+      "functions": [
+        {
+          "name": "extension",
+          "startLine": 8,
+          "endLine": 17,
+          "params": [
+            "point"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "PointExtensions",
+          "startLine": 6,
+          "endLine": 18,
+          "methods": [
+            "extension"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "PointExtensions",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/RectExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 103,
+      "nonEmptyLines": 88,
+      "functions": [
+        {
+          "name": "extension",
+          "startLine": 10,
+          "endLine": 101,
+          "params": [
+            "rect"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "RectExtensions",
+          "startLine": 8,
+          "endLine": 102,
+          "methods": [
+            "extension"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "RectExtensions",
+          "line": 8,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "extension",
+          "callee": "Extend",
+          "lineNumber": 68
+        },
+        {
+          "caller": "extension",
+          "callee": "Extend",
+          "lineNumber": 69
+        },
+        {
+          "caller": "extension",
+          "callee": "new Rect",
+          "lineNumber": 82
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/StringExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 93,
+      "nonEmptyLines": 87,
+      "functions": [
+        {
+          "name": "extension",
+          "startLine": 24,
+          "endLine": 91,
+          "params": [
+            "str"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "StringExtensions",
+          "startLine": 7,
+          "endLine": 92,
+          "methods": [
+            "extension"
+          ],
+          "properties": [
+            "_splitter"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "StringExtensions",
+          "line": 7,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "extension",
+          "callee": "_splitter.FirstOrDefault",
+          "lineNumber": 28
+        },
+        {
+          "caller": "extension",
+          "callee": "str.Split",
+          "lineNumber": 31
+        },
+        {
+          "caller": "extension",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 41
+        },
+        {
+          "caller": "extension",
+          "callee": "System.Text.RegularExpressions.Regex.IsMatch",
+          "lineNumber": 45
+        },
+        {
+          "caller": "extension",
+          "callee": "System.Text.RegularExpressions.Regex.IsMatch",
+          "lineNumber": 53
+        },
+        {
+          "caller": "extension",
+          "callee": "System.Text.RegularExpressions.Regex.IsMatch",
+          "lineNumber": 61
+        },
+        {
+          "caller": "extension",
+          "callee": "System.Text.RegularExpressions.Regex.IsMatch",
+          "lineNumber": 69
+        },
+        {
+          "caller": "extension",
+          "callee": "System.Text.RegularExpressions.Regex.IsMatch",
+          "lineNumber": 70
+        },
+        {
+          "caller": "extension",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 82
+        },
+        {
+          "caller": "extension",
+          "callee": "new Uri",
+          "lineNumber": 85
+        },
+        {
+          "caller": "extension",
+          "callee": "System.Net.WebUtility.UrlDecode",
+          "lineNumber": 86
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/ThicknessExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 15,
+      "nonEmptyLines": 14,
+      "functions": [
+        {
+          "name": "extension",
+          "startLine": 7,
+          "endLine": 13,
+          "params": [
+            "thickness"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ThicknessExtensions",
+          "startLine": 5,
+          "endLine": 14,
+          "methods": [
+            "extension"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "ThicknessExtensions",
+          "line": 5,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "extension",
+          "callee": "new Thickness",
+          "lineNumber": 9
+        },
+        {
+          "caller": "extension",
+          "callee": "new Thickness",
+          "lineNumber": 10
+        },
+        {
+          "caller": "extension",
+          "callee": "new Thickness",
+          "lineNumber": 11
+        },
+        {
+          "caller": "extension",
+          "callee": "new Thickness",
+          "lineNumber": 12
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/VectorExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 30,
+      "nonEmptyLines": 26,
+      "functions": [
+        {
+          "name": "extension",
+          "startLine": 7,
+          "endLine": 28,
+          "params": [
+            "vector2"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "VectorExtensions",
+          "startLine": 5,
+          "endLine": 29,
+          "methods": [
+            "extension"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "VectorExtensions",
+          "line": 5,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "extension",
+          "callee": "new Vector2",
+          "lineNumber": 11
+        },
+        {
+          "caller": "extension",
+          "callee": "new Vector2",
+          "lineNumber": 16
+        },
+        {
+          "caller": "extension",
+          "callee": "new Vector2",
+          "lineNumber": 21
+        },
+        {
+          "caller": "extension",
+          "callee": "new Vector2",
+          "lineNumber": 26
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Extensions/WindowExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 26,
+      "nonEmptyLines": 23,
+      "functions": [
+        {
+          "name": "SetIsBorderless",
+          "startLine": 9,
+          "endLine": 24,
+          "params": [
+            "window",
+            "enable"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "WindowExtensions",
+          "startLine": 7,
+          "endLine": 25,
+          "methods": [
+            "SetIsBorderless"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "SetIsBorderless",
+          "line": 9,
+          "isDefault": false
+        },
+        {
+          "name": "WindowExtensions",
+          "line": 7,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "SetIsBorderless",
+          "callee": "WindowNative.GetWindowHandle",
+          "lineNumber": 11
+        },
+        {
+          "caller": "SetIsBorderless",
+          "callee": "User32.GetWindowLong",
+          "lineNumber": 12
+        },
+        {
+          "caller": "SetIsBorderless",
+          "callee": "User32.SetWindowLong",
+          "lineNumber": 23
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Helper/ColorHelper.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 61,
+      "nonEmptyLines": 52,
+      "functions": [
+        {
+          "name": "GetElementThemeFromBackgroundColor",
+          "startLine": 12,
+          "endLine": 19,
+          "params": [
+            "backgroundColor"
+          ]
+        },
+        {
+          "name": "GetForegroundColor",
+          "startLine": 21,
+          "endLine": 46,
+          "params": [
+            "background"
+          ]
+        },
+        {
+          "name": "GetInterpolatedColor",
+          "startLine": 48,
+          "endLine": 57,
+          "params": [
+            "progress",
+            "startColor",
+            "targetColor"
+          ]
+        },
+        {
+          "name": "FromVector3",
+          "startLine": 59,
+          "endLine": 59,
+          "params": [
+            "vector3"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ColorHelper",
+          "startLine": 10,
+          "endLine": 60,
+          "methods": [
+            "GetElementThemeFromBackgroundColor",
+            "GetForegroundColor",
+            "GetInterpolatedColor",
+            "FromVector3"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "GetElementThemeFromBackgroundColor",
+          "line": 12,
+          "isDefault": false
+        },
+        {
+          "name": "GetForegroundColor",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "GetInterpolatedColor",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "FromVector3",
+          "line": 59,
+          "isDefault": false
+        },
+        {
+          "name": "ColorHelper",
+          "line": 10,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetForegroundColor",
+          "callee": "CommunityToolkit.WinUI.Helpers.ColorHelper.ToHsl",
+          "lineNumber": 24
+        },
+        {
+          "caller": "GetForegroundColor",
+          "callee": "Math.Min",
+          "lineNumber": 39
+        },
+        {
+          "caller": "GetForegroundColor",
+          "callee": "CommunityToolkit.WinUI.Helpers.ColorHelper.FromHsl",
+          "lineNumber": 42
+        },
+        {
+          "caller": "GetForegroundColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 45
+        },
+        {
+          "caller": "GetInterpolatedColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 51
+        },
+        {
+          "caller": "GetInterpolatedColor",
+          "callee": "Lerp",
+          "lineNumber": 52
+        },
+        {
+          "caller": "GetInterpolatedColor",
+          "callee": "Lerp",
+          "lineNumber": 53
+        },
+        {
+          "caller": "GetInterpolatedColor",
+          "callee": "Lerp",
+          "lineNumber": 54
+        },
+        {
+          "caller": "GetInterpolatedColor",
+          "callee": "Lerp",
+          "lineNumber": 55
+        },
+        {
+          "caller": "FromVector3",
+          "callee": "Color.FromArgb",
+          "lineNumber": 59
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 5,
+        "functionCount": 4,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Helper/EasingHelper.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 191,
+      "nonEmptyLines": 160,
+      "functions": [
+        {
+          "name": "GetInterpolatorByEasingType",
+          "startLine": 19,
+          "endLine": 28,
+          "params": [
+            "type",
+            "easingMode"
+          ]
+        },
+        {
+          "name": "BuildAndCacheInterpolator",
+          "startLine": 30,
+          "endLine": 58,
+          "params": [
+            "type",
+            "easingMode",
+            "key"
+          ]
+        },
+        {
+          "name": "Ease",
+          "startLine": 62,
+          "endLine": 81,
+          "params": [
+            "t",
+            "mode",
+            "easeIn"
+          ]
+        },
+        {
+          "name": "EaseInSine",
+          "startLine": 83,
+          "endLine": 86,
+          "params": [
+            "t"
+          ]
+        },
+        {
+          "name": "EaseInQuad",
+          "startLine": 88,
+          "endLine": 91,
+          "params": [
+            "t"
+          ]
+        },
+        {
+          "name": "EaseInCubic",
+          "startLine": 93,
+          "endLine": 96,
+          "params": [
+            "t"
+          ]
+        },
+        {
+          "name": "EaseInQuart",
+          "startLine": 98,
+          "endLine": 101,
+          "params": [
+            "t"
+          ]
+        },
+        {
+          "name": "EaseInQuint",
+          "startLine": 103,
+          "endLine": 106,
+          "params": [
+            "t"
+          ]
+        },
+        {
+          "name": "EaseInExpo",
+          "startLine": 108,
+          "endLine": 116,
+          "params": [
+            "t"
+          ]
+        },
+        {
+          "name": "EaseInCircle",
+          "startLine": 118,
+          "endLine": 121,
+          "params": [
+            "t"
+          ]
+        },
+        {
+          "name": "EaseInBack",
+          "startLine": 123,
+          "endLine": 129,
+          "params": [
+            "t"
+          ]
+        },
+        {
+          "name": "EaseInElastic",
+          "startLine": 131,
+          "endLine": 147,
+          "params": [
+            "t"
+          ]
+        },
+        {
+          "name": "EaseOutBounce",
+          "startLine": 149,
+          "endLine": 167,
+          "params": [
+            "t"
+          ]
+        },
+        {
+          "name": "EaseInBounce",
+          "startLine": 169,
+          "endLine": 172,
+          "params": [
+            "t"
+          ]
+        },
+        {
+          "name": "SmoothStep",
+          "startLine": 174,
+          "endLine": 177,
+          "params": [
+            "t"
+          ]
+        },
+        {
+          "name": "CubicBezier",
+          "startLine": 179,
+          "endLine": 187,
+          "params": [
+            "t",
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ]
+        },
+        {
+          "name": "Linear",
+          "startLine": 189,
+          "endLine": 189,
+          "params": [
+            "t"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "EasingHelper",
+          "startLine": 10,
+          "endLine": 190,
+          "methods": [
+            "GetInterpolatorByEasingType",
+            "BuildAndCacheInterpolator",
+            "Ease",
+            "EaseInSine",
+            "EaseInQuad",
+            "EaseInCubic",
+            "EaseInQuart",
+            "EaseInQuint",
+            "EaseInExpo",
+            "EaseInCircle",
+            "EaseInBack",
+            "EaseInElastic",
+            "EaseOutBounce",
+            "EaseInBounce",
+            "SmoothStep",
+            "CubicBezier",
+            "Linear"
+          ],
+          "properties": [
+            "_interpolatorCache"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "GetInterpolatorByEasingType",
+          "line": 19,
+          "isDefault": false
+        },
+        {
+          "name": "Ease",
+          "line": 62,
+          "isDefault": false
+        },
+        {
+          "name": "EaseInSine",
+          "line": 83,
+          "isDefault": false
+        },
+        {
+          "name": "EaseInQuad",
+          "line": 88,
+          "isDefault": false
+        },
+        {
+          "name": "EaseInCubic",
+          "line": 93,
+          "isDefault": false
+        },
+        {
+          "name": "EaseInQuart",
+          "line": 98,
+          "isDefault": false
+        },
+        {
+          "name": "EaseInQuint",
+          "line": 103,
+          "isDefault": false
+        },
+        {
+          "name": "EaseInExpo",
+          "line": 108,
+          "isDefault": false
+        },
+        {
+          "name": "EaseInCircle",
+          "line": 118,
+          "isDefault": false
+        },
+        {
+          "name": "EaseInBack",
+          "line": 123,
+          "isDefault": false
+        },
+        {
+          "name": "EaseInElastic",
+          "line": 131,
+          "isDefault": false
+        },
+        {
+          "name": "EaseInBounce",
+          "line": 169,
+          "isDefault": false
+        },
+        {
+          "name": "SmoothStep",
+          "line": 174,
+          "isDefault": false
+        },
+        {
+          "name": "CubicBezier",
+          "line": 179,
+          "isDefault": false
+        },
+        {
+          "name": "Linear",
+          "line": 189,
+          "isDefault": false
+        },
+        {
+          "name": "EasingHelper",
+          "line": 10,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetInterpolatorByEasingType",
+          "callee": "_interpolatorCache.TryGetValue",
+          "lineNumber": 24
+        },
+        {
+          "caller": "GetInterpolatorByEasingType",
+          "callee": "BuildAndCacheInterpolator<T>",
+          "lineNumber": 27
+        },
+        {
+          "caller": "BuildAndCacheInterpolator",
+          "callee": "Ease",
+          "lineNumber": 54
+        },
+        {
+          "caller": "BuildAndCacheInterpolator",
+          "callee": "T.CreateChecked",
+          "lineNumber": 55
+        },
+        {
+          "caller": "BuildAndCacheInterpolator",
+          "callee": "_interpolatorCache.GetOrAdd",
+          "lineNumber": 57
+        },
+        {
+          "caller": "Ease",
+          "callee": "Math.Clamp",
+          "lineNumber": 65
+        },
+        {
+          "caller": "Ease",
+          "callee": "T.CreateChecked",
+          "lineNumber": 67
+        },
+        {
+          "caller": "Ease",
+          "callee": "T.CreateChecked",
+          "lineNumber": 68
+        },
+        {
+          "caller": "Ease",
+          "callee": "T.CreateChecked",
+          "lineNumber": 69
+        },
+        {
+          "caller": "Ease",
+          "callee": "easeIn",
+          "lineNumber": 72
+        },
+        {
+          "caller": "Ease",
+          "callee": "easeIn",
+          "lineNumber": 73
+        },
+        {
+          "caller": "Ease",
+          "callee": "easeIn",
+          "lineNumber": 75
+        },
+        {
+          "caller": "Ease",
+          "callee": "easeIn",
+          "lineNumber": 76
+        },
+        {
+          "caller": "Ease",
+          "callee": "easeIn",
+          "lineNumber": 77
+        },
+        {
+          "caller": "Ease",
+          "callee": "double.CreateChecked",
+          "lineNumber": 80
+        },
+        {
+          "caller": "EaseInSine",
+          "callee": "T.Cos",
+          "lineNumber": 85
+        },
+        {
+          "caller": "EaseInSine",
+          "callee": "T.CreateChecked",
+          "lineNumber": 85
+        },
+        {
+          "caller": "EaseInExpo",
+          "callee": "T.Pow",
+          "lineNumber": 115
+        },
+        {
+          "caller": "EaseInExpo",
+          "callee": "T.CreateChecked",
+          "lineNumber": 115
+        },
+        {
+          "caller": "EaseInExpo",
+          "callee": "T.CreateChecked",
+          "lineNumber": 115
+        },
+        {
+          "caller": "EaseInExpo",
+          "callee": "T.CreateChecked",
+          "lineNumber": 115
+        },
+        {
+          "caller": "EaseInCircle",
+          "callee": "T.Sqrt",
+          "lineNumber": 120
+        },
+        {
+          "caller": "EaseInBack",
+          "callee": "T.CreateChecked",
+          "lineNumber": 125
+        },
+        {
+          "caller": "EaseInElastic",
+          "callee": "double.CreateChecked",
+          "lineNumber": 141
+        },
+        {
+          "caller": "EaseInElastic",
+          "callee": "Math.Exp",
+          "lineNumber": 143
+        },
+        {
+          "caller": "EaseInElastic",
+          "callee": "Math.Exp",
+          "lineNumber": 143
+        },
+        {
+          "caller": "EaseInElastic",
+          "callee": "Math.Sin",
+          "lineNumber": 144
+        },
+        {
+          "caller": "EaseInElastic",
+          "callee": "T.CreateChecked",
+          "lineNumber": 146
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 151
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 153
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 153
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 155
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 157
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 157
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 157
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 159
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 161
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 161
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 161
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 165
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 165
+        },
+        {
+          "caller": "EaseOutBounce",
+          "callee": "T.CreateChecked",
+          "lineNumber": 165
+        },
+        {
+          "caller": "EaseInBounce",
+          "callee": "EaseOutBounce",
+          "lineNumber": 171
+        },
+        {
+          "caller": "SmoothStep",
+          "callee": "T.CreateChecked",
+          "lineNumber": 176
+        },
+        {
+          "caller": "SmoothStep",
+          "callee": "T.CreateChecked",
+          "lineNumber": 176
+        },
+        {
+          "caller": "CubicBezier",
+          "callee": "T.CreateChecked",
+          "lineNumber": 184
+        },
+        {
+          "caller": "CubicBezier",
+          "callee": "T.CreateChecked",
+          "lineNumber": 185
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 16,
+        "functionCount": 17,
+        "classCount": 1
+      }
+    }
+  ]
+}

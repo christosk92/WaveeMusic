@@ -218,9 +218,25 @@ public sealed class AppSettings
 
     /// <summary>
     /// Persisted sort + view-mode preferences, keyed by library tab
-    /// ("albums", "artists", "podcasts"). Unknown tabs fall back to defaults.
+    /// ("albums.saved", "albums.liked", "artists.saved", "artists.liked",
+    /// "podcasts"). Unknown tabs fall back to defaults.
     /// </summary>
     public Dictionary<string, LibraryTabPreferences> LibraryTabs { get; set; } = new();
+
+    /// <summary>
+    /// Which data source the Library › Albums tab is showing — "Saved" (the
+    /// user's saved albums, the historical default) or "FromLikedSongs"
+    /// (albums synthesised from grouping their liked songs by parent album).
+    /// Null falls through to "Saved" on first run.
+    /// </summary>
+    public string? AlbumsLibrarySource { get; set; }
+
+    /// <summary>
+    /// Which data source the Library > Artists tab is showing: "Saved" for
+    /// followed artists, or "FromLikedSongs" for artists grouped from liked
+    /// tracks. Null falls through to "Saved" on first run.
+    /// </summary>
+    public string? ArtistsLibrarySource { get; set; }
 
     // ── On-device AI (Copilot+ PC, opt-in) ──
 
@@ -240,11 +256,9 @@ public sealed class AppSettings
     public bool AiLyricsSummarizeEnabled { get; set; } = true;
 
     /// <summary>
-    /// Per-feature toggle: artist-page "About this artist" excerpt synthesised on-device
-    /// when Spotify's ArtistOverview has no biography for the artist. Only effective
-    /// when <see cref="AiFeaturesEnabled"/> is true. Default true so a user who opts in
-    /// to AI sees the affordance on artists whose data is thin (long tail of indies,
-    /// newer releases, smaller markets).
+    /// Per-feature toggle: artist-page "About this artist" excerpt synthesised
+    /// on-device. Only effective when <see cref="AiFeaturesEnabled"/> is true.
+    /// Default true so a user who opts in to AI sees the affordance on artist pages.
     /// </summary>
     public bool AiBioSummarizeEnabled { get; set; } = true;
 

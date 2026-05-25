@@ -1,0 +1,156 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalShowDetailPage.xaml",
+      "language": "xaml",
+      "sizeLines": 366,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalShowDetailPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 331,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalShowsPage.xaml",
+      "language": "xaml",
+      "sizeLines": 182,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalShowsPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 106,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/LocalLibraryPage.xaml",
+      "language": "xaml",
+      "sizeLines": 246,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/LocalLibraryPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 133,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/MigrationErrorWindow.xaml",
+      "language": "xaml",
+      "sizeLines": 87,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/MigrationErrorWindow.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 98,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/PlaylistPage.AddToPlaylist.cs",
+      "language": "csharp",
+      "sizeLines": 80,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/PlaylistPage.xaml",
+      "language": "xaml",
+      "sizeLines": 1020,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/PlaylistPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 2098,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/PodcastBrowsePage.xaml",
+      "language": "xaml",
+      "sizeLines": 341,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/PodcastBrowsePage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 305,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ProfilePage.xaml",
+      "language": "xaml",
+      "sizeLines": 464,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ProfilePage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 540,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/SearchPage.xaml",
+      "language": "xaml",
+      "sizeLines": 234,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/SearchPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 542,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/SettingsPage.xaml",
+      "language": "xaml",
+      "sizeLines": 160,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/SettingsPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 391,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Shared/HeroBandPanel.xaml",
+      "language": "xaml",
+      "sizeLines": 25,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Shared/HeroBandPanel.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 149,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Shared/HeroBandShimmer.xaml",
+      "language": "xaml",
+      "sizeLines": 34,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Shared/HeroBandShimmer.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 17,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Shared/HomePageShimmer.xaml",
+      "language": "xaml",
+      "sizeLines": 453,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Shared/HomePageShimmer.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 17,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {}
+}

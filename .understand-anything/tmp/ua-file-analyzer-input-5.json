@@ -1,0 +1,49 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "signing/README.md",
+      "language": "markdown",
+      "sizeLines": 209,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "signing/Set-Publisher.ps1",
+      "language": "powershell",
+      "sizeLines": 65,
+      "fileCategory": "script"
+    },
+    {
+      "path": "signing/Sign-Msix.ps1",
+      "language": "powershell",
+      "sizeLines": 145,
+      "fileCategory": "script"
+    },
+    {
+      "path": "signing/Sign-Release.ps1",
+      "language": "powershell",
+      "sizeLines": 229,
+      "fileCategory": "script"
+    },
+    {
+      "path": "signing/laf-second-request.md",
+      "language": "markdown",
+      "sizeLines": 122,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "signing/metadata.template.json",
+      "language": "json",
+      "sizeLines": 5,
+      "fileCategory": "config"
+    }
+  ],
+  "batchImportData": {
+    "signing/README.md": [],
+    "signing/Set-Publisher.ps1": [],
+    "signing/Sign-Msix.ps1": [],
+    "signing/Sign-Release.ps1": [],
+    "signing/laf-second-request.md": [],
+    "signing/metadata.template.json": []
+  }
+}

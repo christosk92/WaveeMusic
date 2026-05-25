@@ -1,0 +1,2121 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml",
+      "type": "file",
+      "name": "TabBar.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml",
+      "summary": "XAML template for the TabBar control defining the WinUI TabView layout with drag region, add-tab button, and per-item context menu.",
+      "tags": [
+        "markup",
+        "tab-bar",
+        "component",
+        "xaml-template"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs",
+      "type": "file",
+      "name": "TabBar.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs",
+      "summary": "Code-behind for the TabBar control implementing selection, close, pin, compact, sleep, and sort operations over the WinUI TabView.",
+      "tags": [
+        "component",
+        "tab-bar",
+        "event-handler",
+        "navigation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:TabBar",
+      "type": "class",
+      "name": "TabBar",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs",
+      "lineRange": [
+        10,
+        253
+      ],
+      "summary": "Class TabBar (TabBar.xaml.cs). Contains methods: TabBar, OnSelectedIndexChanged, TabView_SelectionChanged, TabView_TabCloseRequested and 11 more.",
+      "tags": [
+        "component",
+        "tab-bar",
+        "event-handler",
+        "navigation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:OnSelectedIndexChanged",
+      "type": "function",
+      "name": "OnSelectedIndexChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs",
+      "lineRange": [
+        50,
+        60
+      ],
+      "summary": "Function OnSelectedIndexChanged in TabBar.xaml.cs (lines 50-60).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:CloseTabsToLeft_Click",
+      "type": "function",
+      "name": "CloseTabsToLeft_Click",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs",
+      "lineRange": [
+        95,
+        105
+      ],
+      "summary": "Function CloseTabsToLeft_Click in TabBar.xaml.cs (lines 95-105).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:CloseTabsToRight_Click",
+      "type": "function",
+      "name": "CloseTabsToRight_Click",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs",
+      "lineRange": [
+        107,
+        117
+      ],
+      "summary": "Function CloseTabsToRight_Click in TabBar.xaml.cs (lines 107-117).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:CloseOtherTabs_Click",
+      "type": "function",
+      "name": "CloseOtherTabs_Click",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs",
+      "lineRange": [
+        119,
+        129
+      ],
+      "summary": "Function CloseOtherTabs_Click in TabBar.xaml.cs (lines 119-129).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:TabViewItem_ContextRequested",
+      "type": "function",
+      "name": "TabViewItem_ContextRequested",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs",
+      "lineRange": [
+        131,
+        149
+      ],
+      "summary": "Function TabViewItem_ContextRequested in TabBar.xaml.cs (lines 131-149).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:ContextMenu_Opening",
+      "type": "function",
+      "name": "ContextMenu_Opening",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs",
+      "lineRange": [
+        151,
+        201
+      ],
+      "summary": "Function ContextMenu_Opening in TabBar.xaml.cs (lines 151-201).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:SortTabs",
+      "type": "function",
+      "name": "SortTabs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs",
+      "lineRange": [
+        228,
+        252
+      ],
+      "summary": "Function SortTabs in TabBar.xaml.cs (lines 228-252).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "type": "file",
+      "name": "TabBarItem.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "summary": "Core tab navigation host managing per-tab page navigation, adaptive frame-cache sizing, deferred memory trimming, GPU surface retention, and tab sleep/wake lifecycle.",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation",
+        "memory-management"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "type": "class",
+      "name": "TabBarItem",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        16,
+        861
+      ],
+      "summary": "Class TabBarItem (TabBarItem.cs). Contains methods: ComputeAdaptiveCacheSize, EnsureTabInstancesSubscription, OnTabInstancesChanged, TabBarItem and 23 more.",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation",
+        "memory-management"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:OnTabInstancesChanged",
+      "type": "function",
+      "name": "OnTabInstancesChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        61,
+        73
+      ],
+      "summary": "Function OnTabInstancesChanged in TabBarItem.cs (lines 61-73).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "type": "function",
+      "name": "TabBarItem",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        214,
+        229
+      ],
+      "summary": "Function TabBarItem in TabBarItem.cs (lines 214-229).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TryNavigatePageHost",
+      "type": "function",
+      "name": "TryNavigatePageHost",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        240,
+        260
+      ],
+      "summary": "Function TryNavigatePageHost in TabBarItem.cs (lines 240-260).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ShowNavigationError",
+      "type": "function",
+      "name": "ShowNavigationError",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        262,
+        293
+      ],
+      "summary": "Function ShowNavigationError in TabBarItem.cs (lines 262-293).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:Navigate",
+      "type": "function",
+      "name": "Navigate",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        295,
+        394
+      ],
+      "summary": "Function Navigate in TabBarItem.cs (lines 295-394).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TrimActiveContentForNavigationCache",
+      "type": "function",
+      "name": "TrimActiveContentForNavigationCache",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        398,
+        470
+      ],
+      "summary": "Function TrimActiveContentForNavigationCache in TabBarItem.cs (lines 398-470).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ScheduleDeferredTrimStep",
+      "type": "function",
+      "name": "ScheduleDeferredTrimStep",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        472,
+        506
+      ],
+      "summary": "Function ScheduleDeferredTrimStep in TabBarItem.cs (lines 472-506).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ApplySurfaceRetention",
+      "type": "function",
+      "name": "ApplySurfaceRetention",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        547,
+        576
+      ],
+      "summary": "Function ApplySurfaceRetention in TabBarItem.cs (lines 547-576).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ReleaseAllSurfaces",
+      "type": "function",
+      "name": "ReleaseAllSurfaces",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        582,
+        597
+      ],
+      "summary": "Function ReleaseAllSurfaces in TabBarItem.cs (lines 582-597).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:EnforceGlobalCachedPageLimit",
+      "type": "function",
+      "name": "EnforceGlobalCachedPageLimit",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        605,
+        636
+      ],
+      "summary": "Function EnforceGlobalCachedPageLimit in TabBarItem.cs (lines 605-636).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ReleaseDormantSurfacesAllTabs",
+      "type": "function",
+      "name": "ReleaseDormantSurfacesAllTabs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        644,
+        657
+      ],
+      "summary": "Function ReleaseDormantSurfacesAllTabs in TabBarItem.cs (lines 644-657).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:Sleep",
+      "type": "function",
+      "name": "Sleep",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        659,
+        673
+      ],
+      "summary": "Function Sleep in TabBarItem.cs (lines 659-673).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:Wake",
+      "type": "function",
+      "name": "Wake",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        675,
+        708
+      ],
+      "summary": "Function Wake in TabBarItem.cs (lines 675-708).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ContentHost_Navigating",
+      "type": "function",
+      "name": "ContentHost_Navigating",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        718,
+        737
+      ],
+      "summary": "Function ContentHost_Navigating in TabBarItem.cs (lines 718-737).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ContentHost_Navigated",
+      "type": "function",
+      "name": "ContentHost_Navigated",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        739,
+        810
+      ],
+      "summary": "Function ContentHost_Navigated in TabBarItem.cs (lines 739-810).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:Dispose",
+      "type": "function",
+      "name": "Dispose",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        818,
+        828
+      ],
+      "summary": "Function Dispose in TabBarItem.cs (lines 818-828).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ClearLiveContent",
+      "type": "function",
+      "name": "ClearLiveContent",
+      "filePath": "src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "lineRange": [
+        830,
+        843
+      ],
+      "summary": "Function ClearLiveContent in TabBarItem.cs (lines 830-843).",
+      "tags": [
+        "component",
+        "tab-bar",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs",
+      "type": "file",
+      "name": "TrackBehavior.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs",
+      "summary": "Attached-property behavior attaching tap, double-tap, right-tap, pointer-hover, and context-menu handling to FrameworkElements hosting track rows.",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "event-handler",
+        "track-ui"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:TrackBehavior",
+      "type": "class",
+      "name": "TrackBehavior",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs",
+      "lineRange": [
+        20,
+        318
+      ],
+      "summary": "Class TrackBehavior (TrackBehavior.cs). Contains methods: GetTrack, SetTrack, OnTrackChanged, GetPlayCommand and 23 more.",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "event-handler",
+        "track-ui"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:OnTrackChanged",
+      "type": "function",
+      "name": "OnTrackChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs",
+      "lineRange": [
+        39,
+        62
+      ],
+      "summary": "Function OnTrackChanged in TrackBehavior.cs (lines 39-62).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:OnTapped",
+      "type": "function",
+      "name": "OnTapped",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs",
+      "lineRange": [
+        211,
+        228
+      ],
+      "summary": "Function OnTapped in TrackBehavior.cs (lines 211-228).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:OnDoubleTapped",
+      "type": "function",
+      "name": "OnDoubleTapped",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs",
+      "lineRange": [
+        230,
+        241
+      ],
+      "summary": "Function OnDoubleTapped in TrackBehavior.cs (lines 230-241).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:OnRightTapped",
+      "type": "function",
+      "name": "OnRightTapped",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs",
+      "lineRange": [
+        254,
+        269
+      ],
+      "summary": "Function OnRightTapped in TrackBehavior.cs (lines 254-269).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:OnHolding",
+      "type": "function",
+      "name": "OnHolding",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs",
+      "lineRange": [
+        271,
+        282
+      ],
+      "summary": "Function OnHolding in TrackBehavior.cs (lines 271-282).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:ShowContextMenu",
+      "type": "function",
+      "name": "ShowContextMenu",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs",
+      "lineRange": [
+        296,
+        308
+      ],
+      "summary": "Function ShowContextMenu in TrackBehavior.cs (lines 296-308).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "type": "file",
+      "name": "TrackStateBehavior.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "summary": "Attached-property behavior maintaining a global weak-reference registry mapping Spotify track IDs to track row elements, updating IsPlaying/IsPaused visual states on playback change.",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "playback-state",
+        "track-ui"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:TrackStateBehavior",
+      "type": "class",
+      "name": "TrackStateBehavior",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "lineRange": [
+        23,
+        383
+      ],
+      "summary": "Class TrackStateBehavior (TrackStateBehavior.cs). Contains methods: RaisePlaybackStateChanged, GetTrackId, SetTrackId, OnTrackIdChanged and 19 more.",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "playback-state",
+        "track-ui"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:RaisePlaybackStateChanged",
+      "type": "function",
+      "name": "RaisePlaybackStateChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "lineRange": [
+        61,
+        72
+      ],
+      "summary": "Function RaisePlaybackStateChanged in TrackStateBehavior.cs (lines 61-72).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "playback-state"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:OnTrackIdChanged",
+      "type": "function",
+      "name": "OnTrackIdChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "lineRange": [
+        89,
+        116
+      ],
+      "summary": "Function OnTrackIdChanged in TrackStateBehavior.cs (lines 89-116).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "playback-state"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:EnsurePlaybackSubscription",
+      "type": "function",
+      "name": "EnsurePlaybackSubscription",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "lineRange": [
+        235,
+        249
+      ],
+      "summary": "Function EnsurePlaybackSubscription in TrackStateBehavior.cs (lines 235-249).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "playback-state"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:OnPlaybackServiceChanged",
+      "type": "function",
+      "name": "OnPlaybackServiceChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "lineRange": [
+        251,
+        281
+      ],
+      "summary": "Function OnPlaybackServiceChanged in TrackStateBehavior.cs (lines 251-281).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "playback-state"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:UpdateBucket",
+      "type": "function",
+      "name": "UpdateBucket",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "lineRange": [
+        286,
+        302
+      ],
+      "summary": "Function UpdateBucket in TrackStateBehavior.cs (lines 286-302).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "playback-state"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:ApplyPlaybackState",
+      "type": "function",
+      "name": "ApplyPlaybackState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "lineRange": [
+        307,
+        322
+      ],
+      "summary": "Function ApplyPlaybackState in TrackStateBehavior.cs (lines 307-322).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "playback-state"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:AddToRegistry",
+      "type": "function",
+      "name": "AddToRegistry",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "lineRange": [
+        339,
+        358
+      ],
+      "summary": "Function AddToRegistry in TrackStateBehavior.cs (lines 339-358).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "playback-state"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:RemoveFromRegistry",
+      "type": "function",
+      "name": "RemoveFromRegistry",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "lineRange": [
+        360,
+        380
+      ],
+      "summary": "Function RemoveFromRegistry in TrackStateBehavior.cs (lines 360-380).",
+      "tags": [
+        "behavior",
+        "attached-property",
+        "playback-state"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs",
+      "type": "file",
+      "name": "TrackItem.AddToPlaylist.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs",
+      "summary": "Partial TrackItem providing add-to-playlist affordance wiring: hooks IAddToPlaylistSession and toggles the track in the current pending add session.",
+      "tags": [
+        "component",
+        "track-ui",
+        "playlist",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs:TrackItem",
+      "type": "class",
+      "name": "TrackItem",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs",
+      "lineRange": [
+        21,
+        131
+      ],
+      "summary": "Class TrackItem (TrackItem.AddToPlaylist.cs). Contains methods: HookAddToPlaylistSession, UnhookAddToPlaylistSession, OnAddSessionPropertyChanged, OnAddSessionPendingChanged and 4 more.",
+      "tags": [
+        "component",
+        "track-ui",
+        "playlist",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs:HookAddToPlaylistSession",
+      "type": "function",
+      "name": "HookAddToPlaylistSession",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs",
+      "lineRange": [
+        28,
+        40
+      ],
+      "summary": "Function HookAddToPlaylistSession in TrackItem.AddToPlaylist.cs (lines 28-40).",
+      "tags": [
+        "component",
+        "track-ui",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs:UpdateAddToPlaylistAffordance",
+      "type": "function",
+      "name": "UpdateAddToPlaylistAffordance",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs",
+      "lineRange": [
+        75,
+        105
+      ],
+      "summary": "Function UpdateAddToPlaylistAffordance in TrackItem.AddToPlaylist.cs (lines 75-105).",
+      "tags": [
+        "component",
+        "track-ui",
+        "playlist"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs:ToggleAddToPlaylistForCurrentTrack",
+      "type": "function",
+      "name": "ToggleAddToPlaylistForCurrentTrack",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs",
+      "lineRange": [
+        113,
+        130
+      ],
+      "summary": "Function ToggleAddToPlaylistForCurrentTrack in TrackItem.AddToPlaylist.cs (lines 113-130).",
+      "tags": [
+        "component",
+        "track-ui",
+        "playlist"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "type": "file",
+      "name": "TrackItem.Click.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "summary": "Partial TrackItem handling click, tap, double-tap, heart/save, artist/album link navigation, and play-command invocation including video-track save-target resolution.",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler",
+        "playback"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "type": "class",
+      "name": "TrackItem",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        32,
+        414
+      ],
+      "summary": "Class TrackItem (TrackItem.Click.cs). Contains methods: OnPlayButtonClick, OnRowMoreButtonClick, OnCompactMoreButtonClick, OnHeartClicked and 17 more.",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler",
+        "playback"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:OnPlayButtonClick",
+      "type": "function",
+      "name": "OnPlayButtonClick",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        36,
+        49
+      ],
+      "summary": "Function OnPlayButtonClick in TrackItem.Click.cs (lines 36-49).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:OnHeartClickedAsync",
+      "type": "function",
+      "name": "OnHeartClickedAsync",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        75,
+        103
+      ],
+      "summary": "Function OnHeartClickedAsync in TrackItem.Click.cs (lines 75-103).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:GetImmediateSaveTargetUri",
+      "type": "function",
+      "name": "GetImmediateSaveTargetUri",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        105,
+        119
+      ],
+      "summary": "Function GetImmediateSaveTargetUri in TrackItem.Click.cs (lines 105-119).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:IsCurrentPlaybackVideoTrack",
+      "type": "function",
+      "name": "IsCurrentPlaybackVideoTrack",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        124,
+        139
+      ],
+      "summary": "Function IsCurrentPlaybackVideoTrack in TrackItem.Click.cs (lines 124-139).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:OnTapped",
+      "type": "function",
+      "name": "OnTapped",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        141,
+        183
+      ],
+      "summary": "Function OnTapped in TrackItem.Click.cs (lines 141-183).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:OnDoubleTapped",
+      "type": "function",
+      "name": "OnDoubleTapped",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        185,
+        207
+      ],
+      "summary": "Function OnDoubleTapped in TrackItem.Click.cs (lines 185-207).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:ExecutePlayCommandWithPending",
+      "type": "function",
+      "name": "ExecutePlayCommandWithPending",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        216,
+        232
+      ],
+      "summary": "Function ExecutePlayCommandWithPending in TrackItem.Click.cs (lines 216-232).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:IsCtrlOrShiftDown",
+      "type": "function",
+      "name": "IsCtrlOrShiftDown",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        234,
+        246
+      ],
+      "summary": "Function IsCtrlOrShiftDown in TrackItem.Click.cs (lines 234-246).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:IsCtrlDown",
+      "type": "function",
+      "name": "IsCtrlDown",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        248,
+        260
+      ],
+      "summary": "Function IsCtrlDown in TrackItem.Click.cs (lines 248-260).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:OnArtistLinkClick",
+      "type": "function",
+      "name": "OnArtistLinkClick",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        266,
+        280
+      ],
+      "summary": "Function OnArtistLinkClick in TrackItem.Click.cs (lines 266-280).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:RebuildArtistsSubline",
+      "type": "function",
+      "name": "RebuildArtistsSubline",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        289,
+        327
+      ],
+      "summary": "Function RebuildArtistsSubline in TrackItem.Click.cs (lines 289-327).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:BuildArtistsSignature",
+      "type": "function",
+      "name": "BuildArtistsSignature",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        329,
+        342
+      ],
+      "summary": "Function BuildArtistsSignature in TrackItem.Click.cs (lines 329-342).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:BuildArtistLink",
+      "type": "function",
+      "name": "BuildArtistLink",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        344,
+        367
+      ],
+      "summary": "Function BuildArtistLink in TrackItem.Click.cs (lines 344-367).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:OnAlbumLinkClick",
+      "type": "function",
+      "name": "OnAlbumLinkClick",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        369,
+        383
+      ],
+      "summary": "Function OnAlbumLinkClick in TrackItem.Click.cs (lines 369-383).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:IsInteractiveElement",
+      "type": "function",
+      "name": "IsInteractiveElement",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "lineRange": [
+        393,
+        404
+      ],
+      "summary": "Function IsInteractiveElement in TrackItem.Click.cs (lines 393-404).",
+      "tags": [
+        "component",
+        "track-ui",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs",
+      "type": "file",
+      "name": "TrackItem.Hover.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs",
+      "summary": "Partial TrackItem managing pointer-enter/exit hover state, driving play-button and action-control visibility in row and compact modes.",
+      "tags": [
+        "component",
+        "track-ui",
+        "hover-state",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:TrackItem",
+      "type": "class",
+      "name": "TrackItem",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs",
+      "lineRange": [
+        20,
+        168
+      ],
+      "summary": "Class TrackItem (TrackItem.Hover.cs). Contains methods: OnPointerEntered, OnPointerExited, ResetHoverVisualState, ApplyCompactBackground and 2 more.",
+      "tags": [
+        "component",
+        "track-ui",
+        "hover-state",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:OnPointerEntered",
+      "type": "function",
+      "name": "OnPointerEntered",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs",
+      "lineRange": [
+        24,
+        38
+      ],
+      "summary": "Function OnPointerEntered in TrackItem.Hover.cs (lines 24-38).",
+      "tags": [
+        "component",
+        "track-ui",
+        "hover-state"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:ResetHoverVisualState",
+      "type": "function",
+      "name": "ResetHoverVisualState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs",
+      "lineRange": [
+        46,
+        58
+      ],
+      "summary": "Function ResetHoverVisualState in TrackItem.Hover.cs (lines 46-58).",
+      "tags": [
+        "component",
+        "track-ui",
+        "hover-state"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:ApplyCompactBackground",
+      "type": "function",
+      "name": "ApplyCompactBackground",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs",
+      "lineRange": [
+        60,
+        89
+      ],
+      "summary": "Function ApplyCompactBackground in TrackItem.Hover.cs (lines 60-89).",
+      "tags": [
+        "component",
+        "track-ui",
+        "hover-state"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:ApplyRowBackground",
+      "type": "function",
+      "name": "ApplyRowBackground",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs",
+      "lineRange": [
+        91,
+        142
+      ],
+      "summary": "Function ApplyRowBackground in TrackItem.Hover.cs (lines 91-142).",
+      "tags": [
+        "component",
+        "track-ui",
+        "hover-state"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:UpdateSelectionVisualState",
+      "type": "function",
+      "name": "UpdateSelectionVisualState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs",
+      "lineRange": [
+        149,
+        165
+      ],
+      "summary": "Function UpdateSelectionVisualState in TrackItem.Hover.cs (lines 149-165).",
+      "tags": [
+        "component",
+        "track-ui",
+        "hover-state"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "type": "file",
+      "name": "TrackItem.ModeAndLoading.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "summary": "Partial TrackItem handling mode switching between row, compact, and media-item display, column width propagation, loading state, and deferred album-art realization.",
+      "tags": [
+        "component",
+        "track-ui",
+        "mode-switching",
+        "loading-state"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:TrackItem",
+      "type": "class",
+      "name": "TrackItem",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "lineRange": [
+        19,
+        386
+      ],
+      "summary": "Class TrackItem (TrackItem.ModeAndLoading.cs). Contains methods: OnModeChanged, ApplyMode, OnIsLoadingChanged, SyncLoadingStateFromTrack and 16 more.",
+      "tags": [
+        "component",
+        "track-ui",
+        "mode-switching",
+        "loading-state"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:OnModeChanged",
+      "type": "function",
+      "name": "OnModeChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "lineRange": [
+        23,
+        64
+      ],
+      "summary": "Function OnModeChanged in TrackItem.ModeAndLoading.cs (lines 23-64).",
+      "tags": [
+        "component",
+        "track-ui",
+        "mode-switching"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:ApplyMode",
+      "type": "function",
+      "name": "ApplyMode",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "lineRange": [
+        66,
+        85
+      ],
+      "summary": "Function ApplyMode in TrackItem.ModeAndLoading.cs (lines 66-85).",
+      "tags": [
+        "component",
+        "track-ui",
+        "mode-switching"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:ApplyLoadingVisualState",
+      "type": "function",
+      "name": "ApplyLoadingVisualState",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "lineRange": [
+        107,
+        134
+      ],
+      "summary": "Function ApplyLoadingVisualState in TrackItem.ModeAndLoading.cs (lines 107-134).",
+      "tags": [
+        "component",
+        "track-ui",
+        "mode-switching"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:OnRowIndexChanged",
+      "type": "function",
+      "name": "OnRowIndexChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "lineRange": [
+        140,
+        151
+      ],
+      "summary": "Function OnRowIndexChanged in TrackItem.ModeAndLoading.cs (lines 140-151).",
+      "tags": [
+        "component",
+        "track-ui",
+        "mode-switching"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:OnAddedByTextChanged",
+      "type": "function",
+      "name": "OnAddedByTextChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "lineRange": [
+        197,
+        215
+      ],
+      "summary": "Function OnAddedByTextChanged in TrackItem.ModeAndLoading.cs (lines 197-215).",
+      "tags": [
+        "component",
+        "track-ui",
+        "mode-switching"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:OnAddedByAvatarUrlChanged",
+      "type": "function",
+      "name": "OnAddedByAvatarUrlChanged",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "lineRange": [
+        217,
+        243
+      ],
+      "summary": "Function OnAddedByAvatarUrlChanged in TrackItem.ModeAndLoading.cs (lines 217-243).",
+      "tags": [
+        "component",
+        "track-ui",
+        "mode-switching"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:SetCustomColumnValues",
+      "type": "function",
+      "name": "SetCustomColumnValues",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "lineRange": [
+        276,
+        312
+      ],
+      "summary": "Function SetCustomColumnValues in TrackItem.ModeAndLoading.cs (lines 276-312).",
+      "tags": [
+        "component",
+        "track-ui",
+        "mode-switching"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:ApplyRowColumnVisibility",
+      "type": "function",
+      "name": "ApplyRowColumnVisibility",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "lineRange": [
+        314,
+        363
+      ],
+      "summary": "Function ApplyRowColumnVisibility in TrackItem.ModeAndLoading.cs (lines 314-363).",
+      "tags": [
+        "component",
+        "track-ui",
+        "mode-switching"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:TabBar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:TabBar",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:TabBar",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:OnSelectedIndexChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:TabBar",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:CloseTabsToLeft_Click",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:TabBar",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:CloseTabsToRight_Click",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:TabBar",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:CloseOtherTabs_Click",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:TabBar",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:TabViewItem_ContextRequested",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:TabBar",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:ContextMenu_Opening",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:TabBar",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBar.xaml.cs:SortTabs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:OnTabInstancesChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TryNavigatePageHost",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ShowNavigationError",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:Navigate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:Navigate",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TrimActiveContentForNavigationCache",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TrimActiveContentForNavigationCache",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ScheduleDeferredTrimStep",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ApplySurfaceRetention",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ApplySurfaceRetention",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ReleaseAllSurfaces",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ReleaseAllSurfaces",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:EnforceGlobalCachedPageLimit",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ReleaseDormantSurfacesAllTabs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ReleaseDormantSurfacesAllTabs",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:Sleep",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:Sleep",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:Wake",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:Wake",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ContentHost_Navigating",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ContentHost_Navigated",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:Dispose",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:Dispose",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:TabBarItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/TabBar/TabBarItem.cs:ClearLiveContent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:TrackBehavior",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:TrackBehavior",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:TrackBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:OnTrackChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:TrackBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:OnTapped",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:TrackBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:OnDoubleTapped",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:TrackBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:OnRightTapped",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:TrackBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:OnHolding",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:TrackBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackBehavior.cs:ShowContextMenu",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:TrackStateBehavior",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:TrackStateBehavior",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:TrackStateBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:RaisePlaybackStateChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:TrackStateBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:OnTrackIdChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:TrackStateBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:EnsurePlaybackSubscription",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:EnsurePlaybackSubscription",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:TrackStateBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:OnPlaybackServiceChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:TrackStateBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:UpdateBucket",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:TrackStateBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:ApplyPlaybackState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:TrackStateBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:AddToRegistry",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:TrackStateBehavior",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/Behaviors/TrackStateBehavior.cs:RemoveFromRegistry",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs:TrackItem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs:TrackItem",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs:HookAddToPlaylistSession",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs:UpdateAddToPlaylistAffordance",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.AddToPlaylist.cs:ToggleAddToPlaylistForCurrentTrack",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:OnPlayButtonClick",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:OnHeartClickedAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:GetImmediateSaveTargetUri",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:IsCurrentPlaybackVideoTrack",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:OnTapped",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:OnDoubleTapped",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:ExecutePlayCommandWithPending",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:IsCtrlOrShiftDown",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:IsCtrlDown",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:OnArtistLinkClick",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:RebuildArtistsSubline",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:BuildArtistsSignature",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:BuildArtistLink",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:OnAlbumLinkClick",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Click.cs:IsInteractiveElement",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:TrackItem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:TrackItem",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:OnPointerEntered",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:ResetHoverVisualState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:ApplyCompactBackground",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:ApplyRowBackground",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.Hover.cs:UpdateSelectionVisualState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:TrackItem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:TrackItem",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:OnModeChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:ApplyMode",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:ApplyLoadingVisualState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:OnRowIndexChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:OnAddedByTextChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:OnAddedByAvatarUrlChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:SetCustomColumnValues",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:SetCustomColumnValues",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:TrackItem",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Track/TrackItem.ModeAndLoading.cs:ApplyRowColumnVisibility",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    }
+  ]
+}

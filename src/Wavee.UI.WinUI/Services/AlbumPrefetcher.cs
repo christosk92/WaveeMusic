@@ -148,8 +148,20 @@ public sealed class AlbumPrefetcher : IAlbumPrefetcher, IDisposable
                     _albumStore.HintPartial(uri, partial);
 
                     var displaySubtitle = BuildHomeAlbumDisplaySubtitle(album, partial.TotalTracks);
-                    if (!string.IsNullOrWhiteSpace(displaySubtitle) || partial.TotalTracks > 0)
-                        _messenger.Send(new AlbumMetadataPrefetchedMessage(uri, displaySubtitle, partial.TotalTracks));
+                    var firstArtist = partial.Artists.FirstOrDefault(a =>
+                        !string.IsNullOrWhiteSpace(a.Name) || !string.IsNullOrWhiteSpace(a.Uri));
+                    if (!string.IsNullOrWhiteSpace(displaySubtitle)
+                        || partial.TotalTracks > 0
+                        || !string.IsNullOrWhiteSpace(firstArtist?.Name)
+                        || !string.IsNullOrWhiteSpace(firstArtist?.Uri))
+                    {
+                        _messenger.Send(new AlbumMetadataPrefetchedMessage(
+                            uri,
+                            displaySubtitle,
+                            partial.TotalTracks,
+                            firstArtist?.Name,
+                            firstArtist?.Uri));
+                    }
                 }
                 catch (Exception ex)
                 {

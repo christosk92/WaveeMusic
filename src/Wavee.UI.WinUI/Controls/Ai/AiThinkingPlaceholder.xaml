@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Wavee.UI.WinUI.Controls.Ai.AiThinkingPlaceholder"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:waveeControls="using:Wavee.UI.WinUI.Controls"
+    MinHeight="96"
+    mc:Ignorable="d">
+
+    <Grid x:Name="RootGrid" MinHeight="96">
+        <Border
+            Background="{ThemeResource AiPanelBackgroundBrush}"
+            BorderBrush="{ThemeResource AiBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="10"
+            Opacity="0.72" />
+
+        <Rectangle
+            x:Name="SweepRectangle"
+            HorizontalAlignment="Left"
+            IsHitTestVisible="False"
+            Opacity="0.42">
+            <Rectangle.Fill>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Color="#0014141A" Offset="0" />
+                    <GradientStop Color="#665B85FF" Offset="0.26" />
+                    <GradientStop Color="#66F26FDC" Offset="0.58" />
+                    <GradientStop Color="#00FF9456" Offset="1" />
+                </LinearGradientBrush>
+            </Rectangle.Fill>
+            <Rectangle.RenderTransform>
+                <TranslateTransform x:Name="SweepTranslate" />
+            </Rectangle.RenderTransform>
+        </Rectangle>
+
+        <StackPanel
+            x:Name="CaptionStack"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Orientation="Horizontal"
+            Spacing="8">
+            <waveeControls:AiSparkleIcon
+                Width="18"
+                Height="18"
+                State="Generating"
+                VerticalAlignment="Center" />
+            <TextBlock
+                Style="{StaticResource AiCaptionTextBlockStyle}"
+                Text="{Binding Caption, ElementName=Root}"
+                VerticalAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</UserControl>

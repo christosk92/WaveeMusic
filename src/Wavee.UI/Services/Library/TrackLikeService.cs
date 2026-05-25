@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reactive.Disposables;
 using System.Reactive.Disposables.Fluent;
 using System.Reactive.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Wavee.Connect;
@@ -11,6 +12,7 @@ using Wavee.Local;
 using Wavee.Core.Library.Spotify;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.Contracts;
+using Wavee.UI.Services.Actions;
 
 namespace Wavee.UI.Services.Library;
 
@@ -19,7 +21,7 @@ namespace Wavee.UI.Services.Library;
 /// Populated from SQLite on startup, kept in sync via Dealer WebSocket deltas.
 /// All lookups are synchronous O(1).
 /// </summary>
-public sealed class TrackLikeService : ITrackLikeService, IDisposable
+public sealed class TrackLikeService : ITrackLikeService, ILibrarySavedActionExecutor, IDisposable
 {
     private static readonly Dictionary<SavedItemType, (string UriPrefix, SpotifyLibraryItemType DbType, string SetFilter)> TypeMap = new()
     {
@@ -40,6 +42,7 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
     private readonly IMetadataDatabase _database;
     private readonly ISpotifyLibraryService? _libraryService;
     private readonly ILocalLikeService? _localLikeService;
+    private readonly IUserActionRunner? _actionRunner;
     private readonly ILogger? _logger;
     private readonly CompositeDisposable _disposables = new();
     private bool _initialized;
@@ -50,11 +53,13 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
         IMetadataDatabase database,
         ISpotifyLibraryService? libraryService = null,
         ILocalLikeService? localLikeService = null,
+        IUserActionRunner? actionRunner = null,
         ILogger<TrackLikeService>? logger = null)
     {
         _database = database;
         _libraryService = libraryService;
         _localLikeService = localLikeService;
+        _actionRunner = actionRunner;
         _logger = logger;
     }
 
@@ -155,6 +160,33 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
 
     public void ToggleSave(SavedItemType type, string itemUri, bool currentlySaved)
     {
+        var action = new SetLibrarySavedAction(
+            this,
+            type,
+            itemUri,
+            previousSaved: currentlySaved,
+            newSaved: !currentlySaved);
+
+        _ = RunSaveActionAsync(action);
+    }
+
+    private async Task RunSaveActionAsync(SetLibrarySavedAction action)
+    {
+        try
+        {
+            if (_actionRunner is not null)
+                await _actionRunner.RunAsync(action).ConfigureAwait(false);
+            else
+                await action.ExecuteAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Save action failed for {Kind}", action.Descriptor.Kind);
+        }
+    }
+
+    public async Task ApplySavedStateAsync(SavedItemType type, string itemUri, bool saved, CancellationToken ct = default)
+    {
         // Local-track likes never round-trip through Spotify's collection
         // API — they're a separate state column on the local entity row.
         // Without this branch, a wavee:local:track:* URI would get queued to
@@ -166,7 +198,7 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
             && _localLikeService is not null
             && LocalUri.IsTrack(itemUri))
         {
-            ToggleLocalTrackLike(itemUri, currentlySaved);
+            await ApplyLocalTrackLikeAsync(itemUri, saved).ConfigureAwait(false);
             return;
         }
 
@@ -179,88 +211,89 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
         }
 
         var cache = _caches[type];
+        var currentlySaved = cache.Contains(bareId);
+        if (currentlySaved == saved)
+            return;
 
         _logger?.LogInformation("ToggleSave: type={Type}, uri={Uri}, bareId={BareId}, currentlySaved={Saved}, cacheCount={Count}",
             type, itemUri, bareId, currentlySaved, cache.Count);
 
         // 1. Update in-memory cache immediately (instant UI feedback)
-        if (currentlySaved)
-            cache.Remove(bareId);
-        else
+        if (saved)
             cache.Add(bareId);
+        else
+            cache.Remove(bareId);
 
         _logger?.LogDebug("ToggleSave: cache updated, new IsSaved={IsSaved}", cache.Contains(bareId));
 
         SaveStateChanged?.Invoke();
 
-        // 2. Persist to DB + API (fire-and-forget)
-        _ = Task.Run(async () =>
+        // 2. Persist to DB + API
+        try
         {
-            try
+            if (_libraryService != null)
             {
-                if (_libraryService != null)
+                _logger?.LogInformation("ToggleSave: using ISpotifyLibraryService (outbox path)");
+                var success = (type, saved) switch
                 {
-                    _logger?.LogInformation("ToggleSave: using ISpotifyLibraryService (outbox path)");
-                    var success = (type, currentlySaved) switch
-                    {
-                        (SavedItemType.Track, true) => await _libraryService.RemoveTrackAsync(itemUri).ConfigureAwait(false),
-                        (SavedItemType.Track, false) => await _libraryService.SaveTrackAsync(itemUri).ConfigureAwait(false),
-                        (SavedItemType.Album, true) => await _libraryService.RemoveAlbumAsync(itemUri).ConfigureAwait(false),
-                        (SavedItemType.Album, false) => await _libraryService.SaveAlbumAsync(itemUri).ConfigureAwait(false),
-                        (SavedItemType.Artist, true) => await _libraryService.UnfollowArtistAsync(itemUri).ConfigureAwait(false),
-                        (SavedItemType.Artist, false) => await _libraryService.FollowArtistAsync(itemUri).ConfigureAwait(false),
-                        (SavedItemType.Show, true) => await _libraryService.UnsubscribeShowAsync(itemUri).ConfigureAwait(false),
-                        (SavedItemType.Show, false) => await _libraryService.SubscribeShowAsync(itemUri).ConfigureAwait(false),
-                        _ => false
-                    };
-                    _logger?.LogInformation("ToggleSave: library service returned success={Success}", success);
+                    (SavedItemType.Track, false) => await _libraryService.RemoveTrackAsync(itemUri).ConfigureAwait(false),
+                    (SavedItemType.Track, true) => await _libraryService.SaveTrackAsync(itemUri).ConfigureAwait(false),
+                    (SavedItemType.Album, false) => await _libraryService.RemoveAlbumAsync(itemUri).ConfigureAwait(false),
+                    (SavedItemType.Album, true) => await _libraryService.SaveAlbumAsync(itemUri).ConfigureAwait(false),
+                    (SavedItemType.Artist, false) => await _libraryService.UnfollowArtistAsync(itemUri).ConfigureAwait(false),
+                    (SavedItemType.Artist, true) => await _libraryService.FollowArtistAsync(itemUri).ConfigureAwait(false),
+                    (SavedItemType.Show, false) => await _libraryService.UnsubscribeShowAsync(itemUri).ConfigureAwait(false),
+                    (SavedItemType.Show, true) => await _libraryService.SubscribeShowAsync(itemUri).ConfigureAwait(false),
+                    _ => false
+                };
+                _logger?.LogInformation("ToggleSave: library service returned success={Success}", success);
 
-                    if (success)
-                    {
-                        // DB write complete — notify again so list views can reload with data available
-                        SaveStateChanged?.Invoke();
-                    }
-                    else
-                    {
-                        _logger?.LogWarning("ToggleSave: API call failed, reverting cache for {Uri}", itemUri);
-                        if (currentlySaved)
-                            cache.Add(bareId);
-                        else
-                            cache.Remove(bareId);
-                        SaveStateChanged?.Invoke();
-                    }
+                if (success)
+                {
+                    // DB write complete — notify again so list views can reload with data available
+                    SaveStateChanged?.Invoke();
                 }
                 else
                 {
-                    _logger?.LogWarning("ToggleSave: ISpotifyLibraryService not in DI — writing directly to DB");
-                    var (_, dbType, _) = TypeMap[type];
+                    _logger?.LogWarning("ToggleSave: API call failed, reverting cache for {Uri}", itemUri);
                     if (currentlySaved)
-                    {
-                        await _database.RemoveFromSpotifyLibraryAsync(itemUri).ConfigureAwait(false);
-                        _logger?.LogInformation("ToggleSave: removed {Uri} from DB", itemUri);
-                    }
+                        cache.Add(bareId);
                     else
-                    {
-                        await _database.AddToSpotifyLibraryAsync(itemUri, dbType,
-                            DateTimeOffset.UtcNow.ToUnixTimeSeconds()).ConfigureAwait(false);
-                        _logger?.LogInformation("ToggleSave: added {Uri} to DB", itemUri);
-                    }
-
-                    // DB write complete — notify again so list views can reload
+                        cache.Remove(bareId);
                     SaveStateChanged?.Invoke();
                 }
             }
-            catch (Exception ex)
+            else
             {
-                _logger?.LogError(ex, "Failed to persist save toggle for {Uri}", itemUri);
-                // Rollback in-memory state
-                if (currentlySaved)
-                    cache.Add(bareId);
+                _logger?.LogWarning("ToggleSave: ISpotifyLibraryService not in DI — writing directly to DB");
+                var (_, dbType, _) = TypeMap[type];
+                if (saved)
+                {
+                    await _database.AddToSpotifyLibraryAsync(itemUri, dbType,
+                        DateTimeOffset.UtcNow.ToUnixTimeSeconds()).ConfigureAwait(false);
+                    _logger?.LogInformation("ToggleSave: added {Uri} to DB", itemUri);
+                }
                 else
-                    cache.Remove(bareId);
+                {
+                    await _database.RemoveFromSpotifyLibraryAsync(itemUri).ConfigureAwait(false);
+                    _logger?.LogInformation("ToggleSave: removed {Uri} from DB", itemUri);
+                }
+
+                // DB write complete — notify again so list views can reload
                 SaveStateChanged?.Invoke();
             }
-        });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to persist save toggle for {Uri}", itemUri);
+            // Rollback in-memory state
+            if (currentlySaved)
+                cache.Add(bareId);
+            else
+                cache.Remove(bareId);
+            SaveStateChanged?.Invoke();
+            throw;
+        }
     }
 
     private async Task LoadItemsAsync(SavedItemType type, SpotifyLibraryItemType dbType)
@@ -351,35 +384,36 @@ public sealed class TrackLikeService : ITrackLikeService, IDisposable
     /// when no Spotify prefix matches), so <see cref="IsSaved"/> hits without
     /// any extra branching.
     /// </summary>
-    private void ToggleLocalTrackLike(string itemUri, bool currentlySaved)
+    private async Task ApplyLocalTrackLikeAsync(string itemUri, bool liked)
     {
         if (_localLikeService is null) return;
         var cache = _caches[SavedItemType.Track];
+        var currentlySaved = cache.Contains(itemUri);
+        if (currentlySaved == liked)
+            return;
 
-        if (currentlySaved) cache.Remove(itemUri);
-        else cache.Add(itemUri);
+        if (liked) cache.Add(itemUri);
+        else cache.Remove(itemUri);
 
         _logger?.LogInformation("ToggleSave (local): uri={Uri}, wasLiked={WasLiked} → {NewLiked}",
-            itemUri, currentlySaved, !currentlySaved);
+            itemUri, currentlySaved, liked);
 
         SaveStateChanged?.Invoke();
 
-        _ = Task.Run(async () =>
+        try
         {
-            try
-            {
-                await _localLikeService.SetLikedAsync(itemUri, !currentlySaved).ConfigureAwait(false);
-                SaveStateChanged?.Invoke();
-            }
-            catch (Exception ex)
-            {
-                // Revert the optimistic update on failure.
-                _logger?.LogWarning(ex, "Local like persist failed for {Uri} — reverting", itemUri);
-                if (currentlySaved) cache.Add(itemUri);
-                else cache.Remove(itemUri);
-                SaveStateChanged?.Invoke();
-            }
-        });
+            await _localLikeService.SetLikedAsync(itemUri, liked).ConfigureAwait(false);
+            SaveStateChanged?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            // Revert the optimistic update on failure.
+            _logger?.LogWarning(ex, "Local like persist failed for {Uri} — reverting", itemUri);
+            if (currentlySaved) cache.Add(itemUri);
+            else cache.Remove(itemUri);
+            SaveStateChanged?.Invoke();
+            throw;
+        }
     }
 
     public void Dispose()

@@ -1,0 +1,904 @@
+{
+  "nodes": [
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/media.proto",
+      "type": "schema",
+      "name": "media.proto",
+      "filePath": "src/Wavee/Protocol/Protos/media.proto",
+      "summary": "Minimal protobuf schema defining the AudioQuality enum for Spotify audio streaming quality levels (DEFAULT through HIFI_24).",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "audio",
+        "playback"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/media.proto:AudioQuality",
+      "type": "schema",
+      "name": "AudioQuality",
+      "filePath": "src/Wavee/Protocol/Protos/media.proto",
+      "lineRange": [
+        8,
+        16
+      ],
+      "summary": "Enum of Spotify audio quality levels from DEFAULT to HIFI_24.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "audio"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/mercury.proto",
+      "type": "schema",
+      "name": "mercury.proto",
+      "filePath": "src/Wavee/Protocol/Protos/mercury.proto",
+      "summary": "Protobuf schema for the Spotify Mercury pub/sub protocol, defining request/reply message structures for the multiplexed in-band RPC layer used within the AP connection.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "mercury",
+        "api-schema"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/mercury.proto:MercuryMultiGetRequest",
+      "type": "schema",
+      "name": "MercuryMultiGetRequest",
+      "filePath": "src/Wavee/Protocol/Protos/mercury.proto",
+      "lineRange": [
+        6,
+        8
+      ],
+      "summary": "Protobuf definition MercuryMultiGetRequest for Mercury pub/sub protocol.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "mercury"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/mercury.proto:MercuryMultiGetReply",
+      "type": "schema",
+      "name": "MercuryMultiGetReply",
+      "filePath": "src/Wavee/Protocol/Protos/mercury.proto",
+      "lineRange": [
+        10,
+        12
+      ],
+      "summary": "Protobuf definition MercuryMultiGetReply for Mercury pub/sub protocol.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "mercury"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/mercury.proto:MercuryRequest",
+      "type": "schema",
+      "name": "MercuryRequest",
+      "filePath": "src/Wavee/Protocol/Protos/mercury.proto",
+      "lineRange": [
+        14,
+        19
+      ],
+      "summary": "Protobuf definition MercuryRequest for Mercury pub/sub protocol.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "mercury"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/mercury.proto:MercuryReply",
+      "type": "schema",
+      "name": "MercuryReply",
+      "filePath": "src/Wavee/Protocol/Protos/mercury.proto",
+      "lineRange": [
+        21,
+        34
+      ],
+      "summary": "Protobuf definition MercuryReply for Mercury pub/sub protocol.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "mercury"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/mercury.proto:Header",
+      "type": "schema",
+      "name": "Header",
+      "filePath": "src/Wavee/Protocol/Protos/mercury.proto",
+      "lineRange": [
+        37,
+        43
+      ],
+      "summary": "Protobuf definition Header for Mercury pub/sub protocol.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "mercury"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/mercury.proto:UserField",
+      "type": "schema",
+      "name": "UserField",
+      "filePath": "src/Wavee/Protocol/Protos/mercury.proto",
+      "lineRange": [
+        45,
+        48
+      ],
+      "summary": "Protobuf definition UserField for Mercury pub/sub protocol.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "mercury"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "type": "schema",
+      "name": "metadata.proto",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "summary": "Core Spotify metadata protobuf schema defining Artist, Album, Track, Show, Episode, and all supporting structures (Image, AudioFile, Restriction, Availability) resolved via Mercury.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata",
+        "core"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Artist",
+      "type": "schema",
+      "name": "Artist",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        13,
+        33
+      ],
+      "summary": "Protobuf definition Artist in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Album",
+      "type": "schema",
+      "name": "Album",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        35,
+        68
+      ],
+      "summary": "Protobuf definition Album in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Track",
+      "type": "schema",
+      "name": "Track",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        70,
+        105
+      ],
+      "summary": "Protobuf definition Track in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:ArtistWithRole",
+      "type": "schema",
+      "name": "ArtistWithRole",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        107,
+        122
+      ],
+      "summary": "Protobuf definition ArtistWithRole in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Show",
+      "type": "schema",
+      "name": "Show",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        124,
+        157
+      ],
+      "summary": "Protobuf definition Show in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Episode",
+      "type": "schema",
+      "name": "Episode",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        159,
+        194
+      ],
+      "summary": "Protobuf definition Episode in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Licensor",
+      "type": "schema",
+      "name": "Licensor",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        196,
+        198
+      ],
+      "summary": "Protobuf definition Licensor in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Audio",
+      "type": "schema",
+      "name": "Audio",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        200,
+        202
+      ],
+      "summary": "Protobuf definition Audio in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:TopTracks",
+      "type": "schema",
+      "name": "TopTracks",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        204,
+        207
+      ],
+      "summary": "Protobuf definition TopTracks in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:ActivityPeriod",
+      "type": "schema",
+      "name": "ActivityPeriod",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        209,
+        213
+      ],
+      "summary": "Protobuf definition ActivityPeriod in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:AlbumGroup",
+      "type": "schema",
+      "name": "AlbumGroup",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        215,
+        217
+      ],
+      "summary": "Protobuf definition AlbumGroup in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Date",
+      "type": "schema",
+      "name": "Date",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        219,
+        225
+      ],
+      "summary": "Protobuf definition Date in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Image",
+      "type": "schema",
+      "name": "Image",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        227,
+        239
+      ],
+      "summary": "Protobuf definition Image in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:ImageGroup",
+      "type": "schema",
+      "name": "ImageGroup",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        241,
+        243
+      ],
+      "summary": "Protobuf definition ImageGroup in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Biography",
+      "type": "schema",
+      "name": "Biography",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        245,
+        249
+      ],
+      "summary": "Protobuf definition Biography in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Disc",
+      "type": "schema",
+      "name": "Disc",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        251,
+        255
+      ],
+      "summary": "Protobuf definition Disc in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Copyright",
+      "type": "schema",
+      "name": "Copyright",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        257,
+        265
+      ],
+      "summary": "Protobuf definition Copyright in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Restriction",
+      "type": "schema",
+      "name": "Restriction",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        267,
+        287
+      ],
+      "summary": "Protobuf definition Restriction in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Availability",
+      "type": "schema",
+      "name": "Availability",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        289,
+        292
+      ],
+      "summary": "Protobuf definition Availability in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:SalePeriod",
+      "type": "schema",
+      "name": "SalePeriod",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        294,
+        298
+      ],
+      "summary": "Protobuf definition SalePeriod in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:ExternalId",
+      "type": "schema",
+      "name": "ExternalId",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        300,
+        303
+      ],
+      "summary": "Protobuf definition ExternalId in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:AudioFile",
+      "type": "schema",
+      "name": "AudioFile",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        305,
+        326
+      ],
+      "summary": "Protobuf definition AudioFile in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:Video",
+      "type": "schema",
+      "name": "Video",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        328,
+        330
+      ],
+      "summary": "Protobuf definition Video in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:VideoFile",
+      "type": "schema",
+      "name": "VideoFile",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        332,
+        334
+      ],
+      "summary": "Protobuf definition VideoFile in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/metadata.proto:ContentRating",
+      "type": "schema",
+      "name": "ContentRating",
+      "filePath": "src/Wavee/Protocol/Protos/metadata.proto",
+      "lineRange": [
+        336,
+        339
+      ],
+      "summary": "Protobuf definition ContentRating in the core Spotify metadata schema.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/play_origin.proto",
+      "type": "schema",
+      "name": "play_origin.proto",
+      "filePath": "src/Wavee/Protocol/Protos/play_origin.proto",
+      "summary": "Protobuf schema for Spotify play origin, capturing feature identifier, version, view URI, and referrer information for playback context attribution.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/play_origin.proto:PlayOrigin",
+      "type": "schema",
+      "name": "PlayOrigin",
+      "filePath": "src/Wavee/Protocol/Protos/play_origin.proto",
+      "lineRange": [
+        8,
+        16
+      ],
+      "summary": "Protobuf message capturing the origin context of a play action.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playback.proto",
+      "type": "schema",
+      "name": "playback.proto",
+      "filePath": "src/Wavee/Protocol/Protos/playback.proto",
+      "summary": "Minimal protobuf schema for the Playback message carrying timestamp, position, speed, and current track for Spotify Connect state.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playback.proto:Playback",
+      "type": "schema",
+      "name": "Playback",
+      "filePath": "src/Wavee/Protocol/Protos/playback.proto",
+      "lineRange": [
+        10,
+        16
+      ],
+      "summary": "Protobuf message representing current playback state snapshot.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/media.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/media.proto:AudioQuality",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/mercury.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/mercury.proto:MercuryMultiGetRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/mercury.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/mercury.proto:MercuryMultiGetReply",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/mercury.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/mercury.proto:MercuryRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/mercury.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/mercury.proto:MercuryReply",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/mercury.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/mercury.proto:Header",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/mercury.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/mercury.proto:UserField",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Artist",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Album",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Track",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:ArtistWithRole",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Show",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Episode",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Licensor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Audio",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:TopTracks",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:ActivityPeriod",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:AlbumGroup",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Date",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Image",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:ImageGroup",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Biography",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Disc",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Copyright",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Restriction",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Availability",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:SalePeriod",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:ExternalId",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:AudioFile",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:Video",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:VideoFile",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/metadata.proto:ContentRating",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/play_origin.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/play_origin.proto:PlayOrigin",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playback.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playback.proto:Playback",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/mercury.proto",
+      "target": "file:src/Wavee/Core/Mercury/MercuryManager.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/metadata.proto",
+      "target": "file:src/Wavee/Audio/TrackResolver.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

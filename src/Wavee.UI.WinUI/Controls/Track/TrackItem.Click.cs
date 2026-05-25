@@ -144,6 +144,12 @@ public sealed partial class TrackItem
         if (IsInteractiveElement(e.OriginalSource as DependencyObject))
             return;
 
+        if (TryConsumeSelectionPointerHandled())
+        {
+            e.Handled = true;
+            return;
+        }
+
         // In selection mode a plain tap toggles this row's selection and never
         // plays. e.Handled stops the tap reaching the ItemContainer, so its
         // native Extended-mode select-replace doesn't wipe the multi-selection.
@@ -170,6 +176,7 @@ public sealed partial class TrackItem
 
         var settings = TryGetSettings();
         if (settings?.Settings.TrackClickBehavior != "SingleTap") return;
+        if (TrackBehavior.IsSingleTapPlayDisabledForElement(this)) return;
 
         HandleTrackPlay();
         e.Handled = true;

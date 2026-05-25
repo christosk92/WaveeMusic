@@ -28,12 +28,6 @@
     </UserControl.Resources>
 
     <Grid x:Name="Root">
-        <Grid.KeyboardAccelerators>
-            <!-- Ctrl+A selects every track and enters selection mode. Lives on
-                 the control root (not the inner ItemsView) so it fires whether
-                 focus is on a row, the toolbar, or anywhere in the grid. -->
-            <KeyboardAccelerator Key="A" Modifiers="Control" Invoked="OnSelectAllAccelerator" />
-        </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -406,6 +400,8 @@
             <ItemsRepeater
                 x:Name="LoadingRowsRepeater"
                 Grid.Row="1"
+                x:Load="{x:Bind IsLoading, Mode=OneWay}"
+                Loaded="LoadingRowsRepeater_Loaded"
                 Margin="0,2,0,0"
                 IsHitTestVisible="False"
                 Visibility="Collapsed">

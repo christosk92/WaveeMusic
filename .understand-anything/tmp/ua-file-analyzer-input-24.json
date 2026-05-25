@@ -1,0 +1,156 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml",
+      "language": "xaml",
+      "sizeLines": 245,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 130,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityItemTemplateSelector.cs",
+      "language": "csharp",
+      "sizeLines": 30,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml",
+      "language": "xaml",
+      "sizeLines": 297,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 295,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml",
+      "language": "xaml",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 155,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml",
+      "language": "xaml",
+      "sizeLines": 42,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 210,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml",
+      "language": "xaml",
+      "sizeLines": 137,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 406,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml",
+      "language": "xaml",
+      "sizeLines": 54,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 426,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandingGridLayout.cs",
+      "language": "csharp",
+      "sizeLines": 202,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AnimatedVisuals/LightRedEqualizer.cs",
+      "language": "csharp",
+      "sizeLines": 714,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml",
+      "language": "xaml",
+      "sizeLines": 114,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 331,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml",
+      "language": "xaml",
+      "sizeLines": 18,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 202,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml",
+      "language": "xaml",
+      "sizeLines": 17,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 202,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Branding/WaveeLogo.xaml",
+      "language": "xaml",
+      "sizeLines": 33,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Branding/WaveeLogo.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 43,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml",
+      "language": "xaml",
+      "sizeLines": 23,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 100,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {}
+}

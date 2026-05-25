@@ -12,6 +12,7 @@ using Wavee.Core.Session;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.Core.Storage.Outbox;
 using Wavee.UI.Models;
+using Wavee.UI.Services.Actions;
 using Wavee.UI.Services.Infra;
 using Wavee.UI.WinUI.Data.Contexts.Helpers;
 using Wavee.UI.Contracts;
@@ -24,13 +25,14 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// remove / reorder, plus the local-track overlay tables that Wavee layers on
 /// top of Spotify playlists.
 /// </summary>
-public sealed class PlaylistMutationService : IPlaylistMutationService
+public sealed class PlaylistMutationService : IPlaylistMutationService, IPlaylistMutationActionExecutor
 {
     private readonly IMetadataDatabase _database;
     private readonly IPlaylistCacheService _playlistCache;
     private readonly ISession _session;
     private readonly IOutboxProcessor _outboxProcessor;
     private readonly IChangeBus _changeBus;
+    private readonly IUserActionRunner? _actionRunner;
     private readonly ILogger<PlaylistMutationService>? _logger;
     private readonly string _databasePath;
 
@@ -41,6 +43,7 @@ public sealed class PlaylistMutationService : IPlaylistMutationService
         IOutboxProcessor outboxProcessor,
         IChangeBus changeBus,
         WaveeCacheOptions cacheOptions,
+        IUserActionRunner? actionRunner = null,
         ILogger<PlaylistMutationService>? logger = null)
     {
         _database = database;
@@ -48,11 +51,21 @@ public sealed class PlaylistMutationService : IPlaylistMutationService
         _session = session;
         _outboxProcessor = outboxProcessor ?? throw new ArgumentNullException(nameof(outboxProcessor));
         _changeBus = changeBus;
+        _actionRunner = actionRunner;
         _databasePath = cacheOptions.DatabasePath;
         _logger = logger;
     }
 
     public async Task<PlaylistSummaryDto> CreatePlaylistAsync(string name, IReadOnlyList<string>? trackIds = null, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        var action = new CreatePlaylistAction(this, name, trackIds);
+        await RunPlaylistActionAsync(action, ct).ConfigureAwait(false);
+        return action.Result ?? throw new InvalidOperationException("Playlist create action completed without a result.");
+    }
+
+    public async Task<PlaylistSummaryDto> CreatePlaylistCoreAsync(string name, IReadOnlyList<string>? trackIds = null, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
@@ -150,6 +163,21 @@ public sealed class PlaylistMutationService : IPlaylistMutationService
     public async Task AddTracksToPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+
+        var normalized = NormalizeTrackUris(trackIds);
+        if (normalized.Count == 0) return;
+
+        var action = new PlaylistTracksAction(
+            this,
+            PlaylistUriHelpers.NormalizePlaylistUri(playlistId),
+            normalized,
+            addTracks: true);
+        await RunPlaylistActionAsync(action, ct).ConfigureAwait(false);
+    }
+
+    public async Task AddTracksToPlaylistCoreAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
         if (trackIds is null || trackIds.Count == 0) return;
 
         _ = _session.GetUserData()
@@ -174,6 +202,21 @@ public sealed class PlaylistMutationService : IPlaylistMutationService
     }
 
     public async Task RemoveTracksFromPlaylistAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+
+        var normalized = NormalizeTrackUris(trackIds);
+        if (normalized.Count == 0) return;
+
+        var action = new PlaylistTracksAction(
+            this,
+            PlaylistUriHelpers.NormalizePlaylistUri(playlistId),
+            normalized,
+            addTracks: false);
+        await RunPlaylistActionAsync(action, ct).ConfigureAwait(false);
+    }
+
+    public async Task RemoveTracksFromPlaylistCoreAsync(string playlistId, IReadOnlyList<string> trackIds, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
         if (trackIds is null || trackIds.Count == 0) return;
@@ -410,6 +453,14 @@ public sealed class PlaylistMutationService : IPlaylistMutationService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
 
+        var action = new DeletePlaylistAction(this, PlaylistUriHelpers.NormalizePlaylistUri(playlistId));
+        await RunPlaylistActionAsync(action, ct).ConfigureAwait(false);
+    }
+
+    public async Task DeletePlaylistCoreAsync(string playlistId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+
         var userData = _session.GetUserData()
             ?? throw new InvalidOperationException("DeletePlaylistAsync requires an authenticated session");
         var username = userData.Username;
@@ -472,6 +523,18 @@ public sealed class PlaylistMutationService : IPlaylistMutationService
     }
 
     public async Task SetPlaylistFollowedAsync(string playlistId, bool followed, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
+
+        var playlistUri = PlaylistUriHelpers.NormalizePlaylistUri(playlistId);
+        var previousFollowed = await IsPlaylistInRootlistAsync(playlistUri, ct).ConfigureAwait(false);
+        if (previousFollowed == followed) return;
+
+        var action = new SetPlaylistFollowedAction(this, playlistUri, previousFollowed, followed);
+        await RunPlaylistActionAsync(action, ct).ConfigureAwait(false);
+    }
+
+    public async Task SetPlaylistFollowedCoreAsync(string playlistId, bool followed, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(playlistId);
 
@@ -785,6 +848,34 @@ public sealed class PlaylistMutationService : IPlaylistMutationService
             _logger?.LogWarning(ex, "SendPlaylistSignalAsync failed for {PlaylistUri}", playlistUri);
             return false;
         }
+    }
+
+    private Task RunPlaylistActionAsync(IUserAction action, CancellationToken ct)
+    {
+        return _actionRunner is not null
+            ? _actionRunner.RunAsync(action, ct)
+            : action.ExecuteAsync(ct);
+    }
+
+    private async Task<bool> IsPlaylistInRootlistAsync(string playlistUri, CancellationToken ct)
+    {
+        var rootlist = await _playlistCache.GetRootlistAsync(ct: ct).ConfigureAwait(false);
+        return RootlistGraph.FindRootlistPlaylistIndex(rootlist, playlistUri) >= 0;
+    }
+
+    private static IReadOnlyList<string> NormalizeTrackUris(IReadOnlyList<string>? trackIds)
+    {
+        if (trackIds is null || trackIds.Count == 0)
+            return Array.Empty<string>();
+
+        var normalized = new List<string>(trackIds.Count);
+        foreach (var raw in trackIds)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            normalized.Add(PlaylistUriHelpers.NormalizeTrackUri(raw));
+        }
+
+        return normalized;
     }
 
     private Microsoft.Data.Sqlite.SqliteConnection OpenLocalConnection()

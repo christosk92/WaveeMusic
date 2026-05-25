@@ -1,0 +1,146 @@
+const fs = require('fs');
+
+const nodes = [];
+const edges = [];
+
+// 1. Link.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Constants/Link.cs',type:'file',name:'Link.cs',filePath:'src/Wavee.Controls.Lyrics/Constants/Link.cs',summary:'Defines a static constants class containing all external URL strings used across the lyrics plugin (store links, social, legal, documentation).',tags:['utility','constants','type-definition'],complexity:'simple'});
+nodes.push({id:'class:src/Wavee.Controls.Lyrics/Constants/Link.cs:Link',type:'class',name:'Link',filePath:'src/Wavee.Controls.Lyrics/Constants/Link.cs',lineRange:[3,30],summary:'Static class holding all external URL constants for the Lyricify plugin ecosystem.',tags:['utility','constants'],complexity:'simple'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Constants/Link.cs',target:'class:src/Wavee.Controls.Lyrics/Constants/Link.cs:Link',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Constants/Link.cs',target:'class:src/Wavee.Controls.Lyrics/Constants/Link.cs:Link',type:'exports',direction:'forward',weight:0.8});
+
+// 2. Time.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Constants/Time.cs',type:'file',name:'Time.cs',filePath:'src/Wavee.Controls.Lyrics/Constants/Time.cs',summary:'Defines timing constants for UI animations and debounce thresholds used throughout the lyrics rendering library.',tags:['utility','constants','type-definition'],complexity:'simple'});
+nodes.push({id:'class:src/Wavee.Controls.Lyrics/Constants/Time.cs:Time',type:'class',name:'Time',filePath:'src/Wavee.Controls.Lyrics/Constants/Time.cs',lineRange:[5,12],summary:'Static class with named time constants for debounce, animation, and wait durations.',tags:['utility','constants'],complexity:'simple'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Constants/Time.cs',target:'class:src/Wavee.Controls.Lyrics/Constants/Time.cs:Time',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Constants/Time.cs',target:'class:src/Wavee.Controls.Lyrics/Constants/Time.cs:Time',type:'exports',direction:'forward',weight:0.8});
+
+// 3. ImageSwitcher.xaml
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml',type:'file',name:'ImageSwitcher.xaml',filePath:'src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml',summary:'XAML markup for the ImageSwitcher UserControl, defining the visual tree for an image display surface supporting crossfade and slide transition animations.',tags:['component','ui','xaml'],complexity:'simple'});
+
+// 4. ImageSwitcher.xaml.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs',type:'file',name:'ImageSwitcher.xaml.cs',filePath:'src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs',summary:'Code-behind for the ImageSwitcher UserControl; implements crossfade and slide transition animations when swapping album art or imagery in the lyrics UI.',tags:['component','ui','animation','event-handler'],complexity:'moderate'});
+nodes.push({id:'class:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs:ImageSwitcher',type:'class',name:'ImageSwitcher',filePath:'src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs',lineRange:[11,142],summary:'WinUI UserControl that smoothly transitions between two image sources using configurable crossfade or slide animations, with dependency properties for source, stretch, corner radius, and shadow.',tags:['component','ui','animation'],complexity:'moderate'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs',target:'class:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs:ImageSwitcher',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs',target:'class:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs:ImageSwitcher',type:'exports',direction:'forward',weight:0.8});
+nodes.push({id:'function:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs:UpdateSourceCrossfade',type:'function',name:'UpdateSourceCrossfade',filePath:'src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs',lineRange:[78,101],summary:'Executes a crossfade transition between the old and new image sources using opacity animations.',tags:['animation','utility'],complexity:'simple'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs',target:'function:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs:UpdateSourceCrossfade',type:'contains',direction:'forward',weight:1.0});
+nodes.push({id:'function:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs:UpdateSourceSlide',type:'function',name:'UpdateSourceSlide',filePath:'src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs',lineRange:[103,130],summary:'Executes a slide transition between image sources using translate transform animations.',tags:['animation','utility'],complexity:'simple'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs',target:'function:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs:UpdateSourceSlide',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml.cs',target:'file:src/Wavee.Controls.Lyrics/Controls/ImageSwitcher.xaml',type:'related',direction:'forward',weight:0.5});
+
+// 5. NowPlayingCanvas.xaml
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml',type:'file',name:'NowPlayingCanvas.xaml',filePath:'src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml',summary:'XAML markup for the NowPlayingCanvas UserControl, defining the Win2D-based canvas surface used for GPU-accelerated lyrics rendering.',tags:['component','ui','xaml'],complexity:'simple'});
+
+// 6. NowPlayingCanvas.xaml.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs',type:'file',name:'NowPlayingCanvas.xaml.cs',filePath:'src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs',summary:'Code-behind for NowPlayingCanvas; a Win2D CanvasAnimatedControl that orchestrates GPU-accelerated lyrics rendering, position tracking, hover detection, palette, and album art display with many dependency properties.',tags:['component','ui','rendering','event-handler'],complexity:'complex'});
+nodes.push({id:'class:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs:NowPlayingCanvas',type:'class',name:'NowPlayingCanvas',filePath:'src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs',lineRange:[17,240],summary:'Core WinUI UserControl driving the full lyrics rendering pipeline: Win2D draw/update loop, lyrics data ingestion, position sync, hover-line detection, album art rendering, and palette theming via dependency properties.',tags:['component','ui','rendering','animation'],complexity:'complex'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs',target:'class:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs:NowPlayingCanvas',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs',target:'class:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs:NowPlayingCanvas',type:'exports',direction:'forward',weight:0.8});
+nodes.push({id:'function:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs:OnDependencyPropertyChanged',type:'function',name:'OnDependencyPropertyChanged',filePath:'src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs',lineRange:[163,192],summary:'Central property-changed callback that routes dependency property updates (lyrics data, position, palette, album art) to the underlying plugin renderer.',tags:['event-handler','utility'],complexity:'moderate'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs',target:'function:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs:OnDependencyPropertyChanged',type:'contains',direction:'forward',weight:1.0});
+nodes.push({id:'function:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs:UserControl_Unloaded',type:'function',name:'UserControl_Unloaded',filePath:'src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs',lineRange:[211,222],summary:'Handles unloaded lifecycle event to release Win2D resources and deactivate rendering.',tags:['event-handler','lifecycle'],complexity:'simple'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs',target:'function:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs:UserControl_Unloaded',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml.cs',target:'file:src/Wavee.Controls.Lyrics/Controls/NowPlayingCanvas.xaml',type:'related',direction:'forward',weight:0.5});
+
+// 7. ShadowImage.xaml
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml',type:'file',name:'ShadowImage.xaml',filePath:'src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml',summary:'XAML markup for the ShadowImage UserControl, laying out an image with an attached drop-shadow rectangle overlay.',tags:['component','ui','xaml'],complexity:'simple'});
+
+// 8. ShadowImage.xaml.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs',type:'file',name:'ShadowImage.xaml.cs',filePath:'src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs',summary:'Code-behind for ShadowImage UserControl; manages layout-driven shadow sizing and attachment of an AttachedCardShadow with configurable corner radius and blur amount.',tags:['component','ui','event-handler'],complexity:'moderate'});
+nodes.push({id:'class:src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs:ShadowImage',type:'class',name:'ShadowImage',filePath:'src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs',lineRange:[8,85],summary:'WinUI UserControl wrapping an image with a procedural drop shadow whose geometry updates dynamically on size and layout changes.',tags:['component','ui'],complexity:'moderate'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs',target:'class:src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs:ShadowImage',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs',target:'class:src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs:ShadowImage',type:'exports',direction:'forward',weight:0.8});
+nodes.push({id:'function:src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs:UpdateShadowLayout',type:'function',name:'UpdateShadowLayout',filePath:'src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs',lineRange:[67,79],summary:'Recalculates and applies shadow Rectangle dimensions to match the current image bounds.',tags:['utility','layout'],complexity:'simple'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs',target:'function:src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs:UpdateShadowLayout',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml.cs',target:'file:src/Wavee.Controls.Lyrics/Controls/ShadowImage.xaml',type:'related',direction:'forward',weight:0.5});
+
+// 9. FPSToTimeSpanConverter.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Converters/FPSToTimeSpanConverter.cs',type:'file',name:'FPSToTimeSpanConverter.cs',filePath:'src/Wavee.Controls.Lyrics/Converters/FPSToTimeSpanConverter.cs',summary:'IValueConverter that converts a frames-per-second integer to a TimeSpan for use in XAML bindings controlling the Win2D animation frame rate.',tags:['utility','converter','ui'],complexity:'simple'});
+nodes.push({id:'class:src/Wavee.Controls.Lyrics/Converters/FPSToTimeSpanConverter.cs:FPSToTimeSpanConverter',type:'class',name:'FPSToTimeSpanConverter',filePath:'src/Wavee.Controls.Lyrics/Converters/FPSToTimeSpanConverter.cs',lineRange:[7,22],summary:'IValueConverter converting FPS integer to TimeSpan interval for Win2D canvas animation rate binding.',tags:['converter','utility'],complexity:'simple'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Converters/FPSToTimeSpanConverter.cs',target:'class:src/Wavee.Controls.Lyrics/Converters/FPSToTimeSpanConverter.cs:FPSToTimeSpanConverter',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Converters/FPSToTimeSpanConverter.cs',target:'class:src/Wavee.Controls.Lyrics/Converters/FPSToTimeSpanConverter.cs:FPSToTimeSpanConverter',type:'exports',direction:'forward',weight:0.8});
+
+// 10. PluginBase.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs',type:'file',name:'PluginBase.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs',summary:'Abstract base class for all lyrics plugins; encapsulates IPlugin lifecycle (init/shutdown), configuration binding via IConfigurator, localisation, and settings-definition generation using SettingBuilder.',tags:['component','service','factory'],complexity:'complex'});
+nodes.push({id:'class:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs:PluginBase',type:'class',name:'PluginBase',filePath:'src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs',lineRange:[15,201],summary:'Abstract base providing default IPlugin implementation: async init/shutdown lifecycle, settings dictionary generation, localization, and config binding — plugins override OnInitializeAsync and OnShutdownAsync.',tags:['component','service','lifecycle'],complexity:'complex'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs:PluginBase',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs:PluginBase',type:'exports',direction:'forward',weight:0.8});
+nodes.push({id:'function:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs:GetSettingDefDict',type:'function',name:'GetSettingDefDict',filePath:'src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs',lineRange:[157,199],summary:'Builds a dictionary of setting definitions from the plugin config type properties using reflection and SettingBuilder, used to populate UI configuration panels.',tags:['factory','utility','serialization'],complexity:'moderate'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs',target:'function:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs:GetSettingDefDict',type:'contains',direction:'forward',weight:1.0});
+nodes.push({id:'function:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs:InitializeAsync',type:'function',name:'InitializeAsync',filePath:'src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs',lineRange:[134,139],summary:'Loads persisted plugin settings from disk, binds them to the configurator, and calls the overridable OnInitializeAsync hook.',tags:['lifecycle','service'],complexity:'simple'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs',target:'function:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs:InitializeAsync',type:'contains',direction:'forward',weight:1.0});
+// PluginBase implements IPlugin
+edges.push({source:'class:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginBase.cs:PluginBase',target:'class:src/Wavee.Controls.Lyrics/Core/Interfaces/IPlugin.cs:IPlugin',type:'implements',direction:'forward',weight:0.9});
+
+// 11. PluginConfigBase.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginConfigBase.cs',type:'file',name:'PluginConfigBase.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Abstractions/PluginConfigBase.cs',summary:'Abstract base class for plugin configuration objects, providing IConfigurator binding and typed get/set accessors over serialized plugin settings.',tags:['data-model','service','utility'],complexity:'simple'});
+nodes.push({id:'class:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginConfigBase.cs:PluginConfigBase',type:'class',name:'PluginConfigBase',filePath:'src/Wavee.Controls.Lyrics/Core/Abstractions/PluginConfigBase.cs',lineRange:[7,33],summary:'Base class for plugin configs; binds to an IConfigurator and provides Get<T>/Set<T> for reading/writing per-plugin persisted settings.',tags:['data-model','utility'],complexity:'simple'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginConfigBase.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginConfigBase.cs:PluginConfigBase',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginConfigBase.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Abstractions/PluginConfigBase.cs:PluginConfigBase',type:'exports',direction:'forward',weight:0.8});
+
+// 12. DirtyFlags.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/DirtyFlags.cs',type:'file',name:'DirtyFlags.cs',filePath:'src/Wavee.Controls.Lyrics/Core/DirtyFlags.cs',summary:'[Flags] enum tracking which aspects of the lyrics rendering state (data, position, palette, album art) are dirty and need re-rendering.',tags:['type-definition','utility'],complexity:'simple'});
+
+// 13. ConfigChangedBy.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Enums/ConfigChangedBy.cs',type:'file',name:'ConfigChangedBy.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Enums/ConfigChangedBy.cs',summary:'Enum indicating the origin of a plugin configuration change (user action vs. programmatic update).',tags:['type-definition','utility'],complexity:'simple'});
+
+// 14. LyricsSearchProvider.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Enums/LyricsSearchProvider.cs',type:'file',name:'LyricsSearchProvider.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Enums/LyricsSearchProvider.cs',summary:'Enum listing the available lyrics search providers (e.g., Spotify, NetEase, QQ Music) that a lyrics source plugin can query.',tags:['type-definition','utility'],complexity:'simple'});
+
+// 15. LangGenerator.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs',type:'file',name:'LangGenerator.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs',summary:'Build-time helper that scans plugin source code to extract localizable string keys and synchronizes them into per-language JSON files for the Lyricify plugin localization system.',tags:['utility','tooling','serialization'],complexity:'moderate'});
+nodes.push({id:'class:src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs:LangGenerator',type:'class',name:'LangGenerator',filePath:'src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs',lineRange:[10,119],summary:'Utility class that auto-generates localization JSON stubs by extracting keys from plugin source via regex and merging them into existing translation files.',tags:['utility','tooling'],complexity:'moderate'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs:LangGenerator',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs:LangGenerator',type:'exports',direction:'forward',weight:0.8});
+nodes.push({id:'function:src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs:ExtractFromCode',type:'function',name:'ExtractFromCode',filePath:'src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs',lineRange:[60,88],summary:'Parses C# source files to extract all Localizer.GetString calls and returns the discovered localization keys.',tags:['utility','parsing'],complexity:'moderate'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs',target:'function:src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs:ExtractFromCode',type:'contains',direction:'forward',weight:1.0});
+nodes.push({id:'function:src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs:SyncTargetLanguage',type:'function',name:'SyncTargetLanguage',filePath:'src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs',lineRange:[37,58],summary:'Merges extracted localization keys into an existing language JSON file, adding missing keys without overwriting existing translations.',tags:['utility','tooling'],complexity:'simple'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs',target:'function:src/Wavee.Controls.Lyrics/Core/Helpers/LangGenerator.cs:SyncTargetLanguage',type:'contains',direction:'forward',weight:1.0});
+
+// 16. SettingBuilder.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Helpers/SettingBuilder.cs',type:'file',name:'SettingBuilder.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Helpers/SettingBuilder.cs',summary:'Fluent builder helper for constructing typed plugin setting definition objects (bool, text, password, number, choice, action) used to generate configuration UI.',tags:['factory','utility','ui'],complexity:'moderate'});
+nodes.push({id:'class:src/Wavee.Controls.Lyrics/Core/Helpers/SettingBuilder.cs:SettingBuilder',type:'class',name:'SettingBuilder',filePath:'src/Wavee.Controls.Lyrics/Core/Helpers/SettingBuilder.cs',lineRange:[9,89],summary:'Static factory class providing named builder methods for each supported plugin setting type, each returning a fully configured SettingDefinition.',tags:['factory','utility'],complexity:'moderate'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Helpers/SettingBuilder.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Helpers/SettingBuilder.cs:SettingBuilder',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Helpers/SettingBuilder.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Helpers/SettingBuilder.cs:SettingBuilder',type:'exports',direction:'forward',weight:0.8});
+
+// 17. SettingsIO.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Helpers/SettingsIO.cs',type:'file',name:'SettingsIO.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Helpers/SettingsIO.cs',summary:'Provides JSON-based serialization and deserialization helpers for persisting plugin settings to the local file system.',tags:['utility','serialization','service'],complexity:'simple'});
+nodes.push({id:'class:src/Wavee.Controls.Lyrics/Core/Helpers/SettingsIO.cs:SettingsIO',type:'class',name:'SettingsIO',filePath:'src/Wavee.Controls.Lyrics/Core/Helpers/SettingsIO.cs',lineRange:[6,26],summary:'Static helper for saving and reading plugin settings as JSON to/from the app data directory.',tags:['utility','serialization'],complexity:'simple'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Helpers/SettingsIO.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Helpers/SettingsIO.cs:SettingsIO',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Helpers/SettingsIO.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Helpers/SettingsIO.cs:SettingsIO',type:'exports',direction:'forward',weight:0.8});
+
+// 18. ILyricsSource.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsSource.cs',type:'file',name:'ILyricsSource.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsSource.cs',summary:'Interface defining the contract for a lyrics source plugin capability, including async search and fetch methods.',tags:['type-definition','service'],complexity:'simple'});
+nodes.push({id:'class:src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsSource.cs:ILyricsSource',type:'class',name:'ILyricsSource',filePath:'src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsSource.cs',lineRange:[8,21],summary:'Plugin feature interface for sourcing lyrics; consumers call search/fetch methods to retrieve timed lyrics data.',tags:['type-definition','service'],complexity:'simple'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsSource.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsSource.cs:ILyricsSource',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsSource.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsSource.cs:ILyricsSource',type:'exports',direction:'forward',weight:0.8});
+
+// 19. ILyricsTranslator.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsTranslator.cs',type:'file',name:'ILyricsTranslator.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsTranslator.cs',summary:'Interface for plugin capabilities that provide lyrics translation into another language.',tags:['type-definition','service'],complexity:'simple'});
+
+// 20. ILyricsTransliterator.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsTransliterator.cs',type:'file',name:'ILyricsTransliterator.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Interfaces/Features/ILyricsTransliterator.cs',summary:'Interface for plugin capabilities that provide phonetic transliteration of lyrics text.',tags:['type-definition','service'],complexity:'simple'});
+
+// 21. IConfigurator.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Interfaces/IConfigurator.cs',type:'file',name:'IConfigurator.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Interfaces/IConfigurator.cs',summary:'Interface abstracting the plugin configuration storage backend, providing typed get/set operations for plugin settings.',tags:['type-definition','service'],complexity:'simple'});
+
+// 22. IPluginContext.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Interfaces/Infrastructure/IPluginContext.cs',type:'file',name:'IPluginContext.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Interfaces/Infrastructure/IPluginContext.cs',summary:'Interface representing the runtime context injected into each plugin, providing access to platform services such as localizer and configurator.',tags:['type-definition','service'],complexity:'simple'});
+
+// 23. ILocalizer.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Interfaces/ILocalizer.cs',type:'file',name:'ILocalizer.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Interfaces/ILocalizer.cs',summary:'Interface for string localization services, allowing plugins to retrieve translated UI strings by key.',tags:['type-definition','service'],complexity:'simple'});
+
+// 24. IPlugin.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Interfaces/IPlugin.cs',type:'file',name:'IPlugin.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Interfaces/IPlugin.cs',summary:'Core plugin contract interface defining identity properties (Id, Title, Author, Version), async lifecycle methods (InitializeAsync, DisposeAsync), and settings definition access.',tags:['type-definition','service'],complexity:'simple'});
+nodes.push({id:'class:src/Wavee.Controls.Lyrics/Core/Interfaces/IPlugin.cs:IPlugin',type:'class',name:'IPlugin',filePath:'src/Wavee.Controls.Lyrics/Core/Interfaces/IPlugin.cs',lineRange:[9,23],summary:'Core interface all Lyricify lyrics plugins must implement: identity metadata, init/dispose lifecycle, and settings-definition retrieval.',tags:['type-definition','service'],complexity:'simple'});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Interfaces/IPlugin.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Interfaces/IPlugin.cs:IPlugin',type:'contains',direction:'forward',weight:1.0});
+edges.push({source:'file:src/Wavee.Controls.Lyrics/Core/Interfaces/IPlugin.cs',target:'class:src/Wavee.Controls.Lyrics/Core/Interfaces/IPlugin.cs:IPlugin',type:'exports',direction:'forward',weight:0.8});
+
+// 25. IAIService.cs
+nodes.push({id:'file:src/Wavee.Controls.Lyrics/Core/Interfaces/Services/IAIService.cs',type:'file',name:'IAIService.cs',filePath:'src/Wavee.Controls.Lyrics/Core/Interfaces/Services/IAIService.cs',summary:'Interface for the on-device AI service used by lyrics plugins, abstracting text generation and analysis calls to the underlying AI runtime.',tags:['type-definition','service'],complexity:'simple'});
+
+const output = { nodes, edges };
+console.log('nodeCount:', nodes.length, 'edgeCount:', edges.length);
+fs.writeFileSync('C:/WAVEE/WaveeMusic/.understand-anything/intermediate/batch-16.json', JSON.stringify(output, null, 2), 'utf8');
+console.log('Written batch-16.json');

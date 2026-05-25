@@ -340,6 +340,7 @@ public sealed partial class TrackItem : UserControl
     private static void OnIsSelectionModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var item = (TrackItem)d;
+        item._selectionPointerHandled = false;
         item.UpdateSelectionAffordance();
         item.UpdateOverlayState();
     }
@@ -599,6 +600,14 @@ public sealed partial class TrackItem : UserControl
         if (RowRoot is null) FindName(nameof(RowRoot));
         WireRowHandlers();
 
+        // Selection-mode row clicks need to run before ItemsView mutates the
+        // native selection set, otherwise the tap handler sees the post-click
+        // IsSelected state and toggles the wrong way.
+        AddHandler(
+            UIElement.PointerPressedEvent,
+            new Microsoft.UI.Xaml.Input.PointerEventHandler(OnSelectionPointerPressed),
+            handledEventsToo: true);
+
         // Tap-to-play (respects TrackClickBehavior setting)
         Tapped += OnTapped;
         DoubleTapped += OnDoubleTapped;
@@ -779,20 +788,23 @@ public sealed partial class TrackItem : UserControl
             return;
 
         var artist = Track?.ArtistName ?? "";
-        var playCount = ShowPlayCount ? PlayCountText : null;
+        CompactSubtitle.Text = artist;
 
+        if (CompactPlayCount == null)
+            return;
+
+        var playCount = ShowPlayCount ? PlayCountText : null;
         if (string.IsNullOrWhiteSpace(playCount))
         {
-            CompactSubtitle.Text = artist;
+            CompactPlayCount.Text = "";
+            CompactPlayCount.Visibility = Visibility.Collapsed;
             return;
         }
 
-        var playCountText = playCount.Contains("play", StringComparison.OrdinalIgnoreCase)
+        CompactPlayCount.Text = playCount.Contains("play", StringComparison.OrdinalIgnoreCase)
             ? playCount
             : $"{playCount} plays";
-        CompactSubtitle.Text = string.IsNullOrWhiteSpace(artist)
-            ? playCountText
-            : $"{artist} · {playCountText}";
+        CompactPlayCount.Visibility = Visibility.Visible;
     }
 
     private void BindRowData(ITrackItem? track)

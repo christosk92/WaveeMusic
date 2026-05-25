@@ -1,0 +1,378 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Streaming/RangeSet.cs",
+      "type": "file",
+      "name": "RangeSet.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/RangeSet.cs",
+      "summary": "Sorted interval-set data structure tracking downloaded byte ranges: supports add, subtract, gap-finding, and contained-length queries used by ProgressiveDownloader to manage partial file buffers.",
+      "tags": ["data-structure", "streaming", "utility"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/Streaming/RangeSet.cs:RangeSet",
+      "type": "class",
+      "name": "RangeSet",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/RangeSet.cs",
+      "lineRange": [17, 382],
+      "summary": "Thread-safe sorted list of non-overlapping byte ranges supporting Add, Subtract, FindFirstGap, GetGaps, ContainsRange, and ContainedLengthFrom — the bookkeeping layer for progressive download coverage.",
+      "tags": ["data-structure", "streaming", "concurrency"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/Audio/Streaming/RangeSet.cs:FindFirstGap",
+      "type": "function",
+      "name": "FindFirstGap",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/RangeSet.cs",
+      "lineRange": [158, 197],
+      "summary": "Scans the sorted range list to find the first byte gap at or after a given position, returning the gap's start and end as the next download target.",
+      "tags": ["data-structure", "streaming"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/Streaming/UrlAwareStream.cs",
+      "type": "file",
+      "name": "UrlAwareStream.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/Streaming/UrlAwareStream.cs",
+      "summary": "Thin Stream wrapper that carries the source URL alongside the stream, enabling callers to re-issue requests if the CDN URL needs refresh.",
+      "tags": ["streaming", "utility", "http"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Audio/WindowsAudioDeviceWatcher.cs",
+      "type": "file",
+      "name": "WindowsAudioDeviceWatcher.cs",
+      "filePath": "src/Wavee.AudioHost/Audio/WindowsAudioDeviceWatcher.cs",
+      "summary": "Monitors Windows audio device changes via the MMNotificationClient COM interface and raises DeviceChanged and DefaultOutputDeviceChanged events consumed by PortAudioSink for automatic device switching.",
+      "tags": ["audio-processing", "device-monitoring", "windows", "event-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/Audio/WindowsAudioDeviceWatcher.cs:WindowsAudioDeviceWatcher",
+      "type": "class",
+      "name": "WindowsAudioDeviceWatcher",
+      "filePath": "src/Wavee.AudioHost/Audio/WindowsAudioDeviceWatcher.cs",
+      "lineRange": [19, 257],
+      "summary": "IMMNotificationClient implementation that registers with the Windows audio endpoint enumerator and dispatches DeviceChanged and DefaultOutputDeviceChanged events, used to trigger PortAudio device-list refresh.",
+      "tags": ["audio-processing", "device-monitoring", "event-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/AudioHostService.cs",
+      "type": "file",
+      "name": "AudioHostService.cs",
+      "filePath": "src/Wavee.AudioHost/AudioHostService.cs",
+      "summary": "Main out-of-process audio host service: reads IPC commands from the named pipe, orchestrates the full audio pipeline (decode, decrypt, normalize, volume, sink), manages device switching, and sends status snapshots back to the UI process.",
+      "tags": ["entry-point", "service", "ipc", "audio-processing"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/AudioHostService.cs:AudioHostService",
+      "type": "class",
+      "name": "AudioHostService",
+      "filePath": "src/Wavee.AudioHost/AudioHostService.cs",
+      "lineRange": [23, 947],
+      "summary": "Central IPC command handler and audio engine orchestrator: manages pipeline initialization, processes Play/Pause/Seek/Volume/Device IPC commands, and fires engine events back over the pipe as length-prefixed JSON.",
+      "tags": ["entry-point", "service", "ipc"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/AudioHostService.cs:RunAsync",
+      "type": "function",
+      "name": "RunAsync",
+      "filePath": "src/Wavee.AudioHost/AudioHostService.cs",
+      "lineRange": [92, 147],
+      "summary": "Service main loop: reads length-prefixed JSON IPC messages from the named pipe and dispatches each command to HandleCommandAsync.",
+      "tags": ["entry-point", "ipc", "service"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/AudioHostService.cs:HandleCommandAsync",
+      "type": "function",
+      "name": "HandleCommandAsync",
+      "filePath": "src/Wavee.AudioHost/AudioHostService.cs",
+      "lineRange": [389, 633],
+      "summary": "Dispatches incoming IPC command types (play, pause, seek, volume, normalize, device-list, device-switch, prefetch, audio-key-response) to the appropriate pipeline or sink method.",
+      "tags": ["ipc", "command-dispatch", "service"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/AudioHostService.cs:InitializeEngine",
+      "type": "function",
+      "name": "InitializeEngine",
+      "filePath": "src/Wavee.AudioHost/AudioHostService.cs",
+      "lineRange": [149, 205],
+      "summary": "Constructs and wires the full audio processing chain (decoder, normalizer, volume, sink) for a new play request, seeding it with the track's audio key and CDN parameters.",
+      "tags": ["initialization", "audio-processing", "service"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/AudioHostService.cs:MapToSnapshot",
+      "type": "function",
+      "name": "MapToSnapshot",
+      "filePath": "src/Wavee.AudioHost/AudioHostService.cs",
+      "lineRange": [792, 860],
+      "summary": "Converts the current pipeline state (position, buffer status, device info, normalizer gain, underrun counts) into a serializable snapshot sent to the UI over IPC.",
+      "tags": ["ipc", "serialization", "service"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/Diagnostics/SeekTrace.cs",
+      "type": "file",
+      "name": "SeekTrace.cs",
+      "filePath": "src/Wavee.AudioHost/Diagnostics/SeekTrace.cs",
+      "summary": "Minimal record capturing seek position and timestamp for diagnostics logging of seek operations in the audio pipeline.",
+      "tags": ["diagnostics", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/NativeDeps/BassWinX64Descriptor.cs",
+      "type": "file",
+      "name": "BassWinX64Descriptor.cs",
+      "filePath": "src/Wavee.AudioHost/NativeDeps/BassWinX64Descriptor.cs",
+      "summary": "NativeLibraryDescriptor implementation providing the download URL and SHA-256 for the BASS audio library (win-x64), used by NativeLibraryProvisioner.",
+      "tags": ["native-deps", "configuration"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/NativeDeps/NativeLibraryDescriptor.cs",
+      "type": "file",
+      "name": "NativeLibraryDescriptor.cs",
+      "filePath": "src/Wavee.AudioHost/NativeDeps/NativeLibraryDescriptor.cs",
+      "summary": "Abstract base class for native library descriptors, declaring the URL, expected SHA-256, target file name, and platform RID properties that NativeLibraryProvisioner uses to download and verify native binaries.",
+      "tags": ["native-deps", "data-model"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/NativeDeps/NativeLibraryFailureMarker.cs",
+      "type": "file",
+      "name": "NativeLibraryFailureMarker.cs",
+      "filePath": "src/Wavee.AudioHost/NativeDeps/NativeLibraryFailureMarker.cs",
+      "summary": "Persists a JSON failure record to disk when a native library download fails, preventing repeated download attempts and surfacing error details across restarts.",
+      "tags": ["native-deps", "error-handling", "persistence"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs",
+      "type": "file",
+      "name": "NativeLibraryProvisioner.cs",
+      "filePath": "src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs",
+      "summary": "Downloads, verifies (SHA-256), and extracts native library binaries at first run using a NativeLibraryDescriptor, with failure-marker suppression for repeated errors.",
+      "tags": ["native-deps", "provisioning", "service"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs:NativeLibraryProvisioner",
+      "type": "class",
+      "name": "NativeLibraryProvisioner",
+      "filePath": "src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs",
+      "lineRange": [28, 354],
+      "summary": "Handles first-run acquisition of native binaries: checks cached SHA-256, downloads from descriptor URL if missing, extracts from archive, and writes failure markers on error to prevent retry loops.",
+      "tags": ["native-deps", "provisioning"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs:EnsureAvailableAsync",
+      "type": "function",
+      "name": "EnsureAvailableAsync",
+      "filePath": "src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs",
+      "lineRange": [45, 126],
+      "summary": "Entry point that checks for an existing valid binary, reads the failure marker, and if needed calls TryDownloadAndExtractAsync — the main provisioning decision tree.",
+      "tags": ["native-deps", "provisioning"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs:TryDownloadAndExtractAsync",
+      "type": "function",
+      "name": "TryDownloadAndExtractAsync",
+      "filePath": "src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs",
+      "lineRange": [151, 281],
+      "summary": "Downloads the native library archive, verifies SHA-256, extracts the target binary to the local cache directory, and handles cleanup on failure.",
+      "tags": ["native-deps", "downloading"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioningResult.cs",
+      "type": "file",
+      "name": "NativeLibraryProvisioningResult.cs",
+      "filePath": "src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioningResult.cs",
+      "summary": "Discriminated-union result type returned by NativeLibraryProvisioner, carrying the resolved file path on success or an error message on failure.",
+      "tags": ["data-model", "native-deps"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/NativeDeps/PortAudioWinArm64Descriptor.cs",
+      "type": "file",
+      "name": "PortAudioWinArm64Descriptor.cs",
+      "filePath": "src/Wavee.AudioHost/NativeDeps/PortAudioWinArm64Descriptor.cs",
+      "summary": "NativeLibraryDescriptor implementation providing the download URL and SHA-256 for the PortAudio native library (win-arm64), used by NativeLibraryProvisioner.",
+      "tags": ["native-deps", "configuration"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.AudioHost/PlayPlay/PlayPlayKeyEmulator.Stub.cs",
+      "type": "file",
+      "name": "PlayPlayKeyEmulator.Stub.cs",
+      "filePath": "src/Wavee.AudioHost/PlayPlay/PlayPlayKeyEmulator.Stub.cs",
+      "summary": "Stub implementation of PlayPlayKeyEmulator that always throws NotSupportedException, used when the proprietary PlayPlay binary is absent so the build remains compilable.",
+      "tags": ["stub", "playback", "crypto"],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Streaming/RangeSet.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/Streaming/RangeSet.cs:RangeSet",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/Streaming/RangeSet.cs",
+      "target": "function:src/Wavee.AudioHost/Audio/Streaming/RangeSet.cs:FindFirstGap",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/Audio/WindowsAudioDeviceWatcher.cs",
+      "target": "class:src/Wavee.AudioHost/Audio/WindowsAudioDeviceWatcher.cs:WindowsAudioDeviceWatcher",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/AudioHostService.cs",
+      "target": "class:src/Wavee.AudioHost/AudioHostService.cs:AudioHostService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/AudioHostService.cs",
+      "target": "function:src/Wavee.AudioHost/AudioHostService.cs:RunAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/AudioHostService.cs",
+      "target": "function:src/Wavee.AudioHost/AudioHostService.cs:HandleCommandAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/AudioHostService.cs",
+      "target": "function:src/Wavee.AudioHost/AudioHostService.cs:InitializeEngine",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/AudioHostService.cs",
+      "target": "function:src/Wavee.AudioHost/AudioHostService.cs:MapToSnapshot",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs",
+      "target": "class:src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs:NativeLibraryProvisioner",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs",
+      "target": "function:src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs:EnsureAvailableAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs",
+      "target": "function:src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs:TryDownloadAndExtractAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/AudioHostService.cs:AudioHostService",
+      "target": "class:src/Wavee.AudioHost/Audio/Sinks/PortAudioSink.cs:PortAudioSink",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/AudioHostService.cs:AudioHostService",
+      "target": "class:src/Wavee.AudioHost/Audio/Processors/NormalizationProcessor.cs:NormalizationProcessor",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/AudioHostService.cs:AudioHostService",
+      "target": "class:src/Wavee.AudioHost/Audio/Processors/VolumeProcessor.cs:VolumeProcessor",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/AudioHostService.cs:AudioHostService",
+      "target": "class:src/Wavee.AudioHost/Audio/Streaming/LazyProgressiveDownloader.cs:LazyProgressiveDownloader",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/AudioHostService.cs:AudioHostService",
+      "target": "class:src/Wavee.AudioHost/Audio/Streaming/DeferredResolutionRegistry.cs:DeferredResolutionRegistry",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/AudioHostService.cs:AudioHostService",
+      "target": "class:src/Wavee.AudioHost/Audio/WindowsAudioDeviceWatcher.cs:WindowsAudioDeviceWatcher",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/Audio/Streaming/ProgressiveDownloader.cs:ProgressiveDownloader",
+      "target": "class:src/Wavee.AudioHost/Audio/Streaming/RangeSet.cs:RangeSet",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs:NativeLibraryProvisioner",
+      "target": "file:src/Wavee.AudioHost/NativeDeps/NativeLibraryDescriptor.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "class:src/Wavee.AudioHost/NativeDeps/NativeLibraryProvisioner.cs:NativeLibraryProvisioner",
+      "target": "file:src/Wavee.AudioHost/NativeDeps/NativeLibraryFailureMarker.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/NativeDeps/BassWinX64Descriptor.cs",
+      "target": "file:src/Wavee.AudioHost/NativeDeps/NativeLibraryDescriptor.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/Wavee.AudioHost/NativeDeps/PortAudioWinArm64Descriptor.cs",
+      "target": "file:src/Wavee.AudioHost/NativeDeps/NativeLibraryDescriptor.cs",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}

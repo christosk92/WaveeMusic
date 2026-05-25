@@ -1,0 +1,182 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Home/BrowseChip.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 89,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Home/HomeRegionView.xaml",
+      "language": "xaml",
+      "sizeLines": 53,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Home/HomeRegionView.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 109,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/HomePage.xaml",
+      "language": "xaml",
+      "sizeLines": 649,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/HomePage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 1072,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/LibraryPage.xaml",
+      "language": "xaml",
+      "sizeLines": 57,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/LibraryPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 511,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/LikedSongsView.xaml",
+      "language": "xaml",
+      "sizeLines": 124,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/LikedSongsView.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 45,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalCollectionDetailPage.xaml",
+      "language": "xaml",
+      "sizeLines": 55,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalCollectionDetailPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 54,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalLikedSongsPage.xaml",
+      "language": "xaml",
+      "sizeLines": 48,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalLikedSongsPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 42,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalMovieDetailPage.xaml",
+      "language": "xaml",
+      "sizeLines": 321,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalMovieDetailPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 212,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalMoviesPage.xaml",
+      "language": "xaml",
+      "sizeLines": 180,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalMoviesPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 119,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalMusicPage.xaml",
+      "language": "xaml",
+      "sizeLines": 103,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalMusicPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 68,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalMusicVideosPage.xaml",
+      "language": "xaml",
+      "sizeLines": 39,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalMusicVideosPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 46,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalOtherPage.xaml",
+      "language": "xaml",
+      "sizeLines": 46,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalOtherPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 38,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalPersonDetailPage.xaml",
+      "language": "xaml",
+      "sizeLines": 192,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Local/LocalPersonDetailPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 152,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "src/Wavee.UI.WinUI/Views/Home/BrowseChip.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/Home/HomeRegionView.xaml": [],
+    "src/Wavee.UI.WinUI/Views/Home/HomeRegionView.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/HomePage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/HomePage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/LibraryPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/LibraryPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/LikedSongsView.xaml": [],
+    "src/Wavee.UI.WinUI/Views/LikedSongsView.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalCollectionDetailPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalCollectionDetailPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalLikedSongsPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalLikedSongsPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalMovieDetailPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalMovieDetailPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalMoviesPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalMoviesPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalMusicPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalMusicPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalMusicVideosPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalMusicVideosPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalOtherPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalOtherPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalPersonDetailPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/Local/LocalPersonDetailPage.xaml.cs": []
+  }
+}

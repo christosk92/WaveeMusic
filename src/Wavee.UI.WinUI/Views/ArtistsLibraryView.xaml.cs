@@ -5,7 +5,9 @@ using System.Linq;
 using CommunityToolkit.WinUI.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using Wavee.UI.Models;
 using Wavee.UI.WinUI.Controls.InPageFilter;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Parameters;
@@ -28,6 +30,7 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
     private const double NarrowLayoutBreakpoint = 680;
     private bool _hasInitializedLayoutMode;
     private bool _disposed;
+    private bool _suppressSelectorEvents;
 
     public ArtistsLibraryViewModel ViewModel { get; }
 
@@ -52,6 +55,8 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
 
         // Sync selection when loaded into the visual tree
         SyncSelectionToItemsView();
+        SyncLikedSelectionToItemsView();
+        SyncSourceSelectorFromViewModel();
 
         // Initialize tracks panel state
         UpdateTracksPanelVisibility(ViewModel.IsTracksPanelVisible, animate: false);
@@ -81,6 +86,36 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
         {
             ApplyArtistsViewMode();
         }
+        else if (e.PropertyName == nameof(ViewModel.SourceMode))
+        {
+            SyncSourceSelectorFromViewModel();
+            ApplyArtistsViewMode();
+            DispatcherQueue.TryEnqueue(ApplyArtistsViewMode);
+        }
+    }
+
+    private void SyncSourceSelectorFromViewModel()
+    {
+        if (SourceSelector == null) return;
+        var index = ViewModel.SourceMode == LibrarySource.FromLikedSongs ? 1 : 0;
+        if (SourceSelector.SelectedIndex == index) return;
+
+        _suppressSelectorEvents = true;
+        try { SourceSelector.SelectedIndex = index; }
+        finally { _suppressSelectorEvents = false; }
+    }
+
+    private void SourceSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressSelectorEvents) return;
+        if (sender is not Selector { SelectedItem: FrameworkElement fe }) return;
+        if (fe.Tag is not string tag) return;
+
+        var mode = string.Equals(tag, nameof(LibrarySource.FromLikedSongs), StringComparison.OrdinalIgnoreCase)
+            ? LibrarySource.FromLikedSongs
+            : LibrarySource.Saved;
+        if (ViewModel.SourceMode != mode)
+            ViewModel.SourceMode = mode;
     }
 
     /// <summary>
@@ -90,53 +125,88 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
     /// </summary>
     private void ApplyArtistsViewMode()
     {
-        if (ArtistsView is null) return;
+        if (ArtistsView is null && LikedArtistsView is null) return;
 
-        var resources = Resources;
         switch (ViewModel.ViewMode)
         {
             case LibraryViewMode.CompactList:
-                ArtistsView.Layout = new StackLayout { Orientation = Orientation.Vertical, Spacing = 2 };
+                ApplyArtistListLayout(new StackLayout { Orientation = Orientation.Vertical, Spacing = 2 });
                 ApplyTemplateFromResources("ArtistCompactListItemTemplate");
+                ApplyLikedTemplateFromResources("LikedArtistCompactListItemTemplate");
                 break;
 
             case LibraryViewMode.CompactGrid:
-                ArtistsView.Layout = new UniformGridLayout
+                ApplyArtistListLayout(new UniformGridLayout
                 {
                     MinItemWidth = 104,
-                    MinItemHeight = 104,
+                    MinItemHeight = 122,
                     MinRowSpacing = 8,
                     MinColumnSpacing = 8,
-                    ItemsStretch = UniformGridLayoutItemsStretch.None
-                };
+                    // Uniform so circular cards grow proportionally as the
+                    // column widens — None left a static grid that ignored
+                    // extra horizontal space.
+                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
+                });
                 ApplyTemplateFromResources("ArtistCompactGridItemTemplate");
+                ApplyLikedTemplateFromResources("LikedArtistCompactGridItemTemplate");
                 break;
 
             case LibraryViewMode.DefaultGrid:
-                ArtistsView.Layout = new UniformGridLayout
+                ApplyArtistListLayout(new UniformGridLayout
                 {
                     MinItemWidth = 112,
                     MinItemHeight = 150,
                     MinRowSpacing = 4,
                     MinColumnSpacing = 4,
-                    ItemsStretch = UniformGridLayoutItemsStretch.None
-                };
+                    // Uniform — same reason as the compact branch above.
+                    ItemsStretch = UniformGridLayoutItemsStretch.Uniform
+                });
                 ApplyTemplateFromResources("ArtistDefaultGridItemTemplate");
+                ApplyLikedTemplateFromResources("LikedArtistDefaultGridItemTemplate");
                 break;
 
             case LibraryViewMode.DefaultList:
             default:
-                ArtistsView.Layout = new StackLayout { Orientation = Orientation.Vertical, Spacing = 2 };
+                ApplyArtistListLayout(new StackLayout { Orientation = Orientation.Vertical, Spacing = 2 });
                 ApplyTemplateFromResources("ArtistDefaultListItemTemplate");
+                ApplyLikedTemplateFromResources("LikedArtistDefaultListItemTemplate");
                 break;
         }
     }
+
+    private void ApplyArtistListLayout(Layout layout)
+    {
+        if (ArtistsView is not null)
+            ArtistsView.Layout = layout;
+        if (LikedArtistsView is not null)
+            LikedArtistsView.Layout = CloneLayout(layout);
+    }
+
+    private static Layout CloneLayout(Layout layout) => layout switch
+    {
+        UniformGridLayout u => new UniformGridLayout
+        {
+            MinItemWidth = u.MinItemWidth,
+            MinItemHeight = u.MinItemHeight,
+            MinRowSpacing = u.MinRowSpacing,
+            MinColumnSpacing = u.MinColumnSpacing,
+            ItemsStretch = u.ItemsStretch
+        },
+        _ => new StackLayout { Orientation = Orientation.Vertical, Spacing = 2 }
+    };
 
     private void ApplyTemplateFromResources(string resourceKey)
     {
         if (ArtistsView is null) return;
         if (Resources.TryGetValue(resourceKey, out var tpl) && tpl is Microsoft.UI.Xaml.IElementFactory factory)
             ArtistsView.ItemTemplate = factory;
+    }
+
+    private void ApplyLikedTemplateFromResources(string resourceKey)
+    {
+        if (LikedArtistsView is null) return;
+        if (Resources.TryGetValue(resourceKey, out var tpl) && tpl is Microsoft.UI.Xaml.IElementFactory factory)
+            LikedArtistsView.ItemTemplate = factory;
     }
 
     private void UpdateTracksPanelVisibility(bool isVisible, bool animate)
@@ -222,8 +292,59 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
         NavigationHelpers.OpenArtist(param, artist.Name, NavigationHelpers.IsCtrlPressed());
     }
 
+    private void LikedArtistsView_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs args)
+    {
+        if (sender.SelectedItem is null && ViewModel.SelectedLikedArtist is { } current)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_disposed)
+                    return;
+
+                if (ReferenceEquals(ViewModel.SelectedLikedArtist, current)
+                    && ViewModel.FilteredLikedArtists.Any(a => string.Equals(a.Id, current.Id, StringComparison.OrdinalIgnoreCase)))
+                {
+                    SyncLikedSelectionToItemsView();
+                }
+            });
+            return;
+        }
+
+        if (sender.SelectedItem != ViewModel.SelectedLikedArtist)
+        {
+            ViewModel.SelectedLikedArtist = sender.SelectedItem as LikedArtistDto;
+        }
+    }
+
+    private void LikedArtistsView_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (ViewModel.SelectedLikedArtist is not { } artist || !artist.CanOpenArtist) return;
+
+        var param = new ContentNavigationParameter
+        {
+            Uri = artist.Id,
+            Title = artist.Name,
+            ImageUrl = artist.ImageUrl
+        };
+        NavigationHelpers.OpenArtist(param, artist.Name, NavigationHelpers.IsCtrlPressed());
+    }
+
     private void ViewArtistButton_Click(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.SelectedLikedArtist is { } likedArtist)
+        {
+            if (!likedArtist.CanOpenArtist) return;
+
+            var likedParam = new ContentNavigationParameter
+            {
+                Uri = likedArtist.Id,
+                Title = likedArtist.Name,
+                ImageUrl = likedArtist.ImageUrl
+            };
+            NavigationHelpers.OpenArtist(likedParam, likedArtist.Name, NavigationHelpers.IsCtrlPressed());
+            return;
+        }
+
         if (ViewModel.SelectedArtist is not { } artist) return;
 
         // CONNECTED-ANIM (disabled): re-enable to restore source→destination morph
@@ -273,6 +394,14 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
         }
     }
 
+    private void NarrowLikedArtistsView_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs args)
+    {
+        if (sender.SelectedItem is LikedArtistDto artist)
+        {
+            ViewModel.ShowSelectedLikedArtistDetails(artist);
+        }
+    }
+
     private void BreadcrumbBar_ItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
     {
         switch (args.Index)
@@ -281,7 +410,10 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
                 ViewModel.ShowArtistsRoot();
                 break;
             case 1:
-                ViewModel.ShowSelectedArtistDetails();
+                if (ViewModel.SourceMode == LibrarySource.FromLikedSongs)
+                    ViewModel.ShowSelectedLikedArtistDetails();
+                else
+                    ViewModel.ShowSelectedArtistDetails();
                 break;
         }
     }
@@ -302,6 +434,61 @@ public sealed partial class ArtistsLibraryView : UserControl, IDisposable, IInPa
                 ArtistsView.Select(index);
             }
         }
+    }
+
+    private void SyncLikedSelectionToItemsView()
+    {
+        if (LikedArtistsView is null) return;
+
+        if (ViewModel.SelectedLikedArtist is null)
+        {
+            LikedArtistsView.DeselectAll();
+        }
+        else if (ViewModel.FilteredLikedArtists is IList list)
+        {
+            var index = list.IndexOf(ViewModel.SelectedLikedArtist);
+            if (index >= 0 && LikedArtistsView.SelectedItem != ViewModel.SelectedLikedArtist)
+            {
+                LikedArtistsView.Select(index);
+            }
+        }
+    }
+
+    private void LikedArtistItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element) return;
+        if (element.DataContext is not LikedArtistDto artist) return;
+
+        var flyout = new MenuFlyout();
+        var item = new MenuFlyoutItem
+        {
+            Text = $"Unlike all songs from this artist ({artist.LikedSongCount})",
+            Icon = new FontIcon { Glyph = Wavee.UI.WinUI.Styles.FluentGlyphs.HeartFilled }
+        };
+        item.Click += async (_, _) => await ConfirmAndUnlikeAllAsync(artist);
+        flyout.Items.Add(item);
+
+        flyout.ShowAt(element, e.GetPosition(element));
+        e.Handled = true;
+    }
+
+    private async System.Threading.Tasks.Task ConfirmAndUnlikeAllAsync(LikedArtistDto artist)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Unlike all songs from this artist?",
+            Content = $"This will unlike all {artist.LikedSongCount} song"
+                + (artist.LikedSongCount == 1 ? "" : "s")
+                + $" by \"{artist.Name}\". This can't be undone.",
+            PrimaryButtonText = "Unlike all",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+            ViewModel.UnlikeAllSongsFromLikedArtist(artist);
     }
 
     public void Dispose()

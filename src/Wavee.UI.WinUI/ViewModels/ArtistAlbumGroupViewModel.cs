@@ -49,8 +49,15 @@ public sealed partial class ArtistAlbumGroupViewModel : ObservableObject
 
         foreach (var album in albums)
         {
-            Albums.Add(new ArtistAlbumItemViewModel(album, OnAlbumItemSelected));
+            Albums.Add(new ArtistAlbumItemViewModel(album, OnAlbumItemSelected, OnAlbumItemPlay));
         }
+    }
+
+    private void OnAlbumItemPlay(ArtistAlbumItemViewModel album)
+    {
+        // ContentCard.PlayRequested → start playing the album immediately
+        // via the same path the [RelayCommand] PlayAlbumAsync uses.
+        _ = _playbackService.PlayContextAsync($"spotify:album:{album.Album.Id}");
     }
 
     private void OnAlbumItemSelected(ArtistAlbumItemViewModel album)

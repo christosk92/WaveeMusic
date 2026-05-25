@@ -29,15 +29,22 @@
               Visibility="{x:Bind ViewModel.HasFilterChipsOrShimmer, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
             <toolkit:TokenView
                 x:Name="FilterTokenView"
+                x:Load="{x:Bind ViewModel.IsTagsLoading, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
                 IsWrapped="False"
                 CanRemoveTokens="False"
+                MinHeight="36"
+                Padding="0"
+                VerticalAlignment="Center"
                 HorizontalAlignment="Stretch"
                 ItemsSource="{x:Bind ViewModel.FilterChips, Mode=OneWay}"
                 SelectedItem="{x:Bind ViewModel.SelectedFilterChip, Mode=TwoWay}"
                 Visibility="{x:Bind ViewModel.IsTagsLoading, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                 <toolkit:TokenView.ItemTemplate>
                     <DataTemplate x:DataType="vm:LikedSongsFilterChipViewModel">
-                        <TextBlock Text="{x:Bind Label}" FontSize="13"/>
+                        <TextBlock
+                            Text="{x:Bind Label}"
+                            FontSize="13"
+                            VerticalAlignment="Center"/>
                     </DataTemplate>
                 </toolkit:TokenView.ItemTemplate>
             </toolkit:TokenView>
@@ -61,7 +68,11 @@
             x:Name="TrackGrid"
             PageKey="liked"
             ItemsSource="{x:Bind ViewModel.FilteredSongs, Mode=OneWay}"
-            PlayCommand="{x:Bind ViewModel.PlayTrackCommand}">
+            IsLoading="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+            LoadingRowCount="10"
+            PlayCommand="{x:Bind ViewModel.PlayTrackCommand}"
+            MultiSelectRemoveCommand="{x:Bind ViewModel.RemoveTracksFromLikedSongsCommand, Mode=OneWay}"
+            MultiSelectRemoveLabel="Remove from Liked Songs">
             <tdg:TrackDataGrid.ToolbarLeftContent>
                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Button Style="{StaticResource AccentButtonStyle}"
@@ -111,5 +122,12 @@
                 </ToggleButton>
             </tdg:TrackDataGrid.FilterBarContent>
         </tdg:TrackDataGrid>
+
+        <tdg:TrackSelectionBar
+            x:Name="SelectionBar"
+            Grid.RowSpan="2"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Margin="0,0,0,24"/>
     </Grid>
 </UserControl>

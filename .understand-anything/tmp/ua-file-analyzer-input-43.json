@@ -1,0 +1,182 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/Helpers/TitleFontSizer.cs",
+      "language": "csharp",
+      "sizeLines": 65,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Helpers/UI/AppSystemBackdrop.cs",
+      "language": "csharp",
+      "sizeLines": 35,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Helpers/UI/FrameworkElementExtensions.cs",
+      "language": "csharp",
+      "sizeLines": 22,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Helpers/UI/ScrollViewExtensions.cs",
+      "language": "csharp",
+      "sizeLines": 11,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Helpers/UI/ThemeHelper.cs",
+      "language": "csharp",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/MainWindow.xaml",
+      "language": "xaml",
+      "sizeLines": 30,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/MainWindow.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 469,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Models/PodcastBrowse/PodcastBrowseSection.cs",
+      "language": "csharp",
+      "sizeLines": 139,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Package.appxmanifest",
+      "language": "appxmanifest",
+      "sizeLines": 92,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Properties/launchSettings.json",
+      "language": "json",
+      "sizeLines": 9,
+      "fileCategory": "config"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/README.md",
+      "language": "markdown",
+      "sizeLines": 240,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ActiveVideoSurfaceService.cs",
+      "language": "csharp",
+      "sizeLines": 212,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/AddToPlaylist/LibraryDataServiceAddToPlaylistSubmitter.cs",
+      "language": "csharp",
+      "sizeLines": 27,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/AiCapabilities.cs",
+      "language": "csharp",
+      "sizeLines": 464,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/AiNotificationService.cs",
+      "language": "csharp",
+      "sizeLines": 215,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/AlbumPrefetcher.cs",
+      "language": "csharp",
+      "sizeLines": 319,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/AppFeatureFlags.cs",
+      "language": "csharp",
+      "sizeLines": 58,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/AppInitializationService.cs",
+      "language": "csharp",
+      "sizeLines": 79,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/AppLocalizationService.cs",
+      "language": "csharp",
+      "sizeLines": 97,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ArtistBioSummarizer.cs",
+      "language": "csharp",
+      "sizeLines": 242,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/BrowseResponseMapper.cs",
+      "language": "csharp",
+      "sizeLines": 229,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/CachedImage.cs",
+      "language": "csharp",
+      "sizeLines": 127,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/Data/DataServiceConfiguration.cs",
+      "language": "csharp",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/Data/MockLibraryDataService.cs",
+      "language": "csharp",
+      "sizeLines": 799,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/DispatcherQueueUiDispatcher.cs",
+      "language": "csharp",
+      "sizeLines": 23,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "src/Wavee.UI.WinUI/Helpers/TitleFontSizer.cs": [],
+    "src/Wavee.UI.WinUI/Helpers/UI/AppSystemBackdrop.cs": [],
+    "src/Wavee.UI.WinUI/Helpers/UI/FrameworkElementExtensions.cs": [],
+    "src/Wavee.UI.WinUI/Helpers/UI/ScrollViewExtensions.cs": [],
+    "src/Wavee.UI.WinUI/Helpers/UI/ThemeHelper.cs": [],
+    "src/Wavee.UI.WinUI/MainWindow.xaml": [],
+    "src/Wavee.UI.WinUI/MainWindow.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Models/PodcastBrowse/PodcastBrowseSection.cs": [],
+    "src/Wavee.UI.WinUI/Package.appxmanifest": [],
+    "src/Wavee.UI.WinUI/Properties/launchSettings.json": [],
+    "src/Wavee.UI.WinUI/README.md": [],
+    "src/Wavee.UI.WinUI/Services/ActiveVideoSurfaceService.cs": [],
+    "src/Wavee.UI.WinUI/Services/AddToPlaylist/LibraryDataServiceAddToPlaylistSubmitter.cs": [],
+    "src/Wavee.UI.WinUI/Services/AiCapabilities.cs": [],
+    "src/Wavee.UI.WinUI/Services/AiNotificationService.cs": [],
+    "src/Wavee.UI.WinUI/Services/AlbumPrefetcher.cs": [],
+    "src/Wavee.UI.WinUI/Services/AppFeatureFlags.cs": [],
+    "src/Wavee.UI.WinUI/Services/AppInitializationService.cs": [],
+    "src/Wavee.UI.WinUI/Services/AppLocalizationService.cs": [],
+    "src/Wavee.UI.WinUI/Services/ArtistBioSummarizer.cs": [],
+    "src/Wavee.UI.WinUI/Services/BrowseResponseMapper.cs": [],
+    "src/Wavee.UI.WinUI/Services/CachedImage.cs": [],
+    "src/Wavee.UI.WinUI/Services/Data/DataServiceConfiguration.cs": [],
+    "src/Wavee.UI.WinUI/Services/Data/MockLibraryDataService.cs": [],
+    "src/Wavee.UI.WinUI/Services/DispatcherQueueUiDispatcher.cs": []
+  }
+}

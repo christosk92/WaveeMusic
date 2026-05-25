@@ -30,6 +30,7 @@ public sealed partial class LikedSongsView : UserControl, IDisposable, IInPageFi
         // Liked Songs page renders empty cells.
         TrackGrid.DateAddedFormatter = item =>
             item is LikedSongDto song ? song.AddedAtFormatted : "";
+        SelectionBar.Attach(TrackGrid);
 
         // Load is idempotent (guarded in the VM); called once on first creation.
         _ = ViewModel.LoadCommand.ExecuteAsync(null);
@@ -41,6 +42,8 @@ public sealed partial class LikedSongsView : UserControl, IDisposable, IInPageFi
             return;
 
         _disposed = true;
+        SelectionBar.Detach();
         TrackGrid.DateAddedFormatter = null;
+        TrackGrid.Dispose();
     }
 }

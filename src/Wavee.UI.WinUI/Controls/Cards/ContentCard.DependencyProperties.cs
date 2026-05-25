@@ -1,5 +1,7 @@
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Wavee.UI.WinUI.Services;
 
 namespace Wavee.UI.WinUI.Controls.Cards;
@@ -42,9 +44,17 @@ public sealed partial class ContentCard
         DependencyProperty.Register(nameof(Subtitle), typeof(string), typeof(ContentCard),
             new PropertyMetadata(null, OnSubtitleChanged));
 
+    public static readonly DependencyProperty SubtitleMaxLinesProperty =
+        DependencyProperty.Register(nameof(SubtitleMaxLines), typeof(int), typeof(ContentCard),
+            new PropertyMetadata(2, OnSubtitleMaxLinesChanged));
+
     public static readonly DependencyProperty BadgeProperty =
         DependencyProperty.Register(nameof(Badge), typeof(string), typeof(ContentCard),
             new PropertyMetadata(null, OnBadgeChanged));
+
+    public static readonly DependencyProperty BadgeForegroundProperty =
+        DependencyProperty.Register(nameof(BadgeForeground), typeof(Brush), typeof(ContentCard),
+            new PropertyMetadata(null, OnBadgeForegroundChanged));
 
     public static readonly DependencyProperty PlaceholderColorHexProperty =
         DependencyProperty.Register(nameof(PlaceholderColorHex), typeof(string), typeof(ContentCard),
@@ -90,6 +100,15 @@ public sealed partial class ContentCard
         DependencyProperty.Register(nameof(IsCategoryTile), typeof(bool), typeof(ContentCard),
             new PropertyMetadata(false, OnIsCategoryTileChanged));
 
+    /// <summary>
+    /// Dense, unframed card treatment for embedded grids where the surrounding
+    /// surface already provides structure. Keeps ContentCard behavior and image
+    /// loading, but removes the outer chrome and tightens vertical spacing.
+    /// </summary>
+    public static readonly DependencyProperty IsCompactProperty =
+        DependencyProperty.Register(nameof(IsCompact), typeof(bool), typeof(ContentCard),
+            new PropertyMetadata(false, OnIsCompactChanged));
+
     public string? ImageUrl
     {
         get => (string?)GetValue(ImageUrlProperty);
@@ -109,6 +128,17 @@ public sealed partial class ContentCard
     }
 
     /// <summary>
+    /// Maximum wrapped subtitle lines. Defaults to the historical two-line
+    /// shelf card treatment; Home playlist cards opt into three lines for
+    /// longer editorial descriptions.
+    /// </summary>
+    public int SubtitleMaxLines
+    {
+        get => (int)GetValue(SubtitleMaxLinesProperty);
+        set => SetValue(SubtitleMaxLinesProperty, value);
+    }
+
+    /// <summary>
     /// Optional short accent line rendered beneath the subtitle. When <c>null</c> or empty
     /// the badge row is collapsed and the card retains its original height. Used today to
     /// show "Played 3h ago" on the library grid when the user sorts by Recents.
@@ -117,6 +147,16 @@ public sealed partial class ContentCard
     {
         get => (string?)GetValue(BadgeProperty);
         set => SetValue(BadgeProperty, value);
+    }
+
+    /// <summary>
+    /// Optional foreground override for <see cref="Badge"/>. Null keeps the
+    /// historical accent color used by library recents badges.
+    /// </summary>
+    public Brush? BadgeForeground
+    {
+        get => (Brush?)GetValue(BadgeForegroundProperty);
+        set => SetValue(BadgeForegroundProperty, value);
     }
 
     public string? PlaceholderColorHex
@@ -161,6 +201,12 @@ public sealed partial class ContentCard
         set => SetValue(IsCategoryTileProperty, value);
     }
 
+    public bool IsCompact
+    {
+        get => (bool)GetValue(IsCompactProperty);
+        set => SetValue(IsCompactProperty, value);
+    }
+
     // ── Navigation DPs ───────────────────────────────────────────────────────
 
     public static readonly DependencyProperty NavigationUriProperty =
@@ -174,6 +220,14 @@ public sealed partial class ContentCard
     public static readonly DependencyProperty NavigationTotalTracksProperty =
         DependencyProperty.Register(nameof(NavigationTotalTracks), typeof(int), typeof(ContentCard),
             new PropertyMetadata(0));
+
+    public static readonly DependencyProperty SubtitleNavigationUriProperty =
+        DependencyProperty.Register(nameof(SubtitleNavigationUri), typeof(string), typeof(ContentCard),
+            new PropertyMetadata(null, OnSubtitleNavigationChanged));
+
+    public static readonly DependencyProperty SubtitleNavigationTitleProperty =
+        DependencyProperty.Register(nameof(SubtitleNavigationTitle), typeof(string), typeof(ContentCard),
+            new PropertyMetadata(null, OnSubtitleNavigationChanged));
 
     /// <summary>
     /// Origin-known track count for album / playlist cards. Forwarded into the
@@ -205,6 +259,22 @@ public sealed partial class ContentCard
     {
         get => (string?)GetValue(NavigationTitleProperty);
         set => SetValue(NavigationTitleProperty, value);
+    }
+
+    /// <summary>
+    /// Optional URI used when the subtitle itself should navigate somewhere
+    /// different from the card body, for example an album card's artist name.
+    /// </summary>
+    public string? SubtitleNavigationUri
+    {
+        get => (string?)GetValue(SubtitleNavigationUriProperty);
+        set => SetValue(SubtitleNavigationUriProperty, value);
+    }
+
+    public string? SubtitleNavigationTitle
+    {
+        get => (string?)GetValue(SubtitleNavigationTitleProperty);
+        set => SetValue(SubtitleNavigationTitleProperty, value);
     }
 
     public static readonly DependencyProperty IsExternalProperty =
@@ -388,7 +458,13 @@ public sealed partial class ContentCard
             return;
         }
 
-        if (card._hasEffectiveViewport && !card._isInsideEffectiveViewport)
+        // Only honour the outside-viewport early-return AFTER the card has
+        // actually loaded and the viewport behavior had a chance to attach and
+        // settle. During the very first DP binding (pre-Loaded), mirror
+        // OnLoaded's first-realize fallback — "not yet sampled" means
+        // "inside-by-default", so the image actually gets a load attempt
+        // instead of being silently suppressed.
+        if (card.IsLoaded && card._hasEffectiveViewport && !card._isInsideEffectiveViewport)
         {
             if (!card.IsCurrentImageUrl(url))
                 card.ReleaseImage();
@@ -410,7 +486,20 @@ public sealed partial class ContentCard
     private static void OnSubtitleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var card = (ContentCard)d;
-        card.SubtitleText.Text = e.NewValue as string ?? "";
+        var value = e.NewValue as string;
+        card.SubtitleText.Text = value ?? "";
+        // Collapse when empty so cards without a subtitle (e.g. artist
+        // circle cards that only carry a Title + Badge) don't reserve a
+        // text-line slot in the ContentPanel — which previously pushed
+        // the Badge far below the title.
+        card.SubtitleText.Visibility = string.IsNullOrEmpty(value) ? Visibility.Collapsed : Visibility.Visible;
+        card.UpdateSubtitleNavigationVisualState();
+    }
+
+    private static void OnSubtitleMaxLinesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var card = (ContentCard)d;
+        card.SubtitleText.MaxLines = Math.Max(1, (int)e.NewValue);
     }
 
     private static void OnBadgeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -420,6 +509,11 @@ public sealed partial class ContentCard
         var value = e.NewValue as string;
         card.BadgeText.Text = value ?? "";
         card.BadgeText.Visibility = string.IsNullOrEmpty(value) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private static void OnBadgeForegroundChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        ((ContentCard)d).UpdateBadgeForeground();
     }
 
     private static void OnPlaceholderColorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -434,6 +528,11 @@ public sealed partial class ContentCard
     {
         var card = (ContentCard)d;
         card.ApplyCategoryTileMode();
+    }
+
+    private static void OnIsCompactChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        ((ContentCard)d).ApplyDensityMode();
     }
 
     private static void OnPlaceholderGlyphChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -474,10 +573,22 @@ public sealed partial class ContentCard
     {
         var card = (ContentCard)d;
         var center = (bool)e.NewValue;
-        card.TitleText.HorizontalAlignment = center ? HorizontalAlignment.Center : HorizontalAlignment.Left;
-        card.SubtitleText.HorizontalAlignment = center ? HorizontalAlignment.Center : HorizontalAlignment.Left;
-        card.TitleText.TextAlignment = center ? Microsoft.UI.Xaml.TextAlignment.Center : Microsoft.UI.Xaml.TextAlignment.Left;
-        card.SubtitleText.TextAlignment = center ? Microsoft.UI.Xaml.TextAlignment.Center : Microsoft.UI.Xaml.TextAlignment.Left;
+        var hAlign = center ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        var tAlign = center ? Microsoft.UI.Xaml.TextAlignment.Center : Microsoft.UI.Xaml.TextAlignment.Left;
+
+        card.TitleText.HorizontalAlignment = hAlign;
+        card.SubtitleText.HorizontalAlignment = hAlign;
+        card.TitleText.TextAlignment = tAlign;
+        card.SubtitleText.TextAlignment = tAlign;
+
+        // Badge participates in CenterText too — without this, the recents
+        // "Played Nd ago" pill stayed left-aligned under a centered title
+        // on artist circle cards.
+        if (card.BadgeText != null)
+        {
+            card.BadgeText.HorizontalAlignment = hAlign;
+            card.BadgeText.TextAlignment = tAlign;
+        }
     }
 
     private static void OnIsLoadingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -524,5 +635,47 @@ public sealed partial class ContentCard
         var card = (ContentCard)d;
         card.ResetPlaybackVisualStateForNewItem();
         card.SyncInitialPlaybackState();
+    }
+
+    private static void OnSubtitleNavigationChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        ((ContentCard)d).UpdateSubtitleNavigationVisualState();
+    }
+
+    private void UpdateBadgeForeground()
+    {
+        if (BadgeText == null) return;
+
+        BadgeText.Foreground = BadgeForeground
+            ?? GetThemeBrush("AccentTextFillColorPrimaryBrush")
+            ?? BadgeText.Foreground;
+    }
+
+    private void UpdateSubtitleNavigationVisualState()
+    {
+        if (SubtitleText == null) return;
+
+        var hasLink = IsArtistSubtitleNavigationUri(SubtitleNavigationUri);
+        SubtitleText.Foreground =
+            GetThemeBrush(hasLink ? "AccentTextFillColorPrimaryBrush" : "TextFillColorSecondaryBrush")
+            ?? SubtitleText.Foreground;
+
+        ToolTipService.SetToolTip(
+            SubtitleText,
+            hasLink ? $"Open {SubtitleNavigationTitle ?? Subtitle ?? "artist"}" : null);
+    }
+
+    private static Brush? GetThemeBrush(string key)
+    {
+        return Application.Current?.Resources.TryGetValue(key, out var value) == true
+            && value is Brush brush
+            ? brush
+            : null;
+    }
+
+    private static bool IsArtistSubtitleNavigationUri(string? uri)
+    {
+        return !string.IsNullOrWhiteSpace(uri)
+               && uri.StartsWith("spotify:artist:", StringComparison.OrdinalIgnoreCase);
     }
 }

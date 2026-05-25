@@ -261,7 +261,10 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
             ExtractImageUrls(entityData.VisualIdentityTrait?.SquareCoverImage);
         var imageUrl = imageLargeUrl ?? imageMediumUrl ?? imageSmallUrl
                        ?? ExtractImageUrlFromJson(typedEntityPayload);
+        var firstContributor = GetFirstContributor(entityData);
         var subtitle = BuildSubtitle(entityData, contentType, formatAttributes);
+        if (contentType == HomeContentType.Album && !string.IsNullOrWhiteSpace(firstContributor?.Name))
+            subtitle = firstContributor.Name;
         var colorHex = ExtractColorFromJson(typedEntityPayload);
         var isRecentlySaved = formatAttributes?.Any(a => a.Key == "recent_type_saved") == true;
 
@@ -276,7 +279,9 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
             ImageLargeUrl = imageLargeUrl,
             ContentType = contentType,
             ColorHex = colorHex,
-            IsRecentlySaved = isRecentlySaved
+            IsRecentlySaved = isRecentlySaved,
+            SubtitleNavigationTitle = contentType == HomeContentType.Album ? firstContributor?.Name : null,
+            SubtitleNavigationUri = contentType == HomeContentType.Album ? ArtistUriOrNull(firstContributor?.Uri) : null
         };
 
         // Episode-specific surface — only populated if the entity actually
@@ -365,11 +370,15 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
         var data = content.GetAlbumData();
         if (data == null) return null;
         var (small, medium, large) = SpotifyImageHelper.BucketSources(data.CoverArt?.Sources, s => s.Url, s => s.Width);
+        var firstArtist = data.Artists?.Items?.FirstOrDefault();
+        var artistName = firstArtist?.Profile?.Name;
         return new HomeSectionItem
         {
             Uri = data.Uri ?? uri,
             Title = data.Name,
-            Subtitle = data.Artists?.Items?.FirstOrDefault()?.Profile?.Name ?? "Album",
+            Subtitle = artistName ?? "Album",
+            SubtitleNavigationTitle = artistName,
+            SubtitleNavigationUri = ArtistUriOrNull(firstArtist?.Uri),
             ImageUrl = large ?? medium ?? small,
             ImageSmallUrl = small,
             ImageMediumUrl = medium,
@@ -931,6 +940,20 @@ public sealed class HomeResponseParserV2 : IHomeResponseParser
         if (items == null || items.Count == 0) return null;
         var names = items.Where(c => !string.IsNullOrEmpty(c.Name)).Select(c => c.Name!).ToList();
         return names.Count > 0 ? string.Join(", ", names) : null;
+    }
+
+    private static HomeContributorItem? GetFirstContributor(HomeEntityData entityData)
+    {
+        return entityData.IdentityTrait?.Contributors?.Items?
+            .FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Name));
+    }
+
+    private static string? ArtistUriOrNull(string? uri)
+    {
+        return !string.IsNullOrWhiteSpace(uri)
+               && uri.StartsWith("spotify:artist:", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : null;
     }
 
     // ── Helpers ──

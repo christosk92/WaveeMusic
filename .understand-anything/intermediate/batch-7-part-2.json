@@ -1,0 +1,1246 @@
+{
+  "nodes": [
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/extension_kind.proto",
+      "type": "schema",
+      "name": "extension_kind.proto",
+      "filePath": "src/Wavee/Protocol/Protos/extension_kind.proto",
+      "summary": "Large protobuf enum defining all Spotify entity extension kinds (~200 values) covering canvas, artist/album/track/show/episode metadata, playback traits, concerts, playlists, and more.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Single ExtensionKind enum with ~200 values; serves as the registry for all Spotify enrichment extension types."
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/extension_kind.proto:ExtensionKind",
+      "type": "schema",
+      "name": "ExtensionKind",
+      "filePath": "src/Wavee/Protocol/Protos/extension_kind.proto",
+      "lineRange": [
+        8,
+        224
+      ],
+      "summary": "Exhaustive enum of all Spotify entity extension types used to identify enrichment payloads in the batched entity extension API.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "metadata"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/extracted_colors.proto",
+      "type": "schema",
+      "name": "extracted_colors.proto",
+      "filePath": "src/Wavee/Protocol/Protos/extracted_colors.proto",
+      "summary": "Protobuf schema for Spotify extracted color results from cover images, providing raw, light, and dark color variants for dynamic UI theming.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "ui",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/extracted_colors.proto:ColorResult",
+      "type": "schema",
+      "name": "ColorResult",
+      "filePath": "src/Wavee/Protocol/Protos/extracted_colors.proto",
+      "lineRange": [
+        8,
+        13
+      ],
+      "summary": "Protobuf definition ColorResult for extracted color results.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "ui"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/extracted_colors.proto:Color",
+      "type": "schema",
+      "name": "Color",
+      "filePath": "src/Wavee/Protocol/Protos/extracted_colors.proto",
+      "lineRange": [
+        15,
+        18
+      ],
+      "summary": "Protobuf definition Color for extracted color results.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "ui"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/extracted_colors.proto:Status",
+      "type": "schema",
+      "name": "Status",
+      "filePath": "src/Wavee/Protocol/Protos/extracted_colors.proto",
+      "lineRange": [
+        20,
+        25
+      ],
+      "summary": "Protobuf definition Status for extracted color results.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "ui"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "type": "schema",
+      "name": "herodotus_current_state.proto",
+      "filePath": "src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "summary": "Protobuf schema for Spotify Herodotus resume-point state service, supporting list and create operations for tracking playback position across podcast episodes and audiobooks.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playback",
+        "resume"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:ListCurrentStatesRequest",
+      "type": "schema",
+      "name": "ListCurrentStatesRequest",
+      "filePath": "src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "lineRange": [
+        10,
+        13
+      ],
+      "summary": "Protobuf definition ListCurrentStatesRequest for Herodotus resume-point state.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "resume"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:ListCurrentStatesResponse",
+      "type": "schema",
+      "name": "ListCurrentStatesResponse",
+      "filePath": "src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "lineRange": [
+        15,
+        17
+      ],
+      "summary": "Protobuf definition ListCurrentStatesResponse for Herodotus resume-point state.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "resume"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:CreateResumePointRevisionRequest",
+      "type": "schema",
+      "name": "CreateResumePointRevisionRequest",
+      "filePath": "src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "lineRange": [
+        19,
+        22
+      ],
+      "summary": "Protobuf definition CreateResumePointRevisionRequest for Herodotus resume-point state.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "resume"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:CreateResumePointRevisionResponse",
+      "type": "schema",
+      "name": "CreateResumePointRevisionResponse",
+      "filePath": "src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "lineRange": [
+        24,
+        26
+      ],
+      "summary": "Protobuf definition CreateResumePointRevisionResponse for Herodotus resume-point state.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "resume"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:CurrentStateEntry",
+      "type": "schema",
+      "name": "CurrentStateEntry",
+      "filePath": "src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "lineRange": [
+        28,
+        31
+      ],
+      "summary": "Protobuf definition CurrentStateEntry for Herodotus resume-point state.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "resume"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:CurrentStateRevision",
+      "type": "schema",
+      "name": "CurrentStateRevision",
+      "filePath": "src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "lineRange": [
+        33,
+        38
+      ],
+      "summary": "Protobuf definition CurrentStateRevision for Herodotus resume-point state.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "resume"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:CurrentStateValue",
+      "type": "schema",
+      "name": "CurrentStateValue",
+      "filePath": "src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "lineRange": [
+        40,
+        43
+      ],
+      "summary": "Protobuf definition CurrentStateValue for Herodotus resume-point state.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "resume"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:ResumePoint",
+      "type": "schema",
+      "name": "ResumePoint",
+      "filePath": "src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "lineRange": [
+        45,
+        47
+      ],
+      "summary": "Protobuf definition ResumePoint for Herodotus resume-point state.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "resume"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "type": "schema",
+      "name": "keyexchange.proto",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "summary": "Protobuf schema for the Spotify Access Point TLS handshake key exchange, defining ClientHello, APChallenge, Diffie-Hellman crypto, fingerprint, PoW, and login failure messages used during AP authentication.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "complex",
+      "languageNotes": "ClientHello -> APResponseMessage -> ClientResponsePlaintext flow drives Shannon cipher session establishment during AP connect."
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:ClientHello",
+      "type": "schema",
+      "name": "ClientHello",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        6,
+        15
+      ],
+      "summary": "Protobuf definition ClientHello for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:BuildInfo",
+      "type": "schema",
+      "name": "BuildInfo",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        18,
+        23
+      ],
+      "summary": "Protobuf definition BuildInfo for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:LoginCryptoHelloUnion",
+      "type": "schema",
+      "name": "LoginCryptoHelloUnion",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        80,
+        82
+      ],
+      "summary": "Protobuf definition LoginCryptoHelloUnion for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:LoginCryptoDiffieHellmanHello",
+      "type": "schema",
+      "name": "LoginCryptoDiffieHellmanHello",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        85,
+        88
+      ],
+      "summary": "Protobuf definition LoginCryptoDiffieHellmanHello for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:FeatureSet",
+      "type": "schema",
+      "name": "FeatureSet",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        91,
+        94
+      ],
+      "summary": "Protobuf definition FeatureSet for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:APResponseMessage",
+      "type": "schema",
+      "name": "APResponseMessage",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        97,
+        101
+      ],
+      "summary": "Protobuf definition APResponseMessage for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:APChallenge",
+      "type": "schema",
+      "name": "APChallenge",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        103,
+        110
+      ],
+      "summary": "Protobuf definition APChallenge for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:LoginCryptoChallengeUnion",
+      "type": "schema",
+      "name": "LoginCryptoChallengeUnion",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        112,
+        114
+      ],
+      "summary": "Protobuf definition LoginCryptoChallengeUnion for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:LoginCryptoDiffieHellmanChallenge",
+      "type": "schema",
+      "name": "LoginCryptoDiffieHellmanChallenge",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        116,
+        120
+      ],
+      "summary": "Protobuf definition LoginCryptoDiffieHellmanChallenge for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:FingerprintChallengeUnion",
+      "type": "schema",
+      "name": "FingerprintChallengeUnion",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        122,
+        125
+      ],
+      "summary": "Protobuf definition FingerprintChallengeUnion for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:FingerprintGrainChallenge",
+      "type": "schema",
+      "name": "FingerprintGrainChallenge",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        128,
+        130
+      ],
+      "summary": "Protobuf definition FingerprintGrainChallenge for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:FingerprintHmacRipemdChallenge",
+      "type": "schema",
+      "name": "FingerprintHmacRipemdChallenge",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        133,
+        135
+      ],
+      "summary": "Protobuf definition FingerprintHmacRipemdChallenge for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:PoWChallengeUnion",
+      "type": "schema",
+      "name": "PoWChallengeUnion",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        138,
+        140
+      ],
+      "summary": "Protobuf definition PoWChallengeUnion for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:PoWHashCashChallenge",
+      "type": "schema",
+      "name": "PoWHashCashChallenge",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        142,
+        146
+      ],
+      "summary": "Protobuf definition PoWHashCashChallenge for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:CryptoChallengeUnion",
+      "type": "schema",
+      "name": "CryptoChallengeUnion",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        149,
+        152
+      ],
+      "summary": "Protobuf definition CryptoChallengeUnion for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:CryptoShannonChallenge",
+      "type": "schema",
+      "name": "CryptoShannonChallenge",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        155,
+        156
+      ],
+      "summary": "Protobuf definition CryptoShannonChallenge for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:CryptoRc4Sha1HmacChallenge",
+      "type": "schema",
+      "name": "CryptoRc4Sha1HmacChallenge",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        159,
+        160
+      ],
+      "summary": "Protobuf definition CryptoRc4Sha1HmacChallenge for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:UpgradeRequiredMessage",
+      "type": "schema",
+      "name": "UpgradeRequiredMessage",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        163,
+        167
+      ],
+      "summary": "Protobuf definition UpgradeRequiredMessage for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:APLoginFailed",
+      "type": "schema",
+      "name": "APLoginFailed",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        169,
+        174
+      ],
+      "summary": "Protobuf definition APLoginFailed for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:ClientResponsePlaintext",
+      "type": "schema",
+      "name": "ClientResponsePlaintext",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        190,
+        194
+      ],
+      "summary": "Protobuf definition ClientResponsePlaintext for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:LoginCryptoResponseUnion",
+      "type": "schema",
+      "name": "LoginCryptoResponseUnion",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        197,
+        199
+      ],
+      "summary": "Protobuf definition LoginCryptoResponseUnion for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:LoginCryptoDiffieHellmanResponse",
+      "type": "schema",
+      "name": "LoginCryptoDiffieHellmanResponse",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        202,
+        204
+      ],
+      "summary": "Protobuf definition LoginCryptoDiffieHellmanResponse for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:PoWResponseUnion",
+      "type": "schema",
+      "name": "PoWResponseUnion",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        207,
+        209
+      ],
+      "summary": "Protobuf definition PoWResponseUnion for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:PoWHashCashResponse",
+      "type": "schema",
+      "name": "PoWHashCashResponse",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        212,
+        214
+      ],
+      "summary": "Protobuf definition PoWHashCashResponse for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:CryptoResponseUnion",
+      "type": "schema",
+      "name": "CryptoResponseUnion",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        217,
+        220
+      ],
+      "summary": "Protobuf definition CryptoResponseUnion for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:CryptoShannonResponse",
+      "type": "schema",
+      "name": "CryptoShannonResponse",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        223,
+        225
+      ],
+      "summary": "Protobuf definition CryptoShannonResponse for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:CryptoRc4Sha1HmacResponse",
+      "type": "schema",
+      "name": "CryptoRc4Sha1HmacResponse",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        228,
+        230
+      ],
+      "summary": "Protobuf definition CryptoRc4Sha1HmacResponse for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:Product",
+      "type": "schema",
+      "name": "Product",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        25,
+        31
+      ],
+      "summary": "Protobuf definition Product for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:ProductFlags",
+      "type": "schema",
+      "name": "ProductFlags",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        33,
+        36
+      ],
+      "summary": "Protobuf definition ProductFlags for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:Platform",
+      "type": "schema",
+      "name": "Platform",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        38,
+        63
+      ],
+      "summary": "Protobuf definition Platform for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:Fingerprint",
+      "type": "schema",
+      "name": "Fingerprint",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        65,
+        68
+      ],
+      "summary": "Protobuf definition Fingerprint for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:Cryptosuite",
+      "type": "schema",
+      "name": "Cryptosuite",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        70,
+        73
+      ],
+      "summary": "Protobuf definition Cryptosuite for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:Powscheme",
+      "type": "schema",
+      "name": "Powscheme",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        75,
+        77
+      ],
+      "summary": "Protobuf definition Powscheme for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:ErrorCode",
+      "type": "schema",
+      "name": "ErrorCode",
+      "filePath": "src/Wavee/Protocol/Protos/keyexchange.proto",
+      "lineRange": [
+        176,
+        188
+      ],
+      "summary": "Protobuf definition ErrorCode for Spotify AP key exchange handshake.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "authentication",
+        "crypto"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/list_metadata_v2.proto",
+      "type": "schema",
+      "name": "list_metadata_v2.proto",
+      "filePath": "src/Wavee/Protocol/Protos/list_metadata_v2.proto",
+      "summary": "Protobuf schema for Spotify list metadata v2, providing name, description, images, format strings, and key-value attributes for playlist-like lists.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/list_metadata_v2.proto:ListMetadataV2",
+      "type": "schema",
+      "name": "ListMetadataV2",
+      "filePath": "src/Wavee/Protocol/Protos/list_metadata_v2.proto",
+      "lineRange": [
+        16,
+        44
+      ],
+      "summary": "Protobuf message for list metadata v2 with name, description, images, and format attributes.",
+      "tags": [
+        "schema-definition",
+        "protobuf",
+        "playlist"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/extension_kind.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/extension_kind.proto:ExtensionKind",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/extracted_colors.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/extracted_colors.proto:ColorResult",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/extracted_colors.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/extracted_colors.proto:Color",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/extracted_colors.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/extracted_colors.proto:Status",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:ListCurrentStatesRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:ListCurrentStatesResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:CreateResumePointRevisionRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:CreateResumePointRevisionResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:CurrentStateEntry",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:CurrentStateRevision",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:CurrentStateValue",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/herodotus_current_state.proto:ResumePoint",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:ClientHello",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:BuildInfo",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:LoginCryptoHelloUnion",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:LoginCryptoDiffieHellmanHello",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:FeatureSet",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:APResponseMessage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:APChallenge",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:LoginCryptoChallengeUnion",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:LoginCryptoDiffieHellmanChallenge",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:FingerprintChallengeUnion",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:FingerprintGrainChallenge",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:FingerprintHmacRipemdChallenge",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:PoWChallengeUnion",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:PoWHashCashChallenge",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:CryptoChallengeUnion",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:CryptoShannonChallenge",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:CryptoRc4Sha1HmacChallenge",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:UpgradeRequiredMessage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:APLoginFailed",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:ClientResponsePlaintext",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:LoginCryptoResponseUnion",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:LoginCryptoDiffieHellmanResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:PoWResponseUnion",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:PoWHashCashResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:CryptoResponseUnion",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:CryptoShannonResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:CryptoRc4Sha1HmacResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:Product",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:ProductFlags",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:Platform",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:Fingerprint",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:Cryptosuite",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:Powscheme",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/keyexchange.proto:ErrorCode",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/list_metadata_v2.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/list_metadata_v2.proto:ListMetadataV2",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/keyexchange.proto",
+      "target": "file:src/Wavee/Core/Connection/Handshake.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

@@ -1,0 +1,878 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml",
+      "type": "file",
+      "name": "AudioOutputPicker.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml",
+      "summary": "XAML template for the audio output device picker flyout, defining volume sliders, device rows, compact/expanded modes, and Connect/Local device sections.",
+      "tags": [
+        "component",
+        "xaml",
+        "playback",
+        "audio-output"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "type": "file",
+      "name": "AudioOutputPicker.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "summary": "Code-behind for the audio output picker: manages volume sliders, Spotify Connect device list, compact/expanded display modes, and device-switching via IPlaybackService.",
+      "tags": [
+        "component",
+        "playback",
+        "audio-output",
+        "spotify-connect"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:AudioOutputPicker",
+      "type": "class",
+      "name": "AudioOutputPicker",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "lineRange": [
+        28,
+        682
+      ],
+      "summary": "WinUI UserControl rendering a picker flyout with local and Spotify Connect output devices, handling volume drag, device selection, and compact-chrome layout modes.",
+      "tags": [
+        "component",
+        "playback",
+        "audio-output",
+        "spotify-connect"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:AudioOutputDeviceRowViewModel",
+      "type": "class",
+      "name": "AudioOutputDeviceRowViewModel",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "lineRange": [
+        684,
+        720
+      ],
+      "summary": "View model for a single device row in AudioOutputPicker, tracking active/switching state and computing row brush/visibility.",
+      "tags": [
+        "data-model",
+        "playback",
+        "spotify-connect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:RebuildRows",
+      "type": "function",
+      "name": "RebuildRows",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "lineRange": [
+        486,
+        546
+      ],
+      "summary": "Rebuilds local and Connect device row lists from current playback state, assigning icons and active flags to each row.",
+      "tags": [
+        "playback",
+        "audio-output",
+        "component"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:UpdateSummary",
+      "type": "function",
+      "name": "UpdateSummary",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "lineRange": [
+        342,
+        389
+      ],
+      "summary": "Updates the compact summary display with current device name, icon glyph, and active-track artist/title.",
+      "tags": [
+        "playback",
+        "audio-output",
+        "component"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:ApplyCompactChrome",
+      "type": "function",
+      "name": "ApplyCompactChrome",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "lineRange": [
+        304,
+        335
+      ],
+      "summary": "Switches between compact icon-only and full-width display modes, adjusting grid column widths and control margins.",
+      "tags": [
+        "component",
+        "layout",
+        "playback"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:DeviceRow_Click",
+      "type": "function",
+      "name": "DeviceRow_Click",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "lineRange": [
+        566,
+        608
+      ],
+      "summary": "Handles device row click by transferring or switching audio output via IPlaybackService, then closing the picker flyout.",
+      "tags": [
+        "event-handler",
+        "playback",
+        "spotify-connect"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "type": "file",
+      "name": "CompositionProgressBar.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "summary": "GPU-accelerated progress/seek bar using WinUI Composition APIs for smooth animation, chapter segments, drag-to-seek, and a floating chapter tooltip.",
+      "tags": [
+        "component",
+        "playback",
+        "composition",
+        "seek-bar"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Uses Windows.UI.Composition SpriteVisual and ExpressionAnimation for GPU-resident fill visuals; chapter segments are rendered as separate Grid columns with independent fill brushes."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:CompositionProgressBar",
+      "type": "class",
+      "name": "CompositionProgressBar",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "lineRange": [
+        35,
+        778
+      ],
+      "summary": "Custom TemplatedControl implementing a seek/progress bar backed by Composition visuals, supporting segmented chapter markers, hover expand/collapse, drag-to-seek with snap threshold, and a chapter tooltip popup.",
+      "tags": [
+        "component",
+        "playback",
+        "composition",
+        "seek-bar"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:CompositionProgressBar",
+      "type": "function",
+      "name": "CompositionProgressBar",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "lineRange": [
+        83,
+        175
+      ],
+      "summary": "Constructor: registers dependency properties, wires pointer events, and sets up the Composition root visual hierarchy.",
+      "tags": [
+        "component",
+        "playback",
+        "entry-point"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:RebuildSegments",
+      "type": "function",
+      "name": "RebuildSegments",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "lineRange": [
+        274,
+        319
+      ],
+      "summary": "Destroys and recreates Grid columns and Composition visuals for each chapter segment when the Segments collection changes.",
+      "tags": [
+        "component",
+        "composition",
+        "playback"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:ApplyGlobalFill",
+      "type": "function",
+      "name": "ApplyGlobalFill",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "lineRange": [
+        418,
+        450
+      ],
+      "summary": "Drives the global progress fill visual via an ExpressionAnimation bound to PositionMs/DurationMs dependency properties.",
+      "tags": [
+        "composition",
+        "playback",
+        "animation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:ApplySegmentFill",
+      "type": "function",
+      "name": "ApplySegmentFill",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "lineRange": [
+        452,
+        501
+      ],
+      "summary": "Drives per-segment fill visuals via ExpressionAnimations clamped to each chapter boundary, enabling per-segment progress coloring.",
+      "tags": [
+        "composition",
+        "playback",
+        "animation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:UpdateDragRatio",
+      "type": "function",
+      "name": "UpdateDragRatio",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "lineRange": [
+        592,
+        633
+      ],
+      "summary": "Computes seek target ratio from pointer position during drag, snapping away from click-only gestures via a threshold distance.",
+      "tags": [
+        "event-handler",
+        "playback",
+        "seek-bar"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:UpdateChapterTooltip",
+      "type": "function",
+      "name": "UpdateChapterTooltip",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "lineRange": [
+        655,
+        731
+      ],
+      "summary": "Shows and positions a floating chapter tooltip popup near the pointer, displaying chapter title and time range while hovering.",
+      "tags": [
+        "component",
+        "playback",
+        "tooltip"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Playback/PlaybackActionContent.xaml",
+      "type": "file",
+      "name": "PlaybackActionContent.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/PlaybackActionContent.xaml",
+      "summary": "Minimal XAML skeleton for PlaybackActionContent, a placeholder control hosting playback action button content.",
+      "tags": [
+        "component",
+        "xaml",
+        "playback"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Playback/PlaybackActionContent.xaml.cs",
+      "type": "file",
+      "name": "PlaybackActionContent.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/PlaybackActionContent.xaml.cs",
+      "summary": "Code-behind for PlaybackActionContent UserControl, exposing dependency properties for binding playback action state to a button icon/label.",
+      "tags": [
+        "component",
+        "playback",
+        "dependency-properties"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Playback/PlaybackActionContent.xaml.cs:PlaybackActionContent",
+      "type": "class",
+      "name": "PlaybackActionContent",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/PlaybackActionContent.xaml.cs",
+      "lineRange": [
+        8,
+        180
+      ],
+      "summary": "UserControl with dependency properties for a single playback action (icon glyph, label, active state) used in the transport controls.",
+      "tags": [
+        "component",
+        "playback",
+        "dependency-properties"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Playback/TransportModeButton.cs",
+      "type": "file",
+      "name": "TransportModeButton.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/TransportModeButton.cs",
+      "summary": "Custom ToggleButton subclass for Repeat/Shuffle transport mode states, mapping enum values to XAML visual states.",
+      "tags": [
+        "component",
+        "playback",
+        "transport-controls"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Playback/TransportModeButton.cs:TransportModeButton",
+      "type": "class",
+      "name": "TransportModeButton",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/TransportModeButton.cs",
+      "lineRange": [
+        11,
+        95
+      ],
+      "summary": "ToggleButton-derived control that cycles through transport mode states (Off, One, All) via dependency properties and visual state transitions.",
+      "tags": [
+        "component",
+        "playback",
+        "transport-controls"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml",
+      "type": "file",
+      "name": "VideoTransportBar.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml",
+      "summary": "XAML layout for the video transport bar overlay, including surface mode toggles, fullscreen/miniplayer buttons, volume controls, and chapter track lists.",
+      "tags": [
+        "component",
+        "xaml",
+        "playback",
+        "video"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs",
+      "type": "file",
+      "name": "VideoTransportBar.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs",
+      "summary": "Code-behind for the video transport bar control, handling surface-mode switching, fullscreen and mini-player navigation, and volume glyph updates.",
+      "tags": [
+        "component",
+        "playback",
+        "video",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs:VideoTransportBar",
+      "type": "class",
+      "name": "VideoTransportBar",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs",
+      "lineRange": [
+        42,
+        318
+      ],
+      "summary": "UserControl rendering the floating transport bar for the video playback surface, with surface-mode buttons, seek bar, volume, fullscreen/mini-player menu items, and tracklist flyout.",
+      "tags": [
+        "component",
+        "playback",
+        "video"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs:ApplySurfaceMode",
+      "type": "function",
+      "name": "ApplySurfaceMode",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs",
+      "lineRange": [
+        102,
+        122
+      ],
+      "summary": "Toggles the control layout between inline player bar and fullscreen overlay modes by updating visual state and binding visibility.",
+      "tags": [
+        "component",
+        "playback",
+        "layout"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs:FullscreenMenuItem_Click",
+      "type": "function",
+      "name": "FullscreenMenuItem_Click",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs",
+      "lineRange": [
+        281,
+        299
+      ],
+      "summary": "Navigates to the fullscreen video view when the user selects the fullscreen menu item.",
+      "tags": [
+        "event-handler",
+        "playback",
+        "video"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs:MiniPlayerMenuItem_Click",
+      "type": "function",
+      "name": "MiniPlayerMenuItem_Click",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs",
+      "lineRange": [
+        301,
+        317
+      ],
+      "summary": "Navigates to the mini-player view when the user selects the mini-player menu item.",
+      "tags": [
+        "event-handler",
+        "playback",
+        "video"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Playback/WatchVideoButton.xaml",
+      "type": "file",
+      "name": "WatchVideoButton.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/WatchVideoButton.xaml",
+      "summary": "XAML template for the Watch Video pill button shown in the player bar when a music video is available.",
+      "tags": [
+        "component",
+        "xaml",
+        "playback",
+        "video"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Playback/WatchVideoButton.xaml.cs",
+      "type": "file",
+      "name": "WatchVideoButton.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/WatchVideoButton.xaml.cs",
+      "summary": "Minimal code-behind for WatchVideoButton, a ToggleButton subclass that triggers transition to the video playback surface.",
+      "tags": [
+        "component",
+        "playback",
+        "video"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Playback/WatchVideoButton.xaml.cs:WatchVideoButton",
+      "type": "class",
+      "name": "WatchVideoButton",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Playback/WatchVideoButton.xaml.cs",
+      "lineRange": [
+        15,
+        55
+      ],
+      "summary": "ToggleButton subclass rendering the Watch/Audio toggle pill in the player bar, exposing dependency properties for video availability state.",
+      "tags": [
+        "component",
+        "playback",
+        "video"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml",
+      "type": "file",
+      "name": "PlayerBar.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml",
+      "summary": "Main player bar XAML layout (~1119 lines) composing the now-playing track info, transport controls, progress bar, heart button, device picker, volume, and overflow menu.",
+      "tags": [
+        "component",
+        "xaml",
+        "playback",
+        "player-bar"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "type": "file",
+      "name": "PlayerBar.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "summary": "Code-behind for the main PlayerBar control: wires playback state subscriptions, applies tint color, handles heart toggle, navigate-to-album/context, drag-drop subtitle files, video popout teaching tip, and overflow menu items.",
+      "tags": [
+        "component",
+        "playback",
+        "player-bar",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:PlayerBar",
+      "type": "class",
+      "name": "PlayerBar",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "lineRange": [
+        30,
+        796
+      ],
+      "summary": "UserControl anchoring the full now-playing bar: subscribes to IPlaybackStateService events, renders track metadata with accent tinting, handles seek/skip/heart/queue interactions, and manages the video popout teaching tip.",
+      "tags": [
+        "component",
+        "playback",
+        "player-bar"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:ApplyTintColor",
+      "type": "function",
+      "name": "ApplyTintColor",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "lineRange": [
+        374,
+        423
+      ],
+      "summary": "Applies an accent tint extracted from the current track artwork to PlayerBar foreground brushes and backgrounds using Composition color animations.",
+      "tags": [
+        "playback",
+        "player-bar",
+        "composition",
+        "animation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:NavigateToAlbum",
+      "type": "function",
+      "name": "NavigateToAlbum",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "lineRange": [
+        463,
+        518
+      ],
+      "summary": "Navigates to the album detail page for the currently playing track, resolving album context from the playback state.",
+      "tags": [
+        "event-handler",
+        "playback",
+        "navigation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:NavigateToActiveContext",
+      "type": "function",
+      "name": "NavigateToActiveContext",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "lineRange": [
+        520,
+        577
+      ],
+      "summary": "Navigates to the active playback context (playlist, album, artist, or show page) based on the current playback state context URI.",
+      "tags": [
+        "event-handler",
+        "playback",
+        "navigation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:PlayerBarRoot_DragOver",
+      "type": "function",
+      "name": "PlayerBarRoot_DragOver",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "lineRange": [
+        667,
+        709
+      ],
+      "summary": "Validates drag-over events on the player bar, accepting only subtitle file drops (SRT, VTT, ASS) for the current video track.",
+      "tags": [
+        "event-handler",
+        "playback",
+        "drag-drop"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:PlayerBarRoot_Drop",
+      "type": "function",
+      "name": "PlayerBarRoot_Drop",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "lineRange": [
+        716,
+        768
+      ],
+      "summary": "Handles subtitle file drops onto the player bar, loading the first valid subtitle file and forwarding it to the playback service.",
+      "tags": [
+        "event-handler",
+        "playback",
+        "drag-drop"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:SubscribeEvents",
+      "type": "function",
+      "name": "SubscribeEvents",
+      "filePath": "src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "lineRange": [
+        105,
+        124
+      ],
+      "summary": "Subscribes to IPlaybackStateService property-changed events for layout and heart state updates.",
+      "tags": [
+        "event-handler",
+        "playback",
+        "player-bar"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:AudioOutputPicker",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:AudioOutputPicker",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:AudioOutputDeviceRowViewModel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:AudioOutputDeviceRowViewModel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:RebuildRows",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:UpdateSummary",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:ApplyCompactChrome",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Playback/AudioOutputPicker.xaml.cs:DeviceRow_Click",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:CompositionProgressBar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:CompositionProgressBar",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:CompositionProgressBar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:RebuildSegments",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:ApplyGlobalFill",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:ApplySegmentFill",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:UpdateDragRatio",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Playback/CompositionProgressBar.cs:UpdateChapterTooltip",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/PlaybackActionContent.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/PlaybackActionContent.xaml.cs:PlaybackActionContent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/PlaybackActionContent.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/PlaybackActionContent.xaml.cs:PlaybackActionContent",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/TransportModeButton.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/TransportModeButton.cs:TransportModeButton",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/TransportModeButton.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/TransportModeButton.cs:TransportModeButton",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs:VideoTransportBar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs:VideoTransportBar",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs:ApplySurfaceMode",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs:FullscreenMenuItem_Click",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/Playback/VideoTransportBar.xaml.cs:MiniPlayerMenuItem_Click",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/WatchVideoButton.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/WatchVideoButton.xaml.cs:WatchVideoButton",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Playback/WatchVideoButton.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Playback/WatchVideoButton.xaml.cs:WatchVideoButton",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:PlayerBar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:PlayerBar",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:ApplyTintColor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:NavigateToAlbum",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:NavigateToActiveContext",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:PlayerBarRoot_DragOver",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:PlayerBarRoot_Drop",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs",
+      "target": "function:src/Wavee.UI.WinUI/Controls/PlayerBar/PlayerBar.xaml.cs:SubscribeEvents",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    }
+  ]
+}

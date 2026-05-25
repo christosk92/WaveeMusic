@@ -765,6 +765,14 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
         return HomeContentType.Unknown;
     }
 
+    private static string? ArtistUriOrNull(string? uri)
+    {
+        return !string.IsNullOrWhiteSpace(uri)
+               && uri.StartsWith("spotify:artist:", StringComparison.OrdinalIgnoreCase)
+            ? uri
+            : null;
+    }
+
     private static HomeSectionItem? MapUnknownType(string? uri)
     {
         if (string.IsNullOrEmpty(uri)) return null;
@@ -859,13 +867,16 @@ public sealed partial class HomeViewModel : ObservableObject, ITabBarItemContent
             .FirstOrDefault()?.Url;
 
         var colorHex = data.CoverArt?.ExtractedColors?.ColorDark?.Hex;
-        var artistName = data.Artists?.Items?.FirstOrDefault()?.Profile?.Name;
+        var firstArtist = data.Artists?.Items?.FirstOrDefault();
+        var artistName = firstArtist?.Profile?.Name;
 
         return new HomeSectionItem
         {
             Uri = data.Uri ?? uri,
             Title = data.Name,
             Subtitle = artistName ?? "Album",
+            SubtitleNavigationTitle = artistName,
+            SubtitleNavigationUri = ArtistUriOrNull(firstArtist?.Uri),
             ImageUrl = imageUrl,
             ContentType = HomeContentType.Album,
             ColorHex = colorHex
@@ -1281,6 +1292,8 @@ public sealed class HomeSectionItem : ObservableObject
     private string? _subtitle;
     private string? _albumMetadataSubtitle;
     private int _albumTotalTracks;
+    private string? _subtitleNavigationUri;
+    private string? _subtitleNavigationTitle;
     private string? _imageUrl;
     private string? _imageSmallUrl;
     private string? _imageMediumUrl;
@@ -1323,11 +1336,7 @@ public sealed class HomeSectionItem : ObservableObject
     public string? AlbumMetadataSubtitle
     {
         get => _albumMetadataSubtitle;
-        set
-        {
-            if (SetProperty(ref _albumMetadataSubtitle, value))
-                OnPropertyChanged(nameof(DisplaySubtitle));
-        }
+        set => SetProperty(ref _albumMetadataSubtitle, value);
     }
 
     public int AlbumTotalTracks
@@ -1336,10 +1345,21 @@ public sealed class HomeSectionItem : ObservableObject
         set => SetProperty(ref _albumTotalTracks, value);
     }
 
-    public string? DisplaySubtitle =>
-        !string.IsNullOrWhiteSpace(_albumMetadataSubtitle)
-            ? _albumMetadataSubtitle
-            : _subtitle;
+    public string? DisplaySubtitle => _subtitle;
+
+    public int SubtitleMaxLines => ContentType == HomeContentType.Playlist ? 3 : 2;
+
+    public string? SubtitleNavigationUri
+    {
+        get => _subtitleNavigationUri;
+        set => SetProperty(ref _subtitleNavigationUri, value);
+    }
+
+    public string? SubtitleNavigationTitle
+    {
+        get => _subtitleNavigationTitle;
+        set => SetProperty(ref _subtitleNavigationTitle, value);
+    }
 
     public string? ImageUrl
     {
@@ -1420,7 +1440,11 @@ public sealed class HomeSectionItem : ObservableObject
     public HomeContentType ContentType
     {
         get => _contentType;
-        set => SetProperty(ref _contentType, value);
+        set
+        {
+            if (SetProperty(ref _contentType, value))
+                OnPropertyChanged(nameof(SubtitleMaxLines));
+        }
     }
 
     public string? ColorHex

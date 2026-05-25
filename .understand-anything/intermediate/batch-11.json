@@ -1,0 +1,160 @@
+{
+  "nodes": [
+    {
+      "id": "document:src/Wavee/README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "src/Wavee/README.md",
+      "summary": "Comprehensive reference for the Wavee core Spotify protocol library, documenting its public entry points (Session, DealerClient, PlaybackOrchestrator, etc.), folder layout, lazy-initialization model, AOT/trim discipline, and external dependencies across 9 sections.",
+      "tags": [
+        "documentation",
+        "entry-point",
+        "overview",
+        "architecture"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:src/Wavee/Wavee.csproj",
+      "type": "config",
+      "name": "Wavee.csproj",
+      "filePath": "src/Wavee/Wavee.csproj",
+      "summary": "MSBuild project file for the Wavee core protocol library: targets net10.0 with strict AOT/trim-warning-as-errors enforcement, declares NuGet dependencies (Protobuf, System.Reactive, Sqlite, ZstdSharp), project references (Wavee.Playback.Contracts, Wavee.Local, NVorbis), Grpc.Tools proto code-gen, and conditional PlayPlay/AudioRuntimeProvisioner stub selection.",
+      "tags": [
+        "configuration",
+        "build-system",
+        "dotnet",
+        "aot"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Uses conditional ItemGroup + Exists() conditions to swap proprietary PlayPlay / AudioRuntimeProvisioner stubs when the real files are absent (gitignored Spotify property files)."
+    },
+    {
+      "id": "config:src/Wavee/Wavee.sln",
+      "type": "config",
+      "name": "Wavee.sln",
+      "filePath": "src/Wavee/Wavee.sln",
+      "summary": "Visual Studio solution file scoped to the standalone Wavee core library project, providing Debug and Release build configurations for the single Wavee.csproj.",
+      "tags": [
+        "configuration",
+        "build-system",
+        "dotnet"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "document:src/Wavee/README.md",
+      "target": "file:src/Wavee/Core/Session/Session.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:src/Wavee/README.md",
+      "target": "file:src/Wavee/Core/Session/ISession.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:src/Wavee/README.md",
+      "target": "file:src/Wavee/Connect/DealerClient.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:src/Wavee/README.md",
+      "target": "file:src/Wavee/Connect/DeviceStateManager.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:src/Wavee/README.md",
+      "target": "file:src/Wavee/Connect/PlaybackStateManager.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:src/Wavee/README.md",
+      "target": "file:src/Wavee/Connect/ConnectCommandClient.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:src/Wavee/README.md",
+      "target": "file:src/Wavee/Audio/PlaybackOrchestrator.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:src/Wavee/README.md",
+      "target": "file:src/Wavee/Core/Http/SpClient.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:src/Wavee/README.md",
+      "target": "file:src/Wavee/Core/Http/PathfinderClient.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:src/Wavee/README.md",
+      "target": "file:src/Wavee/Core/Audio/AudioKeyManager.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:src/Wavee/README.md",
+      "target": "file:src/Wavee/Core/Authentication/Authenticator.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:src/Wavee/README.md",
+      "target": "file:src/Wavee/Core/Playlists/PlaylistCacheService.cs",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:src/Wavee/Wavee.csproj",
+      "target": "file:src/Wavee/Core/Session/Session.cs",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:src/Wavee/Wavee.csproj",
+      "target": "file:src/Wavee/Connect/DealerClient.cs",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:src/Wavee/Wavee.csproj",
+      "target": "file:src/Wavee/Audio/PlaybackOrchestrator.cs",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:src/Wavee/Wavee.sln",
+      "target": "config:src/Wavee/Wavee.csproj",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}

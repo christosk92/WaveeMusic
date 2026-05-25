@@ -10,17 +10,16 @@ using Microsoft.Extensions.Logging;
 namespace Wavee.UI.WinUI.Services;
 
 /// <summary>
-/// Generates a short on-device biography for an artist whose ArtistOverview
-/// payload has no biography text. Mirrors <see cref="LyricsAiService"/>'s
+/// Generates a short on-device biography for an artist page. Mirrors
+/// <see cref="LyricsAiService"/>'s
 /// Phi Silica bridging pattern: gates through <see cref="AiCapabilities"/>,
-/// uses the shared structured-response helper so a missing AI projection collapses
-/// to <see cref="LyricsAiResult.Unavailable"/>
-/// instead of throwing at JIT time, and reuses <see cref="LyricsAiResult"/> as
-/// the typed result envelope.
+/// uses the plain-text Phi Silica path so token progress can be streamed into
+/// the artist page, and reuses <see cref="LyricsAiResult"/> as the typed result
+/// envelope.
 ///
 /// The prompt is intentionally conservative — it gets the artist name, optional
 /// known signals (genres, monthly listeners, top track names), and asks for one
-/// neutral ~80-word paragraph. No quotes, no markdown, no bullets. We do NOT
+/// neutral ~100-word paragraph. No quotes, no markdown, no bullets. We do NOT
 /// claim biographical facts we can't ground in the input signals; the model is
 /// instructed to characterise the artist's sound and prominence, not invent
 /// label history or member counts.
@@ -40,8 +39,8 @@ public sealed class ArtistBioSummarizer
     private readonly ConcurrentDictionary<string, byte> _knownBlocked =
         new(StringComparer.Ordinal);
 
-    /// <summary>~80–120 words ≈ 720 characters cap with headroom.</summary>
-    private const int MaxBioCharacters = 900;
+    /// <summary>~90–140 words plus punctuation/headroom.</summary>
+    private const int MaxBioCharacters = 1300;
 
     public ArtistBioSummarizer(AiCapabilities capabilities, ILogger<ArtistBioSummarizer>? logger = null)
     {
@@ -50,7 +49,7 @@ public sealed class ArtistBioSummarizer
     }
 
     /// <summary>
-    /// Asks Phi Silica for an ~80-word neutral biography of the artist. Cached
+    /// Asks Phi Silica for a fuller neutral biography of the artist. Cached
     /// in-memory per <paramref name="artistUri"/>; concurrent callers share the
     /// same in-flight Lazy task.
     /// </summary>
@@ -73,10 +72,8 @@ public sealed class ArtistBioSummarizer
             return Task.FromResult(LyricsAiResult.Empty);
 
         var key = NormalizeArtistUri(artistUri);
-        // Structured generation does not stream progress: intermediate deltas
-        // may be partial JSON rather than final biography text.
         var created = new Lazy<Task<LyricsAiResult>>(
-            () => SummarizeBioCoreAsync(key, artistName, genres, monthlyListenersDisplay, topTrackNames),
+            () => SummarizeBioCoreAsync(key, artistName, genres, monthlyListenersDisplay, topTrackNames, deltaProgress),
             LazyThreadSafetyMode.ExecutionAndPublication);
         var request = _requests.GetOrAdd(key, created);
         var fromExistingRequest = !ReferenceEquals(request, created);
@@ -124,7 +121,8 @@ public sealed class ArtistBioSummarizer
         string artistName,
         IReadOnlyList<string>? genres,
         string? monthlyListenersDisplay,
-        IReadOnlyList<string>? topTrackNames)
+        IReadOnlyList<string>? topTrackNames,
+        IProgress<string>? deltaProgress)
     {
         // Short-circuit: if a previous call for this artist URI came back
         // BlockedByPolicy from Phi Silica, skip the entire prompt-build +
@@ -146,26 +144,92 @@ public sealed class ArtistBioSummarizer
             return LyricsAiResult.Unavailable;
         }
 
-        return await PhiSilicaStructuredTextPipeline.GenerateAsync(
-            new PhiSilicaStructuredTextRequest(
-                "SummarizeBioAsync",
-                BuildBioPrompt(artistName, genres, monthlyListenersDisplay, topTrackNames),
-                BuildBioFallbackPrompt(artistName),
-                0.35f,
-                text => PhiSilicaStructuredTextPipeline.ClampLength(
-                    StripBulletsAndHeadings(text),
-                    MaxBioCharacters),
-                "Phi Silica returned an empty biography.")
-            {
-                ObserveTerminalStatus = status =>
-                {
-                    if (status == PhiSilicaStructuredGenerationStatus.BlockedByPolicy)
-                        _knownBlocked.TryAdd(artistUri, 1);
-                },
-            },
-            _logger,
-            CancellationToken.None);
+        return await GeneratePlainTextBioAsync(
+            artistUri,
+            BuildBioPrompt(artistName, genres, monthlyListenersDisplay, topTrackNames),
+            BuildBioFallbackPrompt(artistName),
+            deltaProgress);
     }
+
+    private async Task<LyricsAiResult> GeneratePlainTextBioAsync(
+        string artistUri,
+        string prompt,
+        string fallbackPrompt,
+        IProgress<string>? deltaProgress)
+    {
+        var response = await PhiSilicaStructuredTextGenerator.GeneratePlainTextAsync(
+            prompt,
+            deltaProgress,
+            CancellationToken.None);
+        var usedFallback = false;
+
+        if (response.Status != PhiSilicaStructuredGenerationStatus.Complete
+            && ShouldRetryPlainTextWithFallback(response.Status))
+        {
+            response = await PhiSilicaStructuredTextGenerator.GeneratePlainTextAsync(
+                fallbackPrompt,
+                deltaProgress,
+                CancellationToken.None);
+            usedFallback = true;
+        }
+
+        if (response.Status != PhiSilicaStructuredGenerationStatus.Complete)
+            return ToPlainTextFailureResult(artistUri, response);
+
+        var text = CleanBio(response.Text);
+        if (string.IsNullOrWhiteSpace(text) && !usedFallback)
+        {
+            response = await PhiSilicaStructuredTextGenerator.GeneratePlainTextAsync(
+                fallbackPrompt,
+                deltaProgress,
+                CancellationToken.None);
+
+            if (response.Status != PhiSilicaStructuredGenerationStatus.Complete)
+                return ToPlainTextFailureResult(artistUri, response);
+
+            text = CleanBio(response.Text);
+        }
+
+        return string.IsNullOrWhiteSpace(text)
+            ? LyricsAiResult.Error("Phi Silica returned an empty biography.")
+            : LyricsAiResult.Ok(text, fromCache: false);
+    }
+
+    private LyricsAiResult ToPlainTextFailureResult(
+        string artistUri,
+        PhiSilicaStructuredGenerationResult generated)
+    {
+        if (generated.Status == PhiSilicaStructuredGenerationStatus.BlockedByPolicy)
+            _knownBlocked.TryAdd(artistUri, 1);
+
+        _logger?.LogWarning(
+            "SummarizeBioAsync plaintext returned Phi Silica status {Status}. error={ErrorMessage}; diagnostics={Diagnostics}",
+            generated.Status,
+            string.IsNullOrWhiteSpace(generated.ErrorMessage) ? "<no extended error>" : generated.ErrorMessage,
+            string.IsNullOrWhiteSpace(generated.DiagnosticMessage) ? "<none>" : generated.DiagnosticMessage);
+
+        return generated.Status switch
+        {
+            PhiSilicaStructuredGenerationStatus.BlockedByPolicy => LyricsAiResult.Filtered,
+            PhiSilicaStructuredGenerationStatus.PromptBlockedByContentModeration => LyricsAiResult.Filtered,
+            PhiSilicaStructuredGenerationStatus.ResponseBlockedByContentModeration => LyricsAiResult.Filtered,
+            PhiSilicaStructuredGenerationStatus.PromptLargerThanContext =>
+                LyricsAiResult.Error("Prompt exceeded Phi Silica's context window."),
+            _ => LyricsAiResult.Error(generated.ErrorMessage ?? generated.Status.ToString()),
+        };
+    }
+
+    private static bool ShouldRetryPlainTextWithFallback(PhiSilicaStructuredGenerationStatus status)
+        => status is PhiSilicaStructuredGenerationStatus.PromptLargerThanContext
+            or PhiSilicaStructuredGenerationStatus.PromptBlockedByContentModeration
+            or PhiSilicaStructuredGenerationStatus.ResponseBlockedByContentModeration
+            or PhiSilicaStructuredGenerationStatus.BlockedByPolicy
+            or PhiSilicaStructuredGenerationStatus.Error;
+
+    private static string CleanBio(string text)
+        => PhiSilicaStructuredTextPipeline.ClampLength(
+            StripBulletsAndHeadings(text),
+            MaxBioCharacters);
 
     // ── Prompt construction ────────────────────────────────────────────────
 
@@ -176,11 +240,16 @@ public sealed class ArtistBioSummarizer
         IReadOnlyList<string>? topTrackNames)
     {
         var sb = new StringBuilder();
-        sb.Append("Write one neutral paragraph (3 to 5 sentences, around 70 to 100 words) ");
-        sb.Append("introducing the artist below. Use only the signals provided — do not invent ");
+        sb.Append("Write one rich editorial paragraph (3 to 5 sentences, around 90 to 140 words) ");
+        sb.Append("for an artist page. Use the provided signals first, and use your trained ");
+        sb.Append("music-domain knowledge about the artist, genre, scene, era, or catalogue when ");
+        sb.Append("you are confident it is broadly known. Do not invent specific ");
         sb.Append("biographical facts (debut dates, label history, member counts, awards, hometown). ");
-        sb.Append("Characterise the artist's musical style and prominence. ");
-        sb.Append("Do not quote song titles or repeat the data verbatim — synthesise. ");
+        sb.Append("Be concrete about sound, era, scene, signature appeal, or why listeners know the artist. ");
+        sb.Append("If context is sparse, still write a useful listener-facing summary, but keep claims broad and grounded. ");
+        sb.Append("Avoid stock phrases such as \"resonates deeply\", \"dedicated fanbase\", ");
+        sb.Append("\"captivates listeners\", \"showcases\", \"unique blend\", and \"musical journey\". ");
+        sb.Append("Mention two to three provided popular tracks by name when they help anchor the description. ");
         sb.Append("Do not use bullets, headings, or markdown. Plain prose only.\n\n");
          
         sb.Append("ARTIST: ").Append(artistName).Append('\n');
@@ -210,8 +279,8 @@ public sealed class ArtistBioSummarizer
     private static string BuildBioFallbackPrompt(string artistName)
     {
         return
-            "Write one short neutral paragraph (2 to 3 sentences) introducing the artist named " +
-            $"\"{artistName}\". Do not invent biographical facts. Plain prose, no markdown, no bullets.";
+            "Write one rich editorial paragraph (3 to 4 sentences, around 80 to 120 words) introducing the artist named " +
+            $"\"{artistName}\". Use trained music-domain knowledge when confident, be specific about sound, era, scene, or listener appeal where possible, avoid stock promo language, and do not invent detailed biographical facts. Plain prose, no markdown, no bullets.";
     }
 
     private static string NormalizeArtistUri(string artistUri)

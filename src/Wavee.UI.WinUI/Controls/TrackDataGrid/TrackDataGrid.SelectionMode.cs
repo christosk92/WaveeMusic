@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Input;
 using Wavee.UI.Contracts;
 
 namespace Wavee.UI.WinUI.Controls.TrackDataGrid;
@@ -98,17 +97,19 @@ public sealed partial class TrackDataGrid
         ExitSelectionMode();
     }
 
-    // Ctrl+A — wired from the KeyboardAccelerator on the Root grid so it fires
-    // regardless of which sub-element holds focus (the old KeyDown-on-ItemsView
-    // route only worked when a row was focused, which broke on the album page).
-    private void OnSelectAllAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    // Ctrl+A is handled from OnProcessKeyboardAccelerators so WinUI does not
+    // surface a hover tooltip for the shortcut.
+    private bool TryHandleSelectAllShortcut()
     {
         var selectableCount = _visibleRows.Count(r => r is ITrackItem);
+        if (selectableCount == 0)
+            return false;
+
         var selectedCount = RowsItemsView.SelectedItems.OfType<ITrackItem>().Count();
 
         // Toggle: everything already selected → Ctrl+A exits; otherwise enter
         // selection mode and select every track.
-        if (selectableCount > 0 && selectedCount >= selectableCount)
+        if (selectedCount >= selectableCount)
         {
             ExitSelectionMode();
         }
@@ -117,7 +118,8 @@ public sealed partial class TrackDataGrid
             EnterSelectionMode();
             SelectAllRows();
         }
-        args.Handled = true;
+
+        return true;
     }
 
     // Push the current mode flag onto every realized row. Rows realized later

@@ -1,0 +1,6228 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 25,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": ".understand-anything/.understandignore",
+      "language": "unknown",
+      "fileCategory": "code",
+      "totalLines": 175,
+      "nonEmptyLines": 165,
+      "metrics": {}
+    },
+    {
+      "path": "prototypes/tour-banner.html",
+      "language": "html",
+      "fileCategory": "markup",
+      "totalLines": 359,
+      "nonEmptyLines": 345,
+      "metrics": {}
+    },
+    {
+      "path": "prototypes/video-crossfade.html",
+      "language": "html",
+      "fileCategory": "markup",
+      "totalLines": 351,
+      "nonEmptyLines": 333,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Abstractions/AudioBuffer.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 61,
+      "nonEmptyLines": 53,
+      "callGraph": [
+        {
+          "caller": "AudioBuffer",
+          "callee": "new ReadOnlyMemory<byte>",
+          "lineNumber": 24
+        },
+        {
+          "caller": "Return",
+          "callee": "ArrayPool<byte>.Shared.Return",
+          "lineNumber": 58
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Abstractions/AudioFormat.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 51,
+      "nonEmptyLines": 44,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Abstractions/IAudioDecoder.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 48,
+      "nonEmptyLines": 43,
+      "classes": [
+        {
+          "name": "IAudioDecoder",
+          "startLine": 6,
+          "endLine": 48,
+          "methods": [
+            "CanDecode",
+            "GetFormatAsync",
+            "DecodeAsync",
+            "SeekTo"
+          ],
+          "properties": [
+            "FormatName"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IAudioDecoder",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Abstractions/IAudioProcessor.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 45,
+      "nonEmptyLines": 39,
+      "classes": [
+        {
+          "name": "IAudioProcessor",
+          "startLine": 6,
+          "endLine": 45,
+          "methods": [
+            "InitializeAsync",
+            "Process",
+            "ProcessInPlace",
+            "Reset"
+          ],
+          "properties": [
+            "ProcessorName",
+            "IsEnabled"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IAudioProcessor",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Abstractions/IAudioSink.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 78,
+      "nonEmptyLines": 67,
+      "classes": [
+        {
+          "name": "IAudioSink",
+          "startLine": 6,
+          "endLine": 70,
+          "methods": [
+            "InitializeAsync",
+            "WriteAsync",
+            "GetStatusAsync",
+            "PauseAsync",
+            "ResumeAsync",
+            "FlushAsync",
+            "SetBasePosition",
+            "DrainAsync"
+          ],
+          "properties": [
+            "SinkName",
+            "PlaybackPositionMs"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IAudioSink",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Abstractions/IDeviceSelectableSink.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 39,
+      "nonEmptyLines": 33,
+      "classes": [
+        {
+          "name": "IDeviceSelectableSink",
+          "startLine": 9,
+          "endLine": 39,
+          "methods": [
+            "EnumerateOutputDevices",
+            "SwitchToDeviceAsync",
+            "RefreshDeviceList",
+            "SwitchToDefaultDeviceAsync"
+          ],
+          "properties": [
+            "CurrentDeviceName"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IDeviceSelectableSink",
+          "line": 9,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Abstractions/ITrackStream.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 36,
+      "nonEmptyLines": 31,
+      "classes": [
+        {
+          "name": "ITrackStream",
+          "startLine": 6,
+          "endLine": 36,
+          "methods": [
+            "PrefetchForSeekAsync"
+          ],
+          "properties": [
+            "AudioStream",
+            "Metadata",
+            "KnownFormat",
+            "CanSeek"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ITrackStream",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Abstractions/TrackMetadata.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 113,
+      "nonEmptyLines": 92,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/AudioEngine.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 1189,
+      "nonEmptyLines": 1052,
+      "functions": [
+        {
+          "name": "AudioEngine",
+          "startLine": 74,
+          "endLine": 99,
+          "params": [
+            "audioSink",
+            "decoderRegistry",
+            "processingChain",
+            "httpClient",
+            "volumeProcessor",
+            "logger",
+            "audioCacheDirectory",
+            "audioCacheMaxBytes"
+          ]
+        },
+        {
+          "name": "PlayAsync",
+          "startLine": 118,
+          "endLine": 150,
+          "params": [
+            "cmd",
+            "deferredTask",
+            "ct"
+          ]
+        },
+        {
+          "name": "PlayAsync",
+          "startLine": 153,
+          "endLine": 185,
+          "params": [
+            "cmd",
+            "ct"
+          ]
+        },
+        {
+          "name": "PlayAsync",
+          "startLine": 187,
+          "endLine": 220,
+          "params": [
+            "cmd",
+            "ct"
+          ]
+        },
+        {
+          "name": "PauseAsync",
+          "startLine": 222,
+          "endLine": 236,
+          "params": [
+            "ct"
+          ]
+        },
+        {
+          "name": "ResumeAsync",
+          "startLine": 238,
+          "endLine": 252,
+          "params": [
+            "ct"
+          ]
+        },
+        {
+          "name": "SeekAsync",
+          "startLine": 254,
+          "endLine": 263,
+          "params": [
+            "positionMs",
+            "ct"
+          ]
+        },
+        {
+          "name": "StopAsync",
+          "startLine": 265,
+          "endLine": 273,
+          "params": [
+            "ct"
+          ]
+        },
+        {
+          "name": "SetVolumeAsync",
+          "startLine": 275,
+          "endLine": 284,
+          "params": [
+            "volume",
+            "ct"
+          ]
+        },
+        {
+          "name": "SetNormalizationEnabled",
+          "startLine": 286,
+          "endLine": 290,
+          "params": [
+            "enabled"
+          ]
+        },
+        {
+          "name": "SetEqualizerEnabledAsync",
+          "startLine": 292,
+          "endLine": 334,
+          "params": [
+            "enabled",
+            "bandGains",
+            "ct"
+          ]
+        },
+        {
+          "name": "FindDecoderForCodec",
+          "startLine": 338,
+          "endLine": 351,
+          "params": [
+            "codec",
+            "stream",
+            "decodingStream"
+          ]
+        },
+        {
+          "name": "PlaybackLoopDeferredAsync",
+          "startLine": 353,
+          "endLine": 725,
+          "params": [
+            "cmd",
+            "deferredTask",
+            "ct"
+          ]
+        },
+        {
+          "name": "TicksToMs",
+          "startLine": 729,
+          "endLine": 733,
+          "params": [
+            "startTs",
+            "endTs"
+          ]
+        },
+        {
+          "name": "PlaybackLoopLocalAsync",
+          "startLine": 737,
+          "endLine": 895,
+          "params": [
+            "cmd",
+            "ct"
+          ]
+        },
+        {
+          "name": "PlaybackLoopAsync",
+          "startLine": 899,
+          "endLine": 1106,
+          "params": [
+            "cmd",
+            "ct"
+          ]
+        },
+        {
+          "name": "PublishState",
+          "startLine": 1110,
+          "endLine": 1116,
+          "params": []
+        },
+        {
+          "name": "StopInternalAsync",
+          "startLine": 1118,
+          "endLine": 1146,
+          "params": []
+        },
+        {
+          "name": "DisposeAsync",
+          "startLine": 1148,
+          "endLine": 1156,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "AudioEngine",
+          "startLine": 20,
+          "endLine": 1157,
+          "methods": [
+            "AudioEngine",
+            "PlayAsync",
+            "PlayAsync",
+            "PlayAsync",
+            "PauseAsync",
+            "ResumeAsync",
+            "SeekAsync",
+            "StopAsync",
+            "SetVolumeAsync",
+            "SetNormalizationEnabled",
+            "SetEqualizerEnabledAsync",
+            "FindDecoderForCodec",
+            "PlaybackLoopDeferredAsync",
+            "TicksToMs",
+            "PlaybackLoopLocalAsync",
+            "PlaybackLoopAsync",
+            "PublishState",
+            "StopInternalAsync",
+            "DisposeAsync"
+          ],
+          "properties": [
+            "_audioSink",
+            "_decoderRegistry",
+            "_processingChain",
+            "_httpClient",
+            "_logger",
+            "_audioCacheDirectory",
+            "_audioCacheMaxBytes",
+            "_volumeProcessor",
+            "_userEq",
+            "_stateSubject",
+            "_errorSubject",
+            "_trackCompletedSubject",
+            "_currentState",
+            "_stateLock",
+            "_playbackCts",
+            "_playbackTask",
+            "_pendingSeekMs",
+            "_seekLock",
+            "_disposed",
+            "PositionPublishIntervalMs",
+            "_seekTraceSeq",
+            "StateChanges",
+            "Errors",
+            "TrackCompleted",
+            "CurrentState"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "AudioEngine",
+          "line": 74,
+          "isDefault": false
+        },
+        {
+          "name": "StateChanges",
+          "line": 102,
+          "isDefault": false
+        },
+        {
+          "name": "Errors",
+          "line": 105,
+          "isDefault": false
+        },
+        {
+          "name": "TrackCompleted",
+          "line": 108,
+          "isDefault": false
+        },
+        {
+          "name": "CurrentState",
+          "line": 111,
+          "isDefault": false
+        },
+        {
+          "name": "PlayAsync",
+          "line": 118,
+          "isDefault": false
+        },
+        {
+          "name": "PlayAsync",
+          "line": 153,
+          "isDefault": false
+        },
+        {
+          "name": "PlayAsync",
+          "line": 187,
+          "isDefault": false
+        },
+        {
+          "name": "PauseAsync",
+          "line": 222,
+          "isDefault": false
+        },
+        {
+          "name": "ResumeAsync",
+          "line": 238,
+          "isDefault": false
+        },
+        {
+          "name": "SeekAsync",
+          "line": 254,
+          "isDefault": false
+        },
+        {
+          "name": "StopAsync",
+          "line": 265,
+          "isDefault": false
+        },
+        {
+          "name": "SetVolumeAsync",
+          "line": 275,
+          "isDefault": false
+        },
+        {
+          "name": "SetNormalizationEnabled",
+          "line": 286,
+          "isDefault": false
+        },
+        {
+          "name": "SetEqualizerEnabledAsync",
+          "line": 292,
+          "isDefault": false
+        },
+        {
+          "name": "DisposeAsync",
+          "line": 1148,
+          "isDefault": false
+        },
+        {
+          "name": "AudioEngine",
+          "line": 20,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "AudioEngine",
+          "callee": "new ArgumentNullException",
+          "lineNumber": 84
+        },
+        {
+          "caller": "AudioEngine",
+          "callee": "nameof",
+          "lineNumber": 84
+        },
+        {
+          "caller": "AudioEngine",
+          "callee": "new ArgumentNullException",
+          "lineNumber": 85
+        },
+        {
+          "caller": "AudioEngine",
+          "callee": "nameof",
+          "lineNumber": 85
+        },
+        {
+          "caller": "AudioEngine",
+          "callee": "new ArgumentNullException",
+          "lineNumber": 86
+        },
+        {
+          "caller": "AudioEngine",
+          "callee": "nameof",
+          "lineNumber": 86
+        },
+        {
+          "caller": "AudioEngine",
+          "callee": "new ArgumentNullException",
+          "lineNumber": 87
+        },
+        {
+          "caller": "AudioEngine",
+          "callee": "nameof",
+          "lineNumber": 87
+        },
+        {
+          "caller": "AudioEngine",
+          "callee": "Wavee.Playback.Contracts.AudioFileCache.EnsureDirectoryExists",
+          "lineNumber": 93
+        },
+        {
+          "caller": "AudioEngine",
+          "callee": "new BehaviorSubject<EngineState>",
+          "lineNumber": 95
+        },
+        {
+          "caller": "AudioEngine",
+          "callee": "_processingChain.Processors.OfType<VolumeProcessor>().FirstOrDefault",
+          "lineNumber": 97
+        },
+        {
+          "caller": "AudioEngine",
+          "callee": "_processingChain.Processors.OfType<VolumeProcessor>",
+          "lineNumber": 97
+        },
+        {
+          "caller": "AudioEngine",
+          "callee": "_processingChain.Processors.OfType<EqualizerProcessor>().FirstOrDefault",
+          "lineNumber": 98
+        },
+        {
+          "caller": "AudioEngine",
+          "callee": "_processingChain.Processors.OfType<EqualizerProcessor>",
+          "lineNumber": 98
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "StopInternalAsync",
+          "lineNumber": 120
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 122
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "new CancellationTokenSource",
+          "lineNumber": 125
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "CancellationTokenSource.CreateLinkedTokenSource",
+          "lineNumber": 126
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "Task.Run",
+          "lineNumber": 128
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "PlaybackLoopDeferredAsync",
+          "lineNumber": 132
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 136
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "_logger?.LogError",
+          "lineNumber": 141
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "_errorSubject.OnNext",
+          "lineNumber": 143
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "new EngineError",
+          "lineNumber": 143
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "linkedCts.Dispose",
+          "lineNumber": 147
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "StopInternalAsync",
+          "lineNumber": 155
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 157
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "new CancellationTokenSource",
+          "lineNumber": 160
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "CancellationTokenSource.CreateLinkedTokenSource",
+          "lineNumber": 161
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "Task.Run",
+          "lineNumber": 163
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "PlaybackLoopLocalAsync",
+          "lineNumber": 167
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 171
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "_logger?.LogError",
+          "lineNumber": 176
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "_errorSubject.OnNext",
+          "lineNumber": 178
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "new EngineError",
+          "lineNumber": 178
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "linkedCts.Dispose",
+          "lineNumber": 182
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "StopInternalAsync",
+          "lineNumber": 190
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 192
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "new CancellationTokenSource",
+          "lineNumber": 195
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "CancellationTokenSource.CreateLinkedTokenSource",
+          "lineNumber": 196
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "Task.Run",
+          "lineNumber": 198
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "PlaybackLoopAsync",
+          "lineNumber": 202
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 206
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "_logger?.LogError",
+          "lineNumber": 211
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "_errorSubject.OnNext",
+          "lineNumber": 213
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "new EngineError",
+          "lineNumber": 213
+        },
+        {
+          "caller": "PlayAsync",
+          "callee": "linkedCts.Dispose",
+          "lineNumber": 217
+        },
+        {
+          "caller": "PauseAsync",
+          "callee": "_audioSink.PauseAsync",
+          "lineNumber": 224
+        },
+        {
+          "caller": "PauseAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 232
+        },
+        {
+          "caller": "PauseAsync",
+          "callee": "PublishState",
+          "lineNumber": 235
+        },
+        {
+          "caller": "ResumeAsync",
+          "callee": "_audioSink.ResumeAsync",
+          "lineNumber": 240
+        },
+        {
+          "caller": "ResumeAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 248
+        },
+        {
+          "caller": "ResumeAsync",
+          "callee": "PublishState",
+          "lineNumber": 251
+        },
+        {
+          "caller": "SeekAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 261
+        },
+        {
+          "caller": "StopAsync",
+          "callee": "StopInternalAsync",
+          "lineNumber": 267
+        },
+        {
+          "caller": "StopAsync",
+          "callee": "PublishState",
+          "lineNumber": 272
+        },
+        {
+          "caller": "SetVolumeAsync",
+          "callee": "PublishState",
+          "lineNumber": 282
+        },
+        {
+          "caller": "SetNormalizationEnabled",
+          "callee": "_processingChain.Processors.OfType<NormalizationProcessor>",
+          "lineNumber": 288
+        },
+        {
+          "caller": "SetEqualizerEnabledAsync",
+          "callee": "_userEq.RefreshFilters",
+          "lineNumber": 303
+        },
+        {
+          "caller": "SetEqualizerEnabledAsync",
+          "callee": "_userEq.CommitSettingsVersion",
+          "lineNumber": 306
+        },
+        {
+          "caller": "SetEqualizerEnabledAsync",
+          "callee": "_userEq.WaitForVersionProcessedAsync(version, TimeSpan.FromSeconds(3), ct).ConfigureAwait",
+          "lineNumber": 316
+        },
+        {
+          "caller": "SetEqualizerEnabledAsync",
+          "callee": "_userEq.WaitForVersionProcessedAsync",
+          "lineNumber": 316
+        },
+        {
+          "caller": "SetEqualizerEnabledAsync",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 316
+        },
+        {
+          "caller": "SetEqualizerEnabledAsync",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 320
+        },
+        {
+          "caller": "SetEqualizerEnabledAsync",
+          "callee": "new EqualizerApplyResult",
+          "lineNumber": 323
+        },
+        {
+          "caller": "FindDecoderForCodec",
+          "callee": "string.Equals",
+          "lineNumber": 340
+        },
+        {
+          "caller": "FindDecoderForCodec",
+          "callee": "_decoderRegistry.FindDecoderByFormatName",
+          "lineNumber": 342
+        },
+        {
+          "caller": "FindDecoderForCodec",
+          "callee": "_decoderRegistry.FindDecoder",
+          "lineNumber": 350
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "new EngineState",
+          "lineNumber": 360
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 378
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "PublishState",
+          "lineNumber": 381
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 384
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Convert.FromBase64String",
+          "lineNumber": 385
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Convert.ToHexString",
+          "lineNumber": 390
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "System.Security.Cryptography.SHA1.HashData",
+          "lineNumber": 391
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "System.Text.Encoding.UTF8.GetBytes",
+          "lineNumber": 392
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "FileId.FromBase16",
+          "lineNumber": 393
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "trackHash.ToLowerInvariant",
+          "lineNumber": 393
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "new LazyProgressiveDownloader",
+          "lineNumber": 395
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Array.Empty<byte>",
+          "lineNumber": 396
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_processingChain.Processors.OfType<NormalizationProcessor>",
+          "lineNumber": 408
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "new TrackMetadata",
+          "lineNumber": 410
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "proc.SetTrackGain",
+          "lineNumber": 416
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "FindDecoderForCodec",
+          "lineNumber": 421
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "new NotSupportedException",
+          "lineNumber": 423
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 425
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "decoder.GetFormatAsync",
+          "lineNumber": 427
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 428
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_audioSink.InitializeAsync",
+          "lineNumber": 431
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_audioSink.SetBasePosition",
+          "lineNumber": 432
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_processingChain.InitializeAsync",
+          "lineNumber": 433
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 443
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "PublishState",
+          "lineNumber": 446
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "GC.Collect",
+          "lineNumber": 449
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Stopwatch.GetTimestamp",
+          "lineNumber": 464
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "decoder.DecodeAsync",
+          "lineNumber": 479
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "PublishState",
+          "lineNumber": 481
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Stopwatch.GetTimestamp",
+          "lineNumber": 489
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "TicksToMs",
+          "lineNumber": 490
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 492
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Interlocked.Increment",
+          "lineNumber": 507
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Stopwatch.GetTimestamp",
+          "lineNumber": 509
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 510
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 519
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Math.Max",
+          "lineNumber": 532
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Math.Min",
+          "lineNumber": 533
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 536
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "lazyStream.PrefetchRangeAsync",
+          "lineNumber": 538
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "buffer.Return",
+          "lineNumber": 543
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_audioSink.FlushAsync",
+          "lineNumber": 544
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_audioSink.SetBasePosition",
+          "lineNumber": 545
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 561
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "PublishState",
+          "lineNumber": 564
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "buffer.Return",
+          "lineNumber": 575
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_audioSink.FlushAsync",
+          "lineNumber": 576
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Stopwatch.GetTimestamp",
+          "lineNumber": 577
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 578
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "TicksToMs",
+          "lineNumber": 579
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_audioSink.SetBasePosition",
+          "lineNumber": 580
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Math.Max",
+          "lineNumber": 596
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Math.Min",
+          "lineNumber": 597
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 600
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "lazyStream.PrefetchRangeAsync",
+          "lineNumber": 602
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 608
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "decoder.SeekTo",
+          "lineNumber": 609
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Stopwatch.GetTimestamp",
+          "lineNumber": 610
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 611
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "TicksToMs",
+          "lineNumber": 612
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "lazyStream.NotifySeek",
+          "lineNumber": 615
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 616
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 630
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "PublishState",
+          "lineNumber": 633
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_processingChain.Process",
+          "lineNumber": 637
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Stopwatch.GetTimestamp",
+          "lineNumber": 641
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 642
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "TicksToMs",
+          "lineNumber": 644
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Stopwatch.GetTimestamp",
+          "lineNumber": 646
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_audioSink.WriteAsync",
+          "lineNumber": 647
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "TicksToMs",
+          "lineNumber": 654
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Stopwatch.GetTimestamp",
+          "lineNumber": 654
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 657
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "Stopwatch.GetTimestamp",
+          "lineNumber": 661
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 663
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "TicksToMs",
+          "lineNumber": 666
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "TicksToMs",
+          "lineNumber": 667
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "TicksToMs",
+          "lineNumber": 668
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "TicksToMs",
+          "lineNumber": 669
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "TicksToMs(seekStartTs, unmuteTs).ToString",
+          "lineNumber": 670
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "TicksToMs",
+          "lineNumber": 670
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "TicksToMs",
+          "lineNumber": 671
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "processed.Return",
+          "lineNumber": 674
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "ReferenceEquals",
+          "lineNumber": 675
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "buffer.Return",
+          "lineNumber": 675
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 685
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "PublishState",
+          "lineNumber": 692
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 702
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_audioSink.DrainAsync",
+          "lineNumber": 709
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 719
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "PublishState",
+          "lineNumber": 722
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 723
+        },
+        {
+          "caller": "PlaybackLoopDeferredAsync",
+          "callee": "_trackCompletedSubject.OnNext",
+          "lineNumber": 724
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "File.Exists",
+          "lineNumber": 739
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "new FileNotFoundException",
+          "lineNumber": 740
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "new EngineState",
+          "lineNumber": 746
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 763
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "PublishState",
+          "lineNumber": 766
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "new FileStream",
+          "lineNumber": 772
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "new LocalFilePathStream",
+          "lineNumber": 776
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_decoderRegistry.FindDecoder",
+          "lineNumber": 778
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "new NotSupportedException",
+          "lineNumber": 780
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "Path.GetExtension",
+          "lineNumber": 781
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 783
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "decoder.GetFormatAsync",
+          "lineNumber": 785
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 786
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_audioSink.InitializeAsync",
+          "lineNumber": 789
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_audioSink.SetBasePosition",
+          "lineNumber": 790
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_processingChain.InitializeAsync",
+          "lineNumber": 791
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_processingChain.Processors.OfType<NormalizationProcessor>",
+          "lineNumber": 795
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "new TrackMetadata",
+          "lineNumber": 797
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "proc.SetTrackGain",
+          "lineNumber": 803
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 814
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "PublishState",
+          "lineNumber": 817
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "decoder.DecodeAsync",
+          "lineNumber": 823
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "buffer.Return",
+          "lineNumber": 834
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_audioSink.FlushAsync",
+          "lineNumber": 835
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_audioSink.SetBasePosition",
+          "lineNumber": 836
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "decoder.SeekTo",
+          "lineNumber": 838
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 848
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "PublishState",
+          "lineNumber": 851
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_processingChain.Process",
+          "lineNumber": 855
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_audioSink.WriteAsync",
+          "lineNumber": 856
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "processed.Return",
+          "lineNumber": 857
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "ReferenceEquals",
+          "lineNumber": 858
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "buffer.Return",
+          "lineNumber": 858
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 868
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "PublishState",
+          "lineNumber": 875
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_audioSink.DrainAsync",
+          "lineNumber": 879
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 889
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "PublishState",
+          "lineNumber": 892
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 893
+        },
+        {
+          "caller": "PlaybackLoopLocalAsync",
+          "callee": "_trackCompletedSubject.OnNext",
+          "lineNumber": 894
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "new EngineState",
+          "lineNumber": 906
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 924
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "PublishState",
+          "lineNumber": 927
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 930
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_httpClient.GetAsync",
+          "lineNumber": 931
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "response.EnsureSuccessStatusCode",
+          "lineNumber": 932
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "response.Content.ReadAsStreamAsync",
+          "lineNumber": 933
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "new BufferedHttpStream",
+          "lineNumber": 936
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 940
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "Convert.FromBase64String",
+          "lineNumber": 941
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "new AudioDecryptStream",
+          "lineNumber": 943
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "FindDecoderForCodec",
+          "lineNumber": 946
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "new NotSupportedException",
+          "lineNumber": 948
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 950
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "decoder.GetFormatAsync",
+          "lineNumber": 952
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 953
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_audioSink.InitializeAsync",
+          "lineNumber": 957
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_audioSink.SetBasePosition",
+          "lineNumber": 958
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_processingChain.InitializeAsync",
+          "lineNumber": 959
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_processingChain.Processors.OfType<NormalizationProcessor>",
+          "lineNumber": 964
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "new TrackMetadata",
+          "lineNumber": 966
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "proc.SetTrackGain",
+          "lineNumber": 972
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 984
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "PublishState",
+          "lineNumber": 987
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "GC.Collect",
+          "lineNumber": 994
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "decoder.DecodeAsync",
+          "lineNumber": 1004
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "PublishState",
+          "lineNumber": 1012
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_audioSink.SetBasePosition",
+          "lineNumber": 1031
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 1043
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "PublishState",
+          "lineNumber": 1046
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "buffer.Return",
+          "lineNumber": 1048
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_processingChain.Process",
+          "lineNumber": 1053
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_audioSink.WriteAsync",
+          "lineNumber": 1056
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "processed.Return",
+          "lineNumber": 1059
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "ReferenceEquals",
+          "lineNumber": 1060
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "buffer.Return",
+          "lineNumber": 1061
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 1072
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "PublishState",
+          "lineNumber": 1079
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_audioSink.DrainAsync",
+          "lineNumber": 1088
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "DateTimeOffset.UtcNow.ToUnixTimeMilliseconds",
+          "lineNumber": 1099
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "PublishState",
+          "lineNumber": 1102
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 1104
+        },
+        {
+          "caller": "PlaybackLoopAsync",
+          "callee": "_trackCompletedSubject.OnNext",
+          "lineNumber": 1105
+        },
+        {
+          "caller": "PublishState",
+          "callee": "_stateSubject.OnNext",
+          "lineNumber": 1115
+        },
+        {
+          "caller": "StopInternalAsync",
+          "callee": "_playbackCts.CancelAsync",
+          "lineNumber": 1122
+        },
+        {
+          "caller": "StopInternalAsync",
+          "callee": "Task.WhenAny",
+          "lineNumber": 1130
+        },
+        {
+          "caller": "StopInternalAsync",
+          "callee": "Task.Delay",
+          "lineNumber": 1130
+        },
+        {
+          "caller": "StopInternalAsync",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 1130
+        },
+        {
+          "caller": "StopInternalAsync",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 1138
+        },
+        {
+          "caller": "StopInternalAsync",
+          "callee": "_playbackCts.Dispose",
+          "lineNumber": 1141
+        },
+        {
+          "caller": "StopInternalAsync",
+          "callee": "_audioSink.FlushAsync",
+          "lineNumber": 1145
+        },
+        {
+          "caller": "DisposeAsync",
+          "callee": "StopInternalAsync",
+          "lineNumber": 1153
+        },
+        {
+          "caller": "DisposeAsync",
+          "callee": "_stateSubject.Dispose",
+          "lineNumber": 1154
+        },
+        {
+          "caller": "DisposeAsync",
+          "callee": "_errorSubject.Dispose",
+          "lineNumber": 1155
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 17,
+        "functionCount": 19,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/AudioSettings.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 116,
+      "nonEmptyLines": 102,
+      "functions": [
+        {
+          "name": "CyclePreset",
+          "startLine": 70,
+          "endLine": 77,
+          "params": []
+        },
+        {
+          "name": "TrySetPreset",
+          "startLine": 84,
+          "endLine": 92,
+          "params": [
+            "name"
+          ]
+        },
+        {
+          "name": "TrackSubscription",
+          "startLine": 97,
+          "endLine": 100,
+          "params": [
+            "subscription"
+          ]
+        },
+        {
+          "name": "Dispose",
+          "startLine": 102,
+          "endLine": 115,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "AudioSettings",
+          "startLine": 33,
+          "endLine": 116,
+          "methods": [
+            "CyclePreset",
+            "TrySetPreset",
+            "TrackSubscription",
+            "Dispose"
+          ],
+          "properties": [
+            "_currentPreset",
+            "_subscriptions",
+            "_disposed",
+            "PresetChanged",
+            "Preset",
+            "AvailablePresets"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "PresetChanged",
+          "line": 43,
+          "isDefault": false
+        },
+        {
+          "name": "Preset",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "AvailablePresets",
+          "line": 63,
+          "isDefault": false
+        },
+        {
+          "name": "CyclePreset",
+          "line": 70,
+          "isDefault": false
+        },
+        {
+          "name": "TrySetPreset",
+          "line": 84,
+          "isDefault": false
+        },
+        {
+          "name": "Dispose",
+          "line": 102,
+          "isDefault": false
+        },
+        {
+          "name": "AudioSettings",
+          "line": 33,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "CyclePreset",
+          "callee": "Array.IndexOf",
+          "lineNumber": 73
+        },
+        {
+          "caller": "CyclePreset",
+          "callee": "Enum.GetValues<AudioPreset>",
+          "lineNumber": 73
+        },
+        {
+          "caller": "TrySetPreset",
+          "callee": "Enum.TryParse<AudioPreset>",
+          "lineNumber": 86
+        },
+        {
+          "caller": "TrackSubscription",
+          "callee": "_subscriptions.Add",
+          "lineNumber": 99
+        },
+        {
+          "caller": "Dispose",
+          "callee": "subscription.Dispose",
+          "lineNumber": 109
+        },
+        {
+          "caller": "Dispose",
+          "callee": "_subscriptions.Clear",
+          "lineNumber": 111
+        },
+        {
+          "caller": "Dispose",
+          "callee": "_currentPreset.Dispose",
+          "lineNumber": 113
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 7,
+        "functionCount": 4,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Decoders/AudioDecoderRegistry.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 245,
+      "nonEmptyLines": 212,
+      "functions": [
+        {
+          "name": "Register",
+          "startLine": 22,
+          "endLine": 25,
+          "params": [
+            "decoder"
+          ]
+        },
+        {
+          "name": "FindDecoderByFormatName",
+          "startLine": 30,
+          "endLine": 39,
+          "params": [
+            "formatName"
+          ]
+        },
+        {
+          "name": "FindDecoder",
+          "startLine": 48,
+          "endLine": 106,
+          "params": [
+            "stream",
+            "wrappedStream"
+          ]
+        },
+        {
+          "name": "FindDecoder",
+          "startLine": 111,
+          "endLine": 115,
+          "params": [
+            "stream"
+          ]
+        },
+        {
+          "name": "DetectFormatAsync",
+          "startLine": 121,
+          "endLine": 131,
+          "params": [
+            "stream",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "PrefixedStream",
+          "startLine": 152,
+          "endLine": 158,
+          "params": [
+            "prefix",
+            "prefixLength",
+            "innerStream"
+          ]
+        },
+        {
+          "name": "Read",
+          "startLine": 170,
+          "endLine": 197,
+          "params": [
+            "buffer",
+            "offset",
+            "count"
+          ]
+        },
+        {
+          "name": "ReadAsync",
+          "startLine": 199,
+          "endLine": 226,
+          "params": [
+            "buffer",
+            "offset",
+            "count",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "Flush",
+          "startLine": 228,
+          "endLine": 228,
+          "params": []
+        },
+        {
+          "name": "Seek",
+          "startLine": 229,
+          "endLine": 229,
+          "params": [
+            "offset",
+            "origin"
+          ]
+        },
+        {
+          "name": "SetLength",
+          "startLine": 230,
+          "endLine": 230,
+          "params": [
+            "value"
+          ]
+        },
+        {
+          "name": "Write",
+          "startLine": 231,
+          "endLine": 231,
+          "params": [
+            "buffer",
+            "offset",
+            "count"
+          ]
+        },
+        {
+          "name": "Dispose",
+          "startLine": 233,
+          "endLine": 244,
+          "params": [
+            "disposing"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "AudioDecoderRegistry",
+          "startLine": 9,
+          "endLine": 132,
+          "methods": [
+            "Register",
+            "FindDecoderByFormatName",
+            "FindDecoder",
+            "FindDecoder",
+            "DetectFormatAsync"
+          ],
+          "properties": [
+            "_decoders",
+            "HeaderBufferSize"
+          ]
+        },
+        {
+          "name": "PrefixedStream",
+          "startLine": 139,
+          "endLine": 245,
+          "methods": [
+            "PrefixedStream",
+            "Read",
+            "ReadAsync",
+            "Flush",
+            "Seek",
+            "SetLength",
+            "Write",
+            "Dispose"
+          ],
+          "properties": [
+            "_prefix",
+            "_prefixLength",
+            "_innerStream",
+            "_prefixPosition",
+            "_disposed",
+            "InnerStream",
+            "CanRead",
+            "CanSeek",
+            "CanWrite",
+            "Length",
+            "Position"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Register",
+          "line": 22,
+          "isDefault": false
+        },
+        {
+          "name": "FindDecoderByFormatName",
+          "line": 30,
+          "isDefault": false
+        },
+        {
+          "name": "FindDecoder",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "FindDecoder",
+          "line": 111,
+          "isDefault": false
+        },
+        {
+          "name": "DetectFormatAsync",
+          "line": 121,
+          "isDefault": false
+        },
+        {
+          "name": "AudioDecoderRegistry",
+          "line": 9,
+          "isDefault": false
+        },
+        {
+          "name": "InnerStream",
+          "line": 150,
+          "isDefault": false
+        },
+        {
+          "name": "PrefixedStream",
+          "line": 152,
+          "isDefault": false
+        },
+        {
+          "name": "CanRead",
+          "line": 160,
+          "isDefault": false
+        },
+        {
+          "name": "CanSeek",
+          "line": 161,
+          "isDefault": false
+        },
+        {
+          "name": "CanWrite",
+          "line": 162,
+          "isDefault": false
+        },
+        {
+          "name": "Length",
+          "line": 163,
+          "isDefault": false
+        },
+        {
+          "name": "Position",
+          "line": 164,
+          "isDefault": false
+        },
+        {
+          "name": "Read",
+          "line": 170,
+          "isDefault": false
+        },
+        {
+          "name": "ReadAsync",
+          "line": 199,
+          "isDefault": false
+        },
+        {
+          "name": "Flush",
+          "line": 228,
+          "isDefault": false
+        },
+        {
+          "name": "Seek",
+          "line": 229,
+          "isDefault": false
+        },
+        {
+          "name": "SetLength",
+          "line": 230,
+          "isDefault": false
+        },
+        {
+          "name": "Write",
+          "line": 231,
+          "isDefault": false
+        },
+        {
+          "name": "PrefixedStream",
+          "line": 139,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Register",
+          "callee": "_decoders.Add",
+          "lineNumber": 24
+        },
+        {
+          "caller": "FindDecoderByFormatName",
+          "callee": "string.Equals",
+          "lineNumber": 34
+        },
+        {
+          "caller": "FindDecoder",
+          "callee": "stream.Read",
+          "lineNumber": 59
+        },
+        {
+          "caller": "FindDecoder",
+          "callee": "new MemoryStream",
+          "lineNumber": 71
+        },
+        {
+          "caller": "FindDecoder",
+          "callee": "decoder.CanDecode",
+          "lineNumber": 76
+        },
+        {
+          "caller": "FindDecoder",
+          "callee": "new PrefixedStream",
+          "lineNumber": 79
+        },
+        {
+          "caller": "FindDecoder",
+          "callee": "new PrefixedStream",
+          "lineNumber": 85
+        },
+        {
+          "caller": "FindDecoder",
+          "callee": "decoder.CanDecode",
+          "lineNumber": 95
+        },
+        {
+          "caller": "FindDecoder",
+          "callee": "FindDecoder",
+          "lineNumber": 114
+        },
+        {
+          "caller": "DetectFormatAsync",
+          "callee": "FindDecoder",
+          "lineNumber": 125
+        },
+        {
+          "caller": "DetectFormatAsync",
+          "callee": "new NotSupportedException",
+          "lineNumber": 127
+        },
+        {
+          "caller": "DetectFormatAsync",
+          "callee": "decoder.GetFormatAsync",
+          "lineNumber": 129
+        },
+        {
+          "caller": "Read",
+          "callee": "new ObjectDisposedException",
+          "lineNumber": 173
+        },
+        {
+          "caller": "Read",
+          "callee": "nameof",
+          "lineNumber": 173
+        },
+        {
+          "caller": "Read",
+          "callee": "Math.Min",
+          "lineNumber": 181
+        },
+        {
+          "caller": "Read",
+          "callee": "Array.Copy",
+          "lineNumber": 182
+        },
+        {
+          "caller": "Read",
+          "callee": "_innerStream.Read",
+          "lineNumber": 192
+        },
+        {
+          "caller": "ReadAsync",
+          "callee": "new ObjectDisposedException",
+          "lineNumber": 202
+        },
+        {
+          "caller": "ReadAsync",
+          "callee": "nameof",
+          "lineNumber": 202
+        },
+        {
+          "caller": "ReadAsync",
+          "callee": "Math.Min",
+          "lineNumber": 210
+        },
+        {
+          "caller": "ReadAsync",
+          "callee": "Array.Copy",
+          "lineNumber": 211
+        },
+        {
+          "caller": "ReadAsync",
+          "callee": "_innerStream.ReadAsync",
+          "lineNumber": 221
+        },
+        {
+          "caller": "Seek",
+          "callee": "new NotSupportedException",
+          "lineNumber": 229
+        },
+        {
+          "caller": "SetLength",
+          "callee": "new NotSupportedException",
+          "lineNumber": 230
+        },
+        {
+          "caller": "Write",
+          "callee": "new NotSupportedException",
+          "lineNumber": 231
+        },
+        {
+          "caller": "Dispose",
+          "callee": "_innerStream.Dispose",
+          "lineNumber": 240
+        },
+        {
+          "caller": "Dispose",
+          "callee": "base.Dispose",
+          "lineNumber": 243
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 20,
+        "functionCount": 13,
+        "classCount": 2
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Decoders/BassDecoder.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 555,
+      "nonEmptyLines": 477,
+      "functions": [
+        {
+          "name": "SeekTo",
+          "startLine": 45,
+          "endLine": 45,
+          "params": [
+            "positionMs"
+          ]
+        },
+        {
+          "name": "BassDecoder",
+          "startLine": 51,
+          "endLine": 54,
+          "params": [
+            "logger"
+          ]
+        },
+        {
+          "name": "CanDecode",
+          "startLine": 57,
+          "endLine": 82,
+          "params": [
+            "stream"
+          ]
+        },
+        {
+          "name": "GetFormatAsync",
+          "startLine": 85,
+          "endLine": 164,
+          "params": [
+            "stream",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "DecodeAsync",
+          "startLine": 167,
+          "endLine": 383,
+          "params": [
+            "stream",
+            "startPositionMs",
+            "onMetadataReceived",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "FindUrlAwareStream",
+          "startLine": 388,
+          "endLine": 395,
+          "params": [
+            "stream"
+          ]
+        },
+        {
+          "name": "FindLocalFilePathStream",
+          "startLine": 400,
+          "endLine": 407,
+          "params": [
+            "stream"
+          ]
+        },
+        {
+          "name": "ExtractStreamTitle",
+          "startLine": 414,
+          "endLine": 430,
+          "params": [
+            "metadata"
+          ]
+        },
+        {
+          "name": "IsSupported",
+          "startLine": 435,
+          "endLine": 479,
+          "params": [
+            "header"
+          ]
+        },
+        {
+          "name": "ReadStreamToMemoryAsync",
+          "startLine": 484,
+          "endLine": 500,
+          "params": [
+            "stream",
+            "ct"
+          ]
+        },
+        {
+          "name": "ConvertFloatToPcm16",
+          "startLine": 505,
+          "endLine": 520,
+          "params": [
+            "floatSamples",
+            "pcmOutput"
+          ]
+        },
+        {
+          "name": "EnsureBassInitialized",
+          "startLine": 525,
+          "endLine": 554,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "BassDecoder",
+          "startLine": 16,
+          "endLine": 555,
+          "methods": [
+            "SeekTo",
+            "BassDecoder",
+            "CanDecode",
+            "GetFormatAsync",
+            "DecodeAsync",
+            "FindUrlAwareStream",
+            "FindLocalFilePathStream",
+            "ExtractStreamTitle",
+            "IsSupported",
+            "ReadStreamToMemoryAsync",
+            "ConvertFloatToPcm16",
+            "EnsureBassInitialized"
+          ],
+          "properties": [
+            "_bassInitialized",
+            "_initLock",
+            "SamplesPerBuffer",
+            "MaxRetries",
+            "DefaultStreamingSampleRate",
+            "DefaultStreamingChannels",
+            "_logger",
+            "FormatName"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "FormatName",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "SeekTo",
+          "line": 45,
+          "isDefault": false
+        },
+        {
+          "name": "BassDecoder",
+          "line": 51,
+          "isDefault": false
+        },
+        {
+          "name": "CanDecode",
+          "line": 57,
+          "isDefault": false
+        },
+        {
+          "name": "GetFormatAsync",
+          "line": 85,
+          "isDefault": false
+        },
+        {
+          "name": "DecodeAsync",
+          "line": 167,
+          "isDefault": false
+        },
+        {
+          "name": "BassDecoder",
+          "line": 16,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "CanDecode",
+          "callee": "stream.Read",
+          "lineNumber": 68
+        },
+        {
+          "caller": "CanDecode",
+          "callee": "IsSupported",
+          "lineNumber": 73
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "EnsureBassInitialized",
+          "lineNumber": 87
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "FindLocalFilePathStream",
+          "lineNumber": 91
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "Bass.CreateStream",
+          "lineNumber": 94
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "new InvalidOperationException",
+          "lineNumber": 98
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "Bass.ChannelGetInfo",
+          "lineNumber": 103
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "new AudioFormat",
+          "lineNumber": 104
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "Bass.StreamFree",
+          "lineNumber": 108
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "FindUrlAwareStream",
+          "lineNumber": 112
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "urlStream.Url.StartsWith",
+          "lineNumber": 114
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "urlStream.Url.StartsWith",
+          "lineNumber": 115
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "Bass.CreateStream",
+          "lineNumber": 117
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "new InvalidOperationException",
+          "lineNumber": 121
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "Bass.ChannelGetInfo",
+          "lineNumber": 126
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "new AudioFormat",
+          "lineNumber": 127
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "Bass.StreamFree",
+          "lineNumber": 131
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 139
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "new AudioFormat",
+          "lineNumber": 140
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "ReadStreamToMemoryAsync",
+          "lineNumber": 144
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "Bass.CreateStream",
+          "lineNumber": 147
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "new InvalidOperationException",
+          "lineNumber": 152
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "Bass.ChannelGetInfo",
+          "lineNumber": 157
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "new AudioFormat",
+          "lineNumber": 158
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "Bass.StreamFree",
+          "lineNumber": 162
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "EnsureBassInitialized",
+          "lineNumber": 173
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 182
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "stream.GetType",
+          "lineNumber": 182
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "FindLocalFilePathStream",
+          "lineNumber": 185
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 188
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.CreateStream",
+          "lineNumber": 189
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "FindUrlAwareStream",
+          "lineNumber": 193
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "urlStream.Url.StartsWith",
+          "lineNumber": 194
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "urlStream.Url.StartsWith",
+          "lineNumber": 195
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 198
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.CreateStream",
+          "lineNumber": 199
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.ChannelSetSync",
+          "lineNumber": 204
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.ChannelGetTags",
+          "lineNumber": 209
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Marshal.PtrToStringAnsi",
+          "lineNumber": 212
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 213
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ExtractStreamTitle",
+          "lineNumber": 215
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 216
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 218
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "onMetadataReceived",
+          "lineNumber": 219
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 226
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 232
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 236
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ReadStreamToMemoryAsync",
+          "lineNumber": 243
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.CreateStream",
+          "lineNumber": 244
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "new InvalidOperationException",
+          "lineNumber": 250
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.ChannelGetInfo",
+          "lineNumber": 255
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.ChannelSeconds2Bytes",
+          "lineNumber": 260
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.ChannelSetPosition",
+          "lineNumber": 261
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 263
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 267
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ArrayPool<float>.Shared.Rent",
+          "lineNumber": 272
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ArrayPool<byte>.Shared.Rent",
+          "lineNumber": 274
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 284
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.ChannelGetData",
+          "lineNumber": 293
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 305
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Math.Pow",
+          "lineNumber": 305
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 306
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Task.Delay",
+          "lineNumber": 310
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.StreamFree",
+          "lineNumber": 313
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.CreateStream",
+          "lineNumber": 314
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 318
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 323
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogError",
+          "lineNumber": 328
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 338
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ConvertFloatToPcm16",
+          "lineNumber": 347
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "floatBuffer.AsSpan",
+          "lineNumber": 347
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "pcmBuffer.AsSpan",
+          "lineNumber": 347
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.ChannelGetPosition",
+          "lineNumber": 359
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.ChannelBytes2Seconds",
+          "lineNumber": 360
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ArrayPool<byte>.Shared.Rent",
+          "lineNumber": 365
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "pcmBuffer.AsSpan(0, pcmBytes).CopyTo",
+          "lineNumber": 366
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "pcmBuffer.AsSpan",
+          "lineNumber": 366
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "new AudioBuffer",
+          "lineNumber": 368
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 371
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ArrayPool<float>.Shared.Return",
+          "lineNumber": 375
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ArrayPool<byte>.Shared.Return",
+          "lineNumber": 376
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Bass.StreamFree",
+          "lineNumber": 381
+        },
+        {
+          "caller": "FindUrlAwareStream",
+          "callee": "FindUrlAwareStream",
+          "lineNumber": 393
+        },
+        {
+          "caller": "FindLocalFilePathStream",
+          "callee": "FindLocalFilePathStream",
+          "lineNumber": 405
+        },
+        {
+          "caller": "ExtractStreamTitle",
+          "callee": "metadata.IndexOf",
+          "lineNumber": 418
+        },
+        {
+          "caller": "ExtractStreamTitle",
+          "callee": "metadata.IndexOf",
+          "lineNumber": 423
+        },
+        {
+          "caller": "ExtractStreamTitle",
+          "callee": "metadata.IndexOf",
+          "lineNumber": 425
+        },
+        {
+          "caller": "ReadStreamToMemoryAsync",
+          "callee": "ms.TryGetBuffer",
+          "lineNumber": 486
+        },
+        {
+          "caller": "ReadStreamToMemoryAsync",
+          "callee": "ms.ToArray",
+          "lineNumber": 488
+        },
+        {
+          "caller": "ReadStreamToMemoryAsync",
+          "callee": "new MemoryStream",
+          "lineNumber": 497
+        },
+        {
+          "caller": "ReadStreamToMemoryAsync",
+          "callee": "stream.CopyToAsync",
+          "lineNumber": 498
+        },
+        {
+          "caller": "ReadStreamToMemoryAsync",
+          "callee": "memoryStream.ToArray",
+          "lineNumber": 499
+        },
+        {
+          "caller": "ConvertFloatToPcm16",
+          "callee": "Math.Clamp",
+          "lineNumber": 510
+        },
+        {
+          "caller": "EnsureBassInitialized",
+          "callee": "Bass.Init",
+          "lineNumber": 537
+        },
+        {
+          "caller": "EnsureBassInitialized",
+          "callee": "new InvalidOperationException",
+          "lineNumber": 543
+        },
+        {
+          "caller": "EnsureBassInitialized",
+          "callee": "BassPluginLoader.TryLoadAllOnce",
+          "lineNumber": 550
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 7,
+        "functionCount": 12,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Decoders/BassPluginLoader.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 76,
+      "nonEmptyLines": 70,
+      "functions": [
+        {
+          "name": "TryLoadAllOnce",
+          "startLine": 28,
+          "endLine": 75,
+          "params": [
+            "logger"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "BassPluginLoader",
+          "startLine": 23,
+          "endLine": 76,
+          "methods": [
+            "TryLoadAllOnce"
+          ],
+          "properties": [
+            "Gate",
+            "_attempted"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "TryLoadAllOnce",
+          "line": 28,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "TryLoadAllOnce",
+          "callee": "Path.Combine",
+          "lineNumber": 39
+        },
+        {
+          "caller": "TryLoadAllOnce",
+          "callee": "Directory.Exists",
+          "lineNumber": 40
+        },
+        {
+          "caller": "TryLoadAllOnce",
+          "callee": "logger?.LogInformation",
+          "lineNumber": 42
+        },
+        {
+          "caller": "TryLoadAllOnce",
+          "callee": "Directory.EnumerateFiles",
+          "lineNumber": 50
+        },
+        {
+          "caller": "TryLoadAllOnce",
+          "callee": "Bass.PluginLoad",
+          "lineNumber": 52
+        },
+        {
+          "caller": "TryLoadAllOnce",
+          "callee": "logger?.LogWarning",
+          "lineNumber": 55
+        },
+        {
+          "caller": "TryLoadAllOnce",
+          "callee": "Path.GetFileName",
+          "lineNumber": 57
+        },
+        {
+          "caller": "TryLoadAllOnce",
+          "callee": "logger?.LogInformation",
+          "lineNumber": 62
+        },
+        {
+          "caller": "TryLoadAllOnce",
+          "callee": "Path.GetFileName",
+          "lineNumber": 62
+        },
+        {
+          "caller": "TryLoadAllOnce",
+          "callee": "logger?.LogInformation",
+          "lineNumber": 68
+        },
+        {
+          "caller": "TryLoadAllOnce",
+          "callee": "logger?.LogWarning",
+          "lineNumber": 73
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Decoders/SkipStream.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 188,
+      "nonEmptyLines": 152,
+      "functions": [
+        {
+          "name": "SkipStream",
+          "startLine": 23,
+          "endLine": 38,
+          "params": [
+            "innerStream",
+            "skipBytes",
+            "leaveOpen"
+          ]
+        },
+        {
+          "name": "Read",
+          "startLine": 64,
+          "endLine": 75,
+          "params": [
+            "buffer",
+            "offset",
+            "count"
+          ]
+        },
+        {
+          "name": "Read",
+          "startLine": 77,
+          "endLine": 87,
+          "params": [
+            "buffer"
+          ]
+        },
+        {
+          "name": "ReadAsync",
+          "startLine": 89,
+          "endLine": 99,
+          "params": [
+            "buffer",
+            "offset",
+            "count",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "ReadAsync",
+          "startLine": 101,
+          "endLine": 111,
+          "params": [
+            "buffer",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "Seek",
+          "startLine": 113,
+          "endLine": 139,
+          "params": [
+            "offset",
+            "origin"
+          ]
+        },
+        {
+          "name": "Flush",
+          "startLine": 141,
+          "endLine": 144,
+          "params": []
+        },
+        {
+          "name": "SetLength",
+          "startLine": 146,
+          "endLine": 149,
+          "params": [
+            "value"
+          ]
+        },
+        {
+          "name": "Write",
+          "startLine": 151,
+          "endLine": 154,
+          "params": [
+            "buffer",
+            "offset",
+            "count"
+          ]
+        },
+        {
+          "name": "EnsureNotDisposed",
+          "startLine": 156,
+          "endLine": 159,
+          "params": []
+        },
+        {
+          "name": "Dispose",
+          "startLine": 161,
+          "endLine": 173,
+          "params": [
+            "disposing"
+          ]
+        },
+        {
+          "name": "DisposeAsync",
+          "startLine": 175,
+          "endLine": 187,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "SkipStream",
+          "startLine": 10,
+          "endLine": 188,
+          "methods": [
+            "SkipStream",
+            "Read",
+            "Read",
+            "ReadAsync",
+            "ReadAsync",
+            "Seek",
+            "Flush",
+            "SetLength",
+            "Write",
+            "EnsureNotDisposed",
+            "Dispose",
+            "DisposeAsync"
+          ],
+          "properties": [
+            "_innerStream",
+            "_skipBytes",
+            "_leaveOpen",
+            "_disposed",
+            "CanRead",
+            "CanSeek",
+            "CanWrite",
+            "Length",
+            "Position"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "SkipStream",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "CanRead",
+          "line": 40,
+          "isDefault": false
+        },
+        {
+          "name": "CanSeek",
+          "line": 41,
+          "isDefault": false
+        },
+        {
+          "name": "CanWrite",
+          "line": 42,
+          "isDefault": false
+        },
+        {
+          "name": "Length",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "Position",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "Read",
+          "line": 64,
+          "isDefault": false
+        },
+        {
+          "name": "Read",
+          "line": 77,
+          "isDefault": false
+        },
+        {
+          "name": "ReadAsync",
+          "line": 89,
+          "isDefault": false
+        },
+        {
+          "name": "ReadAsync",
+          "line": 101,
+          "isDefault": false
+        },
+        {
+          "name": "Seek",
+          "line": 113,
+          "isDefault": false
+        },
+        {
+          "name": "Flush",
+          "line": 141,
+          "isDefault": false
+        },
+        {
+          "name": "SetLength",
+          "line": 146,
+          "isDefault": false
+        },
+        {
+          "name": "Write",
+          "line": 151,
+          "isDefault": false
+        },
+        {
+          "name": "DisposeAsync",
+          "line": 175,
+          "isDefault": false
+        },
+        {
+          "name": "SkipStream",
+          "line": 10,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "SkipStream",
+          "callee": "ArgumentNullException.ThrowIfNull",
+          "lineNumber": 25
+        },
+        {
+          "caller": "SkipStream",
+          "callee": "new ArgumentOutOfRangeException",
+          "lineNumber": 27
+        },
+        {
+          "caller": "SkipStream",
+          "callee": "nameof",
+          "lineNumber": 27
+        },
+        {
+          "caller": "Read",
+          "callee": "EnsureNotDisposed",
+          "lineNumber": 66
+        },
+        {
+          "caller": "Read",
+          "callee": "_innerStream.Read",
+          "lineNumber": 74
+        },
+        {
+          "caller": "Read",
+          "callee": "EnsureNotDisposed",
+          "lineNumber": 79
+        },
+        {
+          "caller": "Read",
+          "callee": "_innerStream.Read",
+          "lineNumber": 86
+        },
+        {
+          "caller": "ReadAsync",
+          "callee": "EnsureNotDisposed",
+          "lineNumber": 91
+        },
+        {
+          "caller": "ReadAsync",
+          "callee": "_innerStream.ReadAsync",
+          "lineNumber": 98
+        },
+        {
+          "caller": "ReadAsync",
+          "callee": "EnsureNotDisposed",
+          "lineNumber": 103
+        },
+        {
+          "caller": "ReadAsync",
+          "callee": "_innerStream.ReadAsync",
+          "lineNumber": 110
+        },
+        {
+          "caller": "Seek",
+          "callee": "EnsureNotDisposed",
+          "lineNumber": 115
+        },
+        {
+          "caller": "Seek",
+          "callee": "new NotSupportedException",
+          "lineNumber": 118
+        },
+        {
+          "caller": "Seek",
+          "callee": "new ArgumentOutOfRangeException",
+          "lineNumber": 126
+        },
+        {
+          "caller": "Seek",
+          "callee": "nameof",
+          "lineNumber": 126
+        },
+        {
+          "caller": "Seek",
+          "callee": "_innerStream.Seek",
+          "lineNumber": 129
+        },
+        {
+          "caller": "SetLength",
+          "callee": "new NotSupportedException",
+          "lineNumber": 148
+        },
+        {
+          "caller": "Write",
+          "callee": "new NotSupportedException",
+          "lineNumber": 153
+        },
+        {
+          "caller": "EnsureNotDisposed",
+          "callee": "ObjectDisposedException.ThrowIf",
+          "lineNumber": 158
+        },
+        {
+          "caller": "Dispose",
+          "callee": "_innerStream.Dispose",
+          "lineNumber": 168
+        },
+        {
+          "caller": "Dispose",
+          "callee": "base.Dispose",
+          "lineNumber": 172
+        },
+        {
+          "caller": "DisposeAsync",
+          "callee": "_innerStream.DisposeAsync",
+          "lineNumber": 182
+        },
+        {
+          "caller": "DisposeAsync",
+          "callee": "GC.SuppressFinalize",
+          "lineNumber": 186
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 16,
+        "functionCount": 12,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Decoders/StubDecoder.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 48,
+      "nonEmptyLines": 40,
+      "functions": [
+        {
+          "name": "SeekTo",
+          "startLine": 11,
+          "endLine": 11,
+          "params": [
+            "positionMs"
+          ]
+        },
+        {
+          "name": "CanDecode",
+          "startLine": 13,
+          "endLine": 17,
+          "params": [
+            "stream"
+          ]
+        },
+        {
+          "name": "GetFormatAsync",
+          "startLine": 19,
+          "endLine": 23,
+          "params": [
+            "stream",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "DecodeAsync",
+          "startLine": 25,
+          "endLine": 47,
+          "params": [
+            "stream",
+            "startPositionMs",
+            "onMetadataReceived",
+            "cancellationToken"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "StubDecoder",
+          "startLine": 8,
+          "endLine": 48,
+          "methods": [
+            "SeekTo",
+            "CanDecode",
+            "GetFormatAsync",
+            "DecodeAsync"
+          ],
+          "properties": [
+            "FormatName"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "FormatName",
+          "line": 10,
+          "isDefault": false
+        },
+        {
+          "name": "SeekTo",
+          "line": 11,
+          "isDefault": false
+        },
+        {
+          "name": "CanDecode",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "GetFormatAsync",
+          "line": 19,
+          "isDefault": false
+        },
+        {
+          "name": "DecodeAsync",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "StubDecoder",
+          "line": 8,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetFormatAsync",
+          "callee": "Task.FromResult",
+          "lineNumber": 22
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "cancellationToken.ThrowIfCancellationRequested",
+          "lineNumber": 40
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "new AudioBuffer",
+          "lineNumber": 42
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "format.BytesToMilliseconds",
+          "lineNumber": 44
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "Task.Delay",
+          "lineNumber": 45
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 6,
+        "functionCount": 4,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Decoders/VorbisDecoder.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 351,
+      "nonEmptyLines": 298,
+      "functions": [
+        {
+          "name": "VorbisDecoder",
+          "startLine": 50,
+          "endLine": 53,
+          "params": [
+            "logger"
+          ]
+        },
+        {
+          "name": "CanDecode",
+          "startLine": 59,
+          "endLine": 65,
+          "params": [
+            "stream"
+          ]
+        },
+        {
+          "name": "GetFormatAsync",
+          "startLine": 71,
+          "endLine": 94,
+          "params": [
+            "stream",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "DecodeAsync",
+          "startLine": 100,
+          "endLine": 175,
+          "params": [
+            "stream",
+            "startPositionMs",
+            "onMetadataReceived",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "SeekTo",
+          "startLine": 177,
+          "endLine": 181,
+          "params": [
+            "positionMs"
+          ]
+        },
+        {
+          "name": "TryFindVorbisStartOffset",
+          "startLine": 183,
+          "endLine": 219,
+          "params": [
+            "stream",
+            "offset"
+          ]
+        },
+        {
+          "name": "HasVorbisHeaderAt",
+          "startLine": 221,
+          "endLine": 225,
+          "params": [
+            "stream",
+            "offset"
+          ]
+        },
+        {
+          "name": "HasVorbisHeaderAtCurrentPosition",
+          "startLine": 227,
+          "endLine": 264,
+          "params": [
+            "stream"
+          ]
+        },
+        {
+          "name": "TryReadExactly",
+          "startLine": 266,
+          "endLine": 277,
+          "params": [
+            "stream",
+            "buffer"
+          ]
+        },
+        {
+          "name": "TrySkipNonSeekable",
+          "startLine": 279,
+          "endLine": 298,
+          "params": [
+            "stream",
+            "bytesToSkip"
+          ]
+        },
+        {
+          "name": "ReadNormalizationData",
+          "startLine": 305,
+          "endLine": 330,
+          "params": [
+            "stream"
+          ]
+        },
+        {
+          "name": "ConvertFloatToPcm16",
+          "startLine": 335,
+          "endLine": 350,
+          "params": [
+            "floatSamples",
+            "pcmOutput"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "VorbisDecoder",
+          "startLine": 18,
+          "endLine": 351,
+          "methods": [
+            "VorbisDecoder",
+            "CanDecode",
+            "GetFormatAsync",
+            "DecodeAsync",
+            "SeekTo",
+            "TryFindVorbisStartOffset",
+            "HasVorbisHeaderAt",
+            "HasVorbisHeaderAtCurrentPosition",
+            "TryReadExactly",
+            "TrySkipNonSeekable",
+            "ReadNormalizationData",
+            "ConvertFloatToPcm16"
+          ],
+          "properties": [
+            "SpotifyHeaderSize",
+            "OggMagic",
+            "SamplesPerBuffer",
+            "_logger",
+            "_cachedReader",
+            "_cachedSkipStream",
+            "_cachedForStream",
+            "_cachedOggStartOffset",
+            "FormatName"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "SpotifyHeaderSize",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "FormatName",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "VorbisDecoder",
+          "line": 50,
+          "isDefault": false
+        },
+        {
+          "name": "CanDecode",
+          "line": 59,
+          "isDefault": false
+        },
+        {
+          "name": "GetFormatAsync",
+          "line": 71,
+          "isDefault": false
+        },
+        {
+          "name": "DecodeAsync",
+          "line": 100,
+          "isDefault": false
+        },
+        {
+          "name": "SeekTo",
+          "line": 177,
+          "isDefault": false
+        },
+        {
+          "name": "ReadNormalizationData",
+          "line": 305,
+          "isDefault": false
+        },
+        {
+          "name": "VorbisDecoder",
+          "line": 18,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "CanDecode",
+          "callee": "TryFindVorbisStartOffset",
+          "lineNumber": 64
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "TryFindVorbisStartOffset",
+          "lineNumber": 73
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 77
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "new SkipStream",
+          "lineNumber": 80
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "new VorbisReader",
+          "lineNumber": 81
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "Task.FromResult",
+          "lineNumber": 89
+        },
+        {
+          "caller": "GetFormatAsync",
+          "callee": "new AudioFormat",
+          "lineNumber": 89
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "TryFindVorbisStartOffset",
+          "lineNumber": 118
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "new SkipStream",
+          "lineNumber": 121
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "new VorbisReader",
+          "lineNumber": 122
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 131
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ArrayPool<float>.Shared.Rent",
+          "lineNumber": 133
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ArrayPool<byte>.Shared.Rent",
+          "lineNumber": 134
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 138
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "reader.ReadSamples",
+          "lineNumber": 143
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "cancellationToken.ThrowIfCancellationRequested",
+          "lineNumber": 145
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ConvertFloatToPcm16",
+          "lineNumber": 149
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "floatBuffer.AsSpan",
+          "lineNumber": 149
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "pcmBuffer.AsSpan",
+          "lineNumber": 149
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ArrayPool<byte>.Shared.Rent",
+          "lineNumber": 155
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "pcmBuffer.AsSpan(0, pcmBytes).CopyTo",
+          "lineNumber": 156
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "pcmBuffer.AsSpan",
+          "lineNumber": 156
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "new AudioBuffer",
+          "lineNumber": 158
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 161
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ArrayPool<float>.Shared.Return",
+          "lineNumber": 165
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "ArrayPool<byte>.Shared.Return",
+          "lineNumber": 166
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "reader.Dispose",
+          "lineNumber": 172
+        },
+        {
+          "caller": "DecodeAsync",
+          "callee": "skipStream.DisposeAsync",
+          "lineNumber": 173
+        },
+        {
+          "caller": "SeekTo",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 180
+        },
+        {
+          "caller": "TryFindVorbisStartOffset",
+          "callee": "HasVorbisHeaderAt",
+          "lineNumber": 190
+        },
+        {
+          "caller": "TryFindVorbisStartOffset",
+          "callee": "HasVorbisHeaderAt",
+          "lineNumber": 196
+        },
+        {
+          "caller": "TryFindVorbisStartOffset",
+          "callee": "TrySkipNonSeekable",
+          "lineNumber": 211
+        },
+        {
+          "caller": "TryFindVorbisStartOffset",
+          "callee": "HasVorbisHeaderAtCurrentPosition",
+          "lineNumber": 211
+        },
+        {
+          "caller": "HasVorbisHeaderAt",
+          "callee": "HasVorbisHeaderAtCurrentPosition",
+          "lineNumber": 224
+        },
+        {
+          "caller": "HasVorbisHeaderAtCurrentPosition",
+          "callee": "TryReadExactly",
+          "lineNumber": 230
+        },
+        {
+          "caller": "HasVorbisHeaderAtCurrentPosition",
+          "callee": "header[..4].SequenceEqual",
+          "lineNumber": 233
+        },
+        {
+          "caller": "HasVorbisHeaderAtCurrentPosition",
+          "callee": "TryReadExactly",
+          "lineNumber": 239
+        },
+        {
+          "caller": "HasVorbisHeaderAtCurrentPosition",
+          "callee": "TryReadExactly",
+          "lineNumber": 254
+        },
+        {
+          "caller": "TryReadExactly",
+          "callee": "stream.Read",
+          "lineNumber": 270
+        },
+        {
+          "caller": "TrySkipNonSeekable",
+          "callee": "ArrayPool<byte>.Shared.Rent",
+          "lineNumber": 281
+        },
+        {
+          "caller": "TrySkipNonSeekable",
+          "callee": "Math.Min",
+          "lineNumber": 281
+        },
+        {
+          "caller": "TrySkipNonSeekable",
+          "callee": "stream.Read",
+          "lineNumber": 286
+        },
+        {
+          "caller": "TrySkipNonSeekable",
+          "callee": "Math.Min",
+          "lineNumber": 286
+        },
+        {
+          "caller": "TrySkipNonSeekable",
+          "callee": "ArrayPool<byte>.Shared.Return",
+          "lineNumber": 296
+        },
+        {
+          "caller": "ReadNormalizationData",
+          "callee": "stream.Read",
+          "lineNumber": 319
+        },
+        {
+          "caller": "ReadNormalizationData",
+          "callee": "NormalizationData.Parse",
+          "lineNumber": 324
+        },
+        {
+          "caller": "ConvertFloatToPcm16",
+          "callee": "Math.Clamp",
+          "lineNumber": 340
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 9,
+        "functionCount": 12,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/NormalizationData.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 98,
+      "nonEmptyLines": 84,
+      "callGraph": [
+        {
+          "caller": "Parse",
+          "callee": "BinaryPrimitives.ReadSingleLittleEndian",
+          "lineNumber": 48
+        },
+        {
+          "caller": "Parse",
+          "callee": "BinaryPrimitives.ReadSingleLittleEndian",
+          "lineNumber": 49
+        },
+        {
+          "caller": "Parse",
+          "callee": "data.Slice",
+          "lineNumber": 49
+        },
+        {
+          "caller": "Parse",
+          "callee": "BinaryPrimitives.ReadSingleLittleEndian",
+          "lineNumber": 50
+        },
+        {
+          "caller": "Parse",
+          "callee": "data.Slice",
+          "lineNumber": 50
+        },
+        {
+          "caller": "Parse",
+          "callee": "BinaryPrimitives.ReadSingleLittleEndian",
+          "lineNumber": 51
+        },
+        {
+          "caller": "Parse",
+          "callee": "data.Slice",
+          "lineNumber": 51
+        },
+        {
+          "caller": "Parse",
+          "callee": "new NormalizationData",
+          "lineNumber": 53
+        },
+        {
+          "caller": "GetTrackGainFactor",
+          "callee": "MathF.Pow",
+          "lineNumber": 65
+        },
+        {
+          "caller": "GetTrackGainFactor",
+          "callee": "MathF.Min",
+          "lineNumber": 70
+        },
+        {
+          "caller": "GetAlbumGainFactor",
+          "callee": "MathF.Pow",
+          "lineNumber": 85
+        },
+        {
+          "caller": "GetAlbumGainFactor",
+          "callee": "MathF.Min",
+          "lineNumber": 90
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Processors/AudioProcessingChain.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 137,
+      "nonEmptyLines": 122,
+      "functions": [
+        {
+          "name": "AddProcessor",
+          "startLine": 19,
+          "endLine": 24,
+          "params": [
+            "processor"
+          ]
+        },
+        {
+          "name": "RemoveProcessor",
+          "startLine": 29,
+          "endLine": 32,
+          "params": [
+            "processor"
+          ]
+        },
+        {
+          "name": "InitializeAsync",
+          "startLine": 37,
+          "endLine": 44,
+          "params": [
+            "format",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "Process",
+          "startLine": 56,
+          "endLine": 100,
+          "params": [
+            "input"
+          ]
+        },
+        {
+          "name": "ProcessFallback",
+          "startLine": 106,
+          "endLine": 120,
+          "params": [
+            "input"
+          ]
+        },
+        {
+          "name": "Reset",
+          "startLine": 125,
+          "endLine": 131,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "AudioProcessingChain",
+          "startLine": 10,
+          "endLine": 137,
+          "methods": [
+            "AddProcessor",
+            "RemoveProcessor",
+            "InitializeAsync",
+            "Process",
+            "ProcessFallback",
+            "Reset"
+          ],
+          "properties": [
+            "_processors",
+            "_format",
+            "_crossfadeProcessor",
+            "Processors"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "AddProcessor",
+          "line": 19,
+          "isDefault": false
+        },
+        {
+          "name": "RemoveProcessor",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "InitializeAsync",
+          "line": 37,
+          "isDefault": false
+        },
+        {
+          "name": "Process",
+          "line": 56,
+          "isDefault": false
+        },
+        {
+          "name": "Reset",
+          "line": 125,
+          "isDefault": false
+        },
+        {
+          "name": "Processors",
+          "line": 136,
+          "isDefault": false
+        },
+        {
+          "name": "AudioProcessingChain",
+          "line": 10,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "AddProcessor",
+          "callee": "_processors.Add",
+          "lineNumber": 21
+        },
+        {
+          "caller": "RemoveProcessor",
+          "callee": "_processors.Remove",
+          "lineNumber": 31
+        },
+        {
+          "caller": "InitializeAsync",
+          "callee": "processor.InitializeAsync",
+          "lineNumber": 42
+        },
+        {
+          "caller": "Process",
+          "callee": "ProcessFallback",
+          "lineNumber": 80
+        },
+        {
+          "caller": "Process",
+          "callee": "ArrayPool<byte>.Shared.Rent",
+          "lineNumber": 85
+        },
+        {
+          "caller": "Process",
+          "callee": "input.Data.Span.CopyTo",
+          "lineNumber": 86
+        },
+        {
+          "caller": "Process",
+          "callee": "pipelineBuffer.AsSpan",
+          "lineNumber": 86
+        },
+        {
+          "caller": "Process",
+          "callee": "pipelineBuffer.AsSpan",
+          "lineNumber": 88
+        },
+        {
+          "caller": "Process",
+          "callee": "eq.MarkCurrentSettingsVersionProcessed",
+          "lineNumber": 94
+        },
+        {
+          "caller": "Process",
+          "callee": "processor.ProcessInPlace",
+          "lineNumber": 95
+        },
+        {
+          "caller": "Process",
+          "callee": "new AudioBuffer",
+          "lineNumber": 99
+        },
+        {
+          "caller": "ProcessFallback",
+          "callee": "processor.Process",
+          "lineNumber": 113
+        },
+        {
+          "caller": "ProcessFallback",
+          "callee": "ReferenceEquals",
+          "lineNumber": 114
+        },
+        {
+          "caller": "ProcessFallback",
+          "callee": "current.Return",
+          "lineNumber": 115
+        },
+        {
+          "caller": "Reset",
+          "callee": "processor.Reset",
+          "lineNumber": 129
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 7,
+        "functionCount": 6,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Processors/CompressorProcessor.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 228,
+      "nonEmptyLines": 189,
+      "functions": [
+        {
+          "name": "InitializeAsync",
+          "startLine": 29,
+          "endLine": 49,
+          "params": [
+            "format",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "Process",
+          "startLine": 51,
+          "endLine": 81,
+          "params": [
+            "input"
+          ]
+        },
+        {
+          "name": "ProcessInPlace",
+          "startLine": 83,
+          "endLine": 94,
+          "params": [
+            "data"
+          ]
+        },
+        {
+          "name": "Reset",
+          "startLine": 96,
+          "endLine": 102,
+          "params": []
+        },
+        {
+          "name": "ProcessInt16",
+          "startLine": 104,
+          "endLine": 130,
+          "params": [
+            "input",
+            "output",
+            "channels"
+          ]
+        },
+        {
+          "name": "ProcessInt24",
+          "startLine": 132,
+          "endLine": 158,
+          "params": [
+            "input",
+            "output",
+            "channels"
+          ]
+        },
+        {
+          "name": "ProcessInt32",
+          "startLine": 160,
+          "endLine": 185,
+          "params": [
+            "input",
+            "output",
+            "channels"
+          ]
+        },
+        {
+          "name": "CompressSample",
+          "startLine": 190,
+          "endLine": 221,
+          "params": [
+            "sample",
+            "channel"
+          ]
+        },
+        {
+          "name": "DbToLinear",
+          "startLine": 223,
+          "endLine": 227,
+          "params": [
+            "db"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "CompressorProcessor",
+          "startLine": 11,
+          "endLine": 228,
+          "methods": [
+            "InitializeAsync",
+            "Process",
+            "ProcessInPlace",
+            "Reset",
+            "ProcessInt16",
+            "ProcessInt24",
+            "ProcessInt32",
+            "CompressSample",
+            "DbToLinear"
+          ],
+          "properties": [
+            "ThresholdDb",
+            "Ratio",
+            "AttackMs",
+            "ReleaseMs",
+            "MakeupGainDb",
+            "_format",
+            "_envelopeDb",
+            "_attackCoeff",
+            "_releaseCoeff",
+            "_makeupGainLinear",
+            "ProcessorName",
+            "IsEnabled"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ProcessorName",
+          "line": 26,
+          "isDefault": false
+        },
+        {
+          "name": "IsEnabled",
+          "line": 27,
+          "isDefault": false
+        },
+        {
+          "name": "InitializeAsync",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "Process",
+          "line": 51,
+          "isDefault": false
+        },
+        {
+          "name": "ProcessInPlace",
+          "line": 83,
+          "isDefault": false
+        },
+        {
+          "name": "Reset",
+          "line": 96,
+          "isDefault": false
+        },
+        {
+          "name": "CompressorProcessor",
+          "line": 11,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "InitializeAsync",
+          "callee": "Math.Exp",
+          "lineNumber": 42
+        },
+        {
+          "caller": "InitializeAsync",
+          "callee": "Math.Exp",
+          "lineNumber": 43
+        },
+        {
+          "caller": "InitializeAsync",
+          "callee": "DbToLinear",
+          "lineNumber": 46
+        },
+        {
+          "caller": "Process",
+          "callee": "new InvalidOperationException",
+          "lineNumber": 54
+        },
+        {
+          "caller": "Process",
+          "callee": "ArrayPool<byte>.Shared.Rent",
+          "lineNumber": 60
+        },
+        {
+          "caller": "Process",
+          "callee": "output.AsSpan",
+          "lineNumber": 61
+        },
+        {
+          "caller": "Process",
+          "callee": "ProcessInt16",
+          "lineNumber": 65
+        },
+        {
+          "caller": "Process",
+          "callee": "ProcessInt24",
+          "lineNumber": 69
+        },
+        {
+          "caller": "Process",
+          "callee": "ProcessInt32",
+          "lineNumber": 73
+        },
+        {
+          "caller": "Process",
+          "callee": "new NotSupportedException",
+          "lineNumber": 77
+        },
+        {
+          "caller": "Process",
+          "callee": "new AudioBuffer",
+          "lineNumber": 80
+        },
+        {
+          "caller": "ProcessInPlace",
+          "callee": "ProcessInt16",
+          "lineNumber": 89
+        },
+        {
+          "caller": "ProcessInPlace",
+          "callee": "ProcessInt24",
+          "lineNumber": 91
+        },
+        {
+          "caller": "ProcessInPlace",
+          "callee": "ProcessInt32",
+          "lineNumber": 93
+        },
+        {
+          "caller": "ProcessInt16",
+          "callee": "CompressSample",
+          "lineNumber": 119
+        },
+        {
+          "caller": "ProcessInt16",
+          "callee": "Math.Clamp",
+          "lineNumber": 123
+        },
+        {
+          "caller": "ProcessInt24",
+          "callee": "CompressSample",
+          "lineNumber": 148
+        },
+        {
+          "caller": "ProcessInt24",
+          "callee": "Math.Clamp",
+          "lineNumber": 151
+        },
+        {
+          "caller": "ProcessInt32",
+          "callee": "CompressSample",
+          "lineNumber": 173
+        },
+        {
+          "caller": "ProcessInt32",
+          "callee": "Math.Clamp",
+          "lineNumber": 176
+        },
+        {
+          "caller": "CompressSample",
+          "callee": "Math.Abs",
+          "lineNumber": 193
+        },
+        {
+          "caller": "CompressSample",
+          "callee": "Math.Log10",
+          "lineNumber": 194
+        },
+        {
+          "caller": "CompressSample",
+          "callee": "DbToLinear",
+          "lineNumber": 219
+        },
+        {
+          "caller": "DbToLinear",
+          "callee": "float.IsNegativeInfinity",
+          "lineNumber": 225
+        },
+        {
+          "caller": "DbToLinear",
+          "callee": "MathF.Pow",
+          "lineNumber": 226
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 7,
+        "functionCount": 9,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Processors/CrossfadeProcessor.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 406,
+      "nonEmptyLines": 344,
+      "functions": [
+        {
+          "name": "InitializeAsync",
+          "startLine": 56,
+          "endLine": 60,
+          "params": [
+            "format",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "StartCrossfade",
+          "startLine": 67,
+          "endLine": 77,
+          "params": [
+            "currentPositionMs"
+          ]
+        },
+        {
+          "name": "QueueNextTrackBuffer",
+          "startLine": 83,
+          "endLine": 86,
+          "params": [
+            "buffer"
+          ]
+        },
+        {
+          "name": "CompleteCrossfade",
+          "startLine": 91,
+          "endLine": 96,
+          "params": []
+        },
+        {
+          "name": "Process",
+          "startLine": 98,
+          "endLine": 131,
+          "params": [
+            "input"
+          ]
+        },
+        {
+          "name": "ProcessInPlace",
+          "startLine": 133,
+          "endLine": 141,
+          "params": [
+            "data"
+          ]
+        },
+        {
+          "name": "Reset",
+          "startLine": 143,
+          "endLine": 148,
+          "params": []
+        },
+        {
+          "name": "ApplyFadeOut",
+          "startLine": 150,
+          "endLine": 175,
+          "params": [
+            "input",
+            "progress"
+          ]
+        },
+        {
+          "name": "MixBuffers",
+          "startLine": 177,
+          "endLine": 204,
+          "params": [
+            "current",
+            "next",
+            "progress"
+          ]
+        },
+        {
+          "name": "CalculateFadeOutGain",
+          "startLine": 206,
+          "endLine": 216,
+          "params": [
+            "progress"
+          ]
+        },
+        {
+          "name": "CalculateFadeInGain",
+          "startLine": 218,
+          "endLine": 228,
+          "params": [
+            "progress"
+          ]
+        },
+        {
+          "name": "SmoothStep",
+          "startLine": 230,
+          "endLine": 234,
+          "params": [
+            "x"
+          ]
+        },
+        {
+          "name": "ApplyGainInt16",
+          "startLine": 236,
+          "endLine": 250,
+          "params": [
+            "input",
+            "output",
+            "gain"
+          ]
+        },
+        {
+          "name": "ApplyGainInt24",
+          "startLine": 252,
+          "endLine": 269,
+          "params": [
+            "input",
+            "output",
+            "gain"
+          ]
+        },
+        {
+          "name": "ApplyGainInt32",
+          "startLine": 271,
+          "endLine": 289,
+          "params": [
+            "input",
+            "output",
+            "gain"
+          ]
+        },
+        {
+          "name": "MixInt16",
+          "startLine": 291,
+          "endLine": 308,
+          "params": [
+            "current",
+            "next",
+            "output",
+            "outGain",
+            "inGain",
+            "length"
+          ]
+        },
+        {
+          "name": "MixInt24",
+          "startLine": 310,
+          "endLine": 333,
+          "params": [
+            "current",
+            "next",
+            "output",
+            "outGain",
+            "inGain",
+            "length"
+          ]
+        },
+        {
+          "name": "MixInt32",
+          "startLine": 335,
+          "endLine": 357,
+          "params": [
+            "current",
+            "next",
+            "output",
+            "outGain",
+            "inGain",
+            "length"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "CrossfadeProcessor",
+          "startLine": 10,
+          "endLine": 358,
+          "methods": [
+            "InitializeAsync",
+            "StartCrossfade",
+            "QueueNextTrackBuffer",
+            "CompleteCrossfade",
+            "Process",
+            "ProcessInPlace",
+            "Reset",
+            "ApplyFadeOut",
+            "MixBuffers",
+            "CalculateFadeOutGain",
+            "CalculateFadeInGain",
+            "SmoothStep",
+            "ApplyGainInt16",
+            "ApplyGainInt24",
+            "ApplyGainInt32",
+            "MixInt16",
+            "MixInt24",
+            "MixInt32"
+          ],
+          "properties": [
+            "_format",
+            "_state",
+            "_crossfadeStartMs",
+            "_crossfadeDurationMs",
+            "_curve",
+            "_nextTrackBuffer",
+            "_nextTrackQueue",
+            "_crossfadeEnabled",
+            "ProcessorName",
+            "IsEnabled",
+            "CrossfadeDurationMs",
+            "Curve",
+            "CrossfadeEnabled",
+            "State"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ProcessorName",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "IsEnabled",
+          "line": 22,
+          "isDefault": false
+        },
+        {
+          "name": "CrossfadeDurationMs",
+          "line": 27,
+          "isDefault": false
+        },
+        {
+          "name": "Curve",
+          "line": 36,
+          "isDefault": false
+        },
+        {
+          "name": "CrossfadeEnabled",
+          "line": 45,
+          "isDefault": false
+        },
+        {
+          "name": "State",
+          "line": 54,
+          "isDefault": false
+        },
+        {
+          "name": "InitializeAsync",
+          "line": 56,
+          "isDefault": false
+        },
+        {
+          "name": "StartCrossfade",
+          "line": 67,
+          "isDefault": false
+        },
+        {
+          "name": "QueueNextTrackBuffer",
+          "line": 83,
+          "isDefault": false
+        },
+        {
+          "name": "CompleteCrossfade",
+          "line": 91,
+          "isDefault": false
+        },
+        {
+          "name": "Process",
+          "line": 98,
+          "isDefault": false
+        },
+        {
+          "name": "ProcessInPlace",
+          "line": 133,
+          "isDefault": false
+        },
+        {
+          "name": "Reset",
+          "line": 143,
+          "isDefault": false
+        },
+        {
+          "name": "CrossfadeProcessor",
+          "line": 10,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "QueueNextTrackBuffer",
+          "callee": "_nextTrackQueue.Enqueue",
+          "lineNumber": 85
+        },
+        {
+          "caller": "CompleteCrossfade",
+          "callee": "_nextTrackQueue.Clear",
+          "lineNumber": 94
+        },
+        {
+          "caller": "Process",
+          "callee": "new InvalidOperationException",
+          "lineNumber": 101
+        },
+        {
+          "caller": "Process",
+          "callee": "Math.Clamp",
+          "lineNumber": 108
+        },
+        {
+          "caller": "Process",
+          "callee": "CompleteCrossfade",
+          "lineNumber": 113
+        },
+        {
+          "caller": "Process",
+          "callee": "_nextTrackQueue.TryDequeue",
+          "lineNumber": 118
+        },
+        {
+          "caller": "Process",
+          "callee": "ApplyFadeOut",
+          "lineNumber": 126
+        },
+        {
+          "caller": "Process",
+          "callee": "MixBuffers",
+          "lineNumber": 130
+        },
+        {
+          "caller": "Reset",
+          "callee": "_nextTrackQueue.Clear",
+          "lineNumber": 146
+        },
+        {
+          "caller": "ApplyFadeOut",
+          "callee": "CalculateFadeOutGain",
+          "lineNumber": 152
+        },
+        {
+          "caller": "ApplyFadeOut",
+          "callee": "Math.Abs",
+          "lineNumber": 154
+        },
+        {
+          "caller": "ApplyFadeOut",
+          "callee": "ArrayPool<byte>.Shared.Rent",
+          "lineNumber": 158
+        },
+        {
+          "caller": "ApplyFadeOut",
+          "callee": "output.AsSpan",
+          "lineNumber": 159
+        },
+        {
+          "caller": "ApplyFadeOut",
+          "callee": "ApplyGainInt16",
+          "lineNumber": 163
+        },
+        {
+          "caller": "ApplyFadeOut",
+          "callee": "ApplyGainInt24",
+          "lineNumber": 167
+        },
+        {
+          "caller": "ApplyFadeOut",
+          "callee": "ApplyGainInt32",
+          "lineNumber": 171
+        },
+        {
+          "caller": "ApplyFadeOut",
+          "callee": "new AudioBuffer",
+          "lineNumber": 174
+        },
+        {
+          "caller": "MixBuffers",
+          "callee": "CalculateFadeOutGain",
+          "lineNumber": 179
+        },
+        {
+          "caller": "MixBuffers",
+          "callee": "CalculateFadeInGain",
+          "lineNumber": 180
+        },
+        {
+          "caller": "MixBuffers",
+          "callee": "Math.Min",
+          "lineNumber": 186
+        },
+        {
+          "caller": "MixBuffers",
+          "callee": "ArrayPool<byte>.Shared.Rent",
+          "lineNumber": 187
+        },
+        {
+          "caller": "MixBuffers",
+          "callee": "output.AsSpan",
+          "lineNumber": 188
+        },
+        {
+          "caller": "MixBuffers",
+          "callee": "MixInt16",
+          "lineNumber": 192
+        },
+        {
+          "caller": "MixBuffers",
+          "callee": "MixInt24",
+          "lineNumber": 196
+        },
+        {
+          "caller": "MixBuffers",
+          "callee": "MixInt32",
+          "lineNumber": 200
+        },
+        {
+          "caller": "MixBuffers",
+          "callee": "new AudioBuffer",
+          "lineNumber": 203
+        },
+        {
+          "caller": "CalculateFadeOutGain",
+          "callee": "Math.Cos",
+          "lineNumber": 211
+        },
+        {
+          "caller": "CalculateFadeOutGain",
+          "callee": "Math.Pow",
+          "lineNumber": 212
+        },
+        {
+          "caller": "CalculateFadeOutGain",
+          "callee": "SmoothStep",
+          "lineNumber": 213
+        },
+        {
+          "caller": "CalculateFadeInGain",
+          "callee": "Math.Sin",
+          "lineNumber": 223
+        },
+        {
+          "caller": "CalculateFadeInGain",
+          "callee": "Math.Pow",
+          "lineNumber": 224
+        },
+        {
+          "caller": "CalculateFadeInGain",
+          "callee": "SmoothStep",
+          "lineNumber": 225
+        },
+        {
+          "caller": "ApplyGainInt16",
+          "callee": "Math.Clamp",
+          "lineNumber": 244
+        },
+        {
+          "caller": "ApplyGainInt24",
+          "callee": "Math.Clamp",
+          "lineNumber": 263
+        },
+        {
+          "caller": "ApplyGainInt32",
+          "callee": "Math.Clamp",
+          "lineNumber": 281
+        },
+        {
+          "caller": "MixInt16",
+          "callee": "Math.Clamp",
+          "lineNumber": 302
+        },
+        {
+          "caller": "MixInt24",
+          "callee": "Math.Clamp",
+          "lineNumber": 327
+        },
+        {
+          "caller": "MixInt32",
+          "callee": "Math.Clamp",
+          "lineNumber": 349
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 14,
+        "functionCount": 18,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Processors/EqualizerProcessor.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 565,
+      "nonEmptyLines": 481,
+      "functions": [
+        {
+          "name": "EqualizerProcessor",
+          "startLine": 37,
+          "endLine": 40,
+          "params": [
+            "logger"
+          ]
+        },
+        {
+          "name": "AddBand",
+          "startLine": 50,
+          "endLine": 57,
+          "params": [
+            "band"
+          ]
+        },
+        {
+          "name": "RemoveBand",
+          "startLine": 62,
+          "endLine": 70,
+          "params": [
+            "band"
+          ]
+        },
+        {
+          "name": "ClearBands",
+          "startLine": 75,
+          "endLine": 79,
+          "params": []
+        },
+        {
+          "name": "CommitSettingsVersion",
+          "startLine": 87,
+          "endLine": 88,
+          "params": []
+        },
+        {
+          "name": "WaitForVersionProcessedAsync",
+          "startLine": 90,
+          "endLine": 112,
+          "params": [
+            "version",
+            "timeout",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "RefreshFilters",
+          "startLine": 118,
+          "endLine": 127,
+          "params": []
+        },
+        {
+          "name": "CreateGraphicEq10Band",
+          "startLine": 132,
+          "endLine": 141,
+          "params": []
+        },
+        {
+          "name": "CreateRadioPreset",
+          "startLine": 147,
+          "endLine": 165,
+          "params": []
+        },
+        {
+          "name": "InitializeAsync",
+          "startLine": 167,
+          "endLine": 174,
+          "params": [
+            "format",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "Process",
+          "startLine": 176,
+          "endLine": 210,
+          "params": [
+            "input"
+          ]
+        },
+        {
+          "name": "ProcessInPlace",
+          "startLine": 212,
+          "endLine": 224,
+          "params": [
+            "data"
+          ]
+        },
+        {
+          "name": "Reset",
+          "startLine": 226,
+          "endLine": 238,
+          "params": []
+        },
+        {
+          "name": "RebuildFilters",
+          "startLine": 240,
+          "endLine": 257,
+          "params": []
+        },
+        {
+          "name": "MarkCurrentSettingsVersionProcessed",
+          "startLine": 259,
+          "endLine": 288,
+          "params": []
+        },
+        {
+          "name": "WaitWithTimeoutAsync",
+          "startLine": 290,
+          "endLine": 315,
+          "params": [
+            "task",
+            "version",
+            "timeout",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "ProcessInt16",
+          "startLine": 317,
+          "endLine": 345,
+          "params": [
+            "data",
+            "channels"
+          ]
+        },
+        {
+          "name": "ProcessInt24",
+          "startLine": 347,
+          "endLine": 379,
+          "params": [
+            "data",
+            "channels"
+          ]
+        },
+        {
+          "name": "ProcessInt32",
+          "startLine": 381,
+          "endLine": 412,
+          "params": [
+            "data",
+            "channels"
+          ]
+        },
+        {
+          "name": "EqualizerBand",
+          "startLine": 420,
+          "endLine": 426,
+          "params": [
+            "frequencyHz",
+            "gainDb",
+            "q",
+            "type"
+          ]
+        },
+        {
+          "name": "Create",
+          "startLine": 470,
+          "endLine": 475,
+          "params": [
+            "band",
+            "sampleRate"
+          ]
+        },
+        {
+          "name": "SetCoefficients",
+          "startLine": 477,
+          "endLine": 550,
+          "params": [
+            "band",
+            "sampleRate"
+          ]
+        },
+        {
+          "name": "Process",
+          "startLine": 552,
+          "endLine": 558,
+          "params": [
+            "input"
+          ]
+        },
+        {
+          "name": "Reset",
+          "startLine": 560,
+          "endLine": 564,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "EqualizerProcessor",
+          "startLine": 12,
+          "endLine": 413,
+          "methods": [
+            "EqualizerProcessor",
+            "AddBand",
+            "RemoveBand",
+            "ClearBands",
+            "CommitSettingsVersion",
+            "WaitForVersionProcessedAsync",
+            "RefreshFilters",
+            "CreateGraphicEq10Band",
+            "CreateRadioPreset",
+            "InitializeAsync",
+            "Process",
+            "ProcessInPlace",
+            "Reset",
+            "RebuildFilters",
+            "MarkCurrentSettingsVersionProcessed",
+            "WaitWithTimeoutAsync",
+            "ProcessInt16",
+            "ProcessInt24",
+            "ProcessInt32"
+          ],
+          "properties": [
+            "_bands",
+            "_logger",
+            "_versionLock",
+            "_versionWaiters",
+            "_format",
+            "_filters",
+            "_isEnabled",
+            "_settingsVersion",
+            "_processedVersion",
+            "ProcessorName",
+            "IsEnabled",
+            "Bands"
+          ]
+        },
+        {
+          "name": "EqualizerBand",
+          "startLine": 418,
+          "endLine": 448,
+          "methods": [
+            "EqualizerBand"
+          ],
+          "properties": [
+            "FrequencyHz",
+            "GainDb",
+            "Q",
+            "Type"
+          ]
+        },
+        {
+          "name": "BiquadFilter",
+          "startLine": 465,
+          "endLine": 565,
+          "methods": [
+            "Create",
+            "SetCoefficients",
+            "Process",
+            "Reset"
+          ],
+          "properties": [
+            "_a0",
+            "_a1",
+            "_a2",
+            "_b1",
+            "_b2",
+            "_z1",
+            "_z2"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ProcessorName",
+          "line": 24,
+          "isDefault": false
+        },
+        {
+          "name": "IsEnabled",
+          "line": 26,
+          "isDefault": false
+        },
+        {
+          "name": "EqualizerProcessor",
+          "line": 37,
+          "isDefault": false
+        },
+        {
+          "name": "Bands",
+          "line": 45,
+          "isDefault": false
+        },
+        {
+          "name": "AddBand",
+          "line": 50,
+          "isDefault": false
+        },
+        {
+          "name": "RemoveBand",
+          "line": 62,
+          "isDefault": false
+        },
+        {
+          "name": "ClearBands",
+          "line": 75,
+          "isDefault": false
+        },
+        {
+          "name": "CommitSettingsVersion",
+          "line": 87,
+          "isDefault": false
+        },
+        {
+          "name": "WaitForVersionProcessedAsync",
+          "line": 90,
+          "isDefault": false
+        },
+        {
+          "name": "RefreshFilters",
+          "line": 118,
+          "isDefault": false
+        },
+        {
+          "name": "CreateGraphicEq10Band",
+          "line": 132,
+          "isDefault": false
+        },
+        {
+          "name": "CreateRadioPreset",
+          "line": 147,
+          "isDefault": false
+        },
+        {
+          "name": "InitializeAsync",
+          "line": 167,
+          "isDefault": false
+        },
+        {
+          "name": "Process",
+          "line": 176,
+          "isDefault": false
+        },
+        {
+          "name": "ProcessInPlace",
+          "line": 212,
+          "isDefault": false
+        },
+        {
+          "name": "Reset",
+          "line": 226,
+          "isDefault": false
+        },
+        {
+          "name": "MarkCurrentSettingsVersionProcessed",
+          "line": 259,
+          "isDefault": false
+        },
+        {
+          "name": "EqualizerProcessor",
+          "line": 12,
+          "isDefault": false
+        },
+        {
+          "name": "EqualizerBand",
+          "line": 420,
+          "isDefault": false
+        },
+        {
+          "name": "FrequencyHz",
+          "line": 431,
+          "isDefault": false
+        },
+        {
+          "name": "GainDb",
+          "line": 436,
+          "isDefault": false
+        },
+        {
+          "name": "Q",
+          "line": 442,
+          "isDefault": false
+        },
+        {
+          "name": "Type",
+          "line": 447,
+          "isDefault": false
+        },
+        {
+          "name": "EqualizerBand",
+          "line": 418,
+          "isDefault": false
+        },
+        {
+          "name": "Create",
+          "line": 470,
+          "isDefault": false
+        },
+        {
+          "name": "SetCoefficients",
+          "line": 477,
+          "isDefault": false
+        },
+        {
+          "name": "Process",
+          "line": 552,
+          "isDefault": false
+        },
+        {
+          "name": "Reset",
+          "line": 560,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "AddBand",
+          "callee": "_bands.Add",
+          "lineNumber": 52
+        },
+        {
+          "caller": "AddBand",
+          "callee": "RebuildFilters",
+          "lineNumber": 55
+        },
+        {
+          "caller": "RemoveBand",
+          "callee": "_bands.Remove",
+          "lineNumber": 64
+        },
+        {
+          "caller": "RemoveBand",
+          "callee": "RebuildFilters",
+          "lineNumber": 67
+        },
+        {
+          "caller": "ClearBands",
+          "callee": "_bands.Clear",
+          "lineNumber": 77
+        },
+        {
+          "caller": "CommitSettingsVersion",
+          "callee": "Interlocked.Increment",
+          "lineNumber": 88
+        },
+        {
+          "caller": "WaitForVersionProcessedAsync",
+          "callee": "Volatile.Read",
+          "lineNumber": 95
+        },
+        {
+          "caller": "WaitForVersionProcessedAsync",
+          "callee": "_versionWaiters.TryGetValue",
+          "lineNumber": 104
+        },
+        {
+          "caller": "WaitForVersionProcessedAsync",
+          "callee": "new TaskCompletionSource",
+          "lineNumber": 106
+        },
+        {
+          "caller": "WaitForVersionProcessedAsync",
+          "callee": "_versionWaiters.Add",
+          "lineNumber": 107
+        },
+        {
+          "caller": "WaitForVersionProcessedAsync",
+          "callee": "WaitWithTimeoutAsync",
+          "lineNumber": 111
+        },
+        {
+          "caller": "RefreshFilters",
+          "callee": "RebuildFilters",
+          "lineNumber": 120
+        },
+        {
+          "caller": "RefreshFilters",
+          "callee": "string.Join",
+          "lineNumber": 123
+        },
+        {
+          "caller": "RefreshFilters",
+          "callee": "_bands.Select",
+          "lineNumber": 123
+        },
+        {
+          "caller": "RefreshFilters",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 124
+        },
+        {
+          "caller": "RefreshFilters",
+          "callee": "FiltersChanged?.Invoke",
+          "lineNumber": 126
+        },
+        {
+          "caller": "CreateGraphicEq10Band",
+          "callee": "ClearBands",
+          "lineNumber": 134
+        },
+        {
+          "caller": "CreateGraphicEq10Band",
+          "callee": "AddBand",
+          "lineNumber": 138
+        },
+        {
+          "caller": "CreateGraphicEq10Band",
+          "callee": "new EqualizerBand",
+          "lineNumber": 138
+        },
+        {
+          "caller": "CreateGraphicEq10Band",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 140
+        },
+        {
+          "caller": "CreateRadioPreset",
+          "callee": "ClearBands",
+          "lineNumber": 149
+        },
+        {
+          "caller": "CreateRadioPreset",
+          "callee": "AddBand",
+          "lineNumber": 152
+        },
+        {
+          "caller": "CreateRadioPreset",
+          "callee": "new EqualizerBand",
+          "lineNumber": 152
+        },
+        {
+          "caller": "CreateRadioPreset",
+          "callee": "AddBand",
+          "lineNumber": 155
+        },
+        {
+          "caller": "CreateRadioPreset",
+          "callee": "new EqualizerBand",
+          "lineNumber": 155
+        },
+        {
+          "caller": "CreateRadioPreset",
+          "callee": "AddBand",
+          "lineNumber": 158
+        },
+        {
+          "caller": "CreateRadioPreset",
+          "callee": "new EqualizerBand",
+          "lineNumber": 158
+        },
+        {
+          "caller": "CreateRadioPreset",
+          "callee": "AddBand",
+          "lineNumber": 161
+        },
+        {
+          "caller": "CreateRadioPreset",
+          "callee": "new EqualizerBand",
+          "lineNumber": 161
+        },
+        {
+          "caller": "CreateRadioPreset",
+          "callee": "AddBand",
+          "lineNumber": 164
+        },
+        {
+          "caller": "CreateRadioPreset",
+          "callee": "new EqualizerBand",
+          "lineNumber": 164
+        },
+        {
+          "caller": "InitializeAsync",
+          "callee": "RebuildFilters",
+          "lineNumber": 170
+        },
+        {
+          "caller": "InitializeAsync",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 171
+        },
+        {
+          "caller": "Process",
+          "callee": "new InvalidOperationException",
+          "lineNumber": 179
+        },
+        {
+          "caller": "Process",
+          "callee": "MarkCurrentSettingsVersionProcessed",
+          "lineNumber": 184
+        },
+        {
+          "caller": "Process",
+          "callee": "ArrayPool<byte>.Shared.Rent",
+          "lineNumber": 187
+        },
+        {
+          "caller": "Process",
+          "callee": "input.Data.CopyTo",
+          "lineNumber": 188
+        },
+        {
+          "caller": "Process",
+          "callee": "output.AsSpan",
+          "lineNumber": 190
+        },
+        {
+          "caller": "Process",
+          "callee": "ProcessInt16",
+          "lineNumber": 194
+        },
+        {
+          "caller": "Process",
+          "callee": "ProcessInt24",
+          "lineNumber": 198
+        },
+        {
+          "caller": "Process",
+          "callee": "ProcessInt32",
+          "lineNumber": 202
+        },
+        {
+          "caller": "Process",
+          "callee": "new NotSupportedException",
+          "lineNumber": 206
+        },
+        {
+          "caller": "Process",
+          "callee": "new AudioBuffer",
+          "lineNumber": 209
+        },
+        {
+          "caller": "ProcessInPlace",
+          "callee": "ProcessInt16",
+          "lineNumber": 219
+        },
+        {
+          "caller": "ProcessInPlace",
+          "callee": "ProcessInt24",
+          "lineNumber": 221
+        },
+        {
+          "caller": "ProcessInPlace",
+          "callee": "ProcessInt32",
+          "lineNumber": 223
+        },
+        {
+          "caller": "Reset",
+          "callee": "filter.Reset",
+          "lineNumber": 234
+        },
+        {
+          "caller": "RebuildFilters",
+          "callee": "BiquadFilter.Create",
+          "lineNumber": 254
+        },
+        {
+          "caller": "MarkCurrentSettingsVersionProcessed",
+          "callee": "Volatile.Read",
+          "lineNumber": 261
+        },
+        {
+          "caller": "MarkCurrentSettingsVersionProcessed",
+          "callee": "Volatile.Read",
+          "lineNumber": 262
+        },
+        {
+          "caller": "MarkCurrentSettingsVersionProcessed",
+          "callee": "_versionWaiters.ToArray",
+          "lineNumber": 272
+        },
+        {
+          "caller": "MarkCurrentSettingsVersionProcessed",
+          "callee": "_versionWaiters.Remove",
+          "lineNumber": 277
+        },
+        {
+          "caller": "MarkCurrentSettingsVersionProcessed",
+          "callee": "completed.Add",
+          "lineNumber": 279
+        },
+        {
+          "caller": "MarkCurrentSettingsVersionProcessed",
+          "callee": "waiter.TrySetResult",
+          "lineNumber": 287
+        },
+        {
+          "caller": "WaitWithTimeoutAsync",
+          "callee": "new CancellationTokenSource",
+          "lineNumber": 296
+        },
+        {
+          "caller": "WaitWithTimeoutAsync",
+          "callee": "CancellationTokenSource.CreateLinkedTokenSource",
+          "lineNumber": 297
+        },
+        {
+          "caller": "WaitWithTimeoutAsync",
+          "callee": "task.WaitAsync(linkedCts.Token).ConfigureAwait",
+          "lineNumber": 301
+        },
+        {
+          "caller": "WaitWithTimeoutAsync",
+          "callee": "task.WaitAsync",
+          "lineNumber": 301
+        },
+        {
+          "caller": "WaitWithTimeoutAsync",
+          "callee": "_versionWaiters.Remove",
+          "lineNumber": 306
+        },
+        {
+          "caller": "WaitWithTimeoutAsync",
+          "callee": "new TimeoutException",
+          "lineNumber": 307
+        },
+        {
+          "caller": "WaitWithTimeoutAsync",
+          "callee": "_versionWaiters.Remove",
+          "lineNumber": 312
+        },
+        {
+          "caller": "ProcessInt16",
+          "callee": "bandFilters[ch].Process",
+          "lineNumber": 334
+        },
+        {
+          "caller": "ProcessInt16",
+          "callee": "Math.Clamp",
+          "lineNumber": 338
+        },
+        {
+          "caller": "ProcessInt24",
+          "callee": "bandFilters[ch].Process",
+          "lineNumber": 368
+        },
+        {
+          "caller": "ProcessInt24",
+          "callee": "Math.Clamp",
+          "lineNumber": 372
+        },
+        {
+          "caller": "ProcessInt32",
+          "callee": "bandFilters[ch].Process",
+          "lineNumber": 399
+        },
+        {
+          "caller": "ProcessInt32",
+          "callee": "Math.Clamp",
+          "lineNumber": 403
+        },
+        {
+          "caller": "Create",
+          "callee": "new BiquadFilter",
+          "lineNumber": 472
+        },
+        {
+          "caller": "Create",
+          "callee": "filter.SetCoefficients",
+          "lineNumber": 473
+        },
+        {
+          "caller": "SetCoefficients",
+          "callee": "Math.Sin",
+          "lineNumber": 480
+        },
+        {
+          "caller": "SetCoefficients",
+          "callee": "Math.Cos",
+          "lineNumber": 481
+        },
+        {
+          "caller": "SetCoefficients",
+          "callee": "Math.Pow",
+          "lineNumber": 483
+        },
+        {
+          "caller": "SetCoefficients",
+          "callee": "Math.Sqrt",
+          "lineNumber": 500
+        },
+        {
+          "caller": "SetCoefficients",
+          "callee": "Math.Sqrt",
+          "lineNumber": 512
+        },
+        {
+          "caller": "SetCoefficients",
+          "callee": "new NotSupportedException",
+          "lineNumber": 541
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 28,
+        "functionCount": 24,
+        "classCount": 3
+      }
+    },
+    {
+      "path": "src/Wavee.AudioHost/Audio/Processors/LimiterProcessor.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 216,
+      "nonEmptyLines": 176,
+      "functions": [
+        {
+          "name": "InitializeAsync",
+          "startLine": 25,
+          "endLine": 39,
+          "params": [
+            "format",
+            "cancellationToken"
+          ]
+        },
+        {
+          "name": "Process",
+          "startLine": 41,
+          "endLine": 71,
+          "params": [
+            "input"
+          ]
+        },
+        {
+          "name": "ProcessInPlace",
+          "startLine": 73,
+          "endLine": 84,
+          "params": [
+            "data"
+          ]
+        },
+        {
+          "name": "Reset",
+          "startLine": 86,
+          "endLine": 92,
+          "params": []
+        },
+        {
+          "name": "ProcessInt16",
+          "startLine": 94,
+          "endLine": 120,
+          "params": [
+            "input",
+            "output",
+            "channels"
+          ]
+        },
+        {
+          "name": "ProcessInt24",
+          "startLine": 122,
+          "endLine": 148,
+          "params": [
+            "input",
+            "output",
+            "channels"
+          ]
+        },
+        {
+          "name": "ProcessInt32",
+          "startLine": 150,
+          "endLine": 175,
+          "params": [
+            "input",
+            "output",
+            "channels"
+          ]
+        },
+        {
+          "name": "LimitSample",
+          "startLine": 180,
+          "endLine": 209,
+          "params": [
+            "sample",
+            "channel"
+          ]
+        },
+        {
+          "name": "DbToLinear",
+          "startLine": 211,
+          "endLine": 215,
+          "params": [
+            "db"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "LimiterProcessor",
+          "startLine": 11,
+          "endLine": 216,
+          "methods": [
+            "InitializeAsync",
+            "Process",
+            "ProcessInPlace",
+            "Reset",
+            "ProcessInt16",
+            "ProcessInt24",
+            "ProcessInt32",
+            "LimitSample",
+            "DbToLinear"
+          ],
+          "properties": [
+            "CeilingDb",
+            "ReleaseMs",
+            "_format",
+            "_gainReductionDb",
+            "_releaseCoeff",
+            "_ceilingLinear",
+            "ProcessorName",
+            "IsEnabled"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ProcessorName",
+          "line": 22,
+          "isDefault": false
+        },
+        {
+          "name": "IsEnabled",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "InitializeAsync",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "Process",
+          "line": 41,
+          "isDefault": false
+        },
+        {
+          "name": "ProcessInPlace",
+          "line": 73,
+          "isDefault": false
+        },
+        {
+          "name": "Reset",
+          "line": 86,
+          "isDefault": false
+        },
+        {
+          "name": "LimiterProcessor",
+          "line": 11,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "InitializeAsync",
+          "callee": "Math.Exp",
+          "lineNumber": 33
+        },
+        {
+          "caller": "InitializeAsync",
+          "callee": "DbToLinear",
+          "lineNumber": 36
+        },
+        {
+          "caller": "Process",
+          "callee": "new InvalidOperationException",
+          "lineNumber": 44
+        },
+        {
+          "caller": "Process",
+          "callee": "ArrayPool<byte>.Shared.Rent",
+          "lineNumber": 50
+        },
+        {
+          "caller": "Process",
+          "callee": "output.AsSpan",
+          "lineNumber": 51
+        },
+        {
+          "caller": "Process",
+          "callee": "ProcessInt16",
+          "lineNumber": 55
+        },
+        {
+          "caller": "Process",
+          "callee": "ProcessInt24",
+          "lineNumber": 59
+        },
+        {
+          "caller": "Process",
+          "callee": "ProcessInt32",
+          "lineNumber": 63
+        },
+        {
+          "caller": "Process",
+          "callee": "new NotSupportedException",
+          "lineNumber": 67
+        },
+        {
+          "caller": "Process",
+          "callee": "new AudioBuffer",
+          "lineNumber": 70
+        },
+        {
+          "caller": "ProcessInPlace",
+          "callee": "ProcessInt16",
+          "lineNumber": 79
+        },
+        {
+          "caller": "ProcessInPlace",
+          "callee": "ProcessInt24",
+          "lineNumber": 81
+        },
+        {
+          "caller": "ProcessInPlace",
+          "callee": "ProcessInt32",
+          "lineNumber": 83
+        },
+        {
+          "caller": "ProcessInt16",
+          "callee": "LimitSample",
+          "lineNumber": 109
+        },
+        {
+          "caller": "ProcessInt16",
+          "callee": "Math.Clamp",
+          "lineNumber": 113
+        },
+        {
+          "caller": "ProcessInt24",
+          "callee": "LimitSample",
+          "lineNumber": 138
+        },
+        {
+          "caller": "ProcessInt24",
+          "callee": "Math.Clamp",
+          "lineNumber": 141
+        },
+        {
+          "caller": "ProcessInt32",
+          "callee": "LimitSample",
+          "lineNumber": 163
+        },
+        {
+          "caller": "ProcessInt32",
+          "callee": "Math.Clamp",
+          "lineNumber": 166
+        },
+        {
+          "caller": "LimitSample",
+          "callee": "Math.Abs",
+          "lineNumber": 182
+        },
+        {
+          "caller": "LimitSample",
+          "callee": "Math.Log10",
+          "lineNumber": 188
+        },
+        {
+          "caller": "LimitSample",
+          "callee": "Math.Max",
+          "lineNumber": 189
+        },
+        {
+          "caller": "LimitSample",
+          "callee": "DbToLinear",
+          "lineNumber": 204
+        },
+        {
+          "caller": "DbToLinear",
+          "callee": "float.IsNegativeInfinity",
+          "lineNumber": 213
+        },
+        {
+          "caller": "DbToLinear",
+          "callee": "MathF.Pow",
+          "lineNumber": 214
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 7,
+        "functionCount": 9,
+        "classCount": 1
+      }
+    }
+  ]
+}

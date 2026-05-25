@@ -1,0 +1,588 @@
+{
+  "nodes": [
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist_permission.proto",
+      "type": "schema",
+      "name": "playlist_permission.proto",
+      "filePath": "src/Wavee/Protocol/Protos/playlist_permission.proto",
+      "summary": "Defines Protobuf messages and enums for Spotify playlist permission management, including capability checks, permission levels (UNKNOWN/BLOCKED/VIEWER/CONTRIBUTOR), permission grants, and multi-user permission request/response flows.",
+      "tags": ["schema-definition", "protobuf", "playlist", "permissions", "data-model"],
+      "complexity": "moderate",
+      "languageNotes": "17 message/enum definitions covering the full lifecycle of playlist permission queries and mutations."
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist_permission.proto:Permission",
+      "type": "schema",
+      "name": "Permission",
+      "filePath": "src/Wavee/Protocol/Protos/playlist_permission.proto",
+      "summary": "Message holding a revision and a permission_level for a playlist.",
+      "tags": ["schema-definition", "protobuf", "permissions"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist_permission.proto:Capabilities",
+      "type": "schema",
+      "name": "Capabilities",
+      "filePath": "src/Wavee/Protocol/Protos/playlist_permission.proto",
+      "summary": "Message describing what operations (view, admin, edit metadata, edit items, cancel membership) a user may perform on a playlist.",
+      "tags": ["schema-definition", "protobuf", "permissions"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist_permission.proto:PermissionLevel",
+      "type": "schema",
+      "name": "PermissionLevel",
+      "filePath": "src/Wavee/Protocol/Protos/playlist_permission.proto",
+      "summary": "Enum of playlist access levels: UNKNOWN, BLOCKED, VIEWER, CONTRIBUTOR.",
+      "tags": ["schema-definition", "protobuf", "permissions", "enum"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist_signals.proto",
+      "type": "schema",
+      "name": "playlist_signals.proto",
+      "filePath": "src/Wavee/Protocol/Protos/playlist_signals.proto",
+      "summary": "Defines Protobuf messages for submitting playlist engagement signals (e.g. play events tagged with a correlation ID) to Spotify's backend.",
+      "tags": ["schema-definition", "protobuf", "playlist", "telemetry"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playlist_signals.proto:PlaylistSignalsRequest",
+      "type": "schema",
+      "name": "PlaylistSignalsRequest",
+      "filePath": "src/Wavee/Protocol/Protos/playlist_signals.proto",
+      "summary": "Request message carrying a playlist revision and one or more signals.",
+      "tags": ["schema-definition", "protobuf", "playlist"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playplay.proto",
+      "type": "schema",
+      "name": "playplay.proto",
+      "filePath": "src/Wavee/Protocol/Protos/playplay.proto",
+      "summary": "Defines the PlayPlay DRM license request/response messages and supporting enums (Interactivity, ContentType) used when obtaining obfuscated audio decryption keys from Spotify.",
+      "tags": ["schema-definition", "protobuf", "drm", "audio", "playplay"],
+      "complexity": "simple",
+      "languageNotes": "PlayPlayLicenseRequest carries version, token, cache_id, interactivity and content_type; the server returns obfuscated_key in PlayPlayLicenseResponse."
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playplay.proto:PlayPlayLicenseRequest",
+      "type": "schema",
+      "name": "PlayPlayLicenseRequest",
+      "filePath": "src/Wavee/Protocol/Protos/playplay.proto",
+      "summary": "DRM license request message with version, token, cache_id, interactivity, content_type, and timestamp fields.",
+      "tags": ["schema-definition", "protobuf", "drm"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playplay.proto:PlayPlayLicenseResponse",
+      "type": "schema",
+      "name": "PlayPlayLicenseResponse",
+      "filePath": "src/Wavee/Protocol/Protos/playplay.proto",
+      "summary": "DRM license response message containing the obfuscated_key returned by Spotify.",
+      "tags": ["schema-definition", "protobuf", "drm"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playplay.proto:Interactivity",
+      "type": "schema",
+      "name": "Interactivity",
+      "filePath": "src/Wavee/Protocol/Protos/playplay.proto",
+      "summary": "Enum distinguishing interactive playback from download mode.",
+      "tags": ["schema-definition", "protobuf", "enum"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/playplay.proto:ContentType",
+      "type": "schema",
+      "name": "ContentType",
+      "filePath": "src/Wavee/Protocol/Protos/playplay.proto",
+      "summary": "Enum identifying the content type: audio track, audio episode, or audio ad.",
+      "tags": ["schema-definition", "protobuf", "enum"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/popcount2_external.proto",
+      "type": "schema",
+      "name": "popcount2_external.proto",
+      "filePath": "src/Wavee/Protocol/Protos/popcount2_external.proto",
+      "summary": "Defines messages for Spotify's popcount (follower count) service, including request, result, follower list, user updates, and a counter-value setter.",
+      "tags": ["schema-definition", "protobuf", "social", "followers"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/popcount2_external.proto:PopcountResult",
+      "type": "schema",
+      "name": "PopcountResult",
+      "filePath": "src/Wavee/Protocol/Protos/popcount2_external.proto",
+      "summary": "Message holding follower count, truncation flag, user/userid list, raw count, and hidden-count fields.",
+      "tags": ["schema-definition", "protobuf", "social"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/prepare_play_options.proto",
+      "type": "schema",
+      "name": "prepare_play_options.proto",
+      "filePath": "src/Wavee/Protocol/Protos/prepare_play_options.proto",
+      "summary": "Defines PreparePlayOptions, a rich message that encapsulates all parameters needed to initiate playback: playback ID, skip target, pause state, prefetch level, audio stream, session, and license info.",
+      "tags": ["schema-definition", "protobuf", "playback", "connect"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/prepare_play_options.proto:PreparePlayOptions",
+      "type": "schema",
+      "name": "PreparePlayOptions",
+      "filePath": "src/Wavee/Protocol/Protos/prepare_play_options.proto",
+      "summary": "Comprehensive playback initiation options message with 10 fields covering all aspects of a play request.",
+      "tags": ["schema-definition", "protobuf", "playback"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/pubsub.proto",
+      "type": "schema",
+      "name": "pubsub.proto",
+      "filePath": "src/Wavee/Protocol/Protos/pubsub.proto",
+      "summary": "Minimal Protobuf schema defining the Subscription message used in Spotify's Dealer pub/sub system, carrying URI, expiry, and status_code.",
+      "tags": ["schema-definition", "protobuf", "pubsub", "dealer"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/pubsub.proto:Subscription",
+      "type": "schema",
+      "name": "Subscription",
+      "filePath": "src/Wavee/Protocol/Protos/pubsub.proto",
+      "summary": "Pub/sub subscription message with uri, expiry, and status_code fields.",
+      "tags": ["schema-definition", "protobuf", "pubsub"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/queue.proto",
+      "type": "schema",
+      "name": "queue.proto",
+      "filePath": "src/Wavee/Protocol/Protos/queue.proto",
+      "summary": "Defines the Queue message used in Spotify Connect state, holding a list of tracks and a flag indicating whether the user queue is currently playing.",
+      "tags": ["schema-definition", "protobuf", "queue", "connect"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/queue.proto:Queue",
+      "type": "schema",
+      "name": "Queue",
+      "filePath": "src/Wavee/Protocol/Protos/queue.proto",
+      "summary": "Queue message with a repeated tracks field and is_playing_queue boolean.",
+      "tags": ["schema-definition", "protobuf", "queue"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/recommended_playlists.proto",
+      "type": "schema",
+      "name": "recommended_playlists.proto",
+      "filePath": "src/Wavee/Protocol/Protos/recommended_playlists.proto",
+      "summary": "Defines the RecommendedPlaylists message returned by Spotify's recommendation service, containing a list of playlist URIs with recommendation metadata.",
+      "tags": ["schema-definition", "protobuf", "recommendations", "playlist"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/recommended_playlists.proto:RecommendedPlaylists",
+      "type": "schema",
+      "name": "RecommendedPlaylists",
+      "filePath": "src/Wavee/Protocol/Protos/recommended_playlists.proto",
+      "summary": "Message holding playlist URIs and recommendation objects.",
+      "tags": ["schema-definition", "protobuf", "recommendations"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/restrictions.proto",
+      "type": "schema",
+      "name": "restrictions.proto",
+      "filePath": "src/Wavee/Protocol/Protos/restrictions.proto",
+      "summary": "Defines the Restrictions message used in Spotify Connect player state to enumerate disallowed operations (pause, seek, skip, shuffle, repeat, queue, remote control, etc.) and their reasons.",
+      "tags": ["schema-definition", "protobuf", "connect", "playback", "restrictions"],
+      "complexity": "moderate",
+      "languageNotes": "21 fields covering every player action that can be restricted; used for UI affordance gating in the Connect player."
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/restrictions.proto:Restrictions",
+      "type": "schema",
+      "name": "Restrictions",
+      "filePath": "src/Wavee/Protocol/Protos/restrictions.proto",
+      "summary": "Comprehensive message with repeated string fields for each disallowed player action, each field holding human-readable reasons.",
+      "tags": ["schema-definition", "protobuf", "connect"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/session.proto",
+      "type": "schema",
+      "name": "session.proto",
+      "filePath": "src/Wavee/Protocol/Protos/session.proto",
+      "summary": "Defines the Session message describing a playback session's origin, context, current UID, and option overrides, used within Spotify Connect player state.",
+      "tags": ["schema-definition", "protobuf", "connect", "session"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/session.proto:Session",
+      "type": "schema",
+      "name": "Session",
+      "filePath": "src/Wavee/Protocol/Protos/session.proto",
+      "summary": "Playback session message with play_origin, context, current_uid, and option_overrides.",
+      "tags": ["schema-definition", "protobuf", "session"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/skip_to_track.proto",
+      "type": "schema",
+      "name": "skip_to_track.proto",
+      "filePath": "src/Wavee/Protocol/Protos/skip_to_track.proto",
+      "summary": "Defines SkipToTrack, the message used in Connect commands to identify the target track by page URL/index, track UID, URI, or track index.",
+      "tags": ["schema-definition", "protobuf", "connect", "playback"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/skip_to_track.proto:SkipToTrack",
+      "type": "schema",
+      "name": "SkipToTrack",
+      "filePath": "src/Wavee/Protocol/Protos/skip_to_track.proto",
+      "summary": "Message identifying a target track for skip/seek operations via page_url, page_index, track_uid, track_uri, or track_index.",
+      "tags": ["schema-definition", "protobuf", "connect"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spirc.proto",
+      "type": "schema",
+      "name": "spirc.proto",
+      "filePath": "src/Wavee/Protocol/Protos/spirc.proto",
+      "summary": "Defines the legacy Spotify Remote Protocol (SPiRC) message types, enums, and frame structure including MessageType (Hello/Goodbye/Notify/Load/Play/Pause/Seek/etc.), PlayStatus, and the Frame/State/Goodbye messages.",
+      "tags": ["schema-definition", "protobuf", "connect", "spirc", "remote-control"],
+      "complexity": "moderate",
+      "languageNotes": "proto2 syntax with csharp_namespace Wavee.Protocol.Spirc; MessageType enum covers all SPiRC command types; Frame is the top-level wire container."
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spirc.proto:MessageType",
+      "type": "schema",
+      "name": "MessageType",
+      "filePath": "src/Wavee/Protocol/Protos/spirc.proto",
+      "summary": "Enum of all SPiRC message types: Hello, Goodbye, Notify, Load, Play, Pause, Seek, Prev, Next, Volume, Shuffle, Repeat, Queue, VolumeDown, VolumeUp.",
+      "tags": ["schema-definition", "protobuf", "spirc", "enum"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spirc.proto:PlayStatus",
+      "type": "schema",
+      "name": "PlayStatus",
+      "filePath": "src/Wavee/Protocol/Protos/spirc.proto",
+      "summary": "Enum of SPiRC playback states: Stop, Play, Pause, Loading, Error.",
+      "tags": ["schema-definition", "protobuf", "spirc", "enum"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spirc.proto:Frame",
+      "type": "schema",
+      "name": "Frame",
+      "filePath": "src/Wavee/Protocol/Protos/spirc.proto",
+      "summary": "Top-level SPiRC wire message carrying version, ident, name, msgid, type, and optional Goodbye/State payloads.",
+      "tags": ["schema-definition", "protobuf", "spirc"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/spirc.proto:State",
+      "type": "schema",
+      "name": "State",
+      "filePath": "src/Wavee/Protocol/Protos/spirc.proto",
+      "summary": "SPiRC player state message with trackURI, contextURI, index, position, status, volume, duration, history/queued/future track lists, shuffle, and repeat.",
+      "tags": ["schema-definition", "protobuf", "spirc"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/status.proto",
+      "type": "schema",
+      "name": "status.proto",
+      "filePath": "src/Wavee/Protocol/Protos/status.proto",
+      "summary": "Minimal schema defining a generic Status message with integer code and string reason, used across multiple Spotify protocol responses.",
+      "tags": ["schema-definition", "protobuf", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/status.proto:Status",
+      "type": "schema",
+      "name": "Status",
+      "filePath": "src/Wavee/Protocol/Protos/status.proto",
+      "summary": "Generic status/error message with code and reason fields.",
+      "tags": ["schema-definition", "protobuf", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/storage-resolve.proto",
+      "type": "schema",
+      "name": "storage-resolve.proto",
+      "filePath": "src/Wavee/Protocol/Protos/storage-resolve.proto",
+      "summary": "Defines StorageResolveResponse for Spotify's CDN storage resolution endpoint, returning an enum result code, a list of CDN URLs, and a file ID.",
+      "tags": ["schema-definition", "protobuf", "cdn", "audio", "storage"],
+      "complexity": "simple",
+      "languageNotes": "The result field is an enum (RESTRICT/CDN/STORAGE/OFFLINE) embedded within the message, routing the client to the correct download path."
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/storage-resolve.proto:StorageResolveResponse",
+      "type": "schema",
+      "name": "StorageResolveResponse",
+      "filePath": "src/Wavee/Protocol/Protos/storage-resolve.proto",
+      "summary": "CDN resolution response with result enum, repeated cdnurl strings, and fileid.",
+      "tags": ["schema-definition", "protobuf", "cdn"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/transfer_state.proto",
+      "type": "schema",
+      "name": "transfer_state.proto",
+      "filePath": "src/Wavee/Protocol/Protos/transfer_state.proto",
+      "summary": "Defines TransferState, the Protobuf message sent during a Spotify Connect playback transfer operation, encapsulating playback options, current playback position, session, queue, and creation timestamp.",
+      "tags": ["schema-definition", "protobuf", "connect", "transfer"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/transfer_state.proto:TransferState",
+      "type": "schema",
+      "name": "TransferState",
+      "filePath": "src/Wavee/Protocol/Protos/transfer_state.proto",
+      "summary": "Transfer message with options, playback, current_session, queue, and creation_timestamp fields.",
+      "tags": ["schema-definition", "protobuf", "connect"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/user_attributes.proto",
+      "type": "schema",
+      "name": "user_attributes.proto",
+      "filePath": "src/Wavee/Protocol/Protos/user_attributes.proto",
+      "summary": "Defines messages for Spotify user attribute mutations delivered via Dealer, including UserAttributesMutation, MutatedField, and MutationCommand with timestamp.",
+      "tags": ["schema-definition", "protobuf", "user", "dealer"],
+      "complexity": "simple"
+    },
+    {
+      "id": "schema:src/Wavee/Protocol/Protos/user_attributes.proto:UserAttributesMutation",
+      "type": "schema",
+      "name": "UserAttributesMutation",
+      "filePath": "src/Wavee/Protocol/Protos/user_attributes.proto",
+      "summary": "Top-level mutation message carrying a list of mutated fields and a mutation command.",
+      "tags": ["schema-definition", "protobuf", "user"],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist_permission.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist_permission.proto:Permission",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist_permission.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist_permission.proto:Capabilities",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist_permission.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist_permission.proto:PermissionLevel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playlist_signals.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playlist_signals.proto:PlaylistSignalsRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playplay.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playplay.proto:PlayPlayLicenseRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playplay.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playplay.proto:PlayPlayLicenseResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playplay.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playplay.proto:Interactivity",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playplay.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/playplay.proto:ContentType",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/popcount2_external.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/popcount2_external.proto:PopcountResult",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/prepare_play_options.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/prepare_play_options.proto:PreparePlayOptions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/pubsub.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/pubsub.proto:Subscription",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/queue.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/queue.proto:Queue",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/recommended_playlists.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/recommended_playlists.proto:RecommendedPlaylists",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/restrictions.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/restrictions.proto:Restrictions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/session.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/session.proto:Session",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/skip_to_track.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/skip_to_track.proto:SkipToTrack",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spirc.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/spirc.proto:MessageType",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spirc.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/spirc.proto:PlayStatus",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spirc.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/spirc.proto:Frame",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spirc.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/spirc.proto:State",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/status.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/status.proto:Status",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/storage-resolve.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/storage-resolve.proto:StorageResolveResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/transfer_state.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/transfer_state.proto:TransferState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/user_attributes.proto",
+      "target": "schema:src/Wavee/Protocol/Protos/user_attributes.proto:UserAttributesMutation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/playplay.proto",
+      "target": "file:src/Wavee/Core/Audio/AudioKeyManager.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/queue.proto",
+      "target": "file:src/Wavee/Connect/DealerClient.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/spirc.proto",
+      "target": "file:src/Wavee/Connect/DealerClient.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/transfer_state.proto",
+      "target": "file:src/Wavee/Connect/DealerClient.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/transfer_state.proto",
+      "target": "file:src/Wavee/Connect/PlaybackStateManager.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/queue.proto",
+      "target": "file:src/Wavee/Connect/PlaybackStateManager.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "schema:src/Wavee/Protocol/Protos/storage-resolve.proto",
+      "target": "file:src/Wavee/Protocol/Generated/StorageResolve.cs",
+      "type": "defines_schema",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Wavee.UI.Models;
 
@@ -41,4 +42,35 @@ public sealed record LibraryArtistDto
     /// "Recents" and this artist has a known last-played timestamp.
     /// </summary>
     public string? RecentsSubtitle { get; set; }
+}
+
+/// <summary>
+/// Represents an artist surfaced by grouping the user's Liked Songs by artist.
+/// </summary>
+public sealed record LikedArtistDto
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public string? ImageUrl { get; init; }
+    public int LikedSongCount { get; init; }
+    public DateTimeOffset MostRecentLikedAt { get; init; }
+    public IReadOnlyList<LikedSongDto> LikedSongs { get; init; } = Array.Empty<LikedSongDto>();
+    public bool IsAlsoFollowed { get; init; }
+
+    /// <summary>
+    /// VM-populated, sort-dependent subtitle. Non-null only for the Recents sort
+    /// when the artist has a known last-played timestamp.
+    /// </summary>
+    public string? RecentsSubtitle { get; set; }
+
+    public bool CanOpenArtist =>
+        Id.StartsWith("spotify:artist:", StringComparison.OrdinalIgnoreCase);
+
+    public string LikedSongCountLabel => LikedSongCount == 1
+        ? "1 liked song"
+        : $"{LikedSongCount} liked songs";
+
+    public string Subtitle => IsAlsoFollowed
+        ? $"{LikedSongCountLabel} \u00b7 following"
+        : LikedSongCountLabel;
 }

@@ -1,0 +1,182 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/Data/DTOs/NowPlayingTrackAdapter.cs",
+      "language": "csharp",
+      "sizeLines": 55,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Enums/LibrarySortBy.cs",
+      "language": "csharp",
+      "sizeLines": 9,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Enums/LibrarySortDirection.cs",
+      "language": "csharp",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Enums/LibraryViewMode.cs",
+      "language": "csharp",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Enums/NavigationPageType.cs",
+      "language": "csharp",
+      "sizeLines": 20,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Enums/PlayerLocation.cs",
+      "language": "csharp",
+      "sizeLines": 15,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Enums/RightPanelMode.cs",
+      "language": "csharp",
+      "sizeLines": 21,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Messages/AppMessages.cs",
+      "language": "csharp",
+      "sizeLines": 285,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Messages/TrackMetadataMessages.cs",
+      "language": "csharp",
+      "sizeLines": 76,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Models/ActivityItem.cs",
+      "language": "csharp",
+      "sizeLines": 84,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Models/AppModel.cs",
+      "language": "csharp",
+      "sizeLines": 126,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Models/AppSettings.cs",
+      "language": "csharp",
+      "sizeLines": 309,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Models/CachingProfile.cs",
+      "language": "csharp",
+      "sizeLines": 34,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Models/CachingProfilePresets.cs",
+      "language": "csharp",
+      "sizeLines": 181,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Models/ChangelogEntry.cs",
+      "language": "csharp",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Models/Common/ImageModel.cs",
+      "language": "csharp",
+      "sizeLines": 55,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Models/Common/LoadState.cs",
+      "language": "csharp",
+      "sizeLines": 31,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Models/NotificationInfo.cs",
+      "language": "csharp",
+      "sizeLines": 39,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Models/ShellSessionState.cs",
+      "language": "csharp",
+      "sizeLines": 87,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Parameters/ArtistDiscographyNavigationParameter.cs",
+      "language": "csharp",
+      "sizeLines": 23,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Parameters/ContentNavigationParameter.cs",
+      "language": "csharp",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Parameters/EpisodeNavigationParameter.cs",
+      "language": "csharp",
+      "sizeLines": 17,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Parameters/TabItemParameter.cs",
+      "language": "csharp",
+      "sizeLines": 59,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Stores/AlbumStore.cs",
+      "language": "csharp",
+      "sizeLines": 69,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Data/Stores/ArtistStore.cs",
+      "language": "csharp",
+      "sizeLines": 52,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "src/Wavee.UI.WinUI/Data/DTOs/NowPlayingTrackAdapter.cs": [],
+    "src/Wavee.UI.WinUI/Data/Enums/LibrarySortBy.cs": [],
+    "src/Wavee.UI.WinUI/Data/Enums/LibrarySortDirection.cs": [],
+    "src/Wavee.UI.WinUI/Data/Enums/LibraryViewMode.cs": [],
+    "src/Wavee.UI.WinUI/Data/Enums/NavigationPageType.cs": [],
+    "src/Wavee.UI.WinUI/Data/Enums/PlayerLocation.cs": [],
+    "src/Wavee.UI.WinUI/Data/Enums/RightPanelMode.cs": [],
+    "src/Wavee.UI.WinUI/Data/Messages/AppMessages.cs": [],
+    "src/Wavee.UI.WinUI/Data/Messages/TrackMetadataMessages.cs": [],
+    "src/Wavee.UI.WinUI/Data/Models/ActivityItem.cs": [],
+    "src/Wavee.UI.WinUI/Data/Models/AppModel.cs": [],
+    "src/Wavee.UI.WinUI/Data/Models/AppSettings.cs": [],
+    "src/Wavee.UI.WinUI/Data/Models/CachingProfile.cs": [],
+    "src/Wavee.UI.WinUI/Data/Models/CachingProfilePresets.cs": [],
+    "src/Wavee.UI.WinUI/Data/Models/ChangelogEntry.cs": [],
+    "src/Wavee.UI.WinUI/Data/Models/Common/ImageModel.cs": [],
+    "src/Wavee.UI.WinUI/Data/Models/Common/LoadState.cs": [],
+    "src/Wavee.UI.WinUI/Data/Models/NotificationInfo.cs": [],
+    "src/Wavee.UI.WinUI/Data/Models/ShellSessionState.cs": [],
+    "src/Wavee.UI.WinUI/Data/Parameters/ArtistDiscographyNavigationParameter.cs": [],
+    "src/Wavee.UI.WinUI/Data/Parameters/ContentNavigationParameter.cs": [],
+    "src/Wavee.UI.WinUI/Data/Parameters/EpisodeNavigationParameter.cs": [],
+    "src/Wavee.UI.WinUI/Data/Parameters/TabItemParameter.cs": [],
+    "src/Wavee.UI.WinUI/Data/Stores/AlbumStore.cs": [],
+    "src/Wavee.UI.WinUI/Data/Stores/ArtistStore.cs": []
+  }
+}

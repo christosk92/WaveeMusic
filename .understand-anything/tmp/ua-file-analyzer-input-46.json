@@ -1,0 +1,182 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/Services/MusicVideos/MusicVideoCatalogCache.cs",
+      "language": "csharp",
+      "sizeLines": 113,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/MusicVideos/MusicVideoDiscoveryService.cs",
+      "language": "csharp",
+      "sizeLines": 275,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/MusicVideos/MusicVideoMetadataService.cs",
+      "language": "csharp",
+      "sizeLines": 429,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/NavigationGcCoordinator.cs",
+      "language": "csharp",
+      "sizeLines": 116,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/NowPlayingHighlightService.cs",
+      "language": "csharp",
+      "sizeLines": 74,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/NowPlayingPresentationService.cs",
+      "language": "csharp",
+      "sizeLines": 41,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/PageCache.cs",
+      "language": "csharp",
+      "sizeLines": 152,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/PageHostCacheCleanupAdapter.cs",
+      "language": "csharp",
+      "sizeLines": 104,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/PaletteGradientCompositor.cs",
+      "language": "csharp",
+      "sizeLines": 128,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/PathfinderSpotifyTrackSearcher.cs",
+      "language": "csharp",
+      "sizeLines": 70,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/PhiSilicaStructuredTextGenerator.cs",
+      "language": "csharp",
+      "sizeLines": 397,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/PhiSilicaStructuredTextPipeline.cs",
+      "language": "csharp",
+      "sizeLines": 472,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/PiiRedactor.cs",
+      "language": "csharp",
+      "sizeLines": 34,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/PlaylistMosaicService.cs",
+      "language": "csharp",
+      "sizeLines": 690,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/PlaylistPrefetcher.cs",
+      "language": "csharp",
+      "sizeLines": 324,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/PlaylistPrefetchService.cs",
+      "language": "csharp",
+      "sizeLines": 118,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/PreviewAudioGraphService.cs",
+      "language": "csharp",
+      "sizeLines": 707,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ProfileCache.cs",
+      "language": "csharp",
+      "sizeLines": 139,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ProfileFetcher.cs",
+      "language": "csharp",
+      "sizeLines": 172,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/RecentlyPlayedService.cs",
+      "language": "csharp",
+      "sizeLines": 423,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/RemoteStateRecorder.cs",
+      "language": "csharp",
+      "sizeLines": 218,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/SettingsService.cs",
+      "language": "csharp",
+      "sizeLines": 233,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/SharedCardCanvasPreviewService.cs",
+      "language": "csharp",
+      "sizeLines": 372,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/ShellSessionService.cs",
+      "language": "csharp",
+      "sizeLines": 280,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Services/SpotifyLinkPreviewService.cs",
+      "language": "csharp",
+      "sizeLines": 156,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "src/Wavee.UI.WinUI/Services/MusicVideos/MusicVideoCatalogCache.cs": [],
+    "src/Wavee.UI.WinUI/Services/MusicVideos/MusicVideoDiscoveryService.cs": [],
+    "src/Wavee.UI.WinUI/Services/MusicVideos/MusicVideoMetadataService.cs": [],
+    "src/Wavee.UI.WinUI/Services/NavigationGcCoordinator.cs": [],
+    "src/Wavee.UI.WinUI/Services/NowPlayingHighlightService.cs": [],
+    "src/Wavee.UI.WinUI/Services/NowPlayingPresentationService.cs": [],
+    "src/Wavee.UI.WinUI/Services/PageCache.cs": [],
+    "src/Wavee.UI.WinUI/Services/PageHostCacheCleanupAdapter.cs": [],
+    "src/Wavee.UI.WinUI/Services/PaletteGradientCompositor.cs": [],
+    "src/Wavee.UI.WinUI/Services/PathfinderSpotifyTrackSearcher.cs": [],
+    "src/Wavee.UI.WinUI/Services/PhiSilicaStructuredTextGenerator.cs": [],
+    "src/Wavee.UI.WinUI/Services/PhiSilicaStructuredTextPipeline.cs": [],
+    "src/Wavee.UI.WinUI/Services/PiiRedactor.cs": [],
+    "src/Wavee.UI.WinUI/Services/PlaylistMosaicService.cs": [],
+    "src/Wavee.UI.WinUI/Services/PlaylistPrefetcher.cs": [],
+    "src/Wavee.UI.WinUI/Services/PlaylistPrefetchService.cs": [],
+    "src/Wavee.UI.WinUI/Services/PreviewAudioGraphService.cs": [],
+    "src/Wavee.UI.WinUI/Services/ProfileCache.cs": [],
+    "src/Wavee.UI.WinUI/Services/ProfileFetcher.cs": [],
+    "src/Wavee.UI.WinUI/Services/RecentlyPlayedService.cs": [],
+    "src/Wavee.UI.WinUI/Services/RemoteStateRecorder.cs": [],
+    "src/Wavee.UI.WinUI/Services/SettingsService.cs": [],
+    "src/Wavee.UI.WinUI/Services/SharedCardCanvasPreviewService.cs": [],
+    "src/Wavee.UI.WinUI/Services/ShellSessionService.cs": [],
+    "src/Wavee.UI.WinUI/Services/SpotifyLinkPreviewService.cs": []
+  }
+}

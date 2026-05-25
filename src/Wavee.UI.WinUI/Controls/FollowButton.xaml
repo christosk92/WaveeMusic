@@ -6,9 +6,7 @@
 
     <Button x:Name="InternalButton"
             Click="OnClick"
-            Height="44"
-            Padding="18,0"
-            CornerRadius="22"
+            Style="{StaticResource LibraryActionPillButtonStyle}"
             HorizontalAlignment="Stretch">
         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
             <FontIcon x:Name="FollowIcon" Glyph="&#xEB51;" FontSize="13"/>

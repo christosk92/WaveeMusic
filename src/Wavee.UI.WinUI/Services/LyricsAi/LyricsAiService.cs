@@ -64,11 +64,8 @@ public sealed class LyricsAiService
 
         var normalizedTrackUri = NormalizeTrackUri(trackUri);
 
-        // Structured generation intentionally does not stream progress because
-        // intermediate deltas may be partial JSON, not user-facing prose.
-        // Concurrent callers share the same final in-flight result.
         var created = new Lazy<Task<LyricsAiResult>>(
-            () => GenerateLyricsMeaningCoreAsync(fullLyric, trackTitle, artistName),
+            () => GenerateLyricsMeaningCoreAsync(fullLyric, trackTitle, artistName, deltaProgress),
             LazyThreadSafetyMode.ExecutionAndPublication);
         var request = _lyricsMeaningRequests.GetOrAdd(normalizedTrackUri, created);
         var fromExistingRequest = !ReferenceEquals(request, created);
@@ -121,7 +118,8 @@ public sealed class LyricsAiService
     private async Task<LyricsAiResult> GenerateLyricsMeaningCoreAsync(
         string fullLyric,
         string? trackTitle,
-        string? artistName)
+        string? artistName,
+        IProgress<string>? deltaProgress)
     {
         if (!await _capabilities.EnsureLanguageModelReadyAsync())
         {
@@ -138,25 +136,84 @@ public sealed class LyricsAiService
             LyricsAiPrompts.TrimLyricsForFallback(fullLyric));
         var trackContext = LyricsAiPrompts.BuildTrackContext(trackTitle, artistName);
 
-        return await PhiSilicaStructuredTextPipeline.GenerateAsync(
-            new PhiSilicaStructuredTextRequest(
-                "GetLyricsMeaningAsync",
-                LyricsAiPrompts.BuildLyricsMeaningPrompt(numberedLyrics.Text, trackContext),
-                LyricsAiPrompts.BuildLyricsMeaningFallbackPrompt(fallbackLyrics.Text, trackContext),
-                // Greedy decoding (temperature 0) — faster under constrained JSON
-                // schemas and produces tighter output for instructive prompts.
-                0.0f,
-                text => LyricsAiOutputNormalizer.NormalizeLyricsMeaningOutput(
-                    LyricsAiOutputNormalizer.StripEvidenceLines(text)),
-                "Phi Silica returned an empty lyrics meaning.")
-            {
-                JsonSchema = LyricsAiEvidenceParser.LyricsMeaningEvidenceJsonSchema,
-                BuildSuccessResult = (response, text) =>
-                    LyricsAiEvidenceParser.BuildLyricsMeaningSuccessResult(response, text, numberedLyrics.LineCount),
-            },
-            _logger,
-            CancellationToken.None);
+        return await GeneratePlainTextLyricsMeaningAsync(
+            LyricsAiPrompts.BuildLyricsMeaningPlainTextPrompt(numberedLyrics.Text, trackContext),
+            LyricsAiPrompts.BuildLyricsMeaningPlainTextFallbackPrompt(fallbackLyrics.Text, trackContext),
+            deltaProgress);
     }
+
+    private async Task<LyricsAiResult> GeneratePlainTextLyricsMeaningAsync(
+        string prompt,
+        string fallbackPrompt,
+        IProgress<string>? deltaProgress)
+    {
+        var response = await PhiSilicaStructuredTextGenerator.GeneratePlainTextAsync(
+            prompt,
+            deltaProgress,
+            CancellationToken.None);
+        var usedFallback = false;
+
+        if (response.Status != PhiSilicaStructuredGenerationStatus.Complete
+            && ShouldRetryPlainTextWithFallback(response.Status))
+        {
+            response = await PhiSilicaStructuredTextGenerator.GeneratePlainTextAsync(
+                fallbackPrompt,
+                deltaProgress,
+                CancellationToken.None);
+            usedFallback = true;
+        }
+
+        if (response.Status != PhiSilicaStructuredGenerationStatus.Complete)
+            return ToPlainTextFailureResult(response);
+
+        var text = CleanPlainTextMeaning(response.Text);
+        if (string.IsNullOrWhiteSpace(text) && !usedFallback)
+        {
+            response = await PhiSilicaStructuredTextGenerator.GeneratePlainTextAsync(
+                fallbackPrompt,
+                deltaProgress,
+                CancellationToken.None);
+
+            if (response.Status != PhiSilicaStructuredGenerationStatus.Complete)
+                return ToPlainTextFailureResult(response);
+
+            text = CleanPlainTextMeaning(response.Text);
+        }
+
+        return string.IsNullOrWhiteSpace(text)
+            ? LyricsAiResult.Error("Phi Silica returned an empty lyrics meaning.")
+            : LyricsAiResult.Ok(text, fromCache: false);
+    }
+
+    private LyricsAiResult ToPlainTextFailureResult(PhiSilicaStructuredGenerationResult generated)
+    {
+        _logger?.LogWarning(
+            "GetLyricsMeaningAsync plaintext returned Phi Silica status {Status}. error={ErrorMessage}; diagnostics={Diagnostics}",
+            generated.Status,
+            string.IsNullOrWhiteSpace(generated.ErrorMessage) ? "<no extended error>" : generated.ErrorMessage,
+            string.IsNullOrWhiteSpace(generated.DiagnosticMessage) ? "<none>" : generated.DiagnosticMessage);
+
+        return generated.Status switch
+        {
+            PhiSilicaStructuredGenerationStatus.BlockedByPolicy => LyricsAiResult.Filtered,
+            PhiSilicaStructuredGenerationStatus.PromptBlockedByContentModeration => LyricsAiResult.Filtered,
+            PhiSilicaStructuredGenerationStatus.ResponseBlockedByContentModeration => LyricsAiResult.Filtered,
+            PhiSilicaStructuredGenerationStatus.PromptLargerThanContext =>
+                LyricsAiResult.Error("Prompt exceeded Phi Silica's context window."),
+            _ => LyricsAiResult.Error(generated.ErrorMessage ?? generated.Status.ToString()),
+        };
+    }
+
+    private static bool ShouldRetryPlainTextWithFallback(PhiSilicaStructuredGenerationStatus status)
+        => status is PhiSilicaStructuredGenerationStatus.PromptLargerThanContext
+            or PhiSilicaStructuredGenerationStatus.PromptBlockedByContentModeration
+            or PhiSilicaStructuredGenerationStatus.ResponseBlockedByContentModeration
+            or PhiSilicaStructuredGenerationStatus.BlockedByPolicy
+            or PhiSilicaStructuredGenerationStatus.Error;
+
+    private static string CleanPlainTextMeaning(string text)
+        => LyricsAiOutputNormalizer.NormalizeLyricsMeaningOutput(
+            LyricsAiOutputNormalizer.StripEvidenceLines(text));
 
     private static string NormalizeTrackUri(string trackUri)
         => string.IsNullOrWhiteSpace(trackUri) ? "spotify:track:unknown" : trackUri.Trim();

@@ -59,12 +59,25 @@ public sealed partial class ContentCard : UserControl
     private bool _isInsideEffectiveViewport = true;
 
     private const double DefaultCardWidth = 160;
-    private const double CardHorizontalPadding = 16;
+    private const double DefaultCardHorizontalPadding = 16;
+    private const double CompactCardHorizontalPadding = 0;
     private const double CircleImageInset = 16;
     private const double MinimumImageSide = 60;
     private const int CardImageDecodeSize = 200;
+    // 4 px horizontal breathing room so the 1.03x hover-scale doesn't push
+    // the image / text past the parent panel's left edge on edge-row cards.
+    // Vertical stays tight; only the very small bottom inset keeps title text
+    // from sticking to the next row when compact grids stack closely.
+    private static readonly Thickness CompactCardPadding = new(4, 0, 4, 2);
+    private static readonly Thickness NoBorderThickness = new(0);
+    private static readonly SolidColorBrush TransparentBrush = new(Microsoft.UI.Colors.Transparent);
 
     private string? _currentImageCacheUrl;
+    private Thickness _defaultCardRootPadding;
+    private Thickness _defaultCardRootBorderThickness;
+    private Brush? _defaultCardRootBackground;
+    private Brush? _defaultCardRootBorderBrush;
+    private double _defaultContentPanelSpacing;
 
     private readonly ThemeColorService? _themeColorService;
     private readonly NowPlayingHighlightService? _highlightService;
@@ -85,6 +98,8 @@ public sealed partial class ContentCard : UserControl
         _themeColorService = Ioc.Default.GetService<ThemeColorService>();
         _highlightService = Ioc.Default.GetService<NowPlayingHighlightService>();
         InitializeComponent();
+        CaptureDefaultDensityValues();
+        ApplyDensityMode();
         // Cards are always interactive (click navigates or opens). Set the hand cursor
         // once on construction — the system shows it on hover automatically as long as
         // the cursor stays assigned, no per-event toggling needed.
@@ -175,6 +190,46 @@ public sealed partial class ContentCard : UserControl
         // HandleViewportReset(); we just trust that next attach will resample.
         // CompositionImage.OnUnloaded handles its own pin release. No further
         // teardown needed here — the surface stays in the LRU until evicted.
+    }
+
+    private double EffectiveCardHorizontalPadding =>
+        IsCompact ? CompactCardHorizontalPadding : DefaultCardHorizontalPadding;
+
+    private void CaptureDefaultDensityValues()
+    {
+        if (CardRoot != null)
+        {
+            _defaultCardRootPadding = CardRoot.Padding;
+            _defaultCardRootBorderThickness = CardRoot.BorderThickness;
+            _defaultCardRootBackground = CardRoot.Background;
+            _defaultCardRootBorderBrush = CardRoot.BorderBrush;
+        }
+
+        if (ContentPanel != null)
+            _defaultContentPanelSpacing = ContentPanel.Spacing;
+    }
+
+    private void ApplyDensityMode()
+    {
+        if (CardRoot == null || ContentPanel == null)
+            return;
+
+        if (IsCompact)
+        {
+            CardRoot.Padding = CompactCardPadding;
+            CardRoot.BorderThickness = NoBorderThickness;
+            CardRoot.Background = TransparentBrush;
+            CardRoot.BorderBrush = TransparentBrush;
+            ContentPanel.Spacing = 5;
+        }
+        else
+        {
+            CardRoot.Padding = _defaultCardRootPadding;
+            CardRoot.BorderThickness = _defaultCardRootBorderThickness;
+            CardRoot.Background = _defaultCardRootBackground;
+            CardRoot.BorderBrush = _defaultCardRootBorderBrush;
+            ContentPanel.Spacing = _defaultContentPanelSpacing;
+        }
     }
 
     // ── Hooks called by attached behaviors ───────────────────────────────────
@@ -405,10 +460,24 @@ public sealed partial class ContentCard : UserControl
         {
             if (CirclePlaceholderIcon != null)
                 CirclePlaceholderIcon.Visibility = Visibility.Collapsed;
+            // The circle path defaults CircleImage.Opacity=0.85 in XAML, so it
+            // rarely needs a bump here — but if a previous ReleaseImage zeroed
+            // it, restore the resting opacity so the image is actually visible
+            // when we collapse the placeholder on top of it. Skip when hover
+            // has already raised it to 1.0.
+            if (CircleImage != null && CircleImage.Opacity < 0.85)
+                CircleImage.Opacity = 0.85;
         }
-        else if (SquarePlaceholderIcon != null)
+        else
         {
-            SquarePlaceholderIcon.Visibility = Visibility.Collapsed;
+            if (SquarePlaceholderIcon != null)
+                SquarePlaceholderIcon.Visibility = Visibility.Collapsed;
+            // SquareImage starts at Opacity=0 in XAML and is normally raised by
+            // the fresh-URL cache-hit branch or by SquareImage_ImageOpened. The
+            // same-URL early-return path that calls into this helper bypasses
+            // both, so restore the resting opacity here to close that gap.
+            if (SquareImage != null && SquareImage.Opacity < 0.85)
+                SquareImage.Opacity = 0.85;
         }
     }
 
@@ -659,7 +728,7 @@ public sealed partial class ContentCard : UserControl
             return;
 
         var cardWidth = ResolveMeasureWidth(availableWidth);
-        var contentWidth = Math.Max(MinimumImageSide, cardWidth - CardHorizontalPadding);
+        var contentWidth = Math.Max(MinimumImageSide, cardWidth - EffectiveCardHorizontalPadding);
 
         if (IsCircularImage)
         {
@@ -686,7 +755,7 @@ public sealed partial class ContentCard : UserControl
         if (ActualWidth > 0)
             return ActualWidth;
 
-        return ImageSize > 0 ? ImageSize + CardHorizontalPadding : DefaultCardWidth;
+        return ImageSize > 0 ? ImageSize + EffectiveCardHorizontalPadding : DefaultCardWidth;
     }
 
     private void SquareImage_ImageOpened(object? sender, EventArgs e)
@@ -744,20 +813,31 @@ public sealed partial class ContentCard : UserControl
         if (overlayBtn != null)
         {
             overlayBtn.Visibility = Visibility.Visible;
+            // FrameworkLayer.Xaml animates UIElement.Opacity directly. The
+            // default Composition layer raced the Visibility=Collapsed→Visible
+            // transition on the FIRST hover because the composition visual
+            // wasn't ready when the animation started — overlay stayed
+            // invisible until the second hover when the visual already
+            // existed. Xaml layer works regardless of composition state.
             CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
-                .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(150))
+                .Opacity(from: 0, to: 1,
+                         duration: TimeSpan.FromMilliseconds(150),
+                         layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
                 .Start(overlayBtn);
         }
 
         // SecondaryAction "Open album" button — fades in alongside the play
         // overlay so the discography-card affordance is discoverable only on
         // hover. Gated on SecondaryActionVisible (default false) so cards
-        // that don't opt in pay no animation cost.
+        // that don't opt in pay no animation cost. Xaml layer — same reason
+        // as the play overlay above.
         if (SecondaryActionVisible && SquareSecondaryActionButton != null)
         {
             SquareSecondaryActionButton.Visibility = Visibility.Visible;
             CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
-                .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(150))
+                .Opacity(from: 0, to: 1,
+                         duration: TimeSpan.FromMilliseconds(150),
+                         layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
                 .Start(SquareSecondaryActionButton);
         }
 
@@ -785,7 +865,9 @@ public sealed partial class ContentCard : UserControl
         if (overlayBtn != null && !_isPlaybackPending && !IsContextPaused)
         {
             CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
-                .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(100))
+                .Opacity(to: 0,
+                         duration: TimeSpan.FromMilliseconds(100),
+                         layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
                 .Start(overlayBtn);
 
             // Collapse after fade-out to reset for next hover
@@ -800,7 +882,9 @@ public sealed partial class ContentCard : UserControl
         if (SecondaryActionVisible && SquareSecondaryActionButton != null)
         {
             CommunityToolkit.WinUI.Animations.AnimationBuilder.Create()
-                .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(100))
+                .Opacity(to: 0,
+                         duration: TimeSpan.FromMilliseconds(100),
+                         layer: CommunityToolkit.WinUI.Animations.FrameworkLayer.Xaml)
                 .Start(SquareSecondaryActionButton);
 
             await System.Threading.Tasks.Task.Delay(120);

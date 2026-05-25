@@ -1,0 +1,182 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/ArtistDiscographyPageViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 149,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/ArtistsLibraryViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 1211,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/ArtistViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 998,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/BrowseViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 334,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/ConcertViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 367,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/ConnectStateViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 206,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Contracts/ITrackListViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 100,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/CreatePlaylistViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 137,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/DebugViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 707,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/DetailViewEnvelopes.cs",
+      "language": "csharp",
+      "sizeLines": 83,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/EpisodePageViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 988,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/FeedbackViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 416,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/FriendFeedRowViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 168,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs",
+      "language": "csharp",
+      "sizeLines": 82,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGroupKind.cs",
+      "language": "csharp",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllItem.cs",
+      "language": "csharp",
+      "sizeLines": 39,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs",
+      "language": "csharp",
+      "sizeLines": 83,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllTaxonomy.cs",
+      "language": "csharp",
+      "sizeLines": 94,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 948,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Home/HomeGreetingViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 115,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs",
+      "language": "csharp",
+      "sizeLines": 561,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 351,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Home/HomeRegion.cs",
+      "language": "csharp",
+      "sizeLines": 113,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs",
+      "language": "csharp",
+      "sizeLines": 88,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "language": "csharp",
+      "sizeLines": 1661,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "src/Wavee.UI.WinUI/ViewModels/ArtistDiscographyPageViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/ArtistsLibraryViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/ArtistViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/BrowseViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/ConcertViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/ConnectStateViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Contracts/ITrackListViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/CreatePlaylistViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/DebugViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/DetailViewEnvelopes.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/EpisodePageViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/FeedbackViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/FriendFeedRowViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGroupKind.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllItem.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllTaxonomy.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Home/HomeGreetingViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Home/HomeRegion.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs": [],
+    "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs": []
+  }
+}

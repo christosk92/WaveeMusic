@@ -1,0 +1,5499 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 25,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 67,
+      "nonEmptyLines": 62,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 162,
+      "nonEmptyLines": 143,
+      "functions": [
+        {
+          "name": "VideoGripperView",
+          "startLine": 34,
+          "endLine": 47,
+          "params": []
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 49,
+          "endLine": 58,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnUnloaded",
+          "startLine": 60,
+          "endLine": 67,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnViewModelPropertyChanged",
+          "startLine": 69,
+          "endLine": 83,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSurfaceOwnershipChanged",
+          "startLine": 91,
+          "endLine": 101,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RestoreButton_Click",
+          "startLine": 103,
+          "endLine": 110,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "AttachSurface",
+          "startLine": 114,
+          "endLine": 130,
+          "params": [
+            "player"
+          ]
+        },
+        {
+          "name": "AttachElementSurface",
+          "startLine": 132,
+          "endLine": 139,
+          "params": [
+            "element"
+          ]
+        },
+        {
+          "name": "DetachSurface",
+          "startLine": 141,
+          "endLine": 145,
+          "params": []
+        },
+        {
+          "name": "DetachMediaPlayerSurfaceInternal",
+          "startLine": 147,
+          "endLine": 153,
+          "params": []
+        },
+        {
+          "name": "DetachElementSurfaceInternal",
+          "startLine": 155,
+          "endLine": 161,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "VideoGripperView",
+          "startLine": 24,
+          "endLine": 162,
+          "methods": [
+            "VideoGripperView",
+            "OnLoaded",
+            "OnUnloaded",
+            "OnViewModelPropertyChanged",
+            "OnSurfaceOwnershipChanged",
+            "RestoreButton_Click",
+            "AttachSurface",
+            "AttachElementSurface",
+            "DetachSurface",
+            "DetachMediaPlayerSurfaceInternal",
+            "DetachElementSurfaceInternal"
+          ],
+          "properties": [
+            "OwnerPriority",
+            "_surface",
+            "ViewModel",
+            "_element",
+            "_elementSurface"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ViewModel",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "VideoGripperView",
+          "line": 34,
+          "isDefault": false
+        },
+        {
+          "name": "AttachSurface",
+          "line": 114,
+          "isDefault": false
+        },
+        {
+          "name": "AttachElementSurface",
+          "line": 132,
+          "isDefault": false
+        },
+        {
+          "name": "DetachSurface",
+          "line": 141,
+          "isDefault": false
+        },
+        {
+          "name": "VideoGripperView",
+          "line": 24,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "VideoGripperView",
+          "callee": "Ioc.Default.GetRequiredService<IActiveVideoSurfaceService>",
+          "lineNumber": 36
+        },
+        {
+          "caller": "VideoGripperView",
+          "callee": "Ioc.Default.GetRequiredService<MiniVideoPlayerViewModel>",
+          "lineNumber": 37
+        },
+        {
+          "caller": "VideoGripperView",
+          "callee": "InitializeComponent",
+          "lineNumber": 38
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "_surface.AcquireSurface",
+          "lineNumber": 53
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.TryStartMiniToGripper",
+          "lineNumber": 56
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "_surface.ReleaseSurface",
+          "lineNumber": 62
+        },
+        {
+          "caller": "OnViewModelPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 71
+        },
+        {
+          "caller": "OnViewModelPropertyChanged",
+          "callee": "_surface.AcquireSurface",
+          "lineNumber": 75
+        },
+        {
+          "caller": "OnViewModelPropertyChanged",
+          "callee": "Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.TryStartMiniToGripper",
+          "lineNumber": 76
+        },
+        {
+          "caller": "OnViewModelPropertyChanged",
+          "callee": "_surface.ReleaseSurface",
+          "lineNumber": 80
+        },
+        {
+          "caller": "OnSurfaceOwnershipChanged",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 95
+        },
+        {
+          "caller": "OnSurfaceOwnershipChanged",
+          "callee": "OnSurfaceOwnershipChanged",
+          "lineNumber": 95
+        },
+        {
+          "caller": "OnSurfaceOwnershipChanged",
+          "callee": "_surface.IsOwnedBy",
+          "lineNumber": 99
+        },
+        {
+          "caller": "OnSurfaceOwnershipChanged",
+          "callee": "_surface.AcquireSurface",
+          "lineNumber": 100
+        },
+        {
+          "caller": "RestoreButton_Click",
+          "callee": "Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.PrepareGripperToMini",
+          "lineNumber": 108
+        },
+        {
+          "caller": "RestoreButton_Click",
+          "callee": "ViewModel.Restore",
+          "lineNumber": 109
+        },
+        {
+          "caller": "AttachSurface",
+          "callee": "DetachElementSurfaceInternal",
+          "lineNumber": 116
+        },
+        {
+          "caller": "AttachSurface",
+          "callee": "new MediaPlayerElement",
+          "lineNumber": 119
+        },
+        {
+          "caller": "AttachSurface",
+          "callee": "SurfaceHost.MountVideoElement",
+          "lineNumber": 127
+        },
+        {
+          "caller": "AttachSurface",
+          "callee": "_element.SetMediaPlayer",
+          "lineNumber": 129
+        },
+        {
+          "caller": "AttachElementSurface",
+          "callee": "DetachMediaPlayerSurfaceInternal",
+          "lineNumber": 134
+        },
+        {
+          "caller": "AttachElementSurface",
+          "callee": "ReferenceEquals",
+          "lineNumber": 135
+        },
+        {
+          "caller": "AttachElementSurface",
+          "callee": "SurfaceHost.MountVideoElement",
+          "lineNumber": 138
+        },
+        {
+          "caller": "DetachSurface",
+          "callee": "DetachMediaPlayerSurfaceInternal",
+          "lineNumber": 143
+        },
+        {
+          "caller": "DetachSurface",
+          "callee": "DetachElementSurfaceInternal",
+          "lineNumber": 144
+        },
+        {
+          "caller": "DetachMediaPlayerSurfaceInternal",
+          "callee": "_element.SetMediaPlayer",
+          "lineNumber": 150
+        },
+        {
+          "caller": "DetachMediaPlayerSurfaceInternal",
+          "callee": "SurfaceHost.UnmountVideoElement",
+          "lineNumber": 151
+        },
+        {
+          "caller": "DetachElementSurfaceInternal",
+          "callee": "SurfaceHost.UnmountVideoElement",
+          "lineNumber": 158
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 6,
+        "functionCount": 11,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 50,
+      "nonEmptyLines": 45,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 425,
+      "nonEmptyLines": 367,
+      "functions": [
+        {
+          "name": "VideoSurfaceHost",
+          "startLine": 50,
+          "endLine": 56,
+          "params": []
+        },
+        {
+          "name": "MountVideoElement",
+          "startLine": 114,
+          "endLine": 130,
+          "params": [
+            "element"
+          ]
+        },
+        {
+          "name": "UnmountVideoElement",
+          "startLine": 132,
+          "endLine": 137,
+          "params": [
+            "element"
+          ]
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 141,
+          "endLine": 148,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnUnloaded",
+          "startLine": 150,
+          "endLine": 150,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "TeardownComposition",
+          "startLine": 152,
+          "endLine": 182,
+          "params": []
+        },
+        {
+          "name": "ReleaseForNavCache",
+          "startLine": 189,
+          "endLine": 196,
+          "params": []
+        },
+        {
+          "name": "RestoreForNavCache",
+          "startLine": 198,
+          "endLine": 209,
+          "params": []
+        },
+        {
+          "name": "ClearOpacityImplicits",
+          "startLine": 222,
+          "endLine": 233,
+          "params": [
+            "element"
+          ]
+        },
+        {
+          "name": "OnSizeChanged",
+          "startLine": 235,
+          "endLine": 242,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "EnsureComposition",
+          "startLine": 244,
+          "endLine": 264,
+          "params": []
+        },
+        {
+          "name": "InstallOpacityImplicits",
+          "startLine": 266,
+          "endLine": 282,
+          "params": [
+            "element",
+            "duration"
+          ]
+        },
+        {
+          "name": "OnAlbumArtUrlChanged",
+          "startLine": 286,
+          "endLine": 287,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPosterUrlChanged",
+          "startLine": 289,
+          "endLine": 290,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnIsFirstFrameReadyChanged",
+          "startLine": 292,
+          "endLine": 293,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnHostCornerRadiusChanged",
+          "startLine": 295,
+          "endLine": 296,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyHostCornerRadius",
+          "startLine": 298,
+          "endLine": 301,
+          "params": []
+        },
+        {
+          "name": "ApplyAlbumArt",
+          "startLine": 303,
+          "endLine": 322,
+          "params": [
+            "url"
+          ]
+        },
+        {
+          "name": "ApplyPosterUrl",
+          "startLine": 324,
+          "endLine": 372,
+          "params": [
+            "url"
+          ]
+        },
+        {
+          "name": "DisposePosterResources",
+          "startLine": 374,
+          "endLine": 382,
+          "params": []
+        },
+        {
+          "name": "ComputeArtworkDecodeSize",
+          "startLine": 384,
+          "endLine": 392,
+          "params": []
+        },
+        {
+          "name": "ApplyFirstFrameState",
+          "startLine": 396,
+          "endLine": 424,
+          "params": [
+            "firstFrameReady",
+            "animate"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "VideoSurfaceHost",
+          "startLine": 27,
+          "endLine": 425,
+          "methods": [
+            "VideoSurfaceHost",
+            "MountVideoElement",
+            "UnmountVideoElement",
+            "OnLoaded",
+            "OnUnloaded",
+            "TeardownComposition",
+            "ReleaseForNavCache",
+            "RestoreForNavCache",
+            "ClearOpacityImplicits",
+            "OnSizeChanged",
+            "EnsureComposition",
+            "InstallOpacityImplicits",
+            "OnAlbumArtUrlChanged",
+            "OnPosterUrlChanged",
+            "OnIsFirstFrameReadyChanged",
+            "OnHostCornerRadiusChanged",
+            "ApplyHostCornerRadius",
+            "ApplyAlbumArt",
+            "ApplyPosterUrl",
+            "DisposePosterResources",
+            "ComputeArtworkDecodeSize",
+            "ApplyFirstFrameState"
+          ],
+          "properties": [
+            "ArtToPosterDuration",
+            "PosterToVideoDuration",
+            "SoftEaseControl1",
+            "SoftEaseControl2",
+            "PosterBlurAmount",
+            "PosterScale",
+            "FallbackArtworkDecodeSize",
+            "_compositor",
+            "_posterVisual",
+            "_posterSurface",
+            "_posterSurfaceBrush",
+            "_posterEffectBrush",
+            "_navCacheReleased",
+            "AlbumArtUrlProperty",
+            "AlbumArtUrl",
+            "PosterUrlProperty",
+            "PosterUrl",
+            "IsFirstFrameReadyProperty",
+            "IsFirstFrameReady",
+            "HostCornerRadiusProperty",
+            "HostCornerRadius",
+            "VideoMountPoint",
+            "EstimatedSurfaceBytes"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "VideoSurfaceHost",
+          "line": 50,
+          "isDefault": false
+        },
+        {
+          "name": "AlbumArtUrlProperty",
+          "line": 60,
+          "isDefault": false
+        },
+        {
+          "name": "AlbumArtUrl",
+          "line": 65,
+          "isDefault": false
+        },
+        {
+          "name": "PosterUrlProperty",
+          "line": 71,
+          "isDefault": false
+        },
+        {
+          "name": "PosterUrl",
+          "line": 76,
+          "isDefault": false
+        },
+        {
+          "name": "IsFirstFrameReadyProperty",
+          "line": 82,
+          "isDefault": false
+        },
+        {
+          "name": "IsFirstFrameReady",
+          "line": 87,
+          "isDefault": false
+        },
+        {
+          "name": "HostCornerRadiusProperty",
+          "line": 93,
+          "isDefault": false
+        },
+        {
+          "name": "HostCornerRadius",
+          "line": 98,
+          "isDefault": false
+        },
+        {
+          "name": "VideoMountPoint",
+          "line": 106,
+          "isDefault": false
+        },
+        {
+          "name": "MountVideoElement",
+          "line": 114,
+          "isDefault": false
+        },
+        {
+          "name": "UnmountVideoElement",
+          "line": 132,
+          "isDefault": false
+        },
+        {
+          "name": "VideoSurfaceHost",
+          "line": 27,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "VideoSurfaceHost",
+          "callee": "InitializeComponent",
+          "lineNumber": 52
+        },
+        {
+          "caller": "MountVideoElement",
+          "callee": "new ArgumentNullException",
+          "lineNumber": 116
+        },
+        {
+          "caller": "MountVideoElement",
+          "callee": "nameof",
+          "lineNumber": 116
+        },
+        {
+          "caller": "MountVideoElement",
+          "callee": "ReferenceEquals",
+          "lineNumber": 117
+        },
+        {
+          "caller": "MountVideoElement",
+          "callee": "p.Children.Remove",
+          "lineNumber": 120
+        },
+        {
+          "caller": "MountVideoElement",
+          "callee": "VideoSlot.Children.Contains",
+          "lineNumber": 122
+        },
+        {
+          "caller": "MountVideoElement",
+          "callee": "VideoSlot.Children.Insert",
+          "lineNumber": 127
+        },
+        {
+          "caller": "MountVideoElement",
+          "callee": "UpdateLayout",
+          "lineNumber": 129
+        },
+        {
+          "caller": "UnmountVideoElement",
+          "callee": "VideoSlot.Children.Contains",
+          "lineNumber": 135
+        },
+        {
+          "caller": "UnmountVideoElement",
+          "callee": "VideoSlot.Children.Remove",
+          "lineNumber": 136
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "EnsureComposition",
+          "lineNumber": 143
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "ApplyAlbumArt",
+          "lineNumber": 144
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "ApplyPosterUrl",
+          "lineNumber": 145
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "ApplyFirstFrameState",
+          "lineNumber": 146
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "ApplyHostCornerRadius",
+          "lineNumber": 147
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "TeardownComposition",
+          "lineNumber": 150
+        },
+        {
+          "caller": "TeardownComposition",
+          "callee": "ClearOpacityImplicits",
+          "lineNumber": 157
+        },
+        {
+          "caller": "TeardownComposition",
+          "callee": "ClearOpacityImplicits",
+          "lineNumber": 158
+        },
+        {
+          "caller": "TeardownComposition",
+          "callee": "ClearOpacityImplicits",
+          "lineNumber": 159
+        },
+        {
+          "caller": "TeardownComposition",
+          "callee": "ElementCompositionPreview.SetElementChildVisual",
+          "lineNumber": 165
+        },
+        {
+          "caller": "TeardownComposition",
+          "callee": "DisposePosterResources",
+          "lineNumber": 174
+        },
+        {
+          "caller": "TeardownComposition",
+          "callee": "_posterVisual?.Dispose",
+          "lineNumber": 179
+        },
+        {
+          "caller": "ReleaseForNavCache",
+          "callee": "TeardownComposition",
+          "lineNumber": 194
+        },
+        {
+          "caller": "RestoreForNavCache",
+          "callee": "EnsureComposition",
+          "lineNumber": 203
+        },
+        {
+          "caller": "RestoreForNavCache",
+          "callee": "ApplyAlbumArt",
+          "lineNumber": 204
+        },
+        {
+          "caller": "RestoreForNavCache",
+          "callee": "ApplyPosterUrl",
+          "lineNumber": 205
+        },
+        {
+          "caller": "RestoreForNavCache",
+          "callee": "ApplyFirstFrameState",
+          "lineNumber": 206
+        },
+        {
+          "caller": "RestoreForNavCache",
+          "callee": "ApplyHostCornerRadius",
+          "lineNumber": 207
+        },
+        {
+          "caller": "ClearOpacityImplicits",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 226
+        },
+        {
+          "caller": "OnSizeChanged",
+          "callee": "new Vector2",
+          "lineNumber": 238
+        },
+        {
+          "caller": "OnSizeChanged",
+          "callee": "Math.Max",
+          "lineNumber": 238
+        },
+        {
+          "caller": "OnSizeChanged",
+          "callee": "Math.Max",
+          "lineNumber": 238
+        },
+        {
+          "caller": "OnSizeChanged",
+          "callee": "new Vector3",
+          "lineNumber": 241
+        },
+        {
+          "caller": "EnsureComposition",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 248
+        },
+        {
+          "caller": "EnsureComposition",
+          "callee": "_compositor.CreateSpriteVisual",
+          "lineNumber": 252
+        },
+        {
+          "caller": "EnsureComposition",
+          "callee": "new Vector2",
+          "lineNumber": 253
+        },
+        {
+          "caller": "EnsureComposition",
+          "callee": "Math.Max",
+          "lineNumber": 253
+        },
+        {
+          "caller": "EnsureComposition",
+          "callee": "Math.Max",
+          "lineNumber": 253
+        },
+        {
+          "caller": "EnsureComposition",
+          "callee": "new Vector3",
+          "lineNumber": 254
+        },
+        {
+          "caller": "EnsureComposition",
+          "callee": "new Vector3",
+          "lineNumber": 255
+        },
+        {
+          "caller": "EnsureComposition",
+          "callee": "InstallOpacityImplicits",
+          "lineNumber": 259
+        },
+        {
+          "caller": "EnsureComposition",
+          "callee": "InstallOpacityImplicits",
+          "lineNumber": 260
+        },
+        {
+          "caller": "EnsureComposition",
+          "callee": "InstallOpacityImplicits",
+          "lineNumber": 261
+        },
+        {
+          "caller": "EnsureComposition",
+          "callee": "ElementCompositionPreview.SetElementChildVisual",
+          "lineNumber": 263
+        },
+        {
+          "caller": "InstallOpacityImplicits",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 268
+        },
+        {
+          "caller": "InstallOpacityImplicits",
+          "callee": "compositor.CreateScalarKeyFrameAnimation",
+          "lineNumber": 271
+        },
+        {
+          "caller": "InstallOpacityImplicits",
+          "callee": "opacityAnim.InsertExpressionKeyFrame",
+          "lineNumber": 272
+        },
+        {
+          "caller": "InstallOpacityImplicits",
+          "callee": "compositor.CreateCubicBezierEasingFunction",
+          "lineNumber": 275
+        },
+        {
+          "caller": "InstallOpacityImplicits",
+          "callee": "compositor.CreateImplicitAnimationCollection",
+          "lineNumber": 279
+        },
+        {
+          "caller": "OnAlbumArtUrlChanged",
+          "callee": "((VideoSurfaceHost)d).ApplyAlbumArt",
+          "lineNumber": 287
+        },
+        {
+          "caller": "OnPosterUrlChanged",
+          "callee": "((VideoSurfaceHost)d).ApplyPosterUrl",
+          "lineNumber": 290
+        },
+        {
+          "caller": "OnIsFirstFrameReadyChanged",
+          "callee": "((VideoSurfaceHost)d).ApplyFirstFrameState",
+          "lineNumber": 293
+        },
+        {
+          "caller": "OnHostCornerRadiusChanged",
+          "callee": "((VideoSurfaceHost)d).ApplyHostCornerRadius",
+          "lineNumber": 296
+        },
+        {
+          "caller": "ApplyAlbumArt",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 305
+        },
+        {
+          "caller": "ApplyAlbumArt",
+          "callee": "new BitmapImage",
+          "lineNumber": 312
+        },
+        {
+          "caller": "ApplyAlbumArt",
+          "callee": "new Uri",
+          "lineNumber": 312
+        },
+        {
+          "caller": "ApplyAlbumArt",
+          "callee": "ComputeArtworkDecodeSize",
+          "lineNumber": 314
+        },
+        {
+          "caller": "ApplyPosterUrl",
+          "callee": "DisposePosterResources",
+          "lineNumber": 332
+        },
+        {
+          "caller": "ApplyPosterUrl",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 334
+        },
+        {
+          "caller": "ApplyPosterUrl",
+          "callee": "ComputeArtworkDecodeSize",
+          "lineNumber": 342
+        },
+        {
+          "caller": "ApplyPosterUrl",
+          "callee": "LoadedImageSurface.StartLoadFromUri",
+          "lineNumber": 343
+        },
+        {
+          "caller": "ApplyPosterUrl",
+          "callee": "new Uri",
+          "lineNumber": 344
+        },
+        {
+          "caller": "ApplyPosterUrl",
+          "callee": "_compositor.CreateSurfaceBrush",
+          "lineNumber": 358
+        },
+        {
+          "caller": "ApplyPosterUrl",
+          "callee": "new GaussianBlurEffect",
+          "lineNumber": 361
+        },
+        {
+          "caller": "ApplyPosterUrl",
+          "callee": "new CompositionEffectSourceParameter",
+          "lineNumber": 366
+        },
+        {
+          "caller": "ApplyPosterUrl",
+          "callee": "_compositor.CreateEffectFactory",
+          "lineNumber": 368
+        },
+        {
+          "caller": "ApplyPosterUrl",
+          "callee": "factory.CreateBrush",
+          "lineNumber": 369
+        },
+        {
+          "caller": "ApplyPosterUrl",
+          "callee": "_posterEffectBrush.SetSourceParameter",
+          "lineNumber": 370
+        },
+        {
+          "caller": "DisposePosterResources",
+          "callee": "_posterEffectBrush?.Dispose",
+          "lineNumber": 376
+        },
+        {
+          "caller": "DisposePosterResources",
+          "callee": "_posterSurfaceBrush?.Dispose",
+          "lineNumber": 378
+        },
+        {
+          "caller": "DisposePosterResources",
+          "callee": "_posterSurface?.Dispose",
+          "lineNumber": 380
+        },
+        {
+          "caller": "ComputeArtworkDecodeSize",
+          "callee": "Math.Ceiling",
+          "lineNumber": 388
+        },
+        {
+          "caller": "ComputeArtworkDecodeSize",
+          "callee": "Math.Max",
+          "lineNumber": 388
+        },
+        {
+          "caller": "ComputeArtworkDecodeSize",
+          "callee": "Math.Clamp",
+          "lineNumber": 391
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 13,
+        "functionCount": 22,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 294,
+      "nonEmptyLines": 271,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 422,
+      "nonEmptyLines": 345,
+      "functions": [
+        {
+          "name": "NavigationToolbar",
+          "startLine": 18,
+          "endLine": 26,
+          "params": []
+        },
+        {
+          "name": "OnActualThemeChanged",
+          "startLine": 28,
+          "endLine": 29,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "OnFirstLoaded",
+          "startLine": 31,
+          "endLine": 35,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateThemeGlyph",
+          "startLine": 37,
+          "endLine": 41,
+          "params": []
+        },
+        {
+          "name": "OnSearchSuggestionsChanged",
+          "startLine": 111,
+          "endLine": 117,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSuggestionGroupsChanged",
+          "startLine": 129,
+          "endLine": 135,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSearchSuggestionsLoadingChanged",
+          "startLine": 147,
+          "endLine": 153,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSearchSuggestionsErrorMessageChanged",
+          "startLine": 165,
+          "endLine": 171,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnAuthVisualStateChanged",
+          "startLine": 233,
+          "endLine": 239,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateAuthVisualState",
+          "startLine": 261,
+          "endLine": 269,
+          "params": []
+        },
+        {
+          "name": "FocusSearch",
+          "startLine": 285,
+          "endLine": 285,
+          "params": []
+        },
+        {
+          "name": "BackButton_Click",
+          "startLine": 313,
+          "endLine": 317,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SidebarToggleButton_Click",
+          "startLine": 319,
+          "endLine": 323,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SidebarToggleButton_PointerEntered",
+          "startLine": 328,
+          "endLine": 329,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SidebarToggleButton_PointerExited",
+          "startLine": 331,
+          "endLine": 332,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SidebarToggleButton_PointerPressed",
+          "startLine": 334,
+          "endLine": 335,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SidebarToggleButton_PointerReleased",
+          "startLine": 337,
+          "endLine": 338,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ForwardButton_Click",
+          "startLine": 340,
+          "endLine": 344,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "HomeButton_Click",
+          "startLine": 346,
+          "endLine": 350,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RefreshButton_Click",
+          "startLine": 352,
+          "endLine": 355,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SearchOmnibar_TextChanged",
+          "startLine": 357,
+          "endLine": 361,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "SearchOmnibar_QuerySubmitted",
+          "startLine": 363,
+          "endLine": 366,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "SearchOmnibar_SuggestionChosen",
+          "startLine": 368,
+          "endLine": 372,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "SearchOmnibar_ActionButtonClicked",
+          "startLine": 374,
+          "endLine": 377,
+          "params": [
+            "sender",
+            "item"
+          ]
+        },
+        {
+          "name": "SearchOmnibar_RetryRequested",
+          "startLine": 379,
+          "endLine": 382,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "ThemeToggleButton_Click",
+          "startLine": 384,
+          "endLine": 387,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "FriendsButton_Click",
+          "startLine": 389,
+          "endLine": 392,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ViewProfileMenuItem_Click",
+          "startLine": 395,
+          "endLine": 399,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SettingsMenuItem_Click",
+          "startLine": 401,
+          "endLine": 405,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SignOutMenuItem_Click",
+          "startLine": 407,
+          "endLine": 414,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SignInButton_Click",
+          "startLine": 416,
+          "endLine": 419,
+          "params": [
+            "sender",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "NavigationToolbar",
+          "startLine": 13,
+          "endLine": 422,
+          "methods": [
+            "NavigationToolbar",
+            "OnActualThemeChanged",
+            "OnFirstLoaded",
+            "UpdateThemeGlyph",
+            "OnSearchSuggestionsChanged",
+            "OnSuggestionGroupsChanged",
+            "OnSearchSuggestionsLoadingChanged",
+            "OnSearchSuggestionsErrorMessageChanged",
+            "OnAuthVisualStateChanged",
+            "UpdateAuthVisualState",
+            "FocusSearch",
+            "BackButton_Click",
+            "SidebarToggleButton_Click",
+            "SidebarToggleButton_PointerEntered",
+            "SidebarToggleButton_PointerExited",
+            "SidebarToggleButton_PointerPressed",
+            "SidebarToggleButton_PointerReleased",
+            "ForwardButton_Click",
+            "HomeButton_Click",
+            "RefreshButton_Click",
+            "SearchOmnibar_TextChanged",
+            "SearchOmnibar_QuerySubmitted",
+            "SearchOmnibar_SuggestionChosen",
+            "SearchOmnibar_ActionButtonClicked",
+            "SearchOmnibar_RetryRequested",
+            "ThemeToggleButton_Click",
+            "FriendsButton_Click",
+            "ViewProfileMenuItem_Click",
+            "SettingsMenuItem_Click",
+            "SignOutMenuItem_Click",
+            "SignInButton_Click"
+          ],
+          "properties": [
+            "_themeService",
+            "_authState",
+            "CanGoBackProperty",
+            "CanGoBack",
+            "IsRightPanelOpenProperty",
+            "IsRightPanelOpen",
+            "IsFriendsPanelActiveProperty",
+            "IsFriendsPanelActive",
+            "CanGoForwardProperty",
+            "CanGoForward",
+            "SearchTextProperty",
+            "SearchText",
+            "SearchSuggestionsProperty",
+            "SearchSuggestions",
+            "SuggestionGroupsProperty",
+            "SuggestionGroups",
+            "SearchSuggestionsLoadingProperty",
+            "SearchSuggestionsLoading",
+            "SearchSuggestionsErrorMessageProperty",
+            "SearchSuggestionsErrorMessage",
+            "UserDisplayNameProperty",
+            "UserDisplayName",
+            "IsConnectingProperty",
+            "IsConnecting",
+            "IsOnHomePageProperty",
+            "IsOnHomePage",
+            "ThemeGlyphProperty",
+            "ThemeGlyph",
+            "IsOnProfilePageProperty",
+            "IsOnProfilePage",
+            "IsAuthenticatedProperty",
+            "IsAuthenticated",
+            "ShowProfileChipProperty",
+            "ShowProfileChip",
+            "ShowSignInCtaProperty",
+            "ShowSignInCta",
+            "SuppressSearchFlyout"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "NavigationToolbar",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "CanGoBackProperty",
+          "line": 45,
+          "isDefault": false
+        },
+        {
+          "name": "CanGoBack",
+          "line": 49,
+          "isDefault": false
+        },
+        {
+          "name": "IsRightPanelOpenProperty",
+          "line": 55,
+          "isDefault": false
+        },
+        {
+          "name": "IsRightPanelOpen",
+          "line": 65,
+          "isDefault": false
+        },
+        {
+          "name": "IsFriendsPanelActiveProperty",
+          "line": 71,
+          "isDefault": false
+        },
+        {
+          "name": "IsFriendsPanelActive",
+          "line": 75,
+          "isDefault": false
+        },
+        {
+          "name": "CanGoForwardProperty",
+          "line": 81,
+          "isDefault": false
+        },
+        {
+          "name": "CanGoForward",
+          "line": 85,
+          "isDefault": false
+        },
+        {
+          "name": "SearchTextProperty",
+          "line": 91,
+          "isDefault": false
+        },
+        {
+          "name": "SearchText",
+          "line": 95,
+          "isDefault": false
+        },
+        {
+          "name": "SearchSuggestionsProperty",
+          "line": 101,
+          "isDefault": false
+        },
+        {
+          "name": "SearchSuggestions",
+          "line": 105,
+          "isDefault": false
+        },
+        {
+          "name": "SuggestionGroupsProperty",
+          "line": 119,
+          "isDefault": false
+        },
+        {
+          "name": "SuggestionGroups",
+          "line": 123,
+          "isDefault": false
+        },
+        {
+          "name": "SearchSuggestionsLoadingProperty",
+          "line": 137,
+          "isDefault": false
+        },
+        {
+          "name": "SearchSuggestionsLoading",
+          "line": 141,
+          "isDefault": false
+        },
+        {
+          "name": "SearchSuggestionsErrorMessageProperty",
+          "line": 155,
+          "isDefault": false
+        },
+        {
+          "name": "SearchSuggestionsErrorMessage",
+          "line": 159,
+          "isDefault": false
+        },
+        {
+          "name": "UserDisplayNameProperty",
+          "line": 173,
+          "isDefault": false
+        },
+        {
+          "name": "UserDisplayName",
+          "line": 177,
+          "isDefault": false
+        },
+        {
+          "name": "IsConnectingProperty",
+          "line": 183,
+          "isDefault": false
+        },
+        {
+          "name": "IsConnecting",
+          "line": 187,
+          "isDefault": false
+        },
+        {
+          "name": "IsOnHomePageProperty",
+          "line": 193,
+          "isDefault": false
+        },
+        {
+          "name": "IsOnHomePage",
+          "line": 197,
+          "isDefault": false
+        },
+        {
+          "name": "ThemeGlyphProperty",
+          "line": 203,
+          "isDefault": false
+        },
+        {
+          "name": "ThemeGlyph",
+          "line": 207,
+          "isDefault": false
+        },
+        {
+          "name": "IsOnProfilePageProperty",
+          "line": 213,
+          "isDefault": false
+        },
+        {
+          "name": "IsOnProfilePage",
+          "line": 217,
+          "isDefault": false
+        },
+        {
+          "name": "IsAuthenticatedProperty",
+          "line": 223,
+          "isDefault": false
+        },
+        {
+          "name": "IsAuthenticated",
+          "line": 227,
+          "isDefault": false
+        },
+        {
+          "name": "ShowProfileChipProperty",
+          "line": 241,
+          "isDefault": false
+        },
+        {
+          "name": "ShowProfileChip",
+          "line": 245,
+          "isDefault": false
+        },
+        {
+          "name": "ShowSignInCtaProperty",
+          "line": 251,
+          "isDefault": false
+        },
+        {
+          "name": "ShowSignInCta",
+          "line": 255,
+          "isDefault": false
+        },
+        {
+          "name": "SuppressSearchFlyout",
+          "line": 274,
+          "isDefault": false
+        },
+        {
+          "name": "FocusSearch",
+          "line": 285,
+          "isDefault": false
+        },
+        {
+          "name": "NavigationToolbar",
+          "line": 13,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "NavigationToolbar",
+          "callee": "Ioc.Default.GetService<IThemeService>",
+          "lineNumber": 20
+        },
+        {
+          "caller": "NavigationToolbar",
+          "callee": "Ioc.Default.GetRequiredService<IAuthState>",
+          "lineNumber": 21
+        },
+        {
+          "caller": "NavigationToolbar",
+          "callee": "InitializeComponent",
+          "lineNumber": 22
+        },
+        {
+          "caller": "OnActualThemeChanged",
+          "callee": "UpdateThemeGlyph",
+          "lineNumber": 29
+        },
+        {
+          "caller": "OnFirstLoaded",
+          "callee": "UpdateThemeGlyph",
+          "lineNumber": 34
+        },
+        {
+          "caller": "OnAuthVisualStateChanged",
+          "callee": "t.UpdateAuthVisualState",
+          "lineNumber": 237
+        },
+        {
+          "caller": "FocusSearch",
+          "callee": "SearchOmnibar?.FocusSearchInput",
+          "lineNumber": 285
+        },
+        {
+          "caller": "BackButton_Click",
+          "callee": "Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent",
+          "lineNumber": 315
+        },
+        {
+          "caller": "BackButton_Click",
+          "callee": "BackRequested?.Invoke",
+          "lineNumber": 316
+        },
+        {
+          "caller": "SidebarToggleButton_Click",
+          "callee": "Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent",
+          "lineNumber": 321
+        },
+        {
+          "caller": "SidebarToggleButton_Click",
+          "callee": "SidebarToggleRequested?.Invoke",
+          "lineNumber": 322
+        },
+        {
+          "caller": "SidebarToggleButton_PointerEntered",
+          "callee": "AnimatedIcon.SetState",
+          "lineNumber": 329
+        },
+        {
+          "caller": "SidebarToggleButton_PointerExited",
+          "callee": "AnimatedIcon.SetState",
+          "lineNumber": 332
+        },
+        {
+          "caller": "SidebarToggleButton_PointerPressed",
+          "callee": "AnimatedIcon.SetState",
+          "lineNumber": 335
+        },
+        {
+          "caller": "SidebarToggleButton_PointerReleased",
+          "callee": "AnimatedIcon.SetState",
+          "lineNumber": 338
+        },
+        {
+          "caller": "ForwardButton_Click",
+          "callee": "Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent",
+          "lineNumber": 342
+        },
+        {
+          "caller": "ForwardButton_Click",
+          "callee": "ForwardRequested?.Invoke",
+          "lineNumber": 343
+        },
+        {
+          "caller": "HomeButton_Click",
+          "callee": "Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent",
+          "lineNumber": 348
+        },
+        {
+          "caller": "HomeButton_Click",
+          "callee": "HomeRequested?.Invoke",
+          "lineNumber": 349
+        },
+        {
+          "caller": "RefreshButton_Click",
+          "callee": "RefreshRequested?.Invoke",
+          "lineNumber": 354
+        },
+        {
+          "caller": "SearchOmnibar_TextChanged",
+          "callee": "SearchTextChanged?.Invoke",
+          "lineNumber": 360
+        },
+        {
+          "caller": "SearchOmnibar_QuerySubmitted",
+          "callee": "SearchQuerySubmitted?.Invoke",
+          "lineNumber": 365
+        },
+        {
+          "caller": "SearchOmnibar_SuggestionChosen",
+          "callee": "SearchSuggestionChosen?.Invoke",
+          "lineNumber": 371
+        },
+        {
+          "caller": "SearchOmnibar_ActionButtonClicked",
+          "callee": "SearchActionButtonClicked?.Invoke",
+          "lineNumber": 376
+        },
+        {
+          "caller": "SearchOmnibar_RetryRequested",
+          "callee": "SearchRetryRequested?.Invoke",
+          "lineNumber": 381
+        },
+        {
+          "caller": "ThemeToggleButton_Click",
+          "callee": "_themeService?.ToggleTheme",
+          "lineNumber": 386
+        },
+        {
+          "caller": "FriendsButton_Click",
+          "callee": "FriendsRequested?.Invoke",
+          "lineNumber": 391
+        },
+        {
+          "caller": "ViewProfileMenuItem_Click",
+          "callee": "NavigationHelpers.IsCtrlPressed",
+          "lineNumber": 397
+        },
+        {
+          "caller": "ViewProfileMenuItem_Click",
+          "callee": "NavigationHelpers.OpenProfile",
+          "lineNumber": 398
+        },
+        {
+          "caller": "SettingsMenuItem_Click",
+          "callee": "NavigationHelpers.IsCtrlPressed",
+          "lineNumber": 403
+        },
+        {
+          "caller": "SettingsMenuItem_Click",
+          "callee": "NavigationHelpers.OpenSettings",
+          "lineNumber": 404
+        },
+        {
+          "caller": "SignOutMenuItem_Click",
+          "callee": "_authState.LogoutAsync",
+          "lineNumber": 411
+        },
+        {
+          "caller": "SignInButton_Click",
+          "callee": "SignInRequested?.Invoke",
+          "lineNumber": 418
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 38,
+        "functionCount": 31,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 94,
+      "nonEmptyLines": 88,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 128,
+      "nonEmptyLines": 107,
+      "functions": [
+        {
+          "name": "NotificationToast",
+          "startLine": 18,
+          "endLine": 22,
+          "params": []
+        },
+        {
+          "name": "OnIsOpenChanged",
+          "startLine": 77,
+          "endLine": 81,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnMessageChanged",
+          "startLine": 83,
+          "endLine": 89,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSeverityChanged",
+          "startLine": 91,
+          "endLine": 94,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnActionLabelChanged",
+          "startLine": 96,
+          "endLine": 104,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnIsActionEnabledChanged",
+          "startLine": 106,
+          "endLine": 109,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplySeverity",
+          "startLine": 111,
+          "endLine": 124,
+          "params": [
+            "severity"
+          ]
+        },
+        {
+          "name": "OnActionClick",
+          "startLine": 126,
+          "endLine": 126,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnCloseClick",
+          "startLine": 127,
+          "endLine": 127,
+          "params": [
+            "sender",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "NotificationToast",
+          "startLine": 16,
+          "endLine": 128,
+          "methods": [
+            "NotificationToast",
+            "OnIsOpenChanged",
+            "OnMessageChanged",
+            "OnSeverityChanged",
+            "OnActionLabelChanged",
+            "OnIsActionEnabledChanged",
+            "ApplySeverity",
+            "OnActionClick",
+            "OnCloseClick"
+          ],
+          "properties": [
+            "IsOpenProperty",
+            "IsOpen",
+            "MessageProperty",
+            "Message",
+            "SeverityProperty",
+            "Severity",
+            "ActionLabelProperty",
+            "ActionLabel",
+            "IsActionEnabledProperty",
+            "IsActionEnabled"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "NotificationToast",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "IsOpenProperty",
+          "line": 24,
+          "isDefault": false
+        },
+        {
+          "name": "IsOpen",
+          "line": 28,
+          "isDefault": false
+        },
+        {
+          "name": "MessageProperty",
+          "line": 34,
+          "isDefault": false
+        },
+        {
+          "name": "Message",
+          "line": 38,
+          "isDefault": false
+        },
+        {
+          "name": "SeverityProperty",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "Severity",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "ActionLabelProperty",
+          "line": 54,
+          "isDefault": false
+        },
+        {
+          "name": "ActionLabel",
+          "line": 58,
+          "isDefault": false
+        },
+        {
+          "name": "IsActionEnabledProperty",
+          "line": 64,
+          "isDefault": false
+        },
+        {
+          "name": "IsActionEnabled",
+          "line": 68,
+          "isDefault": false
+        },
+        {
+          "name": "NotificationToast",
+          "line": 16,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "NotificationToast",
+          "callee": "InitializeComponent",
+          "lineNumber": 20
+        },
+        {
+          "caller": "NotificationToast",
+          "callee": "ApplySeverity",
+          "lineNumber": 21
+        },
+        {
+          "caller": "OnMessageChanged",
+          "callee": "ToolTipService.SetToolTip",
+          "lineNumber": 88
+        },
+        {
+          "caller": "OnSeverityChanged",
+          "callee": "((NotificationToast)d).ApplySeverity",
+          "lineNumber": 93
+        },
+        {
+          "caller": "OnActionLabelChanged",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 101
+        },
+        {
+          "caller": "ApplySeverity",
+          "callee": "Application.Current.Resources.TryGetValue",
+          "lineNumber": 122
+        },
+        {
+          "caller": "OnActionClick",
+          "callee": "ActionClick?.Invoke",
+          "lineNumber": 126
+        },
+        {
+          "caller": "OnCloseClick",
+          "callee": "CloseRequested?.Invoke",
+          "lineNumber": 127
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 12,
+        "functionCount": 9,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 92,
+      "nonEmptyLines": 77,
+      "functions": [
+        {
+          "name": "BoldMatchTextBlock",
+          "startLine": 16,
+          "endLine": 19,
+          "params": []
+        },
+        {
+          "name": "OnApplyTemplate",
+          "startLine": 21,
+          "endLine": 26,
+          "params": []
+        },
+        {
+          "name": "OnPropertyChanged",
+          "startLine": 48,
+          "endLine": 51,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateText",
+          "startLine": 53,
+          "endLine": 91,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "BoldMatchTextBlock",
+          "startLine": 12,
+          "endLine": 92,
+          "methods": [
+            "BoldMatchTextBlock",
+            "OnApplyTemplate",
+            "OnPropertyChanged",
+            "UpdateText"
+          ],
+          "properties": [
+            "_rtb",
+            "TextProperty",
+            "Text",
+            "MatchTextProperty",
+            "MatchText"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "BoldMatchTextBlock",
+          "line": 16,
+          "isDefault": false
+        },
+        {
+          "name": "TextProperty",
+          "line": 28,
+          "isDefault": false
+        },
+        {
+          "name": "Text",
+          "line": 32,
+          "isDefault": false
+        },
+        {
+          "name": "MatchTextProperty",
+          "line": 38,
+          "isDefault": false
+        },
+        {
+          "name": "MatchText",
+          "line": 42,
+          "isDefault": false
+        },
+        {
+          "name": "BoldMatchTextBlock",
+          "line": 12,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "OnApplyTemplate",
+          "callee": "base.OnApplyTemplate",
+          "lineNumber": 23
+        },
+        {
+          "caller": "OnApplyTemplate",
+          "callee": "GetTemplateChild",
+          "lineNumber": 24
+        },
+        {
+          "caller": "OnApplyTemplate",
+          "callee": "UpdateText",
+          "lineNumber": 25
+        },
+        {
+          "caller": "OnPropertyChanged",
+          "callee": "ctrl.UpdateText",
+          "lineNumber": 50
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "_rtb.Blocks.Clear",
+          "lineNumber": 57
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "new Paragraph",
+          "lineNumber": 60
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 62
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "text.IndexOf",
+          "lineNumber": 64
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "paragraph.Inlines.Add",
+          "lineNumber": 68
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "new Run",
+          "lineNumber": 68
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "paragraph.Inlines.Add",
+          "lineNumber": 70
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "new Run",
+          "lineNumber": 70
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "text.Substring",
+          "lineNumber": 72
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "paragraph.Inlines.Add",
+          "lineNumber": 78
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "new Run",
+          "lineNumber": 78
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "paragraph.Inlines.Add",
+          "lineNumber": 82
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "new Run",
+          "lineNumber": 82
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "paragraph.Inlines.Add",
+          "lineNumber": 87
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "new Run",
+          "lineNumber": 87
+        },
+        {
+          "caller": "UpdateText",
+          "callee": "_rtb.Blocks.Add",
+          "lineNumber": 90
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 6,
+        "functionCount": 4,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 562,
+      "nonEmptyLines": 471,
+      "functions": [
+        {
+          "name": "Omnibar",
+          "startLine": 34,
+          "endLine": 37,
+          "params": []
+        },
+        {
+          "name": "OnApplyTemplate",
+          "startLine": 39,
+          "endLine": 86,
+          "params": []
+        },
+        {
+          "name": "SearchBox_Loaded",
+          "startLine": 88,
+          "endLine": 102,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "FocusSearchInput",
+          "startLine": 110,
+          "endLine": 122,
+          "params": []
+        },
+        {
+          "name": "TextBox_PreviewKeyDown",
+          "startLine": 124,
+          "endLine": 153,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "FindChild",
+          "startLine": 155,
+          "endLine": 165,
+          "params": [
+            "parent"
+          ]
+        },
+        {
+          "name": "SearchBox_GotFocus",
+          "startLine": 169,
+          "endLine": 183,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SearchBox_LostFocus",
+          "startLine": 185,
+          "endLine": 200,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SearchBox_TextChanged",
+          "startLine": 202,
+          "endLine": 216,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "SearchBox_QuerySubmitted",
+          "startLine": 218,
+          "endLine": 222,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "FlyoutPanel_ItemClicked",
+          "startLine": 224,
+          "endLine": 228,
+          "params": [
+            "sender",
+            "item"
+          ]
+        },
+        {
+          "name": "FlyoutPanel_ActionClicked",
+          "startLine": 230,
+          "endLine": 234,
+          "params": [
+            "sender",
+            "item"
+          ]
+        },
+        {
+          "name": "FlyoutPanel_RetryRequested",
+          "startLine": 236,
+          "endLine": 245,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ShowPopup",
+          "startLine": 249,
+          "endLine": 288,
+          "params": []
+        },
+        {
+          "name": "HidePopup",
+          "startLine": 290,
+          "endLine": 294,
+          "params": []
+        },
+        {
+          "name": "UpdateFlyoutState",
+          "startLine": 296,
+          "endLine": 349,
+          "params": []
+        },
+        {
+          "name": "HasAnyItems",
+          "startLine": 351,
+          "endLine": 358,
+          "params": [
+            "groups"
+          ]
+        },
+        {
+          "name": "DoGroupsMatchQuery",
+          "startLine": 365,
+          "endLine": 379,
+          "params": [
+            "groups",
+            "queryText"
+          ]
+        },
+        {
+          "name": "TryShowCurrentState",
+          "startLine": 381,
+          "endLine": 423,
+          "params": []
+        },
+        {
+          "name": "DoResultsMatchQuery",
+          "startLine": 425,
+          "endLine": 432,
+          "params": [
+            "items",
+            "queryText"
+          ]
+        },
+        {
+          "name": "OnSearchResultsChanged",
+          "startLine": 477,
+          "endLine": 483,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSuggestionGroupsChanged",
+          "startLine": 499,
+          "endLine": 505,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnFlyoutStateChanged",
+          "startLine": 527,
+          "endLine": 533,
+          "params": [
+            "d",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "Omnibar",
+          "startLine": 18,
+          "endLine": 546,
+          "methods": [
+            "Omnibar",
+            "OnApplyTemplate",
+            "SearchBox_Loaded",
+            "FocusSearchInput",
+            "TextBox_PreviewKeyDown",
+            "FindChild",
+            "SearchBox_GotFocus",
+            "SearchBox_LostFocus",
+            "SearchBox_TextChanged",
+            "SearchBox_QuerySubmitted",
+            "FlyoutPanel_ItemClicked",
+            "FlyoutPanel_ActionClicked",
+            "FlyoutPanel_RetryRequested",
+            "ShowPopup",
+            "HidePopup",
+            "UpdateFlyoutState",
+            "HasAnyItems",
+            "DoGroupsMatchQuery",
+            "TryShowCurrentState",
+            "DoResultsMatchQuery",
+            "OnSearchResultsChanged",
+            "OnSuggestionGroupsChanged",
+            "OnFlyoutStateChanged"
+          ],
+          "properties": [
+            "LostFocusDelayMs",
+            "_searchBox",
+            "_searchTextBox",
+            "_popup",
+            "_flyoutPanel",
+            "_hasFocus",
+            "SuppressFlyout",
+            "TextProperty",
+            "Text",
+            "PlaceholderTextProperty",
+            "PlaceholderText",
+            "ItemsSourceProperty",
+            "ItemsSource",
+            "SearchResultsProperty",
+            "SearchResults",
+            "SuggestionGroupsProperty",
+            "SuggestionGroups",
+            "IsLoadingProperty",
+            "IsLoading",
+            "ErrorMessageProperty",
+            "ErrorMessage"
+          ]
+        },
+        {
+          "name": "OmnibarTextChangedEventArgs",
+          "startLine": 548,
+          "endLine": 551,
+          "methods": [],
+          "properties": [
+            "Text"
+          ]
+        },
+        {
+          "name": "OmnibarQuerySubmittedEventArgs",
+          "startLine": 553,
+          "endLine": 557,
+          "methods": [],
+          "properties": [
+            "QueryText",
+            "ChosenSuggestion"
+          ]
+        },
+        {
+          "name": "OmnibarSuggestionChosenEventArgs",
+          "startLine": 559,
+          "endLine": 562,
+          "methods": [],
+          "properties": [
+            "SelectedItem"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "SuppressFlyout",
+          "line": 32,
+          "isDefault": false
+        },
+        {
+          "name": "Omnibar",
+          "line": 34,
+          "isDefault": false
+        },
+        {
+          "name": "FocusSearchInput",
+          "line": 110,
+          "isDefault": false
+        },
+        {
+          "name": "TextProperty",
+          "line": 436,
+          "isDefault": false
+        },
+        {
+          "name": "Text",
+          "line": 440,
+          "isDefault": false
+        },
+        {
+          "name": "PlaceholderTextProperty",
+          "line": 446,
+          "isDefault": false
+        },
+        {
+          "name": "PlaceholderText",
+          "line": 450,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsSourceProperty",
+          "line": 457,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsSource",
+          "line": 461,
+          "isDefault": false
+        },
+        {
+          "name": "SearchResultsProperty",
+          "line": 467,
+          "isDefault": false
+        },
+        {
+          "name": "SearchResults",
+          "line": 471,
+          "isDefault": false
+        },
+        {
+          "name": "SuggestionGroupsProperty",
+          "line": 489,
+          "isDefault": false
+        },
+        {
+          "name": "SuggestionGroups",
+          "line": 493,
+          "isDefault": false
+        },
+        {
+          "name": "IsLoadingProperty",
+          "line": 507,
+          "isDefault": false
+        },
+        {
+          "name": "IsLoading",
+          "line": 511,
+          "isDefault": false
+        },
+        {
+          "name": "ErrorMessageProperty",
+          "line": 517,
+          "isDefault": false
+        },
+        {
+          "name": "ErrorMessage",
+          "line": 521,
+          "isDefault": false
+        },
+        {
+          "name": "Omnibar",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "Text",
+          "line": 550,
+          "isDefault": false
+        },
+        {
+          "name": "OmnibarTextChangedEventArgs",
+          "line": 548,
+          "isDefault": false
+        },
+        {
+          "name": "QueryText",
+          "line": 555,
+          "isDefault": false
+        },
+        {
+          "name": "ChosenSuggestion",
+          "line": 556,
+          "isDefault": false
+        },
+        {
+          "name": "OmnibarQuerySubmittedEventArgs",
+          "line": 553,
+          "isDefault": false
+        },
+        {
+          "name": "SelectedItem",
+          "line": 561,
+          "isDefault": false
+        },
+        {
+          "name": "OmnibarSuggestionChosenEventArgs",
+          "line": 559,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "OnApplyTemplate",
+          "callee": "base.OnApplyTemplate",
+          "lineNumber": 41
+        },
+        {
+          "caller": "OnApplyTemplate",
+          "callee": "GetTemplateChild",
+          "lineNumber": 63
+        },
+        {
+          "caller": "OnApplyTemplate",
+          "callee": "new SearchFlyoutPanel",
+          "lineNumber": 75
+        },
+        {
+          "caller": "OnApplyTemplate",
+          "callee": "new Popup",
+          "lineNumber": 80
+        },
+        {
+          "caller": "SearchBox_Loaded",
+          "callee": "FindChild<TextBox>",
+          "lineNumber": 93
+        },
+        {
+          "caller": "SearchBox_Loaded",
+          "callee": "Application.Current.Resources.TryGetValue",
+          "lineNumber": 96
+        },
+        {
+          "caller": "FocusSearchInput",
+          "callee": "tb.Focus",
+          "lineNumber": 114
+        },
+        {
+          "caller": "FocusSearchInput",
+          "callee": "tb.SelectAll",
+          "lineNumber": 115
+        },
+        {
+          "caller": "FocusSearchInput",
+          "callee": "_searchBox?.Focus",
+          "lineNumber": 121
+        },
+        {
+          "caller": "TextBox_PreviewKeyDown",
+          "callee": "_flyoutPanel.MoveSelection",
+          "lineNumber": 131
+        },
+        {
+          "caller": "TextBox_PreviewKeyDown",
+          "callee": "_flyoutPanel.MoveSelection",
+          "lineNumber": 135
+        },
+        {
+          "caller": "TextBox_PreviewKeyDown",
+          "callee": "_flyoutPanel.GetSelectedItem",
+          "lineNumber": 139
+        },
+        {
+          "caller": "TextBox_PreviewKeyDown",
+          "callee": "HidePopup",
+          "lineNumber": 142
+        },
+        {
+          "caller": "TextBox_PreviewKeyDown",
+          "callee": "SuggestionChosen?.Invoke",
+          "lineNumber": 143
+        },
+        {
+          "caller": "TextBox_PreviewKeyDown",
+          "callee": "new OmnibarSuggestionChosenEventArgs",
+          "lineNumber": 143
+        },
+        {
+          "caller": "TextBox_PreviewKeyDown",
+          "callee": "HidePopup",
+          "lineNumber": 149
+        },
+        {
+          "caller": "FindChild",
+          "callee": "VisualTreeHelper.GetChildrenCount",
+          "lineNumber": 157
+        },
+        {
+          "caller": "FindChild",
+          "callee": "VisualTreeHelper.GetChild",
+          "lineNumber": 159
+        },
+        {
+          "caller": "FindChild",
+          "callee": "FindChild<T>",
+          "lineNumber": 161
+        },
+        {
+          "caller": "SearchBox_GotFocus",
+          "callee": "TryShowCurrentState",
+          "lineNumber": 173
+        },
+        {
+          "caller": "SearchBox_GotFocus",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 176
+        },
+        {
+          "caller": "SearchBox_GotFocus",
+          "callee": "_flyoutPanel?.ShowShimmer",
+          "lineNumber": 177
+        },
+        {
+          "caller": "SearchBox_GotFocus",
+          "callee": "ShowPopup",
+          "lineNumber": 178
+        },
+        {
+          "caller": "SearchBox_GotFocus",
+          "callee": "TextChanged?.Invoke",
+          "lineNumber": 182
+        },
+        {
+          "caller": "SearchBox_GotFocus",
+          "callee": "new OmnibarTextChangedEventArgs",
+          "lineNumber": 182
+        },
+        {
+          "caller": "SearchBox_LostFocus",
+          "callee": "System.Threading.Tasks.Task.Delay",
+          "lineNumber": 192
+        },
+        {
+          "caller": "SearchBox_LostFocus",
+          "callee": "HidePopup",
+          "lineNumber": 198
+        },
+        {
+          "caller": "SearchBox_TextChanged",
+          "callee": "TryShowCurrentState",
+          "lineNumber": 206
+        },
+        {
+          "caller": "SearchBox_TextChanged",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 209
+        },
+        {
+          "caller": "SearchBox_TextChanged",
+          "callee": "_flyoutPanel?.ShowShimmer",
+          "lineNumber": 210
+        },
+        {
+          "caller": "SearchBox_TextChanged",
+          "callee": "ShowPopup",
+          "lineNumber": 211
+        },
+        {
+          "caller": "SearchBox_TextChanged",
+          "callee": "TextChanged?.Invoke",
+          "lineNumber": 214
+        },
+        {
+          "caller": "SearchBox_TextChanged",
+          "callee": "new OmnibarTextChangedEventArgs",
+          "lineNumber": 214
+        },
+        {
+          "caller": "SearchBox_QuerySubmitted",
+          "callee": "HidePopup",
+          "lineNumber": 220
+        },
+        {
+          "caller": "SearchBox_QuerySubmitted",
+          "callee": "QuerySubmitted?.Invoke",
+          "lineNumber": 221
+        },
+        {
+          "caller": "SearchBox_QuerySubmitted",
+          "callee": "new OmnibarQuerySubmittedEventArgs",
+          "lineNumber": 221
+        },
+        {
+          "caller": "FlyoutPanel_ItemClicked",
+          "callee": "HidePopup",
+          "lineNumber": 226
+        },
+        {
+          "caller": "FlyoutPanel_ItemClicked",
+          "callee": "SuggestionChosen?.Invoke",
+          "lineNumber": 227
+        },
+        {
+          "caller": "FlyoutPanel_ItemClicked",
+          "callee": "new OmnibarSuggestionChosenEventArgs",
+          "lineNumber": 227
+        },
+        {
+          "caller": "FlyoutPanel_ActionClicked",
+          "callee": "ActionButtonClicked?.Invoke",
+          "lineNumber": 233
+        },
+        {
+          "caller": "FlyoutPanel_RetryRequested",
+          "callee": "_flyoutPanel?.ShowShimmer",
+          "lineNumber": 240
+        },
+        {
+          "caller": "FlyoutPanel_RetryRequested",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 240
+        },
+        {
+          "caller": "FlyoutPanel_RetryRequested",
+          "callee": "ShowPopup",
+          "lineNumber": 241
+        },
+        {
+          "caller": "FlyoutPanel_RetryRequested",
+          "callee": "RetryRequested?.Invoke",
+          "lineNumber": 244
+        },
+        {
+          "caller": "FlyoutPanel_RetryRequested",
+          "callee": "new RoutedEventArgs",
+          "lineNumber": 244
+        },
+        {
+          "caller": "ShowPopup",
+          "callee": "_searchBox.TransformToVisual",
+          "lineNumber": 272
+        },
+        {
+          "caller": "ShowPopup",
+          "callee": "transform.TransformPoint",
+          "lineNumber": 273
+        },
+        {
+          "caller": "ShowPopup",
+          "callee": "Math.Min",
+          "lineNumber": 275
+        },
+        {
+          "caller": "ShowPopup",
+          "callee": "Math.Max",
+          "lineNumber": 275
+        },
+        {
+          "caller": "ShowPopup",
+          "callee": "Math.Max",
+          "lineNumber": 277
+        },
+        {
+          "caller": "ShowPopup",
+          "callee": "Math.Min",
+          "lineNumber": 278
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 300
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "_flyoutPanel.ShowError",
+          "lineNumber": 302
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "ShowPopup",
+          "lineNumber": 305
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "HasAnyItems",
+          "lineNumber": 316
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "DoGroupsMatchQuery",
+          "lineNumber": 317
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "_flyoutPanel.SetGroups",
+          "lineNumber": 319
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "ShowPopup",
+          "lineNumber": 322
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "DoResultsMatchQuery",
+          "lineNumber": 328
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 331
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "_flyoutPanel.SetItems",
+          "lineNumber": 332
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "ShowPopup",
+          "lineNumber": 335
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "_flyoutPanel.ShowShimmer",
+          "lineNumber": 341
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 341
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "ShowPopup",
+          "lineNumber": 344
+        },
+        {
+          "caller": "UpdateFlyoutState",
+          "callee": "HidePopup",
+          "lineNumber": 348
+        },
+        {
+          "caller": "DoGroupsMatchQuery",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 373
+        },
+        {
+          "caller": "DoGroupsMatchQuery",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 374
+        },
+        {
+          "caller": "DoGroupsMatchQuery",
+          "callee": "string.Equals",
+          "lineNumber": 375
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 385
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "_flyoutPanel.ShowError",
+          "lineNumber": 387
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "ShowPopup",
+          "lineNumber": 388
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "HasAnyItems",
+          "lineNumber": 395
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "DoGroupsMatchQuery",
+          "lineNumber": 396
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "_flyoutPanel.SetGroups",
+          "lineNumber": 398
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "ShowPopup",
+          "lineNumber": 399
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "_flyoutPanel.ShowShimmer",
+          "lineNumber": 407
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 407
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "ShowPopup",
+          "lineNumber": 408
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "DoResultsMatchQuery",
+          "lineNumber": 416
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 419
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "_flyoutPanel.SetItems",
+          "lineNumber": 420
+        },
+        {
+          "caller": "TryShowCurrentState",
+          "callee": "ShowPopup",
+          "lineNumber": 421
+        },
+        {
+          "caller": "DoResultsMatchQuery",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 427
+        },
+        {
+          "caller": "DoResultsMatchQuery",
+          "callee": "items.All",
+          "lineNumber": 428
+        },
+        {
+          "caller": "DoResultsMatchQuery",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 428
+        },
+        {
+          "caller": "DoResultsMatchQuery",
+          "callee": "items.All",
+          "lineNumber": 430
+        },
+        {
+          "caller": "DoResultsMatchQuery",
+          "callee": "string.Equals",
+          "lineNumber": 431
+        },
+        {
+          "caller": "OnSearchResultsChanged",
+          "callee": "omnibar.UpdateFlyoutState",
+          "lineNumber": 481
+        },
+        {
+          "caller": "OnSuggestionGroupsChanged",
+          "callee": "omnibar.UpdateFlyoutState",
+          "lineNumber": 503
+        },
+        {
+          "caller": "OnFlyoutStateChanged",
+          "callee": "omnibar.UpdateFlyoutState",
+          "lineNumber": 531
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 25,
+        "functionCount": 23,
+        "classCount": 4
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 256,
+      "nonEmptyLines": 239,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 331,
+      "nonEmptyLines": 314,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 348,
+      "nonEmptyLines": 307,
+      "functions": [
+        {
+          "name": "SearchFlyoutPanel",
+          "startLine": 29,
+          "endLine": 32,
+          "params": []
+        },
+        {
+          "name": "MoveSelection",
+          "startLine": 38,
+          "endLine": 72,
+          "params": [
+            "delta"
+          ]
+        },
+        {
+          "name": "IsNonSelectable",
+          "startLine": 74,
+          "endLine": 76,
+          "params": [
+            "type"
+          ]
+        },
+        {
+          "name": "GetSelectedItem",
+          "startLine": 81,
+          "endLine": 86,
+          "params": []
+        },
+        {
+          "name": "ResetSelection",
+          "startLine": 91,
+          "endLine": 95,
+          "params": []
+        },
+        {
+          "name": "ShowShimmer",
+          "startLine": 108,
+          "endLine": 124,
+          "params": [
+            "isRecentSearches"
+          ]
+        },
+        {
+          "name": "SetItems",
+          "startLine": 133,
+          "endLine": 146,
+          "params": [
+            "items",
+            "queryText",
+            "isRecentSearches"
+          ]
+        },
+        {
+          "name": "SetGroups",
+          "startLine": 154,
+          "endLine": 182,
+          "params": [
+            "groups",
+            "queryText"
+          ]
+        },
+        {
+          "name": "PrefetchAlbumSuggestions",
+          "startLine": 191,
+          "endLine": 203,
+          "params": [
+            "items"
+          ]
+        },
+        {
+          "name": "ShowError",
+          "startLine": 205,
+          "endLine": 213,
+          "params": [
+            "message"
+          ]
+        },
+        {
+          "name": "ResultsList_ItemClick",
+          "startLine": 215,
+          "endLine": 219,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ActionButton_Click",
+          "startLine": 221,
+          "endLine": 225,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RetryButton_Click",
+          "startLine": 227,
+          "endLine": 230,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyBoldMatching",
+          "startLine": 233,
+          "endLine": 249,
+          "params": []
+        },
+        {
+          "name": "ApplyBoldPrefix",
+          "startLine": 251,
+          "endLine": 281,
+          "params": [
+            "rtb",
+            "text",
+            "query"
+          ]
+        },
+        {
+          "name": "GetImageCornerRadius",
+          "startLine": 285,
+          "endLine": 291,
+          "params": [
+            "type"
+          ]
+        },
+        {
+          "name": "GetActionVisibility",
+          "startLine": 293,
+          "endLine": 305,
+          "params": [
+            "type"
+          ]
+        },
+        {
+          "name": "GetGroupHeaderVisibility",
+          "startLine": 310,
+          "endLine": 311,
+          "params": [
+            "header"
+          ]
+        },
+        {
+          "name": "GetActionGlyph",
+          "startLine": 313,
+          "endLine": 321,
+          "params": [
+            "type"
+          ]
+        },
+        {
+          "name": "GetActionTooltip",
+          "startLine": 323,
+          "endLine": 333,
+          "params": [
+            "type"
+          ]
+        },
+        {
+          "name": "FindChild",
+          "startLine": 335,
+          "endLine": 347,
+          "params": [
+            "parent",
+            "name"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "SearchFlyoutPanel",
+          "startLine": 14,
+          "endLine": 348,
+          "methods": [
+            "SearchFlyoutPanel",
+            "MoveSelection",
+            "IsNonSelectable",
+            "GetSelectedItem",
+            "ResetSelection",
+            "ShowShimmer",
+            "SetItems",
+            "SetGroups",
+            "PrefetchAlbumSuggestions",
+            "ShowError",
+            "ResultsList_ItemClick",
+            "ActionButton_Click",
+            "RetryButton_Click",
+            "ApplyBoldMatching",
+            "ApplyBoldPrefix",
+            "GetImageCornerRadius",
+            "GetActionVisibility",
+            "GetGroupHeaderVisibility",
+            "GetActionGlyph",
+            "GetActionTooltip",
+            "FindChild"
+          ],
+          "properties": [
+            "_queryText",
+            "_keyboardIndex",
+            "_groupedSource",
+            "_isGroupedMode"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "SearchFlyoutPanel",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "MoveSelection",
+          "line": 38,
+          "isDefault": false
+        },
+        {
+          "name": "GetSelectedItem",
+          "line": 81,
+          "isDefault": false
+        },
+        {
+          "name": "ResetSelection",
+          "line": 91,
+          "isDefault": false
+        },
+        {
+          "name": "ShowShimmer",
+          "line": 108,
+          "isDefault": false
+        },
+        {
+          "name": "SetItems",
+          "line": 133,
+          "isDefault": false
+        },
+        {
+          "name": "SetGroups",
+          "line": 154,
+          "isDefault": false
+        },
+        {
+          "name": "ShowError",
+          "line": 205,
+          "isDefault": false
+        },
+        {
+          "name": "ApplyBoldMatching",
+          "line": 233,
+          "isDefault": false
+        },
+        {
+          "name": "GetImageCornerRadius",
+          "line": 285,
+          "isDefault": false
+        },
+        {
+          "name": "GetActionVisibility",
+          "line": 293,
+          "isDefault": false
+        },
+        {
+          "name": "GetGroupHeaderVisibility",
+          "line": 310,
+          "isDefault": false
+        },
+        {
+          "name": "GetActionGlyph",
+          "line": 313,
+          "isDefault": false
+        },
+        {
+          "name": "GetActionTooltip",
+          "line": 323,
+          "isDefault": false
+        },
+        {
+          "name": "SearchFlyoutPanel",
+          "line": 14,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "SearchFlyoutPanel",
+          "callee": "InitializeComponent",
+          "lineNumber": 31
+        },
+        {
+          "caller": "MoveSelection",
+          "callee": "IsNonSelectable",
+          "lineNumber": 57
+        },
+        {
+          "caller": "MoveSelection",
+          "callee": "ResultsList.ScrollIntoView",
+          "lineNumber": 67
+        },
+        {
+          "caller": "SetItems",
+          "callee": "ResetSelection",
+          "lineNumber": 144
+        },
+        {
+          "caller": "SetItems",
+          "callee": "PrefetchAlbumSuggestions",
+          "lineNumber": 145
+        },
+        {
+          "caller": "SetGroups",
+          "callee": "ReferenceEquals",
+          "lineNumber": 174
+        },
+        {
+          "caller": "SetGroups",
+          "callee": "PrefetchAlbumSuggestions",
+          "lineNumber": 178
+        },
+        {
+          "caller": "SetGroups",
+          "callee": "ResetSelection",
+          "lineNumber": 181
+        },
+        {
+          "caller": "PrefetchAlbumSuggestions",
+          "callee": "Ioc.Default.GetService<IAlbumPrefetcher>",
+          "lineNumber": 194
+        },
+        {
+          "caller": "PrefetchAlbumSuggestions",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 200
+        },
+        {
+          "caller": "PrefetchAlbumSuggestions",
+          "callee": "prefetcher.EnqueueAlbumPrefetch",
+          "lineNumber": 201
+        },
+        {
+          "caller": "ResultsList_ItemClick",
+          "callee": "IsNonSelectable",
+          "lineNumber": 217
+        },
+        {
+          "caller": "ResultsList_ItemClick",
+          "callee": "ItemClicked?.Invoke",
+          "lineNumber": 218
+        },
+        {
+          "caller": "ActionButton_Click",
+          "callee": "ActionClicked?.Invoke",
+          "lineNumber": 224
+        },
+        {
+          "caller": "RetryButton_Click",
+          "callee": "RetryRequested?.Invoke",
+          "lineNumber": 229
+        },
+        {
+          "caller": "ApplyBoldMatching",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 235
+        },
+        {
+          "caller": "ApplyBoldMatching",
+          "callee": "ResultsList.ContainerFromItem",
+          "lineNumber": 241
+        },
+        {
+          "caller": "ApplyBoldMatching",
+          "callee": "FindChild<RichTextBlock>",
+          "lineNumber": 242
+        },
+        {
+          "caller": "ApplyBoldMatching",
+          "callee": "ApplyBoldPrefix",
+          "lineNumber": 245
+        },
+        {
+          "caller": "ApplyBoldPrefix",
+          "callee": "rtb.Blocks.Clear",
+          "lineNumber": 253
+        },
+        {
+          "caller": "ApplyBoldPrefix",
+          "callee": "new Paragraph",
+          "lineNumber": 254
+        },
+        {
+          "caller": "ApplyBoldPrefix",
+          "callee": "text.IndexOf",
+          "lineNumber": 256
+        },
+        {
+          "caller": "ApplyBoldPrefix",
+          "callee": "paragraph.Inlines.Add",
+          "lineNumber": 261
+        },
+        {
+          "caller": "ApplyBoldPrefix",
+          "callee": "new Run",
+          "lineNumber": 261
+        },
+        {
+          "caller": "ApplyBoldPrefix",
+          "callee": "paragraph.Inlines.Add",
+          "lineNumber": 264
+        },
+        {
+          "caller": "ApplyBoldPrefix",
+          "callee": "new Run",
+          "lineNumber": 264
+        },
+        {
+          "caller": "ApplyBoldPrefix",
+          "callee": "text.Substring",
+          "lineNumber": 266
+        },
+        {
+          "caller": "ApplyBoldPrefix",
+          "callee": "paragraph.Inlines.Add",
+          "lineNumber": 273
+        },
+        {
+          "caller": "ApplyBoldPrefix",
+          "callee": "new Run",
+          "lineNumber": 273
+        },
+        {
+          "caller": "ApplyBoldPrefix",
+          "callee": "paragraph.Inlines.Add",
+          "lineNumber": 277
+        },
+        {
+          "caller": "ApplyBoldPrefix",
+          "callee": "new Run",
+          "lineNumber": 277
+        },
+        {
+          "caller": "ApplyBoldPrefix",
+          "callee": "rtb.Blocks.Add",
+          "lineNumber": 280
+        },
+        {
+          "caller": "GetImageCornerRadius",
+          "callee": "new CornerRadius",
+          "lineNumber": 289
+        },
+        {
+          "caller": "GetImageCornerRadius",
+          "callee": "new CornerRadius",
+          "lineNumber": 290
+        },
+        {
+          "caller": "GetGroupHeaderVisibility",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 311
+        },
+        {
+          "caller": "FindChild",
+          "callee": "Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount",
+          "lineNumber": 339
+        },
+        {
+          "caller": "FindChild",
+          "callee": "Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild",
+          "lineNumber": 341
+        },
+        {
+          "caller": "FindChild",
+          "callee": "FindChild<T>",
+          "lineNumber": 343
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 15,
+        "functionCount": 21,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 60,
+      "nonEmptyLines": 53,
+      "functions": [
+        {
+          "name": "SelectTemplateCore",
+          "startLine": 15,
+          "endLine": 28,
+          "params": [
+            "item"
+          ]
+        },
+        {
+          "name": "SelectTemplateCore",
+          "startLine": 30,
+          "endLine": 33,
+          "params": [
+            "item",
+            "container"
+          ]
+        },
+        {
+          "name": "SelectStyleCore",
+          "startLine": 47,
+          "endLine": 59,
+          "params": [
+            "item",
+            "container"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "SearchSuggestionTemplateSelector",
+          "startLine": 7,
+          "endLine": 34,
+          "methods": [
+            "SelectTemplateCore",
+            "SelectTemplateCore"
+          ],
+          "properties": [
+            "TextQueryTemplate",
+            "EntityTemplate",
+            "SectionHeaderTemplate",
+            "SettingTemplate",
+            "ShimmerTemplate"
+          ]
+        },
+        {
+          "name": "SearchSuggestionContainerStyleSelector",
+          "startLine": 41,
+          "endLine": 60,
+          "methods": [
+            "SelectStyleCore"
+          ],
+          "properties": [
+            "DefaultStyle",
+            "SectionHeaderStyle",
+            "TextQueryStyle"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "TextQueryTemplate",
+          "line": 9,
+          "isDefault": false
+        },
+        {
+          "name": "EntityTemplate",
+          "line": 10,
+          "isDefault": false
+        },
+        {
+          "name": "SectionHeaderTemplate",
+          "line": 11,
+          "isDefault": false
+        },
+        {
+          "name": "SettingTemplate",
+          "line": 12,
+          "isDefault": false
+        },
+        {
+          "name": "ShimmerTemplate",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "SearchSuggestionTemplateSelector",
+          "line": 7,
+          "isDefault": false
+        },
+        {
+          "name": "DefaultStyle",
+          "line": 43,
+          "isDefault": false
+        },
+        {
+          "name": "SectionHeaderStyle",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "TextQueryStyle",
+          "line": 45,
+          "isDefault": false
+        },
+        {
+          "name": "SearchSuggestionContainerStyleSelector",
+          "line": 41,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "SelectTemplateCore",
+          "callee": "SelectTemplateCore",
+          "lineNumber": 32
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 10,
+        "functionCount": 3,
+        "classCount": 2
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/IPageHostAware.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 16,
+      "nonEmptyLines": 14,
+      "classes": [
+        {
+          "name": "IPageHostAware",
+          "startLine": 3,
+          "endLine": 16,
+          "methods": [
+            "OnEntered",
+            "OnLeaving"
+          ],
+          "properties": [
+            "ShouldCacheInHost"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IPageHostAware",
+          "line": 3,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 386,
+      "nonEmptyLines": 337,
+      "functions": [
+        {
+          "name": "PageHost",
+          "startLine": 38,
+          "endLine": 44,
+          "params": []
+        },
+        {
+          "name": "CachedPagesByRecency",
+          "startLine": 90,
+          "endLine": 99,
+          "params": []
+        },
+        {
+          "name": "EvictOldestCollapsed",
+          "startLine": 106,
+          "endLine": 127,
+          "params": []
+        },
+        {
+          "name": "EvictAllCollapsed",
+          "startLine": 133,
+          "endLine": 153,
+          "params": []
+        },
+        {
+          "name": "Navigate",
+          "startLine": 159,
+          "endLine": 160,
+          "params": [
+            "pageType",
+            "parameter"
+          ]
+        },
+        {
+          "name": "GoBack",
+          "startLine": 162,
+          "endLine": 173,
+          "params": []
+        },
+        {
+          "name": "GoForward",
+          "startLine": 175,
+          "endLine": 186,
+          "params": []
+        },
+        {
+          "name": "ClearBackStack",
+          "startLine": 188,
+          "endLine": 188,
+          "params": []
+        },
+        {
+          "name": "ClearForwardStack",
+          "startLine": 189,
+          "endLine": 189,
+          "params": []
+        },
+        {
+          "name": "Clear",
+          "startLine": 195,
+          "endLine": 211,
+          "params": []
+        },
+        {
+          "name": "Prewarm",
+          "startLine": 220,
+          "endLine": 242,
+          "params": [
+            "pageType"
+          ]
+        },
+        {
+          "name": "NavigateInternal",
+          "startLine": 246,
+          "endLine": 259,
+          "params": [
+            "pageType",
+            "parameter",
+            "mode"
+          ]
+        },
+        {
+          "name": "NavigateCore",
+          "startLine": 261,
+          "endLine": 332,
+          "params": [
+            "pageType",
+            "parameter",
+            "mode"
+          ]
+        },
+        {
+          "name": "TouchLru",
+          "startLine": 334,
+          "endLine": 338,
+          "params": [
+            "pageType"
+          ]
+        },
+        {
+          "name": "AttachFirstLoadedMeter",
+          "startLine": 340,
+          "endLine": 354,
+          "params": [
+            "page"
+          ]
+        },
+        {
+          "name": "EvictLruIfNeeded",
+          "startLine": 356,
+          "endLine": 385,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "PageHost",
+          "startLine": 25,
+          "endLine": 386,
+          "methods": [
+            "PageHost",
+            "CachedPagesByRecency",
+            "EvictOldestCollapsed",
+            "EvictAllCollapsed",
+            "Navigate",
+            "GoBack",
+            "GoForward",
+            "ClearBackStack",
+            "ClearForwardStack",
+            "Clear",
+            "Prewarm",
+            "NavigateInternal",
+            "NavigateCore",
+            "TouchLru",
+            "AttachFirstLoadedMeter",
+            "EvictLruIfNeeded"
+          ],
+          "properties": [
+            "_container",
+            "_cache",
+            "_lru",
+            "_backStack",
+            "_forwardStack",
+            "_activePage",
+            "_currentPageType",
+            "_currentParameter",
+            "_cacheSize",
+            "ActivePage",
+            "SourcePageType",
+            "CurrentParameter",
+            "BackStack",
+            "ForwardStack",
+            "CanGoBack",
+            "CanGoForward",
+            "IsNavigationStackEnabled",
+            "CacheSize",
+            "CachedPageCount"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "PageHost",
+          "line": 38,
+          "isDefault": false
+        },
+        {
+          "name": "ActivePage",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "SourcePageType",
+          "line": 49,
+          "isDefault": false
+        },
+        {
+          "name": "CurrentParameter",
+          "line": 50,
+          "isDefault": false
+        },
+        {
+          "name": "BackStack",
+          "line": 52,
+          "isDefault": false
+        },
+        {
+          "name": "ForwardStack",
+          "line": 53,
+          "isDefault": false
+        },
+        {
+          "name": "CanGoBack",
+          "line": 55,
+          "isDefault": false
+        },
+        {
+          "name": "CanGoForward",
+          "line": 56,
+          "isDefault": false
+        },
+        {
+          "name": "IsNavigationStackEnabled",
+          "line": 64,
+          "isDefault": false
+        },
+        {
+          "name": "CacheSize",
+          "line": 71,
+          "isDefault": false
+        },
+        {
+          "name": "CachedPageCount",
+          "line": 83,
+          "isDefault": false
+        },
+        {
+          "name": "CachedPagesByRecency",
+          "line": 90,
+          "isDefault": false
+        },
+        {
+          "name": "EvictOldestCollapsed",
+          "line": 106,
+          "isDefault": false
+        },
+        {
+          "name": "EvictAllCollapsed",
+          "line": 133,
+          "isDefault": false
+        },
+        {
+          "name": "Navigate",
+          "line": 159,
+          "isDefault": false
+        },
+        {
+          "name": "GoBack",
+          "line": 162,
+          "isDefault": false
+        },
+        {
+          "name": "GoForward",
+          "line": 175,
+          "isDefault": false
+        },
+        {
+          "name": "ClearBackStack",
+          "line": 188,
+          "isDefault": false
+        },
+        {
+          "name": "ClearForwardStack",
+          "line": 189,
+          "isDefault": false
+        },
+        {
+          "name": "Clear",
+          "line": 195,
+          "isDefault": false
+        },
+        {
+          "name": "Prewarm",
+          "line": 220,
+          "isDefault": false
+        },
+        {
+          "name": "PageHost",
+          "line": 25,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "CachedPagesByRecency",
+          "callee": "new List<UserControl>",
+          "lineNumber": 92
+        },
+        {
+          "caller": "CachedPagesByRecency",
+          "callee": "_cache.TryGetValue",
+          "lineNumber": 95
+        },
+        {
+          "caller": "CachedPagesByRecency",
+          "callee": "list.Add",
+          "lineNumber": 96
+        },
+        {
+          "caller": "EvictOldestCollapsed",
+          "callee": "_cache.TryGetValue",
+          "lineNumber": 118
+        },
+        {
+          "caller": "EvictOldestCollapsed",
+          "callee": "_cache.Remove",
+          "lineNumber": 121
+        },
+        {
+          "caller": "EvictOldestCollapsed",
+          "callee": "_lru.Remove",
+          "lineNumber": 122
+        },
+        {
+          "caller": "EvictOldestCollapsed",
+          "callee": "_container.Children.Remove",
+          "lineNumber": 123
+        },
+        {
+          "caller": "EvictOldestCollapsed",
+          "callee": "d.Dispose",
+          "lineNumber": 125
+        },
+        {
+          "caller": "EvictAllCollapsed",
+          "callee": "_lru.ToArray",
+          "lineNumber": 136
+        },
+        {
+          "caller": "EvictAllCollapsed",
+          "callee": "_cache.TryGetValue",
+          "lineNumber": 141
+        },
+        {
+          "caller": "EvictAllCollapsed",
+          "callee": "_cache.Remove",
+          "lineNumber": 144
+        },
+        {
+          "caller": "EvictAllCollapsed",
+          "callee": "_lru.Remove",
+          "lineNumber": 145
+        },
+        {
+          "caller": "EvictAllCollapsed",
+          "callee": "_container.Children.Remove",
+          "lineNumber": 146
+        },
+        {
+          "caller": "EvictAllCollapsed",
+          "callee": "d.Dispose",
+          "lineNumber": 148
+        },
+        {
+          "caller": "Navigate",
+          "callee": "NavigateInternal",
+          "lineNumber": 160
+        },
+        {
+          "caller": "GoBack",
+          "callee": "_backStack.RemoveAt",
+          "lineNumber": 167
+        },
+        {
+          "caller": "GoBack",
+          "callee": "_forwardStack.Add",
+          "lineNumber": 170
+        },
+        {
+          "caller": "GoBack",
+          "callee": "new PageStackEntry",
+          "lineNumber": 170
+        },
+        {
+          "caller": "GoBack",
+          "callee": "NavigateCore",
+          "lineNumber": 172
+        },
+        {
+          "caller": "GoForward",
+          "callee": "_forwardStack.RemoveAt",
+          "lineNumber": 180
+        },
+        {
+          "caller": "GoForward",
+          "callee": "_backStack.Add",
+          "lineNumber": 183
+        },
+        {
+          "caller": "GoForward",
+          "callee": "new PageStackEntry",
+          "lineNumber": 183
+        },
+        {
+          "caller": "GoForward",
+          "callee": "NavigateCore",
+          "lineNumber": 185
+        },
+        {
+          "caller": "ClearBackStack",
+          "callee": "_backStack.Clear",
+          "lineNumber": 188
+        },
+        {
+          "caller": "ClearForwardStack",
+          "callee": "_forwardStack.Clear",
+          "lineNumber": 189
+        },
+        {
+          "caller": "Clear",
+          "callee": "_container.Children.OfType<UserControl>().ToArray",
+          "lineNumber": 197
+        },
+        {
+          "caller": "Clear",
+          "callee": "_container.Children.OfType<UserControl>",
+          "lineNumber": 197
+        },
+        {
+          "caller": "Clear",
+          "callee": "aware.OnLeaving",
+          "lineNumber": 199
+        },
+        {
+          "caller": "Clear",
+          "callee": "d.Dispose",
+          "lineNumber": 200
+        },
+        {
+          "caller": "Clear",
+          "callee": "_container.Children.Clear",
+          "lineNumber": 203
+        },
+        {
+          "caller": "Clear",
+          "callee": "_cache.Clear",
+          "lineNumber": 204
+        },
+        {
+          "caller": "Clear",
+          "callee": "_lru.Clear",
+          "lineNumber": 205
+        },
+        {
+          "caller": "Clear",
+          "callee": "_backStack.Clear",
+          "lineNumber": 206
+        },
+        {
+          "caller": "Clear",
+          "callee": "_forwardStack.Clear",
+          "lineNumber": 207
+        },
+        {
+          "caller": "Prewarm",
+          "callee": "_cache.ContainsKey",
+          "lineNumber": 222
+        },
+        {
+          "caller": "Prewarm",
+          "callee": "Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent",
+          "lineNumber": 227
+        },
+        {
+          "caller": "Prewarm",
+          "callee": "PageRegistry.Create",
+          "lineNumber": 229
+        },
+        {
+          "caller": "Prewarm",
+          "callee": "AttachFirstLoadedMeter",
+          "lineNumber": 232
+        },
+        {
+          "caller": "Prewarm",
+          "callee": "_container.Children.Add",
+          "lineNumber": 233
+        },
+        {
+          "caller": "Prewarm",
+          "callee": "_lru.AddFirst",
+          "lineNumber": 235
+        },
+        {
+          "caller": "Prewarm",
+          "callee": "EvictLruIfNeeded",
+          "lineNumber": 236
+        },
+        {
+          "caller": "NavigateInternal",
+          "callee": "new PageHostNavigatingEventArgs",
+          "lineNumber": 248
+        },
+        {
+          "caller": "NavigateInternal",
+          "callee": "Navigating?.Invoke",
+          "lineNumber": 249
+        },
+        {
+          "caller": "NavigateInternal",
+          "callee": "_backStack.Add",
+          "lineNumber": 254
+        },
+        {
+          "caller": "NavigateInternal",
+          "callee": "new PageStackEntry",
+          "lineNumber": 254
+        },
+        {
+          "caller": "NavigateInternal",
+          "callee": "_forwardStack.Clear",
+          "lineNumber": 255
+        },
+        {
+          "caller": "NavigateInternal",
+          "callee": "NavigateCore",
+          "lineNumber": 258
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "leaving.OnLeaving",
+          "lineNumber": 268
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "_container.Children.Remove",
+          "lineNumber": 277
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "_cache.Remove",
+          "lineNumber": 278
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "outgoing.GetType",
+          "lineNumber": 278
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "_lru.Remove",
+          "lineNumber": 279
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "outgoing.GetType",
+          "lineNumber": 279
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "d.Dispose",
+          "lineNumber": 280
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "TouchLru",
+          "lineNumber": 285
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "outgoing.GetType",
+          "lineNumber": 285
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "_cache.TryGetValue",
+          "lineNumber": 291
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "TouchLru",
+          "lineNumber": 295
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent",
+          "lineNumber": 299
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "PageRegistry.Create",
+          "lineNumber": 301
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "AttachFirstLoadedMeter",
+          "lineNumber": 307
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "_container.Children.Add",
+          "lineNumber": 308
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "_lru.AddLast",
+          "lineNumber": 310
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "entered.OnEntered",
+          "lineNumber": 318
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "EvictLruIfNeeded",
+          "lineNumber": 320
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "Navigated?.Invoke",
+          "lineNumber": 322
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "new PageHostNavigatedEventArgs",
+          "lineNumber": 322
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "new PageHostNavigationFailedEventArgs",
+          "lineNumber": 327
+        },
+        {
+          "caller": "NavigateCore",
+          "callee": "NavigationFailed?.Invoke",
+          "lineNumber": 328
+        },
+        {
+          "caller": "TouchLru",
+          "callee": "_lru.Remove",
+          "lineNumber": 336
+        },
+        {
+          "caller": "TouchLru",
+          "callee": "_lru.AddLast",
+          "lineNumber": 337
+        },
+        {
+          "caller": "AttachFirstLoadedMeter",
+          "callee": "System.Diagnostics.Stopwatch.GetTimestamp",
+          "lineNumber": 344
+        },
+        {
+          "caller": "AttachFirstLoadedMeter",
+          "callee": "System.Diagnostics.Stopwatch.GetTimestamp",
+          "lineNumber": 349
+        },
+        {
+          "caller": "AttachFirstLoadedMeter",
+          "callee": "profiler.RecordOperation",
+          "lineNumber": 351
+        },
+        {
+          "caller": "AttachFirstLoadedMeter",
+          "callee": "page.GetType",
+          "lineNumber": 351
+        },
+        {
+          "caller": "EvictLruIfNeeded",
+          "callee": "_lru.Remove",
+          "lineNumber": 371
+        },
+        {
+          "caller": "EvictLruIfNeeded",
+          "callee": "_lru.RemoveFirst",
+          "lineNumber": 375
+        },
+        {
+          "caller": "EvictLruIfNeeded",
+          "callee": "_cache.TryGetValue",
+          "lineNumber": 378
+        },
+        {
+          "caller": "EvictLruIfNeeded",
+          "callee": "_cache.Remove",
+          "lineNumber": 380
+        },
+        {
+          "caller": "EvictLruIfNeeded",
+          "callee": "_container.Children.Remove",
+          "lineNumber": 381
+        },
+        {
+          "caller": "EvictLruIfNeeded",
+          "callee": "d.Dispose",
+          "lineNumber": 382
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 22,
+        "functionCount": 16,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostExtensions.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 24,
+      "nonEmptyLines": 22,
+      "functions": [
+        {
+          "name": "FindHostingPageHost",
+          "startLine": 14,
+          "endLine": 23,
+          "params": [
+            "element"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "PageHostExtensions",
+          "startLine": 6,
+          "endLine": 24,
+          "methods": [
+            "FindHostingPageHost"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "FindHostingPageHost",
+          "line": 14,
+          "isDefault": false
+        },
+        {
+          "name": "PageHostExtensions",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "FindHostingPageHost",
+          "callee": "VisualTreeHelper.GetParent",
+          "lineNumber": 16
+        },
+        {
+          "caller": "FindHostingPageHost",
+          "callee": "VisualTreeHelper.GetParent",
+          "lineNumber": 20
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatedEventArgs.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 17,
+      "nonEmptyLines": 14,
+      "functions": [
+        {
+          "name": "PageHostNavigatedEventArgs",
+          "startLine": 7,
+          "endLine": 12,
+          "params": [
+            "pageType",
+            "parameter",
+            "mode"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "PageHostNavigatedEventArgs",
+          "startLine": 5,
+          "endLine": 17,
+          "methods": [
+            "PageHostNavigatedEventArgs"
+          ],
+          "properties": [
+            "PageType",
+            "Parameter",
+            "Mode"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "PageHostNavigatedEventArgs",
+          "line": 7,
+          "isDefault": false
+        },
+        {
+          "name": "PageType",
+          "line": 14,
+          "isDefault": false
+        },
+        {
+          "name": "Parameter",
+          "line": 15,
+          "isDefault": false
+        },
+        {
+          "name": "Mode",
+          "line": 16,
+          "isDefault": false
+        },
+        {
+          "name": "PageHostNavigatedEventArgs",
+          "line": 5,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 5,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatingEventArgs.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 18,
+      "nonEmptyLines": 15,
+      "functions": [
+        {
+          "name": "PageHostNavigatingEventArgs",
+          "startLine": 7,
+          "endLine": 12,
+          "params": [
+            "pageType",
+            "parameter",
+            "mode"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "PageHostNavigatingEventArgs",
+          "startLine": 5,
+          "endLine": 18,
+          "methods": [
+            "PageHostNavigatingEventArgs"
+          ],
+          "properties": [
+            "PageType",
+            "Parameter",
+            "Mode",
+            "Cancel"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "PageHostNavigatingEventArgs",
+          "line": 7,
+          "isDefault": false
+        },
+        {
+          "name": "PageType",
+          "line": 14,
+          "isDefault": false
+        },
+        {
+          "name": "Parameter",
+          "line": 15,
+          "isDefault": false
+        },
+        {
+          "name": "Mode",
+          "line": 16,
+          "isDefault": false
+        },
+        {
+          "name": "Cancel",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "PageHostNavigatingEventArgs",
+          "line": 5,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 6,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationFailedEventArgs.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 18,
+      "nonEmptyLines": 15,
+      "functions": [
+        {
+          "name": "PageHostNavigationFailedEventArgs",
+          "startLine": 7,
+          "endLine": 12,
+          "params": [
+            "pageType",
+            "parameter",
+            "exception"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "PageHostNavigationFailedEventArgs",
+          "startLine": 5,
+          "endLine": 18,
+          "methods": [
+            "PageHostNavigationFailedEventArgs"
+          ],
+          "properties": [
+            "PageType",
+            "Parameter",
+            "Exception",
+            "Handled"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "PageHostNavigationFailedEventArgs",
+          "line": 7,
+          "isDefault": false
+        },
+        {
+          "name": "PageType",
+          "line": 14,
+          "isDefault": false
+        },
+        {
+          "name": "Parameter",
+          "line": 15,
+          "isDefault": false
+        },
+        {
+          "name": "Exception",
+          "line": 16,
+          "isDefault": false
+        },
+        {
+          "name": "Handled",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "PageHostNavigationFailedEventArgs",
+          "line": 5,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 6,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationMode.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 9,
+      "nonEmptyLines": 8,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageRegistration.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 61,
+      "nonEmptyLines": 52,
+      "functions": [
+        {
+          "name": "RegisterAll",
+          "startLine": 13,
+          "endLine": 60,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "PageRegistration",
+          "startLine": 11,
+          "endLine": 61,
+          "methods": [
+            "RegisterAll"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "RegisterAll",
+          "line": 13,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 15
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new ShellPage",
+          "lineNumber": 15
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 18
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new HomePage",
+          "lineNumber": 18
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 19
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new StartPage",
+          "lineNumber": 19
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 20
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new LibraryPage",
+          "lineNumber": 20
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 21
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new SearchPage",
+          "lineNumber": 21
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 22
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new BrowsePage",
+          "lineNumber": 22
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 25
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new AlbumPage",
+          "lineNumber": 25
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 26
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new PlaylistPage",
+          "lineNumber": 26
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 27
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new ArtistPage",
+          "lineNumber": 27
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 28
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new ArtistDiscographyPage",
+          "lineNumber": 28
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 29
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new ShowPage",
+          "lineNumber": 29
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 30
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new EpisodePage",
+          "lineNumber": 30
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 31
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new ConcertPage",
+          "lineNumber": 31
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 32
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new ProfilePage",
+          "lineNumber": 32
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 35
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new PodcastBrowsePage",
+          "lineNumber": 35
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 38
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new CreatePlaylistPage",
+          "lineNumber": 38
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 41
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new VideoPlayerPage",
+          "lineNumber": 41
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 44
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new SettingsPage",
+          "lineNumber": 44
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 45
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new DebugPage",
+          "lineNumber": 45
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 46
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new FeedbackPage",
+          "lineNumber": 46
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 49
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new LocalLibraryPage",
+          "lineNumber": 49
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 50
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new LocalLikedSongsPage",
+          "lineNumber": 50
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 51
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new LocalMusicPage",
+          "lineNumber": 51
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 52
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new LocalMusicVideosPage",
+          "lineNumber": 52
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 53
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new LocalShowsPage",
+          "lineNumber": 53
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 54
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new LocalShowDetailPage",
+          "lineNumber": 54
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 55
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new LocalMoviesPage",
+          "lineNumber": 55
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 56
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new LocalMovieDetailPage",
+          "lineNumber": 56
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 57
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new LocalCollectionDetailPage",
+          "lineNumber": 57
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 58
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new LocalPersonDetailPage",
+          "lineNumber": 58
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "PageRegistry.Register",
+          "lineNumber": 59
+        },
+        {
+          "caller": "RegisterAll",
+          "callee": "new LocalOtherPage",
+          "lineNumber": 59
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageRegistry.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 32,
+      "nonEmptyLines": 26,
+      "functions": [
+        {
+          "name": "Register",
+          "startLine": 18,
+          "endLine": 19,
+          "params": [
+            "factory"
+          ]
+        },
+        {
+          "name": "Create",
+          "startLine": 21,
+          "endLine": 29,
+          "params": [
+            "pageType"
+          ]
+        },
+        {
+          "name": "IsRegistered",
+          "startLine": 31,
+          "endLine": 31,
+          "params": [
+            "pageType"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "PageRegistry",
+          "startLine": 14,
+          "endLine": 32,
+          "methods": [
+            "Register",
+            "Create",
+            "IsRegistered"
+          ],
+          "properties": [
+            "_factories"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Register",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "Create",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "IsRegistered",
+          "line": 31,
+          "isDefault": false
+        },
+        {
+          "name": "PageRegistry",
+          "line": 14,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Create",
+          "callee": "_factories.TryGetValue",
+          "lineNumber": 23
+        },
+        {
+          "caller": "Create",
+          "callee": "new InvalidOperationException",
+          "lineNumber": 24
+        },
+        {
+          "caller": "Create",
+          "callee": "factory",
+          "lineNumber": 28
+        },
+        {
+          "caller": "IsRegistered",
+          "callee": "_factories.ContainsKey",
+          "lineNumber": 31
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 3,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageStackEntry.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 14,
+      "nonEmptyLines": 12,
+      "functions": [
+        {
+          "name": "PageStackEntry",
+          "startLine": 7,
+          "endLine": 11,
+          "params": [
+            "pageType",
+            "parameter"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "PageStackEntry",
+          "startLine": 5,
+          "endLine": 14,
+          "methods": [
+            "PageStackEntry"
+          ],
+          "properties": [
+            "PageType",
+            "Parameter"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "PageStackEntry",
+          "line": 7,
+          "isDefault": false
+        },
+        {
+          "name": "PageType",
+          "line": 12,
+          "isDefault": false
+        },
+        {
+          "name": "Parameter",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "PageStackEntry",
+          "line": 5,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 142,
+      "nonEmptyLines": 118,
+      "functions": [
+        {
+          "name": "ShowAsync",
+          "startLine": 30,
+          "endLine": 118,
+          "params": [
+            "xamlRoot",
+            "isFirstTime",
+            "askEveryTime"
+          ]
+        },
+        {
+          "name": "CreateActionButton",
+          "startLine": 120,
+          "endLine": 141,
+          "params": [
+            "glyph",
+            "label",
+            "isAccent"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "PlayActionDialog",
+          "startLine": 24,
+          "endLine": 142,
+          "methods": [
+            "ShowAsync",
+            "CreateActionButton"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "ShowAsync",
+          "line": 30,
+          "isDefault": false
+        },
+        {
+          "name": "PlayActionDialog",
+          "line": 24,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ShowAsync",
+          "callee": "new StackPanel",
+          "lineNumber": 35
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "panel.Children.Add",
+          "lineNumber": 43
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "new TextBlock",
+          "lineNumber": 43
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 45
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "new RadioButton",
+          "lineNumber": 49
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 49
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "new RadioButton",
+          "lineNumber": 50
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 50
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "panel.Children.Add",
+          "lineNumber": 51
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "panel.Children.Add",
+          "lineNumber": 52
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "panel.Children.Add",
+          "lineNumber": 54
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "new Border",
+          "lineNumber": 54
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "new Thickness",
+          "lineNumber": 54
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "panel.Children.Add",
+          "lineNumber": 58
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "new TextBlock",
+          "lineNumber": 58
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 60
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "CreateActionButton",
+          "lineNumber": 65
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 65
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "CreateActionButton",
+          "lineNumber": 66
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 66
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "CreateActionButton",
+          "lineNumber": 67
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 67
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "CreateActionButton",
+          "lineNumber": 68
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 68
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "dialogRef?.Hide",
+          "lineNumber": 73
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "dialogRef?.Hide",
+          "lineNumber": 74
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "dialogRef?.Hide",
+          "lineNumber": 75
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "dialogRef?.Hide",
+          "lineNumber": 76
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "panel.Children.Add",
+          "lineNumber": 78
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "panel.Children.Add",
+          "lineNumber": 79
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "panel.Children.Add",
+          "lineNumber": 80
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "panel.Children.Add",
+          "lineNumber": 81
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "new ToggleSwitch",
+          "lineNumber": 84
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 86
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "new Thickness",
+          "lineNumber": 88
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "panel.Children.Add",
+          "lineNumber": 90
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "panel.Children.Add",
+          "lineNumber": 94
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "new TextBlock",
+          "lineNumber": 94
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 96
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "new ContentDialog",
+          "lineNumber": 103
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 105
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "dialog.ShowAsync",
+          "lineNumber": 111
+        },
+        {
+          "caller": "ShowAsync",
+          "callee": "new PlayActionResult",
+          "lineNumber": 117
+        },
+        {
+          "caller": "CreateActionButton",
+          "callee": "new FontIcon",
+          "lineNumber": 122
+        },
+        {
+          "caller": "CreateActionButton",
+          "callee": "new TextBlock",
+          "lineNumber": 123
+        },
+        {
+          "caller": "CreateActionButton",
+          "callee": "new Thickness",
+          "lineNumber": 123
+        },
+        {
+          "caller": "CreateActionButton",
+          "callee": "new StackPanel",
+          "lineNumber": 125
+        },
+        {
+          "caller": "CreateActionButton",
+          "callee": "stack.Children.Add",
+          "lineNumber": 126
+        },
+        {
+          "caller": "CreateActionButton",
+          "callee": "stack.Children.Add",
+          "lineNumber": 127
+        },
+        {
+          "caller": "CreateActionButton",
+          "callee": "new Button",
+          "lineNumber": 129
+        },
+        {
+          "caller": "CreateActionButton",
+          "callee": "new Thickness",
+          "lineNumber": 134
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    }
+  ]
+}

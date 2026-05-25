@@ -1,0 +1,14 @@
+{
+  "projectRoot": "C:\\\\WAVEE\\\\WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.Console/Dockerfile",
+      "language": "dockerfile",
+      "sizeLines": 21,
+      "fileCategory": "infra"
+    }
+  ],
+  "batchImportData": {
+    "src/Wavee.Console/Dockerfile": []
+  }
+}

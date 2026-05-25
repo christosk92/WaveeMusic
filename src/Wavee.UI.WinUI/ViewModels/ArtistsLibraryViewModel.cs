@@ -10,6 +10,7 @@ using Microsoft.UI.Dispatching;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.Models;
+using Wavee.UI.Services;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Services;
@@ -24,26 +25,19 @@ public enum ArtistsLibraryStage
     Tracks
 }
 
-public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helpers.TrackListViewModelBase, ITrackListViewModel, IDisposable
+public sealed partial class ArtistsLibraryViewModel : DualSourceLibraryViewModelBase<LibraryArtistDto, LikedArtistDto>, ITrackListViewModel, IDisposable
 {
-    private const string PreferencesTabKey = "artists";
+    protected override string SavedPreferencesKey => "artists.saved";
+    protected override string LikedPreferencesKey => "artists.liked";
 
     private readonly ILibraryDataService _libraryDataService;
     private readonly IPlaylistMutationService _playlistMutationService;
     private readonly IArtistService _artistService;
     private readonly IAlbumService _albumService;
     private readonly IPlaybackService _playbackService;
-    private readonly ITrackLikeService? _likeService;
-    private readonly ISettingsService? _settingsService;
-    private readonly LibraryRecentsService? _libraryRecents;
-    private readonly DispatcherQueue _dispatcherQueue;
     private bool _disposed;
-    private bool _preferencesLoaded;
     private IReadOnlyDictionary<string, DateTimeOffset> _artistRecents =
         new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
-
-    [ObservableProperty]
-    private bool _isLoading;
 
     [ObservableProperty]
     private bool _isLoadingDetails;
@@ -55,22 +49,26 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
     private ObservableCollection<LibraryArtistDto> _filteredArtists = [];
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowSavedArtistPlaceholder))]
+    [NotifyPropertyChangedFor(nameof(ShowSavedArtistDetails))]
     private LibraryArtistDto? _selectedArtist;
 
     [ObservableProperty]
+    private ObservableCollection<LikedArtistDto> _likedArtists = [];
+
+    [ObservableProperty]
+    private ObservableCollection<LikedArtistDto> _filteredLikedArtists = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowLikedArtistPlaceholder))]
+    [NotifyPropertyChangedFor(nameof(ShowLikedArtistDetails))]
+    private LikedArtistDto? _selectedLikedArtist;
+
+    [ObservableProperty]
+    private ObservableCollection<LikedSongDto> _selectedLikedArtistTracks = [];
+
+    [ObservableProperty]
     private ObservableCollection<ArtistAlbumGroupViewModel> _albumGroups = [];
-
-    [ObservableProperty]
-    private string _searchQuery = "";
-
-    [ObservableProperty]
-    private LibrarySortBy _sortBy = LibrarySortBy.Recents;
-
-    [ObservableProperty]
-    private LibrarySortDirection _sortDirection = LibrarySortDirection.Descending;
-
-    [ObservableProperty]
-    private LibraryViewMode _viewMode = LibraryViewMode.DefaultGrid;
 
     // Wrapper properties for selected artist (avoids null reference in x:Bind)
     [ObservableProperty]
@@ -90,7 +88,18 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
     private bool _showSavedOnly;
 
     private List<LibraryArtistAlbumDto> _allAlbums = [];
-    private HashSet<string> _savedAlbumUris = [];
+
+    // Action-row counts. Plain getters over _allAlbums; recounted by raising
+    // PropertyChanged after _allAlbums is reassigned in
+    // LoadSelectedArtistDetailsAsync. Used by the Saved-only toggle's
+    // "Saved only (N)" label so the filter's effect is obvious.
+    //
+    // SavedAlbumCount mirrors the toggle's actual predicate
+    // (IsInLibrary = directly-saved OR contains-liked-songs) so the label
+    // matches what the user sees after enabling the filter.
+    public int SavedAlbumCount => _allAlbums.Count(a => a.IsInLibrary);
+    public int TotalAlbumCount => _allAlbums.Count;
+    public string SavedOnlyButtonLabel => $"Saved only ({SavedAlbumCount})";
 
     // Tracks panel (third column) properties
     [ObservableProperty]
@@ -122,6 +131,13 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
     [NotifyPropertyChangedFor(nameof(ShowNarrowArtistDetailsStage))]
     [NotifyPropertyChangedFor(nameof(ShowNarrowAlbumTracksStage))]
     [NotifyPropertyChangedFor(nameof(ShowBreadcrumbBar))]
+    [NotifyPropertyChangedFor(nameof(IsSavedWide))]
+    [NotifyPropertyChangedFor(nameof(IsLikedWide))]
+    [NotifyPropertyChangedFor(nameof(ShowSavedNarrowArtistsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowLikedNarrowArtistsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowSavedNarrowArtistDetailsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowLikedNarrowArtistDetailsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowSavedNarrowAlbumTracksStage))]
     private bool _useNarrowLayout;
 
     [ObservableProperty]
@@ -129,6 +145,11 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
     [NotifyPropertyChangedFor(nameof(ShowNarrowArtistDetailsStage))]
     [NotifyPropertyChangedFor(nameof(ShowNarrowAlbumTracksStage))]
     [NotifyPropertyChangedFor(nameof(ShowBreadcrumbBar))]
+    [NotifyPropertyChangedFor(nameof(ShowSavedNarrowArtistsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowLikedNarrowArtistsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowSavedNarrowArtistDetailsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowLikedNarrowArtistDetailsStage))]
+    [NotifyPropertyChangedFor(nameof(ShowSavedNarrowAlbumTracksStage))]
     private ArtistsLibraryStage _narrowStage = ArtistsLibraryStage.Artists;
 
     public ObservableCollection<string> BreadcrumbItems { get; } = [];
@@ -138,6 +159,17 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
     public bool ShowNarrowArtistDetailsStage => UseNarrowLayout && NarrowStage == ArtistsLibraryStage.Details;
     public bool ShowNarrowAlbumTracksStage => UseNarrowLayout && NarrowStage == ArtistsLibraryStage.Tracks;
     public bool ShowBreadcrumbBar => UseNarrowLayout;
+    public bool IsSavedWide => IsSavedSource && IsWideLayout;
+    public bool IsLikedWide => IsLikedSource && IsWideLayout;
+    public bool ShowSavedArtistPlaceholder => IsSavedSource && SelectedArtist == null;
+    public bool ShowSavedArtistDetails => IsSavedSource && SelectedArtist != null;
+    public bool ShowLikedArtistPlaceholder => IsLikedSource && SelectedLikedArtist == null;
+    public bool ShowLikedArtistDetails => IsLikedSource && SelectedLikedArtist != null;
+    public bool ShowSavedNarrowArtistsStage => IsSavedSource && ShowNarrowArtistsStage;
+    public bool ShowLikedNarrowArtistsStage => IsLikedSource && ShowNarrowArtistsStage;
+    public bool ShowSavedNarrowArtistDetailsStage => IsSavedSource && ShowNarrowArtistDetailsStage;
+    public bool ShowLikedNarrowArtistDetailsStage => IsLikedSource && ShowNarrowArtistDetailsStage;
+    public bool ShowSavedNarrowAlbumTracksStage => IsSavedSource && ShowNarrowAlbumTracksStage;
 
     public ILibraryDataService LibraryDataService => _libraryDataService;
 
@@ -150,54 +182,29 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
         ITrackLikeService? likeService = null,
         ISettingsService? settingsService = null,
         LibraryRecentsService? libraryRecents = null)
+        : base(settingsService, likeService, libraryRecents, DispatcherQueue.GetForCurrentThread())
     {
         _libraryDataService = libraryDataService;
         _playlistMutationService = playlistMutationService;
         _artistService = artistService;
         _albumService = albumService;
         _playbackService = playbackService;
-        _likeService = likeService;
-        _settingsService = settingsService;
-        _libraryRecents = libraryRecents;
-        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
         LoadPreferences();
 
         AttachLongLivedServices();
-        if (_libraryRecents != null)
+        if (LibraryRecents != null)
             _ = PrefetchRecentsAsync();
-    }
-
-    private bool _longLivedAttached;
-
-    private void AttachLongLivedServices()
-    {
-        if (_longLivedAttached) return;
-        _longLivedAttached = true;
-        if (_likeService != null)
-            _likeService.SaveStateChanged += OnSaveStateChanged;
-        if (_libraryRecents != null)
-            _libraryRecents.RecentsChanged += OnLibraryRecentsChanged;
-    }
-
-    private void DetachLongLivedServices()
-    {
-        if (!_longLivedAttached) return;
-        _longLivedAttached = false;
-        if (_likeService != null)
-            _likeService.SaveStateChanged -= OnSaveStateChanged;
-        if (_libraryRecents != null)
-            _libraryRecents.RecentsChanged -= OnLibraryRecentsChanged;
     }
 
     private async Task PrefetchRecentsAsync()
     {
-        if (_libraryRecents == null) return;
+        if (LibraryRecents == null) return;
         try
         {
-            var map = await _libraryRecents.GetArtistRecentsAsync().ConfigureAwait(false);
+            var map = await LibraryRecents.GetArtistRecentsAsync().ConfigureAwait(false);
             _artistRecents = map;
-            _dispatcherQueue.TryEnqueue(ApplyFilter);
+            DispatcherQueue.TryEnqueue(ApplyFilter);
         }
         catch
         {
@@ -207,78 +214,84 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
 
     private void OnLibraryRecentsChanged()
     {
-        if (_disposed || _libraryRecents == null) return;
+        if (_disposed || LibraryRecents == null) return;
         _ = Task.Run(async () =>
         {
             try
             {
-                var map = await _libraryRecents.GetArtistRecentsAsync().ConfigureAwait(false);
+                var map = await LibraryRecents.GetArtistRecentsAsync().ConfigureAwait(false);
                 _artistRecents = map;
-                _dispatcherQueue.TryEnqueue(ApplyFilter);
+                DispatcherQueue.TryEnqueue(ApplyFilter);
             }
             catch { /* ignore */ }
         });
     }
 
-    private void LoadPreferences()
-    {
-        var prefs = _settingsService?.Settings.LibraryTabs;
-        if (prefs == null || !prefs.TryGetValue(PreferencesTabKey, out var saved) || saved == null)
-        {
-            _preferencesLoaded = true;
-            return;
-        }
-
-        if (Enum.TryParse<LibrarySortBy>(saved.SortBy, ignoreCase: true, out var sb) && IsAllowedSortKey(sb))
-            _sortBy = sb;
-        if (Enum.TryParse<LibrarySortDirection>(saved.SortDirection, ignoreCase: true, out var sd))
-            _sortDirection = sd;
-        if (Enum.TryParse<LibraryViewMode>(saved.ViewMode, ignoreCase: true, out var vm))
-            _viewMode = vm;
-
-        _preferencesLoaded = true;
-    }
-
     // Creator + ReleaseDate don't apply to artists; the panel hides them, but guard
     // against a stale settings value (e.g. migrated from an album tab preference).
-    private static bool IsAllowedSortKey(LibrarySortBy key) =>
+    protected override bool IsAllowedSortKey(LibrarySortBy key) =>
         key is LibrarySortBy.Recents or LibrarySortBy.RecentlyAdded or LibrarySortBy.Alphabetical;
 
-    private void SavePreferences()
-    {
-        if (!_preferencesLoaded || _settingsService == null) return;
+    protected override LibrarySource ReadPersistedSource(AppSettings settings) =>
+        string.Equals(settings.ArtistsLibrarySource, nameof(LibrarySource.FromLikedSongs), StringComparison.OrdinalIgnoreCase)
+            ? LibrarySource.FromLikedSongs
+            : LibrarySource.Saved;
 
-        _settingsService.Update(s =>
+    protected override void WritePersistedSource(AppSettings settings, LibrarySource source)
+    {
+        settings.ArtistsLibrarySource = source.ToString();
+    }
+
+    protected override void ApplyFilterCore()
+    {
+        ApplyFilter();
+    }
+
+    protected override void OnSaveStateChangedFromBase()
+    {
+        OnSaveStateChanged();
+    }
+
+    protected override void OnRecentsChangedFromBase()
+    {
+        OnLibraryRecentsChanged();
+    }
+
+    protected override void OnSourceModeChangedCore(LibrarySource oldValue, LibrarySource newValue)
+    {
+        OnPropertyChanged(nameof(IsSavedWide));
+        OnPropertyChanged(nameof(IsLikedWide));
+        OnPropertyChanged(nameof(ShowSavedArtistPlaceholder));
+        OnPropertyChanged(nameof(ShowSavedArtistDetails));
+        OnPropertyChanged(nameof(ShowLikedArtistPlaceholder));
+        OnPropertyChanged(nameof(ShowLikedArtistDetails));
+        OnPropertyChanged(nameof(ShowSavedNarrowArtistsStage));
+        OnPropertyChanged(nameof(ShowLikedNarrowArtistsStage));
+        OnPropertyChanged(nameof(ShowSavedNarrowArtistDetailsStage));
+        OnPropertyChanged(nameof(ShowLikedNarrowArtistDetailsStage));
+        OnPropertyChanged(nameof(ShowSavedNarrowAlbumTracksStage));
+
+        SelectedAlbumForTracks = null;
+        if (newValue == LibrarySource.Saved)
         {
-            if (!s.LibraryTabs.TryGetValue(PreferencesTabKey, out var entry) || entry == null)
+            SelectedLikedArtist = null;
+            if (SelectedArtist == null && FilteredArtists.Count > 0)
+                SelectedArtist = FilteredArtists[0];
+        }
+        else
+        {
+            SelectedArtist = null;
+            if (!LikedSideLoaded)
+                _ = LoadLikedArtistsAsync(preserveSelection: false);
+            else
             {
-                entry = new LibraryTabPreferences();
-                s.LibraryTabs[PreferencesTabKey] = entry;
+                ApplyFilter();
+                if (SelectedLikedArtist == null && FilteredLikedArtists.Count > 0)
+                    SelectedLikedArtist = FilteredLikedArtists[0];
             }
+        }
 
-            entry.SortBy = SortBy.ToString();
-            entry.SortDirection = SortDirection.ToString();
-            entry.ViewMode = ViewMode.ToString();
-        });
-
-        _ = _settingsService.SaveAsync();
-    }
-
-    partial void OnSortByChanged(LibrarySortBy value)
-    {
-        ApplyFilter();
-        SavePreferences();
-    }
-
-    partial void OnSortDirectionChanged(LibrarySortDirection value)
-    {
-        ApplyFilter();
-        SavePreferences();
-    }
-
-    partial void OnViewModeChanged(LibraryViewMode value)
-    {
-        SavePreferences();
+        UpdateBreadcrumbs();
     }
 
     [RelayCommand]
@@ -288,6 +301,8 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
         if (IsLoading || Artists.Count > 0) return;
 
         await LoadDataAsync(preserveSelection: false);
+        if (SourceMode == LibrarySource.FromLikedSongs && !LikedSideLoaded)
+            await LoadLikedArtistsAsync(preserveSelection: false);
     }
 
     [RelayCommand]
@@ -296,6 +311,8 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
         if (IsLoading) return;
 
         await LoadDataAsync(preserveSelection: true);
+        if (LikedSideLoaded)
+            await LoadLikedArtistsAsync(preserveSelection: true);
     }
 
     private async Task LoadDataAsync(bool preserveSelection)
@@ -329,9 +346,42 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
                 SelectedArtist = FilteredArtists.FirstOrDefault(a => a.Id == previousSelectedId);
             }
 
-            if (SelectedArtist == null && FilteredArtists.Count > 0)
+            if (SourceMode == LibrarySource.Saved && SelectedArtist == null && FilteredArtists.Count > 0)
             {
                 SelectedArtist = FilteredArtists[0];
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task LoadLikedArtistsAsync(bool preserveSelection)
+    {
+        var previousSelectedId = preserveSelection ? SelectedLikedArtist?.Id : null;
+
+        try
+        {
+            IsLoading = true;
+            var liked = await _libraryDataService.GetLikedSongsAsync();
+            var grouped = LikedSongsByArtistGrouper.Group(liked, Artists);
+
+            LikedArtists.Clear();
+            foreach (var artist in grouped)
+                LikedArtists.Add(artist);
+
+            LikedSideLoaded = true;
+            ApplyFilter();
+
+            if (SourceMode == LibrarySource.FromLikedSongs)
+            {
+                if (previousSelectedId != null)
+                    SelectedLikedArtist = FilteredLikedArtists.FirstOrDefault(a =>
+                        string.Equals(a.Id, previousSelectedId, StringComparison.OrdinalIgnoreCase));
+
+                if (SelectedLikedArtist == null && FilteredLikedArtists.Count > 0)
+                    SelectedLikedArtist = FilteredLikedArtists[0];
             }
         }
         finally
@@ -359,8 +409,64 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
     }
 
     [RelayCommand]
+    private async Task PlayLikedArtistTracksAsync()
+    {
+        if (SelectedLikedArtist is not { } liked) return;
+        var trackUris = liked.LikedSongs.Select(s => s.Uri).ToList();
+        if (trackUris.Count == 0) return;
+
+        var contextInfo = new PlaybackContextInfo
+        {
+            ContextUri = liked.CanOpenArtist ? liked.Id : "spotify:collection",
+            Type = PlaybackContextType.Artist,
+            Name = liked.Name,
+            ImageUrl = liked.ImageUrl,
+        };
+        await _playbackService.PlayTracksAsync(trackUris, 0, contextInfo);
+    }
+
+    [RelayCommand]
+    private async Task ShuffleLikedArtistTracksAsync()
+    {
+        if (SelectedLikedArtist is not { } liked) return;
+        var trackUris = liked.LikedSongs.Select(s => s.Uri).ToList();
+        if (trackUris.Count == 0) return;
+
+        var rng = Random.Shared;
+        for (var i = trackUris.Count - 1; i > 0; i--)
+        {
+            var j = rng.Next(i + 1);
+            (trackUris[i], trackUris[j]) = (trackUris[j], trackUris[i]);
+        }
+
+        var contextInfo = new PlaybackContextInfo
+        {
+            ContextUri = liked.CanOpenArtist ? liked.Id : "spotify:collection",
+            Type = PlaybackContextType.Artist,
+            Name = liked.Name,
+            ImageUrl = liked.ImageUrl,
+        };
+        await _playbackService.PlayTracksAsync(trackUris, 0, contextInfo);
+    }
+
+    [RelayCommand]
     private void OpenArtistDetails()
     {
+        if (SelectedLikedArtist is { } liked)
+        {
+            if (!liked.CanOpenArtist) return;
+
+            Helpers.Navigation.NavigationHelpers.OpenArtist(
+                new Data.Parameters.ContentNavigationParameter
+                {
+                    Uri = liked.Id,
+                    Title = liked.Name,
+                    ImageUrl = liked.ImageUrl,
+                },
+                liked.Name);
+            return;
+        }
+
         if (SelectedArtist == null) return;
         // Pass the lean library data via ContentNavigationParameter so ArtistPage
         // can PrefillFrom(...) and render hero name + avatar in the first frame
@@ -464,6 +570,9 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
 
     partial void OnSelectedArtistChanged(LibraryArtistDto? value)
     {
+        if (value != null && SelectedLikedArtist != null)
+            SelectedLikedArtist = null;
+
         // Close tracks panel when artist changes
         SelectedAlbumForTracks = null;
 
@@ -480,12 +589,47 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
 
         UpdateBreadcrumbs();
 
-        _ = LoadSelectedArtistDetailsAsync();
+        if (value != null)
+            _ = LoadSelectedArtistDetailsAsync();
     }
 
-    partial void OnSearchQueryChanged(string value)
+    partial void OnSelectedLikedArtistChanged(LikedArtistDto? value)
     {
-        ApplyFilter();
+        if (value != null && SelectedArtist != null)
+            SelectedArtist = null;
+
+        SelectedAlbumForTracks = null;
+        AlbumGroups.Clear();
+        _allAlbums.Clear();
+
+        SelectedArtistName = value?.Name ?? "";
+        SelectedArtistImageUrl = value?.ImageUrl;
+        SelectedArtistAddedAt = value != null
+            ? BuildSelectedLikedArtistMetadata(value)
+            : "";
+        SelectedArtistAlbumCount = 0;
+
+        SelectedLikedArtistTracks.Clear();
+        if (value != null)
+        {
+            foreach (var track in value.LikedSongs)
+                SelectedLikedArtistTracks.Add(track);
+        }
+
+        if (UseNarrowLayout && value == null && SelectedArtist == null)
+            NarrowStage = ArtistsLibraryStage.Artists;
+
+        UpdateBreadcrumbs();
+    }
+
+    private string BuildSelectedLikedArtistMetadata(LikedArtistDto artist)
+    {
+        var parts = new List<string> { artist.LikedSongCountLabel };
+        if (artist.MostRecentLikedAt > DateTimeOffset.MinValue)
+            parts.Add($"Last liked {artist.MostRecentLikedAt.LocalDateTime:MMM d, yyyy}");
+        if (_artistRecents.TryGetValue(artist.Id, out var lastPlayed))
+            parts.Add(FormatRecentsSubtitle(lastPlayed));
+        return string.Join(" \u2022 ", parts);
     }
 
     public void SetNarrowLayout(bool isNarrow, bool preserveContext)
@@ -538,6 +682,22 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
         SetNarrowStage(ArtistsLibraryStage.Details);
     }
 
+    public void ShowSelectedLikedArtistDetails(LikedArtistDto? artist = null)
+    {
+        if (artist != null)
+        {
+            SelectedLikedArtist = artist;
+        }
+
+        if (SelectedLikedArtist == null)
+        {
+            return;
+        }
+
+        SelectedAlbumForTracks = null;
+        SetNarrowStage(ArtistsLibraryStage.Details);
+    }
+
     public void ShowSelectedAlbumTracks(ArtistAlbumItemViewModel? album = null)
     {
         if (album != null)
@@ -565,7 +725,7 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
             return ArtistsLibraryStage.Tracks;
         }
 
-        return SelectedArtist != null
+        return (SelectedArtist != null || SelectedLikedArtist != null)
             ? ArtistsLibraryStage.Details
             : ArtistsLibraryStage.Artists;
     }
@@ -587,9 +747,11 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
             return;
         }
 
-        if (NarrowStage is ArtistsLibraryStage.Details or ArtistsLibraryStage.Tracks && SelectedArtist != null)
+        if (NarrowStage is ArtistsLibraryStage.Details or ArtistsLibraryStage.Tracks)
         {
-            BreadcrumbItems.Add(SelectedArtist.Name);
+            var artistName = SelectedArtist?.Name ?? SelectedLikedArtist?.Name;
+            if (!string.IsNullOrEmpty(artistName))
+                BreadcrumbItems.Add(artistName);
         }
 
         if (NarrowStage == ArtistsLibraryStage.Tracks && SelectedAlbumForTracks != null)
@@ -613,26 +775,22 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
         {
             IsLoadingDetails = true;
 
-            // Fetch full discography (single API call) + saved album URIs in parallel
+            // Fetch full discography plus the two local library sources that
+            // mark an album as "in library": directly saved albums and albums
+            // represented by liked songs.
             var discographyTask = _artistService.GetDiscographyAllAsync(SelectedArtist.Id, 0, 100);
             var savedAlbumsTask = _libraryDataService.GetAlbumsAsync();
+            var likedSongsTask = _libraryDataService.GetLikedSongsAsync();
 
-            await Task.WhenAll(discographyTask, savedAlbumsTask);
+            await Task.WhenAll(discographyTask, savedAlbumsTask, likedSongsTask);
 
-            // Build saved URI set for cross-reference
-            _savedAlbumUris = (await savedAlbumsTask).Select(a => a.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _allAlbums = ArtistDiscographyLibraryMapper
+                .Map(await discographyTask, await savedAlbumsTask, await likedSongsTask)
+                .ToList();
 
-            // Map all results to DTOs with IsSaved, preserving original type from API
-            var allReleases = await discographyTask;
-            _allAlbums = allReleases.Select(r => new LibraryArtistAlbumDto
-            {
-                Id = r.Uri ?? $"spotify:album:{r.Id}",
-                Name = r.Name ?? "Unknown",
-                ImageUrl = r.ImageUrl,
-                Year = r.Year,
-                AlbumType = r.Type,
-                IsSaved = _savedAlbumUris.Contains(r.Uri ?? $"spotify:album:{r.Id}")
-            }).ToList();
+            OnPropertyChanged(nameof(SavedAlbumCount));
+            OnPropertyChanged(nameof(TotalAlbumCount));
+            OnPropertyChanged(nameof(SavedOnlyButtonLabel));
 
             ApplyAlbumFilter();
         }
@@ -649,7 +807,7 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
 
     private void ApplyAlbumFilter()
     {
-        var source = ShowSavedOnly ? _allAlbums.Where(a => a.IsSaved) : _allAlbums;
+        var source = ShowSavedOnly ? _allAlbums.Where(a => a.IsInLibrary) : _allAlbums;
 
         var groups = new[]
         {
@@ -680,15 +838,15 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
         if (_disposed)
             return;
 
-        _dispatcherQueue.TryEnqueue(async () =>
+        DispatcherQueue.TryEnqueue(async () =>
         {
             if (_disposed)
                 return;
 
-            if (_likeService == null) return;
+            if (LikeService == null) return;
 
             // Remove artists that are no longer followed
-            var removed = Artists.Where(a => !_likeService.IsSaved(SavedItemType.Artist, a.Id)).ToList();
+            var removed = Artists.Where(a => !LikeService.IsSaved(SavedItemType.Artist, a.Id)).ToList();
             foreach (var artist in removed)
             {
                 Artists.Remove(artist);
@@ -702,7 +860,7 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
 
             // Check for newly followed artists not yet in our collection
             var existingIds = Artists.Select(a => a.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var savedIds = _likeService.GetSavedIds(SavedItemType.Artist);
+            var savedIds = LikeService.GetSavedIds(SavedItemType.Artist);
             var hasGhosts = Artists.Any(a => a.IsLoading);
 
             var newIds = savedIds
@@ -734,14 +892,27 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
             ApplyFilter();
 
             // Select first if nothing selected
-            if (SelectedArtist == null && FilteredArtists.Count > 0)
+            if (SourceMode == LibrarySource.Saved && SelectedArtist == null && FilteredArtists.Count > 0)
             {
                 SelectedArtist = FilteredArtists[0];
+            }
+
+            if (LikedSideLoaded)
+            {
+                await LoadLikedArtistsAsync(preserveSelection: true);
             }
         });
     }
 
     private void ApplyFilter()
+    {
+        if (SourceMode == LibrarySource.Saved)
+            ApplyFilterSaved();
+        else
+            ApplyFilterLiked();
+    }
+
+    private void ApplyFilterSaved()
     {
         var selectedId = SelectedArtist?.Id;
 
@@ -764,6 +935,29 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
         PreserveSelectedArtistAfterFilter(selectedId);
     }
 
+    private void ApplyFilterLiked()
+    {
+        var selectedId = SelectedLikedArtist?.Id;
+
+        FilteredLikedArtists.Clear();
+
+        var query = SearchQuery?.Trim() ?? "";
+        IEnumerable<LikedArtistDto> filtered = string.IsNullOrEmpty(query)
+            ? LikedArtists
+            : LikedArtists.Where(a => a.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+        var showRecents = SortBy == LibrarySortBy.Recents;
+        foreach (var artist in SortLikedArtists(filtered))
+        {
+            artist.RecentsSubtitle = showRecents && _artistRecents.TryGetValue(artist.Id, out var ts)
+                ? FormatRecentsSubtitle(ts)
+                : null;
+            FilteredLikedArtists.Add(artist);
+        }
+
+        PreserveSelectedLikedArtistAfterFilter(selectedId);
+    }
+
     private void PreserveSelectedArtistAfterFilter(string? selectedId)
     {
         if (string.IsNullOrEmpty(selectedId))
@@ -782,16 +976,22 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
         }
     }
 
-    private static string FormatRecentsSubtitle(DateTimeOffset playedAt)
+    private void PreserveSelectedLikedArtistAfterFilter(string? selectedId)
     {
-        var delta = DateTimeOffset.UtcNow - playedAt;
-        if (delta < TimeSpan.Zero) delta = TimeSpan.Zero;
+        if (string.IsNullOrEmpty(selectedId))
+            return;
 
-        if (delta < TimeSpan.FromSeconds(60)) return "Played just now";
-        if (delta < TimeSpan.FromMinutes(60)) return $"Played {(int)delta.TotalMinutes}m ago";
-        if (delta < TimeSpan.FromHours(24)) return $"Played {(int)delta.TotalHours}h ago";
-        if (delta < TimeSpan.FromDays(7)) return $"Played {(int)delta.TotalDays}d ago";
-        return $"Played {playedAt.LocalDateTime:MMM d, yyyy}";
+        var selected = FilteredLikedArtists.FirstOrDefault(a =>
+            string.Equals(a.Id, selectedId, StringComparison.OrdinalIgnoreCase));
+
+        if (selected != null && !ReferenceEquals(SelectedLikedArtist, selected))
+        {
+            SelectedLikedArtist = selected;
+        }
+        else if (selected == null && string.Equals(SelectedLikedArtist?.Id, selectedId, StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedLikedArtist = null;
+        }
     }
 
     private IEnumerable<LibraryArtistDto> SortArtists(IEnumerable<LibraryArtistDto> source)
@@ -819,8 +1019,32 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
         };
     }
 
+    private IEnumerable<LikedArtistDto> SortLikedArtists(IEnumerable<LikedArtistDto> source)
+    {
+        var descending = SortDirection == LibrarySortDirection.Descending;
+
+        return SortBy switch
+        {
+            LibrarySortBy.Recents => descending
+                ? source.OrderByDescending(a => LastPlayedOrMin(a.Id)).ThenByDescending(a => a.MostRecentLikedAt)
+                : source.OrderBy(a => LastPlayedOrMin(a.Id)).ThenByDescending(a => a.MostRecentLikedAt),
+            LibrarySortBy.RecentlyAdded => descending
+                ? source.OrderByDescending(a => a.MostRecentLikedAt)
+                : source.OrderBy(a => a.MostRecentLikedAt),
+            LibrarySortBy.Alphabetical => descending
+                ? source.OrderByDescending(a => a.Name, StringComparer.OrdinalIgnoreCase)
+                : source.OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase),
+            _ => descending
+                ? source.OrderByDescending(a => a.MostRecentLikedAt)
+                : source.OrderBy(a => a.MostRecentLikedAt)
+        };
+    }
+
     private DateTimeOffset LastPlayedOrMin(LibraryArtistDto artist) =>
         _artistRecents.TryGetValue(artist.Id, out var ts) ? ts : DateTimeOffset.MinValue;
+
+    private DateTimeOffset LastPlayedOrMin(string artistId) =>
+        _artistRecents.TryGetValue(artistId, out var ts) ? ts : DateTimeOffset.MinValue;
 
     #region ITrackListViewModel Implementation
 
@@ -843,16 +1067,42 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
     [ObservableProperty]
     private IReadOnlyList<PlaylistSummaryDto> _playlists = Array.Empty<PlaylistSummaryDto>();
 
+    private static string? GetTrackUri(object? item) =>
+        item is AlbumTrackDto albumTrack ? albumTrack.Uri :
+        item is LikedSongDto likedSong ? likedSong.Uri :
+        null;
+
     // Playback commands
     [RelayCommand]
     private async Task PlayTrackAsync(object? track)
     {
-        if (track is not AlbumTrackDto albumTrack) return;
-        var albumId = SelectedAlbumForTracks?.Album?.Id;
-        if (albumId != null)
-            await _playbackService.PlayTrackInContextAsync(albumTrack.Uri, albumId);
-        else
-            await _playbackService.PlayTracksAsync([albumTrack.Uri]);
+        if (track is AlbumTrackDto albumTrack)
+        {
+            var albumId = SelectedAlbumForTracks?.Album?.Id;
+            if (albumId != null)
+                await _playbackService.PlayTrackInContextAsync(albumTrack.Uri, albumId);
+            else
+                await _playbackService.PlayTracksAsync([albumTrack.Uri]);
+            return;
+        }
+
+        if (track is LikedSongDto likedSong && SelectedLikedArtist is { } likedArtist)
+        {
+            var trackUris = likedArtist.LikedSongs.Select(s => s.Uri).ToList();
+            if (trackUris.Count == 0) return;
+
+            var startIndex = trackUris.IndexOf(likedSong.Uri);
+            if (startIndex < 0) startIndex = 0;
+
+            var contextInfo = new PlaybackContextInfo
+            {
+                ContextUri = likedArtist.CanOpenArtist ? likedArtist.Id : "spotify:collection",
+                Type = PlaybackContextType.Artist,
+                Name = likedArtist.Name,
+                ImageUrl = likedArtist.ImageUrl,
+            };
+            await _playbackService.PlayTracksAsync(trackUris, startIndex, contextInfo);
+        }
     }
 
     // Multi-select commands
@@ -860,8 +1110,10 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
     private async Task PlaySelectedAsync()
     {
         if (!HasSelection) return;
-        var trackUris = SelectedAlbumTracks
-            .Select(t => t.Uri)
+        var trackUris = SelectedItems
+            .Select(GetTrackUri)
+            .Where(u => !string.IsNullOrEmpty(u))
+            .Select(u => u!)
             .ToList();
         if (trackUris.Count > 0)
             await _playbackService.PlayTracksAsync(trackUris);
@@ -871,27 +1123,38 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
     private async Task PlayAfterAsync()
     {
         if (!HasSelection) return;
-        foreach (var track in SelectedAlbumTracks)
-            await _playbackService.AddToQueueAsync(track.Uri);
+        foreach (var item in SelectedItems)
+        {
+            var uri = GetTrackUri(item);
+            if (!string.IsNullOrEmpty(uri))
+                await _playbackService.PlayNextAsync(uri);
+        }
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private async Task AddSelectedToQueueAsync()
     {
         if (!HasSelection) return;
-        foreach (var track in SelectedAlbumTracks)
-            await _playbackService.AddToQueueAsync(track.Uri);
+        foreach (var item in SelectedItems)
+        {
+            var uri = GetTrackUri(item);
+            if (!string.IsNullOrEmpty(uri))
+                await _playbackService.AddToQueueAsync(uri);
+        }
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void RemoveSelected()
     {
-        if (!HasSelection || _likeService == null) return;
-        foreach (var track in SelectedItems.OfType<AlbumTrackDto>())
+        if (!HasSelection || LikeService == null) return;
+        foreach (var item in SelectedItems)
         {
+            var uri = GetTrackUri(item);
+            if (string.IsNullOrEmpty(uri)) continue;
+
             // Force currentlySaved=true so the toggle always lands on "unsaved" —
             // matches the menu label "Remove from library".
-            _likeService.ToggleSave(SavedItemType.Track, track.Uri, currentlySaved: true);
+            LikeService.ToggleSave(SavedItemType.Track, uri, currentlySaved: true);
         }
     }
 
@@ -899,7 +1162,11 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
     private async Task AddToPlaylistAsync(PlaylistSummaryDto? playlist)
     {
         if (playlist == null || !HasSelection) return;
-        var trackIds = SelectedItems.OfType<AlbumTrackDto>().Select(t => t.Uri).ToList();
+        var trackIds = SelectedItems
+            .Select(GetTrackUri)
+            .Where(u => !string.IsNullOrEmpty(u))
+            .Select(u => u!)
+            .ToList();
         if (trackIds.Count == 0) return;
         await _playlistMutationService.AddTracksToPlaylistAsync(playlist.Id, trackIds);
     }
@@ -922,6 +1189,16 @@ public sealed partial class ArtistsLibraryViewModel : Wavee.UI.ViewModels.Helper
         AddSelectedToQueueCommand.NotifyCanExecuteChanged();
         RemoveSelectedCommand.NotifyCanExecuteChanged();
         AddToPlaylistCommand.NotifyCanExecuteChanged();
+    }
+
+    public void UnlikeAllSongsFromLikedArtist(LikedArtistDto artist)
+    {
+        if (artist == null || LikeService == null) return;
+        foreach (var track in artist.LikedSongs)
+        {
+            if (string.IsNullOrEmpty(track.Uri)) continue;
+            LikeService.ToggleSave(SavedItemType.Track, track.Uri, currentlySaved: true);
+        }
     }
 
     public void Dispose()

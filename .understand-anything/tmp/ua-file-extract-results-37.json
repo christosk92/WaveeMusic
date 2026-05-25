@@ -1,0 +1,7310 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 25,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackDataGrid.RowContextMenu.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 435,
+      "nonEmptyLines": 384,
+      "functions": [
+        {
+          "name": "WireRowContextMenuHandlers",
+          "startLine": 138,
+          "endLine": 152,
+          "params": []
+        },
+        {
+          "name": "UnwireRowContextMenuHandlers",
+          "startLine": 154,
+          "endLine": 166,
+          "params": []
+        },
+        {
+          "name": "OnRowsPresenterRightTapped",
+          "startLine": 168,
+          "endLine": 196,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnRowsPresenterHolding",
+          "startLine": 204,
+          "endLine": 220,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ResolveClickedRow",
+          "startLine": 228,
+          "endLine": 242,
+          "params": [
+            "element"
+          ]
+        },
+        {
+          "name": "CaptureSelectionForContextMenu",
+          "startLine": 244,
+          "endLine": 249,
+          "params": []
+        },
+        {
+          "name": "DismissOpenFlyoutsAtCurrentRoot",
+          "startLine": 258,
+          "endLine": 276,
+          "params": []
+        },
+        {
+          "name": "ShowSelectionContextMenu",
+          "startLine": 278,
+          "endLine": 283,
+          "params": [
+            "anchor",
+            "selection",
+            "position"
+          ]
+        },
+        {
+          "name": "BuildSelectionMenuItems",
+          "startLine": 296,
+          "endLine": 354,
+          "params": [
+            "selection"
+          ]
+        },
+        {
+          "name": "DefaultPlayNextSelection",
+          "startLine": 360,
+          "endLine": 374,
+          "params": [
+            "selection"
+          ]
+        },
+        {
+          "name": "DefaultAddToQueueSelection",
+          "startLine": 376,
+          "endLine": 388,
+          "params": [
+            "selection"
+          ]
+        },
+        {
+          "name": "DefaultToggleLikeSelection",
+          "startLine": 390,
+          "endLine": 412,
+          "params": [
+            "selection",
+            "anyLiked"
+          ]
+        },
+        {
+          "name": "ShowSelectionContextMenu",
+          "startLine": 425,
+          "endLine": 434,
+          "params": [
+            "position"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "TrackDataGrid",
+          "startLine": 48,
+          "endLine": 435,
+          "methods": [
+            "WireRowContextMenuHandlers",
+            "UnwireRowContextMenuHandlers",
+            "OnRowsPresenterRightTapped",
+            "OnRowsPresenterHolding",
+            "ResolveClickedRow",
+            "CaptureSelectionForContextMenu",
+            "DismissOpenFlyoutsAtCurrentRoot",
+            "ShowSelectionContextMenu",
+            "BuildSelectionMenuItems",
+            "DefaultPlayNextSelection",
+            "DefaultAddToQueueSelection",
+            "DefaultToggleLikeSelection",
+            "ShowSelectionContextMenu"
+          ],
+          "properties": [
+            "MultiSelectPlayNextCommandProperty",
+            "MultiSelectPlayNextCommand",
+            "MultiSelectAddToQueueCommandProperty",
+            "MultiSelectAddToQueueCommand",
+            "MultiSelectRemoveCommandProperty",
+            "MultiSelectRemoveCommand",
+            "MultiSelectRemoveLabelProperty",
+            "MultiSelectRemoveLabel",
+            "MultiSelectToggleLikeCommandProperty",
+            "MultiSelectToggleLikeCommand",
+            "_rowsItemsViewRightTappedHandler",
+            "_rowsItemsViewHoldingHandler",
+            "_rightTappedHandlersWired"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "MultiSelectPlayNextCommandProperty",
+          "line": 59,
+          "isDefault": false
+        },
+        {
+          "name": "MultiSelectPlayNextCommand",
+          "line": 63,
+          "isDefault": false
+        },
+        {
+          "name": "MultiSelectAddToQueueCommandProperty",
+          "line": 73,
+          "isDefault": false
+        },
+        {
+          "name": "MultiSelectAddToQueueCommand",
+          "line": 77,
+          "isDefault": false
+        },
+        {
+          "name": "MultiSelectRemoveCommandProperty",
+          "line": 87,
+          "isDefault": false
+        },
+        {
+          "name": "MultiSelectRemoveCommand",
+          "line": 91,
+          "isDefault": false
+        },
+        {
+          "name": "MultiSelectRemoveLabelProperty",
+          "line": 101,
+          "isDefault": false
+        },
+        {
+          "name": "MultiSelectRemoveLabel",
+          "line": 105,
+          "isDefault": false
+        },
+        {
+          "name": "MultiSelectToggleLikeCommandProperty",
+          "line": 115,
+          "isDefault": false
+        },
+        {
+          "name": "MultiSelectToggleLikeCommand",
+          "line": 119,
+          "isDefault": false
+        },
+        {
+          "name": "ShowSelectionContextMenu",
+          "line": 425,
+          "isDefault": false
+        },
+        {
+          "name": "TrackDataGrid",
+          "line": 48,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "WireRowContextMenuHandlers",
+          "callee": "RowsItemsView.AddHandler",
+          "lineNumber": 150
+        },
+        {
+          "caller": "WireRowContextMenuHandlers",
+          "callee": "RowsItemsView.AddHandler",
+          "lineNumber": 151
+        },
+        {
+          "caller": "UnwireRowContextMenuHandlers",
+          "callee": "RowsItemsView.RemoveHandler",
+          "lineNumber": 160
+        },
+        {
+          "caller": "UnwireRowContextMenuHandlers",
+          "callee": "RowsItemsView.RemoveHandler",
+          "lineNumber": 162
+        },
+        {
+          "caller": "OnRowsPresenterRightTapped",
+          "callee": "ResolveClickedRow",
+          "lineNumber": 181
+        },
+        {
+          "caller": "OnRowsPresenterRightTapped",
+          "callee": "CaptureSelectionForContextMenu",
+          "lineNumber": 182
+        },
+        {
+          "caller": "OnRowsPresenterRightTapped",
+          "callee": "selection.Contains",
+          "lineNumber": 190
+        },
+        {
+          "caller": "OnRowsPresenterRightTapped",
+          "callee": "DismissOpenFlyoutsAtCurrentRoot",
+          "lineNumber": 193
+        },
+        {
+          "caller": "OnRowsPresenterRightTapped",
+          "callee": "ShowSelectionContextMenu",
+          "lineNumber": 194
+        },
+        {
+          "caller": "OnRowsPresenterRightTapped",
+          "callee": "e.GetPosition",
+          "lineNumber": 194
+        },
+        {
+          "caller": "OnRowsPresenterHolding",
+          "callee": "ResolveClickedRow",
+          "lineNumber": 209
+        },
+        {
+          "caller": "OnRowsPresenterHolding",
+          "callee": "CaptureSelectionForContextMenu",
+          "lineNumber": 210
+        },
+        {
+          "caller": "OnRowsPresenterHolding",
+          "callee": "selection.Contains",
+          "lineNumber": 214
+        },
+        {
+          "caller": "OnRowsPresenterHolding",
+          "callee": "DismissOpenFlyoutsAtCurrentRoot",
+          "lineNumber": 217
+        },
+        {
+          "caller": "OnRowsPresenterHolding",
+          "callee": "ShowSelectionContextMenu",
+          "lineNumber": 218
+        },
+        {
+          "caller": "OnRowsPresenterHolding",
+          "callee": "e.GetPosition",
+          "lineNumber": 218
+        },
+        {
+          "caller": "ResolveClickedRow",
+          "callee": "VisualTreeHelper.GetParent",
+          "lineNumber": 239
+        },
+        {
+          "caller": "CaptureSelectionForContextMenu",
+          "callee": "RowsItemsView.SelectedItems\r\n            .OfType<ITrackItem>()\r\n            .ToArray",
+          "lineNumber": 246
+        },
+        {
+          "caller": "CaptureSelectionForContextMenu",
+          "callee": "RowsItemsView.SelectedItems\r\n            .OfType<ITrackItem>",
+          "lineNumber": 246
+        },
+        {
+          "caller": "DismissOpenFlyoutsAtCurrentRoot",
+          "callee": "VisualTreeHelper.GetOpenPopupsForXamlRoot",
+          "lineNumber": 261
+        },
+        {
+          "caller": "DismissOpenFlyoutsAtCurrentRoot",
+          "callee": "FlyoutBase.GetAttachedFlyout",
+          "lineNumber": 265
+        },
+        {
+          "caller": "DismissOpenFlyoutsAtCurrentRoot",
+          "callee": "flyout.Hide",
+          "lineNumber": 267
+        },
+        {
+          "caller": "ShowSelectionContextMenu",
+          "callee": "BuildSelectionMenuItems",
+          "lineNumber": 280
+        },
+        {
+          "caller": "ShowSelectionContextMenu",
+          "callee": "ContextMenuHost.Show",
+          "lineNumber": 282
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "new List<ContextMenuItemModel>",
+          "lineNumber": 298
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "selection.All",
+          "lineNumber": 300
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "items.Add",
+          "lineNumber": 307
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "new ContextMenuItemModel",
+          "lineNumber": 307
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 309
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "InvokePlayNextSelection",
+          "lineNumber": 312
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "items.Add",
+          "lineNumber": 316
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "new ContextMenuItemModel",
+          "lineNumber": 316
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 318
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "InvokeAddToQueueSelection",
+          "lineNumber": 321
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "items.Add",
+          "lineNumber": 325
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "new ContextMenuItemModel",
+          "lineNumber": 325
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 330
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "InvokeToggleLikeSelection",
+          "lineNumber": 335
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "items.Add",
+          "lineNumber": 342
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "items.Add",
+          "lineNumber": 343
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "new ContextMenuItemModel",
+          "lineNumber": 343
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 346
+        },
+        {
+          "caller": "BuildSelectionMenuItems",
+          "callee": "InvokeRemoveSelection",
+          "lineNumber": 348
+        },
+        {
+          "caller": "DefaultPlayNextSelection",
+          "callee": "Ioc.Default.GetService<IPlaybackStateService>",
+          "lineNumber": 362
+        },
+        {
+          "caller": "DefaultPlayNextSelection",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 371
+        },
+        {
+          "caller": "DefaultPlayNextSelection",
+          "callee": "playback.PlayNext",
+          "lineNumber": 372
+        },
+        {
+          "caller": "DefaultAddToQueueSelection",
+          "callee": "Ioc.Default.GetService<IPlaybackStateService>",
+          "lineNumber": 378
+        },
+        {
+          "caller": "DefaultAddToQueueSelection",
+          "callee": "selection\r\n            .Select(t => t.Uri)\r\n            .Where(u => !string.IsNullOrEmpty(u))\r\n            .ToArray",
+          "lineNumber": 381
+        },
+        {
+          "caller": "DefaultAddToQueueSelection",
+          "callee": "selection\r\n            .Select(t => t.Uri)\r\n            .Where",
+          "lineNumber": 381
+        },
+        {
+          "caller": "DefaultAddToQueueSelection",
+          "callee": "selection\r\n            .Select",
+          "lineNumber": 381
+        },
+        {
+          "caller": "DefaultAddToQueueSelection",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 383
+        },
+        {
+          "caller": "DefaultAddToQueueSelection",
+          "callee": "playback.AddToQueue",
+          "lineNumber": 387
+        },
+        {
+          "caller": "DefaultToggleLikeSelection",
+          "callee": "Ioc.Default.GetService<ITrackLikeService>",
+          "lineNumber": 392
+        },
+        {
+          "caller": "DefaultToggleLikeSelection",
+          "callee": "selection.All",
+          "lineNumber": 399
+        },
+        {
+          "caller": "DefaultToggleLikeSelection",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 404
+        },
+        {
+          "caller": "DefaultToggleLikeSelection",
+          "callee": "likeService.IsSaved",
+          "lineNumber": 405
+        },
+        {
+          "caller": "DefaultToggleLikeSelection",
+          "callee": "likeService.ToggleSave",
+          "lineNumber": 410
+        },
+        {
+          "caller": "ShowSelectionContextMenu",
+          "callee": "CaptureSelectionForContextMenu",
+          "lineNumber": 427
+        },
+        {
+          "caller": "ShowSelectionContextMenu",
+          "callee": "Debug.WriteLine",
+          "lineNumber": 430
+        },
+        {
+          "caller": "ShowSelectionContextMenu",
+          "callee": "ShowSelectionContextMenu",
+          "lineNumber": 433
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 12,
+        "functionCount": 13,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackDataGrid.SelectionMode.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 208,
+      "nonEmptyLines": 181,
+      "functions": [
+        {
+          "name": "GetSelectedTracks",
+          "startLine": 40,
+          "endLine": 41,
+          "params": []
+        },
+        {
+          "name": "EnterSelectionMode",
+          "startLine": 44,
+          "endLine": 57,
+          "params": []
+        },
+        {
+          "name": "ExitSelectionMode",
+          "startLine": 60,
+          "endLine": 74,
+          "params": []
+        },
+        {
+          "name": "SyncSelectionModeToggle",
+          "startLine": 81,
+          "endLine": 86,
+          "params": []
+        },
+        {
+          "name": "SelectionModeToggle_Checked",
+          "startLine": 88,
+          "endLine": 92,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SelectionModeToggle_Unchecked",
+          "startLine": 94,
+          "endLine": 98,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "TryHandleSelectAllShortcut",
+          "startLine": 102,
+          "endLine": 123,
+          "params": []
+        },
+        {
+          "name": "PushSelectionModeToRows",
+          "startLine": 127,
+          "endLine": 131,
+          "params": []
+        },
+        {
+          "name": "RaiseSelectionModeStateChanged",
+          "startLine": 133,
+          "endLine": 134,
+          "params": []
+        },
+        {
+          "name": "OnRowSelectionToggleRequested",
+          "startLine": 138,
+          "endLine": 148,
+          "params": [
+            "sender",
+            "desiredSelected"
+          ]
+        },
+        {
+          "name": "OnRowEnterSelectionRequested",
+          "startLine": 150,
+          "endLine": 159,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "InvokePlaySelection",
+          "startLine": 167,
+          "endLine": 173,
+          "params": [
+            "selection"
+          ]
+        },
+        {
+          "name": "InvokePlayNextSelection",
+          "startLine": 175,
+          "endLine": 182,
+          "params": [
+            "selection"
+          ]
+        },
+        {
+          "name": "InvokeAddToQueueSelection",
+          "startLine": 184,
+          "endLine": 191,
+          "params": [
+            "selection"
+          ]
+        },
+        {
+          "name": "InvokeToggleLikeSelection",
+          "startLine": 193,
+          "endLine": 200,
+          "params": [
+            "selection"
+          ]
+        },
+        {
+          "name": "InvokeRemoveSelection",
+          "startLine": 202,
+          "endLine": 207,
+          "params": [
+            "selection"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "TrackDataGrid",
+          "startLine": 25,
+          "endLine": 208,
+          "methods": [
+            "GetSelectedTracks",
+            "EnterSelectionMode",
+            "ExitSelectionMode",
+            "SyncSelectionModeToggle",
+            "SelectionModeToggle_Checked",
+            "SelectionModeToggle_Unchecked",
+            "TryHandleSelectAllShortcut",
+            "PushSelectionModeToRows",
+            "RaiseSelectionModeStateChanged",
+            "OnRowSelectionToggleRequested",
+            "OnRowEnterSelectionRequested",
+            "InvokePlaySelection",
+            "InvokePlayNextSelection",
+            "InvokeAddToQueueSelection",
+            "InvokeToggleLikeSelection",
+            "InvokeRemoveSelection"
+          ],
+          "properties": [
+            "_isSelectionMode",
+            "IsSelectionMode",
+            "_suppressSelectionToggleEvent",
+            "CanRemoveSelection"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IsSelectionMode",
+          "line": 30,
+          "isDefault": false
+        },
+        {
+          "name": "GetSelectedTracks",
+          "line": 40,
+          "isDefault": false
+        },
+        {
+          "name": "EnterSelectionMode",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "ExitSelectionMode",
+          "line": 60,
+          "isDefault": false
+        },
+        {
+          "name": "TrackDataGrid",
+          "line": 25,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "GetSelectedTracks",
+          "callee": "RowsItemsView.SelectedItems.OfType<ITrackItem>().ToArray",
+          "lineNumber": 41
+        },
+        {
+          "caller": "GetSelectedTracks",
+          "callee": "RowsItemsView.SelectedItems.OfType<ITrackItem>",
+          "lineNumber": 41
+        },
+        {
+          "caller": "EnterSelectionMode",
+          "callee": "ClearSelection",
+          "lineNumber": 52
+        },
+        {
+          "caller": "EnterSelectionMode",
+          "callee": "SyncSelectionModeToggle",
+          "lineNumber": 54
+        },
+        {
+          "caller": "EnterSelectionMode",
+          "callee": "PushSelectionModeToRows",
+          "lineNumber": 55
+        },
+        {
+          "caller": "EnterSelectionMode",
+          "callee": "RaiseSelectionModeStateChanged",
+          "lineNumber": 56
+        },
+        {
+          "caller": "ExitSelectionMode",
+          "callee": "ClearSelection",
+          "lineNumber": 66
+        },
+        {
+          "caller": "ExitSelectionMode",
+          "callee": "SyncSelectionModeToggle",
+          "lineNumber": 70
+        },
+        {
+          "caller": "ExitSelectionMode",
+          "callee": "ClearSelection",
+          "lineNumber": 71
+        },
+        {
+          "caller": "ExitSelectionMode",
+          "callee": "PushSelectionModeToRows",
+          "lineNumber": 72
+        },
+        {
+          "caller": "ExitSelectionMode",
+          "callee": "RaiseSelectionModeStateChanged",
+          "lineNumber": 73
+        },
+        {
+          "caller": "SelectionModeToggle_Checked",
+          "callee": "EnterSelectionMode",
+          "lineNumber": 91
+        },
+        {
+          "caller": "SelectionModeToggle_Unchecked",
+          "callee": "ExitSelectionMode",
+          "lineNumber": 97
+        },
+        {
+          "caller": "TryHandleSelectAllShortcut",
+          "callee": "_visibleRows.Count",
+          "lineNumber": 104
+        },
+        {
+          "caller": "TryHandleSelectAllShortcut",
+          "callee": "RowsItemsView.SelectedItems.OfType<ITrackItem>().Count",
+          "lineNumber": 108
+        },
+        {
+          "caller": "TryHandleSelectAllShortcut",
+          "callee": "RowsItemsView.SelectedItems.OfType<ITrackItem>",
+          "lineNumber": 108
+        },
+        {
+          "caller": "TryHandleSelectAllShortcut",
+          "callee": "ExitSelectionMode",
+          "lineNumber": 114
+        },
+        {
+          "caller": "TryHandleSelectAllShortcut",
+          "callee": "EnterSelectionMode",
+          "lineNumber": 118
+        },
+        {
+          "caller": "TryHandleSelectAllShortcut",
+          "callee": "SelectAllRows",
+          "lineNumber": 119
+        },
+        {
+          "caller": "PushSelectionModeToRows",
+          "callee": "_itemsViewRows.ToArray",
+          "lineNumber": 129
+        },
+        {
+          "caller": "RaiseSelectionModeStateChanged",
+          "callee": "SelectionModeStateChanged?.Invoke",
+          "lineNumber": 134
+        },
+        {
+          "caller": "OnRowSelectionToggleRequested",
+          "callee": "_visibleRows.IndexOf",
+          "lineNumber": 142
+        },
+        {
+          "caller": "OnRowSelectionToggleRequested",
+          "callee": "RowsItemsView.Select",
+          "lineNumber": 145
+        },
+        {
+          "caller": "OnRowSelectionToggleRequested",
+          "callee": "RowsItemsView.Deselect",
+          "lineNumber": 147
+        },
+        {
+          "caller": "OnRowEnterSelectionRequested",
+          "callee": "EnterSelectionMode",
+          "lineNumber": 152
+        },
+        {
+          "caller": "OnRowEnterSelectionRequested",
+          "callee": "_visibleRows.IndexOf",
+          "lineNumber": 155
+        },
+        {
+          "caller": "OnRowEnterSelectionRequested",
+          "callee": "RowsItemsView.Select",
+          "lineNumber": 157
+        },
+        {
+          "caller": "InvokePlaySelection",
+          "callee": "PlayCommand?.CanExecute",
+          "lineNumber": 171
+        },
+        {
+          "caller": "InvokePlaySelection",
+          "callee": "PlayCommand.Execute",
+          "lineNumber": 172
+        },
+        {
+          "caller": "InvokePlayNextSelection",
+          "callee": "cmd.CanExecute",
+          "lineNumber": 178
+        },
+        {
+          "caller": "InvokePlayNextSelection",
+          "callee": "cmd.Execute",
+          "lineNumber": 179
+        },
+        {
+          "caller": "InvokePlayNextSelection",
+          "callee": "DefaultPlayNextSelection",
+          "lineNumber": 181
+        },
+        {
+          "caller": "InvokeAddToQueueSelection",
+          "callee": "cmd.CanExecute",
+          "lineNumber": 187
+        },
+        {
+          "caller": "InvokeAddToQueueSelection",
+          "callee": "cmd.Execute",
+          "lineNumber": 188
+        },
+        {
+          "caller": "InvokeAddToQueueSelection",
+          "callee": "DefaultAddToQueueSelection",
+          "lineNumber": 190
+        },
+        {
+          "caller": "InvokeToggleLikeSelection",
+          "callee": "cmd.CanExecute",
+          "lineNumber": 196
+        },
+        {
+          "caller": "InvokeToggleLikeSelection",
+          "callee": "cmd.Execute",
+          "lineNumber": 197
+        },
+        {
+          "caller": "InvokeToggleLikeSelection",
+          "callee": "DefaultToggleLikeSelection",
+          "lineNumber": 199
+        },
+        {
+          "caller": "InvokeToggleLikeSelection",
+          "callee": "selection.Any",
+          "lineNumber": 199
+        },
+        {
+          "caller": "InvokeRemoveSelection",
+          "callee": "cmd.CanExecute",
+          "lineNumber": 205
+        },
+        {
+          "caller": "InvokeRemoveSelection",
+          "callee": "cmd.Execute",
+          "lineNumber": 206
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 5,
+        "functionCount": 16,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackDataGrid.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 506,
+      "nonEmptyLines": 473,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackDataGrid.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 1624,
+      "nonEmptyLines": 1410,
+      "functions": [
+        {
+          "name": "TrackDataGrid",
+          "startLine": 81,
+          "endLine": 109,
+          "params": []
+        },
+        {
+          "name": "RowsItemsView_Loaded",
+          "startLine": 117,
+          "endLine": 122,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RowsItemsView_Unloaded",
+          "startLine": 124,
+          "endLine": 131,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyHorizontalRowScroll",
+          "startLine": 133,
+          "endLine": 147,
+          "params": []
+        },
+        {
+          "name": "HookRowsItemsViewScrollView",
+          "startLine": 149,
+          "endLine": 159,
+          "params": []
+        },
+        {
+          "name": "RowsItemsViewScrollView_ViewChanged",
+          "startLine": 161,
+          "endLine": 164,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "FindParent",
+          "startLine": 166,
+          "endLine": 176,
+          "params": [
+            "child"
+          ]
+        },
+        {
+          "name": "OnVisibleRowsCollectionChanged",
+          "startLine": 183,
+          "endLine": 207,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SubscribeLazyItem",
+          "startLine": 209,
+          "endLine": 213,
+          "params": [
+            "lazy"
+          ]
+        },
+        {
+          "name": "UnsubscribeLazyItem",
+          "startLine": 215,
+          "endLine": 219,
+          "params": [
+            "lazy"
+          ]
+        },
+        {
+          "name": "ResyncLazyItemSubscriptions",
+          "startLine": 221,
+          "endLine": 237,
+          "params": []
+        },
+        {
+          "name": "OnAnyLazyItemPropertyChanged",
+          "startLine": 239,
+          "endLine": 255,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RegisterRowForLazyItem",
+          "startLine": 257,
+          "endLine": 263,
+          "params": [
+            "row",
+            "lazy"
+          ]
+        },
+        {
+          "name": "UnregisterRow",
+          "startLine": 265,
+          "endLine": 270,
+          "params": [
+            "row"
+          ]
+        },
+        {
+          "name": "RowsItemsViewTrackItem_Loaded",
+          "startLine": 274,
+          "endLine": 323,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RowsItemsViewTrackItem_Unloaded",
+          "startLine": 325,
+          "endLine": 338,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RowsItemsViewTrackItem_TrackChanged",
+          "startLine": 340,
+          "endLine": 351,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ConfigureItemsViewRow",
+          "startLine": 353,
+          "endLine": 373,
+          "params": [
+            "row",
+            "sourceItem",
+            "itemIndex"
+          ]
+        },
+        {
+          "name": "ApplyItemsViewContainerDensity",
+          "startLine": 375,
+          "endLine": 382,
+          "params": [
+            "row"
+          ]
+        },
+        {
+          "name": "ShouldShowPopularityBadge",
+          "startLine": 384,
+          "endLine": 391,
+          "params": [
+            "row"
+          ]
+        },
+        {
+          "name": "RefreshPopularityBadges",
+          "startLine": 393,
+          "endLine": 397,
+          "params": []
+        },
+        {
+          "name": "ApplyFormattedCells",
+          "startLine": 399,
+          "endLine": 420,
+          "params": [
+            "item",
+            "row"
+          ]
+        },
+        {
+          "name": "OnForceShowArtistColumnChanged",
+          "startLine": 464,
+          "endLine": 469,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnIsLoadingChanged",
+          "startLine": 491,
+          "endLine": 495,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnLoadingRowCountChanged",
+          "startLine": 513,
+          "endLine": 517,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "LoadingRowsRepeater_Loaded",
+          "startLine": 519,
+          "endLine": 523,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyLoadingRowCount",
+          "startLine": 525,
+          "endLine": 565,
+          "params": []
+        },
+        {
+          "name": "BuildLoadingRowConfigTemplate",
+          "startLine": 574,
+          "endLine": 654,
+          "params": []
+        },
+        {
+          "name": "OnGroupHeaderTemplateChanged",
+          "startLine": 716,
+          "endLine": 720,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnUseCardRowsChanged",
+          "startLine": 754,
+          "endLine": 758,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "ClearSelection",
+          "startLine": 760,
+          "endLine": 763,
+          "params": []
+        },
+        {
+          "name": "RefreshRowCardStyles",
+          "startLine": 765,
+          "endLine": 772,
+          "params": []
+        },
+        {
+          "name": "IsAlternateRow",
+          "startLine": 774,
+          "endLine": 780,
+          "params": [
+            "row",
+            "itemIndex"
+          ]
+        },
+        {
+          "name": "OnAddedByVisibleChanged",
+          "startLine": 786,
+          "endLine": 810,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnAllowHorizontalRowScrollChanged",
+          "startLine": 866,
+          "endLine": 870,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnIsParentScrollingChanged",
+          "startLine": 897,
+          "endLine": 901,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyVerticalRowScroll",
+          "startLine": 903,
+          "endLine": 917,
+          "params": []
+        },
+        {
+          "name": "OnPopularityBadgeSelectorChanged",
+          "startLine": 966,
+          "endLine": 970,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnShowToolbarChanged",
+          "startLine": 988,
+          "endLine": 1000,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnItemsSourceChanged",
+          "startLine": 1034,
+          "endLine": 1050,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnGroupingChanged",
+          "startLine": 1052,
+          "endLine": 1056,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSourceCollectionChanged",
+          "startLine": 1058,
+          "endLine": 1065,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RefreshSnapshot",
+          "startLine": 1067,
+          "endLine": 1072,
+          "params": [
+            "source"
+          ]
+        },
+        {
+          "name": "ReprojectRows",
+          "startLine": 1076,
+          "endLine": 1110,
+          "params": []
+        },
+        {
+          "name": "ApplyLoadingRowsVisibility",
+          "startLine": 1112,
+          "endLine": 1120,
+          "params": []
+        },
+        {
+          "name": "ApplyGroupHeaderTemplate",
+          "startLine": 1129,
+          "endLine": 1133,
+          "params": []
+        },
+        {
+          "name": "BuildFlatRowsWithHeaders",
+          "startLine": 1143,
+          "endLine": 1190,
+          "params": [
+            "tracks"
+          ]
+        },
+        {
+          "name": "FilterToggle_Toggled",
+          "startLine": 1194,
+          "endLine": 1208,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "FilterBox_TextChanged",
+          "startLine": 1210,
+          "endLine": 1214,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ResetFilter",
+          "startLine": 1222,
+          "endLine": 1234,
+          "params": []
+        },
+        {
+          "name": "DensitySlider_ValueChanged",
+          "startLine": 1236,
+          "endLine": 1253,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "DetailsToggle_Click",
+          "startLine": 1258,
+          "endLine": 1278,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SelectAllRows",
+          "startLine": 1280,
+          "endLine": 1292,
+          "params": []
+        },
+        {
+          "name": "RowsItemsView_SelectionChanged",
+          "startLine": 1294,
+          "endLine": 1311,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "SelectedRowItem",
+          "startLine": 1313,
+          "endLine": 1313,
+          "params": []
+        },
+        {
+          "name": "CaptureSelectedTrackKeys",
+          "startLine": 1315,
+          "endLine": 1322,
+          "params": []
+        },
+        {
+          "name": "RestoreSelectionByKeys",
+          "startLine": 1324,
+          "endLine": 1347,
+          "params": [
+            "selectedKeys"
+          ]
+        },
+        {
+          "name": "TrackSelectionKey",
+          "startLine": 1349,
+          "endLine": 1354,
+          "params": [
+            "item"
+          ]
+        },
+        {
+          "name": "SyncItemsViewRowSelectionState",
+          "startLine": 1356,
+          "endLine": 1361,
+          "params": []
+        },
+        {
+          "name": "OnRowsKeyDown",
+          "startLine": 1367,
+          "endLine": 1387,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnProcessKeyboardAccelerators",
+          "startLine": 1389,
+          "endLine": 1400,
+          "params": [
+            "args"
+          ]
+        },
+        {
+          "name": "Dispose",
+          "startLine": 1402,
+          "endLine": 1476,
+          "params": []
+        },
+        {
+          "name": "ResolveDragState",
+          "startLine": 1520,
+          "endLine": 1521,
+          "params": []
+        },
+        {
+          "name": "RowsItemsViewHost_DragOver",
+          "startLine": 1531,
+          "endLine": 1551,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RowsItemsViewHost_DragLeave",
+          "startLine": 1553,
+          "endLine": 1553,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RowsItemsViewHost_Drop",
+          "startLine": 1555,
+          "endLine": 1565,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "BuildRowBounds",
+          "startLine": 1574,
+          "endLine": 1596,
+          "params": []
+        },
+        {
+          "name": "WriteTrackPayload",
+          "startLine": 1598,
+          "endLine": 1607,
+          "params": [
+            "data",
+            "tracks",
+            "sourceStartIndex"
+          ]
+        },
+        {
+          "name": "TryReadIntraListReorder",
+          "startLine": 1609,
+          "endLine": 1622,
+          "params": [
+            "e",
+            "fromIndex",
+            "length"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "TrackDataGrid",
+          "startLine": 42,
+          "endLine": 1624,
+          "methods": [
+            "TrackDataGrid",
+            "RowsItemsView_Loaded",
+            "RowsItemsView_Unloaded",
+            "ApplyHorizontalRowScroll",
+            "HookRowsItemsViewScrollView",
+            "RowsItemsViewScrollView_ViewChanged",
+            "FindParent",
+            "OnVisibleRowsCollectionChanged",
+            "SubscribeLazyItem",
+            "UnsubscribeLazyItem",
+            "ResyncLazyItemSubscriptions",
+            "OnAnyLazyItemPropertyChanged",
+            "RegisterRowForLazyItem",
+            "UnregisterRow",
+            "RowsItemsViewTrackItem_Loaded",
+            "RowsItemsViewTrackItem_Unloaded",
+            "RowsItemsViewTrackItem_TrackChanged",
+            "ConfigureItemsViewRow",
+            "ApplyItemsViewContainerDensity",
+            "ShouldShowPopularityBadge",
+            "RefreshPopularityBadges",
+            "ApplyFormattedCells",
+            "OnForceShowArtistColumnChanged",
+            "OnIsLoadingChanged",
+            "OnLoadingRowCountChanged",
+            "LoadingRowsRepeater_Loaded",
+            "ApplyLoadingRowCount",
+            "BuildLoadingRowConfigTemplate",
+            "OnGroupHeaderTemplateChanged",
+            "OnUseCardRowsChanged",
+            "ClearSelection",
+            "RefreshRowCardStyles",
+            "IsAlternateRow",
+            "OnAddedByVisibleChanged",
+            "OnAllowHorizontalRowScrollChanged",
+            "OnIsParentScrollingChanged",
+            "ApplyVerticalRowScroll",
+            "OnPopularityBadgeSelectorChanged",
+            "OnShowToolbarChanged",
+            "OnItemsSourceChanged",
+            "OnGroupingChanged",
+            "OnSourceCollectionChanged",
+            "RefreshSnapshot",
+            "ReprojectRows",
+            "ApplyLoadingRowsVisibility",
+            "ApplyGroupHeaderTemplate",
+            "BuildFlatRowsWithHeaders",
+            "FilterToggle_Toggled",
+            "FilterBox_TextChanged",
+            "ResetFilter",
+            "DensitySlider_ValueChanged",
+            "DetailsToggle_Click",
+            "SelectAllRows",
+            "RowsItemsView_SelectionChanged",
+            "SelectedRowItem",
+            "CaptureSelectedTrackKeys",
+            "RestoreSelectionByKeys",
+            "TrackSelectionKey",
+            "SyncItemsViewRowSelectionState",
+            "OnRowsKeyDown",
+            "OnProcessKeyboardAccelerators",
+            "Dispose",
+            "ResolveDragState",
+            "RowsItemsViewHost_DragOver",
+            "RowsItemsViewHost_DragLeave",
+            "RowsItemsViewHost_Drop",
+            "BuildRowBounds",
+            "WriteTrackPayload",
+            "TryReadIntraListReorder"
+          ],
+          "properties": [
+            "DefaultLoadingRowCount",
+            "MaxLoadingRowCount",
+            "_visibleRows",
+            "_sourceSnapshot",
+            "_subscribedSource",
+            "_settingsService",
+            "_filterText",
+            "_disposed",
+            "_restoringSelection",
+            "_itemsViewRows",
+            "_rowByLazyItem",
+            "_lazyItemByRow",
+            "_subscribedLazyItems",
+            "_lazyItemHandler",
+            "DensityRowHeights",
+            "_rowsItemsViewScrollView",
+            "_itemsViewRowsWithManualDrag",
+            "ColumnsProperty",
+            "Columns",
+            "PageKeyProperty",
+            "PageKey",
+            "ForceShowArtistColumnProperty",
+            "ForceShowArtistColumn",
+            "ItemsSourceProperty",
+            "ItemsSource",
+            "IsLoadingProperty",
+            "IsLoading",
+            "LoadingRowCountProperty",
+            "LoadingRowCount",
+            "IsGroupedProperty",
+            "IsGrouped",
+            "GroupKeySelectorProperty",
+            "GroupKeySelector",
+            "GroupHeaderSelectorProperty",
+            "GroupHeaderSelector",
+            "GroupCountFormatterProperty",
+            "GroupCountFormatter",
+            "GroupHeaderTemplateProperty",
+            "GroupHeaderTemplate",
+            "AreStickyGroupHeadersEnabledProperty",
+            "AreStickyGroupHeadersEnabled",
+            "PlayCommandProperty",
+            "PlayCommand",
+            "SelectionChangedCommandProperty",
+            "SelectionChangedCommand",
+            "UseCardRowsProperty",
+            "UseCardRows",
+            "AddedByVisibleProperty",
+            "AddedByVisible",
+            "AddedByFormatterProperty",
+            "AddedByFormatter",
+            "FooterContentProperty",
+            "FooterContent",
+            "AllowHorizontalRowScrollProperty",
+            "AllowHorizontalRowScroll",
+            "IsParentScrollingProperty",
+            "IsParentScrolling",
+            "DateAddedFormatterProperty",
+            "DateAddedFormatter",
+            "PlayCountFormatterProperty",
+            "PlayCountFormatter",
+            "PopularityBadgeSelectorProperty",
+            "PopularityBadgeSelector",
+            "ShowToolbarProperty",
+            "ShowToolbar",
+            "ToolbarLeftContentProperty",
+            "ToolbarLeftContent",
+            "FilterBarContentProperty",
+            "FilterBarContent",
+            "_preferredRowHeight",
+            "_preferredDensity",
+            "ContextUri",
+            "ContextUriProperty",
+            "CanReorder",
+            "CanReorderProperty",
+            "_dragState",
+            "_dropIndicator",
+            "DropIndicator"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "TrackDataGrid",
+          "line": 81,
+          "isDefault": false
+        },
+        {
+          "name": "ColumnsProperty",
+          "line": 424,
+          "isDefault": false
+        },
+        {
+          "name": "Columns",
+          "line": 428,
+          "isDefault": false
+        },
+        {
+          "name": "PageKeyProperty",
+          "line": 434,
+          "isDefault": false
+        },
+        {
+          "name": "PageKey",
+          "line": 438,
+          "isDefault": false
+        },
+        {
+          "name": "ForceShowArtistColumnProperty",
+          "line": 451,
+          "isDefault": false
+        },
+        {
+          "name": "ForceShowArtistColumn",
+          "line": 458,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsSourceProperty",
+          "line": 471,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsSource",
+          "line": 475,
+          "isDefault": false
+        },
+        {
+          "name": "IsLoadingProperty",
+          "line": 481,
+          "isDefault": false
+        },
+        {
+          "name": "IsLoading",
+          "line": 485,
+          "isDefault": false
+        },
+        {
+          "name": "LoadingRowCountProperty",
+          "line": 503,
+          "isDefault": false
+        },
+        {
+          "name": "LoadingRowCount",
+          "line": 507,
+          "isDefault": false
+        },
+        {
+          "name": "IsGroupedProperty",
+          "line": 656,
+          "isDefault": false
+        },
+        {
+          "name": "IsGrouped",
+          "line": 660,
+          "isDefault": false
+        },
+        {
+          "name": "GroupKeySelectorProperty",
+          "line": 666,
+          "isDefault": false
+        },
+        {
+          "name": "GroupKeySelector",
+          "line": 670,
+          "isDefault": false
+        },
+        {
+          "name": "GroupHeaderSelectorProperty",
+          "line": 676,
+          "isDefault": false
+        },
+        {
+          "name": "GroupHeaderSelector",
+          "line": 680,
+          "isDefault": false
+        },
+        {
+          "name": "GroupCountFormatterProperty",
+          "line": 686,
+          "isDefault": false
+        },
+        {
+          "name": "GroupCountFormatter",
+          "line": 690,
+          "isDefault": false
+        },
+        {
+          "name": "GroupHeaderTemplateProperty",
+          "line": 696,
+          "isDefault": false
+        },
+        {
+          "name": "GroupHeaderTemplate",
+          "line": 700,
+          "isDefault": false
+        },
+        {
+          "name": "AreStickyGroupHeadersEnabledProperty",
+          "line": 706,
+          "isDefault": false
+        },
+        {
+          "name": "AreStickyGroupHeadersEnabled",
+          "line": 710,
+          "isDefault": false
+        },
+        {
+          "name": "PlayCommandProperty",
+          "line": 722,
+          "isDefault": false
+        },
+        {
+          "name": "PlayCommand",
+          "line": 727,
+          "isDefault": false
+        },
+        {
+          "name": "SelectionChangedCommandProperty",
+          "line": 733,
+          "isDefault": false
+        },
+        {
+          "name": "SelectionChangedCommand",
+          "line": 738,
+          "isDefault": false
+        },
+        {
+          "name": "UseCardRowsProperty",
+          "line": 744,
+          "isDefault": false
+        },
+        {
+          "name": "UseCardRows",
+          "line": 748,
+          "isDefault": false
+        },
+        {
+          "name": "ClearSelection",
+          "line": 760,
+          "isDefault": false
+        },
+        {
+          "name": "AddedByVisibleProperty",
+          "line": 782,
+          "isDefault": false
+        },
+        {
+          "name": "AddedByVisible",
+          "line": 817,
+          "isDefault": false
+        },
+        {
+          "name": "AddedByFormatterProperty",
+          "line": 823,
+          "isDefault": false
+        },
+        {
+          "name": "AddedByFormatter",
+          "line": 833,
+          "isDefault": false
+        },
+        {
+          "name": "FooterContentProperty",
+          "line": 839,
+          "isDefault": false
+        },
+        {
+          "name": "FooterContent",
+          "line": 843,
+          "isDefault": false
+        },
+        {
+          "name": "AllowHorizontalRowScrollProperty",
+          "line": 849,
+          "isDefault": false
+        },
+        {
+          "name": "AllowHorizontalRowScroll",
+          "line": 860,
+          "isDefault": false
+        },
+        {
+          "name": "IsParentScrollingProperty",
+          "line": 872,
+          "isDefault": false
+        },
+        {
+          "name": "IsParentScrolling",
+          "line": 891,
+          "isDefault": false
+        },
+        {
+          "name": "DateAddedFormatterProperty",
+          "line": 919,
+          "isDefault": false
+        },
+        {
+          "name": "DateAddedFormatter",
+          "line": 929,
+          "isDefault": false
+        },
+        {
+          "name": "PlayCountFormatterProperty",
+          "line": 935,
+          "isDefault": false
+        },
+        {
+          "name": "PlayCountFormatter",
+          "line": 944,
+          "isDefault": false
+        },
+        {
+          "name": "PopularityBadgeSelectorProperty",
+          "line": 950,
+          "isDefault": false
+        },
+        {
+          "name": "PopularityBadgeSelector",
+          "line": 960,
+          "isDefault": false
+        },
+        {
+          "name": "ShowToolbarProperty",
+          "line": 972,
+          "isDefault": false
+        },
+        {
+          "name": "ShowToolbar",
+          "line": 982,
+          "isDefault": false
+        },
+        {
+          "name": "ToolbarLeftContentProperty",
+          "line": 1002,
+          "isDefault": false
+        },
+        {
+          "name": "ToolbarLeftContent",
+          "line": 1012,
+          "isDefault": false
+        },
+        {
+          "name": "FilterBarContentProperty",
+          "line": 1018,
+          "isDefault": false
+        },
+        {
+          "name": "FilterBarContent",
+          "line": 1026,
+          "isDefault": false
+        },
+        {
+          "name": "ResetFilter",
+          "line": 1222,
+          "isDefault": false
+        },
+        {
+          "name": "SelectAllRows",
+          "line": 1280,
+          "isDefault": false
+        },
+        {
+          "name": "Dispose",
+          "line": 1402,
+          "isDefault": false
+        },
+        {
+          "name": "ContextUri",
+          "line": 1487,
+          "isDefault": false
+        },
+        {
+          "name": "ContextUriProperty",
+          "line": 1493,
+          "isDefault": false
+        },
+        {
+          "name": "CanReorder",
+          "line": 1501,
+          "isDefault": false
+        },
+        {
+          "name": "CanReorderProperty",
+          "line": 1507,
+          "isDefault": false
+        },
+        {
+          "name": "TrackDataGrid",
+          "line": 42,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "TrackDataGrid",
+          "callee": "InitializeComponent",
+          "lineNumber": 83
+        },
+        {
+          "caller": "TrackDataGrid",
+          "callee": "ApplyGroupHeaderTemplate",
+          "lineNumber": 84
+        },
+        {
+          "caller": "TrackDataGrid",
+          "callee": "ApplyLoadingRowCount",
+          "lineNumber": 86
+        },
+        {
+          "caller": "TrackDataGrid",
+          "callee": "TrackDataGridDefaults.Create",
+          "lineNumber": 98
+        },
+        {
+          "caller": "TrackDataGrid",
+          "callee": "ApplyPersistedColumnWidths",
+          "lineNumber": 99
+        },
+        {
+          "caller": "TrackDataGrid",
+          "callee": "SetValue",
+          "lineNumber": 100
+        },
+        {
+          "caller": "TrackDataGrid",
+          "callee": "SubscribeColumns",
+          "lineNumber": 102
+        },
+        {
+          "caller": "TrackDataGrid",
+          "callee": "SyncAddedByColumnVisibility",
+          "lineNumber": 103
+        },
+        {
+          "caller": "TrackDataGrid",
+          "callee": "RebuildHeader",
+          "lineNumber": 104
+        },
+        {
+          "caller": "TrackDataGrid",
+          "callee": "RebuildSortFlyout",
+          "lineNumber": 105
+        },
+        {
+          "caller": "TrackDataGrid",
+          "callee": "ApplyHorizontalRowScroll",
+          "lineNumber": 106
+        },
+        {
+          "caller": "TrackDataGrid",
+          "callee": "ApplyVerticalRowScroll",
+          "lineNumber": 107
+        },
+        {
+          "caller": "TrackDataGrid",
+          "callee": "WireRowContextMenuHandlers",
+          "lineNumber": 108
+        },
+        {
+          "caller": "RowsItemsView_Loaded",
+          "callee": "HookRowsItemsViewScrollView",
+          "lineNumber": 119
+        },
+        {
+          "caller": "RowsItemsView_Loaded",
+          "callee": "ApplyHorizontalRowScroll",
+          "lineNumber": 120
+        },
+        {
+          "caller": "RowsItemsView_Loaded",
+          "callee": "ApplyVerticalRowScroll",
+          "lineNumber": 121
+        },
+        {
+          "caller": "FindParent",
+          "callee": "VisualTreeHelper.GetParent",
+          "lineNumber": 168
+        },
+        {
+          "caller": "FindParent",
+          "callee": "VisualTreeHelper.GetParent",
+          "lineNumber": 173
+        },
+        {
+          "caller": "OnVisibleRowsCollectionChanged",
+          "callee": "SubscribeLazyItem",
+          "lineNumber": 189
+        },
+        {
+          "caller": "OnVisibleRowsCollectionChanged",
+          "callee": "UnsubscribeLazyItem",
+          "lineNumber": 193
+        },
+        {
+          "caller": "OnVisibleRowsCollectionChanged",
+          "callee": "UnsubscribeLazyItem",
+          "lineNumber": 197
+        },
+        {
+          "caller": "OnVisibleRowsCollectionChanged",
+          "callee": "SubscribeLazyItem",
+          "lineNumber": 199
+        },
+        {
+          "caller": "OnVisibleRowsCollectionChanged",
+          "callee": "ResyncLazyItemSubscriptions",
+          "lineNumber": 204
+        },
+        {
+          "caller": "SubscribeLazyItem",
+          "callee": "_subscribedLazyItems.Add",
+          "lineNumber": 211
+        },
+        {
+          "caller": "UnsubscribeLazyItem",
+          "callee": "_subscribedLazyItems.Remove",
+          "lineNumber": 217
+        },
+        {
+          "caller": "ResyncLazyItemSubscriptions",
+          "callee": "new HashSet<LazyTrackItem>",
+          "lineNumber": 223
+        },
+        {
+          "caller": "ResyncLazyItemSubscriptions",
+          "callee": "current.Add",
+          "lineNumber": 225
+        },
+        {
+          "caller": "ResyncLazyItemSubscriptions",
+          "callee": "new List<LazyTrackItem>",
+          "lineNumber": 230
+        },
+        {
+          "caller": "ResyncLazyItemSubscriptions",
+          "callee": "current.Contains",
+          "lineNumber": 232
+        },
+        {
+          "caller": "ResyncLazyItemSubscriptions",
+          "callee": "toDrop.Add",
+          "lineNumber": 232
+        },
+        {
+          "caller": "ResyncLazyItemSubscriptions",
+          "callee": "UnsubscribeLazyItem",
+          "lineNumber": 233
+        },
+        {
+          "caller": "ResyncLazyItemSubscriptions",
+          "callee": "SubscribeLazyItem",
+          "lineNumber": 236
+        },
+        {
+          "caller": "OnAnyLazyItemPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 242
+        },
+        {
+          "caller": "OnAnyLazyItemPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 243
+        },
+        {
+          "caller": "OnAnyLazyItemPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 244
+        },
+        {
+          "caller": "OnAnyLazyItemPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 245
+        },
+        {
+          "caller": "OnAnyLazyItemPropertyChanged",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 247
+        },
+        {
+          "caller": "OnAnyLazyItemPropertyChanged",
+          "callee": "_rowByLazyItem.TryGetValue",
+          "lineNumber": 249
+        },
+        {
+          "caller": "OnAnyLazyItemPropertyChanged",
+          "callee": "ReferenceEquals",
+          "lineNumber": 250
+        },
+        {
+          "caller": "OnAnyLazyItemPropertyChanged",
+          "callee": "ApplyFormattedCells",
+          "lineNumber": 253
+        },
+        {
+          "caller": "RegisterRowForLazyItem",
+          "callee": "UnregisterRow",
+          "lineNumber": 259
+        },
+        {
+          "caller": "UnregisterRow",
+          "callee": "_lazyItemByRow.Remove",
+          "lineNumber": 267
+        },
+        {
+          "caller": "UnregisterRow",
+          "callee": "_rowByLazyItem.TryGetValue",
+          "lineNumber": 268
+        },
+        {
+          "caller": "UnregisterRow",
+          "callee": "ReferenceEquals",
+          "lineNumber": 268
+        },
+        {
+          "caller": "UnregisterRow",
+          "callee": "_rowByLazyItem.Remove",
+          "lineNumber": 269
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "_itemsViewRows.Add",
+          "lineNumber": 279
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "_visibleRows.IndexOf",
+          "lineNumber": 294
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "ConfigureItemsViewRow",
+          "lineNumber": 295
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "RegisterRowForLazyItem",
+          "lineNumber": 296
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "ApplyItemsViewContainerDensity",
+          "lineNumber": 297
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "RowsItemsView.SelectedItems.Contains",
+          "lineNumber": 298
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "_itemsViewRowsWithManualDrag.Add",
+          "lineNumber": 304
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "ManualDragAttachment.AttachWithPackageWriter",
+          "lineNumber": 306
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "RowsItemsView.SelectedItems?.OfType<ITrackItem>().ToList",
+          "lineNumber": 310
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "RowsItemsView.SelectedItems?.OfType<ITrackItem>",
+          "lineNumber": 310
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "new List<ITrackItem>",
+          "lineNumber": 311
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "selected.Contains",
+          "lineNumber": 312
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "tracks.Select(x => x.Id).ToArray",
+          "lineNumber": 315
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "tracks.Select",
+          "lineNumber": 315
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "_visibleRows.IndexOf",
+          "lineNumber": 316
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Loaded",
+          "callee": "new TrackDragPayload",
+          "lineNumber": 317
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Unloaded",
+          "callee": "_itemsViewRows.Remove",
+          "lineNumber": 330
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_Unloaded",
+          "callee": "UnregisterRow",
+          "lineNumber": 337
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_TrackChanged",
+          "callee": "_itemsViewRows.Contains",
+          "lineNumber": 342
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_TrackChanged",
+          "callee": "_visibleRows.IndexOf",
+          "lineNumber": 346
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_TrackChanged",
+          "callee": "ConfigureItemsViewRow",
+          "lineNumber": 347
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_TrackChanged",
+          "callee": "RegisterRowForLazyItem",
+          "lineNumber": 348
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_TrackChanged",
+          "callee": "ApplyItemsViewContainerDensity",
+          "lineNumber": 349
+        },
+        {
+          "caller": "RowsItemsViewTrackItem_TrackChanged",
+          "callee": "RowsItemsView.SelectedItems.Contains",
+          "lineNumber": 350
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "ShouldShowPopularityBadge",
+          "lineNumber": 357
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "row.SetAlternatingBorder",
+          "lineNumber": 358
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "IsAlternateRow",
+          "lineNumber": 358
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "row.BeginBatchUpdate",
+          "lineNumber": 361
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "ColumnVisible",
+          "lineNumber": 362
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "ResolveShowArtistColumn",
+          "lineNumber": 363
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "ColumnVisible",
+          "lineNumber": 364
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "ColumnVisible",
+          "lineNumber": 365
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "ColumnVisible",
+          "lineNumber": 366
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "ColumnVisible",
+          "lineNumber": 367
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "ShouldShowInlineProgress",
+          "lineNumber": 368
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "PushWidthsToRow",
+          "lineNumber": 369
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "row.EndBatchUpdate",
+          "lineNumber": 370
+        },
+        {
+          "caller": "ConfigureItemsViewRow",
+          "callee": "ApplyFormattedCells",
+          "lineNumber": 372
+        },
+        {
+          "caller": "ApplyItemsViewContainerDensity",
+          "callee": "FindParent<ItemContainer>",
+          "lineNumber": 377
+        },
+        {
+          "caller": "ApplyItemsViewContainerDensity",
+          "callee": "new Thickness",
+          "lineNumber": 381
+        },
+        {
+          "caller": "ApplyItemsViewContainerDensity",
+          "callee": "new Thickness",
+          "lineNumber": 381
+        },
+        {
+          "caller": "ShouldShowPopularityBadge",
+          "callee": "PopularityBadgeSelector",
+          "lineNumber": 389
+        },
+        {
+          "caller": "RefreshPopularityBadges",
+          "callee": "_itemsViewRows.ToArray",
+          "lineNumber": 395
+        },
+        {
+          "caller": "RefreshPopularityBadges",
+          "callee": "ShouldShowPopularityBadge",
+          "lineNumber": 396
+        },
+        {
+          "caller": "ApplyFormattedCells",
+          "callee": "DateAddedFormatter",
+          "lineNumber": 404
+        },
+        {
+          "caller": "ApplyFormattedCells",
+          "callee": "PlayCountFormatter",
+          "lineNumber": 406
+        },
+        {
+          "caller": "ApplyFormattedCells",
+          "callee": "AddedByFormatter",
+          "lineNumber": 409
+        },
+        {
+          "caller": "ApplyFormattedCells",
+          "callee": "ShouldShowPopularityBadge",
+          "lineNumber": 419
+        },
+        {
+          "caller": "OnForceShowArtistColumnChanged",
+          "callee": "grid.RefreshRowShowFlags",
+          "lineNumber": 467
+        },
+        {
+          "caller": "OnForceShowArtistColumnChanged",
+          "callee": "grid.ApplyLoadingRowCount",
+          "lineNumber": 468
+        },
+        {
+          "caller": "OnIsLoadingChanged",
+          "callee": "grid.ApplyLoadingRowsVisibility",
+          "lineNumber": 494
+        },
+        {
+          "caller": "OnLoadingRowCountChanged",
+          "callee": "grid.ApplyLoadingRowCount",
+          "lineNumber": 516
+        },
+        {
+          "caller": "LoadingRowsRepeater_Loaded",
+          "callee": "ApplyLoadingRowCount",
+          "lineNumber": 521
+        },
+        {
+          "caller": "LoadingRowsRepeater_Loaded",
+          "callee": "ApplyLoadingRowsVisibility",
+          "lineNumber": 522
+        },
+        {
+          "caller": "ApplyLoadingRowCount",
+          "callee": "Math.Min",
+          "lineNumber": 533
+        },
+        {
+          "caller": "ApplyLoadingRowCount",
+          "callee": "BuildLoadingRowConfigTemplate",
+          "lineNumber": 538
+        },
+        {
+          "caller": "ApplyLoadingRowCount",
+          "callee": "new LoadingRowConfig",
+          "lineNumber": 542
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "IsVisible",
+          "lineNumber": 580
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "new GridLength",
+          "lineNumber": 580
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "IsVisible",
+          "lineNumber": 584
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "Columns?.FirstOrDefault",
+          "lineNumber": 593
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "Columns?.FirstOrDefault",
+          "lineNumber": 594
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "Columns?.FirstOrDefault",
+          "lineNumber": 595
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "Columns?.FirstOrDefault",
+          "lineNumber": 596
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "Columns?.FirstOrDefault",
+          "lineNumber": 597
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "Columns?.FirstOrDefault",
+          "lineNumber": 598
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "Columns?.FirstOrDefault",
+          "lineNumber": 599
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "Columns?.FirstOrDefault",
+          "lineNumber": 600
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "Columns?.FirstOrDefault",
+          "lineNumber": 601
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "IsVisible",
+          "lineNumber": 606
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "new GridLength",
+          "lineNumber": 609
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "double.IsFinite",
+          "lineNumber": 617
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "PixelWidthOrZero",
+          "lineNumber": 624
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "PixelWidthOrZero",
+          "lineNumber": 625
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "PixelWidthOrZero",
+          "lineNumber": 626
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "PixelWidthOrZero",
+          "lineNumber": 628
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "PixelWidthOrZero",
+          "lineNumber": 629
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "PixelWidthOrZero",
+          "lineNumber": 630
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "PixelWidthOrZero",
+          "lineNumber": 631
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "PixelWidthOrZero",
+          "lineNumber": 632
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "new LoadingRowConfig",
+          "lineNumber": 634
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "IsVisible",
+          "lineNumber": 636
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "IsVisible",
+          "lineNumber": 637
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "IsVisible",
+          "lineNumber": 638
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "IsVisible",
+          "lineNumber": 639
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "IsVisible",
+          "lineNumber": 641
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "IsVisible",
+          "lineNumber": 642
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "IsVisible",
+          "lineNumber": 643
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "WidthOrZero",
+          "lineNumber": 644
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "WidthOrZero",
+          "lineNumber": 645
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "WidthOrZero",
+          "lineNumber": 647
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "WidthOrZero",
+          "lineNumber": 648
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "WidthOrZero",
+          "lineNumber": 649
+        },
+        {
+          "caller": "BuildLoadingRowConfigTemplate",
+          "callee": "ResolveShowArtistColumn",
+          "lineNumber": 652
+        },
+        {
+          "caller": "OnGroupHeaderTemplateChanged",
+          "callee": "grid.ApplyGroupHeaderTemplate",
+          "lineNumber": 719
+        },
+        {
+          "caller": "OnUseCardRowsChanged",
+          "callee": "grid.RefreshRowCardStyles",
+          "lineNumber": 757
+        },
+        {
+          "caller": "ClearSelection",
+          "callee": "RowsItemsView.DeselectAll",
+          "lineNumber": 762
+        },
+        {
+          "caller": "RefreshRowCardStyles",
+          "callee": "_itemsViewRows.ToArray",
+          "lineNumber": 767
+        },
+        {
+          "caller": "RefreshRowCardStyles",
+          "callee": "_visibleRows.IndexOf",
+          "lineNumber": 769
+        },
+        {
+          "caller": "RefreshRowCardStyles",
+          "callee": "row.SetAlternatingBorder",
+          "lineNumber": 770
+        },
+        {
+          "caller": "RefreshRowCardStyles",
+          "callee": "IsAlternateRow",
+          "lineNumber": 770
+        },
+        {
+          "caller": "OnAddedByVisibleChanged",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 790
+        },
+        {
+          "caller": "OnAddedByVisibleChanged",
+          "callee": "grid.Columns?.FirstOrDefault",
+          "lineNumber": 798
+        },
+        {
+          "caller": "OnAddedByVisibleChanged",
+          "callee": "grid.ApplyLoadingRowCount",
+          "lineNumber": 802
+        },
+        {
+          "caller": "OnAddedByVisibleChanged",
+          "callee": "grid.RefreshRowShowFlags",
+          "lineNumber": 808
+        },
+        {
+          "caller": "OnAddedByVisibleChanged",
+          "callee": "grid.ApplyLoadingRowCount",
+          "lineNumber": 809
+        },
+        {
+          "caller": "OnAllowHorizontalRowScrollChanged",
+          "callee": "self.ApplyHorizontalRowScroll",
+          "lineNumber": 869
+        },
+        {
+          "caller": "OnIsParentScrollingChanged",
+          "callee": "self.ApplyVerticalRowScroll",
+          "lineNumber": 900
+        },
+        {
+          "caller": "OnPopularityBadgeSelectorChanged",
+          "callee": "grid.RefreshPopularityBadges",
+          "lineNumber": 969
+        },
+        {
+          "caller": "OnItemsSourceChanged",
+          "callee": "grid.RefreshSnapshot",
+          "lineNumber": 1048
+        },
+        {
+          "caller": "OnItemsSourceChanged",
+          "callee": "grid.ReprojectRows",
+          "lineNumber": 1049
+        },
+        {
+          "caller": "OnGroupingChanged",
+          "callee": "grid.ReprojectRows",
+          "lineNumber": 1055
+        },
+        {
+          "caller": "OnSourceCollectionChanged",
+          "callee": "RefreshSnapshot",
+          "lineNumber": 1063
+        },
+        {
+          "caller": "OnSourceCollectionChanged",
+          "callee": "ReprojectRows",
+          "lineNumber": 1064
+        },
+        {
+          "caller": "RefreshSnapshot",
+          "callee": "typed.ToArray",
+          "lineNumber": 1070
+        },
+        {
+          "caller": "RefreshSnapshot",
+          "callee": "source?.Cast<ITrackItem>().ToArray",
+          "lineNumber": 1071
+        },
+        {
+          "caller": "RefreshSnapshot",
+          "callee": "source?.Cast<ITrackItem>",
+          "lineNumber": 1071
+        },
+        {
+          "caller": "RefreshSnapshot",
+          "callee": "Array.Empty<ITrackItem>",
+          "lineNumber": 1071
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "CaptureSelectedTrackKeys",
+          "lineNumber": 1078
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "_visibleRows.Clear",
+          "lineNumber": 1083
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "ApplyLoadingRowsVisibility",
+          "lineNumber": 1084
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 1090
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "pipeline.Where",
+          "lineNumber": 1093
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "t.Title.Contains",
+          "lineNumber": 1094
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "t.ArtistName.Contains",
+          "lineNumber": 1095
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "t.AlbumName.Contains",
+          "lineNumber": 1096
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "pipeline.OrderBy",
+          "lineNumber": 1102
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "SortValue",
+          "lineNumber": 1102
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "Comparer<object?>.Create",
+          "lineNumber": 1102
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "pipeline.OrderByDescending",
+          "lineNumber": 1103
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "SortValue",
+          "lineNumber": 1103
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "Comparer<object?>.Create",
+          "lineNumber": 1103
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "pipeline.ToList",
+          "lineNumber": 1106
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "_visibleRows.ReplaceWith",
+          "lineNumber": 1107
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "BuildFlatRowsWithHeaders",
+          "lineNumber": 1107
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "RestoreSelectionByKeys",
+          "lineNumber": 1108
+        },
+        {
+          "caller": "ReprojectRows",
+          "callee": "ApplyLoadingRowsVisibility",
+          "lineNumber": 1109
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "new List<object>",
+          "lineNumber": 1146
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "new List<object>",
+          "lineNumber": 1152
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "new List<ITrackItem>",
+          "lineNumber": 1154
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "headerSelector?.Invoke",
+          "lineNumber": 1160
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "countFormatter?.Invoke",
+          "lineNumber": 1161
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "flat.Add",
+          "lineNumber": 1165
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "new TrackDataGridGroupRow",
+          "lineNumber": 1165
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "flat.AddRange",
+          "lineNumber": 1171
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "bucket.Clear",
+          "lineNumber": 1172
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "keySelector(t)?.ToString",
+          "lineNumber": 1179
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "keySelector",
+          "lineNumber": 1179
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "string.Equals",
+          "lineNumber": 1180
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "Flush",
+          "lineNumber": 1182
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "bucket.Add",
+          "lineNumber": 1185
+        },
+        {
+          "caller": "BuildFlatRowsWithHeaders",
+          "callee": "Flush",
+          "lineNumber": 1188
+        },
+        {
+          "caller": "FilterToggle_Toggled",
+          "callee": "FilterBox.Focus",
+          "lineNumber": 1200
+        },
+        {
+          "caller": "FilterToggle_Toggled",
+          "callee": "ReprojectRows",
+          "lineNumber": 1206
+        },
+        {
+          "caller": "FilterBox_TextChanged",
+          "callee": "ReprojectRows",
+          "lineNumber": 1213
+        },
+        {
+          "caller": "ResetFilter",
+          "callee": "ReprojectRows",
+          "lineNumber": 1233
+        },
+        {
+          "caller": "DensitySlider_ValueChanged",
+          "callee": "Math.Clamp",
+          "lineNumber": 1238
+        },
+        {
+          "caller": "DensitySlider_ValueChanged",
+          "callee": "Math.Round",
+          "lineNumber": 1238
+        },
+        {
+          "caller": "DensitySlider_ValueChanged",
+          "callee": "new Thickness",
+          "lineNumber": 1240
+        },
+        {
+          "caller": "DensitySlider_ValueChanged",
+          "callee": "new Thickness",
+          "lineNumber": 1240
+        },
+        {
+          "caller": "DensitySlider_ValueChanged",
+          "callee": "_itemsViewRows.ToArray",
+          "lineNumber": 1244
+        },
+        {
+          "caller": "DensitySlider_ValueChanged",
+          "callee": "ApplyItemsViewContainerDensity",
+          "lineNumber": 1247
+        },
+        {
+          "caller": "DetailsToggle_Click",
+          "callee": "Ioc.Default.GetService<ShellViewModel>",
+          "lineNumber": 1260
+        },
+        {
+          "caller": "DetailsToggle_Click",
+          "callee": "SelectedRowItem",
+          "lineNumber": 1265
+        },
+        {
+          "caller": "DetailsToggle_Click",
+          "callee": "_visibleRows.OfType<ITrackItem>().FirstOrDefault",
+          "lineNumber": 1265
+        },
+        {
+          "caller": "DetailsToggle_Click",
+          "callee": "_visibleRows.OfType<ITrackItem>",
+          "lineNumber": 1265
+        },
+        {
+          "caller": "DetailsToggle_Click",
+          "callee": "shell.ShowTrackDetails",
+          "lineNumber": 1271
+        },
+        {
+          "caller": "SelectAllRows",
+          "callee": "RowsItemsView.SelectAll",
+          "lineNumber": 1282
+        },
+        {
+          "caller": "SelectAllRows",
+          "callee": "RowsItemsView.Deselect",
+          "lineNumber": 1289
+        },
+        {
+          "caller": "SelectAllRows",
+          "callee": "SyncItemsViewRowSelectionState",
+          "lineNumber": 1291
+        },
+        {
+          "caller": "RowsItemsView_SelectionChanged",
+          "callee": "SyncItemsViewRowSelectionState",
+          "lineNumber": 1296
+        },
+        {
+          "caller": "RowsItemsView_SelectionChanged",
+          "callee": "RaiseSelectionModeStateChanged",
+          "lineNumber": 1299
+        },
+        {
+          "caller": "RowsItemsView_SelectionChanged",
+          "callee": "SelectedRowItem",
+          "lineNumber": 1305
+        },
+        {
+          "caller": "RowsItemsView_SelectionChanged",
+          "callee": "RowSelected?.Invoke",
+          "lineNumber": 1307
+        },
+        {
+          "caller": "RowsItemsView_SelectionChanged",
+          "callee": "null && SelectionChangedCommand?.CanExecute",
+          "lineNumber": 1309
+        },
+        {
+          "caller": "RowsItemsView_SelectionChanged",
+          "callee": "SelectionChangedCommand.Execute",
+          "lineNumber": 1310
+        },
+        {
+          "caller": "CaptureSelectedTrackKeys",
+          "callee": "RowsItemsView.SelectedItems\r\n            .OfType<ITrackItem>()\r\n            .Select(TrackSelectionKey)\r\n            .OfType<string>()\r\n            .ToHashSet",
+          "lineNumber": 1317
+        },
+        {
+          "caller": "CaptureSelectedTrackKeys",
+          "callee": "RowsItemsView.SelectedItems\r\n            .OfType<ITrackItem>()\r\n            .Select(TrackSelectionKey)\r\n            .OfType<string>",
+          "lineNumber": 1317
+        },
+        {
+          "caller": "CaptureSelectedTrackKeys",
+          "callee": "RowsItemsView.SelectedItems\r\n            .OfType<ITrackItem>()\r\n            .Select",
+          "lineNumber": 1317
+        },
+        {
+          "caller": "CaptureSelectedTrackKeys",
+          "callee": "RowsItemsView.SelectedItems\r\n            .OfType<ITrackItem>",
+          "lineNumber": 1317
+        },
+        {
+          "caller": "RestoreSelectionByKeys",
+          "callee": "RowsItemsView.DeselectAll",
+          "lineNumber": 1332
+        },
+        {
+          "caller": "RestoreSelectionByKeys",
+          "callee": "TrackSelectionKey",
+          "lineNumber": 1336
+        },
+        {
+          "caller": "RestoreSelectionByKeys",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 1337
+        },
+        {
+          "caller": "RestoreSelectionByKeys",
+          "callee": "selectedKeys.Contains",
+          "lineNumber": 1337
+        },
+        {
+          "caller": "RestoreSelectionByKeys",
+          "callee": "RowsItemsView.Select",
+          "lineNumber": 1338
+        },
+        {
+          "caller": "RestoreSelectionByKeys",
+          "callee": "SyncItemsViewRowSelectionState",
+          "lineNumber": 1346
+        },
+        {
+          "caller": "TrackSelectionKey",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 1350
+        },
+        {
+          "caller": "TrackSelectionKey",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 1352
+        },
+        {
+          "caller": "SyncItemsViewRowSelectionState",
+          "callee": "new HashSet<object>",
+          "lineNumber": 1358
+        },
+        {
+          "caller": "SyncItemsViewRowSelectionState",
+          "callee": "RowsItemsView.SelectedItems.Cast<object>",
+          "lineNumber": 1358
+        },
+        {
+          "caller": "SyncItemsViewRowSelectionState",
+          "callee": "_itemsViewRows.ToArray",
+          "lineNumber": 1359
+        },
+        {
+          "caller": "SyncItemsViewRowSelectionState",
+          "callee": "selected.Contains",
+          "lineNumber": 1360
+        },
+        {
+          "caller": "OnRowsKeyDown",
+          "callee": "ExitSelectionMode",
+          "lineNumber": 1372
+        },
+        {
+          "caller": "OnRowsKeyDown",
+          "callee": "SelectedRowItem",
+          "lineNumber": 1382
+        },
+        {
+          "caller": "OnRowsKeyDown",
+          "callee": "PlayCommand?.Execute",
+          "lineNumber": 1384
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "TryHandleSelectAllShortcut",
+          "lineNumber": 1393
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "base.OnProcessKeyboardAccelerators",
+          "lineNumber": 1399
+        },
+        {
+          "caller": "Dispose",
+          "callee": "UnwireRowContextMenuHandlers",
+          "lineNumber": 1415
+        },
+        {
+          "caller": "Dispose",
+          "callee": "_itemsViewRows.Clear",
+          "lineNumber": 1421
+        },
+        {
+          "caller": "Dispose",
+          "callee": "_subscribedLazyItems.Clear",
+          "lineNumber": 1430
+        },
+        {
+          "caller": "Dispose",
+          "callee": "_rowByLazyItem.Clear",
+          "lineNumber": 1431
+        },
+        {
+          "caller": "Dispose",
+          "callee": "_lazyItemByRow.Clear",
+          "lineNumber": 1432
+        },
+        {
+          "caller": "Dispose",
+          "callee": "UnsubscribeColumns",
+          "lineNumber": 1440
+        },
+        {
+          "caller": "Dispose",
+          "callee": "_headerSlots.Clear",
+          "lineNumber": 1443
+        },
+        {
+          "caller": "Dispose",
+          "callee": "SortBySubItem.Items.OfType<RadioMenuFlyoutItem>",
+          "lineNumber": 1447
+        },
+        {
+          "caller": "Dispose",
+          "callee": "SortBySubItem.Items.Clear",
+          "lineNumber": 1449
+        },
+        {
+          "caller": "Dispose",
+          "callee": "HeaderHost.Children.Clear",
+          "lineNumber": 1452
+        },
+        {
+          "caller": "Dispose",
+          "callee": "HeaderHost.ColumnDefinitions.Clear",
+          "lineNumber": 1453
+        },
+        {
+          "caller": "Dispose",
+          "callee": "RowsItemsView.DeselectAll",
+          "lineNumber": 1454
+        },
+        {
+          "caller": "Dispose",
+          "callee": "_visibleRows.Clear",
+          "lineNumber": 1458
+        },
+        {
+          "caller": "Dispose",
+          "callee": "Array.Empty<ITrackItem>",
+          "lineNumber": 1459
+        },
+        {
+          "caller": "ResolveDragState",
+          "callee": "Ioc.Default.GetService<DragStateService>",
+          "lineNumber": 1521
+        },
+        {
+          "caller": "RowsItemsViewHost_DragOver",
+          "callee": "_dropIndicator?.Hide",
+          "lineNumber": 1533
+        },
+        {
+          "caller": "RowsItemsViewHost_DragOver",
+          "callee": "ResolveDragState",
+          "lineNumber": 1534
+        },
+        {
+          "caller": "RowsItemsViewHost_DragOver",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 1535
+        },
+        {
+          "caller": "RowsItemsViewHost_DragOver",
+          "callee": "string.Equals",
+          "lineNumber": 1536
+        },
+        {
+          "caller": "RowsItemsViewHost_DragOver",
+          "callee": "_dropIndicator?.Hide",
+          "lineNumber": 1538
+        },
+        {
+          "caller": "RowsItemsViewHost_DragOver",
+          "callee": "BuildRowBounds",
+          "lineNumber": 1547
+        },
+        {
+          "caller": "RowsItemsViewHost_DragOver",
+          "callee": "ReorderDropIndicator.ResolveSlotIndex",
+          "lineNumber": 1548
+        },
+        {
+          "caller": "RowsItemsViewHost_DragOver",
+          "callee": "e.GetPosition",
+          "lineNumber": 1549
+        },
+        {
+          "caller": "RowsItemsViewHost_DragOver",
+          "callee": "DropIndicator.Show",
+          "lineNumber": 1550
+        },
+        {
+          "caller": "RowsItemsViewHost_DragLeave",
+          "callee": "_dropIndicator?.Hide",
+          "lineNumber": 1553
+        },
+        {
+          "caller": "RowsItemsViewHost_Drop",
+          "callee": "_dropIndicator?.Hide",
+          "lineNumber": 1557
+        },
+        {
+          "caller": "RowsItemsViewHost_Drop",
+          "callee": "TryReadIntraListReorder",
+          "lineNumber": 1558
+        },
+        {
+          "caller": "RowsItemsViewHost_Drop",
+          "callee": "BuildRowBounds",
+          "lineNumber": 1560
+        },
+        {
+          "caller": "RowsItemsViewHost_Drop",
+          "callee": "ReorderDropIndicator.ResolveSlotIndex",
+          "lineNumber": 1561
+        },
+        {
+          "caller": "RowsItemsViewHost_Drop",
+          "callee": "e.GetPosition",
+          "lineNumber": 1562
+        },
+        {
+          "caller": "RowsItemsViewHost_Drop",
+          "callee": "TracksReorderRequested?.Invoke",
+          "lineNumber": 1564
+        },
+        {
+          "caller": "BuildRowBounds",
+          "callee": "new List<ReorderDropIndicator.RowBounds>",
+          "lineNumber": 1576
+        },
+        {
+          "caller": "BuildRowBounds",
+          "callee": "_visibleRows.IndexOf",
+          "lineNumber": 1581
+        },
+        {
+          "caller": "BuildRowBounds",
+          "callee": "FindParent<ItemContainer>",
+          "lineNumber": 1584
+        },
+        {
+          "caller": "BuildRowBounds",
+          "callee": "boundsSource.TransformToVisual(RowsHostCell)\r\n                    .TransformPoint",
+          "lineNumber": 1588
+        },
+        {
+          "caller": "BuildRowBounds",
+          "callee": "boundsSource.TransformToVisual",
+          "lineNumber": 1588
+        },
+        {
+          "caller": "BuildRowBounds",
+          "callee": "rows.Add",
+          "lineNumber": 1593
+        },
+        {
+          "caller": "WriteTrackPayload",
+          "callee": "tracks.Select(t => t.Id).ToArray",
+          "lineNumber": 1600
+        },
+        {
+          "caller": "WriteTrackPayload",
+          "callee": "tracks.Select",
+          "lineNumber": 1600
+        },
+        {
+          "caller": "WriteTrackPayload",
+          "callee": "new TrackDragPayload",
+          "lineNumber": 1601
+        },
+        {
+          "caller": "WriteTrackPayload",
+          "callee": "DragPackageWriter.Write",
+          "lineNumber": 1605
+        },
+        {
+          "caller": "WriteTrackPayload",
+          "callee": "ResolveDragState()?.StartDrag",
+          "lineNumber": 1606
+        },
+        {
+          "caller": "WriteTrackPayload",
+          "callee": "ResolveDragState",
+          "lineNumber": 1606
+        },
+        {
+          "caller": "TryReadIntraListReorder",
+          "callee": "ResolveDragState",
+          "lineNumber": 1614
+        },
+        {
+          "caller": "TryReadIntraListReorder",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 1615
+        },
+        {
+          "caller": "TryReadIntraListReorder",
+          "callee": "string.Equals",
+          "lineNumber": 1616
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 62,
+        "functionCount": 69,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackDataGridColumn.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 111,
+      "nonEmptyLines": 94,
+      "functions": [
+        {
+          "name": "SetProperty",
+          "startLine": 104,
+          "endLine": 110,
+          "params": [
+            "field",
+            "value",
+            "propertyName"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "TrackDataGridColumn",
+          "startLine": 15,
+          "endLine": 111,
+          "methods": [
+            "SetProperty"
+          ],
+          "properties": [
+            "_length",
+            "_minLength",
+            "_maxLength",
+            "_isVisible",
+            "_sortDirection",
+            "Key",
+            "HeaderResourceKey",
+            "CellTemplate",
+            "SortKey",
+            "HorizontalAlignment",
+            "IsLocked",
+            "SupportsResize",
+            "LeftPadding",
+            "Length",
+            "MinLength",
+            "MaxLength",
+            "IsVisible",
+            "SortDirection"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Key",
+          "line": 31,
+          "isDefault": false
+        },
+        {
+          "name": "HeaderResourceKey",
+          "line": 34,
+          "isDefault": false
+        },
+        {
+          "name": "CellTemplate",
+          "line": 37,
+          "isDefault": false
+        },
+        {
+          "name": "SortKey",
+          "line": 43,
+          "isDefault": false
+        },
+        {
+          "name": "HorizontalAlignment",
+          "line": 46,
+          "isDefault": false
+        },
+        {
+          "name": "IsLocked",
+          "line": 52,
+          "isDefault": false
+        },
+        {
+          "name": "SupportsResize",
+          "line": 59,
+          "isDefault": false
+        },
+        {
+          "name": "LeftPadding",
+          "line": 66,
+          "isDefault": false
+        },
+        {
+          "name": "Length",
+          "line": 69,
+          "isDefault": false
+        },
+        {
+          "name": "MinLength",
+          "line": 75,
+          "isDefault": false
+        },
+        {
+          "name": "MaxLength",
+          "line": 81,
+          "isDefault": false
+        },
+        {
+          "name": "IsVisible",
+          "line": 88,
+          "isDefault": false
+        },
+        {
+          "name": "SortDirection",
+          "line": 98,
+          "isDefault": false
+        },
+        {
+          "name": "TrackDataGridColumn",
+          "line": 15,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "SetProperty",
+          "callee": "EqualityComparer<T>.Default.Equals",
+          "lineNumber": 106
+        },
+        {
+          "caller": "SetProperty",
+          "callee": "PropertyChanged?.Invoke",
+          "lineNumber": 108
+        },
+        {
+          "caller": "SetProperty",
+          "callee": "new PropertyChangedEventArgs",
+          "lineNumber": 108
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 14,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackDataGridColumnHeader.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 147,
+      "nonEmptyLines": 142,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackDataGridColumnHeader.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 96,
+      "nonEmptyLines": 86,
+      "functions": [
+        {
+          "name": "TrackDataGridColumnHeader",
+          "startLine": 14,
+          "endLine": 18,
+          "params": []
+        },
+        {
+          "name": "OnColumnSortOptionChanged",
+          "startLine": 80,
+          "endLine": 84,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateSortVisualState",
+          "startLine": 86,
+          "endLine": 95,
+          "params": [
+            "useTransitions"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "TrackDataGridColumnHeader",
+          "startLine": 12,
+          "endLine": 96,
+          "methods": [
+            "TrackDataGridColumnHeader",
+            "OnColumnSortOptionChanged",
+            "UpdateSortVisualState"
+          ],
+          "properties": [
+            "Header",
+            "HeaderProperty",
+            "CanBeSorted",
+            "CanBeSortedProperty",
+            "ColumnSortOption",
+            "ColumnSortOptionProperty",
+            "Command",
+            "CommandProperty",
+            "CommandParameter",
+            "CommandParameterProperty",
+            "LabelPadding",
+            "LabelPaddingProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "TrackDataGridColumnHeader",
+          "line": 14,
+          "isDefault": false
+        },
+        {
+          "name": "Header",
+          "line": 20,
+          "isDefault": false
+        },
+        {
+          "name": "HeaderProperty",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "CanBeSorted",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "CanBeSortedProperty",
+          "line": 34,
+          "isDefault": false
+        },
+        {
+          "name": "ColumnSortOption",
+          "line": 38,
+          "isDefault": false
+        },
+        {
+          "name": "ColumnSortOptionProperty",
+          "line": 43,
+          "isDefault": false
+        },
+        {
+          "name": "Command",
+          "line": 47,
+          "isDefault": false
+        },
+        {
+          "name": "CommandProperty",
+          "line": 52,
+          "isDefault": false
+        },
+        {
+          "name": "CommandParameter",
+          "line": 56,
+          "isDefault": false
+        },
+        {
+          "name": "CommandParameterProperty",
+          "line": 61,
+          "isDefault": false
+        },
+        {
+          "name": "LabelPadding",
+          "line": 71,
+          "isDefault": false
+        },
+        {
+          "name": "LabelPaddingProperty",
+          "line": 76,
+          "isDefault": false
+        },
+        {
+          "name": "TrackDataGridColumnHeader",
+          "line": 12,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "TrackDataGridColumnHeader",
+          "callee": "InitializeComponent",
+          "lineNumber": 16
+        },
+        {
+          "caller": "TrackDataGridColumnHeader",
+          "callee": "UpdateSortVisualState",
+          "lineNumber": 17
+        },
+        {
+          "caller": "OnColumnSortOptionChanged",
+          "callee": "header.UpdateSortVisualState",
+          "lineNumber": 83
+        },
+        {
+          "caller": "UpdateSortVisualState",
+          "callee": "VisualStateManager.GoToState",
+          "lineNumber": 94
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 14,
+        "functionCount": 3,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackDataGridColumns.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 53,
+      "nonEmptyLines": 44,
+      "functions": [
+        {
+          "name": "CycleSort",
+          "startLine": 23,
+          "endLine": 36,
+          "params": [
+            "column"
+          ]
+        },
+        {
+          "name": "ApplySort",
+          "startLine": 42,
+          "endLine": 52,
+          "params": [
+            "column",
+            "direction"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "TrackDataGridColumns",
+          "startLine": 12,
+          "endLine": 53,
+          "methods": [
+            "CycleSort",
+            "ApplySort"
+          ],
+          "properties": [
+            "SortColumn"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "SortColumn",
+          "line": 15,
+          "isDefault": false
+        },
+        {
+          "name": "CycleSort",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "ApplySort",
+          "line": 42,
+          "isDefault": false
+        },
+        {
+          "name": "TrackDataGridColumns",
+          "line": 12,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "CycleSort",
+          "callee": "ApplySort",
+          "lineNumber": 35
+        },
+        {
+          "caller": "ApplySort",
+          "callee": "ReferenceEquals",
+          "lineNumber": 44
+        },
+        {
+          "caller": "ApplySort",
+          "callee": "SortChanged?.Invoke",
+          "lineNumber": 51
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackDataGridDefaults.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 185,
+      "nonEmptyLines": 168,
+      "functions": [
+        {
+          "name": "Create",
+          "startLine": 18,
+          "endLine": 27,
+          "params": [
+            "pageKey"
+          ]
+        },
+        {
+          "name": "BuildPlaylistColumns",
+          "startLine": 35,
+          "endLine": 45,
+          "params": []
+        },
+        {
+          "name": "BuildAlbumColumns",
+          "startLine": 47,
+          "endLine": 54,
+          "params": []
+        },
+        {
+          "name": "BuildLikedColumns",
+          "startLine": 60,
+          "endLine": 69,
+          "params": []
+        },
+        {
+          "name": "BuildPodcastColumns",
+          "startLine": 71,
+          "endLine": 78,
+          "params": []
+        },
+        {
+          "name": "Index",
+          "startLine": 82,
+          "endLine": 91,
+          "params": []
+        },
+        {
+          "name": "Like",
+          "startLine": 93,
+          "endLine": 102,
+          "params": []
+        },
+        {
+          "name": "TrackArt",
+          "startLine": 105,
+          "endLine": 112,
+          "params": []
+        },
+        {
+          "name": "Title",
+          "startLine": 114,
+          "endLine": 130,
+          "params": [
+            "maxWidth"
+          ]
+        },
+        {
+          "name": "Album",
+          "startLine": 132,
+          "endLine": 141,
+          "params": []
+        },
+        {
+          "name": "DateAdded",
+          "startLine": 143,
+          "endLine": 152,
+          "params": []
+        },
+        {
+          "name": "AddedBy",
+          "startLine": 154,
+          "endLine": 162,
+          "params": []
+        },
+        {
+          "name": "PlayCount",
+          "startLine": 164,
+          "endLine": 172,
+          "params": []
+        },
+        {
+          "name": "Duration",
+          "startLine": 174,
+          "endLine": 184,
+          "params": [
+            "width",
+            "minWidth"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "TrackDataGridDefaults",
+          "startLine": 11,
+          "endLine": 185,
+          "methods": [
+            "Create",
+            "BuildPlaylistColumns",
+            "BuildAlbumColumns",
+            "BuildLikedColumns",
+            "BuildPodcastColumns",
+            "Index",
+            "Like",
+            "TrackArt",
+            "Title",
+            "Album",
+            "DateAdded",
+            "AddedBy",
+            "PlayCount",
+            "Duration"
+          ],
+          "properties": [
+            "PlaylistPageKey",
+            "AlbumPageKey",
+            "LikedPageKey",
+            "PodcastPageKey"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "PlaylistPageKey",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "AlbumPageKey",
+          "line": 14,
+          "isDefault": false
+        },
+        {
+          "name": "LikedPageKey",
+          "line": 15,
+          "isDefault": false
+        },
+        {
+          "name": "PodcastPageKey",
+          "line": 16,
+          "isDefault": false
+        },
+        {
+          "name": "Create",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "TrackDataGridDefaults",
+          "line": 11,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Create",
+          "callee": "BuildAlbumColumns",
+          "lineNumber": 22
+        },
+        {
+          "caller": "Create",
+          "callee": "BuildLikedColumns",
+          "lineNumber": 23
+        },
+        {
+          "caller": "Create",
+          "callee": "BuildPodcastColumns",
+          "lineNumber": 24
+        },
+        {
+          "caller": "Create",
+          "callee": "BuildPlaylistColumns",
+          "lineNumber": 25
+        },
+        {
+          "caller": "BuildPlaylistColumns",
+          "callee": "Index",
+          "lineNumber": 37
+        },
+        {
+          "caller": "BuildPlaylistColumns",
+          "callee": "Like",
+          "lineNumber": 38
+        },
+        {
+          "caller": "BuildPlaylistColumns",
+          "callee": "TrackArt",
+          "lineNumber": 39
+        },
+        {
+          "caller": "BuildPlaylistColumns",
+          "callee": "Title",
+          "lineNumber": 40
+        },
+        {
+          "caller": "BuildPlaylistColumns",
+          "callee": "Album",
+          "lineNumber": 41
+        },
+        {
+          "caller": "BuildPlaylistColumns",
+          "callee": "AddedBy",
+          "lineNumber": 42
+        },
+        {
+          "caller": "BuildPlaylistColumns",
+          "callee": "DateAdded",
+          "lineNumber": 43
+        },
+        {
+          "caller": "BuildPlaylistColumns",
+          "callee": "Duration",
+          "lineNumber": 44
+        },
+        {
+          "caller": "BuildAlbumColumns",
+          "callee": "Index",
+          "lineNumber": 49
+        },
+        {
+          "caller": "BuildAlbumColumns",
+          "callee": "Like",
+          "lineNumber": 50
+        },
+        {
+          "caller": "BuildAlbumColumns",
+          "callee": "Title",
+          "lineNumber": 51
+        },
+        {
+          "caller": "BuildAlbumColumns",
+          "callee": "PlayCount",
+          "lineNumber": 52
+        },
+        {
+          "caller": "BuildAlbumColumns",
+          "callee": "Duration",
+          "lineNumber": 53
+        },
+        {
+          "caller": "BuildLikedColumns",
+          "callee": "Index",
+          "lineNumber": 62
+        },
+        {
+          "caller": "BuildLikedColumns",
+          "callee": "Like",
+          "lineNumber": 63
+        },
+        {
+          "caller": "BuildLikedColumns",
+          "callee": "TrackArt",
+          "lineNumber": 64
+        },
+        {
+          "caller": "BuildLikedColumns",
+          "callee": "Title",
+          "lineNumber": 65
+        },
+        {
+          "caller": "BuildLikedColumns",
+          "callee": "Album",
+          "lineNumber": 66
+        },
+        {
+          "caller": "BuildLikedColumns",
+          "callee": "DateAdded",
+          "lineNumber": 67
+        },
+        {
+          "caller": "BuildLikedColumns",
+          "callee": "Duration",
+          "lineNumber": 68
+        },
+        {
+          "caller": "BuildPodcastColumns",
+          "callee": "Index",
+          "lineNumber": 73
+        },
+        {
+          "caller": "BuildPodcastColumns",
+          "callee": "Like",
+          "lineNumber": 74
+        },
+        {
+          "caller": "BuildPodcastColumns",
+          "callee": "TrackArt",
+          "lineNumber": 75
+        },
+        {
+          "caller": "BuildPodcastColumns",
+          "callee": "Title",
+          "lineNumber": 76
+        },
+        {
+          "caller": "BuildPodcastColumns",
+          "callee": "Duration",
+          "lineNumber": 77
+        },
+        {
+          "caller": "Index",
+          "callee": "new GridLength",
+          "lineNumber": 86
+        },
+        {
+          "caller": "Index",
+          "callee": "new GridLength",
+          "lineNumber": 87
+        },
+        {
+          "caller": "Index",
+          "callee": "new GridLength",
+          "lineNumber": 88
+        },
+        {
+          "caller": "Like",
+          "callee": "new GridLength",
+          "lineNumber": 98
+        },
+        {
+          "caller": "Like",
+          "callee": "new GridLength",
+          "lineNumber": 99
+        },
+        {
+          "caller": "Like",
+          "callee": "new GridLength",
+          "lineNumber": 100
+        },
+        {
+          "caller": "TrackArt",
+          "callee": "new GridLength",
+          "lineNumber": 109
+        },
+        {
+          "caller": "TrackArt",
+          "callee": "new GridLength",
+          "lineNumber": 110
+        },
+        {
+          "caller": "TrackArt",
+          "callee": "new GridLength",
+          "lineNumber": 111
+        },
+        {
+          "caller": "Title",
+          "callee": "new GridLength",
+          "lineNumber": 119
+        },
+        {
+          "caller": "Title",
+          "callee": "new GridLength",
+          "lineNumber": 120
+        },
+        {
+          "caller": "Title",
+          "callee": "new GridLength",
+          "lineNumber": 125
+        },
+        {
+          "caller": "Title",
+          "callee": "new Thickness",
+          "lineNumber": 129
+        },
+        {
+          "caller": "Album",
+          "callee": "new GridLength",
+          "lineNumber": 137
+        },
+        {
+          "caller": "Album",
+          "callee": "new GridLength",
+          "lineNumber": 138
+        },
+        {
+          "caller": "Album",
+          "callee": "new GridLength",
+          "lineNumber": 139
+        },
+        {
+          "caller": "DateAdded",
+          "callee": "new GridLength",
+          "lineNumber": 148
+        },
+        {
+          "caller": "DateAdded",
+          "callee": "new GridLength",
+          "lineNumber": 149
+        },
+        {
+          "caller": "DateAdded",
+          "callee": "new GridLength",
+          "lineNumber": 150
+        },
+        {
+          "caller": "AddedBy",
+          "callee": "new GridLength",
+          "lineNumber": 158
+        },
+        {
+          "caller": "AddedBy",
+          "callee": "new GridLength",
+          "lineNumber": 159
+        },
+        {
+          "caller": "AddedBy",
+          "callee": "new GridLength",
+          "lineNumber": 160
+        },
+        {
+          "caller": "PlayCount",
+          "callee": "new GridLength",
+          "lineNumber": 169
+        },
+        {
+          "caller": "PlayCount",
+          "callee": "new GridLength",
+          "lineNumber": 170
+        },
+        {
+          "caller": "Duration",
+          "callee": "new GridLength",
+          "lineNumber": 179
+        },
+        {
+          "caller": "Duration",
+          "callee": "new GridLength",
+          "lineNumber": 180
+        },
+        {
+          "caller": "Duration",
+          "callee": "new GridLength",
+          "lineNumber": 181
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 6,
+        "functionCount": 14,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackDataGridGroupRow.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 33,
+      "nonEmptyLines": 30,
+      "classes": [
+        {
+          "name": "TrackDataGridGroupRow",
+          "startLine": 18,
+          "endLine": 33,
+          "methods": [],
+          "properties": [
+            "Header",
+            "Count",
+            "CountText"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Header",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "Count",
+          "line": 27,
+          "isDefault": false
+        },
+        {
+          "name": "CountText",
+          "line": 32,
+          "isDefault": false
+        },
+        {
+          "name": "TrackDataGridGroupRow",
+          "line": 18,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackDataGridItemTemplateSelector.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 29,
+      "nonEmptyLines": 24,
+      "functions": [
+        {
+          "name": "SelectTemplateCore",
+          "startLine": 24,
+          "endLine": 25,
+          "params": [
+            "item"
+          ]
+        },
+        {
+          "name": "SelectTemplateCore",
+          "startLine": 27,
+          "endLine": 28,
+          "params": [
+            "item",
+            "container"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "TrackDataGridItemTemplateSelector",
+          "startLine": 13,
+          "endLine": 29,
+          "methods": [
+            "SelectTemplateCore",
+            "SelectTemplateCore"
+          ],
+          "properties": [
+            "RowTemplate",
+            "GroupHeaderTemplate"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "RowTemplate",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "GroupHeaderTemplate",
+          "line": 22,
+          "isDefault": false
+        },
+        {
+          "name": "TrackDataGridItemTemplateSelector",
+          "line": 13,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "SelectTemplateCore",
+          "callee": "SelectTemplateCore",
+          "lineNumber": 28
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackDataGridSortDirection.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 12,
+      "nonEmptyLines": 11,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackSelectionBar.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 107,
+      "nonEmptyLines": 100,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackDataGrid/TrackSelectionBar.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 240,
+      "nonEmptyLines": 205,
+      "functions": [
+        {
+          "name": "TrackSelectionBar",
+          "startLine": 32,
+          "endLine": 49,
+          "params": []
+        },
+        {
+          "name": "SetButton",
+          "startLine": 51,
+          "endLine": 67,
+          "params": [
+            "button",
+            "glyph",
+            "label"
+          ]
+        },
+        {
+          "name": "Attach",
+          "startLine": 70,
+          "endLine": 77,
+          "params": [
+            "grid"
+          ]
+        },
+        {
+          "name": "Detach",
+          "startLine": 80,
+          "endLine": 86,
+          "params": []
+        },
+        {
+          "name": "OnGridSelectionStateChanged",
+          "startLine": 88,
+          "endLine": 88,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateFromGrid",
+          "startLine": 90,
+          "endLine": 132,
+          "params": []
+        },
+        {
+          "name": "OnPlayClick",
+          "startLine": 134,
+          "endLine": 135,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPlayNextClick",
+          "startLine": 137,
+          "endLine": 138,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnAddToQueueClick",
+          "startLine": 140,
+          "endLine": 141,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSaveClick",
+          "startLine": 143,
+          "endLine": 144,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnRemoveClick",
+          "startLine": 146,
+          "endLine": 151,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSelectAllClick",
+          "startLine": 153,
+          "endLine": 154,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnCloseClick",
+          "startLine": 156,
+          "endLine": 157,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnBarKeyDown",
+          "startLine": 159,
+          "endLine": 166,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnAddToPlaylistFlyoutOpening",
+          "startLine": 170,
+          "endLine": 207,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "AddSelectionToPlaylist",
+          "startLine": 209,
+          "endLine": 239,
+          "params": [
+            "playlist"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "TrackSelectionBar",
+          "startLine": 28,
+          "endLine": 240,
+          "methods": [
+            "TrackSelectionBar",
+            "SetButton",
+            "Attach",
+            "Detach",
+            "OnGridSelectionStateChanged",
+            "UpdateFromGrid",
+            "OnPlayClick",
+            "OnPlayNextClick",
+            "OnAddToQueueClick",
+            "OnSaveClick",
+            "OnRemoveClick",
+            "OnSelectAllClick",
+            "OnCloseClick",
+            "OnBarKeyDown",
+            "OnAddToPlaylistFlyoutOpening",
+            "AddSelectionToPlaylist"
+          ],
+          "properties": [
+            "_grid"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "TrackSelectionBar",
+          "line": 32,
+          "isDefault": false
+        },
+        {
+          "name": "Attach",
+          "line": 70,
+          "isDefault": false
+        },
+        {
+          "name": "Detach",
+          "line": 80,
+          "isDefault": false
+        },
+        {
+          "name": "TrackSelectionBar",
+          "line": 28,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "TrackSelectionBar",
+          "callee": "InitializeComponent",
+          "lineNumber": 34
+        },
+        {
+          "caller": "TrackSelectionBar",
+          "callee": "SetButton",
+          "lineNumber": 39
+        },
+        {
+          "caller": "TrackSelectionBar",
+          "callee": "SetButton",
+          "lineNumber": 40
+        },
+        {
+          "caller": "TrackSelectionBar",
+          "callee": "SetButton",
+          "lineNumber": 41
+        },
+        {
+          "caller": "TrackSelectionBar",
+          "callee": "SetButton",
+          "lineNumber": 42
+        },
+        {
+          "caller": "TrackSelectionBar",
+          "callee": "SetButton",
+          "lineNumber": 43
+        },
+        {
+          "caller": "TrackSelectionBar",
+          "callee": "SetButton",
+          "lineNumber": 44
+        },
+        {
+          "caller": "TrackSelectionBar",
+          "callee": "SetButton",
+          "lineNumber": 45
+        },
+        {
+          "caller": "TrackSelectionBar",
+          "callee": "SetButton",
+          "lineNumber": 46
+        },
+        {
+          "caller": "SetButton",
+          "callee": "new StackPanel",
+          "lineNumber": 53
+        },
+        {
+          "caller": "SetButton",
+          "callee": "content.Children.Add",
+          "lineNumber": 59
+        },
+        {
+          "caller": "SetButton",
+          "callee": "new FontIcon",
+          "lineNumber": 59
+        },
+        {
+          "caller": "SetButton",
+          "callee": "content.Children.Add",
+          "lineNumber": 60
+        },
+        {
+          "caller": "SetButton",
+          "callee": "new TextBlock",
+          "lineNumber": 60
+        },
+        {
+          "caller": "Attach",
+          "callee": "ReferenceEquals",
+          "lineNumber": 72
+        },
+        {
+          "caller": "Attach",
+          "callee": "Detach",
+          "lineNumber": 73
+        },
+        {
+          "caller": "Attach",
+          "callee": "UpdateFromGrid",
+          "lineNumber": 76
+        },
+        {
+          "caller": "OnGridSelectionStateChanged",
+          "callee": "UpdateFromGrid",
+          "lineNumber": 88
+        },
+        {
+          "caller": "UpdateFromGrid",
+          "callee": "_grid.GetSelectedTracks",
+          "lineNumber": 98
+        },
+        {
+          "caller": "UpdateFromGrid",
+          "callee": "selection.All",
+          "lineNumber": 124
+        },
+        {
+          "caller": "UpdateFromGrid",
+          "callee": "SetButton",
+          "lineNumber": 125
+        },
+        {
+          "caller": "OnPlayClick",
+          "callee": "_grid?.InvokePlaySelection",
+          "lineNumber": 135
+        },
+        {
+          "caller": "OnPlayClick",
+          "callee": "_grid.GetSelectedTracks",
+          "lineNumber": 135
+        },
+        {
+          "caller": "OnPlayNextClick",
+          "callee": "_grid?.InvokePlayNextSelection",
+          "lineNumber": 138
+        },
+        {
+          "caller": "OnPlayNextClick",
+          "callee": "_grid.GetSelectedTracks",
+          "lineNumber": 138
+        },
+        {
+          "caller": "OnAddToQueueClick",
+          "callee": "_grid?.InvokeAddToQueueSelection",
+          "lineNumber": 141
+        },
+        {
+          "caller": "OnAddToQueueClick",
+          "callee": "_grid.GetSelectedTracks",
+          "lineNumber": 141
+        },
+        {
+          "caller": "OnSaveClick",
+          "callee": "_grid?.InvokeToggleLikeSelection",
+          "lineNumber": 144
+        },
+        {
+          "caller": "OnSaveClick",
+          "callee": "_grid.GetSelectedTracks",
+          "lineNumber": 144
+        },
+        {
+          "caller": "OnRemoveClick",
+          "callee": "_grid.InvokeRemoveSelection",
+          "lineNumber": 149
+        },
+        {
+          "caller": "OnRemoveClick",
+          "callee": "_grid.GetSelectedTracks",
+          "lineNumber": 149
+        },
+        {
+          "caller": "OnRemoveClick",
+          "callee": "_grid.ExitSelectionMode",
+          "lineNumber": 150
+        },
+        {
+          "caller": "OnSelectAllClick",
+          "callee": "_grid?.SelectAllRows",
+          "lineNumber": 154
+        },
+        {
+          "caller": "OnCloseClick",
+          "callee": "_grid?.ExitSelectionMode",
+          "lineNumber": 157
+        },
+        {
+          "caller": "OnBarKeyDown",
+          "callee": "_grid.ExitSelectionMode",
+          "lineNumber": 163
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "flyout.Items.Clear",
+          "lineNumber": 174
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "flyout.Items.Add",
+          "lineNumber": 175
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "new MenuFlyoutItem",
+          "lineNumber": 175
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "Ioc.Default.GetService<ILibraryDataService>",
+          "lineNumber": 177
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "library.GetUserPlaylistsAsync",
+          "lineNumber": 183
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "flyout.Items.Clear",
+          "lineNumber": 187
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "flyout.Items.Add",
+          "lineNumber": 188
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "new MenuFlyoutItem",
+          "lineNumber": 188
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "flyout.Items.Clear",
+          "lineNumber": 192
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 195
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "new MenuFlyoutItem",
+          "lineNumber": 197
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 199
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "AddSelectionToPlaylist",
+          "lineNumber": 201
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "flyout.Items.Add",
+          "lineNumber": 202
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "flyout.Items.Add",
+          "lineNumber": 206
+        },
+        {
+          "caller": "OnAddToPlaylistFlyoutOpening",
+          "callee": "new MenuFlyoutItem",
+          "lineNumber": 206
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 211
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "_grid.GetSelectedTracks()\r\n            .Select(t => t.Uri)\r\n            .Where(u => !string.IsNullOrEmpty(u))\r\n            .ToList",
+          "lineNumber": 213
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "_grid.GetSelectedTracks()\r\n            .Select(t => t.Uri)\r\n            .Where",
+          "lineNumber": 213
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "_grid.GetSelectedTracks()\r\n            .Select",
+          "lineNumber": 213
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "_grid.GetSelectedTracks",
+          "lineNumber": 213
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 215
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "Ioc.Default.GetService<IPlaylistMutationService>",
+          "lineNumber": 219
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "Ioc.Default.GetService<INotificationService>",
+          "lineNumber": 220
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "_grid.ExitSelectionMode",
+          "lineNumber": 223
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "mutations.AddTracksToPlaylistAsync",
+          "lineNumber": 226
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "notifications?.Show",
+          "lineNumber": 227
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 230
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "notifications?.Show",
+          "lineNumber": 234
+        },
+        {
+          "caller": "AddSelectionToPlaylist",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 237
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 16,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackList/TrackListColumnDefinition.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 83,
+      "nonEmptyLines": 71,
+      "classes": [
+        {
+          "name": "TrackListColumnDefinition",
+          "startLine": 10,
+          "endLine": 83,
+          "methods": [],
+          "properties": [
+            "Header",
+            "HeaderProperty",
+            "Width",
+            "WidthProperty",
+            "PropertyName",
+            "PropertyNameProperty",
+            "ValueSelector",
+            "TextAlignment",
+            "TextAlignmentProperty",
+            "SortKey",
+            "SortKeyProperty"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Header",
+          "line": 15,
+          "isDefault": false
+        },
+        {
+          "name": "HeaderProperty",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "Width",
+          "line": 28,
+          "isDefault": false
+        },
+        {
+          "name": "WidthProperty",
+          "line": 34,
+          "isDefault": false
+        },
+        {
+          "name": "PropertyName",
+          "line": 42,
+          "isDefault": false
+        },
+        {
+          "name": "PropertyNameProperty",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "ValueSelector",
+          "line": 56,
+          "isDefault": false
+        },
+        {
+          "name": "TextAlignment",
+          "line": 61,
+          "isDefault": false
+        },
+        {
+          "name": "TextAlignmentProperty",
+          "line": 67,
+          "isDefault": false
+        },
+        {
+          "name": "SortKey",
+          "line": 74,
+          "isDefault": false
+        },
+        {
+          "name": "SortKeyProperty",
+          "line": 80,
+          "isDefault": false
+        },
+        {
+          "name": "TrackListColumnDefinition",
+          "line": 10,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 12,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackList/TrackListView.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 396,
+      "nonEmptyLines": 373,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/TrackList/TrackListView.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 1259,
+      "nonEmptyLines": 1068,
+      "functions": [
+        {
+          "name": "TrackListView",
+          "startLine": 49,
+          "endLine": 63,
+          "params": []
+        },
+        {
+          "name": "OnUnloaded",
+          "startLine": 65,
+          "endLine": 97,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnViewModelChanged",
+          "startLine": 146,
+          "endLine": 165,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnViewModelPropertyChanged",
+          "startLine": 167,
+          "endLine": 175,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnItemsSourceChanged",
+          "startLine": 190,
+          "endLine": 215,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnCollectionChanged",
+          "startLine": 217,
+          "endLine": 220,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnHeaderBackgroundChanged",
+          "startLine": 315,
+          "endLine": 322,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnRemoveActionLabelChanged",
+          "startLine": 377,
+          "endLine": 383,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnIsLoadingChanged",
+          "startLine": 398,
+          "endLine": 404,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnHasErrorChanged",
+          "startLine": 419,
+          "endLine": 425,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnErrorStateContentChanged",
+          "startLine": 453,
+          "endLine": 459,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPlaceholderColorHexChanged",
+          "startLine": 527,
+          "endLine": 540,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 577,
+          "endLine": 604,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnInternalListViewSizeChanged",
+          "startLine": 606,
+          "endLine": 609,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SyncHeaderWidthToListView",
+          "startLine": 611,
+          "endLine": 618,
+          "params": []
+        },
+        {
+          "name": "UpdateColumnVisibility",
+          "startLine": 620,
+          "endLine": 652,
+          "params": []
+        },
+        {
+          "name": "ApplyCustomColumns",
+          "startLine": 658,
+          "endLine": 667,
+          "params": []
+        },
+        {
+          "name": "ApplyCustomColumnsToHeaderGrid",
+          "startLine": 669,
+          "endLine": 746,
+          "params": [
+            "headerGrid",
+            "trackedElements",
+            "columns"
+          ]
+        },
+        {
+          "name": "FindStickyHeaderGrid",
+          "startLine": 748,
+          "endLine": 752,
+          "params": []
+        },
+        {
+          "name": "GetCustomColumnValue",
+          "startLine": 756,
+          "endLine": 774,
+          "params": [
+            "item",
+            "col"
+          ]
+        },
+        {
+          "name": "FindScrollViewer",
+          "startLine": 776,
+          "endLine": 789,
+          "params": [
+            "parent"
+          ]
+        },
+        {
+          "name": "OnScrollViewChanged",
+          "startLine": 795,
+          "endLine": 809,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SetItemTransitionsEnabled",
+          "startLine": 811,
+          "endLine": 820,
+          "params": [
+            "enabled"
+          ]
+        },
+        {
+          "name": "TrackListView_ContainerContentChanging",
+          "startLine": 830,
+          "endLine": 913,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "InternalListView_DragItemsStarting",
+          "startLine": 919,
+          "endLine": 942,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "InternalListView_DragItemsCompleted",
+          "startLine": 944,
+          "endLine": 947,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "InternalListView_DragOver",
+          "startLine": 957,
+          "endLine": 968,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "InternalListView_Drop",
+          "startLine": 970,
+          "endLine": 987,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ComputeReorderTargetIndex",
+          "startLine": 989,
+          "endLine": 1000,
+          "params": [
+            "e"
+          ]
+        },
+        {
+          "name": "OnThemeColorsChanged",
+          "startLine": 1009,
+          "endLine": 1023,
+          "params": []
+        },
+        {
+          "name": "TrackListView_SelectionChanged",
+          "startLine": 1029,
+          "endLine": 1037,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "InternalListView_KeyDown",
+          "startLine": 1039,
+          "endLine": 1047,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Container_PointerPressed",
+          "startLine": 1053,
+          "endLine": 1070,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Container_Tapped",
+          "startLine": 1072,
+          "endLine": 1086,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "GetCtrlShiftState",
+          "startLine": 1091,
+          "endLine": 1105,
+          "params": []
+        },
+        {
+          "name": "SyncRealizedSelectionVisuals",
+          "startLine": 1107,
+          "endLine": 1117,
+          "params": []
+        },
+        {
+          "name": "IsInteractiveElement",
+          "startLine": 1119,
+          "endLine": 1129,
+          "params": [
+            "element"
+          ]
+        },
+        {
+          "name": "UpdateSelectionCommandBar",
+          "startLine": 1131,
+          "endLine": 1145,
+          "params": []
+        },
+        {
+          "name": "AddToPlaylistFlyout_Opening",
+          "startLine": 1151,
+          "endLine": 1179,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "PlaylistMenuItem_Click",
+          "startLine": 1181,
+          "endLine": 1187,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "NewPlaylist_Click",
+          "startLine": 1189,
+          "endLine": 1199,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateRemoveButtonLabel",
+          "startLine": 1205,
+          "endLine": 1208,
+          "params": []
+        },
+        {
+          "name": "UpdateVisualState",
+          "startLine": 1210,
+          "endLine": 1256,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "TrackListView",
+          "startLine": 32,
+          "endLine": 1259,
+          "methods": [
+            "TrackListView",
+            "OnUnloaded",
+            "OnViewModelChanged",
+            "OnViewModelPropertyChanged",
+            "OnItemsSourceChanged",
+            "OnCollectionChanged",
+            "OnHeaderBackgroundChanged",
+            "OnRemoveActionLabelChanged",
+            "OnIsLoadingChanged",
+            "OnHasErrorChanged",
+            "OnErrorStateContentChanged",
+            "OnPlaceholderColorHexChanged",
+            "OnLoaded",
+            "OnInternalListViewSizeChanged",
+            "SyncHeaderWidthToListView",
+            "UpdateColumnVisibility",
+            "ApplyCustomColumns",
+            "ApplyCustomColumnsToHeaderGrid",
+            "FindStickyHeaderGrid",
+            "GetCustomColumnValue",
+            "FindScrollViewer",
+            "OnScrollViewChanged",
+            "SetItemTransitionsEnabled",
+            "TrackListView_ContainerContentChanging",
+            "InternalListView_DragItemsStarting",
+            "InternalListView_DragItemsCompleted",
+            "InternalListView_DragOver",
+            "InternalListView_Drop",
+            "ComputeReorderTargetIndex",
+            "OnThemeColorsChanged",
+            "TrackListView_SelectionChanged",
+            "InternalListView_KeyDown",
+            "Container_PointerPressed",
+            "Container_Tapped",
+            "GetCtrlShiftState",
+            "SyncRealizedSelectionVisuals",
+            "IsInteractiveElement",
+            "UpdateSelectionCommandBar",
+            "AddToPlaylistFlyout_Opening",
+            "PlaylistMenuItem_Click",
+            "NewPlaylist_Click",
+            "UpdateRemoveButtonLabel",
+            "UpdateVisualState"
+          ],
+          "properties": [
+            "DurationColumnIndex",
+            "_scrollViewer",
+            "_currentCollection",
+            "_dynamicPlaylistMenuItems",
+            "_scrollableCustomHeaderElements",
+            "_stickyCustomHeaderElements",
+            "_propertyCache",
+            "_themeColors",
+            "_dragStateService",
+            "_trackClickedCommand",
+            "ViewModel",
+            "ViewModelProperty",
+            "ContextUri",
+            "ContextUriProperty",
+            "CanReorder",
+            "CanReorderProperty",
+            "ItemsSource",
+            "ItemsSourceProperty",
+            "ShowDateAddedColumn",
+            "ShowDateAddedColumnProperty",
+            "ShowAlbumColumn",
+            "ShowAlbumColumnProperty",
+            "ShowArtistColumn",
+            "ShowArtistColumnProperty",
+            "ShowColumnHeaders",
+            "ShowColumnHeadersProperty",
+            "ShowAlbumArtColumn",
+            "ShowAlbumArtColumnProperty",
+            "IsCompact",
+            "IsCompactProperty",
+            "HeaderBackground",
+            "HeaderBackgroundProperty",
+            "HeaderContent",
+            "HeaderContentProperty",
+            "FooterContent",
+            "FooterContentProperty",
+            "EmptyStateContent",
+            "EmptyStateContentProperty",
+            "RemoveActionLabel",
+            "RemoveActionLabelProperty",
+            "IsLoading",
+            "IsLoadingProperty",
+            "HasError",
+            "HasErrorProperty",
+            "ErrorMessage",
+            "ErrorMessageProperty",
+            "ErrorStateContent",
+            "ErrorStateContentProperty",
+            "RetryCommand",
+            "RetryCommandProperty",
+            "DateAddedFormatter",
+            "DateAddedFormatterProperty",
+            "CustomColumns",
+            "CustomColumnsProperty",
+            "PlaceholderColorHex",
+            "PlaceholderColorHexProperty",
+            "UseImageColorHint",
+            "UseImageColorHintProperty",
+            "CustomColumnCount",
+            "_pressedWhileSelected",
+            "_containerPointerPressedHandler",
+            "_containerTappedHandler"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "TrackListView",
+          "line": 49,
+          "isDefault": false
+        },
+        {
+          "name": "ViewModel",
+          "line": 104,
+          "isDefault": false
+        },
+        {
+          "name": "ViewModelProperty",
+          "line": 110,
+          "isDefault": false
+        },
+        {
+          "name": "ContextUri",
+          "line": 120,
+          "isDefault": false
+        },
+        {
+          "name": "ContextUriProperty",
+          "line": 126,
+          "isDefault": false
+        },
+        {
+          "name": "CanReorder",
+          "line": 136,
+          "isDefault": false
+        },
+        {
+          "name": "CanReorderProperty",
+          "line": 142,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsSource",
+          "line": 180,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsSourceProperty",
+          "line": 186,
+          "isDefault": false
+        },
+        {
+          "name": "ShowDateAddedColumn",
+          "line": 225,
+          "isDefault": false
+        },
+        {
+          "name": "ShowDateAddedColumnProperty",
+          "line": 231,
+          "isDefault": false
+        },
+        {
+          "name": "ShowAlbumColumn",
+          "line": 238,
+          "isDefault": false
+        },
+        {
+          "name": "ShowAlbumColumnProperty",
+          "line": 244,
+          "isDefault": false
+        },
+        {
+          "name": "ShowArtistColumn",
+          "line": 251,
+          "isDefault": false
+        },
+        {
+          "name": "ShowArtistColumnProperty",
+          "line": 257,
+          "isDefault": false
+        },
+        {
+          "name": "ShowColumnHeaders",
+          "line": 265,
+          "isDefault": false
+        },
+        {
+          "name": "ShowColumnHeadersProperty",
+          "line": 271,
+          "isDefault": false
+        },
+        {
+          "name": "ShowAlbumArtColumn",
+          "line": 279,
+          "isDefault": false
+        },
+        {
+          "name": "ShowAlbumArtColumnProperty",
+          "line": 285,
+          "isDefault": false
+        },
+        {
+          "name": "IsCompact",
+          "line": 292,
+          "isDefault": false
+        },
+        {
+          "name": "IsCompactProperty",
+          "line": 298,
+          "isDefault": false
+        },
+        {
+          "name": "HeaderBackground",
+          "line": 305,
+          "isDefault": false
+        },
+        {
+          "name": "HeaderBackgroundProperty",
+          "line": 311,
+          "isDefault": false
+        },
+        {
+          "name": "HeaderContent",
+          "line": 327,
+          "isDefault": false
+        },
+        {
+          "name": "HeaderContentProperty",
+          "line": 333,
+          "isDefault": false
+        },
+        {
+          "name": "FooterContent",
+          "line": 341,
+          "isDefault": false
+        },
+        {
+          "name": "FooterContentProperty",
+          "line": 347,
+          "isDefault": false
+        },
+        {
+          "name": "EmptyStateContent",
+          "line": 354,
+          "isDefault": false
+        },
+        {
+          "name": "EmptyStateContentProperty",
+          "line": 360,
+          "isDefault": false
+        },
+        {
+          "name": "RemoveActionLabel",
+          "line": 367,
+          "isDefault": false
+        },
+        {
+          "name": "RemoveActionLabelProperty",
+          "line": 373,
+          "isDefault": false
+        },
+        {
+          "name": "IsLoading",
+          "line": 388,
+          "isDefault": false
+        },
+        {
+          "name": "IsLoadingProperty",
+          "line": 394,
+          "isDefault": false
+        },
+        {
+          "name": "HasError",
+          "line": 409,
+          "isDefault": false
+        },
+        {
+          "name": "HasErrorProperty",
+          "line": 415,
+          "isDefault": false
+        },
+        {
+          "name": "ErrorMessage",
+          "line": 430,
+          "isDefault": false
+        },
+        {
+          "name": "ErrorMessageProperty",
+          "line": 436,
+          "isDefault": false
+        },
+        {
+          "name": "ErrorStateContent",
+          "line": 443,
+          "isDefault": false
+        },
+        {
+          "name": "ErrorStateContentProperty",
+          "line": 449,
+          "isDefault": false
+        },
+        {
+          "name": "RetryCommand",
+          "line": 464,
+          "isDefault": false
+        },
+        {
+          "name": "RetryCommandProperty",
+          "line": 470,
+          "isDefault": false
+        },
+        {
+          "name": "DateAddedFormatter",
+          "line": 477,
+          "isDefault": false
+        },
+        {
+          "name": "DateAddedFormatterProperty",
+          "line": 483,
+          "isDefault": false
+        },
+        {
+          "name": "CustomColumns",
+          "line": 491,
+          "isDefault": false
+        },
+        {
+          "name": "CustomColumnsProperty",
+          "line": 497,
+          "isDefault": false
+        },
+        {
+          "name": "PlaceholderColorHex",
+          "line": 501,
+          "isDefault": false
+        },
+        {
+          "name": "PlaceholderColorHexProperty",
+          "line": 507,
+          "isDefault": false
+        },
+        {
+          "name": "UseImageColorHint",
+          "line": 517,
+          "isDefault": false
+        },
+        {
+          "name": "UseImageColorHintProperty",
+          "line": 523,
+          "isDefault": false
+        },
+        {
+          "name": "SetItemTransitionsEnabled",
+          "line": 811,
+          "isDefault": false
+        },
+        {
+          "name": "TrackListView",
+          "line": 32,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "TrackListView",
+          "callee": "InitializeComponent",
+          "lineNumber": 51
+        },
+        {
+          "caller": "TrackListView",
+          "callee": "SetValue",
+          "lineNumber": 52
+        },
+        {
+          "caller": "TrackListView",
+          "callee": "new List<TrackListColumnDefinition>",
+          "lineNumber": 52
+        },
+        {
+          "caller": "TrackListView",
+          "callee": "new RelayCommand<ITrackItem>",
+          "lineNumber": 53
+        },
+        {
+          "caller": "TrackListView",
+          "callee": "TrackClicked?.Invoke",
+          "lineNumber": 55
+        },
+        {
+          "caller": "TrackListView",
+          "callee": "Ioc.Default.GetService<ThemeColorService>",
+          "lineNumber": 57
+        },
+        {
+          "caller": "TrackListView",
+          "callee": "Ioc.Default.GetService<DragStateService>",
+          "lineNumber": 58
+        },
+        {
+          "caller": "OnViewModelChanged",
+          "callee": "control.UpdateSelectionCommandBar",
+          "lineNumber": 162
+        },
+        {
+          "caller": "OnViewModelChanged",
+          "callee": "control.UpdateRemoveButtonLabel",
+          "lineNumber": 163
+        },
+        {
+          "caller": "OnViewModelPropertyChanged",
+          "callee": "Bindings.Update",
+          "lineNumber": 173
+        },
+        {
+          "caller": "OnItemsSourceChanged",
+          "callee": "control.UpdateVisualState",
+          "lineNumber": 213
+        },
+        {
+          "caller": "OnCollectionChanged",
+          "callee": "UpdateVisualState",
+          "lineNumber": 219
+        },
+        {
+          "caller": "OnRemoveActionLabelChanged",
+          "callee": "control.UpdateRemoveButtonLabel",
+          "lineNumber": 381
+        },
+        {
+          "caller": "OnIsLoadingChanged",
+          "callee": "control.UpdateVisualState",
+          "lineNumber": 402
+        },
+        {
+          "caller": "OnHasErrorChanged",
+          "callee": "control.UpdateVisualState",
+          "lineNumber": 423
+        },
+        {
+          "caller": "OnErrorStateContentChanged",
+          "callee": "control.UpdateVisualState",
+          "lineNumber": 457
+        },
+        {
+          "caller": "OnPlaceholderColorHexChanged",
+          "callee": "view.InternalListView.ContainerFromItem",
+          "lineNumber": 534
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "FindScrollViewer",
+          "lineNumber": 586
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "SyncHeaderWidthToListView",
+          "lineNumber": 598
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "UpdateRemoveButtonLabel",
+          "lineNumber": 600
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "ApplyCustomColumns",
+          "lineNumber": 601
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "UpdateColumnVisibility",
+          "lineNumber": 602
+        },
+        {
+          "caller": "OnInternalListViewSizeChanged",
+          "callee": "SyncHeaderWidthToListView",
+          "lineNumber": 608
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new Thickness",
+          "lineNumber": 627
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new Thickness",
+          "lineNumber": 628
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new GridLength",
+          "lineNumber": 635
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new GridLength",
+          "lineNumber": 635
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new GridLength",
+          "lineNumber": 636
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new GridLength",
+          "lineNumber": 636
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new GridLength",
+          "lineNumber": 639
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new GridLength",
+          "lineNumber": 639
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new GridLength",
+          "lineNumber": 640
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new GridLength",
+          "lineNumber": 640
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new GridLength",
+          "lineNumber": 643
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new GridLength",
+          "lineNumber": 643
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new GridLength",
+          "lineNumber": 644
+        },
+        {
+          "caller": "UpdateColumnVisibility",
+          "callee": "new GridLength",
+          "lineNumber": 644
+        },
+        {
+          "caller": "ApplyCustomColumns",
+          "callee": "ApplyCustomColumnsToHeaderGrid",
+          "lineNumber": 665
+        },
+        {
+          "caller": "ApplyCustomColumns",
+          "callee": "ApplyCustomColumnsToHeaderGrid",
+          "lineNumber": 666
+        },
+        {
+          "caller": "ApplyCustomColumns",
+          "callee": "FindStickyHeaderGrid",
+          "lineNumber": 666
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "headerGrid.Children.Remove",
+          "lineNumber": 675
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "trackedElements.Clear",
+          "lineNumber": 676
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "headerGrid.ColumnDefinitions.RemoveAt",
+          "lineNumber": 680
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "headerGrid.ColumnDefinitions.Insert",
+          "lineNumber": 685
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "new ColumnDefinition",
+          "lineNumber": 686
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "headerGrid.Children.OfType<FrameworkElement>",
+          "lineNumber": 693
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "Grid.GetColumn",
+          "lineNumber": 695
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "trackedElements.Contains",
+          "lineNumber": 696
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "Grid.SetColumn",
+          "lineNumber": 698
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "new Button",
+          "lineNumber": 711
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "new SolidColorBrush",
+          "lineNumber": 713
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "new Thickness",
+          "lineNumber": 714
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "new Thickness",
+          "lineNumber": 715
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "new TextBlock",
+          "lineNumber": 720
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "new TextBlock",
+          "lineNumber": 731
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "new Thickness",
+          "lineNumber": 738
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "Grid.SetColumn",
+          "lineNumber": 742
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "headerGrid.Children.Add",
+          "lineNumber": 743
+        },
+        {
+          "caller": "ApplyCustomColumnsToHeaderGrid",
+          "callee": "trackedElements.Add",
+          "lineNumber": 744
+        },
+        {
+          "caller": "GetCustomColumnValue",
+          "callee": "col.ValueSelector",
+          "lineNumber": 759
+        },
+        {
+          "caller": "GetCustomColumnValue",
+          "callee": "item.GetType",
+          "lineNumber": 763
+        },
+        {
+          "caller": "GetCustomColumnValue",
+          "callee": "_propertyCache.TryGetValue",
+          "lineNumber": 765
+        },
+        {
+          "caller": "GetCustomColumnValue",
+          "callee": "type.GetProperty",
+          "lineNumber": 767
+        },
+        {
+          "caller": "GetCustomColumnValue",
+          "callee": "prop?.GetValue(item)?.ToString",
+          "lineNumber": 770
+        },
+        {
+          "caller": "GetCustomColumnValue",
+          "callee": "prop?.GetValue",
+          "lineNumber": 770
+        },
+        {
+          "caller": "FindScrollViewer",
+          "callee": "VisualTreeHelper.GetChildrenCount",
+          "lineNumber": 778
+        },
+        {
+          "caller": "FindScrollViewer",
+          "callee": "VisualTreeHelper.GetChild",
+          "lineNumber": 780
+        },
+        {
+          "caller": "FindScrollViewer",
+          "callee": "FindScrollViewer",
+          "lineNumber": 784
+        },
+        {
+          "caller": "OnScrollViewChanged",
+          "callee": "ScrollOffsetChanged?.Invoke",
+          "lineNumber": 798
+        },
+        {
+          "caller": "OnScrollViewChanged",
+          "callee": "ScrollableColumnHeaders.TransformToVisual",
+          "lineNumber": 801
+        },
+        {
+          "caller": "OnScrollViewChanged",
+          "callee": "transform.TransformPoint",
+          "lineNumber": 802
+        },
+        {
+          "caller": "OnScrollViewChanged",
+          "callee": "new Point",
+          "lineNumber": 802
+        },
+        {
+          "caller": "SetItemTransitionsEnabled",
+          "callee": "new TransitionCollection",
+          "lineNumber": 814
+        },
+        {
+          "caller": "SetItemTransitionsEnabled",
+          "callee": "new EntranceThemeTransition",
+          "lineNumber": 816
+        },
+        {
+          "caller": "SetItemTransitionsEnabled",
+          "callee": "new AddDeleteThemeTransition",
+          "lineNumber": 817
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "lvi.RemoveHandler",
+          "lineNumber": 839
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "lvi.AddHandler",
+          "lineNumber": 840
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "lvi.RemoveHandler",
+          "lineNumber": 841
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "lvi.AddHandler",
+          "lineNumber": 842
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "DateAddedFormatter",
+          "lineNumber": 868
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "nameof",
+          "lineNumber": 877
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 878
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "cleanup",
+          "lineNumber": 881
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "trackItem.SetAlternatingBorder",
+          "lineNumber": 895
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "trackItem.SetAlternatingBorder",
+          "lineNumber": 897
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "GetCustomColumnValue",
+          "lineNumber": 905
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "trackItem.SetCustomColumnValues",
+          "lineNumber": 906
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "new Thickness",
+          "lineNumber": 911
+        },
+        {
+          "caller": "TrackListView_ContainerContentChanging",
+          "callee": "new Thickness",
+          "lineNumber": 911
+        },
+        {
+          "caller": "InternalListView_DragItemsStarting",
+          "callee": "e.Items.OfType<ITrackItem>().ToList",
+          "lineNumber": 921
+        },
+        {
+          "caller": "InternalListView_DragItemsStarting",
+          "callee": "e.Items.OfType<ITrackItem>",
+          "lineNumber": 921
+        },
+        {
+          "caller": "InternalListView_DragItemsStarting",
+          "callee": "tracks.Select(t => t.Id).ToArray",
+          "lineNumber": 928
+        },
+        {
+          "caller": "InternalListView_DragItemsStarting",
+          "callee": "tracks.Select",
+          "lineNumber": 928
+        },
+        {
+          "caller": "InternalListView_DragItemsStarting",
+          "callee": "InternalListView.Items.IndexOf",
+          "lineNumber": 934
+        },
+        {
+          "caller": "InternalListView_DragItemsStarting",
+          "callee": "new TrackDragPayload",
+          "lineNumber": 937
+        },
+        {
+          "caller": "InternalListView_DragItemsStarting",
+          "callee": "DragPackageWriter.Write",
+          "lineNumber": 938
+        },
+        {
+          "caller": "InternalListView_DragItemsStarting",
+          "callee": "_dragStateService?.StartDrag",
+          "lineNumber": 941
+        },
+        {
+          "caller": "InternalListView_DragItemsCompleted",
+          "callee": "_dragStateService?.EndDrag",
+          "lineNumber": 946
+        },
+        {
+          "caller": "InternalListView_DragOver",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 963
+        },
+        {
+          "caller": "InternalListView_DragOver",
+          "callee": "string.Equals",
+          "lineNumber": 964
+        },
+        {
+          "caller": "InternalListView_Drop",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 974
+        },
+        {
+          "caller": "InternalListView_Drop",
+          "callee": "string.Equals",
+          "lineNumber": 975
+        },
+        {
+          "caller": "InternalListView_Drop",
+          "callee": "ComputeReorderTargetIndex",
+          "lineNumber": 983
+        },
+        {
+          "caller": "InternalListView_Drop",
+          "callee": "TracksReorderRequested?.Invoke",
+          "lineNumber": 986
+        },
+        {
+          "caller": "ComputeReorderTargetIndex",
+          "callee": "Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent",
+          "lineNumber": 996
+        },
+        {
+          "caller": "ComputeReorderTargetIndex",
+          "callee": "InternalListView.IndexFromContainer",
+          "lineNumber": 998
+        },
+        {
+          "caller": "OnThemeColorsChanged",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 1012
+        },
+        {
+          "caller": "OnThemeColorsChanged",
+          "callee": "InternalListView.ContainerFromIndex",
+          "lineNumber": 1016
+        },
+        {
+          "caller": "OnThemeColorsChanged",
+          "callee": "ti.RefreshPlaybackState",
+          "lineNumber": 1019
+        },
+        {
+          "caller": "TrackListView_SelectionChanged",
+          "callee": "SyncRealizedSelectionVisuals",
+          "lineNumber": 1033
+        },
+        {
+          "caller": "TrackListView_SelectionChanged",
+          "callee": "InternalListView.SelectedItems.Cast<object>().ToList",
+          "lineNumber": 1034
+        },
+        {
+          "caller": "TrackListView_SelectionChanged",
+          "callee": "InternalListView.SelectedItems.Cast<object>",
+          "lineNumber": 1034
+        },
+        {
+          "caller": "TrackListView_SelectionChanged",
+          "callee": "UpdateSelectionCommandBar",
+          "lineNumber": 1036
+        },
+        {
+          "caller": "InternalListView_KeyDown",
+          "callee": "GetCtrlShiftState",
+          "lineNumber": 1041
+        },
+        {
+          "caller": "InternalListView_KeyDown",
+          "callee": "InternalListView.SelectAll",
+          "lineNumber": 1044
+        },
+        {
+          "caller": "InternalListView_KeyDown",
+          "callee": "SyncRealizedSelectionVisuals",
+          "lineNumber": 1045
+        },
+        {
+          "caller": "Container_PointerPressed",
+          "callee": "GetCtrlShiftState",
+          "lineNumber": 1061
+        },
+        {
+          "caller": "Container_PointerPressed",
+          "callee": "IsInteractiveElement",
+          "lineNumber": 1062
+        },
+        {
+          "caller": "Container_Tapped",
+          "callee": "GetCtrlShiftState",
+          "lineNumber": 1078
+        },
+        {
+          "caller": "Container_Tapped",
+          "callee": "InternalListView.SelectedItems.Contains",
+          "lineNumber": 1082
+        },
+        {
+          "caller": "Container_Tapped",
+          "callee": "InternalListView.SelectedItems.Remove",
+          "lineNumber": 1083
+        },
+        {
+          "caller": "Container_Tapped",
+          "callee": "SyncRealizedSelectionVisuals",
+          "lineNumber": 1085
+        },
+        {
+          "caller": "GetCtrlShiftState",
+          "callee": "Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread",
+          "lineNumber": 1095
+        },
+        {
+          "caller": "GetCtrlShiftState",
+          "callee": "Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread",
+          "lineNumber": 1096
+        },
+        {
+          "caller": "SyncRealizedSelectionVisuals",
+          "callee": "InternalListView.ContainerFromIndex",
+          "lineNumber": 1111
+        },
+        {
+          "caller": "IsInteractiveElement",
+          "callee": "VisualTreeHelper.GetParent",
+          "lineNumber": 1125
+        },
+        {
+          "caller": "AddToPlaylistFlyout_Opening",
+          "callee": "flyout.Items.Remove",
+          "lineNumber": 1159
+        },
+        {
+          "caller": "AddToPlaylistFlyout_Opening",
+          "callee": "_dynamicPlaylistMenuItems.Clear",
+          "lineNumber": 1161
+        },
+        {
+          "caller": "AddToPlaylistFlyout_Opening",
+          "callee": "new MenuFlyoutItem",
+          "lineNumber": 1169
+        },
+        {
+          "caller": "AddToPlaylistFlyout_Opening",
+          "callee": "new FontIcon",
+          "lineNumber": 1173
+        },
+        {
+          "caller": "AddToPlaylistFlyout_Opening",
+          "callee": "_dynamicPlaylistMenuItems.Add",
+          "lineNumber": 1176
+        },
+        {
+          "caller": "AddToPlaylistFlyout_Opening",
+          "callee": "flyout.Items.Add",
+          "lineNumber": 1177
+        },
+        {
+          "caller": "PlaylistMenuItem_Click",
+          "callee": "ViewModel?.AddToPlaylistCommand?.Execute",
+          "lineNumber": 1185
+        },
+        {
+          "caller": "NewPlaylist_Click",
+          "callee": "ViewModel.SelectedItems\r\n            .OfType<ITrackItem>()\r\n            .Select(t => t.Id)\r\n            .ToList",
+          "lineNumber": 1193
+        },
+        {
+          "caller": "NewPlaylist_Click",
+          "callee": "ViewModel.SelectedItems\r\n            .OfType<ITrackItem>()\r\n            .Select",
+          "lineNumber": 1193
+        },
+        {
+          "caller": "NewPlaylist_Click",
+          "callee": "ViewModel.SelectedItems\r\n            .OfType<ITrackItem>",
+          "lineNumber": 1193
+        },
+        {
+          "caller": "NewPlaylist_Click",
+          "callee": "NewPlaylistRequested?.Invoke",
+          "lineNumber": 1198
+        },
+        {
+          "caller": "UpdateVisualState",
+          "callee": "ItemsSource?.Cast<object>().Any",
+          "lineNumber": 1218
+        },
+        {
+          "caller": "UpdateVisualState",
+          "callee": "ItemsSource?.Cast<object>",
+          "lineNumber": 1218
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 51,
+        "functionCount": 43,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/WhatsNewDialog.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 170,
+      "nonEmptyLines": 155,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/WhatsNewDialog.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 148,
+      "nonEmptyLines": 129,
+      "functions": [
+        {
+          "name": "WhatsNewDialog",
+          "startLine": 29,
+          "endLine": 43,
+          "params": []
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 45,
+          "endLine": 49,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "FeatureList_SelectionChanged",
+          "startLine": 51,
+          "endLine": 55,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateDetailPanelAsync",
+          "startLine": 57,
+          "endLine": 90,
+          "params": [
+            "feature"
+          ]
+        },
+        {
+          "name": "GotIt_Click",
+          "startLine": 92,
+          "endLine": 95,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ReleaseLink_Click",
+          "startLine": 97,
+          "endLine": 101,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ShowIfNeededAsync",
+          "startLine": 107,
+          "endLine": 147,
+          "params": [
+            "xamlRoot",
+            "settingsService",
+            "updateService"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "WhatsNewDialog",
+          "startLine": 19,
+          "endLine": 148,
+          "methods": [
+            "WhatsNewDialog",
+            "OnLoaded",
+            "FeatureList_SelectionChanged",
+            "UpdateDetailPanelAsync",
+            "GotIt_Click",
+            "ReleaseLink_Click",
+            "ShowIfNeededAsync"
+          ],
+          "properties": [
+            "Features",
+            "ReleaseTitle",
+            "VersionDisplay",
+            "Announcement",
+            "HasAnnouncement",
+            "ReleaseUrl",
+            "HasReleaseUrl"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Features",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "ReleaseTitle",
+          "line": 22,
+          "isDefault": false
+        },
+        {
+          "name": "VersionDisplay",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "Announcement",
+          "line": 24,
+          "isDefault": false
+        },
+        {
+          "name": "HasAnnouncement",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "ReleaseUrl",
+          "line": 26,
+          "isDefault": false
+        },
+        {
+          "name": "HasReleaseUrl",
+          "line": 27,
+          "isDefault": false
+        },
+        {
+          "name": "WhatsNewDialog",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "ShowIfNeededAsync",
+          "line": 107,
+          "isDefault": false
+        },
+        {
+          "name": "WhatsNewDialog",
+          "line": 19,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "WhatsNewDialog",
+          "callee": "ChangelogData.Releases.FirstOrDefault",
+          "lineNumber": 31
+        },
+        {
+          "caller": "WhatsNewDialog",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 36
+        },
+        {
+          "caller": "WhatsNewDialog",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 38
+        },
+        {
+          "caller": "WhatsNewDialog",
+          "callee": "InitializeComponent",
+          "lineNumber": 40
+        },
+        {
+          "caller": "FeatureList_SelectionChanged",
+          "callee": "UpdateDetailPanelAsync",
+          "lineNumber": 54
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "AnimationBuilder.Create()\r\n            .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(120))\r\n            .Translation(Axis.Y, to: 8, duration: TimeSpan.FromMilliseconds(120))\r\n            .StartAsync",
+          "lineNumber": 60
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "AnimationBuilder.Create()\r\n            .Opacity(to: 0, duration: TimeSpan.FromMilliseconds(120))\r\n            .Translation",
+          "lineNumber": 60
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "AnimationBuilder.Create()\r\n            .Opacity",
+          "lineNumber": 60
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "AnimationBuilder.Create",
+          "lineNumber": 60
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 61
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 62
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 69
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "new BitmapImage",
+          "lineNumber": 74
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "new Uri",
+          "lineNumber": 74
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "AnimationBuilder.Create()\r\n            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(250))\r\n            .Translation(Axis.Y, from: -12, to: 0, duration: TimeSpan.FromMilliseconds(250))\r\n            .StartAsync",
+          "lineNumber": 86
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "AnimationBuilder.Create()\r\n            .Opacity(from: 0, to: 1, duration: TimeSpan.FromMilliseconds(250))\r\n            .Translation",
+          "lineNumber": 86
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "AnimationBuilder.Create()\r\n            .Opacity",
+          "lineNumber": 86
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "AnimationBuilder.Create",
+          "lineNumber": 86
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 87
+        },
+        {
+          "caller": "UpdateDetailPanelAsync",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 88
+        },
+        {
+          "caller": "GotIt_Click",
+          "callee": "Hide",
+          "lineNumber": 94
+        },
+        {
+          "caller": "ReleaseLink_Click",
+          "callee": "Windows.System.Launcher.LaunchUriAsync",
+          "lineNumber": 100
+        },
+        {
+          "caller": "ReleaseLink_Click",
+          "callee": "new Uri",
+          "lineNumber": 100
+        },
+        {
+          "caller": "ShowIfNeededAsync",
+          "callee": "settingsService.Update",
+          "lineNumber": 118
+        },
+        {
+          "caller": "ShowIfNeededAsync",
+          "callee": "string.Equals",
+          "lineNumber": 123
+        },
+        {
+          "caller": "ShowIfNeededAsync",
+          "callee": "Ioc.Default.GetService<IActivityService>",
+          "lineNumber": 127
+        },
+        {
+          "caller": "ShowIfNeededAsync",
+          "callee": "activityService?.Post",
+          "lineNumber": 128
+        },
+        {
+          "caller": "ShowIfNeededAsync",
+          "callee": "new WhatsNewDialog",
+          "lineNumber": 138
+        },
+        {
+          "caller": "ShowIfNeededAsync",
+          "callee": "dialog.ShowAsync",
+          "lineNumber": 139
+        },
+        {
+          "caller": "ShowIfNeededAsync",
+          "callee": "settingsService.Update",
+          "lineNumber": 146
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 10,
+        "functionCount": 7,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/ZoomContentControl.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 66,
+      "nonEmptyLines": 54,
+      "functions": [
+        {
+          "name": "ZoomContentControl",
+          "startLine": 28,
+          "endLine": 33,
+          "params": []
+        },
+        {
+          "name": "OnZoomChanged",
+          "startLine": 35,
+          "endLine": 38,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSizeChanged",
+          "startLine": 40,
+          "endLine": 43,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyZoomLayout",
+          "startLine": 45,
+          "endLine": 65,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "ZoomContentControl",
+          "startLine": 14,
+          "endLine": 66,
+          "methods": [
+            "ZoomContentControl",
+            "OnZoomChanged",
+            "OnSizeChanged",
+            "ApplyZoomLayout"
+          ],
+          "properties": [
+            "_scaleTransform",
+            "ZoomProperty",
+            "Zoom"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ZoomProperty",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "Zoom",
+          "line": 22,
+          "isDefault": false
+        },
+        {
+          "name": "ZoomContentControl",
+          "line": 28,
+          "isDefault": false
+        },
+        {
+          "name": "ZoomContentControl",
+          "line": 14,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "OnZoomChanged",
+          "callee": "((ZoomContentControl)d).ApplyZoomLayout",
+          "lineNumber": 37
+        },
+        {
+          "caller": "OnSizeChanged",
+          "callee": "ApplyZoomLayout",
+          "lineNumber": 42
+        },
+        {
+          "caller": "ApplyZoomLayout",
+          "callee": "Math.Max",
+          "lineNumber": 49
+        },
+        {
+          "caller": "ApplyZoomLayout",
+          "callee": "new Point",
+          "lineNumber": 59
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 4,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Converters/BoolToBackgroundConverter.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 28,
+      "nonEmptyLines": 23,
+      "functions": [
+        {
+          "name": "Convert",
+          "startLine": 12,
+          "endLine": 22,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        },
+        {
+          "name": "ConvertBack",
+          "startLine": 24,
+          "endLine": 27,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "BoolToBackgroundConverter",
+          "startLine": 8,
+          "endLine": 28,
+          "methods": [
+            "Convert",
+            "ConvertBack"
+          ],
+          "properties": [
+            "Invert"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Invert",
+          "line": 10,
+          "isDefault": false
+        },
+        {
+          "name": "Convert",
+          "line": 12,
+          "isDefault": false
+        },
+        {
+          "name": "ConvertBack",
+          "line": 24,
+          "isDefault": false
+        },
+        {
+          "name": "BoolToBackgroundConverter",
+          "line": 8,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Convert",
+          "callee": "new SolidColorBrush",
+          "lineNumber": 21
+        },
+        {
+          "caller": "ConvertBack",
+          "callee": "new NotImplementedException",
+          "lineNumber": 26
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Converters/BoolToFollowTextConverter.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 34,
+      "nonEmptyLines": 29,
+      "functions": [
+        {
+          "name": "Convert",
+          "startLine": 9,
+          "endLine": 14,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        },
+        {
+          "name": "ConvertBack",
+          "startLine": 16,
+          "endLine": 19,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        },
+        {
+          "name": "Convert",
+          "startLine": 25,
+          "endLine": 28,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        },
+        {
+          "name": "ConvertBack",
+          "startLine": 30,
+          "endLine": 33,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "BoolToFollowTextConverter",
+          "startLine": 7,
+          "endLine": 20,
+          "methods": [
+            "Convert",
+            "ConvertBack"
+          ],
+          "properties": []
+        },
+        {
+          "name": "BoolToFollowGlyphConverter",
+          "startLine": 22,
+          "endLine": 34,
+          "methods": [
+            "Convert",
+            "ConvertBack"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "Convert",
+          "line": 9,
+          "isDefault": false
+        },
+        {
+          "name": "ConvertBack",
+          "line": 16,
+          "isDefault": false
+        },
+        {
+          "name": "BoolToFollowTextConverter",
+          "line": 7,
+          "isDefault": false
+        },
+        {
+          "name": "Convert",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "ConvertBack",
+          "line": 30,
+          "isDefault": false
+        },
+        {
+          "name": "BoolToFollowGlyphConverter",
+          "line": 22,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "Convert",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 11
+        },
+        {
+          "caller": "ConvertBack",
+          "callee": "new NotImplementedException",
+          "lineNumber": 18
+        },
+        {
+          "caller": "ConvertBack",
+          "callee": "new NotImplementedException",
+          "lineNumber": 32
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 6,
+        "functionCount": 4,
+        "classCount": 2
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Converters/BoolToGridListGlyphConverter.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 17,
+      "nonEmptyLines": 14,
+      "functions": [
+        {
+          "name": "Convert",
+          "startLine": 8,
+          "endLine": 13,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        },
+        {
+          "name": "ConvertBack",
+          "startLine": 15,
+          "endLine": 16,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "BoolToGridListGlyphConverter",
+          "startLine": 6,
+          "endLine": 17,
+          "methods": [
+            "Convert",
+            "ConvertBack"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "Convert",
+          "line": 8,
+          "isDefault": false
+        },
+        {
+          "name": "ConvertBack",
+          "line": 15,
+          "isDefault": false
+        },
+        {
+          "name": "BoolToGridListGlyphConverter",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ConvertBack",
+          "callee": "new NotImplementedException",
+          "lineNumber": 16
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Converters/BoolToHeartGlyphConverter.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 18,
+      "nonEmptyLines": 15,
+      "functions": [
+        {
+          "name": "Convert",
+          "startLine": 8,
+          "endLine": 12,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        },
+        {
+          "name": "ConvertBack",
+          "startLine": 14,
+          "endLine": 17,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "BoolToHeartGlyphConverter",
+          "startLine": 6,
+          "endLine": 18,
+          "methods": [
+            "Convert",
+            "ConvertBack"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "Convert",
+          "line": 8,
+          "isDefault": false
+        },
+        {
+          "name": "ConvertBack",
+          "line": 14,
+          "isDefault": false
+        },
+        {
+          "name": "BoolToHeartGlyphConverter",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ConvertBack",
+          "callee": "new NotImplementedException",
+          "lineNumber": 16
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Converters/BoolToVisibilityConverter.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 25,
+      "nonEmptyLines": 20,
+      "functions": [
+        {
+          "name": "Convert",
+          "startLine": 11,
+          "endLine": 18,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        },
+        {
+          "name": "ConvertBack",
+          "startLine": 20,
+          "endLine": 24,
+          "params": [
+            "value",
+            "targetType",
+            "parameter",
+            "language"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "BoolToVisibilityConverter",
+          "startLine": 7,
+          "endLine": 25,
+          "methods": [
+            "Convert",
+            "ConvertBack"
+          ],
+          "properties": [
+            "Invert"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Invert",
+          "line": 9,
+          "isDefault": false
+        },
+        {
+          "name": "Convert",
+          "line": 11,
+          "isDefault": false
+        },
+        {
+          "name": "ConvertBack",
+          "line": 20,
+          "isDefault": false
+        },
+        {
+          "name": "BoolToVisibilityConverter",
+          "line": 7,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    }
+  ]
+}

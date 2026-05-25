@@ -8,6 +8,7 @@ using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.Services.Infra;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
+using Wavee.UI.Services.Actions;
 
 namespace Wavee.UI.WinUI.Data.Contexts;
 
@@ -17,11 +18,12 @@ namespace Wavee.UI.WinUI.Data.Contexts;
 /// <see cref="ISpotifyLibraryService"/>. Publishes <see cref="ChangeScope.Library"/>
 /// on every successful Pin/Unpin.
 /// </summary>
-public sealed class PinService : IPinService
+public sealed class PinService : IPinService, IPinActionExecutor
 {
     private readonly IMetadataDatabase _database;
     private readonly ISpotifyLibraryService? _spotifyLibraryService;
     private readonly IChangeBus _changeBus;
+    private readonly IUserActionRunner? _actionRunner;
     private readonly ILogger<PinService>? _logger;
 
     private readonly HashSet<string> _pinnedUris = new(StringComparer.Ordinal);
@@ -31,11 +33,13 @@ public sealed class PinService : IPinService
         IMetadataDatabase database,
         IChangeBus changeBus,
         ISpotifyLibraryService? spotifyLibraryService = null,
+        IUserActionRunner? actionRunner = null,
         ILogger<PinService>? logger = null)
     {
         _database = database;
         _changeBus = changeBus;
         _spotifyLibraryService = spotifyLibraryService;
+        _actionRunner = actionRunner;
         _logger = logger;
     }
 
@@ -114,26 +118,53 @@ public sealed class PinService : IPinService
 
     public async Task<bool> PinAsync(string uri, CancellationToken ct = default)
     {
-        if (_spotifyLibraryService is null) return false;
-        var ok = await _spotifyLibraryService.PinToSidebarAsync(uri, ct).ConfigureAwait(false);
-        if (ok)
-        {
-            lock (_pinnedUrisGate) _pinnedUris.Add(uri);
-            _changeBus.Publish(ChangeScope.Library);
-        }
-        return ok;
+        var action = new SetPinnedAction(this, uri, previousPinned: IsPinned(uri), newPinned: true);
+        return await RunPinActionAsync(action, ct).ConfigureAwait(false);
     }
 
     public async Task<bool> UnpinAsync(string uri, CancellationToken ct = default)
     {
-        if (_spotifyLibraryService is null) return false;
-        var ok = await _spotifyLibraryService.UnpinFromSidebarAsync(uri, ct).ConfigureAwait(false);
+        var action = new SetPinnedAction(this, uri, previousPinned: IsPinned(uri), newPinned: false);
+        return await RunPinActionAsync(action, ct).ConfigureAwait(false);
+    }
+
+    public async Task ApplyPinnedStateAsync(string uri, bool pinned, CancellationToken ct = default)
+    {
+        if (_spotifyLibraryService is null)
+            throw new InvalidOperationException("Pin actions require Spotify library service.");
+        if (IsPinned(uri) == pinned) return;
+
+        var ok = pinned
+            ? await _spotifyLibraryService.PinToSidebarAsync(uri, ct).ConfigureAwait(false)
+            : await _spotifyLibraryService.UnpinFromSidebarAsync(uri, ct).ConfigureAwait(false);
         if (ok)
         {
-            lock (_pinnedUrisGate) _pinnedUris.Remove(uri);
+            lock (_pinnedUrisGate)
+            {
+                if (pinned) _pinnedUris.Add(uri);
+                else _pinnedUris.Remove(uri);
+            }
             _changeBus.Publish(ChangeScope.Library);
         }
-        return ok;
+        if (!ok)
+            throw new InvalidOperationException(pinned ? "Couldn't pin item." : "Couldn't unpin item.");
+    }
+
+    private async Task<bool> RunPinActionAsync(SetPinnedAction action, CancellationToken ct)
+    {
+        try
+        {
+            if (_actionRunner is not null)
+                await _actionRunner.RunAsync(action, ct).ConfigureAwait(false);
+            else
+                await action.ExecuteAsync(ct).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Pin action failed for {Uri}", action.Descriptor.PayloadJson);
+            return false;
+        }
     }
 
     public bool IsPinned(string uri)

@@ -1,0 +1,1661 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 20,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": "src/Wavee/Protocol/Protos/audio_associations.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 15,
+      "nonEmptyLines": 11,
+      "definitions": [
+        {
+          "name": "AudioAssociations",
+          "kind": "message",
+          "fields": [
+            "association"
+          ],
+          "startLine": 7,
+          "endLine": 9
+        },
+        {
+          "name": "AudioAssociation",
+          "kind": "message",
+          "fields": [
+            "associated_uri"
+          ],
+          "startLine": 11,
+          "endLine": 15
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 2,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/authentication.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 168,
+      "nonEmptyLines": 145,
+      "definitions": [
+        {
+          "name": "ClientResponseEncrypted",
+          "kind": "message",
+          "fields": [
+            "login_credentials",
+            "account_creation",
+            "fingerprint_response",
+            "peer_ticket",
+            "system_info",
+            "platform_model",
+            "version_string",
+            "appkey",
+            "client_info"
+          ],
+          "startLine": 6,
+          "endLine": 16
+        },
+        {
+          "name": "LoginCredentials",
+          "kind": "message",
+          "fields": [
+            "username",
+            "typ",
+            "auth_data"
+          ],
+          "startLine": 18,
+          "endLine": 22
+        },
+        {
+          "name": "FingerprintResponseUnion",
+          "kind": "message",
+          "fields": [
+            "grain",
+            "hmac_ripemd"
+          ],
+          "startLine": 37,
+          "endLine": 40
+        },
+        {
+          "name": "FingerprintGrainResponse",
+          "kind": "message",
+          "fields": [
+            "encrypted_key"
+          ],
+          "startLine": 42,
+          "endLine": 44
+        },
+        {
+          "name": "FingerprintHmacRipemdResponse",
+          "kind": "message",
+          "fields": [
+            "hmac"
+          ],
+          "startLine": 46,
+          "endLine": 48
+        },
+        {
+          "name": "PeerTicketUnion",
+          "kind": "message",
+          "fields": [
+            "public_key",
+            "old_ticket"
+          ],
+          "startLine": 50,
+          "endLine": 53
+        },
+        {
+          "name": "PeerTicketPublicKey",
+          "kind": "message",
+          "fields": [
+            "public_key"
+          ],
+          "startLine": 55,
+          "endLine": 57
+        },
+        {
+          "name": "PeerTicketOld",
+          "kind": "message",
+          "fields": [
+            "peer_ticket",
+            "peer_ticket_signature"
+          ],
+          "startLine": 59,
+          "endLine": 62
+        },
+        {
+          "name": "SystemInfo",
+          "kind": "message",
+          "fields": [
+            "cpu_family",
+            "cpu_subtype",
+            "cpu_ext",
+            "brand",
+            "brand_flags",
+            "os",
+            "os_version",
+            "os_ext",
+            "system_information_string",
+            "device_id"
+          ],
+          "startLine": 64,
+          "endLine": 75
+        },
+        {
+          "name": "LibspotifyAppKey",
+          "kind": "message",
+          "fields": [
+            "version",
+            "devkey",
+            "signature",
+            "useragent",
+            "callback_hash"
+          ],
+          "startLine": 123,
+          "endLine": 129
+        },
+        {
+          "name": "ClientInfo",
+          "kind": "message",
+          "fields": [
+            "limited",
+            "fb",
+            "language"
+          ],
+          "startLine": 131,
+          "endLine": 135
+        },
+        {
+          "name": "ClientInfoFacebook",
+          "kind": "message",
+          "fields": [
+            "machine_id"
+          ],
+          "startLine": 137,
+          "endLine": 139
+        },
+        {
+          "name": "APWelcome",
+          "kind": "message",
+          "fields": [
+            "canonical_username",
+            "account_type_logged_in",
+            "credentials_type_logged_in",
+            "reusable_auth_credentials_type",
+            "reusable_auth_credentials",
+            "lfs_secret",
+            "account_info",
+            "fb"
+          ],
+          "startLine": 141,
+          "endLine": 150
+        },
+        {
+          "name": "AccountInfo",
+          "kind": "message",
+          "fields": [
+            "spotify",
+            "facebook"
+          ],
+          "startLine": 157,
+          "endLine": 160
+        },
+        {
+          "name": "AccountInfoSpotify",
+          "kind": "message",
+          "fields": [],
+          "startLine": 162,
+          "endLine": 163
+        },
+        {
+          "name": "AccountInfoFacebook",
+          "kind": "message",
+          "fields": [
+            "access_token",
+            "machine_id"
+          ],
+          "startLine": 165,
+          "endLine": 168
+        },
+        {
+          "name": "AuthenticationType",
+          "kind": "enum",
+          "fields": [
+            "AUTHENTICATION_USER_PASS",
+            "AUTHENTICATION_STORED_SPOTIFY_CREDENTIALS",
+            "AUTHENTICATION_STORED_FACEBOOK_CREDENTIALS",
+            "AUTHENTICATION_SPOTIFY_TOKEN",
+            "AUTHENTICATION_FACEBOOK_TOKEN"
+          ],
+          "startLine": 24,
+          "endLine": 30
+        },
+        {
+          "name": "AccountCreation",
+          "kind": "enum",
+          "fields": [
+            "ACCOUNT_CREATION_ALWAYS_PROMPT",
+            "ACCOUNT_CREATION_ALWAYS_CREATE"
+          ],
+          "startLine": 32,
+          "endLine": 35
+        },
+        {
+          "name": "CpuFamily",
+          "kind": "enum",
+          "fields": [
+            "CPU_UNKNOWN",
+            "CPU_X86",
+            "CPU_X86_64",
+            "CPU_PPC",
+            "CPU_PPC_64",
+            "CPU_ARM",
+            "CPU_IA64",
+            "CPU_SH",
+            "CPU_MIPS",
+            "CPU_BLACKFIN"
+          ],
+          "startLine": 77,
+          "endLine": 88
+        },
+        {
+          "name": "Brand",
+          "kind": "enum",
+          "fields": [
+            "BRAND_UNBRANDED",
+            "BRAND_INQ",
+            "BRAND_HTC",
+            "BRAND_NOKIA"
+          ],
+          "startLine": 90,
+          "endLine": 95
+        },
+        {
+          "name": "Os",
+          "kind": "enum",
+          "fields": [
+            "OS_UNKNOWN",
+            "OS_WINDOWS",
+            "OS_OSX",
+            "OS_IPHONE",
+            "OS_S60",
+            "OS_LINUX",
+            "OS_WINDOWS_CE",
+            "OS_ANDROID",
+            "OS_PALM",
+            "OS_FREEBSD",
+            "OS_BLACKBERRY",
+            "OS_SONOS",
+            "OS_LOGITECH",
+            "OS_WP7",
+            "OS_ONKYO",
+            "OS_PHILIPS",
+            "OS_WD",
+            "OS_VOLVO",
+            "OS_TIVO",
+            "OS_AWOX",
+            "OS_MEEGO",
+            "OS_QNXNTO",
+            "OS_BCO"
+          ],
+          "startLine": 97,
+          "endLine": 121
+        },
+        {
+          "name": "AccountType",
+          "kind": "enum",
+          "fields": [
+            "Spotify",
+            "Facebook"
+          ],
+          "startLine": 152,
+          "endLine": 155
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 22,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/autoplay_context_request.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 16,
+      "nonEmptyLines": 13,
+      "definitions": [
+        {
+          "name": "AutoplayContextRequest",
+          "kind": "message",
+          "fields": [
+            "context_uri",
+            "recent_track_uri",
+            "is_video"
+          ],
+          "startLine": 12,
+          "endLine": 16
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 1,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/canvaz-meta.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 14,
+      "nonEmptyLines": 11,
+      "definitions": [
+        {
+          "name": "Type",
+          "kind": "enum",
+          "fields": [
+            "IMAGE",
+            "VIDEO",
+            "VIDEO_LOOPING",
+            "VIDEO_LOOPING_RANDOM",
+            "GIF"
+          ],
+          "startLine": 8,
+          "endLine": 14
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 1,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/canvaz.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 40,
+      "nonEmptyLines": 33,
+      "definitions": [
+        {
+          "name": "Artist",
+          "kind": "message",
+          "fields": [
+            "uri",
+            "name",
+            "avatar"
+          ],
+          "startLine": 10,
+          "endLine": 14
+        },
+        {
+          "name": "EntityCanvazResponse",
+          "kind": "message",
+          "fields": [
+            "canvases",
+            "id",
+            "url",
+            "file_id",
+            "entity_uri",
+            "artist",
+            "explicit",
+            "uploaded_by",
+            "etag",
+            "canvas_uri",
+            "ttl_in_seconds"
+          ],
+          "startLine": 16,
+          "endLine": 32
+        },
+        {
+          "name": "EntityCanvazRequest",
+          "kind": "message",
+          "fields": [
+            "entities",
+            "entity_uri",
+            "etag"
+          ],
+          "startLine": 34,
+          "endLine": 40
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 3,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/client_token.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 125,
+      "nonEmptyLines": 98,
+      "definitions": [
+        {
+          "name": "ClientTokenRequest",
+          "kind": "message",
+          "fields": [
+            "request_type",
+            "client_data",
+            "challenge_answers"
+          ],
+          "startLine": 10,
+          "endLine": 17
+        },
+        {
+          "name": "ClientDataRequest",
+          "kind": "message",
+          "fields": [
+            "client_version",
+            "client_id"
+          ],
+          "startLine": 19,
+          "endLine": 26
+        },
+        {
+          "name": "ChallengeAnswersRequest",
+          "kind": "message",
+          "fields": [
+            "state",
+            "answers"
+          ],
+          "startLine": 28,
+          "endLine": 31
+        },
+        {
+          "name": "ClientTokenResponse",
+          "kind": "message",
+          "fields": [
+            "response_type",
+            "granted_token",
+            "challenges"
+          ],
+          "startLine": 33,
+          "endLine": 40
+        },
+        {
+          "name": "TokenDomain",
+          "kind": "message",
+          "fields": [
+            "domain"
+          ],
+          "startLine": 42,
+          "endLine": 44
+        },
+        {
+          "name": "GrantedTokenResponse",
+          "kind": "message",
+          "fields": [
+            "token",
+            "expires_after_seconds",
+            "refresh_after_seconds",
+            "domains"
+          ],
+          "startLine": 46,
+          "endLine": 51
+        },
+        {
+          "name": "ChallengesResponse",
+          "kind": "message",
+          "fields": [
+            "state",
+            "challenges"
+          ],
+          "startLine": 53,
+          "endLine": 56
+        },
+        {
+          "name": "ClientSecretParameters",
+          "kind": "message",
+          "fields": [
+            "salt"
+          ],
+          "startLine": 58,
+          "endLine": 60
+        },
+        {
+          "name": "EvaluateJSParameters",
+          "kind": "message",
+          "fields": [
+            "code",
+            "libraries"
+          ],
+          "startLine": 62,
+          "endLine": 65
+        },
+        {
+          "name": "HashCashParameters",
+          "kind": "message",
+          "fields": [
+            "length",
+            "prefix"
+          ],
+          "startLine": 67,
+          "endLine": 70
+        },
+        {
+          "name": "Challenge",
+          "kind": "message",
+          "fields": [
+            "type",
+            "client_secret_parameters",
+            "evaluate_js_parameters",
+            "evaluate_hashcash_parameters"
+          ],
+          "startLine": 72,
+          "endLine": 80
+        },
+        {
+          "name": "ClientSecretHMACAnswer",
+          "kind": "message",
+          "fields": [
+            "hmac"
+          ],
+          "startLine": 82,
+          "endLine": 84
+        },
+        {
+          "name": "EvaluateJSAnswer",
+          "kind": "message",
+          "fields": [
+            "result"
+          ],
+          "startLine": 86,
+          "endLine": 88
+        },
+        {
+          "name": "HashCashAnswer",
+          "kind": "message",
+          "fields": [
+            "suffix"
+          ],
+          "startLine": 90,
+          "endLine": 92
+        },
+        {
+          "name": "ChallengeAnswer",
+          "kind": "message",
+          "fields": [
+            "ChallengeType",
+            "client_secret",
+            "evaluate_js",
+            "hash_cash"
+          ],
+          "startLine": 94,
+          "endLine": 102
+        },
+        {
+          "name": "ClientTokenBadRequest",
+          "kind": "message",
+          "fields": [
+            "message"
+          ],
+          "startLine": 104,
+          "endLine": 106
+        },
+        {
+          "name": "ClientTokenRequestType",
+          "kind": "enum",
+          "fields": [
+            "REQUEST_UNKNOWN",
+            "REQUEST_CLIENT_DATA_REQUEST",
+            "REQUEST_CHALLENGE_ANSWERS_REQUEST"
+          ],
+          "startLine": 108,
+          "endLine": 112
+        },
+        {
+          "name": "ClientTokenResponseType",
+          "kind": "enum",
+          "fields": [
+            "RESPONSE_UNKNOWN",
+            "RESPONSE_GRANTED_TOKEN_RESPONSE",
+            "RESPONSE_CHALLENGES_RESPONSE"
+          ],
+          "startLine": 114,
+          "endLine": 118
+        },
+        {
+          "name": "ChallengeType",
+          "kind": "enum",
+          "fields": [
+            "CHALLENGE_UNKNOWN",
+            "CHALLENGE_CLIENT_SECRET_HMAC",
+            "CHALLENGE_EVALUATE_JS",
+            "CHALLENGE_HASH_CASH"
+          ],
+          "startLine": 120,
+          "endLine": 125
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 19,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/collection2v2.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 63,
+      "nonEmptyLines": 51,
+      "definitions": [
+        {
+          "name": "PageRequest",
+          "kind": "message",
+          "fields": [
+            "username",
+            "set",
+            "pagination_token",
+            "limit"
+          ],
+          "startLine": 11,
+          "endLine": 16
+        },
+        {
+          "name": "CollectionItem",
+          "kind": "message",
+          "fields": [
+            "uri",
+            "added_at",
+            "is_removed"
+          ],
+          "startLine": 18,
+          "endLine": 22
+        },
+        {
+          "name": "PageResponse",
+          "kind": "message",
+          "fields": [
+            "items",
+            "next_page_token",
+            "sync_token"
+          ],
+          "startLine": 24,
+          "endLine": 28
+        },
+        {
+          "name": "DeltaRequest",
+          "kind": "message",
+          "fields": [
+            "username",
+            "set",
+            "last_sync_token"
+          ],
+          "startLine": 30,
+          "endLine": 34
+        },
+        {
+          "name": "DeltaResponse",
+          "kind": "message",
+          "fields": [
+            "delta_update_possible",
+            "items",
+            "sync_token"
+          ],
+          "startLine": 36,
+          "endLine": 40
+        },
+        {
+          "name": "WriteRequest",
+          "kind": "message",
+          "fields": [
+            "username",
+            "set",
+            "items",
+            "client_update_id"
+          ],
+          "startLine": 42,
+          "endLine": 47
+        },
+        {
+          "name": "PubSubUpdate",
+          "kind": "message",
+          "fields": [
+            "username",
+            "set",
+            "items",
+            "client_update_id"
+          ],
+          "startLine": 49,
+          "endLine": 54
+        },
+        {
+          "name": "InitializedRequest",
+          "kind": "message",
+          "fields": [
+            "username",
+            "set"
+          ],
+          "startLine": 56,
+          "endLine": 59
+        },
+        {
+          "name": "InitializedResponse",
+          "kind": "message",
+          "fields": [
+            "initialized"
+          ],
+          "startLine": 61,
+          "endLine": 63
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 9,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/collection_add_remove_items_request.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 18,
+      "nonEmptyLines": 12,
+      "definitions": [
+        {
+          "name": "CollectionAddRemoveItemsRequest",
+          "kind": "message",
+          "fields": [
+            "item"
+          ],
+          "startLine": 12,
+          "endLine": 14
+        },
+        {
+          "name": "CollectionAddRemoveItemsResponse",
+          "kind": "message",
+          "fields": [
+            "status"
+          ],
+          "startLine": 16,
+          "endLine": 18
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 2,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/collection_index.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 39,
+      "nonEmptyLines": 32,
+      "definitions": [
+        {
+          "name": "IndexRepairerState",
+          "kind": "message",
+          "fields": [
+            "last_checked_uri",
+            "last_full_check_finished_at"
+          ],
+          "startLine": 10,
+          "endLine": 13
+        },
+        {
+          "name": "CollectionTrackEntry",
+          "kind": "message",
+          "fields": [
+            "uri",
+            "track_name",
+            "album_uri",
+            "album_name",
+            "disc_number",
+            "track_number",
+            "artist_uri",
+            "artist_name",
+            "add_time"
+          ],
+          "startLine": 15,
+          "endLine": 25
+        },
+        {
+          "name": "CollectionAlbumLikeEntry",
+          "kind": "message",
+          "fields": [
+            "uri",
+            "album_name",
+            "creator_uri",
+            "creator_name",
+            "add_time"
+          ],
+          "startLine": 27,
+          "endLine": 33
+        },
+        {
+          "name": "CollectionArtistEntry",
+          "kind": "message",
+          "fields": [
+            "uri",
+            "artist_name",
+            "add_time"
+          ],
+          "startLine": 35,
+          "endLine": 39
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 4,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/collection_platform_requests.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 22,
+      "nonEmptyLines": 17,
+      "definitions": [
+        {
+          "name": "CollectionPlatformItemsRequest",
+          "kind": "message",
+          "fields": [
+            "set",
+            "items"
+          ],
+          "startLine": 10,
+          "endLine": 13
+        },
+        {
+          "name": "CollectionSet",
+          "kind": "enum",
+          "fields": [
+            "UNKNOWN",
+            "SHOW",
+            "BAN",
+            "LISTENLATER",
+            "IGNOREINRECS",
+            "ENHANCED"
+          ],
+          "startLine": 15,
+          "endLine": 22
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 2,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/collection_platform_responses.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 25,
+      "nonEmptyLines": 18,
+      "definitions": [
+        {
+          "name": "CollectionPlatformSimpleResponse",
+          "kind": "message",
+          "fields": [
+            "error_msg"
+          ],
+          "startLine": 10,
+          "endLine": 12
+        },
+        {
+          "name": "CollectionPlatformItem",
+          "kind": "message",
+          "fields": [
+            "uri",
+            "add_time"
+          ],
+          "startLine": 14,
+          "endLine": 17
+        },
+        {
+          "name": "CollectionPlatformItemsResponse",
+          "kind": "message",
+          "fields": [
+            "items"
+          ],
+          "startLine": 19,
+          "endLine": 21
+        },
+        {
+          "name": "CollectionPlatformContainsResponse",
+          "kind": "message",
+          "fields": [
+            "found"
+          ],
+          "startLine": 23,
+          "endLine": 25
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 4,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/connect.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 214,
+      "nonEmptyLines": 188,
+      "definitions": [
+        {
+          "name": "ClusterUpdate",
+          "kind": "message",
+          "fields": [
+            "cluster",
+            "update_reason",
+            "ack_id",
+            "devices_that_changed"
+          ],
+          "startLine": 14,
+          "endLine": 19
+        },
+        {
+          "name": "Device",
+          "kind": "message",
+          "fields": [
+            "device_info",
+            "player_state",
+            "private_device_info",
+            "transfer_data"
+          ],
+          "startLine": 21,
+          "endLine": 26
+        },
+        {
+          "name": "Cluster",
+          "kind": "message",
+          "fields": [
+            "changed_timestamp_ms",
+            "active_device_id",
+            "player_state",
+            "transfer_data",
+            "transfer_data_timestamp",
+            "need_full_player_state",
+            "server_timestamp_ms",
+            "needs_state_updates",
+            "started_playing_at_timestamp"
+          ],
+          "startLine": 28,
+          "endLine": 41
+        },
+        {
+          "name": "PutStateRequest",
+          "kind": "message",
+          "fields": [
+            "callback_url",
+            "device",
+            "member_type",
+            "is_active",
+            "put_state_reason",
+            "message_id",
+            "last_command_sent_by_device_id",
+            "last_command_message_id",
+            "started_playing_at",
+            "has_been_playing_for_ms",
+            "client_side_timestamp",
+            "only_write_player_state"
+          ],
+          "startLine": 43,
+          "endLine": 56
+        },
+        {
+          "name": "PrivateDeviceInfo",
+          "kind": "message",
+          "fields": [
+            "platform"
+          ],
+          "startLine": 58,
+          "endLine": 60
+        },
+        {
+          "name": "DeviceInfo",
+          "kind": "message",
+          "fields": [
+            "can_play",
+            "volume",
+            "name",
+            "capabilities",
+            "device_software_version",
+            "device_type",
+            "spirc_version",
+            "device_id",
+            "is_private_session",
+            "is_social_connect",
+            "client_id",
+            "brand",
+            "model",
+            "product_id",
+            "deduplication_id",
+            "selected_alias_id",
+            "is_offline",
+            "public_ip",
+            "license",
+            "is_group",
+            "is_dynamic_device",
+            "disallow_playback_reasons",
+            "disallow_transfer_reasons",
+            "audio_output_device_info"
+          ],
+          "startLine": 62,
+          "endLine": 91
+        },
+        {
+          "name": "AudioOutputDeviceInfo",
+          "kind": "message",
+          "fields": [
+            "audio_output_device_type",
+            "device_name"
+          ],
+          "startLine": 93,
+          "endLine": 96
+        },
+        {
+          "name": "Capabilities",
+          "kind": "message",
+          "fields": [
+            "can_be_player",
+            "restrict_to_local",
+            "gaia_eq_connect_id",
+            "supports_logout",
+            "is_observable",
+            "volume_steps",
+            "supported_types",
+            "command_acks",
+            "supports_rename",
+            "hidden",
+            "disable_volume",
+            "connect_disabled",
+            "supports_playlist_v2",
+            "is_controllable",
+            "supports_external_episodes",
+            "supports_set_backend_metadata",
+            "supports_transfer_command",
+            "supports_command_request",
+            "is_voice_enabled",
+            "needs_full_player_state",
+            "supports_gzip_pushes",
+            "supports_set_options_command",
+            "supports_hifi",
+            "connect_capabilities",
+            "supports_rooms",
+            "supports_dj",
+            "supported_audio_quality"
+          ],
+          "startLine": 98,
+          "endLine": 131
+        },
+        {
+          "name": "CapabilitySupportDetails",
+          "kind": "message",
+          "fields": [
+            "fully_supported",
+            "user_eligible",
+            "device_supported"
+          ],
+          "startLine": 133,
+          "endLine": 137
+        },
+        {
+          "name": "ConnectCommandOptions",
+          "kind": "message",
+          "fields": [
+            "message_id",
+            "target_alias_id"
+          ],
+          "startLine": 139,
+          "endLine": 142
+        },
+        {
+          "name": "ConnectLoggingParams",
+          "kind": "message",
+          "fields": [
+            "interaction_ids",
+            "page_instance_ids"
+          ],
+          "startLine": 144,
+          "endLine": 147
+        },
+        {
+          "name": "LogoutCommand",
+          "kind": "message",
+          "fields": [
+            "command_options"
+          ],
+          "startLine": 149,
+          "endLine": 151
+        },
+        {
+          "name": "SetVolumeCommand",
+          "kind": "message",
+          "fields": [
+            "volume",
+            "command_options",
+            "logging_params",
+            "connection_type"
+          ],
+          "startLine": 153,
+          "endLine": 158
+        },
+        {
+          "name": "RenameCommand",
+          "kind": "message",
+          "fields": [
+            "rename_to",
+            "command_options"
+          ],
+          "startLine": 160,
+          "endLine": 163
+        },
+        {
+          "name": "SetBackendMetadataCommand",
+          "kind": "message",
+          "fields": [],
+          "startLine": 165,
+          "endLine": 167
+        },
+        {
+          "name": "AudioOutputDeviceType",
+          "kind": "enum",
+          "fields": [
+            "UNKNOWN_AUDIO_OUTPUT_DEVICE_TYPE",
+            "BUILT_IN_SPEAKER",
+            "LINE_OUT",
+            "BLUETOOTH",
+            "AIRPLAY",
+            "AUTOMOTIVE",
+            "CAR_PROJECTED"
+          ],
+          "startLine": 169,
+          "endLine": 177
+        },
+        {
+          "name": "PutStateReason",
+          "kind": "enum",
+          "fields": [
+            "UNKNOWN_PUT_STATE_REASON",
+            "SPIRC_HELLO",
+            "SPIRC_NOTIFY",
+            "NEW_DEVICE",
+            "PLAYER_STATE_CHANGED",
+            "VOLUME_CHANGED",
+            "PICKER_OPENED",
+            "BECAME_INACTIVE",
+            "ALIAS_CHANGED",
+            "NEW_CONNECTION",
+            "PULL_PLAYBACK",
+            "AUDIO_DRIVER_INFO_CHANGED",
+            "PUT_STATE_RATE_LIMITED",
+            "BACKEND_METADATA_APPLIED"
+          ],
+          "startLine": 179,
+          "endLine": 194
+        },
+        {
+          "name": "MemberType",
+          "kind": "enum",
+          "fields": [
+            "SPIRC_V2",
+            "SPIRC_V3",
+            "CONNECT_STATE",
+            "CONNECT_STATE_EXTENDED",
+            "ACTIVE_DEVICE_TRACKER",
+            "PLAY_TOKEN"
+          ],
+          "startLine": 196,
+          "endLine": 203
+        },
+        {
+          "name": "ClusterUpdateReason",
+          "kind": "enum",
+          "fields": [
+            "UNKNOWN_CLUSTER_UPDATE_REASON",
+            "DEVICES_DISAPPEARED",
+            "DEVICE_STATE_CHANGED",
+            "NEW_DEVICE_APPEARED",
+            "DEVICE_VOLUME_CHANGED",
+            "DEVICE_ALIAS_CHANGED",
+            "DEVICE_NEW_CONNECTION"
+          ],
+          "startLine": 205,
+          "endLine": 213
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 19,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/connectivity.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 76,
+      "nonEmptyLines": 66,
+      "definitions": [
+        {
+          "name": "ConnectivitySdkData",
+          "kind": "message",
+          "fields": [
+            "platform_specific_data",
+            "device_id"
+          ],
+          "startLine": 8,
+          "endLine": 11
+        },
+        {
+          "name": "PlatformSpecificData",
+          "kind": "message",
+          "fields": [
+            "android",
+            "ios",
+            "desktop_macos",
+            "desktop_windows",
+            "desktop_linux"
+          ],
+          "startLine": 13,
+          "endLine": 21
+        },
+        {
+          "name": "NativeAndroidData",
+          "kind": "message",
+          "fields": [
+            "screen_dimensions",
+            "android_version",
+            "api_version",
+            "device_name",
+            "model_str",
+            "vendor",
+            "vendor_2",
+            "unknown_value_8"
+          ],
+          "startLine": 23,
+          "endLine": 32
+        },
+        {
+          "name": "NativeIOSData",
+          "kind": "message",
+          "fields": [
+            "user_interface_idiom",
+            "target_iphone_simulator",
+            "hw_machine",
+            "system_version",
+            "simulator_model_identifier"
+          ],
+          "startLine": 34,
+          "endLine": 41
+        },
+        {
+          "name": "NativeDesktopWindowsData",
+          "kind": "message",
+          "fields": [
+            "os_version",
+            "os_build",
+            "platform_id",
+            "unknown_value_5",
+            "unknown_value_6",
+            "image_file_machine",
+            "pe_machine",
+            "unknown_value_10"
+          ],
+          "startLine": 43,
+          "endLine": 55
+        },
+        {
+          "name": "NativeDesktopLinuxData",
+          "kind": "message",
+          "fields": [
+            "system_name",
+            "system_release",
+            "system_version",
+            "hardware"
+          ],
+          "startLine": 57,
+          "endLine": 62
+        },
+        {
+          "name": "NativeDesktopMacOSData",
+          "kind": "message",
+          "fields": [
+            "system_version",
+            "hw_model",
+            "compiled_cpu_type"
+          ],
+          "startLine": 64,
+          "endLine": 68
+        },
+        {
+          "name": "Screen",
+          "kind": "message",
+          "fields": [
+            "width",
+            "height",
+            "density",
+            "unknown_value_4",
+            "unknown_value_5"
+          ],
+          "startLine": 70,
+          "endLine": 76
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 8,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/context.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 18,
+      "nonEmptyLines": 14,
+      "definitions": [
+        {
+          "name": "Context",
+          "kind": "message",
+          "fields": [
+            "uri",
+            "url",
+            "restrictions",
+            "pages",
+            "loading"
+          ],
+          "startLine": 11,
+          "endLine": 18
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 1,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/context_page.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 16,
+      "nonEmptyLines": 12,
+      "definitions": [
+        {
+          "name": "ContextPage",
+          "kind": "message",
+          "fields": [
+            "page_url",
+            "next_page_url",
+            "tracks",
+            "loading"
+          ],
+          "startLine": 10,
+          "endLine": 16
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 1,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/context_player_options.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 20,
+      "nonEmptyLines": 16,
+      "definitions": [
+        {
+          "name": "ContextPlayerOptions",
+          "kind": "message",
+          "fields": [
+            "shuffling_context",
+            "repeating_context",
+            "repeating_track",
+            "playback_speed"
+          ],
+          "startLine": 8,
+          "endLine": 13
+        },
+        {
+          "name": "ContextPlayerOptionOverrides",
+          "kind": "message",
+          "fields": [
+            "shuffling_context",
+            "repeating_context",
+            "repeating_track",
+            "playback_speed"
+          ],
+          "startLine": 15,
+          "endLine": 20
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 2,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/context_track.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 13,
+      "nonEmptyLines": 10,
+      "definitions": [
+        {
+          "name": "ContextTrack",
+          "kind": "message",
+          "fields": [
+            "uri",
+            "uid",
+            "gid"
+          ],
+          "startLine": 8,
+          "endLine": 13
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 1,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/devices.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 34,
+      "nonEmptyLines": 30,
+      "definitions": [
+        {
+          "name": "DeviceAlias",
+          "kind": "message",
+          "fields": [
+            "id",
+            "display_name",
+            "is_group"
+          ],
+          "startLine": 8,
+          "endLine": 12
+        },
+        {
+          "name": "DeviceType",
+          "kind": "enum",
+          "fields": [
+            "UNKNOWN",
+            "COMPUTER",
+            "TABLET",
+            "SMARTPHONE",
+            "SPEAKER",
+            "TV",
+            "AVR",
+            "STB",
+            "AUDIO_DONGLE",
+            "GAME_CONSOLE",
+            "CAST_VIDEO",
+            "CAST_AUDIO",
+            "AUTOMOBILE",
+            "SMARTWATCH",
+            "CHROMEBOOK",
+            "UNKNOWN_SPOTIFY",
+            "CAR_THING",
+            "OBSERVER",
+            "HOME_THING"
+          ],
+          "startLine": 14,
+          "endLine": 34
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 2,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/entity_extension_data.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 22,
+      "nonEmptyLines": 17,
+      "definitions": [
+        {
+          "name": "EntityExtensionDataHeader",
+          "kind": "message",
+          "fields": [
+            "status_code",
+            "etag",
+            "locale",
+            "cache_ttl_in_seconds",
+            "offline_ttl_in_seconds"
+          ],
+          "startLine": 10,
+          "endLine": 16
+        },
+        {
+          "name": "EntityExtensionData",
+          "kind": "message",
+          "fields": [
+            "entity_uri"
+          ],
+          "startLine": 18,
+          "endLine": 22
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 2,
+        "endpointCount": 0
+      }
+    },
+    {
+      "path": "src/Wavee/Protocol/Protos/es_optional.proto",
+      "language": "protobuf",
+      "fileCategory": "data",
+      "totalLines": 20,
+      "nonEmptyLines": 15,
+      "definitions": [
+        {
+          "name": "OptionalInt64",
+          "kind": "message",
+          "fields": [
+            "value"
+          ],
+          "startLine": 10,
+          "endLine": 12
+        },
+        {
+          "name": "OptionalDouble",
+          "kind": "message",
+          "fields": [
+            "value"
+          ],
+          "startLine": 14,
+          "endLine": 16
+        },
+        {
+          "name": "OptionalBoolean",
+          "kind": "message",
+          "fields": [
+            "value"
+          ],
+          "startLine": 18,
+          "endLine": 20
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 3,
+        "endpointCount": 0
+      }
+    }
+  ]
+}

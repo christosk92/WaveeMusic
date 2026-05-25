@@ -68,7 +68,12 @@
                 <cards:ContentCard
                 ImageUrl="{x:Bind BestMediumImageUrl, Mode=OneWay}"
                 Title="{x:Bind Title, Mode=OneWay}"
-                Subtitle="{x:Bind DisplaySubtitle, Mode=OneWay}"
+                Subtitle="{x:Bind Subtitle, Mode=OneWay}"
+                SubtitleMaxLines="{x:Bind SubtitleMaxLines, Mode=OneWay}"
+                SubtitleNavigationUri="{x:Bind SubtitleNavigationUri, Mode=OneWay}"
+                SubtitleNavigationTitle="{x:Bind SubtitleNavigationTitle, Mode=OneWay}"
+                Badge="{x:Bind AlbumMetadataSubtitle, Mode=OneWay}"
+                BadgeForeground="{ThemeResource TextFillColorTertiaryBrush}"
                 PlaceholderColorHex="{x:Bind ColorHex, Mode=OneWay}"
                 IsCircularImage="False"
                 NavigationUri="{x:Bind Uri, Mode=OneWay}"

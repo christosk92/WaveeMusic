@@ -1,0 +1,156 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml",
+      "language": "xaml",
+      "sizeLines": 67,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoGripperView.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 161,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml",
+      "language": "xaml",
+      "sizeLines": 50,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/MiniVideoPlayer/VideoSurfaceHost.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 425,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml",
+      "language": "xaml",
+      "sizeLines": 294,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/NavigationToolbar/NavigationToolbar.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 422,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml",
+      "language": "xaml",
+      "sizeLines": 94,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Notifications/NotificationToast.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 128,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Omnibar/BoldMatchTextBlock.cs",
+      "language": "csharp",
+      "sizeLines": 91,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.cs",
+      "language": "csharp",
+      "sizeLines": 561,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Omnibar/Omnibar.xaml",
+      "language": "xaml",
+      "sizeLines": 256,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml",
+      "language": "xaml",
+      "sizeLines": 331,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchFlyoutPanel.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 347,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Omnibar/SearchSuggestionTemplateSelector.cs",
+      "language": "csharp",
+      "sizeLines": 59,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/IPageHostAware.cs",
+      "language": "csharp",
+      "sizeLines": 16,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageHost.cs",
+      "language": "csharp",
+      "sizeLines": 386,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostExtensions.cs",
+      "language": "csharp",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatedEventArgs.cs",
+      "language": "csharp",
+      "sizeLines": 17,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigatingEventArgs.cs",
+      "language": "csharp",
+      "sizeLines": 18,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationFailedEventArgs.cs",
+      "language": "csharp",
+      "sizeLines": 18,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageHostNavigationMode.cs",
+      "language": "csharp",
+      "sizeLines": 9,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageRegistration.cs",
+      "language": "csharp",
+      "sizeLines": 61,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageRegistry.cs",
+      "language": "csharp",
+      "sizeLines": 32,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PageHost/PageStackEntry.cs",
+      "language": "csharp",
+      "sizeLines": 14,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/PlayActionDialog.cs",
+      "language": "csharp",
+      "sizeLines": 141,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {}
+}

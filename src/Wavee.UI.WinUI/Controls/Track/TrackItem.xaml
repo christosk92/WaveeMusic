@@ -79,7 +79,7 @@
                 Background="Transparent">
         <Grid>
         <Grid x:Name="CompactRoot"
-              Padding="8,4" ColumnSpacing="12" Height="56">
+              Padding="8,4" ColumnSpacing="12" MinHeight="56">
 
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="48"/>
@@ -187,6 +187,13 @@
                                TextTrimming="CharacterEllipsis"
                                MaxLines="1"/>
                 </StackPanel>
+                <TextBlock x:Name="CompactPlayCount"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           FontSize="10"
+                           TextTrimming="CharacterEllipsis"
+                           MaxLines="1"
+                           Visibility="Collapsed"/>
             </StackPanel>
 
             <StackPanel x:Name="CompactInfoShimmer" Grid.Column="1" VerticalAlignment="Center"
@@ -362,8 +369,8 @@
                         <CheckBox x:Name="RowSelectCheckBox"
                                   Width="20" Height="20"
                                   MinWidth="0" Padding="0"
-                                  Margin="2,0,0,0"
-                                  HorizontalAlignment="Left"
+                                  Margin="0"
+                                  HorizontalAlignment="Center"
                                   VerticalAlignment="Center"
                                   Opacity="0"
                                   Visibility="Collapsed"

@@ -1,0 +1,1055 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs",
+      "type": "file",
+      "name": "RetryHandler.cs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs",
+      "summary": "HTTP DelegatingHandler that retries transient failures with exponential back-off, used in the WinUI app HTTP client pipeline.",
+      "tags": [
+        "middleware",
+        "http",
+        "retry",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs:RetryHandler",
+      "type": "class",
+      "name": "RetryHandler",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs",
+      "lineRange": [
+        1,
+        55
+      ],
+      "summary": "DelegatingHandler subclass implementing HTTP retry logic with configurable attempts and back-off.",
+      "tags": [
+        "middleware",
+        "http",
+        "retry"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs:SendAsync",
+      "type": "function",
+      "name": "SendAsync",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs",
+      "lineRange": [
+        17,
+        43
+      ],
+      "summary": "Overrides SendAsync to retry transient HTTP errors with delay between attempts.",
+      "tags": [
+        "middleware",
+        "http",
+        "retry"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs:CloneRequest",
+      "type": "function",
+      "name": "CloneRequest",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs",
+      "lineRange": [
+        45,
+        54
+      ],
+      "summary": "Clones an HttpRequestMessage so it can be re-sent after a failed attempt.",
+      "tags": [
+        "utility",
+        "http"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Helpers/Application/TitleBarHelper.cs",
+      "type": "file",
+      "name": "TitleBarHelper.cs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Application/TitleBarHelper.cs",
+      "summary": "Utility for theming the WinUI title-bar caption buttons to match the app accent or dark/light mode.",
+      "tags": [
+        "utility",
+        "ui",
+        "title-bar",
+        "theming"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Helpers/Application/TitleBarHelper.cs:TitleBarHelper",
+      "type": "class",
+      "name": "TitleBarHelper",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Application/TitleBarHelper.cs",
+      "lineRange": [
+        1,
+        45
+      ],
+      "summary": "Static helper that applies transparent or themed colors to the AppWindow title-bar caption buttons.",
+      "tags": [
+        "utility",
+        "ui",
+        "theming"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "type": "file",
+      "name": "ConnectedAnimationHelper.cs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "summary": "Manages WinUI ConnectedAnimation lifecycle: prepare, start, coordinate, and cancel for hero card transitions across navigation.",
+      "tags": [
+        "animation",
+        "navigation",
+        "connected-animation",
+        "utility"
+      ],
+      "complexity": "complex",
+      "languageNotes": "ConnectedAnimationService is stateful per-frame; helper caches pending animation keys to safely start or cancel."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs:ConnectedAnimationHelper",
+      "type": "class",
+      "name": "ConnectedAnimationHelper",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "lineRange": [
+        1,
+        190
+      ],
+      "summary": "Orchestrates connected animations with support for coordinated element groups and back-stack transitions.",
+      "tags": [
+        "animation",
+        "navigation",
+        "connected-animation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs:PrepareAnimation",
+      "type": "function",
+      "name": "PrepareAnimation",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "lineRange": [
+        55,
+        68
+      ],
+      "summary": "Prepares a forward connected animation and registers the key for deferred start.",
+      "tags": [
+        "animation",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs:TryStartAnimation",
+      "type": "function",
+      "name": "TryStartAnimation",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "lineRange": [
+        82,
+        106
+      ],
+      "summary": "Attempts to start a prepared connected animation on the target element, with fallback fade.",
+      "tags": [
+        "animation",
+        "navigation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs:TryStartAnimationWithCoordinatedElements",
+      "type": "function",
+      "name": "TryStartAnimationWithCoordinatedElements",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "lineRange": [
+        116,
+        139
+      ],
+      "summary": "Starts a connected animation with additional coordinated UI elements moving in sync.",
+      "tags": [
+        "animation",
+        "navigation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs:CancelPending",
+      "type": "function",
+      "name": "CancelPending",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "lineRange": [
+        145,
+        159
+      ],
+      "summary": "Cancels any pending prepared animations to prevent stale transitions.",
+      "tags": [
+        "animation",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs:PrepareBackAnimation",
+      "type": "function",
+      "name": "PrepareBackAnimation",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "lineRange": [
+        167,
+        179
+      ],
+      "summary": "Prepares a back-navigation connected animation from the destination element.",
+      "tags": [
+        "animation",
+        "navigation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs",
+      "type": "file",
+      "name": "ContentPageController.cs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ContentPageController.cs",
+      "summary": "Coordinates the shimmer-to-content crossfade lifecycle for content pages: schedules a delayed crossfade and manages the visibility transition when data loads.",
+      "tags": [
+        "animation",
+        "ui",
+        "loading",
+        "component"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs:ContentPageController",
+      "type": "class",
+      "name": "ContentPageController",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ContentPageController.cs",
+      "lineRange": [
+        1,
+        187
+      ],
+      "summary": "Controls shimmer placeholder visibility and content crossfade timing during page loading.",
+      "tags": [
+        "animation",
+        "ui",
+        "loading",
+        "component"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs:ContentPageController_ctor",
+      "type": "function",
+      "name": "ContentPageController_ctor",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ContentPageController.cs",
+      "lineRange": [
+        38,
+        42
+      ],
+      "summary": "Constructor that wires the IsLoading dependency property change callback.",
+      "tags": [
+        "component",
+        "initialization"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs:OnIsLoadingChanged",
+      "type": "function",
+      "name": "OnIsLoadingChanged",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ContentPageController.cs",
+      "lineRange": [
+        60,
+        75
+      ],
+      "summary": "Reacts to IsLoading changes to either show shimmer or schedule a content crossfade.",
+      "tags": [
+        "event-handler",
+        "loading"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs:ScheduleCrossfade",
+      "type": "function",
+      "name": "ScheduleCrossfade",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ContentPageController.cs",
+      "lineRange": [
+        82,
+        104
+      ],
+      "summary": "Schedules a delayed crossfade from shimmer to content using DispatcherTimer.",
+      "tags": [
+        "animation",
+        "loading"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs:CrossfadeToContentAsync",
+      "type": "function",
+      "name": "CrossfadeToContentAsync",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ContentPageController.cs",
+      "lineRange": [
+        155,
+        186
+      ],
+      "summary": "Performs the actual opacity animation to transition from shimmer placeholder to real content.",
+      "tags": [
+        "animation",
+        "ui"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Helpers/Debouncer.cs",
+      "type": "file",
+      "name": "Debouncer.cs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Debouncer.cs",
+      "summary": "Async debounce utility that cancels a pending async operation when a new one arrives within the debounce window.",
+      "tags": [
+        "utility",
+        "async",
+        "debounce"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Helpers/Debouncer.cs:Debouncer",
+      "type": "class",
+      "name": "Debouncer",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Debouncer.cs",
+      "lineRange": [
+        1,
+        67
+      ],
+      "summary": "Thread-safe debouncer that cancels the previous CancellationTokenSource and fires a new async action after a configurable delay.",
+      "tags": [
+        "utility",
+        "async",
+        "debounce"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Debouncer.cs:DebounceAsync",
+      "type": "function",
+      "name": "DebounceAsync",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Debouncer.cs",
+      "lineRange": [
+        32,
+        49
+      ],
+      "summary": "Cancels any in-flight operation and schedules the callback after the debounce delay.",
+      "tags": [
+        "utility",
+        "async",
+        "debounce"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Helpers/ErrorMapper.cs",
+      "type": "file",
+      "name": "ErrorMapper.cs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ErrorMapper.cs",
+      "summary": "Maps exception types to human-readable error messages for display in the UI and playback error dialogs.",
+      "tags": [
+        "utility",
+        "error-handling",
+        "ui"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Helpers/ErrorMapper.cs:ErrorMapper",
+      "type": "class",
+      "name": "ErrorMapper",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/ErrorMapper.cs",
+      "lineRange": [
+        1,
+        44
+      ],
+      "summary": "Static mapper translating exceptions to localized user-facing error strings.",
+      "tags": [
+        "utility",
+        "error-handling"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Helpers/HeroCardAnimations.cs",
+      "type": "file",
+      "name": "HeroCardAnimations.cs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/HeroCardAnimations.cs",
+      "summary": "Attached behavior providing scale/opacity selection animation for hero cards when IsSelected changes.",
+      "tags": [
+        "animation",
+        "attached-behavior",
+        "ui",
+        "component"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Helpers/HeroCardAnimations.cs:HeroCardAnimations",
+      "type": "class",
+      "name": "HeroCardAnimations",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/HeroCardAnimations.cs",
+      "lineRange": [
+        1,
+        52
+      ],
+      "summary": "Attached property class that plays a scale-up/opacity animation on hero card selection.",
+      "tags": [
+        "animation",
+        "attached-behavior",
+        "component"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/HeroCardAnimations.cs:OnIsSelectedChanged",
+      "type": "function",
+      "name": "OnIsSelectedChanged",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/HeroCardAnimations.cs",
+      "lineRange": [
+        28,
+        51
+      ],
+      "summary": "Runs the scale and opacity composition animation when the IsSelected attached property changes.",
+      "tags": [
+        "animation",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Helpers/IContentPageHost.cs",
+      "type": "file",
+      "name": "IContentPageHost.cs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/IContentPageHost.cs",
+      "summary": "Interface defining the content-page host contract: provides references to the shimmer layer, content container, header panel, and crossfade controller.",
+      "tags": [
+        "type-definition",
+        "component",
+        "interface"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Helpers/IContentPageHost.cs:IContentPageHost",
+      "type": "class",
+      "name": "IContentPageHost",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/IContentPageHost.cs",
+      "lineRange": [
+        1,
+        52
+      ],
+      "summary": "Interface that page controls implement to expose shimmer/content elements to ContentPageController.",
+      "tags": [
+        "type-definition",
+        "interface",
+        "component"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Helpers/LocalImagePaletteHelper.cs",
+      "type": "file",
+      "name": "LocalImagePaletteHelper.cs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/LocalImagePaletteHelper.cs",
+      "summary": "Extracts the dominant color from a local image file by sampling pixels via a SoftwareBitmap decode, used to seed the page tint color.",
+      "tags": [
+        "utility",
+        "image-processing",
+        "color",
+        "ui"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Helpers/LocalImagePaletteHelper.cs:LocalImagePaletteHelper",
+      "type": "class",
+      "name": "LocalImagePaletteHelper",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/LocalImagePaletteHelper.cs",
+      "lineRange": [
+        1,
+        52
+      ],
+      "summary": "Async helper that decodes a local image and computes the dominant hex color string.",
+      "tags": [
+        "utility",
+        "image-processing",
+        "color"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/LocalImagePaletteHelper.cs:TryExtractDominantHexAsync",
+      "type": "function",
+      "name": "TryExtractDominantHexAsync",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/LocalImagePaletteHelper.cs",
+      "lineRange": [
+        22,
+        51
+      ],
+      "summary": "Decodes a local image file and returns the dominant color as a hex string by sampling pixel data.",
+      "tags": [
+        "utility",
+        "image-processing",
+        "color"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "type": "file",
+      "name": "LyricsContentParser.cs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "summary": "Parses multiple lyrics formats (QRC/KRC, LRC, TTML) into a unified LyricsData model with timed lines and optional word-level highlights.",
+      "tags": [
+        "utility",
+        "lyrics",
+        "parsing",
+        "serialization"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:LyricsContentParser",
+      "type": "class",
+      "name": "LyricsContentParser",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "lineRange": [
+        1,
+        358
+      ],
+      "summary": "Multi-format lyrics parser supporting QRC/KRC, LRC timestamp, and TTML with word-level segmentation.",
+      "tags": [
+        "utility",
+        "lyrics",
+        "parsing"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:Parse",
+      "type": "function",
+      "name": "Parse",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "lineRange": [
+        25,
+        47
+      ],
+      "summary": "Entry point that detects the lyrics format and dispatches to the appropriate sub-parser.",
+      "tags": [
+        "utility",
+        "lyrics",
+        "parsing"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:DetectFormat",
+      "type": "function",
+      "name": "DetectFormat",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "lineRange": [
+        51,
+        68
+      ],
+      "summary": "Sniffs the raw lyrics string to identify whether it is QRC/KRC, LRC, or TTML.",
+      "tags": [
+        "utility",
+        "lyrics"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:ParseQrcKrc",
+      "type": "function",
+      "name": "ParseQrcKrc",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "lineRange": [
+        72,
+        110
+      ],
+      "summary": "Parses QRC/KRC format lyrics with millisecond timestamps and word-level segments.",
+      "tags": [
+        "lyrics",
+        "parsing"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:ParseLrc",
+      "type": "function",
+      "name": "ParseLrc",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "lineRange": [
+        117,
+        189
+      ],
+      "summary": "Parses LRC format with line-level timestamps and optional enhanced word timing.",
+      "tags": [
+        "lyrics",
+        "parsing"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:ParseTtml",
+      "type": "function",
+      "name": "ParseTtml",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "lineRange": [
+        193,
+        223
+      ],
+      "summary": "Parses TTML XML lyrics document extracting timed spans into lyric lines.",
+      "tags": [
+        "lyrics",
+        "parsing",
+        "xml"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:ParseTtmlSegment",
+      "type": "function",
+      "name": "ParseTtmlSegment",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "lineRange": [
+        225,
+        277
+      ],
+      "summary": "Recursively parses a TTML span element including nested word-level timed segments.",
+      "tags": [
+        "lyrics",
+        "parsing",
+        "xml"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:ParseTtmlTime",
+      "type": "function",
+      "name": "ParseTtmlTime",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "lineRange": [
+        279,
+        319
+      ],
+      "summary": "Converts TTML time attribute strings (HH:MM:SS.mmm or tick notation) to milliseconds.",
+      "tags": [
+        "utility",
+        "lyrics",
+        "parsing"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:EnsureEndMs",
+      "type": "function",
+      "name": "EnsureEndMs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "lineRange": [
+        323,
+        357
+      ],
+      "summary": "Fills in missing end-time values for lyric lines by inferring from the following line start.",
+      "tags": [
+        "utility",
+        "lyrics"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs",
+      "type": "file",
+      "name": "TranscriptToLyricsMapper.cs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs",
+      "summary": "Maps a Spotify transcript response (episode captions) to the shared LyricsData model used by the lyrics rendering control.",
+      "tags": [
+        "utility",
+        "lyrics",
+        "mapping",
+        "serialization"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs:TranscriptToLyricsMapper",
+      "type": "class",
+      "name": "TranscriptToLyricsMapper",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs",
+      "lineRange": [
+        1,
+        112
+      ],
+      "summary": "Converts transcript DTOs with highlight ranges into timed lyric lines compatible with the lyrics canvas.",
+      "tags": [
+        "utility",
+        "lyrics",
+        "mapping"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs:ToLyricsData",
+      "type": "function",
+      "name": "ToLyricsData",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs",
+      "lineRange": [
+        24,
+        65
+      ],
+      "summary": "Transforms a list of transcript segments into LyricsData with timed lines.",
+      "tags": [
+        "utility",
+        "lyrics",
+        "mapping"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs:MapHighlights",
+      "type": "function",
+      "name": "MapHighlights",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs",
+      "lineRange": [
+        75,
+        111
+      ],
+      "summary": "Converts transcript highlight spans into word-level LyricsWord segments within a lyric line.",
+      "tags": [
+        "utility",
+        "lyrics",
+        "mapping"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Helpers/Navigation/AlbumNavigationHelper.cs",
+      "type": "file",
+      "name": "AlbumNavigationHelper.cs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Navigation/AlbumNavigationHelper.cs",
+      "summary": "Resolves an album or track URI into a navigation parameter and triggers navigation to the album detail page.",
+      "tags": [
+        "navigation",
+        "utility",
+        "ui"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Helpers/Navigation/AlbumNavigationHelper.cs:AlbumNavigationHelper",
+      "type": "class",
+      "name": "AlbumNavigationHelper",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Navigation/AlbumNavigationHelper.cs",
+      "lineRange": [
+        1,
+        71
+      ],
+      "summary": "Static helper that resolves album/track URIs and navigates to the album page with connected animation.",
+      "tags": [
+        "navigation",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Helpers/Navigation/AlbumNavigationHelper.cs:NavigateToAlbum",
+      "type": "function",
+      "name": "NavigateToAlbum",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Navigation/AlbumNavigationHelper.cs",
+      "lineRange": [
+        43,
+        70
+      ],
+      "summary": "Resolves a URI to an album or disc offset and calls NavigationHelpers.OpenAlbum with animation.",
+      "tags": [
+        "navigation",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Helpers/Navigation/CreatePlaylistParameter.cs",
+      "type": "file",
+      "name": "CreatePlaylistParameter.cs",
+      "filePath": "src/Wavee.UI.WinUI/Helpers/Navigation/CreatePlaylistParameter.cs",
+      "summary": "Simple navigation parameter record carrying the initial track list for the create-playlist flow.",
+      "tags": [
+        "data-model",
+        "navigation",
+        "type-definition"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs",
+      "target": "class:src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs:RetryHandler",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs:SendAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Application/RetryHandler.cs:CloneRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Application/TitleBarHelper.cs",
+      "target": "class:src/Wavee.UI.WinUI/Helpers/Application/TitleBarHelper.cs:TitleBarHelper",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "target": "class:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs:ConnectedAnimationHelper",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs:PrepareAnimation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs:TryStartAnimation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs:TryStartAnimationWithCoordinatedElements",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs:CancelPending",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/ConnectedAnimationHelper.cs:PrepareBackAnimation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs",
+      "target": "class:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs:ContentPageController",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs:ContentPageController_ctor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs:OnIsLoadingChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs:ScheduleCrossfade",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/ContentPageController.cs:CrossfadeToContentAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Debouncer.cs",
+      "target": "class:src/Wavee.UI.WinUI/Helpers/Debouncer.cs:Debouncer",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Debouncer.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Debouncer.cs:DebounceAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/ErrorMapper.cs",
+      "target": "class:src/Wavee.UI.WinUI/Helpers/ErrorMapper.cs:ErrorMapper",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/HeroCardAnimations.cs",
+      "target": "class:src/Wavee.UI.WinUI/Helpers/HeroCardAnimations.cs:HeroCardAnimations",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/HeroCardAnimations.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/HeroCardAnimations.cs:OnIsSelectedChanged",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/IContentPageHost.cs",
+      "target": "class:src/Wavee.UI.WinUI/Helpers/IContentPageHost.cs:IContentPageHost",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/LocalImagePaletteHelper.cs",
+      "target": "class:src/Wavee.UI.WinUI/Helpers/LocalImagePaletteHelper.cs:LocalImagePaletteHelper",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/LocalImagePaletteHelper.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/LocalImagePaletteHelper.cs:TryExtractDominantHexAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "target": "class:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:LyricsContentParser",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:Parse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:DetectFormat",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:ParseQrcKrc",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:ParseLrc",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:ParseTtml",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:ParseTtmlSegment",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:ParseTtmlTime",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/LyricsContentParser.cs:EnsureEndMs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs",
+      "target": "class:src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs:TranscriptToLyricsMapper",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs:ToLyricsData",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Lyrics/TranscriptToLyricsMapper.cs:MapHighlights",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Navigation/AlbumNavigationHelper.cs",
+      "target": "class:src/Wavee.UI.WinUI/Helpers/Navigation/AlbumNavigationHelper.cs:AlbumNavigationHelper",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Helpers/Navigation/AlbumNavigationHelper.cs",
+      "target": "function:src/Wavee.UI.WinUI/Helpers/Navigation/AlbumNavigationHelper.cs:NavigateToAlbum",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    }
+  ]
+}

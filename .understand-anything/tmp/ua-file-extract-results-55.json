@@ -1,0 +1,6581 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 25,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Shared/SectionShelvesShimmer.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 156,
+      "nonEmptyLines": 149,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Shared/SectionShelvesShimmer.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 17,
+      "nonEmptyLines": 15,
+      "functions": [
+        {
+          "name": "SectionShelvesShimmer",
+          "startLine": 13,
+          "endLine": 16,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "SectionShelvesShimmer",
+          "startLine": 11,
+          "endLine": 17,
+          "methods": [
+            "SectionShelvesShimmer"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "SectionShelvesShimmer",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "SectionShelvesShimmer",
+          "line": 11,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "SectionShelvesShimmer",
+          "callee": "InitializeComponent",
+          "lineNumber": 15
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Shared/SectionShelvesView.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 58,
+      "nonEmptyLines": 55,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Shared/SectionShelvesView.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 32,
+      "nonEmptyLines": 28,
+      "functions": [
+        {
+          "name": "SectionShelvesView",
+          "startLine": 17,
+          "endLine": 20,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "SectionShelvesView",
+          "startLine": 15,
+          "endLine": 32,
+          "methods": [
+            "SectionShelvesView"
+          ],
+          "properties": [
+            "SectionsProperty",
+            "Sections"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "SectionShelvesView",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "SectionsProperty",
+          "line": 22,
+          "isDefault": false
+        },
+        {
+          "name": "Sections",
+          "line": 27,
+          "isDefault": false
+        },
+        {
+          "name": "SectionShelvesView",
+          "line": 15,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "SectionShelvesView",
+          "callee": "InitializeComponent",
+          "lineNumber": 19
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ShellPage.AddToPlaylist.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 52,
+      "nonEmptyLines": 46,
+      "functions": [
+        {
+          "name": "HookAddToPlaylistSessionForToast",
+          "startLine": 26,
+          "endLine": 34,
+          "params": []
+        },
+        {
+          "name": "OnAddToPlaylistSessionPropertyChanged",
+          "startLine": 36,
+          "endLine": 43,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyToastMargin",
+          "startLine": 45,
+          "endLine": 51,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "ShellPage",
+          "startLine": 15,
+          "endLine": 52,
+          "methods": [
+            "HookAddToPlaylistSessionForToast",
+            "OnAddToPlaylistSessionPropertyChanged",
+            "ApplyToastMargin"
+          ],
+          "properties": [
+            "ToastDefaultMargin",
+            "ToastLiftedMargin",
+            "_addToPlaylistSession",
+            "_isAddToPlaylistSessionHooked"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ShellPage",
+          "line": 15,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "HookAddToPlaylistSessionForToast",
+          "callee": "Ioc.Default.GetService<IAddToPlaylistSession>",
+          "lineNumber": 29
+        },
+        {
+          "caller": "HookAddToPlaylistSessionForToast",
+          "callee": "ApplyToastMargin",
+          "lineNumber": 33
+        },
+        {
+          "caller": "OnAddToPlaylistSessionPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 38
+        },
+        {
+          "caller": "OnAddToPlaylistSessionPropertyChanged",
+          "callee": "ApplyToastMargin",
+          "lineNumber": 40
+        },
+        {
+          "caller": "OnAddToPlaylistSessionPropertyChanged",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 42
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 3,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ShellPage.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 325,
+      "nonEmptyLines": 302,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ShellPage.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 1286,
+      "nonEmptyLines": 1132,
+      "functions": [
+        {
+          "name": "ShellPage",
+          "startLine": 65,
+          "endLine": 123,
+          "params": []
+        },
+        {
+          "name": "OnSettingsZoomChanged",
+          "startLine": 125,
+          "endLine": 125,
+          "params": [
+            "sender",
+            "zoom"
+          ]
+        },
+        {
+          "name": "ShellPage_Unloaded",
+          "startLine": 127,
+          "endLine": 176,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "TryShowVideoMiniPlayerPrompt",
+          "startLine": 178,
+          "endLine": 207,
+          "params": []
+        },
+        {
+          "name": "ShowVideoHereTeachingTip_ActionButtonClick",
+          "startLine": 209,
+          "endLine": 214,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "ShowVideoHereTeachingTip_CloseButtonClick",
+          "startLine": 216,
+          "endLine": 221,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "ShowVideoHereTeachingTip_Closed",
+          "startLine": 223,
+          "endLine": 238,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "CloseVideoPromptProgrammatically",
+          "startLine": 240,
+          "endLine": 250,
+          "params": [
+            "tip"
+          ]
+        },
+        {
+          "name": "RememberVideoPromptDeclinedForCurrentTrack",
+          "startLine": 252,
+          "endLine": 257,
+          "params": []
+        },
+        {
+          "name": "PersistVideoPromptOptOutIfChecked",
+          "startLine": 259,
+          "endLine": 263,
+          "params": []
+        },
+        {
+          "name": "OnViewModelPropertyChanged",
+          "startLine": 265,
+          "endLine": 273,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "TryRequestInPageFilter",
+          "startLine": 288,
+          "endLine": 309,
+          "params": []
+        },
+        {
+          "name": "ResolveInPageFilterController",
+          "startLine": 311,
+          "endLine": 317,
+          "params": []
+        },
+        {
+          "name": "ObserveFilterTab",
+          "startLine": 325,
+          "endLine": 342,
+          "params": [
+            "tab"
+          ]
+        },
+        {
+          "name": "OnFilterTabNavigated",
+          "startLine": 344,
+          "endLine": 350,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SyncTheatreHost",
+          "startLine": 359,
+          "endLine": 382,
+          "params": []
+        },
+        {
+          "name": "UpdateUserButton",
+          "startLine": 386,
+          "endLine": 432,
+          "params": []
+        },
+        {
+          "name": "IsSignedOut",
+          "startLine": 434,
+          "endLine": 435,
+          "params": [
+            "s"
+          ]
+        },
+        {
+          "name": "ShowSignInDialogAsync",
+          "startLine": 439,
+          "endLine": 494,
+          "params": [
+            "deferred"
+          ]
+        },
+        {
+          "name": "NavToolbar_SignInRequested",
+          "startLine": 496,
+          "endLine": 499,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RetryConnection_Click",
+          "startLine": 501,
+          "endLine": 505,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "NotificationAction_Click",
+          "startLine": 507,
+          "endLine": 513,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Notification_CloseRequested",
+          "startLine": 515,
+          "endLine": 520,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ShellPage_Loaded",
+          "startLine": 521,
+          "endLine": 573,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateExpandedArtSize",
+          "startLine": 575,
+          "endLine": 578,
+          "params": []
+        },
+        {
+          "name": "ExpandedAlbumArt_Tapped",
+          "startLine": 580,
+          "endLine": 583,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SetupTitleBar",
+          "startLine": 585,
+          "endLine": 598,
+          "params": []
+        },
+        {
+          "name": "ConfigureNonClientPointerSource",
+          "startLine": 600,
+          "endLine": 617,
+          "params": []
+        },
+        {
+          "name": "TitleBarGrid_SizeChanged",
+          "startLine": 619,
+          "endLine": 623,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "TabControl_SizeChanged",
+          "startLine": 625,
+          "endLine": 629,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "TitleBarGrid_Loaded",
+          "startLine": 631,
+          "endLine": 635,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateTitleBarRegions",
+          "startLine": 637,
+          "endLine": 696,
+          "params": [
+            "nonClientSource"
+          ]
+        },
+        {
+          "name": "NavToolbar_BackRequested",
+          "startLine": 698,
+          "endLine": 701,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "NavToolbar_ForwardRequested",
+          "startLine": 703,
+          "endLine": 706,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "NavToolbar_HomeRequested",
+          "startLine": 708,
+          "endLine": 712,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "NavToolbar_SidebarToggleRequested",
+          "startLine": 714,
+          "endLine": 717,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "NavToolbar_FriendsRequested",
+          "startLine": 719,
+          "endLine": 722,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "NavToolbar_SearchQuerySubmitted",
+          "startLine": 724,
+          "endLine": 727,
+          "params": [
+            "sender",
+            "queryText"
+          ]
+        },
+        {
+          "name": "NavToolbar_SearchTextChanged",
+          "startLine": 729,
+          "endLine": 736,
+          "params": [
+            "sender",
+            "text"
+          ]
+        },
+        {
+          "name": "NavToolbar_SearchSuggestionChosen",
+          "startLine": 738,
+          "endLine": 741,
+          "params": [
+            "sender",
+            "item"
+          ]
+        },
+        {
+          "name": "NavToolbar_SearchRetryRequested",
+          "startLine": 743,
+          "endLine": 746,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "NavToolbar_SearchActionButtonClicked",
+          "startLine": 748,
+          "endLine": 751,
+          "params": [
+            "sender",
+            "item"
+          ]
+        },
+        {
+          "name": "SidebarControl_PinButtonClicked",
+          "startLine": 753,
+          "endLine": 757,
+          "params": [
+            "sender",
+            "model"
+          ]
+        },
+        {
+          "name": "SidebarControl_ItemInvoked",
+          "startLine": 759,
+          "endLine": 915,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "TabControl_TabCloseRequested",
+          "startLine": 917,
+          "endLine": 920,
+          "params": [
+            "sender",
+            "tab"
+          ]
+        },
+        {
+          "name": "TabControl_TabSleepToggleRequested",
+          "startLine": 922,
+          "endLine": 925,
+          "params": [
+            "sender",
+            "tab"
+          ]
+        },
+        {
+          "name": "TabControl_AddTabRequested",
+          "startLine": 927,
+          "endLine": 930,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "FpsOverlayAccelerator_Invoked",
+          "startLine": 932,
+          "endLine": 944,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "OnDragStateChanged",
+          "startLine": 946,
+          "endLine": 955,
+          "params": [
+            "isDragging"
+          ]
+        },
+        {
+          "name": "SidebarControl_ItemContextInvoked",
+          "startLine": 957,
+          "endLine": 999,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ConfirmAndDeleteSidebarPlaylistAsync",
+          "startLine": 1001,
+          "endLine": 1028,
+          "params": [
+            "playlistUri",
+            "playlistName"
+          ]
+        },
+        {
+          "name": "SidebarControl_ItemDropped",
+          "startLine": 1030,
+          "endLine": 1082,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ResolveSidebarTargetKind",
+          "startLine": 1084,
+          "endLine": 1089,
+          "params": [
+            "model"
+          ]
+        },
+        {
+          "name": "HandlePinDropZoneDropAsync",
+          "startLine": 1099,
+          "endLine": 1133,
+          "params": [
+            "payload"
+          ]
+        },
+        {
+          "name": "MapDropPosition",
+          "startLine": 1135,
+          "endLine": 1140,
+          "params": [
+            "pos"
+          ]
+        },
+        {
+          "name": "InitializeZoom",
+          "startLine": 1144,
+          "endLine": 1150,
+          "params": []
+        },
+        {
+          "name": "ApplyZoom",
+          "startLine": 1152,
+          "endLine": 1158,
+          "params": [
+            "zoom"
+          ]
+        },
+        {
+          "name": "OnProcessKeyboardAccelerators",
+          "startLine": 1160,
+          "endLine": 1245,
+          "params": [
+            "args"
+          ]
+        },
+        {
+          "name": "ToggleLikeCurrentTrack",
+          "startLine": 1249,
+          "endLine": 1263,
+          "params": []
+        },
+        {
+          "name": "ToggleLikeCurrentTrackAsync",
+          "startLine": 1265,
+          "endLine": 1277,
+          "params": [
+            "playback",
+            "like",
+            "musicVideoMetadata"
+          ]
+        },
+        {
+          "name": "ToggleShuffle",
+          "startLine": 1279,
+          "endLine": 1285,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "ShellPage",
+          "startLine": 36,
+          "endLine": 1286,
+          "methods": [
+            "ShellPage",
+            "OnSettingsZoomChanged",
+            "ShellPage_Unloaded",
+            "TryShowVideoMiniPlayerPrompt",
+            "ShowVideoHereTeachingTip_ActionButtonClick",
+            "ShowVideoHereTeachingTip_CloseButtonClick",
+            "ShowVideoHereTeachingTip_Closed",
+            "CloseVideoPromptProgrammatically",
+            "RememberVideoPromptDeclinedForCurrentTrack",
+            "PersistVideoPromptOptOutIfChecked",
+            "OnViewModelPropertyChanged",
+            "TryRequestInPageFilter",
+            "ResolveInPageFilterController",
+            "ObserveFilterTab",
+            "OnFilterTabNavigated",
+            "SyncTheatreHost",
+            "UpdateUserButton",
+            "IsSignedOut",
+            "ShowSignInDialogAsync",
+            "NavToolbar_SignInRequested",
+            "RetryConnection_Click",
+            "NotificationAction_Click",
+            "Notification_CloseRequested",
+            "ShellPage_Loaded",
+            "UpdateExpandedArtSize",
+            "ExpandedAlbumArt_Tapped",
+            "SetupTitleBar",
+            "ConfigureNonClientPointerSource",
+            "TitleBarGrid_SizeChanged",
+            "TabControl_SizeChanged",
+            "TitleBarGrid_Loaded",
+            "UpdateTitleBarRegions",
+            "NavToolbar_BackRequested",
+            "NavToolbar_ForwardRequested",
+            "NavToolbar_HomeRequested",
+            "NavToolbar_SidebarToggleRequested",
+            "NavToolbar_FriendsRequested",
+            "NavToolbar_SearchQuerySubmitted",
+            "NavToolbar_SearchTextChanged",
+            "NavToolbar_SearchSuggestionChosen",
+            "NavToolbar_SearchRetryRequested",
+            "NavToolbar_SearchActionButtonClicked",
+            "SidebarControl_PinButtonClicked",
+            "SidebarControl_ItemInvoked",
+            "TabControl_TabCloseRequested",
+            "TabControl_TabSleepToggleRequested",
+            "TabControl_AddTabRequested",
+            "FpsOverlayAccelerator_Invoked",
+            "OnDragStateChanged",
+            "SidebarControl_ItemContextInvoked",
+            "ConfirmAndDeleteSidebarPlaylistAsync",
+            "SidebarControl_ItemDropped",
+            "ResolveSidebarTargetKind",
+            "HandlePinDropZoneDropAsync",
+            "MapDropPosition",
+            "InitializeZoom",
+            "ApplyZoom",
+            "OnProcessKeyboardAccelerators",
+            "ToggleLikeCurrentTrack",
+            "ToggleLikeCurrentTrackAsync",
+            "ToggleShuffle"
+          ],
+          "properties": [
+            "_logger",
+            "_authState",
+            "_settingsService",
+            "_playbackState",
+            "_videoSurface",
+            "_miniVideoViewModel",
+            "_libraryDataService",
+            "_pinService",
+            "_playlistMutationService",
+            "ZoomStep",
+            "ZoomMin",
+            "ZoomMax",
+            "ViewModel",
+            "_nonClientSource",
+            "_dragStateService",
+            "_sidebarOpenPaneLengthCallbackToken",
+            "_suppressVideoPromptClosedHandling",
+            "_lastDeclinedVideoPromptTrackId",
+            "_uiHealthMonitor",
+            "_uiHealthOverlay",
+            "_inPageFilter",
+            "_observedTabForFilter",
+            "_previousAuthStatus",
+            "_signInDialogOpen"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ViewModel",
+          "line": 52,
+          "isDefault": false
+        },
+        {
+          "name": "ShellPage",
+          "line": 65,
+          "isDefault": false
+        },
+        {
+          "name": "ShellPage",
+          "line": 36,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ShellPage",
+          "callee": "Ioc.Default.GetRequiredService<ShellViewModel>",
+          "lineNumber": 67
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "NavigationHelpers.Initialize",
+          "lineNumber": 68
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "Ioc.Default.GetService<ILogger<ShellPage>>",
+          "lineNumber": 69
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "Ioc.Default.GetService<IAuthState>",
+          "lineNumber": 70
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "Ioc.Default.GetService<ISettingsService>",
+          "lineNumber": 71
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "Ioc.Default.GetService<IPlaybackStateService>",
+          "lineNumber": 72
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "Ioc.Default.GetService<IActiveVideoSurfaceService>",
+          "lineNumber": 73
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "Ioc.Default.GetService<MiniVideoPlayerViewModel>",
+          "lineNumber": 74
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "Ioc.Default.GetService<ILibraryDataService>",
+          "lineNumber": 75
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "Ioc.Default.GetService<IPlaylistMutationService>",
+          "lineNumber": 76
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "InitializeComponent",
+          "lineNumber": 77
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "InitializeZoom",
+          "lineNumber": 80
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "Ioc.Default.GetService<SettingsViewModel>",
+          "lineNumber": 83
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "SetupTitleBar",
+          "lineNumber": 88
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "Ioc.Default.GetService<DragStateService>",
+          "lineNumber": 104
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "WeakReferenceMessenger.Default.Register<AuthStatusChangedMessage>",
+          "lineNumber": 109
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 111
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "WeakReferenceMessenger.Default.Register<UserProfileUpdatedMessage>",
+          "lineNumber": 113
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 115
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "WeakReferenceMessenger.Default.Register<MainWindowFocusReturnedMessage>",
+          "lineNumber": 117
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "shell.DispatcherQueue.TryEnqueue",
+          "lineNumber": 120
+        },
+        {
+          "caller": "ShellPage",
+          "callee": "UpdateUserButton",
+          "lineNumber": 122
+        },
+        {
+          "caller": "OnSettingsZoomChanged",
+          "callee": "ApplyZoom",
+          "lineNumber": 125
+        },
+        {
+          "caller": "ShellPage_Unloaded",
+          "callee": "_uiHealthOverlay?.Detach",
+          "lineNumber": 130
+        },
+        {
+          "caller": "ShellPage_Unloaded",
+          "callee": "_uiHealthMonitor?.Dispose",
+          "lineNumber": 131
+        },
+        {
+          "caller": "ShellPage_Unloaded",
+          "callee": "SidebarControl.UnregisterPropertyChangedCallback",
+          "lineNumber": 144
+        },
+        {
+          "caller": "ShellPage_Unloaded",
+          "callee": "Ioc.Default.GetService<SettingsViewModel>",
+          "lineNumber": 165
+        },
+        {
+          "caller": "ShellPage_Unloaded",
+          "callee": "WeakReferenceMessenger.Default.Unregister<AuthStatusChangedMessage>",
+          "lineNumber": 171
+        },
+        {
+          "caller": "ShellPage_Unloaded",
+          "callee": "WeakReferenceMessenger.Default.Unregister<UserProfileUpdatedMessage>",
+          "lineNumber": 172
+        },
+        {
+          "caller": "ShellPage_Unloaded",
+          "callee": "WeakReferenceMessenger.Default.Unregister<Data.Messages.ConnectivityChangedMessage>",
+          "lineNumber": 173
+        },
+        {
+          "caller": "ShellPage_Unloaded",
+          "callee": "WeakReferenceMessenger.Default.Unregister<MainWindowFocusReturnedMessage>",
+          "lineNumber": 174
+        },
+        {
+          "caller": "ShellPage_Unloaded",
+          "callee": "WeakReferenceMessenger.Default.Send",
+          "lineNumber": 175
+        },
+        {
+          "caller": "ShellPage_Unloaded",
+          "callee": "new VideoMiniPlayerPromptStateChangedMessage",
+          "lineNumber": 175
+        },
+        {
+          "caller": "TryShowVideoMiniPlayerPrompt",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 194
+        },
+        {
+          "caller": "TryShowVideoMiniPlayerPrompt",
+          "callee": "string.Equals",
+          "lineNumber": 195
+        },
+        {
+          "caller": "TryShowVideoMiniPlayerPrompt",
+          "callee": "WeakReferenceMessenger.Default.Send",
+          "lineNumber": 206
+        },
+        {
+          "caller": "TryShowVideoMiniPlayerPrompt",
+          "callee": "new VideoMiniPlayerPromptStateChangedMessage",
+          "lineNumber": 206
+        },
+        {
+          "caller": "ShowVideoHereTeachingTip_ActionButtonClick",
+          "callee": "PersistVideoPromptOptOutIfChecked",
+          "lineNumber": 211
+        },
+        {
+          "caller": "ShowVideoHereTeachingTip_ActionButtonClick",
+          "callee": "_miniVideoViewModel?.ShowByUserRequest",
+          "lineNumber": 212
+        },
+        {
+          "caller": "ShowVideoHereTeachingTip_ActionButtonClick",
+          "callee": "CloseVideoPromptProgrammatically",
+          "lineNumber": 213
+        },
+        {
+          "caller": "ShowVideoHereTeachingTip_CloseButtonClick",
+          "callee": "RememberVideoPromptDeclinedForCurrentTrack",
+          "lineNumber": 218
+        },
+        {
+          "caller": "ShowVideoHereTeachingTip_CloseButtonClick",
+          "callee": "PersistVideoPromptOptOutIfChecked",
+          "lineNumber": 219
+        },
+        {
+          "caller": "ShowVideoHereTeachingTip_CloseButtonClick",
+          "callee": "CloseVideoPromptProgrammatically",
+          "lineNumber": 220
+        },
+        {
+          "caller": "ShowVideoHereTeachingTip_Closed",
+          "callee": "WeakReferenceMessenger.Default.Send",
+          "lineNumber": 225
+        },
+        {
+          "caller": "ShowVideoHereTeachingTip_Closed",
+          "callee": "new VideoMiniPlayerPromptStateChangedMessage",
+          "lineNumber": 225
+        },
+        {
+          "caller": "ShowVideoHereTeachingTip_Closed",
+          "callee": "RememberVideoPromptDeclinedForCurrentTrack",
+          "lineNumber": 235
+        },
+        {
+          "caller": "ShowVideoHereTeachingTip_Closed",
+          "callee": "PersistVideoPromptOptOutIfChecked",
+          "lineNumber": 236
+        },
+        {
+          "caller": "RememberVideoPromptDeclinedForCurrentTrack",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 255
+        },
+        {
+          "caller": "PersistVideoPromptOptOutIfChecked",
+          "callee": "_settingsService?.Update",
+          "lineNumber": 262
+        },
+        {
+          "caller": "OnViewModelPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 267
+        },
+        {
+          "caller": "OnViewModelPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 269
+        },
+        {
+          "caller": "OnViewModelPropertyChanged",
+          "callee": "SyncTheatreHost",
+          "lineNumber": 270
+        },
+        {
+          "caller": "OnViewModelPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 271
+        },
+        {
+          "caller": "OnViewModelPropertyChanged",
+          "callee": "ObserveFilterTab",
+          "lineNumber": 272
+        },
+        {
+          "caller": "TryRequestInPageFilter",
+          "callee": "NavToolbar?.FocusSearch",
+          "lineNumber": 296
+        },
+        {
+          "caller": "TryRequestInPageFilter",
+          "callee": "ResolveInPageFilterController",
+          "lineNumber": 300
+        },
+        {
+          "caller": "TryRequestInPageFilter",
+          "callee": "controller.OnPageChanged",
+          "lineNumber": 304
+        },
+        {
+          "caller": "TryRequestInPageFilter",
+          "callee": "controller.RequestFilter",
+          "lineNumber": 307
+        },
+        {
+          "caller": "ResolveInPageFilterController",
+          "callee": "Ioc.Default.GetService<Services.InPageFilterController>",
+          "lineNumber": 314
+        },
+        {
+          "caller": "ObserveFilterTab",
+          "callee": "ReferenceEquals",
+          "lineNumber": 327
+        },
+        {
+          "caller": "ObserveFilterTab",
+          "callee": "ResolveInPageFilterController",
+          "lineNumber": 340
+        },
+        {
+          "caller": "ObserveFilterTab",
+          "callee": "controller?.OnPageChanged",
+          "lineNumber": 341
+        },
+        {
+          "caller": "OnFilterTabNavigated",
+          "callee": "ResolveInPageFilterController",
+          "lineNumber": 346
+        },
+        {
+          "caller": "OnFilterTabNavigated",
+          "callee": "controller.OnPageChanged",
+          "lineNumber": 349
+        },
+        {
+          "caller": "SyncTheatreHost",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 361
+        },
+        {
+          "caller": "SyncTheatreHost",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 371
+        },
+        {
+          "caller": "SyncTheatreHost",
+          "callee": "TheatreHost.Navigate",
+          "lineNumber": 372
+        },
+        {
+          "caller": "SyncTheatreHost",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 379
+        },
+        {
+          "caller": "SyncTheatreHost",
+          "callee": "TheatreHost.Clear",
+          "lineNumber": 380
+        },
+        {
+          "caller": "UpdateUserButton",
+          "callee": "IsSignedOut",
+          "lineNumber": 427
+        },
+        {
+          "caller": "UpdateUserButton",
+          "callee": "IsSignedOut",
+          "lineNumber": 427
+        },
+        {
+          "caller": "UpdateUserButton",
+          "callee": "ShowSignInDialogAsync",
+          "lineNumber": 429
+        },
+        {
+          "caller": "ShowSignInDialogAsync",
+          "callee": "Interlocked.CompareExchange",
+          "lineNumber": 441
+        },
+        {
+          "caller": "ShowSignInDialogAsync",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 451
+        },
+        {
+          "caller": "ShowSignInDialogAsync",
+          "callee": "Interlocked.Exchange",
+          "lineNumber": 461
+        },
+        {
+          "caller": "ShowSignInDialogAsync",
+          "callee": "ShowSignInDialogAsync",
+          "lineNumber": 467
+        },
+        {
+          "caller": "ShowSignInDialogAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 470
+        },
+        {
+          "caller": "ShowSignInDialogAsync",
+          "callee": "dq?.TryEnqueue",
+          "lineNumber": 475
+        },
+        {
+          "caller": "ShowSignInDialogAsync",
+          "callee": "ShowSignInDialogAsync",
+          "lineNumber": 477
+        },
+        {
+          "caller": "ShowSignInDialogAsync",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 478
+        },
+        {
+          "caller": "ShowSignInDialogAsync",
+          "callee": "new SpotifyConnectDialog",
+          "lineNumber": 483
+        },
+        {
+          "caller": "ShowSignInDialogAsync",
+          "callee": "dialog.ShowAsync",
+          "lineNumber": 484
+        },
+        {
+          "caller": "ShowSignInDialogAsync",
+          "callee": "_logger?.LogError",
+          "lineNumber": 488
+        },
+        {
+          "caller": "ShowSignInDialogAsync",
+          "callee": "Interlocked.Exchange",
+          "lineNumber": 492
+        },
+        {
+          "caller": "NavToolbar_SignInRequested",
+          "callee": "ShowSignInDialogAsync",
+          "lineNumber": 498
+        },
+        {
+          "caller": "RetryConnection_Click",
+          "callee": "_authState.RetryConnectionAsync",
+          "lineNumber": 504
+        },
+        {
+          "caller": "NotificationAction_Click",
+          "callee": "CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default\r\n            .GetService<INotificationService>",
+          "lineNumber": 509
+        },
+        {
+          "caller": "NotificationAction_Click",
+          "callee": "notificationService.InvokeActionAsync",
+          "lineNumber": 512
+        },
+        {
+          "caller": "Notification_CloseRequested",
+          "callee": "CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default\r\n            .GetService<INotificationService>()\r\n            ?.Dismiss",
+          "lineNumber": 517
+        },
+        {
+          "caller": "Notification_CloseRequested",
+          "callee": "CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default\r\n            .GetService<INotificationService>",
+          "lineNumber": 517
+        },
+        {
+          "caller": "ShellPage_Loaded",
+          "callee": "ViewModel.RestorePersistedTabs",
+          "lineNumber": 528
+        },
+        {
+          "caller": "ShellPage_Loaded",
+          "callee": "NavigationHelpers.OpenHome",
+          "lineNumber": 530
+        },
+        {
+          "caller": "ShellPage_Loaded",
+          "callee": "ObserveFilterTab",
+          "lineNumber": 540
+        },
+        {
+          "caller": "ShellPage_Loaded",
+          "callee": "Ioc.Default.GetService<ILogger<Services.UiHealthMonitor>>",
+          "lineNumber": 543
+        },
+        {
+          "caller": "ShellPage_Loaded",
+          "callee": "_uiHealthMonitor.Start",
+          "lineNumber": 548
+        },
+        {
+          "caller": "ShellPage_Loaded",
+          "callee": "_uiHealthOverlay.Attach",
+          "lineNumber": 551
+        },
+        {
+          "caller": "ShellPage_Loaded",
+          "callee": "Microsoft.UI.Xaml.Controls.Grid.SetRowSpan",
+          "lineNumber": 554
+        },
+        {
+          "caller": "ShellPage_Loaded",
+          "callee": "Microsoft.UI.Xaml.Controls.Canvas.SetZIndex",
+          "lineNumber": 555
+        },
+        {
+          "caller": "ShellPage_Loaded",
+          "callee": "RootLayoutGrid.Children.Add",
+          "lineNumber": 556
+        },
+        {
+          "caller": "ShellPage_Loaded",
+          "callee": "UpdateExpandedArtSize",
+          "lineNumber": 559
+        },
+        {
+          "caller": "ShellPage_Loaded",
+          "callee": "SidebarControl.RegisterPropertyChangedCallback",
+          "lineNumber": 562
+        },
+        {
+          "caller": "ShellPage_Loaded",
+          "callee": "UpdateExpandedArtSize",
+          "lineNumber": 564
+        },
+        {
+          "caller": "ShellPage_Loaded",
+          "callee": "HookAddToPlaylistSessionForToast",
+          "lineNumber": 569
+        },
+        {
+          "caller": "ExpandedAlbumArt_Tapped",
+          "callee": "PlayerBarControl.ViewModel.ToggleAlbumArtExpandedCommand.Execute",
+          "lineNumber": 582
+        },
+        {
+          "caller": "SetupTitleBar",
+          "callee": "MainWindow.Instance.SetTitleBar",
+          "lineNumber": 591
+        },
+        {
+          "caller": "SetupTitleBar",
+          "callee": "ConfigureNonClientPointerSource",
+          "lineNumber": 596
+        },
+        {
+          "caller": "ConfigureNonClientPointerSource",
+          "callee": "InputNonClientPointerSource.GetForWindowId",
+          "lineNumber": 604
+        },
+        {
+          "caller": "ConfigureNonClientPointerSource",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 615
+        },
+        {
+          "caller": "TitleBarGrid_SizeChanged",
+          "callee": "UpdateTitleBarRegions",
+          "lineNumber": 622
+        },
+        {
+          "caller": "TabControl_SizeChanged",
+          "callee": "UpdateTitleBarRegions",
+          "lineNumber": 628
+        },
+        {
+          "caller": "TitleBarGrid_Loaded",
+          "callee": "UpdateTitleBarRegions",
+          "lineNumber": 634
+        },
+        {
+          "caller": "UpdateTitleBarRegions",
+          "callee": "TabControl.TransformToVisual",
+          "lineNumber": 652
+        },
+        {
+          "caller": "UpdateTitleBarRegions",
+          "callee": "tabControlTransform.TransformBounds",
+          "lineNumber": 653
+        },
+        {
+          "caller": "UpdateTitleBarRegions",
+          "callee": "new Rect",
+          "lineNumber": 654
+        },
+        {
+          "caller": "UpdateTitleBarRegions",
+          "callee": "dragRegion.TransformToVisual",
+          "lineNumber": 657
+        },
+        {
+          "caller": "UpdateTitleBarRegions",
+          "callee": "dragTransform.TransformBounds",
+          "lineNumber": 658
+        },
+        {
+          "caller": "UpdateTitleBarRegions",
+          "callee": "new Rect",
+          "lineNumber": 659
+        },
+        {
+          "caller": "UpdateTitleBarRegions",
+          "callee": "new RectInt32",
+          "lineNumber": 666
+        },
+        {
+          "caller": "UpdateTitleBarRegions",
+          "callee": "nonClientSource.SetRegionRects",
+          "lineNumber": 672
+        },
+        {
+          "caller": "UpdateTitleBarRegions",
+          "callee": "new RectInt32",
+          "lineNumber": 683
+        },
+        {
+          "caller": "UpdateTitleBarRegions",
+          "callee": "nonClientSource.SetRegionRects",
+          "lineNumber": 689
+        },
+        {
+          "caller": "UpdateTitleBarRegions",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 694
+        },
+        {
+          "caller": "NavToolbar_BackRequested",
+          "callee": "ViewModel.GoBack",
+          "lineNumber": 700
+        },
+        {
+          "caller": "NavToolbar_ForwardRequested",
+          "callee": "ViewModel.GoForward",
+          "lineNumber": 705
+        },
+        {
+          "caller": "NavToolbar_HomeRequested",
+          "callee": "NavigationHelpers.IsCtrlPressed",
+          "lineNumber": 710
+        },
+        {
+          "caller": "NavToolbar_HomeRequested",
+          "callee": "NavigationHelpers.OpenHome",
+          "lineNumber": 711
+        },
+        {
+          "caller": "NavToolbar_SidebarToggleRequested",
+          "callee": "ViewModel.ToggleSidebar",
+          "lineNumber": 716
+        },
+        {
+          "caller": "NavToolbar_FriendsRequested",
+          "callee": "WeakReferenceMessenger.Default.Send",
+          "lineNumber": 721
+        },
+        {
+          "caller": "NavToolbar_FriendsRequested",
+          "callee": "new ToggleRightPanelMessage",
+          "lineNumber": 721
+        },
+        {
+          "caller": "NavToolbar_SearchQuerySubmitted",
+          "callee": "ViewModel.Omnibar.Search",
+          "lineNumber": 726
+        },
+        {
+          "caller": "NavToolbar_SearchTextChanged",
+          "callee": "ViewModel.Omnibar.OnSearchTextChangedAsync",
+          "lineNumber": 734
+        },
+        {
+          "caller": "NavToolbar_SearchTextChanged",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 735
+        },
+        {
+          "caller": "NavToolbar_SearchSuggestionChosen",
+          "callee": "ViewModel.Omnibar.OnSuggestionChosen",
+          "lineNumber": 740
+        },
+        {
+          "caller": "NavToolbar_SearchRetryRequested",
+          "callee": "ViewModel.Omnibar.RetrySearchSuggestions",
+          "lineNumber": 745
+        },
+        {
+          "caller": "NavToolbar_SearchActionButtonClicked",
+          "callee": "ViewModel.Omnibar.OnSuggestionActionClicked",
+          "lineNumber": 750
+        },
+        {
+          "caller": "SidebarControl_PinButtonClicked",
+          "callee": "ViewModel.HandleSidebarPinButtonAsync",
+          "lineNumber": 755
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.IsCtrlPressed",
+          "lineNumber": 765
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 772
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent",
+          "lineNumber": 773
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenSearch",
+          "lineNumber": 785
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenLibrary",
+          "lineNumber": 788
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "(currentPage as LibraryPage)?.SelectTab",
+          "lineNumber": 792
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenAlbums",
+          "lineNumber": 794
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "(currentPage as LibraryPage)?.SelectTab",
+          "lineNumber": 798
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenArtists",
+          "lineNumber": 800
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "(currentPage as LibraryPage)?.SelectTab",
+          "lineNumber": 804
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenLikedSongs",
+          "lineNumber": 806
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "(currentPage as LibraryPage)?.SelectTab",
+          "lineNumber": 811
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenPodcasts",
+          "lineNumber": 813
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenPodcastBrowse",
+          "lineNumber": 816
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenLocalLibrary",
+          "lineNumber": 820
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenLocalShows",
+          "lineNumber": 824
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenLocalMovies",
+          "lineNumber": 828
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenLocalMusic",
+          "lineNumber": 832
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenLocalMusicVideos",
+          "lineNumber": 836
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenYourEpisodes",
+          "lineNumber": 846
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "tag.StartsWith",
+          "lineNumber": 850
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "tag.EndsWith",
+          "lineNumber": 851
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenLikedSongs",
+          "lineNumber": 853
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "tag.StartsWith",
+          "lineNumber": 865
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenPlaylist",
+          "lineNumber": 867
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "tag.StartsWith",
+          "lineNumber": 877
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenAlbum",
+          "lineNumber": 879
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "tag.StartsWith",
+          "lineNumber": 889
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenArtist",
+          "lineNumber": 891
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "tag.StartsWith",
+          "lineNumber": 901
+        },
+        {
+          "caller": "SidebarControl_ItemInvoked",
+          "callee": "NavigationHelpers.OpenShowPage",
+          "lineNumber": 903
+        },
+        {
+          "caller": "TabControl_TabCloseRequested",
+          "callee": "ViewModel.CloseTabCommand.Execute",
+          "lineNumber": 919
+        },
+        {
+          "caller": "TabControl_TabSleepToggleRequested",
+          "callee": "ViewModel.ToggleTabSleep",
+          "lineNumber": 924
+        },
+        {
+          "caller": "TabControl_AddTabRequested",
+          "callee": "NavigationHelpers.OpenNewTab",
+          "lineNumber": 929
+        },
+        {
+          "caller": "OnDragStateChanged",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 948
+        },
+        {
+          "caller": "SidebarControl_ItemContextInvoked",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 960
+        },
+        {
+          "caller": "SidebarControl_ItemContextInvoked",
+          "callee": "model.Tag.StartsWith",
+          "lineNumber": 964
+        },
+        {
+          "caller": "SidebarControl_ItemContextInvoked",
+          "callee": "SidebarFolderContextMenuBuilder.Build",
+          "lineNumber": 966
+        },
+        {
+          "caller": "SidebarControl_ItemContextInvoked",
+          "callee": "new SidebarFolderMenuContext",
+          "lineNumber": 966
+        },
+        {
+          "caller": "SidebarControl_ItemContextInvoked",
+          "callee": "model.Tag.StartsWith",
+          "lineNumber": 973
+        },
+        {
+          "caller": "SidebarControl_ItemContextInvoked",
+          "callee": "SidebarPlaylistContextMenuBuilder.Build",
+          "lineNumber": 982
+        },
+        {
+          "caller": "SidebarControl_ItemContextInvoked",
+          "callee": "new SidebarPlaylistMenuContext",
+          "lineNumber": 982
+        },
+        {
+          "caller": "SidebarControl_ItemContextInvoked",
+          "callee": "ConfirmAndDeleteSidebarPlaylistAsync",
+          "lineNumber": 989
+        },
+        {
+          "caller": "SidebarControl_ItemContextInvoked",
+          "callee": "_playlistMutationService?.SetPlaylistFollowedAsync",
+          "lineNumber": 993
+        },
+        {
+          "caller": "SidebarControl_ItemContextInvoked",
+          "callee": "ContextMenuHost.Show",
+          "lineNumber": 998
+        },
+        {
+          "caller": "ConfirmAndDeleteSidebarPlaylistAsync",
+          "callee": "new ContentDialog",
+          "lineNumber": 1005
+        },
+        {
+          "caller": "ConfirmAndDeleteSidebarPlaylistAsync",
+          "callee": "dialog.ShowAsync",
+          "lineNumber": 1016
+        },
+        {
+          "caller": "ConfirmAndDeleteSidebarPlaylistAsync",
+          "callee": "_playlistMutationService.DeletePlaylistAsync",
+          "lineNumber": 1021
+        },
+        {
+          "caller": "ConfirmAndDeleteSidebarPlaylistAsync",
+          "callee": "_logger?.LogError",
+          "lineNumber": 1025
+        },
+        {
+          "caller": "ConfirmAndDeleteSidebarPlaylistAsync",
+          "callee": "ViewModel.ShowNotification",
+          "lineNumber": 1026
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "Ioc.Default.GetService<IDragDropService>",
+          "lineNumber": 1032
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "DragPackageReader.ReadAsync",
+          "lineNumber": 1035
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 1040
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "string.Equals",
+          "lineNumber": 1046
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "HandlePinDropZoneDropAsync",
+          "lineNumber": 1048
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "ResolveSidebarTargetKind",
+          "lineNumber": 1052
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "MapDropPosition",
+          "lineNumber": 1053
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "DragModifiersCapture.Current",
+          "lineNumber": 1054
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "new DropContext",
+          "lineNumber": 1056
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "service.DropAsync",
+          "lineNumber": 1057
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 1061
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "ViewModel.ShowNotification",
+          "lineNumber": 1062
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 1072
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "ViewModel.ShowNotification",
+          "lineNumber": 1073
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "string.Format",
+          "lineNumber": 1073
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "AppLocalization.GetString",
+          "lineNumber": 1074
+        },
+        {
+          "caller": "SidebarControl_ItemDropped",
+          "callee": "ViewModel.ShowNotification",
+          "lineNumber": 1079
+        },
+        {
+          "caller": "ResolveSidebarTargetKind",
+          "callee": "model.Tag?.StartsWith",
+          "lineNumber": 1086
+        },
+        {
+          "caller": "HandlePinDropZoneDropAsync",
+          "callee": "Ioc.Default.GetService<IPinService>",
+          "lineNumber": 1101
+        },
+        {
+          "caller": "HandlePinDropZoneDropAsync",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 1112
+        },
+        {
+          "caller": "HandlePinDropZoneDropAsync",
+          "callee": "pinService.IsPinned",
+          "lineNumber": 1114
+        },
+        {
+          "caller": "HandlePinDropZoneDropAsync",
+          "callee": "ViewModel.ShowNotification",
+          "lineNumber": 1116
+        },
+        {
+          "caller": "HandlePinDropZoneDropAsync",
+          "callee": "pinService.PinAsync",
+          "lineNumber": 1122
+        },
+        {
+          "caller": "HandlePinDropZoneDropAsync",
+          "callee": "ViewModel.ShowNotification",
+          "lineNumber": 1124
+        },
+        {
+          "caller": "HandlePinDropZoneDropAsync",
+          "callee": "ViewModel.ShowNotification",
+          "lineNumber": 1126
+        },
+        {
+          "caller": "HandlePinDropZoneDropAsync",
+          "callee": "_logger?.LogWarning",
+          "lineNumber": 1130
+        },
+        {
+          "caller": "HandlePinDropZoneDropAsync",
+          "callee": "ViewModel.ShowNotification",
+          "lineNumber": 1131
+        },
+        {
+          "caller": "InitializeZoom",
+          "callee": "Math.Clamp",
+          "lineNumber": 1148
+        },
+        {
+          "caller": "ApplyZoom",
+          "callee": "Math.Clamp",
+          "lineNumber": 1154
+        },
+        {
+          "caller": "ApplyZoom",
+          "callee": "_settingsService?.Update",
+          "lineNumber": 1157
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "Ioc.Default.GetService<INowPlayingPresentationService>()?.ToggleFullscreen",
+          "lineNumber": 1169
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "Ioc.Default.GetService<INowPlayingPresentationService>",
+          "lineNumber": 1169
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "Ioc.Default.GetService<INowPlayingPresentationService>",
+          "lineNumber": 1175
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "presentation.ExitToNormal",
+          "lineNumber": 1178
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "ApplyZoom",
+          "lineNumber": 1192
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "Math.Round",
+          "lineNumber": 1192
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "ApplyZoom",
+          "lineNumber": 1199
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "Math.Round",
+          "lineNumber": 1199
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "ApplyZoom",
+          "lineNumber": 1205
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "TryRequestInPageFilter",
+          "lineNumber": 1212
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "FpsOverlayAccelerator_Invoked",
+          "lineNumber": 1222
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "ToggleLikeCurrentTrack",
+          "lineNumber": 1227
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "ToggleShuffle",
+          "lineNumber": 1231
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "Wavee.UI.WinUI.Floating.DebugFloatingWindow.EnsureOpen",
+          "lineNumber": 1238
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "base.OnProcessKeyboardAccelerators",
+          "lineNumber": 1244
+        },
+        {
+          "caller": "ToggleLikeCurrentTrack",
+          "callee": "Ioc.Default.GetService<IPlaybackStateService>",
+          "lineNumber": 1251
+        },
+        {
+          "caller": "ToggleLikeCurrentTrack",
+          "callee": "Ioc.Default.GetService<ITrackLikeService>",
+          "lineNumber": 1252
+        },
+        {
+          "caller": "ToggleLikeCurrentTrack",
+          "callee": "Ioc.Default.GetService<IMusicVideoMetadataService>",
+          "lineNumber": 1253
+        },
+        {
+          "caller": "ToggleLikeCurrentTrack",
+          "callee": "PlaybackSaveTargetResolver.GetTrackUri",
+          "lineNumber": 1255
+        },
+        {
+          "caller": "ToggleLikeCurrentTrack",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 1256
+        },
+        {
+          "caller": "ToggleLikeCurrentTrack",
+          "callee": "ToggleLikeCurrentTrackAsync",
+          "lineNumber": 1261
+        },
+        {
+          "caller": "ToggleLikeCurrentTrackAsync",
+          "callee": "PlaybackSaveTargetResolver\r\n            .ResolveTrackUriAsync(playback, musicVideoMetadata)\r\n            .ConfigureAwait",
+          "lineNumber": 1270
+        },
+        {
+          "caller": "ToggleLikeCurrentTrackAsync",
+          "callee": "PlaybackSaveTargetResolver\r\n            .ResolveTrackUriAsync",
+          "lineNumber": 1270
+        },
+        {
+          "caller": "ToggleLikeCurrentTrackAsync",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 1273
+        },
+        {
+          "caller": "ToggleLikeCurrentTrackAsync",
+          "callee": "like.IsSaved",
+          "lineNumber": 1275
+        },
+        {
+          "caller": "ToggleLikeCurrentTrackAsync",
+          "callee": "like.ToggleSave",
+          "lineNumber": 1276
+        },
+        {
+          "caller": "ToggleShuffle",
+          "callee": "Ioc.Default.GetService<IPlaybackStateService>",
+          "lineNumber": 1281
+        },
+        {
+          "caller": "ToggleShuffle",
+          "callee": "playback.SetShuffle",
+          "lineNumber": 1283
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 61,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ShowPage.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 644,
+      "nonEmptyLines": 607,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ShowPage.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 408,
+      "nonEmptyLines": 340,
+      "functions": [
+        {
+          "name": "ShowPage",
+          "startLine": 64,
+          "endLine": 85,
+          "params": []
+        },
+        {
+          "name": "OnLeaving",
+          "startLine": 87,
+          "endLine": 92,
+          "params": []
+        },
+        {
+          "name": "TrimForNavigationCache",
+          "startLine": 96,
+          "endLine": 106,
+          "params": []
+        },
+        {
+          "name": "RestoreFromNavigationCache",
+          "startLine": 108,
+          "endLine": 124,
+          "params": []
+        },
+        {
+          "name": "ViewModel_ContentChanged",
+          "startLine": 126,
+          "endLine": 127,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ViewModel_PropertyChanged",
+          "startLine": 129,
+          "endLine": 133,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnActualThemeChanged",
+          "startLine": 135,
+          "endLine": 136,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "ShowPage_Loaded",
+          "startLine": 138,
+          "endLine": 148,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ShowPage_Unloaded",
+          "startLine": 150,
+          "endLine": 154,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Dispose",
+          "startLine": 156,
+          "endLine": 167,
+          "params": []
+        },
+        {
+          "name": "OnEntered",
+          "startLine": 171,
+          "endLine": 175,
+          "params": [
+            "parameter",
+            "mode"
+          ]
+        },
+        {
+          "name": "RefreshWithParameter",
+          "startLine": 177,
+          "endLine": 183,
+          "params": [
+            "parameter"
+          ]
+        },
+        {
+          "name": "LoadNewContent",
+          "startLine": 185,
+          "endLine": 240,
+          "params": [
+            "parameter",
+            "mode"
+          ]
+        },
+        {
+          "name": "TryHandlePendingPodcastArtConnectedAnimation",
+          "startLine": 242,
+          "endLine": 267,
+          "params": []
+        },
+        {
+          "name": "ShowBreadcrumb_ItemClicked",
+          "startLine": 271,
+          "endLine": 275,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "RestoreShowPanelWidth",
+          "startLine": 277,
+          "endLine": 288,
+          "params": [
+            "showUri"
+          ]
+        },
+        {
+          "name": "ShowSplitter_ResizeCompleted",
+          "startLine": 290,
+          "endLine": 295,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "CoverContainer_SizeChanged",
+          "startLine": 298,
+          "endLine": 302,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "FilterCombo_SelectionChanged",
+          "startLine": 306,
+          "endLine": 313,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SortCombo_SelectionChanged",
+          "startLine": 315,
+          "endLine": 322,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "EpisodeRow_PlayRequested",
+          "startLine": 332,
+          "endLine": 333,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ResumeBanner_PlayRequested",
+          "startLine": 335,
+          "endLine": 336,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpNextCard_PlayRequested",
+          "startLine": 338,
+          "endLine": 339,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "EpisodeRow_OpenRequested",
+          "startLine": 341,
+          "endLine": 341,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ResumeBanner_OpenRequested",
+          "startLine": 343,
+          "endLine": 343,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpNextCard_OpenRequested",
+          "startLine": 345,
+          "endLine": 345,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OpenEpisodeFromShow",
+          "startLine": 347,
+          "endLine": 358,
+          "params": [
+            "e"
+          ]
+        },
+        {
+          "name": "EpisodeRow_LikeRequested",
+          "startLine": 360,
+          "endLine": 368,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RecommendedShow_Tapped",
+          "startLine": 372,
+          "endLine": 379,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "TopicToken_ItemClick",
+          "startLine": 383,
+          "endLine": 398,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Share_Click",
+          "startLine": 400,
+          "endLine": 407,
+          "params": [
+            "sender",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ShowPage",
+          "startLine": 28,
+          "endLine": 408,
+          "methods": [
+            "ShowPage",
+            "OnLeaving",
+            "TrimForNavigationCache",
+            "RestoreFromNavigationCache",
+            "ViewModel_ContentChanged",
+            "ViewModel_PropertyChanged",
+            "OnActualThemeChanged",
+            "ShowPage_Loaded",
+            "ShowPage_Unloaded",
+            "Dispose",
+            "OnEntered",
+            "RefreshWithParameter",
+            "LoadNewContent",
+            "TryHandlePendingPodcastArtConnectedAnimation",
+            "ShowBreadcrumb_ItemClicked",
+            "RestoreShowPanelWidth",
+            "ShowSplitter_ResizeCompleted",
+            "CoverContainer_SizeChanged",
+            "FilterCombo_SelectionChanged",
+            "SortCombo_SelectionChanged",
+            "EpisodeRow_PlayRequested",
+            "ResumeBanner_PlayRequested",
+            "UpNextCard_PlayRequested",
+            "EpisodeRow_OpenRequested",
+            "ResumeBanner_OpenRequested",
+            "UpNextCard_OpenRequested",
+            "OpenEpisodeFromShow",
+            "EpisodeRow_LikeRequested",
+            "RecommendedShow_Tapped",
+            "TopicToken_ItemClick",
+            "Share_Click"
+          ],
+          "properties": [
+            "FilterQuery",
+            "FilterPlaceholder",
+            "CanFilter",
+            "_logger",
+            "_notificationService",
+            "_settings",
+            "_isDisposed",
+            "ViewModel",
+            "PageController",
+            "ShimmerGate",
+            "TabItemParameter",
+            "ShimmerContainer",
+            "ContentContainer",
+            "CrossfadeLayer",
+            "PageIdForLogging",
+            "IsLoading",
+            "HasContent",
+            "_trimmedForNavigationCache"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ViewModel",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "PageController",
+          "line": 46,
+          "isDefault": false
+        },
+        {
+          "name": "ShimmerGate",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "TabItemParameter",
+          "line": 50,
+          "isDefault": false
+        },
+        {
+          "name": "ShowPage",
+          "line": 64,
+          "isDefault": false
+        },
+        {
+          "name": "OnLeaving",
+          "line": 87,
+          "isDefault": false
+        },
+        {
+          "name": "TrimForNavigationCache",
+          "line": 96,
+          "isDefault": false
+        },
+        {
+          "name": "RestoreFromNavigationCache",
+          "line": 108,
+          "isDefault": false
+        },
+        {
+          "name": "Dispose",
+          "line": 156,
+          "isDefault": false
+        },
+        {
+          "name": "OnEntered",
+          "line": 171,
+          "isDefault": false
+        },
+        {
+          "name": "RefreshWithParameter",
+          "line": 177,
+          "isDefault": false
+        },
+        {
+          "name": "ShowPage",
+          "line": 28,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ShowPage",
+          "callee": "Ioc.Default.GetRequiredService<ShowViewModel>",
+          "lineNumber": 66
+        },
+        {
+          "caller": "ShowPage",
+          "callee": "Ioc.Default.GetService<ILogger<ShowPage>>",
+          "lineNumber": 67
+        },
+        {
+          "caller": "ShowPage",
+          "callee": "Ioc.Default.GetService<INotificationService>",
+          "lineNumber": 68
+        },
+        {
+          "caller": "ShowPage",
+          "callee": "Ioc.Default.GetRequiredService<ISettingsService>",
+          "lineNumber": 69
+        },
+        {
+          "caller": "ShowPage",
+          "callee": "new ContentPageController",
+          "lineNumber": 70
+        },
+        {
+          "caller": "ShowPage",
+          "callee": "InitializeComponent",
+          "lineNumber": 71
+        },
+        {
+          "caller": "ShowPage",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 82
+        },
+        {
+          "caller": "ShowPage",
+          "callee": "ViewModel.ApplyTheme",
+          "lineNumber": 84
+        },
+        {
+          "caller": "OnLeaving",
+          "callee": "Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent",
+          "lineNumber": 89
+        },
+        {
+          "caller": "TrimForNavigationCache",
+          "callee": "ViewModel.Hibernate",
+          "lineNumber": 102
+        },
+        {
+          "caller": "TrimForNavigationCache",
+          "callee": "Bindings?.StopTracking",
+          "lineNumber": 105
+        },
+        {
+          "caller": "RestoreFromNavigationCache",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 117
+        },
+        {
+          "caller": "RestoreFromNavigationCache",
+          "callee": "Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile",
+          "lineNumber": 119
+        },
+        {
+          "caller": "RestoreFromNavigationCache",
+          "callee": "Bindings?.Update",
+          "lineNumber": 121
+        },
+        {
+          "caller": "ViewModel_ContentChanged",
+          "callee": "ContentChanged?.Invoke",
+          "lineNumber": 127
+        },
+        {
+          "caller": "ViewModel_PropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 131
+        },
+        {
+          "caller": "ViewModel_PropertyChanged",
+          "callee": "PageController.OnIsLoadingChanged",
+          "lineNumber": 132
+        },
+        {
+          "caller": "OnActualThemeChanged",
+          "callee": "ViewModel.ApplyTheme",
+          "lineNumber": 136
+        },
+        {
+          "caller": "ShowPage_Loaded",
+          "callee": "PageController.TryShowContentNow",
+          "lineNumber": 145
+        },
+        {
+          "caller": "ShowPage_Loaded",
+          "callee": "TryHandlePendingPodcastArtConnectedAnimation",
+          "lineNumber": 147
+        },
+        {
+          "caller": "Dispose",
+          "callee": "(ViewModel as IDisposable)?.Dispose",
+          "lineNumber": 166
+        },
+        {
+          "caller": "OnEntered",
+          "callee": "Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.Instance?.StageCurrent",
+          "lineNumber": 173
+        },
+        {
+          "caller": "OnEntered",
+          "callee": "LoadNewContent",
+          "lineNumber": 174
+        },
+        {
+          "caller": "RefreshWithParameter",
+          "callee": "LoadNewContent",
+          "lineNumber": 182
+        },
+        {
+          "caller": "LoadNewContent",
+          "callee": "Wavee.UI.WinUI.Services.UiOperationProfiler.Instance?.Profile",
+          "lineNumber": 198
+        },
+        {
+          "caller": "LoadNewContent",
+          "callee": "Bindings?.Update",
+          "lineNumber": 200
+        },
+        {
+          "caller": "LoadNewContent",
+          "callee": "PageController.ResetForNewLoad",
+          "lineNumber": 207
+        },
+        {
+          "caller": "LoadNewContent",
+          "callee": "Task.Yield",
+          "lineNumber": 214
+        },
+        {
+          "caller": "LoadNewContent",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 226
+        },
+        {
+          "caller": "LoadNewContent",
+          "callee": "ViewModel.Activate",
+          "lineNumber": 228
+        },
+        {
+          "caller": "LoadNewContent",
+          "callee": "ViewModel.PrefillFrom",
+          "lineNumber": 230
+        },
+        {
+          "caller": "LoadNewContent",
+          "callee": "RestoreShowPanelWidth",
+          "lineNumber": 231
+        },
+        {
+          "caller": "LoadNewContent",
+          "callee": "TryHandlePendingPodcastArtConnectedAnimation",
+          "lineNumber": 233
+        },
+        {
+          "caller": "LoadNewContent",
+          "callee": "Task.Yield",
+          "lineNumber": 235
+        },
+        {
+          "caller": "LoadNewContent",
+          "callee": "PageController.TryShowContentNow",
+          "lineNumber": 239
+        },
+        {
+          "caller": "TryHandlePendingPodcastArtConnectedAnimation",
+          "callee": "ConnectedAnimationHelper.HasPendingAnimation",
+          "lineNumber": 244
+        },
+        {
+          "caller": "TryHandlePendingPodcastArtConnectedAnimation",
+          "callee": "PageController.MarkContentShownDirectly",
+          "lineNumber": 250
+        },
+        {
+          "caller": "TryHandlePendingPodcastArtConnectedAnimation",
+          "callee": "ConnectedAnimationHelper.TryStartAnimation",
+          "lineNumber": 260
+        },
+        {
+          "caller": "ShowBreadcrumb_ItemClicked",
+          "callee": "NavigationHelpers.OpenPodcasts",
+          "lineNumber": 274
+        },
+        {
+          "caller": "ShowBreadcrumb_ItemClicked",
+          "callee": "NavigationHelpers.IsCtrlPressed",
+          "lineNumber": 274
+        },
+        {
+          "caller": "RestoreShowPanelWidth",
+          "callee": "_settings.Settings.PanelWidths.TryGetValue",
+          "lineNumber": 282
+        },
+        {
+          "caller": "RestoreShowPanelWidth",
+          "callee": "Math.Clamp",
+          "lineNumber": 286
+        },
+        {
+          "caller": "RestoreShowPanelWidth",
+          "callee": "new GridLength",
+          "lineNumber": 287
+        },
+        {
+          "caller": "ShowSplitter_ResizeCompleted",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 293
+        },
+        {
+          "caller": "ShowSplitter_ResizeCompleted",
+          "callee": "_settings.Update",
+          "lineNumber": 294
+        },
+        {
+          "caller": "FilterCombo_SelectionChanged",
+          "callee": "Enum.TryParse<ShowEpisodeFilter>",
+          "lineNumber": 309
+        },
+        {
+          "caller": "SortCombo_SelectionChanged",
+          "callee": "Enum.TryParse<ShowEpisodeSort>",
+          "lineNumber": 318
+        },
+        {
+          "caller": "EpisodeRow_PlayRequested",
+          "callee": "ViewModel.PlayEpisodeCommand.Execute",
+          "lineNumber": 333
+        },
+        {
+          "caller": "ResumeBanner_PlayRequested",
+          "callee": "ViewModel.PlayEpisodeCommand.Execute",
+          "lineNumber": 336
+        },
+        {
+          "caller": "UpNextCard_PlayRequested",
+          "callee": "ViewModel.PlayEpisodeCommand.Execute",
+          "lineNumber": 339
+        },
+        {
+          "caller": "EpisodeRow_OpenRequested",
+          "callee": "OpenEpisodeFromShow",
+          "lineNumber": 341
+        },
+        {
+          "caller": "ResumeBanner_OpenRequested",
+          "callee": "OpenEpisodeFromShow",
+          "lineNumber": 343
+        },
+        {
+          "caller": "UpNextCard_OpenRequested",
+          "callee": "OpenEpisodeFromShow",
+          "lineNumber": 345
+        },
+        {
+          "caller": "OpenEpisodeFromShow",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 349
+        },
+        {
+          "caller": "OpenEpisodeFromShow",
+          "callee": "NavigationHelpers.OpenEpisodePage",
+          "lineNumber": 350
+        },
+        {
+          "caller": "OpenEpisodeFromShow",
+          "callee": "NavigationHelpers.IsCtrlPressed",
+          "lineNumber": 357
+        },
+        {
+          "caller": "EpisodeRow_LikeRequested",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 367
+        },
+        {
+          "caller": "RecommendedShow_Tapped",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 374
+        },
+        {
+          "caller": "RecommendedShow_Tapped",
+          "callee": "ViewModel.OpenRecommendationCommand.Execute",
+          "lineNumber": 377
+        },
+        {
+          "caller": "TopicToken_ItemClick",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 385
+        },
+        {
+          "caller": "TopicToken_ItemClick",
+          "callee": "new ContentNavigationParameter",
+          "lineNumber": 388
+        },
+        {
+          "caller": "TopicToken_ItemClick",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 390
+        },
+        {
+          "caller": "TopicToken_ItemClick",
+          "callee": "NavigationHelpers.OpenPodcastBrowse",
+          "lineNumber": 397
+        },
+        {
+          "caller": "TopicToken_ItemClick",
+          "callee": "NavigationHelpers.IsCtrlPressed",
+          "lineNumber": 397
+        },
+        {
+          "caller": "Share_Click",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 402
+        },
+        {
+          "caller": "Share_Click",
+          "callee": "_notificationService?.Show",
+          "lineNumber": 403
+        },
+        {
+          "caller": "Share_Click",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 406
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 12,
+        "functionCount": 31,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/StartPage.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 89,
+      "nonEmptyLines": 81,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/StartPage.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 42,
+      "nonEmptyLines": 35,
+      "functions": [
+        {
+          "name": "StartPage",
+          "startLine": 13,
+          "endLine": 16,
+          "params": []
+        },
+        {
+          "name": "OnEntered",
+          "startLine": 18,
+          "endLine": 18,
+          "params": [
+            "parameter",
+            "mode"
+          ]
+        },
+        {
+          "name": "OnLeaving",
+          "startLine": 20,
+          "endLine": 25,
+          "params": []
+        },
+        {
+          "name": "SearchBox_QuerySubmitted",
+          "startLine": 27,
+          "endLine": 33,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "QuickAccess_Click",
+          "startLine": 35,
+          "endLine": 41,
+          "params": [
+            "sender",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "StartPage",
+          "startLine": 9,
+          "endLine": 42,
+          "methods": [
+            "StartPage",
+            "OnEntered",
+            "OnLeaving",
+            "SearchBox_QuerySubmitted",
+            "QuickAccess_Click"
+          ],
+          "properties": [
+            "ViewModel"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ViewModel",
+          "line": 11,
+          "isDefault": false
+        },
+        {
+          "name": "StartPage",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "OnEntered",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "OnLeaving",
+          "line": 20,
+          "isDefault": false
+        },
+        {
+          "name": "StartPage",
+          "line": 9,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "StartPage",
+          "callee": "InitializeComponent",
+          "lineNumber": 15
+        },
+        {
+          "caller": "OnLeaving",
+          "callee": "Bindings?.StopTracking",
+          "lineNumber": 24
+        },
+        {
+          "caller": "SearchBox_QuerySubmitted",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 29
+        },
+        {
+          "caller": "SearchBox_QuerySubmitted",
+          "callee": "NavigationHelpers.OpenSearch",
+          "lineNumber": 31
+        },
+        {
+          "caller": "QuickAccess_Click",
+          "callee": "item.Action?.Invoke",
+          "lineNumber": 39
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 5,
+        "functionCount": 5,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/VideoPlayerPage.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 235,
+      "nonEmptyLines": 217,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/VideoPlayerPage.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 1041,
+      "nonEmptyLines": 900,
+      "functions": [
+        {
+          "name": "OnEntered",
+          "startLine": 57,
+          "endLine": 57,
+          "params": [
+            "parameter",
+            "mode"
+          ]
+        },
+        {
+          "name": "OnLeaving",
+          "startLine": 58,
+          "endLine": 58,
+          "params": []
+        },
+        {
+          "name": "VideoPlayerPage",
+          "startLine": 97,
+          "endLine": 125,
+          "params": []
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 129,
+          "endLine": 155,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnUnloaded",
+          "startLine": 157,
+          "endLine": 179,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SubscribeEvents",
+          "startLine": 183,
+          "endLine": 225,
+          "params": []
+        },
+        {
+          "name": "UnsubscribeEvents",
+          "startLine": 227,
+          "endLine": 262,
+          "params": []
+        },
+        {
+          "name": "OnPresentationServicePropertyChanged",
+          "startLine": 266,
+          "endLine": 320,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnProcessKeyboardAccelerators",
+          "startLine": 329,
+          "endLine": 409,
+          "params": [
+            "args"
+          ]
+        },
+        {
+          "name": "OnViewModelPropertyChanged",
+          "startLine": 416,
+          "endLine": 422,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPlaybackStateChanged",
+          "startLine": 424,
+          "endLine": 447,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "EnsureUpNextOverlay",
+          "startLine": 449,
+          "endLine": 469,
+          "params": []
+        },
+        {
+          "name": "TeardownUpNextOverlay",
+          "startLine": 471,
+          "endLine": 477,
+          "params": []
+        },
+        {
+          "name": "OnLikeStateChanged",
+          "startLine": 479,
+          "endLine": 480,
+          "params": []
+        },
+        {
+          "name": "AttachSurface",
+          "startLine": 484,
+          "endLine": 531,
+          "params": [
+            "player"
+          ]
+        },
+        {
+          "name": "AttachElementSurface",
+          "startLine": 533,
+          "endLine": 542,
+          "params": [
+            "element"
+          ]
+        },
+        {
+          "name": "DetachSurface",
+          "startLine": 544,
+          "endLine": 552,
+          "params": []
+        },
+        {
+          "name": "DetachMediaPlayerSurfaceInternal",
+          "startLine": 554,
+          "endLine": 560,
+          "params": []
+        },
+        {
+          "name": "DetachElementSurfaceInternal",
+          "startLine": 562,
+          "endLine": 568,
+          "params": []
+        },
+        {
+          "name": "OnActiveSurfaceChanged",
+          "startLine": 570,
+          "endLine": 571,
+          "params": [
+            "sender",
+            "surface"
+          ]
+        },
+        {
+          "name": "OnSurfaceOwnershipChanged",
+          "startLine": 573,
+          "endLine": 574,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateSurfaceFirstFrameState",
+          "startLine": 582,
+          "endLine": 588,
+          "params": []
+        },
+        {
+          "name": "EnsureHideTimer",
+          "startLine": 592,
+          "endLine": 601,
+          "params": []
+        },
+        {
+          "name": "ShowCursor",
+          "startLine": 612,
+          "endLine": 613,
+          "params": [
+            "bShow"
+          ]
+        },
+        {
+          "name": "HideCursor",
+          "startLine": 615,
+          "endLine": 620,
+          "params": []
+        },
+        {
+          "name": "RestoreCursor",
+          "startLine": 622,
+          "endLine": 627,
+          "params": []
+        },
+        {
+          "name": "OnHideTimerTick",
+          "startLine": 629,
+          "endLine": 651,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "RestartHideTimer",
+          "startLine": 653,
+          "endLine": 663,
+          "params": []
+        },
+        {
+          "name": "OnPagePointerMoved",
+          "startLine": 665,
+          "endLine": 676,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "IsPointerOutsideScrim",
+          "startLine": 678,
+          "endLine": 686,
+          "params": [
+            "e"
+          ]
+        },
+        {
+          "name": "OnPageKeyDown",
+          "startLine": 688,
+          "endLine": 692,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnScrimPointerEntered",
+          "startLine": 694,
+          "endLine": 707,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnScrimPointerExited",
+          "startLine": 709,
+          "endLine": 714,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnScrimGotFocus",
+          "startLine": 716,
+          "endLine": 727,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnScrimLostFocus",
+          "startLine": 729,
+          "endLine": 734,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnWindowActivatedForScrim",
+          "startLine": 736,
+          "endLine": 747,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "FadeScrim",
+          "startLine": 749,
+          "endLine": 779,
+          "params": [
+            "visible"
+          ]
+        },
+        {
+          "name": "EnsureScrimImplicitAnimation",
+          "startLine": 781,
+          "endLine": 801,
+          "params": []
+        },
+        {
+          "name": "OnAppWindowChanged",
+          "startLine": 816,
+          "endLine": 821,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "TrackTitle_Click",
+          "startLine": 823,
+          "endLine": 824,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ArtistLine_Click",
+          "startLine": 826,
+          "endLine": 827,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "NavigateToCurrentTitleTarget",
+          "startLine": 829,
+          "endLine": 861,
+          "params": []
+        },
+        {
+          "name": "NavigateToCurrentSubtitleTarget",
+          "startLine": 863,
+          "endLine": 890,
+          "params": []
+        },
+        {
+          "name": "TryOpenLocalContentTarget",
+          "startLine": 892,
+          "endLine": 915,
+          "params": []
+        },
+        {
+          "name": "UpdateHeartState",
+          "startLine": 919,
+          "endLine": 931,
+          "params": []
+        },
+        {
+          "name": "UpdateHeartStateAsync",
+          "startLine": 933,
+          "endLine": 943,
+          "params": [
+            "version"
+          ]
+        },
+        {
+          "name": "OnHeartClicked",
+          "startLine": 945,
+          "endLine": 945,
+          "params": []
+        },
+        {
+          "name": "OnHeartClickedAsync",
+          "startLine": 947,
+          "endLine": 957,
+          "params": []
+        },
+        {
+          "name": "StageGrid_DragOver",
+          "startLine": 970,
+          "endLine": 986,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "StageGrid_DragLeave",
+          "startLine": 988,
+          "endLine": 989,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "StageGrid_Drop",
+          "startLine": 991,
+          "endLine": 1019,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "HasSubtitleStorageItemAsync",
+          "startLine": 1021,
+          "endLine": 1040,
+          "params": [
+            "view"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "VideoPlayerPage",
+          "startLine": 47,
+          "endLine": 1041,
+          "methods": [
+            "OnEntered",
+            "OnLeaving",
+            "VideoPlayerPage",
+            "OnLoaded",
+            "OnUnloaded",
+            "SubscribeEvents",
+            "UnsubscribeEvents",
+            "OnPresentationServicePropertyChanged",
+            "OnProcessKeyboardAccelerators",
+            "OnViewModelPropertyChanged",
+            "OnPlaybackStateChanged",
+            "EnsureUpNextOverlay",
+            "TeardownUpNextOverlay",
+            "OnLikeStateChanged",
+            "AttachSurface",
+            "AttachElementSurface",
+            "DetachSurface",
+            "DetachMediaPlayerSurfaceInternal",
+            "DetachElementSurfaceInternal",
+            "OnActiveSurfaceChanged",
+            "OnSurfaceOwnershipChanged",
+            "UpdateSurfaceFirstFrameState",
+            "EnsureHideTimer",
+            "ShowCursor",
+            "HideCursor",
+            "RestoreCursor",
+            "OnHideTimerTick",
+            "RestartHideTimer",
+            "OnPagePointerMoved",
+            "IsPointerOutsideScrim",
+            "OnPageKeyDown",
+            "OnScrimPointerEntered",
+            "OnScrimPointerExited",
+            "OnScrimGotFocus",
+            "OnScrimLostFocus",
+            "OnWindowActivatedForScrim",
+            "FadeScrim",
+            "EnsureScrimImplicitAnimation",
+            "OnAppWindowChanged",
+            "TrackTitle_Click",
+            "ArtistLine_Click",
+            "NavigateToCurrentTitleTarget",
+            "NavigateToCurrentSubtitleTarget",
+            "TryOpenLocalContentTarget",
+            "UpdateHeartState",
+            "UpdateHeartStateAsync",
+            "OnHeartClicked",
+            "OnHeartClickedAsync",
+            "StageGrid_DragOver",
+            "StageGrid_DragLeave",
+            "StageGrid_Drop",
+            "HasSubtitleStorageItemAsync"
+          ],
+          "properties": [
+            "OwnerPriority",
+            "ShouldCacheInHost",
+            "ScrimIdleHideMs",
+            "MaxScrimPinMs",
+            "FadeDurationMs",
+            "_surface",
+            "_likeService",
+            "_playbackStateService",
+            "_musicVideoMetadata",
+            "_logger",
+            "ViewModel",
+            "_upNextViewModel",
+            "_videoElement",
+            "_videoElementSurface",
+            "_hideTimer",
+            "_scrimImplicitInstalled",
+            "_scrimVisible",
+            "_scrimPinned",
+            "_heartStateVersion",
+            "_eventsSubscribed",
+            "_appWindowSubscribed",
+            "_windowActivatedSubscribed",
+            "_presentationService",
+            "_scrimPinnedAt",
+            "_cursorHidden",
+            "SubtitleExtensions"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "OnEntered",
+          "line": 57,
+          "isDefault": false
+        },
+        {
+          "name": "OnLeaving",
+          "line": 58,
+          "isDefault": false
+        },
+        {
+          "name": "ShouldCacheInHost",
+          "line": 63,
+          "isDefault": false
+        },
+        {
+          "name": "ViewModel",
+          "line": 80,
+          "isDefault": false
+        },
+        {
+          "name": "VideoPlayerPage",
+          "line": 97,
+          "isDefault": false
+        },
+        {
+          "name": "AttachSurface",
+          "line": 484,
+          "isDefault": false
+        },
+        {
+          "name": "AttachElementSurface",
+          "line": 533,
+          "isDefault": false
+        },
+        {
+          "name": "DetachSurface",
+          "line": 544,
+          "isDefault": false
+        },
+        {
+          "name": "VideoPlayerPage",
+          "line": 47,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "Ioc.Default.GetRequiredService<PlayerBarViewModel>",
+          "lineNumber": 99
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "Ioc.Default.GetRequiredService<IActiveVideoSurfaceService>",
+          "lineNumber": 100
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "Ioc.Default.GetService<ITrackLikeService>",
+          "lineNumber": 101
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "Ioc.Default.GetService<IPlaybackStateService>",
+          "lineNumber": 102
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "Ioc.Default.GetService<IMusicVideoMetadataService>",
+          "lineNumber": 103
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "Ioc.Default.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()\r\n            ?.CreateLogger<VideoPlayerPage>",
+          "lineNumber": 104
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "Ioc.Default.GetService<Microsoft.Extensions.Logging.ILoggerFactory>",
+          "lineNumber": 104
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "InitializeComponent",
+          "lineNumber": 107
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "new RelayCommand",
+          "lineNumber": 109
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "AddHandler",
+          "lineNumber": 117
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "new PointerEventHandler",
+          "lineNumber": 117
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "AddHandler",
+          "lineNumber": 118
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "new PointerEventHandler",
+          "lineNumber": 118
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "AddHandler",
+          "lineNumber": 119
+        },
+        {
+          "caller": "VideoPlayerPage",
+          "callee": "new KeyEventHandler",
+          "lineNumber": 119
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 131
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "GetHashCode",
+          "lineNumber": 133
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "this.FindHostingPageHost",
+          "lineNumber": 134
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "EnsureHideTimer",
+          "lineNumber": 135
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "SubscribeEvents",
+          "lineNumber": 136
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "_surface.AcquireSurface",
+          "lineNumber": 138
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.TryStartMiniToFull",
+          "lineNumber": 143
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "EnsureUpNextOverlay",
+          "lineNumber": 145
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "UpdateSurfaceFirstFrameState",
+          "lineNumber": 147
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "UpdateHeartState",
+          "lineNumber": 148
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "FadeScrim",
+          "lineNumber": 153
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "RestartHideTimer",
+          "lineNumber": 154
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 159
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "GetHashCode",
+          "lineNumber": 161
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "_surface.IsOwnedBy",
+          "lineNumber": 161
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "UnsubscribeEvents",
+          "lineNumber": 162
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "TeardownUpNextOverlay",
+          "lineNumber": 164
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "RestoreCursor",
+          "lineNumber": 169
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "_surface.ReleaseSurface",
+          "lineNumber": 171
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "_hideTimer.Stop",
+          "lineNumber": 175
+        },
+        {
+          "caller": "SubscribeEvents",
+          "callee": "Ioc.Default.GetService<INowPlayingPresentationService>",
+          "lineNumber": 222
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 268
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 270
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "this.FindHostingPageHost",
+          "lineNumber": 272
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "string.Equals",
+          "lineNumber": 274
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 275
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "GetHashCode",
+          "lineNumber": 277
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "_surface.IsOwnedBy",
+          "lineNumber": 280
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "RestoreCursor",
+          "lineNumber": 289
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 302
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "GetHashCode",
+          "lineNumber": 304
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "_surface.IsOwnedBy",
+          "lineNumber": 310
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 312
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "GetHashCode",
+          "lineNumber": 314
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "_surface.AcquireSurface",
+          "lineNumber": 315
+        },
+        {
+          "caller": "OnPresentationServicePropertyChanged",
+          "callee": "_logger?.LogDebug",
+          "lineNumber": 316
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "(_presentationService ??= Ioc.Default.GetService<INowPlayingPresentationService>())\r\n                    ?.ToggleFullscreen",
+          "lineNumber": 335
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "Ioc.Default.GetService<INowPlayingPresentationService>",
+          "lineNumber": 335
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "Ioc.Default.GetService<INowPlayingPresentationService>",
+          "lineNumber": 342
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "Wavee.UI.WinUI.Helpers.Playback.VideoSurfaceMorph.PrepareFullToMini",
+          "lineNumber": 348
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "svc.ExitToNormal",
+          "lineNumber": 349
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "ViewModel.SeekByMilliseconds",
+          "lineNumber": 361
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "FadeScrim",
+          "lineNumber": 362
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "RestartHideTimer",
+          "lineNumber": 363
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "ViewModel.SeekByMilliseconds",
+          "lineNumber": 369
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "FadeScrim",
+          "lineNumber": 370
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "RestartHideTimer",
+          "lineNumber": 371
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "ViewModel.PlayPauseCommand.Execute",
+          "lineNumber": 379
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "ViewModel.SkipBack10Command.Execute",
+          "lineNumber": 392
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "FadeScrim",
+          "lineNumber": 393
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "RestartHideTimer",
+          "lineNumber": 394
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "ViewModel.SkipForward30Command.Execute",
+          "lineNumber": 400
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "FadeScrim",
+          "lineNumber": 401
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "RestartHideTimer",
+          "lineNumber": 402
+        },
+        {
+          "caller": "OnProcessKeyboardAccelerators",
+          "callee": "base.OnProcessKeyboardAccelerators",
+          "lineNumber": 408
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "nameof",
+          "lineNumber": 429
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "nameof",
+          "lineNumber": 430
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 434
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "nameof",
+          "lineNumber": 441
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "nameof",
+          "lineNumber": 442
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "nameof",
+          "lineNumber": 443
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 445
+        },
+        {
+          "caller": "OnPlaybackStateChanged",
+          "callee": "_upNextViewModel?.RefreshFromPlaybackState",
+          "lineNumber": 445
+        },
+        {
+          "caller": "EnsureUpNextOverlay",
+          "callee": "Ioc.Default.GetService<Wavee.UI.Library.Local.ILocalLibraryFacade>",
+          "lineNumber": 454
+        },
+        {
+          "caller": "EnsureUpNextOverlay",
+          "callee": "Ioc.Default.GetService<Services.LocalEpisodeChapterScanner>",
+          "lineNumber": 455
+        },
+        {
+          "caller": "EnsureUpNextOverlay",
+          "callee": "Ioc.Default.GetService<Services.LocalMediaPlayer>",
+          "lineNumber": 456
+        },
+        {
+          "caller": "EnsureUpNextOverlay",
+          "callee": "Ioc.Default.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()\r\n                ?.CreateLogger<ViewModels.Local.UpNextEpisodeOverlayViewModel>",
+          "lineNumber": 464
+        },
+        {
+          "caller": "EnsureUpNextOverlay",
+          "callee": "Ioc.Default.GetService<Microsoft.Extensions.Logging.ILoggerFactory>",
+          "lineNumber": 464
+        },
+        {
+          "caller": "EnsureUpNextOverlay",
+          "callee": "_upNextViewModel.RefreshFromPlaybackState",
+          "lineNumber": 468
+        },
+        {
+          "caller": "TeardownUpNextOverlay",
+          "callee": "_upNextViewModel.Dispose",
+          "lineNumber": 475
+        },
+        {
+          "caller": "OnLikeStateChanged",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 480
+        },
+        {
+          "caller": "AttachSurface",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 486
+        },
+        {
+          "caller": "AttachSurface",
+          "callee": "GetHashCode",
+          "lineNumber": 488
+        },
+        {
+          "caller": "AttachSurface",
+          "callee": "DetachElementSurfaceInternal",
+          "lineNumber": 489
+        },
+        {
+          "caller": "AttachSurface",
+          "callee": "new MediaPlayerElement",
+          "lineNumber": 492
+        },
+        {
+          "caller": "AttachSurface",
+          "callee": "SurfaceHost.MountVideoElement",
+          "lineNumber": 501
+        },
+        {
+          "caller": "AttachSurface",
+          "callee": "_videoElement.UpdateLayout",
+          "lineNumber": 508
+        },
+        {
+          "caller": "AttachSurface",
+          "callee": "_videoElement.SetMediaPlayer",
+          "lineNumber": 510
+        },
+        {
+          "caller": "AttachSurface",
+          "callee": "UpdateSurfaceFirstFrameState",
+          "lineNumber": 530
+        },
+        {
+          "caller": "AttachElementSurface",
+          "callee": "DetachMediaPlayerSurfaceInternal",
+          "lineNumber": 535
+        },
+        {
+          "caller": "AttachElementSurface",
+          "callee": "ReferenceEquals",
+          "lineNumber": 536
+        },
+        {
+          "caller": "AttachElementSurface",
+          "callee": "SurfaceHost.MountVideoElement",
+          "lineNumber": 540
+        },
+        {
+          "caller": "AttachElementSurface",
+          "callee": "UpdateSurfaceFirstFrameState",
+          "lineNumber": 541
+        },
+        {
+          "caller": "DetachSurface",
+          "callee": "_logger?.LogInformation",
+          "lineNumber": 546
+        },
+        {
+          "caller": "DetachSurface",
+          "callee": "GetHashCode",
+          "lineNumber": 548
+        },
+        {
+          "caller": "DetachSurface",
+          "callee": "DetachMediaPlayerSurfaceInternal",
+          "lineNumber": 549
+        },
+        {
+          "caller": "DetachSurface",
+          "callee": "DetachElementSurfaceInternal",
+          "lineNumber": 550
+        },
+        {
+          "caller": "DetachSurface",
+          "callee": "UpdateSurfaceFirstFrameState",
+          "lineNumber": 551
+        },
+        {
+          "caller": "DetachMediaPlayerSurfaceInternal",
+          "callee": "_videoElement.SetMediaPlayer",
+          "lineNumber": 557
+        },
+        {
+          "caller": "DetachMediaPlayerSurfaceInternal",
+          "callee": "SurfaceHost.UnmountVideoElement",
+          "lineNumber": 558
+        },
+        {
+          "caller": "DetachElementSurfaceInternal",
+          "callee": "SurfaceHost.UnmountVideoElement",
+          "lineNumber": 565
+        },
+        {
+          "caller": "OnActiveSurfaceChanged",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 571
+        },
+        {
+          "caller": "OnSurfaceOwnershipChanged",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 574
+        },
+        {
+          "caller": "EnsureHideTimer",
+          "callee": "DispatcherQueue.GetForCurrentThread",
+          "lineNumber": 595
+        },
+        {
+          "caller": "EnsureHideTimer",
+          "callee": "dq.CreateTimer",
+          "lineNumber": 597
+        },
+        {
+          "caller": "EnsureHideTimer",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 598
+        },
+        {
+          "caller": "HideCursor",
+          "callee": "ShowCursor",
+          "lineNumber": 618
+        },
+        {
+          "caller": "RestoreCursor",
+          "callee": "ShowCursor",
+          "lineNumber": 625
+        },
+        {
+          "caller": "OnHideTimerTick",
+          "callee": "_hideTimer?.Stop",
+          "lineNumber": 642
+        },
+        {
+          "caller": "OnHideTimerTick",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 643
+        },
+        {
+          "caller": "OnHideTimerTick",
+          "callee": "Math.Max",
+          "lineNumber": 644
+        },
+        {
+          "caller": "OnHideTimerTick",
+          "callee": "_hideTimer.Start",
+          "lineNumber": 645
+        },
+        {
+          "caller": "OnHideTimerTick",
+          "callee": "FadeScrim",
+          "lineNumber": 650
+        },
+        {
+          "caller": "RestartHideTimer",
+          "callee": "_hideTimer?.Stop",
+          "lineNumber": 657
+        },
+        {
+          "caller": "RestartHideTimer",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 660
+        },
+        {
+          "caller": "RestartHideTimer",
+          "callee": "_hideTimer.Start",
+          "lineNumber": 661
+        },
+        {
+          "caller": "OnPagePointerMoved",
+          "callee": "IsPointerOutsideScrim",
+          "lineNumber": 669
+        },
+        {
+          "caller": "OnPagePointerMoved",
+          "callee": "FadeScrim",
+          "lineNumber": 674
+        },
+        {
+          "caller": "OnPagePointerMoved",
+          "callee": "RestartHideTimer",
+          "lineNumber": 675
+        },
+        {
+          "caller": "OnPageKeyDown",
+          "callee": "FadeScrim",
+          "lineNumber": 690
+        },
+        {
+          "caller": "OnPageKeyDown",
+          "callee": "RestartHideTimer",
+          "lineNumber": 691
+        },
+        {
+          "caller": "OnScrimPointerEntered",
+          "callee": "_hideTimer?.Stop",
+          "lineNumber": 700
+        },
+        {
+          "caller": "OnScrimPointerEntered",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 703
+        },
+        {
+          "caller": "OnScrimPointerEntered",
+          "callee": "_hideTimer.Start",
+          "lineNumber": 704
+        },
+        {
+          "caller": "OnScrimPointerEntered",
+          "callee": "FadeScrim",
+          "lineNumber": 706
+        },
+        {
+          "caller": "OnScrimPointerExited",
+          "callee": "RestartHideTimer",
+          "lineNumber": 713
+        },
+        {
+          "caller": "OnScrimGotFocus",
+          "callee": "_hideTimer?.Stop",
+          "lineNumber": 720
+        },
+        {
+          "caller": "OnScrimGotFocus",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 723
+        },
+        {
+          "caller": "OnScrimGotFocus",
+          "callee": "_hideTimer.Start",
+          "lineNumber": 724
+        },
+        {
+          "caller": "OnScrimGotFocus",
+          "callee": "FadeScrim",
+          "lineNumber": 726
+        },
+        {
+          "caller": "OnScrimLostFocus",
+          "callee": "RestartHideTimer",
+          "lineNumber": 733
+        },
+        {
+          "caller": "OnWindowActivatedForScrim",
+          "callee": "FadeScrim",
+          "lineNumber": 745
+        },
+        {
+          "caller": "FadeScrim",
+          "callee": "RestoreCursor",
+          "lineNumber": 758
+        },
+        {
+          "caller": "FadeScrim",
+          "callee": "HideCursor",
+          "lineNumber": 758
+        },
+        {
+          "caller": "FadeScrim",
+          "callee": "RestoreCursor",
+          "lineNumber": 764
+        },
+        {
+          "caller": "FadeScrim",
+          "callee": "EnsureScrimImplicitAnimation",
+          "lineNumber": 773
+        },
+        {
+          "caller": "EnsureScrimImplicitAnimation",
+          "callee": "Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 784
+        },
+        {
+          "caller": "EnsureScrimImplicitAnimation",
+          "callee": "compositor.CreateScalarKeyFrameAnimation",
+          "lineNumber": 787
+        },
+        {
+          "caller": "EnsureScrimImplicitAnimation",
+          "callee": "anim.InsertExpressionKeyFrame",
+          "lineNumber": 788
+        },
+        {
+          "caller": "EnsureScrimImplicitAnimation",
+          "callee": "compositor.CreateCubicBezierEasingFunction",
+          "lineNumber": 791
+        },
+        {
+          "caller": "EnsureScrimImplicitAnimation",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 794
+        },
+        {
+          "caller": "EnsureScrimImplicitAnimation",
+          "callee": "compositor.CreateImplicitAnimationCollection",
+          "lineNumber": 797
+        },
+        {
+          "caller": "TrackTitle_Click",
+          "callee": "NavigateToCurrentTitleTarget",
+          "lineNumber": 824
+        },
+        {
+          "caller": "ArtistLine_Click",
+          "callee": "NavigateToCurrentSubtitleTarget",
+          "lineNumber": 827
+        },
+        {
+          "caller": "NavigateToCurrentTitleTarget",
+          "callee": "PodcastPlaybackNavigation.TryOpenCurrentEpisode",
+          "lineNumber": 831
+        },
+        {
+          "caller": "NavigateToCurrentTitleTarget",
+          "callee": "TryOpenLocalContentTarget",
+          "lineNumber": 841
+        },
+        {
+          "caller": "NavigateToCurrentTitleTarget",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 845
+        },
+        {
+          "caller": "NavigateToCurrentTitleTarget",
+          "callee": "new ContentNavigationParameter",
+          "lineNumber": 847
+        },
+        {
+          "caller": "NavigateToCurrentTitleTarget",
+          "callee": "albumId.StartsWith",
+          "lineNumber": 854
+        },
+        {
+          "caller": "NavigateToCurrentTitleTarget",
+          "callee": "NavigationHelpers.OpenShowPage",
+          "lineNumber": 856
+        },
+        {
+          "caller": "NavigateToCurrentTitleTarget",
+          "callee": "NavigationHelpers.OpenAlbum",
+          "lineNumber": 860
+        },
+        {
+          "caller": "NavigateToCurrentSubtitleTarget",
+          "callee": "TryOpenLocalContentTarget",
+          "lineNumber": 865
+        },
+        {
+          "caller": "NavigateToCurrentSubtitleTarget",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 875
+        },
+        {
+          "caller": "NavigateToCurrentSubtitleTarget",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 877
+        },
+        {
+          "caller": "NavigateToCurrentSubtitleTarget",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 882
+        },
+        {
+          "caller": "NavigateToCurrentSubtitleTarget",
+          "callee": "new ContentNavigationParameter",
+          "lineNumber": 884
+        },
+        {
+          "caller": "NavigateToCurrentSubtitleTarget",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 887
+        },
+        {
+          "caller": "NavigateToCurrentSubtitleTarget",
+          "callee": "NavigationHelpers.OpenArtist",
+          "lineNumber": 889
+        },
+        {
+          "caller": "TryOpenLocalContentTarget",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 899
+        },
+        {
+          "caller": "TryOpenLocalContentTarget",
+          "callee": "NavigationHelpers.OpenLocalShowDetail",
+          "lineNumber": 900
+        },
+        {
+          "caller": "TryOpenLocalContentTarget",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 906
+        },
+        {
+          "caller": "TryOpenLocalContentTarget",
+          "callee": "NavigationHelpers.OpenLocalMovieDetail",
+          "lineNumber": 907
+        },
+        {
+          "caller": "UpdateHeartState",
+          "callee": "PlaybackSaveTargetResolver.GetTrackUri",
+          "lineNumber": 922
+        },
+        {
+          "caller": "UpdateHeartState",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 923
+        },
+        {
+          "caller": "UpdateHeartState",
+          "callee": "_likeService?.IsSaved",
+          "lineNumber": 925
+        },
+        {
+          "caller": "UpdateHeartState",
+          "callee": "UpdateHeartStateAsync",
+          "lineNumber": 930
+        },
+        {
+          "caller": "UpdateHeartStateAsync",
+          "callee": "PlaybackSaveTargetResolver\r\n            .ResolveTrackUriAsync(_playbackStateService, _musicVideoMetadata)\r\n            .ConfigureAwait",
+          "lineNumber": 935
+        },
+        {
+          "caller": "UpdateHeartStateAsync",
+          "callee": "PlaybackSaveTargetResolver\r\n            .ResolveTrackUriAsync",
+          "lineNumber": 935
+        },
+        {
+          "caller": "UpdateHeartStateAsync",
+          "callee": "!string.IsNullOrEmpty(uri)\r\n            && _likeService?.IsSaved",
+          "lineNumber": 941
+        },
+        {
+          "caller": "UpdateHeartStateAsync",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 941
+        },
+        {
+          "caller": "OnHeartClicked",
+          "callee": "OnHeartClickedAsync",
+          "lineNumber": 945
+        },
+        {
+          "caller": "OnHeartClickedAsync",
+          "callee": "PlaybackSaveTargetResolver\r\n            .ResolveTrackUriAsync(_playbackStateService, _musicVideoMetadata)\r\n            .ConfigureAwait",
+          "lineNumber": 949
+        },
+        {
+          "caller": "OnHeartClickedAsync",
+          "callee": "PlaybackSaveTargetResolver\r\n            .ResolveTrackUriAsync",
+          "lineNumber": 949
+        },
+        {
+          "caller": "OnHeartClickedAsync",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 952
+        },
+        {
+          "caller": "OnHeartClickedAsync",
+          "callee": "_likeService.IsSaved",
+          "lineNumber": 954
+        },
+        {
+          "caller": "OnHeartClickedAsync",
+          "callee": "_likeService.ToggleSave",
+          "lineNumber": 955
+        },
+        {
+          "caller": "StageGrid_DragOver",
+          "callee": "HasSubtitleStorageItemAsync",
+          "lineNumber": 972
+        },
+        {
+          "caller": "StageGrid_Drop",
+          "callee": "e.DataView.Contains",
+          "lineNumber": 994
+        },
+        {
+          "caller": "StageGrid_Drop",
+          "callee": "Ioc.Default.GetService<LocalMediaPlayer>",
+          "lineNumber": 996
+        },
+        {
+          "caller": "StageGrid_Drop",
+          "callee": "e.DataView.GetStorageItemsAsync",
+          "lineNumber": 999
+        },
+        {
+          "caller": "StageGrid_Drop",
+          "callee": "SubtitleExtensions.Contains",
+          "lineNumber": 1003
+        },
+        {
+          "caller": "StageGrid_Drop",
+          "callee": "System.IO.Path.GetExtension",
+          "lineNumber": 1003
+        },
+        {
+          "caller": "StageGrid_Drop",
+          "callee": "Wavee.Local.Subtitles.LocalSubtitleDiscoverer.ParseFromPath",
+          "lineNumber": 1009
+        },
+        {
+          "caller": "StageGrid_Drop",
+          "callee": "System.IO.Path.GetFileNameWithoutExtension",
+          "lineNumber": 1010
+        },
+        {
+          "caller": "StageGrid_Drop",
+          "callee": "local.AddExternalSubtitleAsync",
+          "lineNumber": 1012
+        },
+        {
+          "caller": "HasSubtitleStorageItemAsync",
+          "callee": "view.Contains",
+          "lineNumber": 1023
+        },
+        {
+          "caller": "HasSubtitleStorageItemAsync",
+          "callee": "view.GetStorageItemsAsync",
+          "lineNumber": 1026
+        },
+        {
+          "caller": "HasSubtitleStorageItemAsync",
+          "callee": "SubtitleExtensions.Contains",
+          "lineNumber": 1030
+        },
+        {
+          "caller": "HasSubtitleStorageItemAsync",
+          "callee": "System.IO.Path.GetExtension",
+          "lineNumber": 1030
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 9,
+        "functionCount": 52,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/YourEpisodesView.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 921,
+      "nonEmptyLines": 874,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/YourEpisodesView.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 326,
+      "nonEmptyLines": 272,
+      "functions": [
+        {
+          "name": "YourEpisodesView",
+          "startLine": 49,
+          "endLine": 58,
+          "params": [
+            "viewModel"
+          ]
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 60,
+          "endLine": 63,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSizeChanged",
+          "startLine": 65,
+          "endLine": 68,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "UpdateLayoutMode",
+          "startLine": 70,
+          "endLine": 75,
+          "params": [
+            "preserveContext"
+          ]
+        },
+        {
+          "name": "WideLayoutRoot_Loaded",
+          "startLine": 77,
+          "endLine": 93,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "WideLayoutRoot_SizeChanged",
+          "startLine": 95,
+          "endLine": 101,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "WideColumnSplitter_ResizeCompleted",
+          "startLine": 103,
+          "endLine": 113,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyWideColumnWidths",
+          "startLine": 115,
+          "endLine": 144,
+          "params": [
+            "shows",
+            "episodes"
+          ]
+        },
+        {
+          "name": "EpisodeGroupGrid_Loaded",
+          "startLine": 146,
+          "endLine": 158,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "EpisodeGroupGrid_Unloaded",
+          "startLine": 160,
+          "endLine": 167,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "EpisodeGroupGrid_RowSelected",
+          "startLine": 169,
+          "endLine": 187,
+          "params": [
+            "sender",
+            "selected"
+          ]
+        },
+        {
+          "name": "SortButton_Click",
+          "startLine": 189,
+          "endLine": 210,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OpenSelectedEpisodeDetails_Click",
+          "startLine": 212,
+          "endLine": 217,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OpenSelectedShowDetails_Click",
+          "startLine": 219,
+          "endLine": 224,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "PodcastEpisodeScopeSelector_SelectionChanged",
+          "startLine": 226,
+          "endLine": 235,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "AddSortItem",
+          "startLine": 237,
+          "endLine": 248,
+          "params": [
+            "flyout",
+            "text",
+            "sortBy"
+          ]
+        },
+        {
+          "name": "NarrowShowsList_SelectionChanged",
+          "startLine": 250,
+          "endLine": 256,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "BreadcrumbBar_ItemClicked",
+          "startLine": 258,
+          "endLine": 264,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "BrowsePodcasts_Click",
+          "startLine": 266,
+          "endLine": 269,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "PrepareConnectedAnimationNear",
+          "startLine": 271,
+          "endLine": 278,
+          "params": [
+            "origin",
+            "sourceName",
+            "key"
+          ]
+        },
+        {
+          "name": "FindNearestNamedDescendant",
+          "startLine": 280,
+          "endLine": 294,
+          "params": [
+            "origin",
+            "name"
+          ]
+        },
+        {
+          "name": "FindDescendantByName",
+          "startLine": 296,
+          "endLine": 315,
+          "params": [
+            "root",
+            "name"
+          ]
+        },
+        {
+          "name": "Dispose",
+          "startLine": 317,
+          "endLine": 325,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "YourEpisodesView",
+          "startLine": 19,
+          "endLine": 326,
+          "methods": [
+            "YourEpisodesView",
+            "OnLoaded",
+            "OnSizeChanged",
+            "UpdateLayoutMode",
+            "WideLayoutRoot_Loaded",
+            "WideLayoutRoot_SizeChanged",
+            "WideColumnSplitter_ResizeCompleted",
+            "ApplyWideColumnWidths",
+            "EpisodeGroupGrid_Loaded",
+            "EpisodeGroupGrid_Unloaded",
+            "EpisodeGroupGrid_RowSelected",
+            "SortButton_Click",
+            "OpenSelectedEpisodeDetails_Click",
+            "OpenSelectedShowDetails_Click",
+            "PodcastEpisodeScopeSelector_SelectionChanged",
+            "AddSortItem",
+            "NarrowShowsList_SelectionChanged",
+            "BreadcrumbBar_ItemClicked",
+            "BrowsePodcasts_Click",
+            "PrepareConnectedAnimationNear",
+            "FindNearestNamedDescendant",
+            "FindDescendantByName",
+            "Dispose"
+          ],
+          "properties": [
+            "FilterQuery",
+            "FilterPlaceholder",
+            "CanFilter",
+            "WideLayoutSplitterTotalWidth",
+            "DefaultShowsColumnWidth",
+            "DefaultEpisodesColumnWidth",
+            "MinShowsColumnWidth",
+            "MaxShowsColumnWidth",
+            "MinEpisodesColumnWidth",
+            "MinDetailsColumnWidth",
+            "NarrowLayoutBreakpoint",
+            "_episodeGroupGrids",
+            "_hasInitializedLayoutMode",
+            "_clearingEpisodeGridSelection",
+            "_wideColumnsInitialized",
+            "_applyingWideColumnWidths",
+            "_disposed",
+            "ViewModel"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ViewModel",
+          "line": 47,
+          "isDefault": false
+        },
+        {
+          "name": "YourEpisodesView",
+          "line": 49,
+          "isDefault": false
+        },
+        {
+          "name": "Dispose",
+          "line": 317,
+          "isDefault": false
+        },
+        {
+          "name": "YourEpisodesView",
+          "line": 19,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "YourEpisodesView",
+          "callee": "InitializeComponent",
+          "lineNumber": 52
+        },
+        {
+          "caller": "YourEpisodesView",
+          "callee": "ViewModel.LoadCommand.ExecuteAsync",
+          "lineNumber": 57
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "UpdateLayoutMode",
+          "lineNumber": 62
+        },
+        {
+          "caller": "OnSizeChanged",
+          "callee": "UpdateLayoutMode",
+          "lineNumber": 67
+        },
+        {
+          "caller": "UpdateLayoutMode",
+          "callee": "ViewModel.SetNarrowLayout",
+          "lineNumber": 73
+        },
+        {
+          "caller": "WideLayoutRoot_Loaded",
+          "callee": "System.Threading.Tasks.Task.Yield",
+          "lineNumber": 79
+        },
+        {
+          "caller": "WideLayoutRoot_Loaded",
+          "callee": "ViewModel.GetPodcastWideColumnWidths",
+          "lineNumber": 83
+        },
+        {
+          "caller": "WideLayoutRoot_Loaded",
+          "callee": "ApplyWideColumnWidths",
+          "lineNumber": 91
+        },
+        {
+          "caller": "WideLayoutRoot_SizeChanged",
+          "callee": "ApplyWideColumnWidths",
+          "lineNumber": 100
+        },
+        {
+          "caller": "WideColumnSplitter_ResizeCompleted",
+          "callee": "ApplyWideColumnWidths",
+          "lineNumber": 108
+        },
+        {
+          "caller": "WideColumnSplitter_ResizeCompleted",
+          "callee": "ViewModel.SavePodcastWideColumnWidths",
+          "lineNumber": 109
+        },
+        {
+          "caller": "ApplyWideColumnWidths",
+          "callee": "Math.Max",
+          "lineNumber": 120
+        },
+        {
+          "caller": "ApplyWideColumnWidths",
+          "callee": "Math.Clamp",
+          "lineNumber": 124
+        },
+        {
+          "caller": "ApplyWideColumnWidths",
+          "callee": "Math.Max",
+          "lineNumber": 125
+        },
+        {
+          "caller": "ApplyWideColumnWidths",
+          "callee": "Math.Max",
+          "lineNumber": 127
+        },
+        {
+          "caller": "ApplyWideColumnWidths",
+          "callee": "Math.Min",
+          "lineNumber": 128
+        },
+        {
+          "caller": "ApplyWideColumnWidths",
+          "callee": "Math.Max",
+          "lineNumber": 130
+        },
+        {
+          "caller": "ApplyWideColumnWidths",
+          "callee": "Math.Min",
+          "lineNumber": 131
+        },
+        {
+          "caller": "ApplyWideColumnWidths",
+          "callee": "Math.Min",
+          "lineNumber": 131
+        },
+        {
+          "caller": "ApplyWideColumnWidths",
+          "callee": "new GridLength",
+          "lineNumber": 136
+        },
+        {
+          "caller": "ApplyWideColumnWidths",
+          "callee": "new GridLength",
+          "lineNumber": 137
+        },
+        {
+          "caller": "ApplyWideColumnWidths",
+          "callee": "new GridLength",
+          "lineNumber": 138
+        },
+        {
+          "caller": "EpisodeGroupGrid_Loaded",
+          "callee": "_episodeGroupGrids.Contains",
+          "lineNumber": 151
+        },
+        {
+          "caller": "EpisodeGroupGrid_Loaded",
+          "callee": "_episodeGroupGrids.Add",
+          "lineNumber": 152
+        },
+        {
+          "caller": "EpisodeGroupGrid_Unloaded",
+          "callee": "_episodeGroupGrids.Remove",
+          "lineNumber": 166
+        },
+        {
+          "caller": "EpisodeGroupGrid_RowSelected",
+          "callee": "_episodeGroupGrids.ToArray",
+          "lineNumber": 177
+        },
+        {
+          "caller": "EpisodeGroupGrid_RowSelected",
+          "callee": "ReferenceEquals",
+          "lineNumber": 179
+        },
+        {
+          "caller": "EpisodeGroupGrid_RowSelected",
+          "callee": "grid.ClearSelection",
+          "lineNumber": 180
+        },
+        {
+          "caller": "SortButton_Click",
+          "callee": "new MenuFlyout",
+          "lineNumber": 194
+        },
+        {
+          "caller": "SortButton_Click",
+          "callee": "AddSortItem",
+          "lineNumber": 195
+        },
+        {
+          "caller": "SortButton_Click",
+          "callee": "AddSortItem",
+          "lineNumber": 196
+        },
+        {
+          "caller": "SortButton_Click",
+          "callee": "AddSortItem",
+          "lineNumber": 197
+        },
+        {
+          "caller": "SortButton_Click",
+          "callee": "flyout.Items.Add",
+          "lineNumber": 198
+        },
+        {
+          "caller": "SortButton_Click",
+          "callee": "new MenuFlyoutSeparator",
+          "lineNumber": 198
+        },
+        {
+          "caller": "SortButton_Click",
+          "callee": "new MenuFlyoutItem",
+          "lineNumber": 200
+        },
+        {
+          "caller": "SortButton_Click",
+          "callee": "ViewModel.ToggleSortDirectionCommand.Execute",
+          "lineNumber": 206
+        },
+        {
+          "caller": "SortButton_Click",
+          "callee": "flyout.Items.Add",
+          "lineNumber": 207
+        },
+        {
+          "caller": "SortButton_Click",
+          "callee": "flyout.ShowAt",
+          "lineNumber": 209
+        },
+        {
+          "caller": "OpenSelectedEpisodeDetails_Click",
+          "callee": "PrepareConnectedAnimationNear",
+          "lineNumber": 214
+        },
+        {
+          "caller": "OpenSelectedEpisodeDetails_Click",
+          "callee": "ViewModel.OpenSelectedEpisodeDetailsCommand.CanExecute",
+          "lineNumber": 215
+        },
+        {
+          "caller": "OpenSelectedEpisodeDetails_Click",
+          "callee": "ViewModel.OpenSelectedEpisodeDetailsCommand.Execute",
+          "lineNumber": 216
+        },
+        {
+          "caller": "OpenSelectedShowDetails_Click",
+          "callee": "PrepareConnectedAnimationNear",
+          "lineNumber": 221
+        },
+        {
+          "caller": "OpenSelectedShowDetails_Click",
+          "callee": "ViewModel.OpenSelectedShowCommand.CanExecute",
+          "lineNumber": 222
+        },
+        {
+          "caller": "OpenSelectedShowDetails_Click",
+          "callee": "ViewModel.OpenSelectedShowCommand.Execute",
+          "lineNumber": 223
+        },
+        {
+          "caller": "PodcastEpisodeScopeSelector_SelectionChanged",
+          "callee": "ViewModel.SetPodcastEpisodeScope",
+          "lineNumber": 231
+        },
+        {
+          "caller": "AddSortItem",
+          "callee": "new RadioMenuFlyoutItem",
+          "lineNumber": 239
+        },
+        {
+          "caller": "AddSortItem",
+          "callee": "ViewModel.SetSortBy",
+          "lineNumber": 246
+        },
+        {
+          "caller": "AddSortItem",
+          "callee": "flyout.Items.Add",
+          "lineNumber": 247
+        },
+        {
+          "caller": "NarrowShowsList_SelectionChanged",
+          "callee": "ViewModel.ShowSelectedShowEpisodes",
+          "lineNumber": 254
+        },
+        {
+          "caller": "BreadcrumbBar_ItemClicked",
+          "callee": "ViewModel.ShowPodcastsRoot",
+          "lineNumber": 261
+        },
+        {
+          "caller": "BreadcrumbBar_ItemClicked",
+          "callee": "ViewModel.ShowSelectedShowEpisodes",
+          "lineNumber": 263
+        },
+        {
+          "caller": "BrowsePodcasts_Click",
+          "callee": "NavigationHelpers.OpenPodcastBrowse",
+          "lineNumber": 268
+        },
+        {
+          "caller": "BrowsePodcasts_Click",
+          "callee": "NavigationHelpers.IsCtrlPressed",
+          "lineNumber": 268
+        },
+        {
+          "caller": "PrepareConnectedAnimationNear",
+          "callee": "FindNearestNamedDescendant<FrameworkElement>",
+          "lineNumber": 273
+        },
+        {
+          "caller": "PrepareConnectedAnimationNear",
+          "callee": "ConnectedAnimationHelper.PrepareAnimation",
+          "lineNumber": 277
+        },
+        {
+          "caller": "FindNearestNamedDescendant",
+          "callee": "FindDescendantByName<T>",
+          "lineNumber": 286
+        },
+        {
+          "caller": "FindNearestNamedDescendant",
+          "callee": "VisualTreeHelper.GetParent",
+          "lineNumber": 290
+        },
+        {
+          "caller": "FindDescendantByName",
+          "callee": "VisualTreeHelper.GetChildrenCount",
+          "lineNumber": 302
+        },
+        {
+          "caller": "FindDescendantByName",
+          "callee": "VisualTreeHelper.GetChild",
+          "lineNumber": 305
+        },
+        {
+          "caller": "FindDescendantByName",
+          "callee": "FindDescendantByName<T>",
+          "lineNumber": 309
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 23,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Wavee.UI.WinUI.csproj",
+      "language": "csproj",
+      "fileCategory": "config",
+      "totalLines": 396,
+      "nonEmptyLines": 367,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Windows/DebugFloatingWindow.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 49,
+      "nonEmptyLines": 45,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Windows/DebugFloatingWindow.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 73,
+      "nonEmptyLines": 58,
+      "functions": [
+        {
+          "name": "EnsureOpen",
+          "startLine": 25,
+          "endLine": 36,
+          "params": []
+        },
+        {
+          "name": "DebugFloatingWindow",
+          "startLine": 38,
+          "endLine": 52,
+          "params": []
+        },
+        {
+          "name": "OnRootThemeChanged",
+          "startLine": 54,
+          "endLine": 58,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "OnClosed",
+          "startLine": 60,
+          "endLine": 72,
+          "params": [
+            "sender",
+            "args"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "DebugFloatingWindow",
+          "startLine": 15,
+          "endLine": 73,
+          "methods": [
+            "EnsureOpen",
+            "DebugFloatingWindow",
+            "OnRootThemeChanged",
+            "OnClosed"
+          ],
+          "properties": [
+            "_current",
+            "_disposed"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "EnsureOpen",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "DebugFloatingWindow",
+          "line": 38,
+          "isDefault": false
+        },
+        {
+          "name": "DebugFloatingWindow",
+          "line": 15,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "EnsureOpen",
+          "callee": "_current.Activate",
+          "lineNumber": 29
+        },
+        {
+          "caller": "EnsureOpen",
+          "callee": "new DebugFloatingWindow",
+          "lineNumber": 33
+        },
+        {
+          "caller": "EnsureOpen",
+          "callee": "window.Activate",
+          "lineNumber": 35
+        },
+        {
+          "caller": "DebugFloatingWindow",
+          "callee": "InitializeComponent",
+          "lineNumber": 40
+        },
+        {
+          "caller": "DebugFloatingWindow",
+          "callee": "SetTitleBar",
+          "lineNumber": 43
+        },
+        {
+          "caller": "DebugFloatingWindow",
+          "callee": "TitleBarHelper.ApplyTransparentButtonBackground",
+          "lineNumber": 45
+        },
+        {
+          "caller": "DebugFloatingWindow",
+          "callee": "TitleBarHelper.ApplyCaptionButtonColors",
+          "lineNumber": 46
+        },
+        {
+          "caller": "DebugFloatingWindow",
+          "callee": "RootHost.Navigate",
+          "lineNumber": 51
+        },
+        {
+          "caller": "OnRootThemeChanged",
+          "callee": "TitleBarHelper.ApplyCaptionButtonColors",
+          "lineNumber": 57
+        },
+        {
+          "caller": "OnClosed",
+          "callee": "RootHost.Clear",
+          "lineNumber": 65
+        },
+        {
+          "caller": "OnClosed",
+          "callee": "ReferenceEquals",
+          "lineNumber": 70
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 4,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Windows/PlayerFloatingWindow.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 95,
+      "nonEmptyLines": 89,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Windows/PlayerFloatingWindow.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 531,
+      "nonEmptyLines": 456,
+      "functions": [
+        {
+          "name": "PlayerFloatingWindow",
+          "startLine": 60,
+          "endLine": 108,
+          "params": []
+        },
+        {
+          "name": "RegisterKeyboardAccelerators",
+          "startLine": 110,
+          "endLine": 131,
+          "params": []
+        },
+        {
+          "name": "RequestClose",
+          "startLine": 137,
+          "endLine": 142,
+          "params": []
+        },
+        {
+          "name": "OnClosed",
+          "startLine": 144,
+          "endLine": 147,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "DisposeWindowResources",
+          "startLine": 149,
+          "endLine": 181,
+          "params": []
+        },
+        {
+          "name": "OnRootThemeChanged",
+          "startLine": 183,
+          "endLine": 189,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "OnViewModelPropertyChanged",
+          "startLine": 191,
+          "endLine": 196,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnAppWindowClosing",
+          "startLine": 198,
+          "endLine": 204,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "ApplyWindowTint",
+          "startLine": 206,
+          "endLine": 213,
+          "params": [
+            "hexColor"
+          ]
+        },
+        {
+          "name": "ComputeBackdropColors",
+          "startLine": 215,
+          "endLine": 256,
+          "params": [
+            "hexColor"
+          ]
+        },
+        {
+          "name": "AnimateBackdrop",
+          "startLine": 258,
+          "endLine": 279,
+          "params": [
+            "top",
+            "mid",
+            "bottom"
+          ]
+        },
+        {
+          "name": "OnBackdropTintTick",
+          "startLine": 281,
+          "endLine": 305,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "EaseInOut",
+          "startLine": 307,
+          "endLine": 310,
+          "params": [
+            "t"
+          ]
+        },
+        {
+          "name": "LerpColor",
+          "startLine": 312,
+          "endLine": 317,
+          "params": [
+            "a",
+            "b",
+            "t"
+          ]
+        },
+        {
+          "name": "OnAppWindowChanged",
+          "startLine": 319,
+          "endLine": 340,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "OnExpandedModeChanged",
+          "startLine": 342,
+          "endLine": 347,
+          "params": [
+            "sender",
+            "dp"
+          ]
+        },
+        {
+          "name": "AlwaysOnTopButton_Checked",
+          "startLine": 349,
+          "endLine": 350,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "AlwaysOnTopButton_Unchecked",
+          "startLine": 352,
+          "endLine": 353,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SetAlwaysOnTop",
+          "startLine": 355,
+          "endLine": 364,
+          "params": [
+            "enabled"
+          ]
+        },
+        {
+          "name": "ApplyAlwaysOnTop",
+          "startLine": 366,
+          "endLine": 380,
+          "params": [
+            "enabled"
+          ]
+        },
+        {
+          "name": "UpdateAlwaysOnTopVisual",
+          "startLine": 382,
+          "endLine": 394,
+          "params": [
+            "enabled"
+          ]
+        },
+        {
+          "name": "TryGetBrushResource",
+          "startLine": 396,
+          "endLine": 402,
+          "params": [
+            "key"
+          ]
+        },
+        {
+          "name": "OnExpandedFitVideoWindowRequested",
+          "startLine": 404,
+          "endLine": 427,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "FullScreenButton_Click",
+          "startLine": 429,
+          "endLine": 430,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ToggleFullScreen",
+          "startLine": 432,
+          "endLine": 441,
+          "params": []
+        },
+        {
+          "name": "EnterFullScreen",
+          "startLine": 443,
+          "endLine": 459,
+          "params": []
+        },
+        {
+          "name": "ExitFullScreen",
+          "startLine": 461,
+          "endLine": 478,
+          "params": []
+        },
+        {
+          "name": "ReleaseGeometrySuppressionLater",
+          "startLine": 480,
+          "endLine": 487,
+          "params": []
+        },
+        {
+          "name": "PersistNormalWindowGeometry",
+          "startLine": 489,
+          "endLine": 498,
+          "params": [
+            "position",
+            "size"
+          ]
+        },
+        {
+          "name": "UpdateFullScreenButton",
+          "startLine": 500,
+          "endLine": 509,
+          "params": []
+        },
+        {
+          "name": "ResizeAndMove",
+          "startLine": 514,
+          "endLine": 520,
+          "params": [
+            "size",
+            "x",
+            "y"
+          ]
+        },
+        {
+          "name": "SetWindowPos",
+          "startLine": 522,
+          "endLine": 530,
+          "params": [
+            "hWnd",
+            "hWndInsertAfter",
+            "x",
+            "y",
+            "cx",
+            "cy",
+            "uFlags"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "PlayerFloatingWindow",
+          "startLine": 36,
+          "endLine": 531,
+          "methods": [
+            "PlayerFloatingWindow",
+            "RegisterKeyboardAccelerators",
+            "RequestClose",
+            "OnClosed",
+            "DisposeWindowResources",
+            "OnRootThemeChanged",
+            "OnViewModelPropertyChanged",
+            "OnAppWindowClosing",
+            "ApplyWindowTint",
+            "ComputeBackdropColors",
+            "AnimateBackdrop",
+            "OnBackdropTintTick",
+            "EaseInOut",
+            "LerpColor",
+            "OnAppWindowChanged",
+            "OnExpandedModeChanged",
+            "AlwaysOnTopButton_Checked",
+            "AlwaysOnTopButton_Unchecked",
+            "SetAlwaysOnTop",
+            "ApplyAlwaysOnTop",
+            "UpdateAlwaysOnTopVisual",
+            "TryGetBrushResource",
+            "OnExpandedFitVideoWindowRequested",
+            "FullScreenButton_Click",
+            "ToggleFullScreen",
+            "EnterFullScreen",
+            "ExitFullScreen",
+            "ReleaseGeometrySuppressionLater",
+            "PersistNormalWindowGeometry",
+            "UpdateFullScreenButton",
+            "ResizeAndMove",
+            "SetWindowPos"
+          ],
+          "properties": [
+            "_docking",
+            "_shellSession",
+            "_viewModel",
+            "_miniVideoViewModel",
+            "_isDocking",
+            "_disposed",
+            "_suppressGeometryTracking",
+            "_isFullScreen",
+            "_normalWindowPositionBeforeFullScreen",
+            "_normalWindowSizeBeforeFullScreen",
+            "_expandedModeCallbackToken",
+            "_backdropTintTimer",
+            "_backdropTintStartUtc",
+            "_backdropTintFrom",
+            "_backdropTintTo",
+            "BackdropFadeDurationMs",
+            "SwpNoSize",
+            "SwpNoMove",
+            "SwpNoActivate",
+            "HwndTopMost",
+            "HwndNoTopMost"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "PlayerFloatingWindow",
+          "line": 60,
+          "isDefault": false
+        },
+        {
+          "name": "PlayerFloatingWindow",
+          "line": 36,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "InitializeComponent",
+          "lineNumber": 62
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "Ioc.Default.GetRequiredService<IPanelDockingService>",
+          "lineNumber": 64
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "Ioc.Default.GetRequiredService<IShellSessionService>",
+          "lineNumber": 65
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "Ioc.Default.GetRequiredService<PlayerBarViewModel>",
+          "lineNumber": 66
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "Ioc.Default.GetService<MiniVideoPlayerViewModel>",
+          "lineNumber": 67
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "SetTitleBar",
+          "lineNumber": 70
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "TitleBarHelper.ApplyTransparentButtonBackground",
+          "lineNumber": 72
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "TitleBarHelper.ApplyCaptionButtonColors",
+          "lineNumber": 73
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "ApplyWindowTint",
+          "lineNumber": 76
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "RegisterKeyboardAccelerators",
+          "lineNumber": 82
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "_shellSession.GetLayoutSnapshot",
+          "lineNumber": 85
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "_shellSession.UpdateLayout",
+          "lineNumber": 86
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "Enum.TryParse<ExpandedPlayerContentMode>",
+          "lineNumber": 88
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "_shellSession.UpdateLayout",
+          "lineNumber": 94
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "mode.ToString",
+          "lineNumber": 94
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "ApplyAlwaysOnTop",
+          "lineNumber": 96
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "UpdateAlwaysOnTopVisual",
+          "lineNumber": 97
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "ExpandedHost.RegisterPropertyChangedCallback",
+          "lineNumber": 99
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "UpdateFullScreenButton",
+          "lineNumber": 104
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "_miniVideoViewModel?.SetSuppressedByFloatingPlayer",
+          "lineNumber": 105
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "ExpandedHost.SetCanTakeVideoSurfaceFromVideoPage",
+          "lineNumber": 106
+        },
+        {
+          "caller": "PlayerFloatingWindow",
+          "callee": "ExpandedHost.SetVideoSurfaceEnabled",
+          "lineNumber": 107
+        },
+        {
+          "caller": "RegisterKeyboardAccelerators",
+          "callee": "new KeyboardAccelerator",
+          "lineNumber": 112
+        },
+        {
+          "caller": "RegisterKeyboardAccelerators",
+          "callee": "ToggleFullScreen",
+          "lineNumber": 115
+        },
+        {
+          "caller": "RegisterKeyboardAccelerators",
+          "callee": "new KeyboardAccelerator",
+          "lineNumber": 119
+        },
+        {
+          "caller": "RegisterKeyboardAccelerators",
+          "callee": "ExitFullScreen",
+          "lineNumber": 125
+        },
+        {
+          "caller": "RegisterKeyboardAccelerators",
+          "callee": "RootGrid.KeyboardAccelerators.Add",
+          "lineNumber": 129
+        },
+        {
+          "caller": "RegisterKeyboardAccelerators",
+          "callee": "RootGrid.KeyboardAccelerators.Add",
+          "lineNumber": 130
+        },
+        {
+          "caller": "RequestClose",
+          "callee": "DisposeWindowResources",
+          "lineNumber": 140
+        },
+        {
+          "caller": "RequestClose",
+          "callee": "Close",
+          "lineNumber": 141
+        },
+        {
+          "caller": "OnClosed",
+          "callee": "DisposeWindowResources",
+          "lineNumber": 146
+        },
+        {
+          "caller": "DisposeWindowResources",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 152
+        },
+        {
+          "caller": "DisposeWindowResources",
+          "callee": "_backdropTintTimer.Stop",
+          "lineNumber": 157
+        },
+        {
+          "caller": "DisposeWindowResources",
+          "callee": "ExpandedHost.SetVideoSurfaceEnabled",
+          "lineNumber": 162
+        },
+        {
+          "caller": "DisposeWindowResources",
+          "callee": "ExpandedHost.SetCanTakeVideoSurfaceFromVideoPage",
+          "lineNumber": 163
+        },
+        {
+          "caller": "DisposeWindowResources",
+          "callee": "ExpandedHost.ReleaseHeavyResources",
+          "lineNumber": 164
+        },
+        {
+          "caller": "DisposeWindowResources",
+          "callee": "_miniVideoViewModel?.SetSuppressedByFloatingPlayer",
+          "lineNumber": 165
+        },
+        {
+          "caller": "DisposeWindowResources",
+          "callee": "ExpandedHost.UnregisterPropertyChangedCallback",
+          "lineNumber": 169
+        },
+        {
+          "caller": "OnRootThemeChanged",
+          "callee": "TitleBarHelper.ApplyCaptionButtonColors",
+          "lineNumber": 186
+        },
+        {
+          "caller": "OnRootThemeChanged",
+          "callee": "ApplyWindowTint",
+          "lineNumber": 187
+        },
+        {
+          "caller": "OnRootThemeChanged",
+          "callee": "UpdateAlwaysOnTopVisual",
+          "lineNumber": 188
+        },
+        {
+          "caller": "OnViewModelPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 194
+        },
+        {
+          "caller": "OnViewModelPropertyChanged",
+          "callee": "ApplyWindowTint",
+          "lineNumber": 195
+        },
+        {
+          "caller": "OnAppWindowClosing",
+          "callee": "_docking.HandleFloatingClose",
+          "lineNumber": 203
+        },
+        {
+          "caller": "ApplyWindowTint",
+          "callee": "ComputeBackdropColors",
+          "lineNumber": 211
+        },
+        {
+          "caller": "ApplyWindowTint",
+          "callee": "AnimateBackdrop",
+          "lineNumber": 212
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 217
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "hexColor.TrimStart",
+          "lineNumber": 217
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "Color.FromArgb",
+          "lineNumber": 220
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "Color.FromArgb",
+          "lineNumber": 221
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "hexColor.TrimStart",
+          "lineNumber": 227
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "Convert.ToByte",
+          "lineNumber": 228
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "Convert.ToByte",
+          "lineNumber": 229
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "Convert.ToByte",
+          "lineNumber": 230
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "Color.FromArgb",
+          "lineNumber": 235
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "Color.FromArgb",
+          "lineNumber": 236
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "Color.FromArgb",
+          "lineNumber": 237
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "Color.FromArgb",
+          "lineNumber": 245
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "Color.FromArgb",
+          "lineNumber": 246
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "Color.FromArgb",
+          "lineNumber": 247
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "Color.FromArgb",
+          "lineNumber": 252
+        },
+        {
+          "caller": "ComputeBackdropColors",
+          "callee": "Color.FromArgb",
+          "lineNumber": 253
+        },
+        {
+          "caller": "AnimateBackdrop",
+          "callee": "DispatcherQueue.GetForCurrentThread().CreateTimer",
+          "lineNumber": 273
+        },
+        {
+          "caller": "AnimateBackdrop",
+          "callee": "DispatcherQueue.GetForCurrentThread",
+          "lineNumber": 273
+        },
+        {
+          "caller": "AnimateBackdrop",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 276
+        },
+        {
+          "caller": "AnimateBackdrop",
+          "callee": "_backdropTintTimer.Stop",
+          "lineNumber": 277
+        },
+        {
+          "caller": "AnimateBackdrop",
+          "callee": "_backdropTintTimer.Start",
+          "lineNumber": 278
+        },
+        {
+          "caller": "OnBackdropTintTick",
+          "callee": "sender.Stop",
+          "lineNumber": 285
+        },
+        {
+          "caller": "OnBackdropTintTick",
+          "callee": "Math.Clamp",
+          "lineNumber": 290
+        },
+        {
+          "caller": "OnBackdropTintTick",
+          "callee": "EaseInOut",
+          "lineNumber": 291
+        },
+        {
+          "caller": "OnBackdropTintTick",
+          "callee": "LerpColor",
+          "lineNumber": 293
+        },
+        {
+          "caller": "OnBackdropTintTick",
+          "callee": "LerpColor",
+          "lineNumber": 294
+        },
+        {
+          "caller": "OnBackdropTintTick",
+          "callee": "LerpColor",
+          "lineNumber": 295
+        },
+        {
+          "caller": "OnBackdropTintTick",
+          "callee": "sender.Stop",
+          "lineNumber": 299
+        },
+        {
+          "caller": "EaseInOut",
+          "callee": "Math.Pow",
+          "lineNumber": 310
+        },
+        {
+          "caller": "LerpColor",
+          "callee": "Color.FromArgb",
+          "lineNumber": 313
+        },
+        {
+          "caller": "OnAppWindowChanged",
+          "callee": "UpdateFullScreenButton",
+          "lineNumber": 324
+        },
+        {
+          "caller": "OnAppWindowChanged",
+          "callee": "_shellSession.UpdateLayout",
+          "lineNumber": 333
+        },
+        {
+          "caller": "OnExpandedModeChanged",
+          "callee": "ExpandedHost.Mode.ToString",
+          "lineNumber": 345
+        },
+        {
+          "caller": "OnExpandedModeChanged",
+          "callee": "_shellSession.UpdateLayout",
+          "lineNumber": 346
+        },
+        {
+          "caller": "AlwaysOnTopButton_Checked",
+          "callee": "SetAlwaysOnTop",
+          "lineNumber": 350
+        },
+        {
+          "caller": "AlwaysOnTopButton_Unchecked",
+          "callee": "SetAlwaysOnTop",
+          "lineNumber": 353
+        },
+        {
+          "caller": "SetAlwaysOnTop",
+          "callee": "ApplyAlwaysOnTop",
+          "lineNumber": 358
+        },
+        {
+          "caller": "SetAlwaysOnTop",
+          "callee": "UpdateAlwaysOnTopVisual",
+          "lineNumber": 359
+        },
+        {
+          "caller": "SetAlwaysOnTop",
+          "callee": "ToolTipService.SetToolTip",
+          "lineNumber": 360
+        },
+        {
+          "caller": "SetAlwaysOnTop",
+          "callee": "_shellSession.UpdateLayout",
+          "lineNumber": 363
+        },
+        {
+          "caller": "ApplyAlwaysOnTop",
+          "callee": "WindowNative.GetWindowHandle",
+          "lineNumber": 368
+        },
+        {
+          "caller": "ApplyAlwaysOnTop",
+          "callee": "SetWindowPos",
+          "lineNumber": 372
+        },
+        {
+          "caller": "UpdateAlwaysOnTopVisual",
+          "callee": "TryGetBrushResource",
+          "lineNumber": 385
+        },
+        {
+          "caller": "UpdateAlwaysOnTopVisual",
+          "callee": "TryGetBrushResource",
+          "lineNumber": 386
+        },
+        {
+          "caller": "UpdateAlwaysOnTopVisual",
+          "callee": "TryGetBrushResource",
+          "lineNumber": 387
+        },
+        {
+          "caller": "TryGetBrushResource",
+          "callee": "Application.Current.Resources.TryGetValue",
+          "lineNumber": 398
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "ExpandedHost.GetPreferredVideoWindowSize",
+          "lineNumber": 410
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "Math.Max",
+          "lineNumber": 411
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "Math.Round",
+          "lineNumber": 411
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "Math.Max",
+          "lineNumber": 412
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "Math.Round",
+          "lineNumber": 412
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "DisplayArea.GetFromWindowId",
+          "lineNumber": 414
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "Math.Min",
+          "lineNumber": 416
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "Math.Max",
+          "lineNumber": 416
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "Math.Min",
+          "lineNumber": 417
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "Math.Max",
+          "lineNumber": 417
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "Math.Clamp",
+          "lineNumber": 423
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "Math.Max",
+          "lineNumber": 423
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "Math.Clamp",
+          "lineNumber": 424
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "Math.Max",
+          "lineNumber": 424
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "ResizeAndMove",
+          "lineNumber": 426
+        },
+        {
+          "caller": "OnExpandedFitVideoWindowRequested",
+          "callee": "new SizeInt32",
+          "lineNumber": 426
+        },
+        {
+          "caller": "FullScreenButton_Click",
+          "callee": "ToggleFullScreen",
+          "lineNumber": 430
+        },
+        {
+          "caller": "ToggleFullScreen",
+          "callee": "ExitFullScreen",
+          "lineNumber": 438
+        },
+        {
+          "caller": "ToggleFullScreen",
+          "callee": "EnterFullScreen",
+          "lineNumber": 440
+        },
+        {
+          "caller": "EnterFullScreen",
+          "callee": "PersistNormalWindowGeometry",
+          "lineNumber": 450
+        },
+        {
+          "caller": "EnterFullScreen",
+          "callee": "AppWindow.SetPresenter",
+          "lineNumber": 456
+        },
+        {
+          "caller": "EnterFullScreen",
+          "callee": "UpdateFullScreenButton",
+          "lineNumber": 457
+        },
+        {
+          "caller": "EnterFullScreen",
+          "callee": "ReleaseGeometrySuppressionLater",
+          "lineNumber": 458
+        },
+        {
+          "caller": "ExitFullScreen",
+          "callee": "AppWindow.SetPresenter",
+          "lineNumber": 471
+        },
+        {
+          "caller": "ExitFullScreen",
+          "callee": "ResizeAndMove",
+          "lineNumber": 472
+        },
+        {
+          "caller": "ExitFullScreen",
+          "callee": "PersistNormalWindowGeometry",
+          "lineNumber": 473
+        },
+        {
+          "caller": "ExitFullScreen",
+          "callee": "UpdateFullScreenButton",
+          "lineNumber": 474
+        },
+        {
+          "caller": "ExitFullScreen",
+          "callee": "ApplyAlwaysOnTop",
+          "lineNumber": 476
+        },
+        {
+          "caller": "ExitFullScreen",
+          "callee": "ReleaseGeometrySuppressionLater",
+          "lineNumber": 477
+        },
+        {
+          "caller": "ReleaseGeometrySuppressionLater",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 482
+        },
+        {
+          "caller": "PersistNormalWindowGeometry",
+          "callee": "_shellSession.UpdateLayout",
+          "lineNumber": 491
+        },
+        {
+          "caller": "UpdateFullScreenButton",
+          "callee": "ToolTipService.SetToolTip",
+          "lineNumber": 506
+        },
+        {
+          "caller": "ResizeAndMove",
+          "callee": "AppWindow.Resize",
+          "lineNumber": 517
+        },
+        {
+          "caller": "ResizeAndMove",
+          "callee": "AppWindow.Move",
+          "lineNumber": 519
+        },
+        {
+          "caller": "ResizeAndMove",
+          "callee": "new PointInt32",
+          "lineNumber": 519
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 32,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Windows/RightPanelFloatingWindow.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 33,
+      "nonEmptyLines": 30,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Windows/RightPanelFloatingWindow.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 157,
+      "nonEmptyLines": 134,
+      "functions": [
+        {
+          "name": "RightPanelFloatingWindow",
+          "startLine": 26,
+          "endLine": 57,
+          "params": []
+        },
+        {
+          "name": "RequestClose",
+          "startLine": 63,
+          "endLine": 68,
+          "params": []
+        },
+        {
+          "name": "OnClosed",
+          "startLine": 70,
+          "endLine": 73,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "DisposeWindowResources",
+          "startLine": 75,
+          "endLine": 96,
+          "params": []
+        },
+        {
+          "name": "OnRootThemeChanged",
+          "startLine": 98,
+          "endLine": 102,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "OnAppWindowClosing",
+          "startLine": 104,
+          "endLine": 110,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "OnAppWindowChanged",
+          "startLine": 112,
+          "endLine": 117,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "OnRootSizeChanged",
+          "startLine": 119,
+          "endLine": 123,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SyncPanelWidth",
+          "startLine": 125,
+          "endLine": 135,
+          "params": []
+        },
+        {
+          "name": "OnPanelSelectedModeChanged",
+          "startLine": 137,
+          "endLine": 145,
+          "params": [
+            "sender",
+            "dp"
+          ]
+        },
+        {
+          "name": "OnShellPropertyChanged",
+          "startLine": 147,
+          "endLine": 156,
+          "params": [
+            "sender",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "RightPanelFloatingWindow",
+          "startLine": 17,
+          "endLine": 157,
+          "methods": [
+            "RightPanelFloatingWindow",
+            "RequestClose",
+            "OnClosed",
+            "DisposeWindowResources",
+            "OnRootThemeChanged",
+            "OnAppWindowClosing",
+            "OnAppWindowChanged",
+            "OnRootSizeChanged",
+            "SyncPanelWidth",
+            "OnPanelSelectedModeChanged",
+            "OnShellPropertyChanged"
+          ],
+          "properties": [
+            "_docking",
+            "_shell",
+            "_isDocking",
+            "_disposed",
+            "_suppressShellSync",
+            "_selectedModeCallbackToken"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "RightPanelFloatingWindow",
+          "line": 26,
+          "isDefault": false
+        },
+        {
+          "name": "RightPanelFloatingWindow",
+          "line": 17,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "RightPanelFloatingWindow",
+          "callee": "InitializeComponent",
+          "lineNumber": 28
+        },
+        {
+          "caller": "RightPanelFloatingWindow",
+          "callee": "Ioc.Default.GetRequiredService<IPanelDockingService>",
+          "lineNumber": 30
+        },
+        {
+          "caller": "RightPanelFloatingWindow",
+          "callee": "Ioc.Default.GetRequiredService<ShellViewModel>",
+          "lineNumber": 31
+        },
+        {
+          "caller": "RightPanelFloatingWindow",
+          "callee": "SetTitleBar",
+          "lineNumber": 34
+        },
+        {
+          "caller": "RightPanelFloatingWindow",
+          "callee": "TitleBarHelper.ApplyTransparentButtonBackground",
+          "lineNumber": 36
+        },
+        {
+          "caller": "RightPanelFloatingWindow",
+          "callee": "TitleBarHelper.ApplyCaptionButtonColors",
+          "lineNumber": 37
+        },
+        {
+          "caller": "RightPanelFloatingWindow",
+          "callee": "SyncPanelWidth",
+          "lineNumber": 46
+        },
+        {
+          "caller": "RightPanelFloatingWindow",
+          "callee": "PanelHost.RegisterPropertyChangedCallback",
+          "lineNumber": 49
+        },
+        {
+          "caller": "RequestClose",
+          "callee": "DisposeWindowResources",
+          "lineNumber": 66
+        },
+        {
+          "caller": "RequestClose",
+          "callee": "Close",
+          "lineNumber": 67
+        },
+        {
+          "caller": "OnClosed",
+          "callee": "DisposeWindowResources",
+          "lineNumber": 72
+        },
+        {
+          "caller": "DisposeWindowResources",
+          "callee": "PanelHost.UnregisterPropertyChangedCallback",
+          "lineNumber": 84
+        },
+        {
+          "caller": "OnRootThemeChanged",
+          "callee": "TitleBarHelper.ApplyCaptionButtonColors",
+          "lineNumber": 101
+        },
+        {
+          "caller": "OnAppWindowClosing",
+          "callee": "_docking.HandleFloatingClose",
+          "lineNumber": 109
+        },
+        {
+          "caller": "OnAppWindowChanged",
+          "callee": "_docking.NotifyFloatingGeometryChanged",
+          "lineNumber": 116
+        },
+        {
+          "caller": "OnRootSizeChanged",
+          "callee": "SyncPanelWidth",
+          "lineNumber": 122
+        },
+        {
+          "caller": "SyncPanelWidth",
+          "callee": "System.Math.Abs",
+          "lineNumber": 133
+        },
+        {
+          "caller": "OnShellPropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 150
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 11,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI/Contracts/IAlbumService.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 291,
+      "nonEmptyLines": 266,
+      "classes": [
+        {
+          "name": "IAlbumService",
+          "startLine": 13,
+          "endLine": 80,
+          "methods": [
+            "GetTracksAsync",
+            "GetDetailAsync",
+            "GetMerchAsync",
+            "GetSimilarAlbumsAsync",
+            "GetMusicVideoUriAsync",
+            "GetArtistContextAsync",
+            "GetSingleTrackContextAsync",
+            "GetArtistNpvAsync",
+            "GetRecommendedPlaylistsAsync"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "IAlbumService",
+          "line": 13,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI/Contracts/IArtistService.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 269,
+      "nonEmptyLines": 234,
+      "classes": [
+        {
+          "name": "IArtistService",
+          "startLine": 11,
+          "endLine": 26,
+          "methods": [
+            "GetOverviewAsync",
+            "GetDiscographyAllAsync",
+            "GetDiscographyPageAsync",
+            "GetExtendedTopTracksAsync",
+            "GetTrackImagesAsync"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "IArtistService",
+          "line": 11,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI/Contracts/IAudioPipelineControl.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 17,
+      "nonEmptyLines": 15,
+      "classes": [
+        {
+          "name": "IAudioPipelineControl",
+          "startLine": 12,
+          "endLine": 17,
+          "methods": [
+            "SwitchQualityAsync",
+            "SetNormalizationEnabled",
+            "SetEqualizerAsync"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "IAudioPipelineControl",
+          "line": 12,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    }
+  ]
+}

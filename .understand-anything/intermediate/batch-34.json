@@ -1,0 +1,797 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Settings/GeneralSettingsSection.xaml.cs",
+      "type": "file",
+      "name": "GeneralSettingsSection.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/GeneralSettingsSection.xaml.cs",
+      "summary": "Code-behind for GeneralSettingsSection; initializes the control with a view-model and delegates search-filter application to SettingsGroupFilter.",
+      "tags": [
+        "component",
+        "settings",
+        "code-behind"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Settings/GeneralSettingsSection.xaml.cs:GeneralSettingsSection",
+      "type": "class",
+      "name": "GeneralSettingsSection",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/GeneralSettingsSection.xaml.cs",
+      "lineRange": [
+        7,
+        19
+      ],
+      "summary": "WinUI UserControl for the General settings section, wiring a view-model and implementing ISettingsSearchFilter via SettingsGroupFilter.",
+      "tags": [
+        "component",
+        "settings",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs",
+      "type": "file",
+      "name": "ISettingsSearchFilter.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs",
+      "summary": "Defines ISettingsSearchFilter interface and SettingsGroupFilter helper that walks a UserControl tree to show/hide SettingsGroup elements by keyword tag matching.",
+      "tags": [
+        "type-definition",
+        "settings",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs:ISettingsSearchFilter",
+      "type": "class",
+      "name": "ISettingsSearchFilter",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs",
+      "lineRange": [
+        9,
+        12
+      ],
+      "summary": "Interface requiring settings controls to implement ApplySearchFilter(groupKey).",
+      "tags": [
+        "type-definition",
+        "settings"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs:SettingsGroupFilter",
+      "type": "class",
+      "name": "SettingsGroupFilter",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs",
+      "lineRange": [
+        14,
+        49
+      ],
+      "summary": "Stateful helper that saves original visibilities and toggles SettingsGroup visibility based on semicolon-separated tag matching for search.",
+      "tags": [
+        "utility",
+        "settings",
+        "component"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Settings/MemoryDiagnosticsCard.xaml",
+      "type": "file",
+      "name": "MemoryDiagnosticsCard.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/MemoryDiagnosticsCard.xaml",
+      "summary": "XAML layout for the MemoryDiagnosticsCard settings panel, presenting live GC heap statistics and memory counters.",
+      "tags": [
+        "component",
+        "settings",
+        "markup"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Settings/MemoryDiagnosticsCard.xaml.cs",
+      "type": "file",
+      "name": "MemoryDiagnosticsCard.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/MemoryDiagnosticsCard.xaml.cs",
+      "summary": "Code-behind for MemoryDiagnosticsCard; resolves MemoryDiagnosticsService on load, creates and starts the view-model, and disposes it on unload.",
+      "tags": [
+        "component",
+        "settings",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Settings/MemoryDiagnosticsCard.xaml.cs:MemoryDiagnosticsCard",
+      "type": "class",
+      "name": "MemoryDiagnosticsCard",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/MemoryDiagnosticsCard.xaml.cs",
+      "lineRange": [
+        9,
+        40
+      ],
+      "summary": "WinUI UserControl that lazily creates a MemoryDiagnosticsViewModel from DI on Loaded and disposes it on Unloaded.",
+      "tags": [
+        "component",
+        "settings",
+        "lifecycle"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Settings/PlaybackAudioSettingsSection.xaml",
+      "type": "file",
+      "name": "PlaybackAudioSettingsSection.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/PlaybackAudioSettingsSection.xaml",
+      "summary": "Minimal XAML shell for PlaybackAudioSettingsSection acting as a host container for the playback and audio sub-sections.",
+      "tags": [
+        "component",
+        "settings",
+        "markup"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Settings/PlaybackAudioSettingsSection.xaml.cs",
+      "type": "file",
+      "name": "PlaybackAudioSettingsSection.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/PlaybackAudioSettingsSection.xaml.cs",
+      "summary": "Code-behind that creates and hosts PlaybackSettingsSection and AudioSettingsSection sub-controls, delegating search-filter calls to both children.",
+      "tags": [
+        "component",
+        "settings",
+        "code-behind"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Settings/PlaybackAudioSettingsSection.xaml.cs:PlaybackAudioSettingsSection",
+      "type": "class",
+      "name": "PlaybackAudioSettingsSection",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/PlaybackAudioSettingsSection.xaml.cs",
+      "lineRange": [
+        7,
+        30
+      ],
+      "summary": "Composite settings section holding playback and audio sub-sections; forwards ApplySearchFilter to both children.",
+      "tags": [
+        "component",
+        "settings",
+        "composite"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Settings/PlaybackSettingsSection.xaml",
+      "type": "file",
+      "name": "PlaybackSettingsSection.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/PlaybackSettingsSection.xaml",
+      "summary": "XAML layout for the Playback settings section containing controls for crossfade, gapless playback, quality, and related preferences.",
+      "tags": [
+        "component",
+        "settings",
+        "markup"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Settings/PlaybackSettingsSection.xaml.cs",
+      "type": "file",
+      "name": "PlaybackSettingsSection.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/PlaybackSettingsSection.xaml.cs",
+      "summary": "Code-behind for PlaybackSettingsSection; binds a view-model and delegates search-filter application to SettingsGroupFilter.",
+      "tags": [
+        "component",
+        "settings",
+        "code-behind"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Settings/PlaybackSettingsSection.xaml.cs:PlaybackSettingsSection",
+      "type": "class",
+      "name": "PlaybackSettingsSection",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/PlaybackSettingsSection.xaml.cs",
+      "lineRange": [
+        7,
+        19
+      ],
+      "summary": "UserControl for playback settings backed by a view-model; implements ISettingsSearchFilter.",
+      "tags": [
+        "component",
+        "settings",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Settings/SettingsGroupHeader.xaml",
+      "type": "file",
+      "name": "SettingsGroupHeader.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/SettingsGroupHeader.xaml",
+      "summary": "XAML template for SettingsGroupHeader displaying a title, description, and icon glyph above a settings group.",
+      "tags": [
+        "component",
+        "settings",
+        "markup"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Settings/SettingsGroupHeader.xaml.cs",
+      "type": "file",
+      "name": "SettingsGroupHeader.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/SettingsGroupHeader.xaml.cs",
+      "summary": "Code-behind for SettingsGroupHeader; exposes Title, Description, and IconGlyph dependency properties for XAML bindings.",
+      "tags": [
+        "component",
+        "settings",
+        "dependency-properties"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Settings/SettingsGroupHeader.xaml.cs:SettingsGroupHeader",
+      "type": "class",
+      "name": "SettingsGroupHeader",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/SettingsGroupHeader.xaml.cs",
+      "lineRange": [
+        6,
+        39
+      ],
+      "summary": "WinUI control with Title, Description, and IconGlyph DPs for rendering a decorative header above groups of settings rows.",
+      "tags": [
+        "component",
+        "settings",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Settings/StorageNetworkSettingsSection.xaml",
+      "type": "file",
+      "name": "StorageNetworkSettingsSection.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/StorageNetworkSettingsSection.xaml",
+      "summary": "XAML layout for the Storage and Network settings section including local folder management, TMDB token entry, cache controls, and local-file rescan options.",
+      "tags": [
+        "component",
+        "settings",
+        "markup"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Settings/StorageNetworkSettingsSection.xaml.cs",
+      "type": "file",
+      "name": "StorageNetworkSettingsSection.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/StorageNetworkSettingsSection.xaml.cs",
+      "summary": "Code-behind for StorageNetworkSettingsSection; handles local folder add/remove, TMDB token verify/clear, enrichment trigger, cache clear, rescan, and TMDB status pill sync.",
+      "tags": [
+        "component",
+        "settings",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Settings/StorageNetworkSettingsSection.xaml.cs:StorageNetworkSettingsSection",
+      "type": "class",
+      "name": "StorageNetworkSettingsSection",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Settings/StorageNetworkSettingsSection.xaml.cs",
+      "lineRange": [
+        11,
+        134
+      ],
+      "summary": "Settings section managing local media folders, TMDB API token, metadata enrichment, and cache operations by delegating commands to the view-model.",
+      "tags": [
+        "component",
+        "settings",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Shelf/SectionShelf.xaml",
+      "type": "file",
+      "name": "SectionShelf.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Shelf/SectionShelf.xaml",
+      "summary": "XAML template for SectionShelf defining the header row with title, subtitle, and a show-all button alongside the scrollable content area.",
+      "tags": [
+        "component",
+        "shelf",
+        "markup"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Shelf/SectionShelf.xaml.cs",
+      "type": "file",
+      "name": "SectionShelf.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Shelf/SectionShelf.xaml.cs",
+      "summary": "Code-behind for SectionShelf; exposes a rich set of DPs (Title, Subtitle, ShowAllCommand, ItemsSource, ItemTemplate, layout dimensions) forwarded to the inner ShelfScroller.",
+      "tags": [
+        "component",
+        "shelf",
+        "dependency-properties"
+      ],
+      "complexity": "complex",
+      "languageNotes": "SectionShelf is a facade over ShelfScroller, re-exposing its DPs so callers need only a single control element."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Shelf/SectionShelf.xaml.cs:SectionShelf",
+      "type": "class",
+      "name": "SectionShelf",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Shelf/SectionShelf.xaml.cs",
+      "lineRange": [
+        13,
+        118
+      ],
+      "summary": "High-level shelf container exposing title, subtitle, show-all and forwarding item source and layout DPs to the embedded ShelfScroller.",
+      "tags": [
+        "component",
+        "shelf",
+        "facade"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Shelf/ShelfLayout.cs",
+      "type": "file",
+      "name": "ShelfLayout.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Shelf/ShelfLayout.cs",
+      "summary": "Custom WinUI VirtualizingLayout for horizontal shelves; computes item widths from available space and calculates the visible range for ItemsRepeater virtualization.",
+      "tags": [
+        "component",
+        "shelf",
+        "layout"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Shelf/ShelfLayout.cs:ShelfLayout",
+      "type": "class",
+      "name": "ShelfLayout",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Shelf/ShelfLayout.cs",
+      "lineRange": [
+        22,
+        146
+      ],
+      "summary": "VirtualizingLayout arranging items in a single horizontal row, resolving item width from configurable min/max and computing a viewport-clipped visible range for efficient virtualization.",
+      "tags": [
+        "component",
+        "shelf",
+        "layout"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Shelf/ShelfScroller.cs",
+      "type": "file",
+      "name": "ShelfScroller.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Shelf/ShelfScroller.cs",
+      "summary": "Core shelf scrolling control wrapping ScrollView and ItemsRepeater with ShelfLayout; manages page-left/right commands, pointer-wheel pass-through, identity-keyed repeater recycling, and paging state updates.",
+      "tags": [
+        "component",
+        "shelf",
+        "scrolling"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Uses DispatcherQueue.TryEnqueue for deferred paging state and identity-based repeater rebuild to prevent stale recycling when the source collection identity changes."
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/Shelf/ShelfScroller.cs:ShelfScroller",
+      "type": "class",
+      "name": "ShelfScroller",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Shelf/ShelfScroller.cs",
+      "lineRange": [
+        22,
+        492
+      ],
+      "summary": "Templated control hosting a ScrollView and ItemsRepeater; exposes paging commands, CanPageLeft/Right, HasOverflow, and handles identity-keyed source replacement to force clean item recycling.",
+      "tags": [
+        "component",
+        "shelf",
+        "scrolling"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/Shelf/ShelfStyles.xaml",
+      "type": "file",
+      "name": "ShelfStyles.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/Shelf/ShelfStyles.xaml",
+      "summary": "XAML resource dictionary containing the default ControlTemplate and style for ShelfScroller including scroll chrome and navigation button overlays.",
+      "tags": [
+        "component",
+        "shelf",
+        "styles"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/PodcastEpisodeRecommendationCard.xaml",
+      "type": "file",
+      "name": "PodcastEpisodeRecommendationCard.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ShowEpisode/PodcastEpisodeRecommendationCard.xaml",
+      "summary": "XAML layout for the podcast episode recommendation card, displaying cover art, title, duration, and a play button for a recommended episode.",
+      "tags": [
+        "component",
+        "podcast",
+        "markup"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/PodcastEpisodeRecommendationCard.xaml.cs",
+      "type": "file",
+      "name": "PodcastEpisodeRecommendationCard.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ShowEpisode/PodcastEpisodeRecommendationCard.xaml.cs",
+      "summary": "Code-behind for PodcastEpisodeRecommendationCard; reacts to Recommendation DP changes, loads cover art, handles hover/tap navigation with connected animation, and delegates play to NavigationHelpers.",
+      "tags": [
+        "component",
+        "podcast",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/ShowEpisode/PodcastEpisodeRecommendationCard.xaml.cs:PodcastEpisodeRecommendationCard",
+      "type": "class",
+      "name": "PodcastEpisodeRecommendationCard",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ShowEpisode/PodcastEpisodeRecommendationCard.xaml.cs",
+      "lineRange": [
+        13,
+        135
+      ],
+      "summary": "Card control for a recommended podcast episode with cover image loading, hover state, tap-to-navigate with connected animation, and play-button delegation.",
+      "tags": [
+        "component",
+        "podcast",
+        "card"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowEpisodeRow.xaml",
+      "type": "file",
+      "name": "ShowEpisodeRow.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowEpisodeRow.xaml",
+      "summary": "XAML layout for the show episode list row, containing cover art, title, description snippet, playback progress bar, and action cluster with play, like, and more buttons.",
+      "tags": [
+        "component",
+        "podcast",
+        "markup"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowEpisodeRow.xaml.cs",
+      "type": "file",
+      "name": "ShowEpisodeRow.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowEpisodeRow.xaml.cs",
+      "summary": "Code-behind for ShowEpisodeRow; applies episode data with dynamic theme-aware color brushes derived from cover color, animates hover opacity via Storyboard, and raises OpenRequested/PlayRequested/LikeRequested events.",
+      "tags": [
+        "component",
+        "podcast",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowEpisodeRow.xaml.cs:ShowEpisodeRow",
+      "type": "class",
+      "name": "ShowEpisodeRow",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowEpisodeRow.xaml.cs",
+      "lineRange": [
+        21,
+        378
+      ],
+      "summary": "Episode row control with dynamic cover-color theming, progress fill, hover opacity animation via Storyboard, and action events for open, play, and like.",
+      "tags": [
+        "component",
+        "podcast",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowResumeBanner.xaml",
+      "type": "file",
+      "name": "ShowResumeBanner.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowResumeBanner.xaml",
+      "summary": "XAML layout for ShowResumeBanner, the hero-style banner at the top of a podcast show page prompting the user to resume the latest episode.",
+      "tags": [
+        "component",
+        "podcast",
+        "markup"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowResumeBanner.xaml.cs",
+      "type": "file",
+      "name": "ShowResumeBanner.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowResumeBanner.xaml.cs",
+      "summary": "Code-behind for ShowResumeBanner; applies episode metadata, derives a full dark palette from cover color using Darken/WithAlpha helpers, loads cover art, tracks progress fill, and animates hover scale via composition.",
+      "tags": [
+        "component",
+        "podcast",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowResumeBanner.xaml.cs:ShowResumeBanner",
+      "type": "class",
+      "name": "ShowResumeBanner",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowResumeBanner.xaml.cs",
+      "lineRange": [
+        23,
+        287
+      ],
+      "summary": "Hero banner control for resuming a podcast episode; derives a multi-stop color palette from cover art, animates hover scale using ElementCompositionPreview, and raises OpenRequested/PlayRequested.",
+      "tags": [
+        "component",
+        "podcast",
+        "hero-banner"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowUpNextCard.xaml",
+      "type": "file",
+      "name": "ShowUpNextCard.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowUpNextCard.xaml",
+      "summary": "XAML layout for ShowUpNextCard, a compact card presenting the next queued podcast episode with cover art, title, progress, and play button.",
+      "tags": [
+        "component",
+        "podcast",
+        "markup"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowUpNextCard.xaml.cs",
+      "type": "file",
+      "name": "ShowUpNextCard.xaml.cs",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowUpNextCard.xaml.cs",
+      "summary": "Code-behind for ShowUpNextCard; computes accent brushes from cover color including luma-based foreground selection, applies episode state, handles hover scale animation via composition, and raises open/play events.",
+      "tags": [
+        "component",
+        "podcast",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowUpNextCard.xaml.cs:ShowUpNextCard",
+      "type": "class",
+      "name": "ShowUpNextCard",
+      "filePath": "src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowUpNextCard.xaml.cs",
+      "lineRange": [
+        20,
+        245
+      ],
+      "summary": "Up-next episode card with cover-color-derived accent palette, luma-aware foreground selection, composition hover scale, progress fill, and open/play event delegation.",
+      "tags": [
+        "component",
+        "podcast",
+        "card"
+      ],
+      "complexity": "complex"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/GeneralSettingsSection.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/GeneralSettingsSection.xaml.cs:GeneralSettingsSection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/GeneralSettingsSection.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/GeneralSettingsSection.xaml.cs:GeneralSettingsSection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs:ISettingsSearchFilter",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs:SettingsGroupFilter",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs:ISettingsSearchFilter",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/ISettingsSearchFilter.cs:SettingsGroupFilter",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/MemoryDiagnosticsCard.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/MemoryDiagnosticsCard.xaml.cs:MemoryDiagnosticsCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/MemoryDiagnosticsCard.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/MemoryDiagnosticsCard.xaml.cs:MemoryDiagnosticsCard",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/PlaybackAudioSettingsSection.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/PlaybackAudioSettingsSection.xaml.cs:PlaybackAudioSettingsSection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/PlaybackAudioSettingsSection.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/PlaybackAudioSettingsSection.xaml.cs:PlaybackAudioSettingsSection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/PlaybackSettingsSection.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/PlaybackSettingsSection.xaml.cs:PlaybackSettingsSection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/PlaybackSettingsSection.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/PlaybackSettingsSection.xaml.cs:PlaybackSettingsSection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/SettingsGroupHeader.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/SettingsGroupHeader.xaml.cs:SettingsGroupHeader",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/SettingsGroupHeader.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/SettingsGroupHeader.xaml.cs:SettingsGroupHeader",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/StorageNetworkSettingsSection.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/StorageNetworkSettingsSection.xaml.cs:StorageNetworkSettingsSection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Settings/StorageNetworkSettingsSection.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Settings/StorageNetworkSettingsSection.xaml.cs:StorageNetworkSettingsSection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Shelf/SectionShelf.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Shelf/SectionShelf.xaml.cs:SectionShelf",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Shelf/SectionShelf.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Shelf/SectionShelf.xaml.cs:SectionShelf",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Shelf/ShelfLayout.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Shelf/ShelfLayout.cs:ShelfLayout",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Shelf/ShelfLayout.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Shelf/ShelfLayout.cs:ShelfLayout",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Shelf/ShelfScroller.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Shelf/ShelfScroller.cs:ShelfScroller",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/Shelf/ShelfScroller.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/Shelf/ShelfScroller.cs:ShelfScroller",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/PodcastEpisodeRecommendationCard.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/ShowEpisode/PodcastEpisodeRecommendationCard.xaml.cs:PodcastEpisodeRecommendationCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/PodcastEpisodeRecommendationCard.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/ShowEpisode/PodcastEpisodeRecommendationCard.xaml.cs:PodcastEpisodeRecommendationCard",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowEpisodeRow.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowEpisodeRow.xaml.cs:ShowEpisodeRow",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowEpisodeRow.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowEpisodeRow.xaml.cs:ShowEpisodeRow",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowResumeBanner.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowResumeBanner.xaml.cs:ShowResumeBanner",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowResumeBanner.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowResumeBanner.xaml.cs:ShowResumeBanner",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowUpNextCard.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowUpNextCard.xaml.cs:ShowUpNextCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowUpNextCard.xaml.cs",
+      "target": "class:src/Wavee.UI.WinUI/Controls/ShowEpisode/ShowUpNextCard.xaml.cs:ShowUpNextCard",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

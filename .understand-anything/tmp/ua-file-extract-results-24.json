@@ -1,0 +1,7194 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 25,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 245,
+      "nonEmptyLines": 222,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityBell.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 131,
+      "nonEmptyLines": 107,
+      "functions": [
+        {
+          "name": "ActivityBell",
+          "startLine": 20,
+          "endLine": 33,
+          "params": []
+        },
+        {
+          "name": "UpdateBadge",
+          "startLine": 35,
+          "endLine": 41,
+          "params": []
+        },
+        {
+          "name": "UpdateEmptyState",
+          "startLine": 43,
+          "endLine": 49,
+          "params": []
+        },
+        {
+          "name": "ActivityBell_Loaded",
+          "startLine": 51,
+          "endLine": 56,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ActivityBell_Unloaded",
+          "startLine": 58,
+          "endLine": 61,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "AttachSubscriptions",
+          "startLine": 63,
+          "endLine": 75,
+          "params": []
+        },
+        {
+          "name": "DetachSubscriptions",
+          "startLine": 77,
+          "endLine": 89,
+          "params": []
+        },
+        {
+          "name": "OnServicePropertyChanged",
+          "startLine": 91,
+          "endLine": 95,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnItemsCollectionChanged",
+          "startLine": 97,
+          "endLine": 100,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "MarkAllRead_Click",
+          "startLine": 102,
+          "endLine": 105,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ClearAll_Click",
+          "startLine": 107,
+          "endLine": 110,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ActivityAction_Click",
+          "startLine": 112,
+          "endLine": 130,
+          "params": [
+            "sender",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ActivityBell",
+          "startLine": 13,
+          "endLine": 131,
+          "methods": [
+            "ActivityBell",
+            "UpdateBadge",
+            "UpdateEmptyState",
+            "ActivityBell_Loaded",
+            "ActivityBell_Unloaded",
+            "AttachSubscriptions",
+            "DetachSubscriptions",
+            "OnServicePropertyChanged",
+            "OnItemsCollectionChanged",
+            "MarkAllRead_Click",
+            "ClearAll_Click",
+            "ActivityAction_Click"
+          ],
+          "properties": [
+            "_service",
+            "_serviceNotifyPropertyChanged",
+            "_itemsNotifyCollectionChanged",
+            "_subscriptionsAttached"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ActivityBell",
+          "line": 20,
+          "isDefault": false
+        },
+        {
+          "name": "ActivityBell",
+          "line": 13,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ActivityBell",
+          "callee": "InitializeComponent",
+          "lineNumber": 22
+        },
+        {
+          "caller": "ActivityBell",
+          "callee": "Ioc.Default.GetService<IActivityService>",
+          "lineNumber": 24
+        },
+        {
+          "caller": "ActivityBell_Loaded",
+          "callee": "AttachSubscriptions",
+          "lineNumber": 53
+        },
+        {
+          "caller": "ActivityBell_Loaded",
+          "callee": "UpdateBadge",
+          "lineNumber": 54
+        },
+        {
+          "caller": "ActivityBell_Loaded",
+          "callee": "UpdateEmptyState",
+          "lineNumber": 55
+        },
+        {
+          "caller": "ActivityBell_Unloaded",
+          "callee": "DetachSubscriptions",
+          "lineNumber": 60
+        },
+        {
+          "caller": "OnServicePropertyChanged",
+          "callee": "nameof",
+          "lineNumber": 93
+        },
+        {
+          "caller": "OnServicePropertyChanged",
+          "callee": "UpdateBadge",
+          "lineNumber": 94
+        },
+        {
+          "caller": "OnItemsCollectionChanged",
+          "callee": "UpdateEmptyState",
+          "lineNumber": 99
+        },
+        {
+          "caller": "MarkAllRead_Click",
+          "callee": "_service?.MarkAllRead",
+          "lineNumber": 104
+        },
+        {
+          "caller": "ClearAll_Click",
+          "callee": "_service?.ClearAll",
+          "lineNumber": 109
+        },
+        {
+          "caller": "ActivityAction_Click",
+          "callee": "action.Callback",
+          "lineNumber": 120
+        },
+        {
+          "caller": "ActivityAction_Click",
+          "callee": "System.Diagnostics.Debug.WriteLine",
+          "lineNumber": 124
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 12,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/ActivityBell/ActivityItemTemplateSelector.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 31,
+      "nonEmptyLines": 27,
+      "functions": [
+        {
+          "name": "SelectTemplateCore",
+          "startLine": 18,
+          "endLine": 27,
+          "params": [
+            "item"
+          ]
+        },
+        {
+          "name": "SelectTemplateCore",
+          "startLine": 29,
+          "endLine": 30,
+          "params": [
+            "item",
+            "container"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ActivityItemTemplateSelector",
+          "startLine": 11,
+          "endLine": 31,
+          "methods": [
+            "SelectTemplateCore",
+            "SelectTemplateCore"
+          ],
+          "properties": [
+            "ProgressTemplate",
+            "NotificationTemplate",
+            "SpotifyTemplate",
+            "DefaultTemplate"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ProgressTemplate",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "NotificationTemplate",
+          "line": 14,
+          "isDefault": false
+        },
+        {
+          "name": "SpotifyTemplate",
+          "line": 15,
+          "isDefault": false
+        },
+        {
+          "name": "DefaultTemplate",
+          "line": 16,
+          "isDefault": false
+        },
+        {
+          "name": "ActivityItemTemplateSelector",
+          "line": 11,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "SelectTemplateCore",
+          "callee": "SelectTemplateCore",
+          "lineNumber": 30
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 5,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 297,
+      "nonEmptyLines": 289,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistBar.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 296,
+      "nonEmptyLines": 259,
+      "functions": [
+        {
+          "name": "AddToPlaylistBar",
+          "startLine": 45,
+          "endLine": 50,
+          "params": []
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 149,
+          "endLine": 161,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnUnloaded",
+          "startLine": 163,
+          "endLine": 170,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSessionPropertyChanged",
+          "startLine": 172,
+          "endLine": 176,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPendingCollectionChanged",
+          "startLine": 178,
+          "endLine": 179,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Refresh",
+          "startLine": 181,
+          "endLine": 219,
+          "params": []
+        },
+        {
+          "name": "OnAddClick",
+          "startLine": 227,
+          "endLine": 263,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnCancelClick",
+          "startLine": 265,
+          "endLine": 268,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnTargetClick",
+          "startLine": 273,
+          "endLine": 278,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnRemovePendingClick",
+          "startLine": 283,
+          "endLine": 288,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SetField",
+          "startLine": 290,
+          "endLine": 295,
+          "params": [
+            "field",
+            "value",
+            "propertyName"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "AddToPlaylistBar",
+          "startLine": 28,
+          "endLine": 296,
+          "methods": [
+            "AddToPlaylistBar",
+            "OnLoaded",
+            "OnUnloaded",
+            "OnSessionPropertyChanged",
+            "OnPendingCollectionChanged",
+            "Refresh",
+            "OnAddClick",
+            "OnCancelClick",
+            "OnTargetClick",
+            "OnRemovePendingClick",
+            "SetField"
+          ],
+          "properties": [
+            "MaxVisibleThumbs",
+            "_session",
+            "_targetName",
+            "_targetImageUrl",
+            "_thumbnailItems",
+            "_thumbnailOverflow",
+            "_hasPending",
+            "_countLabel",
+            "_addButtonLabel",
+            "_flyoutHeader",
+            "_pendingItems",
+            "_isSubmitting",
+            "TargetName",
+            "TargetImageUrl",
+            "ThumbnailItems",
+            "ThumbnailOverflow",
+            "HasPending",
+            "CountLabel",
+            "AddButtonLabel",
+            "IsSubmitting",
+            "IsIdleStateVisible",
+            "IsAddButtonEnabled",
+            "IsCancelEnabled",
+            "FlyoutHeader",
+            "PendingItems"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "AddToPlaylistBar",
+          "line": 45,
+          "isDefault": false
+        },
+        {
+          "name": "TargetName",
+          "line": 54,
+          "isDefault": false
+        },
+        {
+          "name": "TargetImageUrl",
+          "line": 60,
+          "isDefault": false
+        },
+        {
+          "name": "ThumbnailItems",
+          "line": 66,
+          "isDefault": false
+        },
+        {
+          "name": "ThumbnailOverflow",
+          "line": 72,
+          "isDefault": false
+        },
+        {
+          "name": "HasPending",
+          "line": 78,
+          "isDefault": false
+        },
+        {
+          "name": "CountLabel",
+          "line": 90,
+          "isDefault": false
+        },
+        {
+          "name": "AddButtonLabel",
+          "line": 96,
+          "isDefault": false
+        },
+        {
+          "name": "IsSubmitting",
+          "line": 105,
+          "isDefault": false
+        },
+        {
+          "name": "IsIdleStateVisible",
+          "line": 121,
+          "isDefault": false
+        },
+        {
+          "name": "IsAddButtonEnabled",
+          "line": 125,
+          "isDefault": false
+        },
+        {
+          "name": "IsCancelEnabled",
+          "line": 129,
+          "isDefault": false
+        },
+        {
+          "name": "FlyoutHeader",
+          "line": 131,
+          "isDefault": false
+        },
+        {
+          "name": "PendingItems",
+          "line": 143,
+          "isDefault": false
+        },
+        {
+          "name": "AddToPlaylistBar",
+          "line": 28,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "AddToPlaylistBar",
+          "callee": "InitializeComponent",
+          "lineNumber": 47
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "Ioc.Default.GetService<IAddToPlaylistSession>",
+          "lineNumber": 152
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "Refresh",
+          "lineNumber": 160
+        },
+        {
+          "caller": "OnSessionPropertyChanged",
+          "callee": "Refresh",
+          "lineNumber": 175
+        },
+        {
+          "caller": "OnPendingCollectionChanged",
+          "callee": "Refresh",
+          "lineNumber": 179
+        },
+        {
+          "caller": "Refresh",
+          "callee": "pending\r\n            .Skip(Math.Max(0, count - MaxVisibleThumbs))\r\n            .Select(p => new StackedThumbnailItem(p.ImageUrl, $\"{p.Title} — {p.ArtistName}\"))\r\n            .ToList",
+          "lineNumber": 213
+        },
+        {
+          "caller": "Refresh",
+          "callee": "pending\r\n            .Skip(Math.Max(0, count - MaxVisibleThumbs))\r\n            .Select",
+          "lineNumber": 213
+        },
+        {
+          "caller": "Refresh",
+          "callee": "pending\r\n            .Skip",
+          "lineNumber": 213
+        },
+        {
+          "caller": "Refresh",
+          "callee": "Math.Max",
+          "lineNumber": 214
+        },
+        {
+          "caller": "Refresh",
+          "callee": "new StackedThumbnailItem",
+          "lineNumber": 215
+        },
+        {
+          "caller": "Refresh",
+          "callee": "Math.Max",
+          "lineNumber": 218
+        },
+        {
+          "caller": "OnAddClick",
+          "callee": "PendingFlyout?.Hide",
+          "lineNumber": 233
+        },
+        {
+          "caller": "OnAddClick",
+          "callee": "_session.SubmitAsync().ConfigureAwait",
+          "lineNumber": 242
+        },
+        {
+          "caller": "OnAddClick",
+          "callee": "_session.SubmitAsync",
+          "lineNumber": 242
+        },
+        {
+          "caller": "OnAddClick",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 244
+        },
+        {
+          "caller": "OnAddClick",
+          "callee": "NavigationHelpers.OpenPlaylist",
+          "lineNumber": 245
+        },
+        {
+          "caller": "OnAddClick",
+          "callee": "Ioc.Default.GetService<INotificationService>",
+          "lineNumber": 253
+        },
+        {
+          "caller": "OnAddClick",
+          "callee": "notifier?.Show",
+          "lineNumber": 254
+        },
+        {
+          "caller": "OnAddClick",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 257
+        },
+        {
+          "caller": "OnCancelClick",
+          "callee": "_session?.Cancel",
+          "lineNumber": 267
+        },
+        {
+          "caller": "OnTargetClick",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 276
+        },
+        {
+          "caller": "OnTargetClick",
+          "callee": "NavigationHelpers.OpenPlaylist",
+          "lineNumber": 277
+        },
+        {
+          "caller": "OnRemovePendingClick",
+          "callee": "_session.Toggle",
+          "lineNumber": 287
+        },
+        {
+          "caller": "SetField",
+          "callee": "EqualityComparer<T>.Default.Equals",
+          "lineNumber": 292
+        },
+        {
+          "caller": "SetField",
+          "callee": "PropertyChanged?.Invoke",
+          "lineNumber": 294
+        },
+        {
+          "caller": "SetField",
+          "callee": "new PropertyChangedEventArgs",
+          "lineNumber": 294
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 15,
+        "functionCount": 11,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 28,
+      "nonEmptyLines": 27,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AddToPlaylist/AddToPlaylistChip.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 156,
+      "nonEmptyLines": 137,
+      "functions": [
+        {
+          "name": "AddToPlaylistChip",
+          "startLine": 27,
+          "endLine": 32,
+          "params": []
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 100,
+          "endLine": 110,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnUnloaded",
+          "startLine": 112,
+          "endLine": 119,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSessionPropertyChanged",
+          "startLine": 121,
+          "endLine": 122,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPendingCollectionChanged",
+          "startLine": 124,
+          "endLine": 125,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "DispatchApply",
+          "startLine": 127,
+          "endLine": 131,
+          "params": []
+        },
+        {
+          "name": "Apply",
+          "startLine": 133,
+          "endLine": 141,
+          "params": []
+        },
+        {
+          "name": "OnClick",
+          "startLine": 143,
+          "endLine": 155,
+          "params": [
+            "sender",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "AddToPlaylistChip",
+          "startLine": 22,
+          "endLine": 156,
+          "methods": [
+            "AddToPlaylistChip",
+            "OnLoaded",
+            "OnUnloaded",
+            "OnSessionPropertyChanged",
+            "OnPendingCollectionChanged",
+            "DispatchApply",
+            "Apply",
+            "OnClick"
+          ],
+          "properties": [
+            "_session",
+            "_isHooked",
+            "TrackUriProperty",
+            "TrackTitleProperty",
+            "TrackArtistNameProperty",
+            "TrackImageUrlProperty",
+            "TrackDurationMsProperty",
+            "IsEligibleProperty",
+            "TrackUri",
+            "TrackTitle",
+            "TrackArtistName",
+            "TrackImageUrl",
+            "TrackDurationMs",
+            "IsEligible"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "AddToPlaylistChip",
+          "line": 27,
+          "isDefault": false
+        },
+        {
+          "name": "TrackUriProperty",
+          "line": 36,
+          "isDefault": false
+        },
+        {
+          "name": "TrackTitleProperty",
+          "line": 40,
+          "isDefault": false
+        },
+        {
+          "name": "TrackArtistNameProperty",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "TrackImageUrlProperty",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "TrackDurationMsProperty",
+          "line": 55,
+          "isDefault": false
+        },
+        {
+          "name": "IsEligibleProperty",
+          "line": 63,
+          "isDefault": false
+        },
+        {
+          "name": "TrackUri",
+          "line": 67,
+          "isDefault": false
+        },
+        {
+          "name": "TrackTitle",
+          "line": 72,
+          "isDefault": false
+        },
+        {
+          "name": "TrackArtistName",
+          "line": 77,
+          "isDefault": false
+        },
+        {
+          "name": "TrackImageUrl",
+          "line": 82,
+          "isDefault": false
+        },
+        {
+          "name": "TrackDurationMs",
+          "line": 87,
+          "isDefault": false
+        },
+        {
+          "name": "IsEligible",
+          "line": 92,
+          "isDefault": false
+        },
+        {
+          "name": "AddToPlaylistChip",
+          "line": 22,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "AddToPlaylistChip",
+          "callee": "InitializeComponent",
+          "lineNumber": 29
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "Ioc.Default.GetService<IAddToPlaylistSession>",
+          "lineNumber": 103
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "Apply",
+          "lineNumber": 109
+        },
+        {
+          "caller": "OnSessionPropertyChanged",
+          "callee": "DispatchApply",
+          "lineNumber": 122
+        },
+        {
+          "caller": "OnPendingCollectionChanged",
+          "callee": "DispatchApply",
+          "lineNumber": 125
+        },
+        {
+          "caller": "DispatchApply",
+          "callee": "Apply",
+          "lineNumber": 129
+        },
+        {
+          "caller": "DispatchApply",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 130
+        },
+        {
+          "caller": "Apply",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 135
+        },
+        {
+          "caller": "Apply",
+          "callee": "_session!.Contains",
+          "lineNumber": 138
+        },
+        {
+          "caller": "OnClick",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 147
+        },
+        {
+          "caller": "OnClick",
+          "callee": "new PendingTrackEntry",
+          "lineNumber": 148
+        },
+        {
+          "caller": "OnClick",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 153
+        },
+        {
+          "caller": "OnClick",
+          "callee": "_session.Toggle",
+          "lineNumber": 154
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 14,
+        "functionCount": 8,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 42,
+      "nonEmptyLines": 38,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AiSparkleIcon.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 211,
+      "nonEmptyLines": 185,
+      "functions": [
+        {
+          "name": "AiSparkleIcon",
+          "startLine": 49,
+          "endLine": 54,
+          "params": []
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 56,
+          "endLine": 84,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnUnloaded",
+          "startLine": 86,
+          "endLine": 90,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnStateChanged",
+          "startLine": 92,
+          "endLine": 96,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyState",
+          "startLine": 98,
+          "endLine": 134,
+          "params": [
+            "state"
+          ]
+        },
+        {
+          "name": "StartPulse",
+          "startLine": 136,
+          "endLine": 164,
+          "params": [
+            "toScale",
+            "durationMs",
+            "repeatForever",
+            "resetOnComplete"
+          ]
+        },
+        {
+          "name": "StartWiggle",
+          "startLine": 166,
+          "endLine": 182,
+          "params": []
+        },
+        {
+          "name": "StartRotate",
+          "startLine": 184,
+          "endLine": 197,
+          "params": []
+        },
+        {
+          "name": "StopActiveBatch",
+          "startLine": 199,
+          "endLine": 210,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "AiSparkleIcon",
+          "startLine": 26,
+          "endLine": 211,
+          "methods": [
+            "AiSparkleIcon",
+            "OnLoaded",
+            "OnUnloaded",
+            "OnStateChanged",
+            "ApplyState",
+            "StartPulse",
+            "StartWiggle",
+            "StartRotate",
+            "StopActiveBatch"
+          ],
+          "properties": [
+            "StateProperty",
+            "State",
+            "_visual",
+            "_activeBatch",
+            "_animationsEnabled"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "StateProperty",
+          "line": 28,
+          "isDefault": false
+        },
+        {
+          "name": "State",
+          "line": 39,
+          "isDefault": false
+        },
+        {
+          "name": "AiSparkleIcon",
+          "line": 49,
+          "isDefault": false
+        },
+        {
+          "name": "AiSparkleIcon",
+          "line": 26,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "AiSparkleIcon",
+          "callee": "InitializeComponent",
+          "lineNumber": 51
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 58
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "new Vector3",
+          "lineNumber": 60
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "new Vector3",
+          "lineNumber": 67
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "ApplyState",
+          "lineNumber": 83
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "StopActiveBatch",
+          "lineNumber": 88
+        },
+        {
+          "caller": "OnStateChanged",
+          "callee": "icon.ApplyState",
+          "lineNumber": 95
+        },
+        {
+          "caller": "ApplyState",
+          "callee": "StopActiveBatch",
+          "lineNumber": 104
+        },
+        {
+          "caller": "ApplyState",
+          "callee": "StartPulse",
+          "lineNumber": 117
+        },
+        {
+          "caller": "ApplyState",
+          "callee": "StartWiggle",
+          "lineNumber": 120
+        },
+        {
+          "caller": "ApplyState",
+          "callee": "StartRotate",
+          "lineNumber": 123
+        },
+        {
+          "caller": "ApplyState",
+          "callee": "StartPulse",
+          "lineNumber": 126
+        },
+        {
+          "caller": "StartPulse",
+          "callee": "compositor.CreateVector3KeyFrameAnimation",
+          "lineNumber": 141
+        },
+        {
+          "caller": "StartPulse",
+          "callee": "anim.InsertKeyFrame",
+          "lineNumber": 142
+        },
+        {
+          "caller": "StartPulse",
+          "callee": "anim.InsertKeyFrame",
+          "lineNumber": 143
+        },
+        {
+          "caller": "StartPulse",
+          "callee": "new Vector3",
+          "lineNumber": 143
+        },
+        {
+          "caller": "StartPulse",
+          "callee": "anim.InsertKeyFrame",
+          "lineNumber": 144
+        },
+        {
+          "caller": "StartPulse",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 145
+        },
+        {
+          "caller": "StartPulse",
+          "callee": "compositor.CreateScopedBatch",
+          "lineNumber": 151
+        },
+        {
+          "caller": "StartPulse",
+          "callee": "_visual.StartAnimation",
+          "lineNumber": 152
+        },
+        {
+          "caller": "StartPulse",
+          "callee": "nameof",
+          "lineNumber": 152
+        },
+        {
+          "caller": "StartPulse",
+          "callee": "batch.End",
+          "lineNumber": 153
+        },
+        {
+          "caller": "StartPulse",
+          "callee": "DispatcherQueue.TryEnqueue",
+          "lineNumber": 160
+        },
+        {
+          "caller": "StartWiggle",
+          "callee": "compositor.CreateVector3KeyFrameAnimation",
+          "lineNumber": 171
+        },
+        {
+          "caller": "StartWiggle",
+          "callee": "anim.InsertKeyFrame",
+          "lineNumber": 172
+        },
+        {
+          "caller": "StartWiggle",
+          "callee": "anim.InsertKeyFrame",
+          "lineNumber": 173
+        },
+        {
+          "caller": "StartWiggle",
+          "callee": "new Vector3",
+          "lineNumber": 173
+        },
+        {
+          "caller": "StartWiggle",
+          "callee": "anim.InsertKeyFrame",
+          "lineNumber": 174
+        },
+        {
+          "caller": "StartWiggle",
+          "callee": "new Vector3",
+          "lineNumber": 174
+        },
+        {
+          "caller": "StartWiggle",
+          "callee": "anim.InsertKeyFrame",
+          "lineNumber": 175
+        },
+        {
+          "caller": "StartWiggle",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 176
+        },
+        {
+          "caller": "StartWiggle",
+          "callee": "compositor.CreateScopedBatch",
+          "lineNumber": 178
+        },
+        {
+          "caller": "StartWiggle",
+          "callee": "_visual.StartAnimation",
+          "lineNumber": 179
+        },
+        {
+          "caller": "StartWiggle",
+          "callee": "nameof",
+          "lineNumber": 179
+        },
+        {
+          "caller": "StartWiggle",
+          "callee": "batch.End",
+          "lineNumber": 180
+        },
+        {
+          "caller": "StartRotate",
+          "callee": "compositor.CreateScalarKeyFrameAnimation",
+          "lineNumber": 189
+        },
+        {
+          "caller": "StartRotate",
+          "callee": "anim.InsertKeyFrame",
+          "lineNumber": 190
+        },
+        {
+          "caller": "StartRotate",
+          "callee": "anim.InsertKeyFrame",
+          "lineNumber": 191
+        },
+        {
+          "caller": "StartRotate",
+          "callee": "TimeSpan.FromSeconds",
+          "lineNumber": 192
+        },
+        {
+          "caller": "StartRotate",
+          "callee": "_visual.StartAnimation",
+          "lineNumber": 196
+        },
+        {
+          "caller": "StartRotate",
+          "callee": "nameof",
+          "lineNumber": 196
+        },
+        {
+          "caller": "StopActiveBatch",
+          "callee": "_visual.StopAnimation",
+          "lineNumber": 203
+        },
+        {
+          "caller": "StopActiveBatch",
+          "callee": "nameof",
+          "lineNumber": 203
+        },
+        {
+          "caller": "StopActiveBatch",
+          "callee": "_visual.StopAnimation",
+          "lineNumber": 204
+        },
+        {
+          "caller": "StopActiveBatch",
+          "callee": "nameof",
+          "lineNumber": 204
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 9,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 137,
+      "nonEmptyLines": 126,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/AlbumDetailPanel.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 407,
+      "nonEmptyLines": 343,
+      "functions": [
+        {
+          "name": "AlbumDetailPanel",
+          "startLine": 96,
+          "endLine": 123,
+          "params": []
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 125,
+          "endLine": 140,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnUnloaded",
+          "startLine": 142,
+          "endLine": 170,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SetupCompositionMask",
+          "startLine": 172,
+          "endLine": 207,
+          "params": []
+        },
+        {
+          "name": "LoadImage",
+          "startLine": 209,
+          "endLine": 231,
+          "params": [
+            "imageUrl"
+          ]
+        },
+        {
+          "name": "ReleaseForNavCache",
+          "startLine": 237,
+          "endLine": 247,
+          "params": []
+        },
+        {
+          "name": "RestoreForNavCache",
+          "startLine": 249,
+          "endLine": 256,
+          "params": []
+        },
+        {
+          "name": "OuterGrid_SizeChanged",
+          "startLine": 270,
+          "endLine": 275,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnAlbumChanged",
+          "startLine": 277,
+          "endLine": 295,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnColorHexChanged",
+          "startLine": 297,
+          "endLine": 302,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnPanelActualThemeChanged",
+          "startLine": 304,
+          "endLine": 305,
+          "params": [
+            "sender",
+            "args"
+          ]
+        },
+        {
+          "name": "OnNotchOffsetXChanged",
+          "startLine": 307,
+          "endLine": 312,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyBackground",
+          "startLine": 314,
+          "endLine": 323,
+          "params": []
+        },
+        {
+          "name": "GetThemeSurfaceColor",
+          "startLine": 325,
+          "endLine": 331,
+          "params": []
+        },
+        {
+          "name": "BlendOver",
+          "startLine": 333,
+          "endLine": 340,
+          "params": [
+            "top",
+            "bottom",
+            "topAlpha"
+          ]
+        },
+        {
+          "name": "ParseHexColor",
+          "startLine": 342,
+          "endLine": 361,
+          "params": [
+            "hex"
+          ]
+        },
+        {
+          "name": "OnTracksChanged",
+          "startLine": 363,
+          "endLine": 367,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnTrackClicked",
+          "startLine": 369,
+          "endLine": 378,
+          "params": [
+            "sender",
+            "track"
+          ]
+        },
+        {
+          "name": "CloseButton_Click",
+          "startLine": 380,
+          "endLine": 381,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "PlayButton_Click",
+          "startLine": 383,
+          "endLine": 384,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ShuffleButton_Click",
+          "startLine": 386,
+          "endLine": 387,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "ViewAlbumButton_Click",
+          "startLine": 389,
+          "endLine": 406,
+          "params": [
+            "sender",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "AlbumDetailPanel",
+          "startLine": 25,
+          "endLine": 407,
+          "methods": [
+            "AlbumDetailPanel",
+            "OnLoaded",
+            "OnUnloaded",
+            "SetupCompositionMask",
+            "LoadImage",
+            "ReleaseForNavCache",
+            "RestoreForNavCache",
+            "OuterGrid_SizeChanged",
+            "OnAlbumChanged",
+            "OnColorHexChanged",
+            "OnPanelActualThemeChanged",
+            "OnNotchOffsetXChanged",
+            "ApplyBackground",
+            "GetThemeSurfaceColor",
+            "BlendOver",
+            "ParseHexColor",
+            "OnTracksChanged",
+            "OnTrackClicked",
+            "CloseButton_Click",
+            "PlayButton_Click",
+            "ShuffleButton_Click",
+            "ViewAlbumButton_Click"
+          ],
+          "properties": [
+            "_surfaceBrush",
+            "_spriteVisual",
+            "_compositor",
+            "_imageSurface",
+            "_playbackService",
+            "_appliedColorHex",
+            "_navCacheReleased",
+            "PaletteTintAlpha",
+            "AlbumProperty",
+            "TracksProperty",
+            "IsLoadingProperty",
+            "ColorHexProperty",
+            "NotchOffsetXProperty",
+            "Album",
+            "Tracks",
+            "IsLoading",
+            "ColorHex",
+            "NotchOffsetX",
+            "NotchWidth",
+            "EstimatedSurfaceBytes"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "AlbumProperty",
+          "line": 40,
+          "isDefault": false
+        },
+        {
+          "name": "TracksProperty",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "IsLoadingProperty",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "ColorHexProperty",
+          "line": 52,
+          "isDefault": false
+        },
+        {
+          "name": "NotchOffsetXProperty",
+          "line": 56,
+          "isDefault": false
+        },
+        {
+          "name": "Album",
+          "line": 60,
+          "isDefault": false
+        },
+        {
+          "name": "Tracks",
+          "line": 66,
+          "isDefault": false
+        },
+        {
+          "name": "IsLoading",
+          "line": 72,
+          "isDefault": false
+        },
+        {
+          "name": "ColorHex",
+          "line": 78,
+          "isDefault": false
+        },
+        {
+          "name": "NotchOffsetX",
+          "line": 84,
+          "isDefault": false
+        },
+        {
+          "name": "AlbumDetailPanel",
+          "line": 96,
+          "isDefault": false
+        },
+        {
+          "name": "AlbumDetailPanel",
+          "line": 25,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "AlbumDetailPanel",
+          "callee": "Ioc.Default.GetService<IPlaybackService>",
+          "lineNumber": 98
+        },
+        {
+          "caller": "AlbumDetailPanel",
+          "callee": "InitializeComponent",
+          "lineNumber": 99
+        },
+        {
+          "caller": "AlbumDetailPanel",
+          "callee": "TrackListControl.CustomColumns.Add",
+          "lineNumber": 102
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "SetupCompositionMask",
+          "lineNumber": 136
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "LoadImage",
+          "lineNumber": 138
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "ApplyBackground",
+          "lineNumber": 139
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "_imageSurface?.Dispose",
+          "lineNumber": 150
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "_surfaceBrush.Dispose",
+          "lineNumber": 156
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "ElementCompositionPreview.SetElementChildVisual",
+          "lineNumber": 162
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "_spriteVisual.Brush?.Dispose",
+          "lineNumber": 163
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "_spriteVisual.Dispose",
+          "lineNumber": 164
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 177
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "_compositor.CreateLinearGradientBrush",
+          "lineNumber": 182
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "new Vector2",
+          "lineNumber": 183
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "new Vector2",
+          "lineNumber": 184
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "gradientBrush.ColorStops.Add",
+          "lineNumber": 185
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "_compositor.CreateColorGradientStop",
+          "lineNumber": 185
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 186
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "gradientBrush.ColorStops.Add",
+          "lineNumber": 187
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "_compositor.CreateColorGradientStop",
+          "lineNumber": 187
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 188
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "_compositor.CreateSurfaceBrush",
+          "lineNumber": 191
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "_compositor.CreateMaskBrush",
+          "lineNumber": 197
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "_compositor.CreateSpriteVisual",
+          "lineNumber": 202
+        },
+        {
+          "caller": "SetupCompositionMask",
+          "callee": "ElementCompositionPreview.SetElementChildVisual",
+          "lineNumber": 206
+        },
+        {
+          "caller": "LoadImage",
+          "callee": "_imageSurface?.Dispose",
+          "lineNumber": 214
+        },
+        {
+          "caller": "LoadImage",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 217
+        },
+        {
+          "caller": "LoadImage",
+          "callee": "SpotifyImageHelper.ToHttpsUrl",
+          "lineNumber": 223
+        },
+        {
+          "caller": "LoadImage",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 224
+        },
+        {
+          "caller": "LoadImage",
+          "callee": "Math.Max",
+          "lineNumber": 227
+        },
+        {
+          "caller": "LoadImage",
+          "callee": "Math.Max",
+          "lineNumber": 228
+        },
+        {
+          "caller": "LoadImage",
+          "callee": "Microsoft.UI.Xaml.Media.LoadedImageSurface.StartLoadFromUri",
+          "lineNumber": 229
+        },
+        {
+          "caller": "LoadImage",
+          "callee": "new Uri",
+          "lineNumber": 229
+        },
+        {
+          "caller": "ReleaseForNavCache",
+          "callee": "_imageSurface.Dispose",
+          "lineNumber": 242
+        },
+        {
+          "caller": "RestoreForNavCache",
+          "callee": "LoadImage",
+          "lineNumber": 254
+        },
+        {
+          "caller": "OuterGrid_SizeChanged",
+          "callee": "Math.Min",
+          "lineNumber": 274
+        },
+        {
+          "caller": "OnAlbumChanged",
+          "callee": "album.Year.ToString",
+          "lineNumber": 286
+        },
+        {
+          "caller": "OnAlbumChanged",
+          "callee": "album.Year.ToString",
+          "lineNumber": 287
+        },
+        {
+          "caller": "OnAlbumChanged",
+          "callee": "panel.LoadImage",
+          "lineNumber": 290
+        },
+        {
+          "caller": "OnAlbumChanged",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 292
+        },
+        {
+          "caller": "OnAlbumChanged",
+          "callee": "panel.ApplyBackground",
+          "lineNumber": 293
+        },
+        {
+          "caller": "OnColorHexChanged",
+          "callee": "panel.ApplyBackground",
+          "lineNumber": 301
+        },
+        {
+          "caller": "OnPanelActualThemeChanged",
+          "callee": "ApplyBackground",
+          "lineNumber": 305
+        },
+        {
+          "caller": "ApplyBackground",
+          "callee": "GetThemeSurfaceColor",
+          "lineNumber": 316
+        },
+        {
+          "caller": "ApplyBackground",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 317
+        },
+        {
+          "caller": "ApplyBackground",
+          "callee": "BlendOver",
+          "lineNumber": 319
+        },
+        {
+          "caller": "ApplyBackground",
+          "callee": "ParseHexColor",
+          "lineNumber": 319
+        },
+        {
+          "caller": "ApplyBackground",
+          "callee": "new SolidColorBrush",
+          "lineNumber": 321
+        },
+        {
+          "caller": "ApplyBackground",
+          "callee": "new SolidColorBrush",
+          "lineNumber": 322
+        },
+        {
+          "caller": "GetThemeSurfaceColor",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 329
+        },
+        {
+          "caller": "GetThemeSurfaceColor",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 330
+        },
+        {
+          "caller": "BlendOver",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 336
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "hex.TrimStart",
+          "lineNumber": 344
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 347
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 348
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 349
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 350
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 354
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 355
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 356
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 357
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Convert.ToByte",
+          "lineNumber": 358
+        },
+        {
+          "caller": "ParseHexColor",
+          "callee": "Windows.UI.Color.FromArgb",
+          "lineNumber": 360
+        },
+        {
+          "caller": "OnTrackClicked",
+          "callee": "_playbackService.PlayTrackInContextAsync",
+          "lineNumber": 376
+        },
+        {
+          "caller": "CloseButton_Click",
+          "callee": "CloseRequested?.Invoke",
+          "lineNumber": 381
+        },
+        {
+          "caller": "PlayButton_Click",
+          "callee": "PlayRequested?.Invoke",
+          "lineNumber": 384
+        },
+        {
+          "caller": "ShuffleButton_Click",
+          "callee": "ShuffleRequested?.Invoke",
+          "lineNumber": 387
+        },
+        {
+          "caller": "ViewAlbumButton_Click",
+          "callee": "Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent",
+          "lineNumber": 397
+        },
+        {
+          "caller": "ViewAlbumButton_Click",
+          "callee": "new ContentNavigationParameter",
+          "lineNumber": 399
+        },
+        {
+          "caller": "ViewAlbumButton_Click",
+          "callee": "NavigationHelpers.OpenAlbum",
+          "lineNumber": 405
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 12,
+        "functionCount": 22,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 54,
+      "nonEmptyLines": 51,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandableAlbumGrid.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 426,
+      "nonEmptyLines": 358,
+      "functions": [
+        {
+          "name": "ExpandableAlbumGrid",
+          "startLine": 50,
+          "endLine": 56,
+          "params": []
+        },
+        {
+          "name": "OnUnloaded",
+          "startLine": 58,
+          "endLine": 59,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnItemsSourceChanged",
+          "startLine": 124,
+          "endLine": 136,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnSourceCollectionChanged",
+          "startLine": 138,
+          "endLine": 139,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "SyncFromSource",
+          "startLine": 147,
+          "endLine": 189,
+          "params": []
+        },
+        {
+          "name": "OnExpandedAlbumPropertyChanged",
+          "startLine": 193,
+          "endLine": 194,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnExpandedAlbumChanged",
+          "startLine": 196,
+          "endLine": 234,
+          "params": [
+            "album"
+          ]
+        },
+        {
+          "name": "CollapseLocal",
+          "startLine": 236,
+          "endLine": 243,
+          "params": []
+        },
+        {
+          "name": "OnExpandedAlbumTracksChanged",
+          "startLine": 245,
+          "endLine": 250,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnIsLoadingExpandedTracksChanged",
+          "startLine": 252,
+          "endLine": 257,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "CollapseNow",
+          "startLine": 260,
+          "endLine": 265,
+          "params": []
+        },
+        {
+          "name": "OnExpanderGeometryChanged",
+          "startLine": 269,
+          "endLine": 275,
+          "params": [
+            "gapTop",
+            "notchX"
+          ]
+        },
+        {
+          "name": "OnDetailPanelSizeChanged",
+          "startLine": 277,
+          "endLine": 285,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "RaiseExpandLayoutReadySoon",
+          "startLine": 287,
+          "endLine": 298,
+          "params": []
+        },
+        {
+          "name": "OnCardClick",
+          "startLine": 302,
+          "endLine": 318,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnDetailPanelCloseRequested",
+          "startLine": 320,
+          "endLine": 321,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "StartColorFetch",
+          "startLine": 325,
+          "endLine": 343,
+          "params": [
+            "album"
+          ]
+        },
+        {
+          "name": "FetchColorAsync",
+          "startLine": 345,
+          "endLine": 368,
+          "params": [
+            "revision",
+            "imageUrl"
+          ]
+        },
+        {
+          "name": "PrepareGlide",
+          "startLine": 376,
+          "endLine": 387,
+          "params": []
+        },
+        {
+          "name": "CreateGlideTimer",
+          "startLine": 389,
+          "endLine": 398,
+          "params": []
+        },
+        {
+          "name": "ApplyGlideAnimations",
+          "startLine": 400,
+          "endLine": 407,
+          "params": [
+            "animations"
+          ]
+        },
+        {
+          "name": "EnsureGlideAnimation",
+          "startLine": 409,
+          "endLine": 425,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "ExpandableAlbumGrid",
+          "startLine": 34,
+          "endLine": 426,
+          "methods": [
+            "ExpandableAlbumGrid",
+            "OnUnloaded",
+            "OnItemsSourceChanged",
+            "OnSourceCollectionChanged",
+            "SyncFromSource",
+            "OnExpandedAlbumPropertyChanged",
+            "OnExpandedAlbumChanged",
+            "CollapseLocal",
+            "OnExpandedAlbumTracksChanged",
+            "OnIsLoadingExpandedTracksChanged",
+            "CollapseNow",
+            "OnExpanderGeometryChanged",
+            "OnDetailPanelSizeChanged",
+            "RaiseExpandLayoutReadySoon",
+            "OnCardClick",
+            "OnDetailPanelCloseRequested",
+            "StartColorFetch",
+            "FetchColorAsync",
+            "PrepareGlide",
+            "CreateGlideTimer",
+            "ApplyGlideAnimations",
+            "EnsureGlideAnimation"
+          ],
+          "properties": [
+            "_items",
+            "_sourceNotifier",
+            "_expandedItem",
+            "_colorService",
+            "_colorRevision",
+            "_glideAnimations",
+            "_glideTimer",
+            "ItemsSourceProperty",
+            "ItemsSource",
+            "ExpandedAlbumProperty",
+            "ExpandedAlbum",
+            "ExpandedAlbumTracksProperty",
+            "ExpandedAlbumTracks",
+            "IsLoadingExpandedTracksProperty",
+            "IsLoadingExpandedTracks"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ExpandableAlbumGrid",
+          "line": 50,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsSourceProperty",
+          "line": 63,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsSource",
+          "line": 68,
+          "isDefault": false
+        },
+        {
+          "name": "ExpandedAlbumProperty",
+          "line": 74,
+          "isDefault": false
+        },
+        {
+          "name": "ExpandedAlbum",
+          "line": 81,
+          "isDefault": false
+        },
+        {
+          "name": "ExpandedAlbumTracksProperty",
+          "line": 87,
+          "isDefault": false
+        },
+        {
+          "name": "ExpandedAlbumTracks",
+          "line": 92,
+          "isDefault": false
+        },
+        {
+          "name": "IsLoadingExpandedTracksProperty",
+          "line": 98,
+          "isDefault": false
+        },
+        {
+          "name": "IsLoadingExpandedTracks",
+          "line": 103,
+          "isDefault": false
+        },
+        {
+          "name": "CollapseNow",
+          "line": 260,
+          "isDefault": false
+        },
+        {
+          "name": "ExpandableAlbumGrid",
+          "line": 34,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ExpandableAlbumGrid",
+          "callee": "InitializeComponent",
+          "lineNumber": 52
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "_glideTimer?.Stop",
+          "lineNumber": 59
+        },
+        {
+          "caller": "OnItemsSourceChanged",
+          "callee": "grid.SyncFromSource",
+          "lineNumber": 135
+        },
+        {
+          "caller": "OnSourceCollectionChanged",
+          "callee": "SyncFromSource",
+          "lineNumber": 139
+        },
+        {
+          "caller": "SyncFromSource",
+          "callee": "new List<LazyReleaseItem>",
+          "lineNumber": 149
+        },
+        {
+          "caller": "SyncFromSource",
+          "callee": "source.Add",
+          "lineNumber": 155
+        },
+        {
+          "caller": "SyncFromSource",
+          "callee": "source.Contains",
+          "lineNumber": 161
+        },
+        {
+          "caller": "SyncFromSource",
+          "callee": "_items.RemoveAt",
+          "lineNumber": 162
+        },
+        {
+          "caller": "SyncFromSource",
+          "callee": "_items.IndexOf",
+          "lineNumber": 168
+        },
+        {
+          "caller": "SyncFromSource",
+          "callee": "_items.Insert",
+          "lineNumber": 170
+        },
+        {
+          "caller": "SyncFromSource",
+          "callee": "Math.Min",
+          "lineNumber": 170
+        },
+        {
+          "caller": "SyncFromSource",
+          "callee": "_items.Move",
+          "lineNumber": 172
+        },
+        {
+          "caller": "SyncFromSource",
+          "callee": "_items.IndexOf",
+          "lineNumber": 178
+        },
+        {
+          "caller": "SyncFromSource",
+          "callee": "CollapseLocal",
+          "lineNumber": 181
+        },
+        {
+          "caller": "SyncFromSource",
+          "callee": "CollapseRequested?.Invoke",
+          "lineNumber": 182
+        },
+        {
+          "caller": "OnExpandedAlbumPropertyChanged",
+          "callee": "((ExpandableAlbumGrid)d).OnExpandedAlbumChanged",
+          "lineNumber": 194
+        },
+        {
+          "caller": "OnExpandedAlbumChanged",
+          "callee": "_items.IndexOf",
+          "lineNumber": 198
+        },
+        {
+          "caller": "OnExpandedAlbumChanged",
+          "callee": "PrepareGlide",
+          "lineNumber": 206
+        },
+        {
+          "caller": "OnExpandedAlbumChanged",
+          "callee": "CollapseLocal",
+          "lineNumber": 207
+        },
+        {
+          "caller": "OnExpandedAlbumChanged",
+          "callee": "ReferenceEquals",
+          "lineNumber": 212
+        },
+        {
+          "caller": "OnExpandedAlbumChanged",
+          "callee": "PrepareGlide",
+          "lineNumber": 217
+        },
+        {
+          "caller": "OnExpandedAlbumChanged",
+          "callee": "StartColorFetch",
+          "lineNumber": 232
+        },
+        {
+          "caller": "OnExpandedAlbumChanged",
+          "callee": "RaiseExpandLayoutReadySoon",
+          "lineNumber": 233
+        },
+        {
+          "caller": "CollapseNow",
+          "callee": "CollapseLocal",
+          "lineNumber": 262
+        },
+        {
+          "caller": "CollapseNow",
+          "callee": "_glideTimer?.Stop",
+          "lineNumber": 263
+        },
+        {
+          "caller": "CollapseNow",
+          "callee": "ApplyGlideAnimations",
+          "lineNumber": 264
+        },
+        {
+          "caller": "OnExpanderGeometryChanged",
+          "callee": "new Thickness",
+          "lineNumber": 273
+        },
+        {
+          "caller": "RaiseExpandLayoutReadySoon",
+          "callee": "DispatcherQueue?.TryEnqueue",
+          "lineNumber": 289
+        },
+        {
+          "caller": "RaiseExpandLayoutReadySoon",
+          "callee": "ExpandLayoutReady.Invoke",
+          "lineNumber": 295
+        },
+        {
+          "caller": "OnCardClick",
+          "callee": "Repeater.GetElementIndex",
+          "lineNumber": 307
+        },
+        {
+          "caller": "OnCardClick",
+          "callee": "ReferenceEquals",
+          "lineNumber": 314
+        },
+        {
+          "caller": "OnCardClick",
+          "callee": "CollapseRequested?.Invoke",
+          "lineNumber": 315
+        },
+        {
+          "caller": "OnCardClick",
+          "callee": "ExpandRequested?.Invoke",
+          "lineNumber": 317
+        },
+        {
+          "caller": "OnDetailPanelCloseRequested",
+          "callee": "CollapseRequested?.Invoke",
+          "lineNumber": 321
+        },
+        {
+          "caller": "StartColorFetch",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 332
+        },
+        {
+          "caller": "StartColorFetch",
+          "callee": "SpotifyImageHelper.ToHttpsUrl",
+          "lineNumber": 338
+        },
+        {
+          "caller": "StartColorFetch",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 339
+        },
+        {
+          "caller": "StartColorFetch",
+          "callee": "FetchColorAsync",
+          "lineNumber": 342
+        },
+        {
+          "caller": "FetchColorAsync",
+          "callee": "Ioc.Default.GetService<IColorService>",
+          "lineNumber": 349
+        },
+        {
+          "caller": "FetchColorAsync",
+          "callee": "_colorService.GetColorAsync",
+          "lineNumber": 353
+        },
+        {
+          "caller": "FetchColorAsync",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 361
+        },
+        {
+          "caller": "PrepareGlide",
+          "callee": "EnsureGlideAnimation",
+          "lineNumber": 378
+        },
+        {
+          "caller": "PrepareGlide",
+          "callee": "ApplyGlideAnimations",
+          "lineNumber": 382
+        },
+        {
+          "caller": "PrepareGlide",
+          "callee": "CreateGlideTimer",
+          "lineNumber": 384
+        },
+        {
+          "caller": "PrepareGlide",
+          "callee": "_glideTimer.Stop",
+          "lineNumber": 385
+        },
+        {
+          "caller": "PrepareGlide",
+          "callee": "_glideTimer.Start",
+          "lineNumber": 386
+        },
+        {
+          "caller": "CreateGlideTimer",
+          "callee": "new DispatcherTimer",
+          "lineNumber": 391
+        },
+        {
+          "caller": "CreateGlideTimer",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 391
+        },
+        {
+          "caller": "CreateGlideTimer",
+          "callee": "_glideTimer?.Stop",
+          "lineNumber": 394
+        },
+        {
+          "caller": "CreateGlideTimer",
+          "callee": "ApplyGlideAnimations",
+          "lineNumber": 395
+        },
+        {
+          "caller": "ApplyGlideAnimations",
+          "callee": "Repeater.TryGetElement",
+          "lineNumber": 404
+        },
+        {
+          "caller": "ApplyGlideAnimations",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 405
+        },
+        {
+          "caller": "EnsureGlideAnimation",
+          "callee": "ElementCompositionPreview.GetElementVisual",
+          "lineNumber": 414
+        },
+        {
+          "caller": "EnsureGlideAnimation",
+          "callee": "compositor.CreateVector3KeyFrameAnimation",
+          "lineNumber": 415
+        },
+        {
+          "caller": "EnsureGlideAnimation",
+          "callee": "compositor.CreateCubicBezierEasingFunction",
+          "lineNumber": 417
+        },
+        {
+          "caller": "EnsureGlideAnimation",
+          "callee": "offset.InsertExpressionKeyFrame",
+          "lineNumber": 420
+        },
+        {
+          "caller": "EnsureGlideAnimation",
+          "callee": "TimeSpan.FromMilliseconds",
+          "lineNumber": 421
+        },
+        {
+          "caller": "EnsureGlideAnimation",
+          "callee": "compositor.CreateImplicitAnimationCollection",
+          "lineNumber": 423
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 11,
+        "functionCount": 22,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AlbumDetailPanel/ExpandingGridLayout.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 202,
+      "nonEmptyLines": 176,
+      "functions": [
+        {
+          "name": "ComputeColumns",
+          "startLine": 70,
+          "endLine": 75,
+          "params": [
+            "width"
+          ]
+        },
+        {
+          "name": "IntersectsVertically",
+          "startLine": 77,
+          "endLine": 84,
+          "params": [
+            "item",
+            "realization"
+          ]
+        },
+        {
+          "name": "RectForIndex",
+          "startLine": 86,
+          "endLine": 95,
+          "params": [
+            "index",
+            "columns",
+            "cellWidth",
+            "cardHeight",
+            "expandedRow"
+          ]
+        },
+        {
+          "name": "ResolveGrid",
+          "startLine": 97,
+          "endLine": 110,
+          "params": [
+            "width"
+          ]
+        },
+        {
+          "name": "ExpandedRow",
+          "startLine": 112,
+          "endLine": 115,
+          "params": [
+            "columns",
+            "itemCount"
+          ]
+        },
+        {
+          "name": "MeasureOverride",
+          "startLine": 117,
+          "endLine": 149,
+          "params": [
+            "context",
+            "availableSize"
+          ]
+        },
+        {
+          "name": "TotalHeight",
+          "startLine": 151,
+          "endLine": 160,
+          "params": [
+            "itemCount",
+            "columns",
+            "expandedRow"
+          ]
+        },
+        {
+          "name": "ArrangeOverride",
+          "startLine": 162,
+          "endLine": 201,
+          "params": [
+            "context",
+            "finalSize"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ExpandingGridLayout",
+          "startLine": 18,
+          "endLine": 202,
+          "methods": [
+            "ComputeColumns",
+            "IntersectsVertically",
+            "RectForIndex",
+            "ResolveGrid",
+            "ExpandedRow",
+            "MeasureOverride",
+            "TotalHeight",
+            "ArrangeOverride"
+          ],
+          "properties": [
+            "MinItemWidth",
+            "ColumnSpacing",
+            "RowSpacing",
+            "MinCardHeight",
+            "_cardHeight",
+            "_cardHeightCellWidth",
+            "_expandedOrdinal",
+            "_expanderHeight",
+            "_lastGapTop",
+            "_lastNotchX",
+            "ExpandedAlbumOrdinal",
+            "ExpanderHeight"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ExpandedAlbumOrdinal",
+          "line": 37,
+          "isDefault": false
+        },
+        {
+          "name": "ExpanderHeight",
+          "line": 50,
+          "isDefault": false
+        },
+        {
+          "name": "ExpandingGridLayout",
+          "line": 18,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ComputeColumns",
+          "callee": "double.IsNaN",
+          "lineNumber": 72
+        },
+        {
+          "caller": "ComputeColumns",
+          "callee": "double.IsInfinity",
+          "lineNumber": 72
+        },
+        {
+          "caller": "ComputeColumns",
+          "callee": "Math.Max",
+          "lineNumber": 74
+        },
+        {
+          "caller": "ComputeColumns",
+          "callee": "Math.Floor",
+          "lineNumber": 74
+        },
+        {
+          "caller": "IntersectsVertically",
+          "callee": "double.IsNaN",
+          "lineNumber": 81
+        },
+        {
+          "caller": "RectForIndex",
+          "callee": "new Rect",
+          "lineNumber": 94
+        },
+        {
+          "caller": "ResolveGrid",
+          "callee": "ComputeColumns",
+          "lineNumber": 99
+        },
+        {
+          "caller": "ResolveGrid",
+          "callee": "Math.Max",
+          "lineNumber": 101
+        },
+        {
+          "caller": "ResolveGrid",
+          "callee": "Math.Abs",
+          "lineNumber": 104
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "double.IsNaN",
+          "lineNumber": 120
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "double.IsInfinity",
+          "lineNumber": 120
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "ResolveGrid",
+          "lineNumber": 123
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "ExpandedRow",
+          "lineNumber": 125
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "RectForIndex",
+          "lineNumber": 131
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "IntersectsVertically",
+          "lineNumber": 132
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "context.GetOrCreateElementAt",
+          "lineNumber": 135
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "element.Measure",
+          "lineNumber": 136
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "new Size",
+          "lineNumber": 136
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "Math.Max",
+          "lineNumber": 143
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "Math.Ceiling",
+          "lineNumber": 143
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "InvalidateMeasure",
+          "lineNumber": 144
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "TotalHeight",
+          "lineNumber": 147
+        },
+        {
+          "caller": "MeasureOverride",
+          "callee": "new Size",
+          "lineNumber": 148
+        },
+        {
+          "caller": "ArrangeOverride",
+          "callee": "ResolveGrid",
+          "lineNumber": 165
+        },
+        {
+          "caller": "ArrangeOverride",
+          "callee": "ExpandedRow",
+          "lineNumber": 167
+        },
+        {
+          "caller": "ArrangeOverride",
+          "callee": "RectForIndex",
+          "lineNumber": 172
+        },
+        {
+          "caller": "ArrangeOverride",
+          "callee": "IntersectsVertically",
+          "lineNumber": 173
+        },
+        {
+          "caller": "ArrangeOverride",
+          "callee": "context.GetOrCreateElementAt(i).Arrange",
+          "lineNumber": 175
+        },
+        {
+          "caller": "ArrangeOverride",
+          "callee": "context.GetOrCreateElementAt",
+          "lineNumber": 175
+        },
+        {
+          "caller": "ArrangeOverride",
+          "callee": "double.IsNaN",
+          "lineNumber": 192
+        },
+        {
+          "caller": "ArrangeOverride",
+          "callee": "Math.Abs",
+          "lineNumber": 192
+        },
+        {
+          "caller": "ArrangeOverride",
+          "callee": "double.IsNaN",
+          "lineNumber": 193
+        },
+        {
+          "caller": "ArrangeOverride",
+          "callee": "Math.Abs",
+          "lineNumber": 193
+        },
+        {
+          "caller": "ArrangeOverride",
+          "callee": "ExpanderGeometryChanged?.Invoke",
+          "lineNumber": 197
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 8,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AnimatedVisuals/LightRedEqualizer.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 715,
+      "nonEmptyLines": 672,
+      "functions": [
+        {
+          "name": "ColorAsVector4",
+          "startLine": 86,
+          "endLine": 86,
+          "params": [
+            "color"
+          ]
+        },
+        {
+          "name": "OnColor_FF3F3FChanged",
+          "startLine": 88,
+          "endLine": 91,
+          "params": [
+            "d",
+            "args"
+          ]
+        },
+        {
+          "name": "EnsureThemeProperties",
+          "startLine": 93,
+          "endLine": 101,
+          "params": [
+            "compositor"
+          ]
+        },
+        {
+          "name": "TryCreateAnimatedVisual",
+          "startLine": 103,
+          "endLine": 107,
+          "params": [
+            "compositor"
+          ]
+        },
+        {
+          "name": "TryCreateAnimatedVisual",
+          "startLine": 109,
+          "endLine": 121,
+          "params": [
+            "compositor",
+            "diagnostics"
+          ]
+        },
+        {
+          "name": "FrameToProgress",
+          "startLine": 142,
+          "endLine": 145,
+          "params": [
+            "frameNumber"
+          ]
+        },
+        {
+          "name": "SetColorProperty",
+          "startLine": 159,
+          "endLine": 174,
+          "params": [
+            "propertyName",
+            "value"
+          ]
+        },
+        {
+          "name": "SetScalarProperty",
+          "startLine": 180,
+          "endLine": 182,
+          "params": [
+            "propertyName",
+            "value"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "LightRedEqualizer",
+          "startLine": 59,
+          "endLine": 714,
+          "methods": [
+            "ColorAsVector4",
+            "OnColor_FF3F3FChanged",
+            "EnsureThemeProperties",
+            "TryCreateAnimatedVisual",
+            "TryCreateAnimatedVisual",
+            "FrameToProgress",
+            "SetColorProperty",
+            "SetScalarProperty"
+          ],
+          "properties": [
+            "c_durationTicks",
+            "c_themeColor_FF3F3F",
+            "_themeProperties",
+            "Color_FF3F3FProperty",
+            "Color_FF3F3F",
+            "FrameCount",
+            "Framerate",
+            "Duration",
+            "Markers"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Color_FF3F3FProperty",
+          "line": 75,
+          "isDefault": false
+        },
+        {
+          "name": "Color_FF3F3F",
+          "line": 80,
+          "isDefault": false
+        },
+        {
+          "name": "TryCreateAnimatedVisual",
+          "line": 103,
+          "isDefault": false
+        },
+        {
+          "name": "TryCreateAnimatedVisual",
+          "line": 109,
+          "isDefault": false
+        },
+        {
+          "name": "FrameCount",
+          "line": 126,
+          "isDefault": false
+        },
+        {
+          "name": "Framerate",
+          "line": 131,
+          "isDefault": false
+        },
+        {
+          "name": "Duration",
+          "line": 136,
+          "isDefault": false
+        },
+        {
+          "name": "FrameToProgress",
+          "line": 142,
+          "isDefault": false
+        },
+        {
+          "name": "Markers",
+          "line": 150,
+          "isDefault": false
+        },
+        {
+          "name": "SetColorProperty",
+          "line": 159,
+          "isDefault": false
+        },
+        {
+          "name": "SetScalarProperty",
+          "line": 180,
+          "isDefault": false
+        },
+        {
+          "name": "LightRedEqualizer",
+          "line": 59,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ColorAsVector4",
+          "callee": "new Vector4",
+          "lineNumber": 86
+        },
+        {
+          "caller": "OnColor_FF3F3FChanged",
+          "callee": "((LightRedEqualizer)d)._themeProperties?.InsertVector4",
+          "lineNumber": 90
+        },
+        {
+          "caller": "OnColor_FF3F3FChanged",
+          "callee": "ColorAsVector4",
+          "lineNumber": 90
+        },
+        {
+          "caller": "EnsureThemeProperties",
+          "callee": "compositor.CreatePropertySet",
+          "lineNumber": 97
+        },
+        {
+          "caller": "EnsureThemeProperties",
+          "callee": "_themeProperties.InsertVector4",
+          "lineNumber": 98
+        },
+        {
+          "caller": "EnsureThemeProperties",
+          "callee": "ColorAsVector4",
+          "lineNumber": 98
+        },
+        {
+          "caller": "TryCreateAnimatedVisual",
+          "callee": "TryCreateAnimatedVisual",
+          "lineNumber": 106
+        },
+        {
+          "caller": "TryCreateAnimatedVisual",
+          "callee": "EnsureThemeProperties",
+          "lineNumber": 112
+        },
+        {
+          "caller": "TryCreateAnimatedVisual",
+          "callee": "new LightRedEqualizer_AnimatedVisual",
+          "lineNumber": 115
+        },
+        {
+          "caller": "TryCreateAnimatedVisual",
+          "callee": "res.CreateAnimations",
+          "lineNumber": 119
+        },
+        {
+          "caller": "SetColorProperty",
+          "callee": "_themeProperties.InsertVector4",
+          "lineNumber": 172
+        },
+        {
+          "caller": "SetColorProperty",
+          "callee": "ColorAsVector4",
+          "lineNumber": 172
+        },
+        {
+          "caller": "BindProperty",
+          "callee": "_reusableExpressionAnimation.ClearAllParameters",
+          "lineNumber": 208
+        },
+        {
+          "caller": "BindProperty",
+          "callee": "_reusableExpressionAnimation.SetReferenceParameter",
+          "lineNumber": 210
+        },
+        {
+          "caller": "BindProperty",
+          "callee": "target.StartAnimation",
+          "lineNumber": 211
+        },
+        {
+          "caller": "CreateVector2KeyFrameAnimation",
+          "callee": "_c.CreateVector2KeyFrameAnimation",
+          "lineNumber": 216
+        },
+        {
+          "caller": "CreateVector2KeyFrameAnimation",
+          "callee": "TimeSpan.FromTicks",
+          "lineNumber": 217
+        },
+        {
+          "caller": "CreateVector2KeyFrameAnimation",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 218
+        },
+        {
+          "caller": "CreateSpriteShape",
+          "callee": "_c.CreateSpriteShape",
+          "lineNumber": 224
+        },
+        {
+          "caller": "AnimationController_0",
+          "callee": "_c.CreateAnimationController",
+          "lineNumber": 233
+        },
+        {
+          "caller": "AnimationController_0",
+          "callee": "result.Pause",
+          "lineNumber": 234
+        },
+        {
+          "caller": "AnimationController_0",
+          "callee": "BindProperty",
+          "lineNumber": 235
+        },
+        {
+          "caller": "ThemeColor_Color_FF3F3F",
+          "callee": "_c.CreateColorBrush",
+          "lineNumber": 243
+        },
+        {
+          "caller": "ThemeColor_Color_FF3F3F",
+          "callee": "BindProperty",
+          "lineNumber": 244
+        },
+        {
+          "caller": "RoundedRectangle_0",
+          "callee": "_c.CreateRoundedRectangleGeometry",
+          "lineNumber": 252
+        },
+        {
+          "caller": "RoundedRectangle_0",
+          "callee": "new Vector2",
+          "lineNumber": 253
+        },
+        {
+          "caller": "RoundedRectangle_0",
+          "callee": "new Vector2",
+          "lineNumber": 254
+        },
+        {
+          "caller": "RoundedRectangle_0",
+          "callee": "BindProperty",
+          "lineNumber": 255
+        },
+        {
+          "caller": "RoundedRectangle_0",
+          "callee": "BindProperty",
+          "lineNumber": 256
+        },
+        {
+          "caller": "RoundedRectangle_1",
+          "callee": "_c.CreateRoundedRectangleGeometry",
+          "lineNumber": 264
+        },
+        {
+          "caller": "RoundedRectangle_1",
+          "callee": "new Vector2",
+          "lineNumber": 265
+        },
+        {
+          "caller": "RoundedRectangle_1",
+          "callee": "new Vector2",
+          "lineNumber": 266
+        },
+        {
+          "caller": "RoundedRectangle_1",
+          "callee": "BindProperty",
+          "lineNumber": 267
+        },
+        {
+          "caller": "RoundedRectangle_1",
+          "callee": "BindProperty",
+          "lineNumber": 268
+        },
+        {
+          "caller": "RoundedRectangle_2",
+          "callee": "_c.CreateRoundedRectangleGeometry",
+          "lineNumber": 276
+        },
+        {
+          "caller": "RoundedRectangle_2",
+          "callee": "new Vector2",
+          "lineNumber": 277
+        },
+        {
+          "caller": "RoundedRectangle_2",
+          "callee": "new Vector2",
+          "lineNumber": 278
+        },
+        {
+          "caller": "RoundedRectangle_2",
+          "callee": "BindProperty",
+          "lineNumber": 279
+        },
+        {
+          "caller": "RoundedRectangle_2",
+          "callee": "BindProperty",
+          "lineNumber": 280
+        },
+        {
+          "caller": "SpriteShape_0",
+          "callee": "RoundedRectangle_0",
+          "lineNumber": 289
+        },
+        {
+          "caller": "SpriteShape_0",
+          "callee": "CreateSpriteShape",
+          "lineNumber": 290
+        },
+        {
+          "caller": "SpriteShape_0",
+          "callee": "new Matrix3x2",
+          "lineNumber": 290
+        },
+        {
+          "caller": "SpriteShape_0",
+          "callee": "ThemeColor_Color_FF3F3F",
+          "lineNumber": 290
+        },
+        {
+          "caller": "SpriteShape_1",
+          "callee": "RoundedRectangle_1",
+          "lineNumber": 299
+        },
+        {
+          "caller": "SpriteShape_1",
+          "callee": "CreateSpriteShape",
+          "lineNumber": 300
+        },
+        {
+          "caller": "SpriteShape_1",
+          "callee": "new Matrix3x2",
+          "lineNumber": 300
+        },
+        {
+          "caller": "SpriteShape_1",
+          "callee": "ThemeColor_Color_FF3F3F",
+          "lineNumber": 300
+        },
+        {
+          "caller": "SpriteShape_2",
+          "callee": "RoundedRectangle_2",
+          "lineNumber": 309
+        },
+        {
+          "caller": "SpriteShape_2",
+          "callee": "CreateSpriteShape",
+          "lineNumber": 310
+        },
+        {
+          "caller": "SpriteShape_2",
+          "callee": "new Matrix3x2",
+          "lineNumber": 310
+        },
+        {
+          "caller": "SpriteShape_2",
+          "callee": "ThemeColor_Color_FF3F3F",
+          "lineNumber": 310
+        },
+        {
+          "caller": "Root",
+          "callee": "_c.CreateContainerVisual",
+          "lineNumber": 318
+        },
+        {
+          "caller": "Root",
+          "callee": "propertySet.InsertScalar",
+          "lineNumber": 320
+        },
+        {
+          "caller": "Root",
+          "callee": "result.Children.InsertAtTop",
+          "lineNumber": 322
+        },
+        {
+          "caller": "Root",
+          "callee": "ShapeVisual_0",
+          "lineNumber": 322
+        },
+        {
+          "caller": "CubicBezierEasingFunction_0",
+          "callee": "_c.CreateCubicBezierEasingFunction",
+          "lineNumber": 329
+        },
+        {
+          "caller": "CubicBezierEasingFunction_0",
+          "callee": "new Vector2",
+          "lineNumber": 329
+        },
+        {
+          "caller": "CubicBezierEasingFunction_0",
+          "callee": "new Vector2",
+          "lineNumber": 329
+        },
+        {
+          "caller": "ShapeVisual_0",
+          "callee": "_c.CreateShapeVisual",
+          "lineNumber": 336
+        },
+        {
+          "caller": "ShapeVisual_0",
+          "callee": "new Vector2",
+          "lineNumber": 337
+        },
+        {
+          "caller": "ShapeVisual_0",
+          "callee": "shapes.Add",
+          "lineNumber": 340
+        },
+        {
+          "caller": "ShapeVisual_0",
+          "callee": "SpriteShape_0",
+          "lineNumber": 340
+        },
+        {
+          "caller": "ShapeVisual_0",
+          "callee": "shapes.Add",
+          "lineNumber": 342
+        },
+        {
+          "caller": "ShapeVisual_0",
+          "callee": "SpriteShape_1",
+          "lineNumber": 342
+        },
+        {
+          "caller": "ShapeVisual_0",
+          "callee": "shapes.Add",
+          "lineNumber": 344
+        },
+        {
+          "caller": "ShapeVisual_0",
+          "callee": "SpriteShape_2",
+          "lineNumber": 344
+        },
+        {
+          "caller": "HoldThenStepEasingFunction",
+          "callee": "_c.CreateStepEasingFunction",
+          "lineNumber": 351
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CreateVector2KeyFrameAnimation",
+          "lineNumber": 361
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 361
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "HoldThenStepEasingFunction",
+          "lineNumber": 361
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 363
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 363
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 363
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 365
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 365
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 365
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 367
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 367
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 367
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 369
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 369
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 369
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 371
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 371
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 371
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 373
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 373
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 373
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 375
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 375
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 375
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 377
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 377
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 377
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 379
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 379
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 379
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 381
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 381
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 381
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 383
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 383
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 383
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 385
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 385
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 385
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 387
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 387
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 387
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 389
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 389
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 389
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 391
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 391
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 391
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 393
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 393
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 393
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 395
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 395
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 395
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 397
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 397
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 397
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 399
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 399
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 399
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 401
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 401
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 401
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 403
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 403
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 403
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 405
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 405
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 405
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 407
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 407
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 407
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 409
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 409
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 409
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 411
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 411
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 411
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 413
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 413
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 413
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 415
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 415
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 415
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 417
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 417
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 417
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 419
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 419
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 419
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 421
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 421
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 421
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 423
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 423
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 423
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 425
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 425
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 425
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 427
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 427
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 427
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 429
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 429
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 429
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 431
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 431
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 431
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 433
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 433
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 433
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 435
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 435
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 435
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 437
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 437
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 437
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 439
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 439
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 439
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 441
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 441
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 441
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 443
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 443
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 443
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 445
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 445
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 445
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 447
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 447
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 447
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 449
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 449
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 449
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 451
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 451
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 451
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 453
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 453
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 453
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 455
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 455
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 455
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 457
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 457
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 457
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 459
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 459
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 459
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 461
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 461
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 461
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 463
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 463
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 463
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 465
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 465
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 465
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 467
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 467
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 467
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 469
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 469
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 469
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 471
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 471
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 471
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 473
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 473
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 473
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 475
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 475
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 475
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 477
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 477
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 477
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 479
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "new Vector2",
+          "lineNumber": 479
+        },
+        {
+          "caller": "SizeVector2Animation_0",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 479
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CreateVector2KeyFrameAnimation",
+          "lineNumber": 488
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 488
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "HoldThenStepEasingFunction",
+          "lineNumber": 488
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 490
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 490
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 490
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 492
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 492
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 492
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 494
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 494
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 494
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 496
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 496
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 496
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 498
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 498
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 498
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 500
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 500
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 500
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 502
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 502
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 502
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 504
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 504
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 504
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 506
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 506
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 506
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 508
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 508
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 508
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 510
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 510
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 510
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 512
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 512
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 512
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 514
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 514
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 514
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 516
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 516
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 516
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 518
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 518
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 518
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 520
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 520
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 520
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 522
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 522
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 522
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 524
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 524
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 524
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 526
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 526
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 526
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 528
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 528
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 528
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 530
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 530
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 530
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 532
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 532
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 532
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 534
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 534
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 534
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 536
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 536
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 536
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 538
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 538
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 538
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 540
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 540
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 540
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 542
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 542
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 542
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 544
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 544
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 544
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 546
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 546
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 546
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 548
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 548
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 548
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 550
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 550
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 550
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 552
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 552
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 552
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 554
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 554
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 554
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 556
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 556
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 556
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 558
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 558
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 558
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 560
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 560
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 560
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 562
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 562
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 562
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 564
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 564
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 564
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 566
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 566
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 566
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 568
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 568
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 568
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 570
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 570
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 570
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 572
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 572
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 572
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 574
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 574
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 574
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 576
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 576
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 576
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 578
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "new Vector2",
+          "lineNumber": 578
+        },
+        {
+          "caller": "SizeVector2Animation_1",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 578
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CreateVector2KeyFrameAnimation",
+          "lineNumber": 587
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 587
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "HoldThenStepEasingFunction",
+          "lineNumber": 587
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 589
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 589
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 589
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 591
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 591
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 591
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 593
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 593
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 593
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 595
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 595
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 595
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 597
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 597
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 597
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 599
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 599
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 599
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 601
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 601
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 601
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 603
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 603
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 603
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 605
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 605
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 605
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 607
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 607
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 607
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 609
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 609
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 609
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 611
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 611
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 611
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 613
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 613
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 613
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 615
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 615
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 615
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 617
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 617
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 617
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 619
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 619
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 619
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 621
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 621
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 621
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 623
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 623
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 623
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 625
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 625
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 625
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 627
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 627
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 627
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 629
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 629
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 629
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 631
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 631
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 631
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 633
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 633
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 633
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 635
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 635
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 635
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 637
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 637
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 637
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 639
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 639
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 639
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 641
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 641
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 641
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 643
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 643
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 643
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 645
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 645
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 645
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 647
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 647
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 647
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 649
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 649
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 649
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 651
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 651
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 651
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 653
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 653
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 653
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 655
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 655
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 655
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 657
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 657
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 657
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 659
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 659
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 659
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 661
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 661
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 661
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 663
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 663
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 663
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 665
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 665
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 665
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 667
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 667
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 667
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 669
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 669
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 669
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 671
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 671
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 671
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 673
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 673
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 673
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 675
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 675
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 675
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 677
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 677
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 677
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "result.InsertKeyFrame",
+          "lineNumber": 679
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "new Vector2",
+          "lineNumber": 679
+        },
+        {
+          "caller": "SizeVector2Animation_2",
+          "callee": "CubicBezierEasingFunction_0",
+          "lineNumber": 679
+        },
+        {
+          "caller": "LightRedEqualizer_AnimatedVisual",
+          "callee": "compositor.CreateExpressionAnimation",
+          "lineNumber": 690
+        },
+        {
+          "caller": "LightRedEqualizer_AnimatedVisual",
+          "callee": "Root",
+          "lineNumber": 691
+        },
+        {
+          "caller": "Dispose",
+          "callee": "_root?.Dispose",
+          "lineNumber": 697
+        },
+        {
+          "caller": "CreateAnimations",
+          "callee": "_roundedRectangle_0.StartAnimation",
+          "lineNumber": 701
+        },
+        {
+          "caller": "CreateAnimations",
+          "callee": "SizeVector2Animation_0",
+          "lineNumber": 701
+        },
+        {
+          "caller": "CreateAnimations",
+          "callee": "AnimationController_0",
+          "lineNumber": 701
+        },
+        {
+          "caller": "CreateAnimations",
+          "callee": "_roundedRectangle_1.StartAnimation",
+          "lineNumber": 702
+        },
+        {
+          "caller": "CreateAnimations",
+          "callee": "SizeVector2Animation_1",
+          "lineNumber": 702
+        },
+        {
+          "caller": "CreateAnimations",
+          "callee": "AnimationController_0",
+          "lineNumber": 702
+        },
+        {
+          "caller": "CreateAnimations",
+          "callee": "_roundedRectangle_2.StartAnimation",
+          "lineNumber": 703
+        },
+        {
+          "caller": "CreateAnimations",
+          "callee": "SizeVector2Animation_2",
+          "lineNumber": 703
+        },
+        {
+          "caller": "CreateAnimations",
+          "callee": "AnimationController_0",
+          "lineNumber": 703
+        },
+        {
+          "caller": "DestroyAnimations",
+          "callee": "_roundedRectangle_0.StopAnimation",
+          "lineNumber": 708
+        },
+        {
+          "caller": "DestroyAnimations",
+          "callee": "_roundedRectangle_1.StopAnimation",
+          "lineNumber": 709
+        },
+        {
+          "caller": "DestroyAnimations",
+          "callee": "_roundedRectangle_2.StopAnimation",
+          "lineNumber": 710
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 12,
+        "functionCount": 8,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 114,
+      "nonEmptyLines": 109,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Artist/ArtistSummaryCard.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 332,
+      "nonEmptyLines": 283,
+      "functions": [
+        {
+          "name": "ArtistSummaryCard",
+          "startLine": 111,
+          "endLine": 123,
+          "params": []
+        },
+        {
+          "name": "OnUnloaded",
+          "startLine": 125,
+          "endLine": 129,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "OnArtistNameChanged",
+          "startLine": 133,
+          "endLine": 143,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnArtistImageUrlChanged",
+          "startLine": 145,
+          "endLine": 156,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnBioExcerptChanged",
+          "startLine": 158,
+          "endLine": 169,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnIsVerifiedChanged",
+          "startLine": 171,
+          "endLine": 175,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnAccentBrushChanged",
+          "startLine": 177,
+          "endLine": 186,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnEyebrowTextChanged",
+          "startLine": 188,
+          "endLine": 192,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnIsFollowingChanged",
+          "startLine": 194,
+          "endLine": 198,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "ApplyFollowVisual",
+          "startLine": 200,
+          "endLine": 206,
+          "params": [
+            "following"
+          ]
+        },
+        {
+          "name": "OnAdditionalContentChanged",
+          "startLine": 208,
+          "endLine": 215,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnAiInputChanged",
+          "startLine": 217,
+          "endLine": 220,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "FollowButton_Click",
+          "startLine": 222,
+          "endLine": 229,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "CardSurface_Tapped",
+          "startLine": 233,
+          "endLine": 248,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "CardSurface_PointerEntered",
+          "startLine": 250,
+          "endLine": 257,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "CardSurface_PointerExited",
+          "startLine": 259,
+          "endLine": 263,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "IsDescendantOf",
+          "startLine": 265,
+          "endLine": 274,
+          "params": [
+            "candidate",
+            "ancestor"
+          ]
+        },
+        {
+          "name": "MaybeTriggerAiSummary",
+          "startLine": 278,
+          "endLine": 331,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "ArtistSummaryCard",
+          "startLine": 28,
+          "endLine": 332,
+          "methods": [
+            "ArtistSummaryCard",
+            "OnUnloaded",
+            "OnArtistNameChanged",
+            "OnArtistImageUrlChanged",
+            "OnBioExcerptChanged",
+            "OnIsVerifiedChanged",
+            "OnAccentBrushChanged",
+            "OnEyebrowTextChanged",
+            "OnIsFollowingChanged",
+            "ApplyFollowVisual",
+            "OnAdditionalContentChanged",
+            "OnAiInputChanged",
+            "FollowButton_Click",
+            "CardSurface_Tapped",
+            "CardSurface_PointerEntered",
+            "CardSurface_PointerExited",
+            "IsDescendantOf",
+            "MaybeTriggerAiSummary"
+          ],
+          "properties": [
+            "ArtistUriProperty",
+            "ArtistNameProperty",
+            "ArtistImageUrlProperty",
+            "BioExcerptProperty",
+            "IsVerifiedProperty",
+            "AccentBrushProperty",
+            "EyebrowTextProperty",
+            "IsFollowingProperty",
+            "ToggleFollowCommandProperty",
+            "AdditionalContentProperty",
+            "EnableAiSummaryProperty",
+            "SummaryGenresProperty",
+            "SummaryMonthlyListenersDisplayProperty",
+            "SummaryTopTrackNamesProperty",
+            "ArtistUri",
+            "ArtistName",
+            "ArtistImageUrl",
+            "BioExcerpt",
+            "IsVerified",
+            "AccentBrush",
+            "EyebrowText",
+            "IsFollowing",
+            "ToggleFollowCommand",
+            "AdditionalContent",
+            "EnableAiSummary",
+            "SummaryGenres",
+            "SummaryMonthlyListenersDisplay",
+            "SummaryTopTrackNames",
+            "_aiCts"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ArtistUriProperty",
+          "line": 32,
+          "isDefault": false
+        },
+        {
+          "name": "ArtistNameProperty",
+          "line": 36,
+          "isDefault": false
+        },
+        {
+          "name": "ArtistImageUrlProperty",
+          "line": 40,
+          "isDefault": false
+        },
+        {
+          "name": "BioExcerptProperty",
+          "line": 44,
+          "isDefault": false
+        },
+        {
+          "name": "IsVerifiedProperty",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "AccentBrushProperty",
+          "line": 52,
+          "isDefault": false
+        },
+        {
+          "name": "EyebrowTextProperty",
+          "line": 56,
+          "isDefault": false
+        },
+        {
+          "name": "IsFollowingProperty",
+          "line": 60,
+          "isDefault": false
+        },
+        {
+          "name": "ToggleFollowCommandProperty",
+          "line": 64,
+          "isDefault": false
+        },
+        {
+          "name": "AdditionalContentProperty",
+          "line": 68,
+          "isDefault": false
+        },
+        {
+          "name": "EnableAiSummaryProperty",
+          "line": 74,
+          "isDefault": false
+        },
+        {
+          "name": "SummaryGenresProperty",
+          "line": 78,
+          "isDefault": false
+        },
+        {
+          "name": "SummaryMonthlyListenersDisplayProperty",
+          "line": 82,
+          "isDefault": false
+        },
+        {
+          "name": "SummaryTopTrackNamesProperty",
+          "line": 86,
+          "isDefault": false
+        },
+        {
+          "name": "ArtistUri",
+          "line": 92,
+          "isDefault": false
+        },
+        {
+          "name": "ArtistName",
+          "line": 93,
+          "isDefault": false
+        },
+        {
+          "name": "ArtistImageUrl",
+          "line": 94,
+          "isDefault": false
+        },
+        {
+          "name": "BioExcerpt",
+          "line": 95,
+          "isDefault": false
+        },
+        {
+          "name": "IsVerified",
+          "line": 96,
+          "isDefault": false
+        },
+        {
+          "name": "AccentBrush",
+          "line": 97,
+          "isDefault": false
+        },
+        {
+          "name": "EyebrowText",
+          "line": 98,
+          "isDefault": false
+        },
+        {
+          "name": "IsFollowing",
+          "line": 99,
+          "isDefault": false
+        },
+        {
+          "name": "ToggleFollowCommand",
+          "line": 100,
+          "isDefault": false
+        },
+        {
+          "name": "AdditionalContent",
+          "line": 101,
+          "isDefault": false
+        },
+        {
+          "name": "EnableAiSummary",
+          "line": 102,
+          "isDefault": false
+        },
+        {
+          "name": "SummaryGenres",
+          "line": 103,
+          "isDefault": false
+        },
+        {
+          "name": "SummaryMonthlyListenersDisplay",
+          "line": 104,
+          "isDefault": false
+        },
+        {
+          "name": "SummaryTopTrackNames",
+          "line": 105,
+          "isDefault": false
+        },
+        {
+          "name": "ArtistSummaryCard",
+          "line": 111,
+          "isDefault": false
+        },
+        {
+          "name": "ArtistSummaryCard",
+          "line": 28,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "ArtistSummaryCard",
+          "callee": "InitializeComponent",
+          "lineNumber": 113
+        },
+        {
+          "caller": "ArtistSummaryCard",
+          "callee": "ApplyFollowVisual",
+          "lineNumber": 116
+        },
+        {
+          "caller": "ArtistSummaryCard",
+          "callee": "InputSystemCursor.Create",
+          "lineNumber": 121
+        },
+        {
+          "caller": "OnUnloaded",
+          "callee": "_aiCts?.Cancel",
+          "lineNumber": 127
+        },
+        {
+          "caller": "OnArtistNameChanged",
+          "callee": "card.MaybeTriggerAiSummary",
+          "lineNumber": 142
+        },
+        {
+          "caller": "OnArtistImageUrlChanged",
+          "callee": "SpotifyImageHelper.ToHttpsUrl",
+          "lineNumber": 148
+        },
+        {
+          "caller": "OnArtistImageUrlChanged",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 149
+        },
+        {
+          "caller": "OnArtistImageUrlChanged",
+          "callee": "new BitmapImage",
+          "lineNumber": 151
+        },
+        {
+          "caller": "OnArtistImageUrlChanged",
+          "callee": "new Uri",
+          "lineNumber": 151
+        },
+        {
+          "caller": "OnBioExcerptChanged",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 165
+        },
+        {
+          "caller": "OnBioExcerptChanged",
+          "callee": "card.MaybeTriggerAiSummary",
+          "lineNumber": 168
+        },
+        {
+          "caller": "OnIsFollowingChanged",
+          "callee": "card.ApplyFollowVisual",
+          "lineNumber": 197
+        },
+        {
+          "caller": "OnAiInputChanged",
+          "callee": "card.MaybeTriggerAiSummary",
+          "lineNumber": 219
+        },
+        {
+          "caller": "FollowButton_Click",
+          "callee": "ToggleFollowCommand?.CanExecute",
+          "lineNumber": 227
+        },
+        {
+          "caller": "FollowButton_Click",
+          "callee": "ToggleFollowCommand.Execute",
+          "lineNumber": 228
+        },
+        {
+          "caller": "CardSurface_Tapped",
+          "callee": "IsDescendantOf",
+          "lineNumber": 239
+        },
+        {
+          "caller": "CardSurface_Tapped",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 242
+        },
+        {
+          "caller": "CardSurface_Tapped",
+          "callee": "NavigationHelpers.IsCtrlPressed",
+          "lineNumber": 243
+        },
+        {
+          "caller": "CardSurface_Tapped",
+          "callee": "Wavee.UI.WinUI.Diagnostics.NavigationDiagnostics.RecordClickIntent",
+          "lineNumber": 244
+        },
+        {
+          "caller": "CardSurface_Tapped",
+          "callee": "NavigationHelpers.OpenArtist",
+          "lineNumber": 246
+        },
+        {
+          "caller": "IsDescendantOf",
+          "callee": "ReferenceEquals",
+          "lineNumber": 270
+        },
+        {
+          "caller": "IsDescendantOf",
+          "callee": "Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent",
+          "lineNumber": 271
+        },
+        {
+          "caller": "MaybeTriggerAiSummary",
+          "callee": "_aiCts?.Cancel",
+          "lineNumber": 282
+        },
+        {
+          "caller": "MaybeTriggerAiSummary",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 286
+        },
+        {
+          "caller": "MaybeTriggerAiSummary",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 287
+        },
+        {
+          "caller": "MaybeTriggerAiSummary",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 287
+        },
+        {
+          "caller": "MaybeTriggerAiSummary",
+          "callee": "Ioc.Default.GetService<AiCapabilities>",
+          "lineNumber": 289
+        },
+        {
+          "caller": "MaybeTriggerAiSummary",
+          "callee": "Ioc.Default.GetService<ArtistBioSummarizer>",
+          "lineNumber": 292
+        },
+        {
+          "caller": "MaybeTriggerAiSummary",
+          "callee": "new CancellationTokenSource",
+          "lineNumber": 295
+        },
+        {
+          "caller": "MaybeTriggerAiSummary",
+          "callee": "summarizer.SummarizeBioAsync(\r\n                capturedUri!, ArtistName!,\r\n                genres: SummaryGenres,\r\n                monthlyListenersDisplay: SummaryMonthlyListenersDisplay,\r\n                topTrackNames: SummaryTopTrackNames,\r\n                deltaProgress: null,\r\n                ct: cts.Token).ConfigureAwait",
+          "lineNumber": 299
+        },
+        {
+          "caller": "MaybeTriggerAiSummary",
+          "callee": "summarizer.SummarizeBioAsync",
+          "lineNumber": 299
+        },
+        {
+          "caller": "MaybeTriggerAiSummary",
+          "callee": "string.Equals",
+          "lineNumber": 310
+        },
+        {
+          "caller": "MaybeTriggerAiSummary",
+          "callee": "string.IsNullOrWhiteSpace",
+          "lineNumber": 312
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 30,
+        "functionCount": 18,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 18,
+      "nonEmptyLines": 17,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AvatarStack/AvatarStack.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 203,
+      "nonEmptyLines": 180,
+      "functions": [
+        {
+          "name": "AvatarStack",
+          "startLine": 40,
+          "endLine": 43,
+          "params": []
+        },
+        {
+          "name": "OnAnyChanged",
+          "startLine": 100,
+          "endLine": 101,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnItemsChanged",
+          "startLine": 103,
+          "endLine": 111,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnItemsCollectionChanged",
+          "startLine": 113,
+          "endLine": 114,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Rebuild",
+          "startLine": 116,
+          "endLine": 140,
+          "params": []
+        },
+        {
+          "name": "BuildAvatarFrame",
+          "startLine": 142,
+          "endLine": 175,
+          "params": [
+            "item",
+            "ringBrush",
+            "isFirst"
+          ]
+        },
+        {
+          "name": "BuildOverflowBadge",
+          "startLine": 177,
+          "endLine": 202,
+          "params": [
+            "ringBrush",
+            "overflow",
+            "isFirst"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "AvatarStack",
+          "startLine": 33,
+          "endLine": 203,
+          "methods": [
+            "AvatarStack",
+            "OnAnyChanged",
+            "OnItemsChanged",
+            "OnItemsCollectionChanged",
+            "Rebuild",
+            "BuildAvatarFrame",
+            "BuildOverflowBadge"
+          ],
+          "properties": [
+            "AvatarSize",
+            "RingThickness",
+            "OuterSize",
+            "Overlap",
+            "ItemsProperty",
+            "Items",
+            "OverflowCountProperty",
+            "OverflowCount",
+            "MaxVisibleProperty",
+            "MaxVisible"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "AvatarStack",
+          "line": 40,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsProperty",
+          "line": 45,
+          "isDefault": false
+        },
+        {
+          "name": "Items",
+          "line": 56,
+          "isDefault": false
+        },
+        {
+          "name": "OverflowCountProperty",
+          "line": 62,
+          "isDefault": false
+        },
+        {
+          "name": "OverflowCount",
+          "line": 76,
+          "isDefault": false
+        },
+        {
+          "name": "MaxVisibleProperty",
+          "line": 82,
+          "isDefault": false
+        },
+        {
+          "name": "MaxVisible",
+          "line": 94,
+          "isDefault": false
+        },
+        {
+          "name": "AvatarStack",
+          "line": 33,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "AvatarStack",
+          "callee": "InitializeComponent",
+          "lineNumber": 42
+        },
+        {
+          "caller": "OnAnyChanged",
+          "callee": "((AvatarStack)d).Rebuild",
+          "lineNumber": 101
+        },
+        {
+          "caller": "OnItemsChanged",
+          "callee": "ctl.Rebuild",
+          "lineNumber": 110
+        },
+        {
+          "caller": "OnItemsCollectionChanged",
+          "callee": "Rebuild",
+          "lineNumber": 114
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "HostStack.Children.Clear",
+          "lineNumber": 118
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "Items?.ToList",
+          "lineNumber": 120
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "new List<AvatarStackItem>",
+          "lineNumber": 120
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "Math.Min",
+          "lineNumber": 123
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "Math.Max",
+          "lineNumber": 123
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "HostStack.Children.Add",
+          "lineNumber": 133
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "BuildAvatarFrame",
+          "lineNumber": 133
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "HostStack.Children.Add",
+          "lineNumber": 138
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "BuildOverflowBadge",
+          "lineNumber": 138
+        },
+        {
+          "caller": "BuildAvatarFrame",
+          "callee": "new PersonPicture",
+          "lineNumber": 144
+        },
+        {
+          "caller": "BuildAvatarFrame",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 151
+        },
+        {
+          "caller": "BuildAvatarFrame",
+          "callee": "SpotifyImageHelper.ToHttpsUrl",
+          "lineNumber": 153
+        },
+        {
+          "caller": "BuildAvatarFrame",
+          "callee": "Uri.TryCreate",
+          "lineNumber": 154
+        },
+        {
+          "caller": "BuildAvatarFrame",
+          "callee": "new BitmapImage",
+          "lineNumber": 156
+        },
+        {
+          "caller": "BuildAvatarFrame",
+          "callee": "new Border",
+          "lineNumber": 163
+        },
+        {
+          "caller": "BuildAvatarFrame",
+          "callee": "new CornerRadius",
+          "lineNumber": 167
+        },
+        {
+          "caller": "BuildAvatarFrame",
+          "callee": "new Thickness",
+          "lineNumber": 169
+        },
+        {
+          "caller": "BuildAvatarFrame",
+          "callee": "new Thickness",
+          "lineNumber": 170
+        },
+        {
+          "caller": "BuildAvatarFrame",
+          "callee": "new Thickness",
+          "lineNumber": 170
+        },
+        {
+          "caller": "BuildAvatarFrame",
+          "callee": "ToolTipService.SetToolTip",
+          "lineNumber": 173
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new Border",
+          "lineNumber": 179
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new CornerRadius",
+          "lineNumber": 183
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new Thickness",
+          "lineNumber": 185
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new Thickness",
+          "lineNumber": 186
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new Thickness",
+          "lineNumber": 186
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new Border",
+          "lineNumber": 187
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new CornerRadius",
+          "lineNumber": 190
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new TextBlock",
+          "lineNumber": 191
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 8,
+        "functionCount": 7,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 17,
+      "nonEmptyLines": 16,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/AvatarStack/StackedThumbnails.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 203,
+      "nonEmptyLines": 179,
+      "functions": [
+        {
+          "name": "StackedThumbnails",
+          "startLine": 40,
+          "endLine": 43,
+          "params": []
+        },
+        {
+          "name": "OnAnyChanged",
+          "startLine": 84,
+          "endLine": 85,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnItemsChanged",
+          "startLine": 87,
+          "endLine": 95,
+          "params": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "name": "OnItemsCollectionChanged",
+          "startLine": 97,
+          "endLine": 98,
+          "params": [
+            "sender",
+            "e"
+          ]
+        },
+        {
+          "name": "Rebuild",
+          "startLine": 100,
+          "endLine": 119,
+          "params": []
+        },
+        {
+          "name": "BuildTileFrame",
+          "startLine": 121,
+          "endLine": 175,
+          "params": [
+            "item",
+            "ringBrush",
+            "isFirst"
+          ]
+        },
+        {
+          "name": "BuildOverflowBadge",
+          "startLine": 177,
+          "endLine": 202,
+          "params": [
+            "ringBrush",
+            "overflow",
+            "isFirst"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "StackedThumbnails",
+          "startLine": 32,
+          "endLine": 203,
+          "methods": [
+            "StackedThumbnails",
+            "OnAnyChanged",
+            "OnItemsChanged",
+            "OnItemsCollectionChanged",
+            "Rebuild",
+            "BuildTileFrame",
+            "BuildOverflowBadge"
+          ],
+          "properties": [
+            "TileSize",
+            "RingThickness",
+            "OuterSize",
+            "Overlap",
+            "TileCornerRadius",
+            "ItemsProperty",
+            "Items",
+            "OverflowCountProperty",
+            "OverflowCount",
+            "MaxVisibleProperty",
+            "MaxVisible"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "StackedThumbnails",
+          "line": 40,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsProperty",
+          "line": 45,
+          "isDefault": false
+        },
+        {
+          "name": "Items",
+          "line": 52,
+          "isDefault": false
+        },
+        {
+          "name": "OverflowCountProperty",
+          "line": 58,
+          "isDefault": false
+        },
+        {
+          "name": "OverflowCount",
+          "line": 65,
+          "isDefault": false
+        },
+        {
+          "name": "MaxVisibleProperty",
+          "line": 71,
+          "isDefault": false
+        },
+        {
+          "name": "MaxVisible",
+          "line": 78,
+          "isDefault": false
+        },
+        {
+          "name": "StackedThumbnails",
+          "line": 32,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "StackedThumbnails",
+          "callee": "InitializeComponent",
+          "lineNumber": 42
+        },
+        {
+          "caller": "OnAnyChanged",
+          "callee": "((StackedThumbnails)d).Rebuild",
+          "lineNumber": 85
+        },
+        {
+          "caller": "OnItemsChanged",
+          "callee": "ctl.Rebuild",
+          "lineNumber": 94
+        },
+        {
+          "caller": "OnItemsCollectionChanged",
+          "callee": "Rebuild",
+          "lineNumber": 98
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "HostStack.Children.Clear",
+          "lineNumber": 102
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "Items?.ToList",
+          "lineNumber": 104
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "new List<StackedThumbnailItem>",
+          "lineNumber": 104
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "Math.Min",
+          "lineNumber": 109
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "Math.Max",
+          "lineNumber": 109
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "HostStack.Children.Add",
+          "lineNumber": 112
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "BuildTileFrame",
+          "lineNumber": 112
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "HostStack.Children.Add",
+          "lineNumber": 117
+        },
+        {
+          "caller": "Rebuild",
+          "callee": "BuildOverflowBadge",
+          "lineNumber": 117
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "new FontIcon",
+          "lineNumber": 127
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "new CompositionImage",
+          "lineNumber": 137
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "new CornerRadius",
+          "lineNumber": 142
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "new Grid",
+          "lineNumber": 145
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "inner.Children.Add",
+          "lineNumber": 150
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "inner.Children.Add",
+          "lineNumber": 151
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "new Border",
+          "lineNumber": 153
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "new CornerRadius",
+          "lineNumber": 157
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "new Border",
+          "lineNumber": 162
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "new CornerRadius",
+          "lineNumber": 166
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "new Thickness",
+          "lineNumber": 168
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "new Thickness",
+          "lineNumber": 169
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "new Thickness",
+          "lineNumber": 169
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "string.IsNullOrEmpty",
+          "lineNumber": 172
+        },
+        {
+          "caller": "BuildTileFrame",
+          "callee": "ToolTipService.SetToolTip",
+          "lineNumber": 173
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new Border",
+          "lineNumber": 179
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new CornerRadius",
+          "lineNumber": 183
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new Thickness",
+          "lineNumber": 185
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new Thickness",
+          "lineNumber": 186
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new Thickness",
+          "lineNumber": 186
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new Border",
+          "lineNumber": 187
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new CornerRadius",
+          "lineNumber": 190
+        },
+        {
+          "caller": "BuildOverflowBadge",
+          "callee": "new TextBlock",
+          "lineNumber": 191
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 8,
+        "functionCount": 7,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Branding/WaveeLogo.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 33,
+      "nonEmptyLines": 31,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Branding/WaveeLogo.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 44,
+      "nonEmptyLines": 39,
+      "functions": [
+        {
+          "name": "WaveeLogo",
+          "startLine": 15,
+          "endLine": 19,
+          "params": []
+        },
+        {
+          "name": "OnLoaded",
+          "startLine": 32,
+          "endLine": 43,
+          "params": [
+            "sender",
+            "e"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "WaveeLogo",
+          "startLine": 7,
+          "endLine": 44,
+          "methods": [
+            "WaveeLogo",
+            "OnLoaded"
+          ],
+          "properties": [
+            "AccentBrushProperty",
+            "AccentBrush"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "AccentBrushProperty",
+          "line": 9,
+          "isDefault": false
+        },
+        {
+          "name": "WaveeLogo",
+          "line": 15,
+          "isDefault": false
+        },
+        {
+          "name": "AccentBrush",
+          "line": 26,
+          "isDefault": false
+        },
+        {
+          "name": "WaveeLogo",
+          "line": 7,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "WaveeLogo",
+          "callee": "InitializeComponent",
+          "lineNumber": 17
+        },
+        {
+          "caller": "OnLoaded",
+          "callee": "Application.Current.Resources.TryGetValue",
+          "lineNumber": 38
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 2,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml",
+      "language": "xaml",
+      "fileCategory": "code",
+      "totalLines": 23,
+      "nonEmptyLines": 22,
+      "metrics": {}
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Browse/BrowseGrid.xaml.cs",
+      "language": "csharp",
+      "fileCategory": "code",
+      "totalLines": 101,
+      "nonEmptyLines": 85,
+      "functions": [
+        {
+          "name": "BrowseGrid",
+          "startLine": 13,
+          "endLine": 16,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "BrowseGrid",
+          "startLine": 11,
+          "endLine": 101,
+          "methods": [
+            "BrowseGrid"
+          ],
+          "properties": [
+            "ItemsSourceProperty",
+            "ItemsSource",
+            "ItemTemplateProperty",
+            "ItemTemplate",
+            "MinItemWidthProperty",
+            "MinItemWidth",
+            "MinItemHeightProperty",
+            "MinItemHeight",
+            "MinRowSpacingProperty",
+            "MinRowSpacing",
+            "MinColumnSpacingProperty",
+            "MinColumnSpacing",
+            "ItemsStretchProperty",
+            "ItemsStretch"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "BrowseGrid",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsSourceProperty",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsSource",
+          "line": 24,
+          "isDefault": false
+        },
+        {
+          "name": "ItemTemplateProperty",
+          "line": 30,
+          "isDefault": false
+        },
+        {
+          "name": "ItemTemplate",
+          "line": 36,
+          "isDefault": false
+        },
+        {
+          "name": "MinItemWidthProperty",
+          "line": 42,
+          "isDefault": false
+        },
+        {
+          "name": "MinItemWidth",
+          "line": 48,
+          "isDefault": false
+        },
+        {
+          "name": "MinItemHeightProperty",
+          "line": 54,
+          "isDefault": false
+        },
+        {
+          "name": "MinItemHeight",
+          "line": 60,
+          "isDefault": false
+        },
+        {
+          "name": "MinRowSpacingProperty",
+          "line": 66,
+          "isDefault": false
+        },
+        {
+          "name": "MinRowSpacing",
+          "line": 72,
+          "isDefault": false
+        },
+        {
+          "name": "MinColumnSpacingProperty",
+          "line": 78,
+          "isDefault": false
+        },
+        {
+          "name": "MinColumnSpacing",
+          "line": 84,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsStretchProperty",
+          "line": 90,
+          "isDefault": false
+        },
+        {
+          "name": "ItemsStretch",
+          "line": 96,
+          "isDefault": false
+        },
+        {
+          "name": "BrowseGrid",
+          "line": 11,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "BrowseGrid",
+          "callee": "InitializeComponent",
+          "lineNumber": 15
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 16,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    }
+  ]
+}

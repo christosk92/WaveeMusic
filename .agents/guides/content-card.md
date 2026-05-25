@@ -1,8 +1,8 @@
 ---
 guide: content-card
 scope: ContentCard — the reusable shelf / grid card used across every shelf and grid surface (Home, Search, Browse, Library, Artist, Album, Show, Concert, Profile, Local-media).
-last_verified: 2026-05-22
-verified_by: read+grep over src/Wavee.UI.WinUI/Controls/Cards, src/Wavee.UI.WinUI/Behaviors/Card, HomePage, and HomeRegionView while fixing fast-scroll image/section disappearance
+last_verified: 2026-05-25
+verified_by: read+grep over src/Wavee.UI.WinUI/Controls/Cards, Styles/CardStyles.xaml, ArtistsLibraryView, and HomePage while adding CompactContentCardStyle and SubtitleMaxLines
 root_index: AGENTS.md (Codex) and CLAUDE.md (Claude Code)
 ---
 
@@ -84,6 +84,7 @@ Scope:
 | Profile page — followed artists shelf | `Views/ProfilePage.xaml:322` | `SpotifyProfileArtist` | `IsCircularImage=True`. `Subtitle="Artist"` hardcoded. |
 | Library — saved albums grid (wide) | `Views/AlbumsLibraryView.xaml:48` | `LibraryAlbumDto` | Square grid. |
 | Library — saved albums narrow display | `Views/AlbumsLibraryView.xaml:349` | `LibraryAlbumDto` | `Tapped="NarrowAlbumCard_Tapped"` for the narrow detail-pane handoff. |
+| Library — artists grid + selected-artist discography | `Views/ArtistsLibraryView.xaml:129` / `Views/ArtistsLibraryView.xaml:271` | `LibraryArtistDto`, `LikedArtistDto`, `ArtistAlbumItemViewModel` | Uses `CompactContentCardStyle` so dense library grids keep ContentCard behavior without full outer card chrome. |
 | Local library — continue watching | `Views/LocalLibraryPage.xaml:104` | `LocalContinueItem` | `AspectMode=Backdrop` (16:9). `PlaceholderGlyph="\uE714"` (video). |
 | Local library — shows | `Views/LocalLibraryPage.xaml:130` | `LocalShow` | `AspectMode=Tall` (2:3). `PlaceholderGlyph="\uE7F4"`. |
 | Local library — movies | `Views/LocalLibraryPage.xaml:157` | `LocalMovie` | `AspectMode=Tall`. `PlaceholderGlyph="\uE714"`. |
@@ -105,7 +106,7 @@ adding code so the file boundaries stay meaningful:
 | --- | --- |
 | `Controls/Cards/ContentCard.xaml` | Layout: `CardRoot` Grid, `SquareImageContainer` + `SquareImage` + `SquarePlaceholderIcon`, `CircleImageContainer` + `CircleImage` + `CirclePlaceholderIcon` (both x:Load-deferred behind their respective realize gates), play / external-action overlays, title / subtitle / badges, lazy shimmer overlay (x:Load=IsLoading). Attached behaviors wired here. |
 | `Controls/Cards/ContentCard.xaml.cs` | Construction, `Loaded`/`Unloaded` lifecycle, image load state machine (`LoadImage` / `ReleaseImage` / `ReloadImageIfNeeded` / `HasImage`), placeholder color/glyph application, aspect-ratio resizing, the helpers shared by the other partials. |
-| `Controls/Cards/ContentCard.DependencyProperties.cs` | Every DP (24+ as of `last_verified`) and its `PropertyChanged` callback — `ImageUrl`, `Title`, `Subtitle`, `Badge`, `AspectMode`, `IsCircularImage`, `CenterText`, `PlaceholderColorHex`, `PlaceholderGlyph`, `ImageSize`, `NavigationUri`, `NavigationTitle`, `NavigationTotalTracks`, `IsExternal`, `ShowPlaybackOverlay`, `UseConnectedAnimation`, `AutoNavigateOnTap`, `SecondaryActionVisible`, `SecondaryActionGlyph`, `SecondaryActionTooltip`, `IsPassive`, `IsLoading`, `IsPlaying`, `IsContextPaused`, `IsImageLoadingSuspended`. |
+| `Controls/Cards/ContentCard.DependencyProperties.cs` | Every DP (24+ as of `last_verified`) and its `PropertyChanged` callback — `ImageUrl`, `Title`, `Subtitle`, `SubtitleMaxLines`, `SubtitleNavigationUri`, `SubtitleNavigationTitle`, `Badge`, `BadgeForeground`, `AspectMode`, `IsCircularImage`, `CenterText`, `IsCompact`, `PlaceholderColorHex`, `PlaceholderGlyph`, `ImageSize`, `NavigationUri`, `NavigationTitle`, `NavigationTotalTracks`, `IsExternal`, `ShowPlaybackOverlay`, `UseConnectedAnimation`, `AutoNavigateOnTap`, `SecondaryActionVisible`, `SecondaryActionGlyph`, `SecondaryActionTooltip`, `IsPassive`, `IsLoading`, `IsPlaying`, `IsContextPaused`, `IsImageLoadingSuspended`. |
 | `Controls/Cards/ContentCard.Navigation.cs` | Click routing (`CardClick`, `CardMiddleClick`, `CardRightTapped`), `NavigateToUri()` helper (palette + count prefill + connected-animation prep), drag-source payload construction, `SecondaryAction` click. |
 | `Controls/Cards/ContentCard.PlaybackHighlight.cs` | `IsPlaying` / `IsContextPaused` visual state, subscription to `NowPlayingHighlightService.CurrentChanged`, play-button click, pending-beam (border glow during play-pending), now-playing equalizer overlay. |
 
@@ -124,6 +125,11 @@ Four user-facing knobs combine to produce every shelf style:
   portrait. Default left-aligned.
 - **ShowPlaybackOverlay** — disabled by cast / non-playable cards so the
   hover play button doesn't render.
+- **Compact** (`CompactContentCardStyle` -> `IsCompact=True`) — removes
+  the outer background/border padding and tightens row spacing while keeping
+  ContentCard image loading, hover/press state, selection, navigation, drag,
+  and secondary-action behavior. Use this inside dense embedded grids whose
+  parent panel already provides the surrounding card/surface.
 
 ## Lifecycle and Viewport Gating
 

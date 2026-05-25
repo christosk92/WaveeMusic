@@ -1,0 +1,15 @@
+{
+  "projectRoot": "C:\\WAVEE\\WaveeMusic",
+  "batchFiles": [
+    {"path": "src/Wavee/Protocol/Protos/played_state/episode_played_state.proto", "language": "protobuf", "sizeLines": 18, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/played_state/playability_restriction.proto", "language": "protobuf", "sizeLines": 17, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/played_state/show_played_state.proto", "language": "protobuf", "sizeLines": 29, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/played_state/track_played_state.proto", "language": "protobuf", "sizeLines": 15, "fileCategory": "data"}
+  ],
+  "batchImportData": {
+    "src/Wavee/Protocol/Protos/played_state/episode_played_state.proto": [],
+    "src/Wavee/Protocol/Protos/played_state/playability_restriction.proto": [],
+    "src/Wavee/Protocol/Protos/played_state/show_played_state.proto": [],
+    "src/Wavee/Protocol/Protos/played_state/track_played_state.proto": []
+  }
+}

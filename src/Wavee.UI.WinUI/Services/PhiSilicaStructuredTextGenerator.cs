@@ -114,9 +114,18 @@ internal static class PhiSilicaStructuredTextGenerator
     public static async Task<PhiSilicaStructuredGenerationResult> GeneratePlainTextAsync(
         string prompt,
         CancellationToken ct)
+        => await GeneratePlainTextAsync(prompt, deltaProgress: null, ct);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static async Task<PhiSilicaStructuredGenerationResult> GeneratePlainTextAsync(
+        string prompt,
+        IProgress<string>? deltaProgress,
+        CancellationToken ct)
     {
         using var languageModel = await Microsoft.Windows.AI.Text.LanguageModel.CreateAsync();
         var op = languageModel.GenerateResponseAsync(prompt);
+        if (deltaProgress is not null)
+            op.Progress = (_, token) => deltaProgress.Report(token);
 
         using var ctReg = ct.Register(() =>
         {

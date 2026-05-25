@@ -387,4 +387,30 @@
         </Setter>
     </Style>
 
+    <!-- Library action-row pill button. Shared shape for every button on a
+         library detail panel's header row (Play / Shuffle / View artist /
+         Following / Saved only). Intentionally does NOT override Template,
+         Background, Foreground, or BorderBrush — Button and ToggleButton
+         keep their default theme visuals, including ToggleButton's
+         checked-state fill. Only the metrics (corner radius, padding,
+         height, font weight) are pinned so every button in the row reads
+         as a uniform pill. -->
+    <Style x:Key="LibraryActionPillButtonStyle" TargetType="ButtonBase">
+        <Setter Property="CornerRadius" Value="18"/>
+        <Setter Property="Padding" Value="14,6"/>
+        <Setter Property="MinHeight" Value="36"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <!-- Rectangle variant of the action-row button. Same metrics as the
+         pill but a sharper 4 px corner radius. Defined so consumers can
+         swap a row from pill to rectangle without rewriting per-button
+         attributes. Not applied anywhere by default. -->
+    <Style x:Key="LibraryActionRectangleButtonStyle" TargetType="ButtonBase">
+        <Setter Property="CornerRadius" Value="4"/>
+        <Setter Property="Padding" Value="14,6"/>
+        <Setter Property="MinHeight" Value="36"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
 </ResourceDictionary>

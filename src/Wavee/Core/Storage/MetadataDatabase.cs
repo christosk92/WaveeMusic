@@ -88,7 +88,9 @@ public sealed class MetadataDatabase : IMetadataDatabase
     //      (resume cursor for chunked ops). Library save/remove + playlist
     //      add-tracks both queue through the same table now, processed by
     //      Wavee.Core.Storage.Outbox.OutboxProcessor.
-    private const int CurrentSchemaVersion = 22;
+    // v23: Persisted undoable user-action activity entries for the Activity
+    //      flyout. The action layer owns descriptor JSON semantics.
+    private const int CurrentSchemaVersion = 23;
 
     /// <summary>
     /// Creates a new MetadataDatabase.
@@ -304,6 +306,24 @@ public sealed class MetadataDatabase : IMetadataDatabase
                     last_error      TEXT    NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_outbox_created ON outbox(created_at);
+                """),
+        new SchemaMigration(
+            FromVersion: 22,
+            ToVersion: 23,
+            Sql: """
+                CREATE TABLE IF NOT EXISTS user_action_activity (
+                    id              TEXT PRIMARY KEY NOT NULL,
+                    category        TEXT NOT NULL,
+                    title           TEXT NOT NULL,
+                    message         TEXT NULL,
+                    icon_glyph      TEXT NULL,
+                    undo_label      TEXT NOT NULL,
+                    action_kind     TEXT NOT NULL,
+                    descriptor_json TEXT NOT NULL,
+                    created_at      INTEGER NOT NULL,
+                    is_undone       INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IF NOT EXISTS idx_user_action_activity_created ON user_action_activity(created_at DESC);
                 """)
     ];
 
@@ -472,6 +492,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
             DROP TABLE IF EXISTS lyrics_cache;
             DROP TABLE IF EXISTS library_outbox;
             DROP TABLE IF EXISTS outbox;
+            DROP TABLE IF EXISTS user_action_activity;
             DROP TABLE IF EXISTS media_overrides;
             DROP TABLE IF EXISTS local_files;
             DROP TABLE IF EXISTS local_artwork;
@@ -1067,6 +1088,27 @@ public sealed class MetadataDatabase : IMetadataDatabase
                         last_error      TEXT    NULL
                     );
                     CREATE INDEX IF NOT EXISTS idx_outbox_created ON outbox(created_at);
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS user_action_activity (
+                        id              TEXT PRIMARY KEY NOT NULL,
+                        category        TEXT NOT NULL,
+                        title           TEXT NOT NULL,
+                        message         TEXT NULL,
+                        icon_glyph      TEXT NULL,
+                        undo_label      TEXT NOT NULL,
+                        action_kind     TEXT NOT NULL,
+                        descriptor_json TEXT NOT NULL,
+                        created_at      INTEGER NOT NULL,
+                        is_undone       INTEGER NOT NULL DEFAULT 0
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_user_action_activity_created ON user_action_activity(created_at DESC);
                     """;
                 cmd.ExecuteNonQuery();
             }
@@ -3000,6 +3042,133 @@ public sealed class MetadataDatabase : IMetadataDatabase
 
     #endregion
 
+    #region User Action Activity Operations
+
+    public async Task UpsertUserActionActivityAsync(UserActionActivityEntry entry, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO user_action_activity (
+                    id, category, title, message, icon_glyph, undo_label,
+                    action_kind, descriptor_json, created_at, is_undone)
+                VALUES (
+                    $id, $category, $title, $message, $iconGlyph, $undoLabel,
+                    $actionKind, $descriptorJson, $createdAt, $isUndone)
+                ON CONFLICT(id) DO UPDATE SET
+                    category = excluded.category,
+                    title = excluded.title,
+                    message = excluded.message,
+                    icon_glyph = excluded.icon_glyph,
+                    undo_label = excluded.undo_label,
+                    action_kind = excluded.action_kind,
+                    descriptor_json = excluded.descriptor_json,
+                    created_at = excluded.created_at,
+                    is_undone = excluded.is_undone;
+                """;
+            cmd.Parameters.AddWithValue("$id", entry.Id);
+            cmd.Parameters.AddWithValue("$category", entry.Category);
+            cmd.Parameters.AddWithValue("$title", entry.Title);
+            cmd.Parameters.AddWithValue("$message", (object?)entry.Message ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$iconGlyph", (object?)entry.IconGlyph ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$undoLabel", entry.UndoLabel);
+            cmd.Parameters.AddWithValue("$actionKind", entry.ActionKind);
+            cmd.Parameters.AddWithValue("$descriptorJson", entry.DescriptorJson);
+            cmd.Parameters.AddWithValue("$createdAt", entry.CreatedAt);
+            cmd.Parameters.AddWithValue("$isUndone", entry.IsUndone ? 1 : 0);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally { _writeLock.Release(); }
+    }
+
+    public async Task<List<UserActionActivityEntry>> GetUserActionActivitiesAsync(int limit = 50, CancellationToken ct = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, category, title, message, icon_glyph, undo_label,
+                   action_kind, descriptor_json, created_at, is_undone
+            FROM user_action_activity
+            ORDER BY created_at DESC
+            LIMIT $limit;
+            """;
+        cmd.Parameters.AddWithValue("$limit", limit);
+
+        var entries = new List<UserActionActivityEntry>();
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            entries.Add(new UserActionActivityEntry
+            {
+                Id = reader.GetString(0),
+                Category = reader.GetString(1),
+                Title = reader.GetString(2),
+                Message = reader.IsDBNull(3) ? null : reader.GetString(3),
+                IconGlyph = reader.IsDBNull(4) ? null : reader.GetString(4),
+                UndoLabel = reader.GetString(5),
+                ActionKind = reader.GetString(6),
+                DescriptorJson = reader.GetString(7),
+                CreatedAt = reader.GetInt64(8),
+                IsUndone = reader.GetInt32(9) != 0
+            });
+        }
+
+        return entries;
+    }
+
+    public async Task MarkUserActionActivityUndoneAsync(string id, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "UPDATE user_action_activity SET is_undone = 1 WHERE id = $id;";
+            cmd.Parameters.AddWithValue("$id", id);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally { _writeLock.Release(); }
+    }
+
+    public async Task DeleteUserActionActivityAsync(string id, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM user_action_activity WHERE id = $id;";
+            cmd.Parameters.AddWithValue("$id", id);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally { _writeLock.Release(); }
+    }
+
+    public async Task ClearUserActionActivitiesAsync(CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM user_action_activity;";
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally { _writeLock.Release(); }
+    }
+
+    #endregion
+
     #region Sync State Operations
 
     /// <summary>
@@ -3872,6 +4041,7 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 DELETE FROM localized_extension_cache;
                 DELETE FROM entities;
                 DELETE FROM localized_entities;
+                DELETE FROM user_action_activity;
                 """;
             await cmd.ExecuteNonQueryAsync(cancellationToken);
 
@@ -3906,11 +4076,12 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 DELETE FROM spotify_playlists;
                 DELETE FROM rootlist_cache;
                 DELETE FROM outbox;
+                DELETE FROM user_action_activity;
                 """;
             await cmd.ExecuteNonQueryAsync(cancellationToken);
             await tx.CommitAsync(cancellationToken);
 
-            _logger?.LogInformation("Wiped all user-bound tables (entities, library, sync_state, playlists, rootlist, outbox)");
+            _logger?.LogInformation("Wiped all user-bound tables (entities, library, sync_state, playlists, rootlist, outbox, activity)");
         }
         finally
         {

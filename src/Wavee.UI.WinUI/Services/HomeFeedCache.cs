@@ -341,6 +341,8 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
     {
         SetStringPreservingExisting(target.Title, source.Title, v => target.Title = v);
         SetStringPreservingExisting(target.Subtitle, source.Subtitle, v => target.Subtitle = v);
+        SetStringPreservingExisting(target.SubtitleNavigationUri, source.SubtitleNavigationUri, v => target.SubtitleNavigationUri = v);
+        SetStringPreservingExisting(target.SubtitleNavigationTitle, source.SubtitleNavigationTitle, v => target.SubtitleNavigationTitle = v);
         SetStringPreservingExisting(target.AlbumMetadataSubtitle, source.AlbumMetadataSubtitle, v => target.AlbumMetadataSubtitle = v);
         if (target.AlbumTotalTracks <= 0 && source.AlbumTotalTracks > 0) target.AlbumTotalTracks = source.AlbumTotalTracks;
         SetStringPreservingExisting(target.ImageUrl, source.ImageUrl, v => target.ImageUrl = v);
@@ -422,6 +424,8 @@ public sealed class HomeFeedCache : PageCache<HomeFeedSnapshot>, IHomeFeedCache
 
         SetMissingString(target.Title, source.Title, v => target.Title = v);
         SetMissingString(target.Subtitle, source.Subtitle, v => target.Subtitle = v);
+        SetMissingString(target.SubtitleNavigationUri, source.SubtitleNavigationUri, v => target.SubtitleNavigationUri = v);
+        SetMissingString(target.SubtitleNavigationTitle, source.SubtitleNavigationTitle, v => target.SubtitleNavigationTitle = v);
         SetMissingString(target.AlbumMetadataSubtitle, source.AlbumMetadataSubtitle, v => target.AlbumMetadataSubtitle = v);
         if (target.AlbumTotalTracks <= 0 && source.AlbumTotalTracks > 0)
             target.AlbumTotalTracks = source.AlbumTotalTracks;

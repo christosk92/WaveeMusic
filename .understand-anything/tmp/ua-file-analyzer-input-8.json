@@ -1,0 +1,39 @@
+{
+  "projectRoot": "C:\\WAVEE\\WaveeMusic",
+  "batchFiles": [
+    {"path": "src/Wavee/Protocol/Protos/playlist_permission.proto", "language": "protobuf", "sizeLines": 97, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/playlist_signals.proto", "language": "protobuf", "sizeLines": 33, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/playplay.proto", "language": "protobuf", "sizeLines": 32, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/popcount2_external.proto", "language": "protobuf", "sizeLines": 35, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/prepare_play_options.proto", "language": "protobuf", "sizeLines": 36, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/pubsub.proto", "language": "protobuf", "sizeLines": 11, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/queue.proto", "language": "protobuf", "sizeLines": 13, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/recommended_playlists.proto", "language": "protobuf", "sizeLines": 17, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/restrictions.proto", "language": "protobuf", "sizeLines": 30, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/session.proto", "language": "protobuf", "sizeLines": 17, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/skip_to_track.proto", "language": "protobuf", "sizeLines": 14, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/spirc.proto", "language": "protobuf", "sizeLines": 74, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/status.proto", "language": "protobuf", "sizeLines": 13, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/storage-resolve.proto", "language": "protobuf", "sizeLines": 18, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/transfer_state.proto", "language": "protobuf", "sizeLines": 19, "fileCategory": "data"},
+    {"path": "src/Wavee/Protocol/Protos/user_attributes.proto", "language": "protobuf", "sizeLines": 30, "fileCategory": "data"}
+  ],
+  "batchImportData": {
+    "src/Wavee/Protocol/Protos/playlist_permission.proto": [],
+    "src/Wavee/Protocol/Protos/playlist_signals.proto": [],
+    "src/Wavee/Protocol/Protos/playplay.proto": [],
+    "src/Wavee/Protocol/Protos/popcount2_external.proto": [],
+    "src/Wavee/Protocol/Protos/prepare_play_options.proto": [],
+    "src/Wavee/Protocol/Protos/pubsub.proto": [],
+    "src/Wavee/Protocol/Protos/queue.proto": [],
+    "src/Wavee/Protocol/Protos/recommended_playlists.proto": [],
+    "src/Wavee/Protocol/Protos/restrictions.proto": [],
+    "src/Wavee/Protocol/Protos/session.proto": [],
+    "src/Wavee/Protocol/Protos/skip_to_track.proto": [],
+    "src/Wavee/Protocol/Protos/spirc.proto": [],
+    "src/Wavee/Protocol/Protos/status.proto": [],
+    "src/Wavee/Protocol/Protos/storage-resolve.proto": [],
+    "src/Wavee/Protocol/Protos/transfer_state.proto": [],
+    "src/Wavee/Protocol/Protos/user_attributes.proto": []
+  }
+}

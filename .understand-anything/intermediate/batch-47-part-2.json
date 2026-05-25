@@ -1,0 +1,263 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/Services/VideoAutoNavigationSuppressor.cs",
+      "type": "file",
+      "name": "VideoAutoNavigationSuppressor.cs",
+      "filePath": "src/Wavee.UI.WinUI/Services/VideoAutoNavigationSuppressor.cs",
+      "summary": "Static gate that suppresses the next automatic local-video navigation event within a short expiry window, preventing duplicate navigation from playback resume.",
+      "tags": [
+        "service",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Services/WindowsVideoThumbnailExtractor.cs",
+      "type": "file",
+      "name": "WindowsVideoThumbnailExtractor.cs",
+      "filePath": "src/Wavee.UI.WinUI/Services/WindowsVideoThumbnailExtractor.cs",
+      "summary": "Extracts thumbnail images from local video files using the Windows StorageFile thumbnail API, returning a BitmapImage at a configurable size.",
+      "tags": [
+        "service",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Shaders/MeshGradientShader.cs",
+      "type": "file",
+      "name": "MeshGradientShader.cs",
+      "filePath": "src/Wavee.UI.WinUI/Shaders/MeshGradientShader.cs",
+      "summary": "ComputeSharp D2D1 pixel shader producing an animated mesh gradient from primary and accent colors for use in hero backgrounds.",
+      "tags": [
+        "component",
+        "utility"
+      ],
+      "complexity": "simple",
+      "languageNotes": "Uses ComputeSharp ID2D1PixelShader with HLSL-style intrinsics compiled by ComputeSharp at build time."
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Strings/en-US/Resources.resw",
+      "type": "file",
+      "name": "Resources.resw (en-US)",
+      "filePath": "src/Wavee.UI.WinUI/Strings/en-US/Resources.resw",
+      "summary": "English (US) string resource table for the WaveeMusic WinUI app, containing all localizable UI strings.",
+      "tags": [
+        "configuration",
+        "data-model"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Strings/ko-KR/Resources.resw",
+      "type": "file",
+      "name": "Resources.resw (ko-KR)",
+      "filePath": "src/Wavee.UI.WinUI/Strings/ko-KR/Resources.resw",
+      "summary": "Korean (KR) string resource table for the WaveeMusic WinUI app, providing Korean localization of all UI strings.",
+      "tags": [
+        "configuration",
+        "data-model"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Styles/ButtonStyles.xaml",
+      "type": "file",
+      "name": "ButtonStyles.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Styles/ButtonStyles.xaml",
+      "summary": "XAML resource dictionary defining custom button styles for the WinUI app, including playback, icon, and control button variants.",
+      "tags": [
+        "component",
+        "markup"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Styles/CardStyles.xaml",
+      "type": "file",
+      "name": "CardStyles.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Styles/CardStyles.xaml",
+      "summary": "XAML resource dictionary defining card container styles used by ContentCard and related shelf components.",
+      "tags": [
+        "component",
+        "markup"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs",
+      "type": "file",
+      "name": "FluentGlyphs.cs",
+      "filePath": "src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs",
+      "summary": "Single source of truth for Fluent UI icon glyph codepoints used throughout the app, plus a helper to resolve social platform icons from URL/name.",
+      "tags": [
+        "utility",
+        "type-definition"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Styles/FontResources.xaml",
+      "type": "file",
+      "name": "FontResources.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Styles/FontResources.xaml",
+      "summary": "Minimal XAML resource dictionary declaring font family resources referenced by other style dictionaries.",
+      "tags": [
+        "configuration",
+        "markup"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Styles/ListViewStyles.xaml",
+      "type": "file",
+      "name": "ListViewStyles.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Styles/ListViewStyles.xaml",
+      "summary": "XAML resource dictionary with custom ListView and ListViewItem styles for track lists and library views.",
+      "tags": [
+        "component",
+        "markup"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Styles/PlayerBarStyles.xaml",
+      "type": "file",
+      "name": "PlayerBarStyles.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Styles/PlayerBarStyles.xaml",
+      "summary": "XAML resource dictionary defining styles for the bottom player bar controls including transport buttons and progress slider.",
+      "tags": [
+        "component",
+        "markup"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/Styles/TabBarStyles.xaml",
+      "type": "file",
+      "name": "TabBarStyles.xaml",
+      "filePath": "src/Wavee.UI.WinUI/Styles/TabBarStyles.xaml",
+      "summary": "XAML resource dictionary with comprehensive tab bar and navigation item styles including Fluent animations and selection indicators.",
+      "tags": [
+        "component",
+        "markup"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Services/VideoAutoNavigationSuppressor.cs:VideoAutoNavigationSuppressor",
+      "type": "class",
+      "name": "VideoAutoNavigationSuppressor",
+      "filePath": "src/Wavee.UI.WinUI/Services/VideoAutoNavigationSuppressor.cs",
+      "lineRange": [
+        5,
+        56
+      ],
+      "summary": "Static suppressor that prevents duplicate automatic video navigation by consuming a timed suppression token keyed to a track URI.",
+      "tags": [
+        "service",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Services/WindowsVideoThumbnailExtractor.cs:WindowsVideoThumbnailExtractor",
+      "type": "class",
+      "name": "WindowsVideoThumbnailExtractor",
+      "filePath": "src/Wavee.UI.WinUI/Services/WindowsVideoThumbnailExtractor.cs",
+      "lineRange": [
+        24,
+        83
+      ],
+      "summary": "Extracts BitmapImage thumbnails from local video files via Windows StorageFile/StorageItemThumbnail APIs.",
+      "tags": [
+        "service",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs:FluentGlyphs",
+      "type": "class",
+      "name": "FluentGlyphs",
+      "filePath": "src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs",
+      "lineRange": [
+        16,
+        241
+      ],
+      "summary": "Static registry of Fluent icon PUA codepoints as named string constants, plus ResolveSocialIcon for mapping social platform URLs to their icon glyphs.",
+      "tags": [
+        "utility",
+        "type-definition"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs:ResolveSocialIcon",
+      "type": "function",
+      "name": "ResolveSocialIcon",
+      "filePath": "src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs",
+      "lineRange": [
+        217,
+        240
+      ],
+      "summary": "Maps a social platform URL or name to the corresponding Fluent icon glyph constant.",
+      "tags": [
+        "utility"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/Services/VideoAutoNavigationSuppressor.cs",
+      "target": "class:src/Wavee.UI.WinUI/Services/VideoAutoNavigationSuppressor.cs:VideoAutoNavigationSuppressor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Services/WindowsVideoThumbnailExtractor.cs",
+      "target": "class:src/Wavee.UI.WinUI/Services/WindowsVideoThumbnailExtractor.cs:WindowsVideoThumbnailExtractor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Services/WindowsVideoThumbnailExtractor.cs",
+      "target": "class:src/Wavee.UI.WinUI/Services/WindowsVideoThumbnailExtractor.cs:WindowsVideoThumbnailExtractor",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs",
+      "target": "class:src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs:FluentGlyphs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs",
+      "target": "class:src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs:FluentGlyphs",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs",
+      "target": "function:src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs:ResolveSocialIcon",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs",
+      "target": "function:src/Wavee.UI.WinUI/Styles/FluentGlyphs.cs:ResolveSocialIcon",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

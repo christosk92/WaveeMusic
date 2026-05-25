@@ -1,0 +1,432 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistRelatedArtistsViewModel.cs",
+      "type": "file",
+      "name": "ArtistRelatedArtistsViewModel.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistRelatedArtistsViewModel.cs",
+      "summary": "ViewModel for the related-artists section on the artist page, populated from the artist overview payload.",
+      "tags": [
+        "view-model",
+        "artist",
+        "related-artists"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistRelatedArtistsViewModel.cs:ArtistRelatedArtistsViewModel",
+      "type": "class",
+      "name": "ArtistRelatedArtistsViewModel",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistRelatedArtistsViewModel.cs",
+      "lineRange": [
+        19,
+        51
+      ],
+      "summary": "Holds and exposes the list of related artists derived from the artist overview, resetting on navigation to a new artist.",
+      "tags": [
+        "view-model",
+        "artist",
+        "mvvm"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistReleaseVm.cs",
+      "type": "file",
+      "name": "ArtistReleaseVm.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistReleaseVm.cs",
+      "summary": "Data ViewModel representing a single release entry (album/single/compilation) in the artist discography list with palette colour and save state.",
+      "tags": [
+        "data-model",
+        "artist",
+        "discography",
+        "album"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistSocialLinkVm.cs",
+      "type": "file",
+      "name": "ArtistSocialLinkVm.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistSocialLinkVm.cs",
+      "summary": "Simple data record holding a social-media link (platform name and URL) for an artist profile.",
+      "tags": [
+        "data-model",
+        "artist",
+        "social"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopCityVm.cs",
+      "type": "file",
+      "name": "ArtistTopCityVm.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopCityVm.cs",
+      "summary": "Data record holding a top-city entry (city name, country, listener count) shown in the artist header.",
+      "tags": [
+        "data-model",
+        "artist",
+        "analytics"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs",
+      "type": "file",
+      "name": "ArtistTopTracksViewModel.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs",
+      "summary": "ViewModel for the artist top-tracks section: paginates the top-10 list into a responsive multi-column grid, handles track play dispatch, selection, and lazy image enrichment for missing artwork.",
+      "tags": [
+        "view-model",
+        "artist",
+        "top-tracks",
+        "playback"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs:ArtistTopTracksViewModel",
+      "type": "class",
+      "name": "ArtistTopTracksViewModel",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs",
+      "lineRange": [
+        33,
+        677
+      ],
+      "summary": "Manages the top-tracks subset of an artist page: pagination across a column-aware grid, playback dispatch with pending-play feedback, and lazy image enrichment.",
+      "tags": [
+        "view-model",
+        "artist",
+        "playback",
+        "mvvm"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs:PlayTrackAsync",
+      "type": "function",
+      "name": "PlayTrackAsync",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs",
+      "lineRange": [
+        385,
+        483
+      ],
+      "summary": "Resolves the full play context for a selected top track (artist context or single-track fallback) and dispatches it to the playback orchestrator.",
+      "tags": [
+        "async",
+        "playback",
+        "track"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs:EnrichMissingTopTrackImagesAsync",
+      "type": "function",
+      "name": "EnrichMissingTopTrackImagesAsync",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs",
+      "lineRange": [
+        495,
+        572
+      ],
+      "summary": "Fetches album art for top-track entries that arrived without an image URL, updating them lazily via SpClient.",
+      "tags": [
+        "async",
+        "image",
+        "enrichment"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs:LoadExtendedTopTracksAsync",
+      "type": "function",
+      "name": "LoadExtendedTopTracksAsync",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs",
+      "lineRange": [
+        580,
+        657
+      ],
+      "summary": "Fetches the full paginated top-tracks list beyond the initial 10, merging results into the observable slice.",
+      "tags": [
+        "async",
+        "data-loading",
+        "pagination"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTrackVm.cs",
+      "type": "file",
+      "name": "ArtistTopTrackVm.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTrackVm.cs",
+      "summary": "Observable data ViewModel for a single top-track row: track URI, name, play count, image, save state, and playback indicator flags.",
+      "tags": [
+        "data-model",
+        "artist",
+        "track",
+        "observable"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTrackVm.cs:ArtistTopTrackVm",
+      "type": "class",
+      "name": "ArtistTopTrackVm",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTrackVm.cs",
+      "lineRange": [
+        10,
+        99
+      ],
+      "summary": "Row model for a top-track entry; implements INotifyPropertyChanged for property mutation during lazy enrichment.",
+      "tags": [
+        "data-model",
+        "mvvm",
+        "observable",
+        "artist"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ConcertVm.cs",
+      "type": "file",
+      "name": "ConcertVm.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/ConcertVm.cs",
+      "summary": "Data record representing a single concert event shown in the artist extras section (venue, date, location, ticket URL).",
+      "tags": [
+        "data-model",
+        "artist",
+        "concerts"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Artist/MerchItemVm.cs",
+      "type": "file",
+      "name": "MerchItemVm.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/MerchItemVm.cs",
+      "summary": "Data record for a merchandise item on the artist page (name, image, price, buy URL).",
+      "tags": [
+        "data-model",
+        "artist",
+        "merchandise"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Artist/MusicVideoVm.cs",
+      "type": "file",
+      "name": "MusicVideoVm.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/MusicVideoVm.cs",
+      "summary": "Data record for a music video linked to an artist, exposing title, thumbnail, and Spotify URI for playback.",
+      "tags": [
+        "data-model",
+        "artist",
+        "music-video"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Artist/RelatedArtistVm.cs",
+      "type": "file",
+      "name": "RelatedArtistVm.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Artist/RelatedArtistVm.cs",
+      "summary": "Minimal data record for a related-artist entry (URI, name, image) shown in the related-artists grid on the artist page.",
+      "tags": [
+        "data-model",
+        "artist",
+        "related-artists"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumGroupViewModel.cs",
+      "type": "file",
+      "name": "ArtistAlbumGroupViewModel.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/ArtistAlbumGroupViewModel.cs",
+      "summary": "ViewModel managing a grouped album section within the artist library view: selection, list/grid view-mode toggle, lazy track loading, and play dispatch.",
+      "tags": [
+        "view-model",
+        "artist",
+        "album",
+        "library"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumGroupViewModel.cs:ArtistAlbumGroupViewModel",
+      "type": "class",
+      "name": "ArtistAlbumGroupViewModel",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/ArtistAlbumGroupViewModel.cs",
+      "lineRange": [
+        18,
+        146
+      ],
+      "summary": "Groups artist albums for the Artists Library tab; handles view-mode toggling, lazy track loading, album navigation, and playback.",
+      "tags": [
+        "view-model",
+        "album",
+        "library",
+        "mvvm"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumGroupViewModel.cs:PlayTrackAsync",
+      "type": "function",
+      "name": "PlayTrackAsync",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/ArtistAlbumGroupViewModel.cs",
+      "lineRange": [
+        136,
+        145
+      ],
+      "summary": "Dispatches playback for a specific track within a library album group, routing through the parent artist album item.",
+      "tags": [
+        "async",
+        "playback",
+        "track"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumItemViewModel.cs",
+      "type": "file",
+      "name": "ArtistAlbumItemViewModel.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/ArtistAlbumItemViewModel.cs",
+      "summary": "ViewModel for a single album tile within the ArtistAlbumGroup: manages selection, card click/play events, and lazy track list loading for the list-mode expand.",
+      "tags": [
+        "view-model",
+        "artist",
+        "album",
+        "library"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumItemViewModel.cs:ArtistAlbumItemViewModel",
+      "type": "class",
+      "name": "ArtistAlbumItemViewModel",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/ArtistAlbumItemViewModel.cs",
+      "lineRange": [
+        15,
+        85
+      ],
+      "summary": "Row/tile model for one album in the artist library group; triggers navigation, play, and lazy track fetch on interaction.",
+      "tags": [
+        "view-model",
+        "album",
+        "library",
+        "mvvm"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumItemViewModel.cs:LoadTracksAsync",
+      "type": "function",
+      "name": "LoadTracksAsync",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/ArtistAlbumItemViewModel.cs",
+      "lineRange": [
+        64,
+        84
+      ],
+      "summary": "Lazily loads track list for this album item when the user expands it to list mode, fetching from the library or SpClient.",
+      "tags": [
+        "async",
+        "data-loading",
+        "track"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistRelatedArtistsViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistRelatedArtistsViewModel.cs:ArtistRelatedArtistsViewModel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs:ArtistTopTracksViewModel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs:ArtistTopTracksViewModel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs:PlayTrackAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs:EnrichMissingTopTrackImagesAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTracksViewModel.cs:LoadExtendedTopTracksAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTrackVm.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Artist/ArtistTopTrackVm.cs:ArtistTopTrackVm",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumGroupViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumGroupViewModel.cs:ArtistAlbumGroupViewModel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumGroupViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumGroupViewModel.cs:ArtistAlbumGroupViewModel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumGroupViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumGroupViewModel.cs:PlayTrackAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumItemViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumItemViewModel.cs:ArtistAlbumItemViewModel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumItemViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumItemViewModel.cs:ArtistAlbumItemViewModel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumItemViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/ArtistAlbumItemViewModel.cs:LoadTracksAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    }
+  ]
+}

@@ -1,0 +1,88 @@
+{
+  "nodes": [
+    {
+      "id": "service:src/Wavee.Console/Dockerfile",
+      "type": "service",
+      "name": "Dockerfile",
+      "filePath": "src/Wavee.Console/Dockerfile",
+      "summary": "Multi-stage Docker build for the Wavee.Console AOT CLI client, producing a minimal .NET 10 runtime image with dotnet restore, build, and publish stages targeting linux-x64 or linux-arm64.",
+      "tags": [
+        "containerization",
+        "infrastructure",
+        "deployment",
+        "multi-stage-build"
+      ],
+      "complexity": "simple",
+      "languageNotes": "Three-stage multi-stage build (build -> publish -> final) using .NET 10 SDK and runtime base images; ENTRYPOINT runs Wavee.Console.dll."
+    },
+    {
+      "id": "service:src/Wavee.Console/Dockerfile:build",
+      "type": "service",
+      "name": "build",
+      "filePath": "src/Wavee.Console/Dockerfile",
+      "summary": "Build stage that restores NuGet dependencies and compiles Wavee.Console using the .NET 10 SDK image.",
+      "tags": [
+        "containerization",
+        "build-system",
+        "dotnet"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "service:src/Wavee.Console/Dockerfile:publish",
+      "type": "service",
+      "name": "publish",
+      "filePath": "src/Wavee.Console/Dockerfile",
+      "summary": "Publish stage that runs dotnet publish to produce the final self-contained or framework-dependent output artifacts.",
+      "tags": [
+        "containerization",
+        "deployment",
+        "dotnet"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "service:src/Wavee.Console/Dockerfile:final",
+      "type": "service",
+      "name": "final",
+      "filePath": "src/Wavee.Console/Dockerfile",
+      "summary": "Final runtime stage that copies published artifacts and sets the ENTRYPOINT to run Wavee.Console.dll.",
+      "tags": [
+        "containerization",
+        "infrastructure",
+        "deployment"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "service:src/Wavee.Console/Dockerfile",
+      "target": "service:src/Wavee.Console/Dockerfile:build",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "service:src/Wavee.Console/Dockerfile",
+      "target": "service:src/Wavee.Console/Dockerfile:publish",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "service:src/Wavee.Console/Dockerfile",
+      "target": "service:src/Wavee.Console/Dockerfile:final",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "service:src/Wavee.Console/Dockerfile",
+      "target": "file:src/Wavee.Console/Program.cs",
+      "type": "deploys",
+      "direction": "forward",
+      "weight": 0.7
+    }
+  ]
+}

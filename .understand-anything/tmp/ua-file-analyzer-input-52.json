@@ -1,0 +1,182 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/Views/AlbumPage.xaml",
+      "language": "xaml",
+      "sizeLines": 1312,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/AlbumPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 1201,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/AlbumsLibraryView.xaml",
+      "language": "xaml",
+      "sizeLines": 1056,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/AlbumsLibraryView.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 264,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ArtistDiscographyPage.xaml",
+      "language": "xaml",
+      "sizeLines": 87,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ArtistDiscographyPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 146,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ArtistPage.xaml",
+      "language": "xaml",
+      "sizeLines": 1425,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ArtistPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 1500,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ArtistsLibraryView.xaml",
+      "language": "xaml",
+      "sizeLines": 1548,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ArtistsLibraryView.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 504,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/BrowsePage.xaml",
+      "language": "xaml",
+      "sizeLines": 213,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/BrowsePage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 194,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ConcertPage.xaml",
+      "language": "xaml",
+      "sizeLines": 1051,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/ConcertPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 205,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/CreatePlaylistPage.xaml",
+      "language": "xaml",
+      "sizeLines": 75,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/CreatePlaylistPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 68,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/DebugPage.xaml",
+      "language": "xaml",
+      "sizeLines": 363,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/DebugPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 60,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/EpisodePage.xaml",
+      "language": "xaml",
+      "sizeLines": 563,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/EpisodePage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 426,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/FeedbackPage.xaml",
+      "language": "xaml",
+      "sizeLines": 394,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/FeedbackPage.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 242,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Home/BrowseAllSection.xaml",
+      "language": "xaml",
+      "sizeLines": 152,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Home/BrowseAllSection.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 133,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Views/Home/BrowseChip.xaml",
+      "language": "xaml",
+      "sizeLines": 27,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "src/Wavee.UI.WinUI/Views/AlbumPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/AlbumPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/AlbumsLibraryView.xaml": [],
+    "src/Wavee.UI.WinUI/Views/AlbumsLibraryView.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/ArtistDiscographyPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/ArtistDiscographyPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/ArtistPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/ArtistPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/ArtistsLibraryView.xaml": [],
+    "src/Wavee.UI.WinUI/Views/ArtistsLibraryView.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/BrowsePage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/BrowsePage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/ConcertPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/ConcertPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/CreatePlaylistPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/CreatePlaylistPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/DebugPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/DebugPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/EpisodePage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/EpisodePage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/FeedbackPage.xaml": [],
+    "src/Wavee.UI.WinUI/Views/FeedbackPage.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/Home/BrowseAllSection.xaml": [],
+    "src/Wavee.UI.WinUI/Views/Home/BrowseAllSection.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Views/Home/BrowseChip.xaml": []
+  }
+}

@@ -1,0 +1,182 @@
+{
+  "projectRoot": "C:/WAVEE/WaveeMusic",
+  "batchFiles": [
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenItem.xaml",
+      "language": "xaml",
+      "sizeLines": 521,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenItemRemovingEventArgs.cs",
+      "language": "csharp",
+      "sizeLines": 20,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenView.cs",
+      "language": "csharp",
+      "sizeLines": 157,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenView.Events.cs",
+      "language": "csharp",
+      "sizeLines": 159,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenView.ItemsSource.cs",
+      "language": "csharp",
+      "sizeLines": 40,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenView.Properties.cs",
+      "language": "csharp",
+      "sizeLines": 49,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenView.Selection.cs",
+      "language": "csharp",
+      "sizeLines": 57,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenView.xaml",
+      "language": "xaml",
+      "sizeLines": 225,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/AboutSettingsSection.xaml",
+      "language": "xaml",
+      "sizeLines": 117,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/AboutSettingsSection.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 37,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/AiSettingsSection.xaml",
+      "language": "xaml",
+      "sizeLines": 153,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/AiSettingsSection.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 18,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/AudioSettingsSection.xaml",
+      "language": "xaml",
+      "sizeLines": 78,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/AudioSettingsSection.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 18,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/ConnectStateSection.xaml",
+      "language": "xaml",
+      "sizeLines": 184,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/ConnectStateSection.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 27,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsConfigurationSection.xaml",
+      "language": "xaml",
+      "sizeLines": 194,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsConfigurationSection.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 30,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsConnectUpdatesSection.xaml",
+      "language": "xaml",
+      "sizeLines": 32,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsConnectUpdatesSection.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 38,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsLoggingSection.xaml",
+      "language": "xaml",
+      "sizeLines": 205,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsLoggingSection.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 82,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsSettingsSection.xaml",
+      "language": "xaml",
+      "sizeLines": 50,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsSettingsSection.xaml.cs",
+      "language": "csharp",
+      "sizeLines": 114,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/Wavee.UI.WinUI/Controls/Settings/GeneralSettingsSection.xaml",
+      "language": "xaml",
+      "sizeLines": 165,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenItem.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenItemRemovingEventArgs.cs": [],
+    "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenView.cs": [],
+    "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenView.Events.cs": [],
+    "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenView.ItemsSource.cs": [],
+    "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenView.Properties.cs": [],
+    "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenView.Selection.cs": [],
+    "src/Wavee.UI.WinUI/Controls/SessionTokens/SessionTokenView.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/AboutSettingsSection.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/AboutSettingsSection.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/AiSettingsSection.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/AiSettingsSection.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/AudioSettingsSection.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/AudioSettingsSection.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/ConnectStateSection.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/ConnectStateSection.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsConfigurationSection.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsConfigurationSection.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsConnectUpdatesSection.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsConnectUpdatesSection.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsLoggingSection.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsLoggingSection.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsSettingsSection.xaml": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/DiagnosticsSettingsSection.xaml.cs": [],
+    "src/Wavee.UI.WinUI/Controls/Settings/GeneralSettingsSection.xaml": []
+  }
+}

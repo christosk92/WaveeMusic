@@ -279,7 +279,7 @@ internal static class RightPanelThemeResolver
         }
 
         float a = cardColor.A / 255f;
-        return Color.FromArgb(174,
+        return Color.FromArgb(255,
             (byte)(cardColor.R * a + baseColor.R * (1 - a)),
             (byte)(cardColor.G * a + baseColor.G * (1 - a)),
             (byte)(cardColor.B * a + baseColor.B * (1 - a)));

@@ -67,6 +67,10 @@ public sealed partial class ContentCard
         if (IsPlayButtonSource(e.OriginalSource))
             return;
 
+        if (IsSubtitleNavigationSource(e.OriginalSource)
+            && NavigateSubtitle(openInNewTab: Helpers.Navigation.NavigationHelpers.IsCtrlPressed()))
+            return;
+
         // Passive mode: the card lives inside an ItemsView/ItemContainer and a
         // click should select the item rather than navigate. Ctrl+click still
         // opens a new tab to preserve the "open in background" affordance.
@@ -198,6 +202,13 @@ public sealed partial class ContentCard
     {
         if (e.GetCurrentPoint(null).Properties.IsMiddleButtonPressed)
         {
+            if (IsSubtitleNavigationSource(e.OriginalSource)
+                && NavigateSubtitle(openInNewTab: true))
+            {
+                e.Handled = true;
+                return;
+            }
+
             if (!string.IsNullOrEmpty(NavigationUri))
             {
                 NavigationDiagnostics.RecordClickIntent(
@@ -208,6 +219,45 @@ public sealed partial class ContentCard
             }
             CardMiddleClick?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    private bool IsSubtitleNavigationSource(object? source)
+    {
+        if (!IsArtistSubtitleNavigationUri(SubtitleNavigationUri))
+            return false;
+
+        var current = source as DependencyObject;
+        while (current != null)
+        {
+            if (ReferenceEquals(current, SubtitleText))
+                return true;
+            if (ReferenceEquals(current, CardButton) || ReferenceEquals(current, this))
+                return false;
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
+    }
+
+    private bool NavigateSubtitle(bool openInNewTab)
+    {
+        var uri = SubtitleNavigationUri;
+        if (!IsArtistSubtitleNavigationUri(uri))
+            return false;
+
+        var title = SubtitleNavigationTitle ?? Subtitle ?? "Artist";
+        var param = new Data.Parameters.ContentNavigationParameter
+        {
+            Uri = uri!,
+            Title = title,
+        };
+
+        NavigationDiagnostics.RecordClickIntent(
+            "ContentCard.ArtistSubtitle" + (openInNewTab ? ".NewTab" : ""));
+        ResetInteractionState();
+        Helpers.Navigation.NavigationHelpers.OpenArtist(param, title, openInNewTab);
+        return true;
     }
 
     private void CardButton_RightTapped(object sender, RightTappedRoutedEventArgs e)

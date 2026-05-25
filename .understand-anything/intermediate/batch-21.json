@@ -1,0 +1,154 @@
+{
+  "files": [
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/PlayingLineRenderer.cs",
+      "description": "Static renderer for the currently-playing lyrics line. Draws three text layers (primary, secondary/translation, tertiary/phonetic) with per-character fill+stroke gradient wipes, optional scale/glow/float per-character effects, and optional Gaussian blur. Uses cached Win2D CanvasLinearGradientBrush gradient stops updated per-frame without allocation.",
+      "symbols": ["PlayingLineRenderer", "Draw", "DrawPrimaryText", "DrawSubLineRegion", "DrawSingleCharacter", "HasActiveCharacterEffects"],
+      "relationships": ["uses RenderLyricsLine", "uses LyricsEffectSettings", "uses Win2D ICanvasImage/CanvasDrawingSession", "sister of UnplayingLineRenderer"]
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/PureColorBackgroundRenderer.cs",
+      "description": "Minimal IBackgroundRenderer that fills the canvas with a solid overlay color at configurable opacity. Active only when IsPureColorOverlayEnabled is set in LyricsBackgroundSettings.",
+      "symbols": ["PureColorBackgroundRenderer"],
+      "relationships": ["implements IBackgroundRenderer", "reads RenderContext.Settings.LyricsBackgroundSettings"]
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/RaindropRenderer.cs",
+      "description": "IBackgroundRenderer driving the ComputeSharp D2D1 RaindropEffect pixel shader. Accumulates time, maps RaindropOverlay settings (speed/size/density/lightAngle/shadowIntensity) to the shader constant buffer each frame, and applies the BreathingRendererBase transform for bass-reactive pulsing.",
+      "symbols": ["RaindropRenderer"],
+      "relationships": ["implements IBackgroundRenderer", "uses PixelShaderEffect<RaindropEffect>", "extends BreathingRendererBase"]
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/RenderContext.cs",
+      "description": "Zero-alloc readonly struct passed by-ref to every renderer each frame. Aggregates canvas geometry, time, scroll offsets, visible line range, input state, settings, NowPlayingPalette, spectrum data, accent colors, and dirty flags. Avoids per-frame heap pressure because renderers consume it via in-ref.",
+      "symbols": ["RenderContext"],
+      "relationships": ["consumed by all IBackgroundRenderer implementations", "consumed by NowPlayingCanvas draw loop", "contains NowPlayingPalette", "contains LyricsWindowStatus"]
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/SnowRenderer.cs",
+      "description": "IBackgroundRenderer driving the ComputeSharp D2D1 SnowEffect pixel shader. Accumulates elapsed time; maps SnowFlakeOverlay settings (amount/speed) to the constant buffer; bass-reactive breathing via BreathingRendererBase.",
+      "symbols": ["SnowRenderer"],
+      "relationships": ["implements IBackgroundRenderer", "uses PixelShaderEffect<SnowEffect>", "extends BreathingRendererBase"]
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/SpectrumRenderer.cs",
+      "description": "IBackgroundRenderer that builds a CanvasGeometry from live spectrum float[] data and draws it with a linear or radial gradient brush. Supports three styles: Bar, Curve, and AroundAlbumArt (bars/curve wrapped around the album art perimeter using arc-walk geometry). Geometry is cached by a SpectrumGeometryCacheKey struct; optional Gaussian glow is drawn into a CanvasCommandList with additive blend.",
+      "symbols": ["SpectrumRenderer", "SpectrumGeometryCacheKey", "GetPointAndNormalOnRoundRect", "DrawGeometry", "CreateGeometry"],
+      "relationships": ["implements IBackgroundRenderer", "extends BreathingRendererBase", "reads RenderContext.SpectrumData/SpectrumBarCount/AlbumArtRect"]
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Renderer/UnplayingLineRenderer.cs",
+      "description": "Static renderer for lyrics lines that are not currently playing. Renders primary, secondary (translation), and tertiary (phonetic) text parts with blur+opacity transitions read from the line transition state, using pre-built OpacityEffect/GaussianBlurEffect/CropEffect chains.",
+      "symbols": ["UnplayingLineRenderer"],
+      "relationships": ["sister of PlayingLineRenderer", "uses RenderLyricsLine", "uses Win2D ICanvasImage/CanvasDrawingSession"]
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Services/LocalizationService/ILocalizationService.cs",
+      "description": "Single-method interface for looking up localized strings by resource ID.",
+      "symbols": ["ILocalizationService", "GetLocalizedString"],
+      "relationships": []
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Services/LocalizationService/LocalizationService.cs",
+      "description": "WinRT ResourceLoader-backed implementation of ILocalizationService. Swallows ResourceMap-not-found on construction (design-time / test hosts have no .resw) and falls back to returning the raw key.",
+      "symbols": ["LocalizationService"],
+      "relationships": ["implements ILocalizationService", "uses Microsoft.Windows.ApplicationModel.Resources.ResourceLoader"]
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Shaders/FluidBackgroundEffect.cs",
+      "description": "ComputeSharp D2D1 pixel shader (PS5.0) producing an animated fluid gradient background. Ported from the Isolation project HLSL. Accepts four accent colors, time, random seeds, HSV-blending toggle, light-wave toggle, and dithering toggle. Internally uses noise + rotation distortion + layer blending + optional LightWave ripple + optional screen-space triangle-noise dithering.",
+      "symbols": ["FluidBackgroundEffect", "F_Noise", "F_Hash", "LightWave", "ScreenSpaceDither", "Hsv2Rgb", "Rgb2Hsv"],
+      "relationships": ["implements ID2D1PixelShader (ComputeSharp)", "consumed by fluid background renderer"]
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Shaders/FogEffect.cs",
+      "description": "ComputeSharp D2D1 pixel shader producing a white fog/mist overlay. Ported from ShaderToy lllSR2. Two-pass fbm noise accumulation per pixel, premultiplied alpha output.",
+      "symbols": ["FogEffect", "Noise", "GenNoise", "Hash"],
+      "relationships": ["implements ID2D1PixelShader (ComputeSharp)"]
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Shaders/RaindropEffect.cs",
+      "description": "ComputeSharp D2D1 pixel shader producing a realistic raindrop-on-glass effect. Ported from ShaderToy ltffzl. Combines StaticRaindrops (fixed droplets) and RollingRaindrops (streaking drops with trails + residual droplets), using OpenSimplex2 noise for droplet-edge distortion. Outputs grayscale height + specular highlight with configurable light angle and shadow intensity.",
+      "symbols": ["RaindropEffect", "StaticRaindrops", "RollingRaindrops", "RaindropSurface", "Os2NoiseWithDerivativesImproveXy"],
+      "relationships": ["implements ID2D1PixelShader (ComputeSharp)", "driven by RaindropRenderer"]
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Shaders/SnowEffect.cs",
+      "description": "ComputeSharp D2D1 pixel shader producing layered falling snow. Ported from ShaderToy Mdt3Df. Six layers x 11 cell sizes with sine-wave drift per layer; density and speed are runtime parameters.",
+      "symbols": ["SnowEffect"],
+      "relationships": ["implements ID2D1PixelShader (ComputeSharp)", "driven by SnowRenderer"]
+    },
+    {
+      "path": "src/Wavee.Controls.Lyrics/Wavee.Controls.Lyrics.csproj",
+      "description": "Project file for the lyrics rendering control library. Targets net10.0-windows10.0.26100.0; uses WinUI 3, ComputeSharp.D2D1.WinUI for GPU shaders, Microsoft.Graphics.Win2D for Canvas APIs, NAudio.Wasapi for audio capture, NTextCat for language detection, Lyricify.Lyrics.Helper (vendored) for lyric format parsing, and csharp-pinyin/WanaKana-net for CJK romanisation.",
+      "symbols": [],
+      "relationships": ["references Lyricify.Lyrics.Helper (vendor)", "referenced by Wavee.UI.WinUI"]
+    },
+    {
+      "path": "src/Wavee.Local/Classification/LocalContentClassifier.cs",
+      "description": "Pure-static classifier that assigns a LocalContentKind to a scanned local file. Signal priority (highest first): SxxExx episode marker -> Movie/MusicVideo video cascade (MV signals, year-in-parens, release-group markers, duration thresholds) -> audio extension -> folder hint -> Other. Zero IO, fully unit-testable.",
+      "symbols": ["LocalContentClassifier", "Classify"],
+      "relationships": ["uses LocalFilenameParser", "returns LocalContentKind", "called by local library scanner"]
+    },
+    {
+      "path": "src/Wavee.Local/Classification/LocalContentKind.cs",
+      "description": "Enum (Other/Music/MusicVideo/TvEpisode/Movie) stored as TEXT in local_files.auto_kind / kind_override. Extension methods provide ToWireValue/ParseWireValue round-trips and IsVideo/IsAudio predicates.",
+      "symbols": ["LocalContentKind", "LocalContentKindExtensions"],
+      "relationships": ["used by LocalContentClassifier", "used by LocalEnrichmentService dispatch", "persisted in SQLite local_files table"]
+    },
+    {
+      "path": "src/Wavee.Local/Classification/LocalFilenameParser.cs",
+      "description": "Pure-static regex-based filename parser. Extracts episode markers (SxxExx / Season N Episode N / NxNN), year tokens, movie titles, music-video artist/title splits, and music track hints (artist/album/title/trackNumber/discNumber) including disc-folder and Artist-Album-01-Title filename conventions. Strips release-group/encoding markers (BluRay, x265, RARBG, etc.) and music-video signal words.",
+      "symbols": ["LocalFilenameParser", "TryParseEpisode", "TryParseMovie", "TryParseMusicVideo", "TryParseMusicTrack", "HasReleaseGroupMarkers", "HasMusicVideoSignals", "MusicTrackHints"],
+      "relationships": ["used by LocalContentClassifier", "used by LocalEnrichmentService.EnrichMovieAsync"]
+    },
+    {
+      "path": "src/Wavee.Local/Enrichment/EnrichmentRow.cs",
+      "description": "Sealed record projecting one local_files + entities join row for the enrichment worker. Carries URI, file path, auto-kind, title/artist/album, movie year, series/season/episode IDs, TMDB ID, MusicBrainz ID, enrichment state, and duration.",
+      "symbols": ["EnrichmentRow"],
+      "relationships": ["returned by LocalLibraryService.GetEnrichmentRowAsync", "consumed by LocalEnrichmentService.ProcessOneAsync"]
+    },
+    {
+      "path": "src/Wavee.Local/Enrichment/ILocalEnrichmentService.cs",
+      "description": "Interface for background metadata enrichment of local files. Exposes explicit-user-action enqueue paths (EnqueueAllPendingAsync, EnqueueAllShowsAsync, EnqueueShowAsync, EnqueueAllMoviesAsync, EnqueueAllMusicAsync), ForceRefreshAsync, GetTmdbPersonAsync, IObservable<EnrichmentProgress> Progress, IObservable<string> Matched, and pause/resume/clear-cache controls.",
+      "symbols": ["ILocalEnrichmentService"],
+      "relationships": ["implemented by LocalEnrichmentService", "injected into UI ViewModels for toolbar Sync buttons"]
+    },
+    {
+      "path": "src/Wavee.Local/Enrichment/ISpotifyTrackSearcher.cs",
+      "description": "Wavee.Local-side abstraction for Spotify track search that breaks the circular dependency (Wavee.Local cannot reference Wavee.dll). The concrete PathfinderSpotifyTrackSearcher in Wavee.UI.WinUI implements this via GraphQL. Returns empty list on auth failure or no match.",
+      "symbols": ["ISpotifyTrackSearcher", "SpotifyTrackMatch"],
+      "relationships": ["implemented by PathfinderSpotifyTrackSearcher in Wavee.UI.WinUI", "injected into LocalEnrichmentService"]
+    },
+    {
+      "path": "src/Wavee.Local/Enrichment/ITmdbTokenStore.cs",
+      "description": "Per-user runtime TMDB v4 bearer-token store using a BYO-token model (user pastes their own free token in Settings). Windows impl uses DPAPI encryption. Exposes synchronous HasToken for UI binding, async get/set, and IObservable<bool> HasTokenChanged to spin the enrichment worker up/down reactively.",
+      "symbols": ["ITmdbTokenStore"],
+      "relationships": ["implemented by DpapiTmdbTokenStore in Wavee.UI.WinUI", "consumed by LocalEnrichmentService"]
+    },
+    {
+      "path": "src/Wavee.Local/Enrichment/LocalEnrichmentService.cs",
+      "description": "ILocalEnrichmentService implementation. Owns a single serial background worker (semaphore-signalled ConcurrentQueue). Dispatches by LocalContentKind: Movie/TvEpisode -> TmdbAdapter; Music/MusicVideo -> ISpotifyTrackSearcher with Levenshtein fuzzy matching (>=85% title, >=70% artist, +-5s duration). TV episodes are batch-optimised: one TMDB series search + one season fetch covers all episodes of the same series and the full season roster is persisted. Movie enrichment writes poster+backdrop+genres+runtime+top-10 cast. Show enrichment writes tagline/status/dates/genres/vote/networks+top-10 cast. Worker activates/deactivates reactively on ITmdbTokenStore.HasTokenChanged. Never auto-enqueues; every sync is explicit user action.",
+      "symbols": ["LocalEnrichmentService", "ShowBatchEntry", "RunWorkerAsync", "ProcessOneAsync", "EnrichMovieAsync", "EnrichTvEpisodeAsync", "EnrichMusicAsync", "NormaliseForMatch", "DownloadAndStoreAsync"],
+      "relationships": ["implements ILocalEnrichmentService", "uses TmdbAdapter", "uses ISpotifyTrackSearcher", "uses StringSimilarity", "uses LocalLibraryService", "uses ITmdbTokenStore", "uses LocalFilenameParser"]
+    },
+    {
+      "path": "src/Wavee.Local/Enrichment/StringSimilarity.cs",
+      "description": "Levenshtein-based string similarity helper returning a [0,1] ratio (1 - distance/max-length). Two-row O(m*n) time, O(min) space. Used by LocalEnrichmentService to score Spotify search hits against local track title + artist name.",
+      "symbols": ["StringSimilarity", "Ratio", "Levenshtein"],
+      "relationships": ["used by LocalEnrichmentService.EnrichMusicAsync"]
+    },
+    {
+      "path": "src/Wavee.Local/Enrichment/TmdbAdapter.cs",
+      "description": "Internal TMDB v3 API client for serial use behind the enrichment worker. Token-bucket pacing at ~33 req/sec. Endpoints: search/movie, search/tv, tv/{id}/season/{n}, tv/{id}?append_to_response=credits, movie/{id}?append_to_response=credits, person/{id}, /authentication (token verification). Per-request Authorization header (bearer token not added to shared HttpClient defaults to avoid leaking across hosts). Source-generated STJ context (TmdbJsonContext) for AOT-safe deserialization.",
+      "symbols": ["TmdbAdapter", "TmdbJsonContext", "TmdbMovieResult", "TmdbTvResult", "TmdbSeasonResponse", "TmdbEpisode", "TmdbTvDetailsResponse", "TmdbMovieDetailsResponse", "TmdbGenre", "TmdbMovieCredits", "TmdbCastMember", "TmdbPersonResponse", "TmdbNetwork", "TmdbSeasonSummary", "VerifyAsync"],
+      "relationships": ["used by LocalEnrichmentService", "uses STJ source-generated TmdbJsonContext"]
+    },
+    {
+      "path": "src/Wavee.Local/Groups/LocalGroupService.cs",
+      "description": "SQLite-backed service for user-defined local-media collections and auto-generated show/album groups. Backed by local_groups + local_group_members tables. CRUD: list (with item-count subquery), create (GUID id), add/remove member (upsert on sort_order), delete, rename, get-by-id, get-member-paths-ordered.",
+      "symbols": ["LocalGroupService"],
+      "relationships": ["uses Microsoft.Data.Sqlite", "uses LocalArtworkCache.UriScheme for poster URIs", "returns LocalCollection model"]
+    }
+  ]
+}

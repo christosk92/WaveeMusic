@@ -1,0 +1,82 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 3,
+  "filesSkipped": [],
+  "results": [
+    {
+      "path": "test/Wavee.Tests/README.md",
+      "language": "markdown",
+      "fileCategory": "docs",
+      "totalLines": 42,
+      "nonEmptyLines": 28,
+      "sections": [
+        {
+          "heading": "Wavee.Tests — core library tests",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "Folder map",
+          "level": 2,
+          "line": 7
+        },
+        {
+          "heading": "Crypto validation",
+          "level": 2,
+          "line": 19
+        },
+        {
+          "heading": "PlayPlay tests live elsewhere",
+          "level": 2,
+          "line": 23
+        },
+        {
+          "heading": "Run",
+          "level": 2,
+          "line": 27
+        },
+        {
+          "heading": "Project refs",
+          "level": 2,
+          "line": 40
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "sectionCount": 6
+      }
+    },
+    {
+      "path": "test/Wavee.Tests/Wavee.Tests.csproj",
+      "language": "csproj",
+      "fileCategory": "config",
+      "totalLines": 44,
+      "nonEmptyLines": 36,
+      "metrics": {}
+    },
+    {
+      "path": "test/Wavee.Tests/xunit.runner.json",
+      "language": "json",
+      "fileCategory": "config",
+      "totalLines": 3,
+      "nonEmptyLines": 3,
+      "sections": [
+        {
+          "heading": "$schema",
+          "level": 1,
+          "line": 2
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "sectionCount": 1
+      }
+    }
+  ]
+}

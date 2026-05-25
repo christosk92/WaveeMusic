@@ -1,0 +1,63 @@
+{
+  "nodes": [
+    {
+      "id": "pipeline:.github/workflows/release.yml",
+      "type": "pipeline",
+      "name": "release.yml",
+      "filePath": ".github/workflows/release.yml",
+      "summary": "GitHub Actions workflow that builds Wavee.UI.WinUI as signed MSIX packages for x64 and ARM64 on tag push, using Azure Artifact Signing, and attaches them as artifacts on a draft GitHub Release.",
+      "tags": [
+        "ci-cd",
+        "deployment",
+        "infrastructure",
+        "build-system",
+        "msix"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Matrix strategy runs build-sign job in parallel for x64 and arm64; release job depends on both matrix legs via needs: build-sign and only runs on tag pushes."
+    },
+    {
+      "id": "step:.github/workflows/release.yml:build-sign",
+      "type": "file",
+      "name": "build-sign",
+      "filePath": ".github/workflows/release.yml",
+      "summary": "CI job that checks out the repo, restores NuGet packages, builds and packages MSIX via MSBuild, signs the package using Azure Trusted Signing, and uploads the signed MSIX as a workflow artifact.",
+      "tags": [
+        "ci-cd",
+        "build-system",
+        "deployment",
+        "msix"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "step:.github/workflows/release.yml:release",
+      "type": "file",
+      "name": "release",
+      "filePath": ".github/workflows/release.yml",
+      "summary": "CI job that downloads the signed MSIX artifacts from both matrix legs and creates a draft GitHub Release with auto-generated release notes, triggered only on tag pushes.",
+      "tags": [
+        "ci-cd",
+        "deployment",
+        "release"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "pipeline:.github/workflows/release.yml",
+      "target": "step:.github/workflows/release.yml:build-sign",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "pipeline:.github/workflows/release.yml",
+      "target": "step:.github/workflows/release.yml:release",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    }
+  ]
+}

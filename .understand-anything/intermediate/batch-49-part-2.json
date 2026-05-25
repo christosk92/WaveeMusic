@@ -1,0 +1,1099 @@
+{
+  "nodes": [
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs",
+      "type": "file",
+      "name": "BrowseAllGrouper.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs",
+      "summary": "Groups a flat list of browse-all items into categorized display groups sorted by genre/mood taxonomy, for the Browse All section of the Home feed.",
+      "tags": [
+        "utility",
+        "browse",
+        "grouping",
+        "home"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs:BrowseAllGrouper",
+      "type": "class",
+      "name": "BrowseAllGrouper",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs",
+      "lineRange": [
+        17,
+        83
+      ],
+      "summary": "Partitions raw browse items into named groups based on taxonomy classification and applies sort order within each group.",
+      "tags": [
+        "utility",
+        "browse",
+        "grouping"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs:Group",
+      "type": "function",
+      "name": "Group",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs",
+      "lineRange": [
+        29,
+        59
+      ],
+      "summary": "Executes the full grouping pipeline over a collection of BrowseAllItems into sorted BrowseAllGroup instances.",
+      "tags": [
+        "grouping",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGroupKind.cs",
+      "type": "file",
+      "name": "BrowseAllGroupKind.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGroupKind.cs",
+      "summary": "Enum defining browse-all group kind values and an extension providing the resource key string for each kind used in localization.",
+      "tags": [
+        "type-definition",
+        "browse",
+        "enum",
+        "home"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGroupKind.cs:BrowseAllGroupKindExtensions",
+      "type": "class",
+      "name": "BrowseAllGroupKindExtensions",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGroupKind.cs",
+      "lineRange": [
+        13,
+        25
+      ],
+      "summary": "Extension class providing the resource key string for each BrowseAllGroupKind enum value.",
+      "tags": [
+        "utility",
+        "localization",
+        "browse"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllItem.cs",
+      "type": "file",
+      "name": "BrowseAllItem.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllItem.cs",
+      "summary": "Data record types for a single browse-all item (genre/mood card) and its display group container.",
+      "tags": [
+        "data-model",
+        "browse",
+        "home"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs",
+      "type": "file",
+      "name": "BrowseAllParser.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs",
+      "summary": "Parses raw Pathfinder browse-all response JSON into typed BrowseAllItem records, handling missing fields gracefully.",
+      "tags": [
+        "utility",
+        "parsing",
+        "browse",
+        "home"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs:BrowseAllParser",
+      "type": "class",
+      "name": "BrowseAllParser",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs",
+      "lineRange": [
+        20,
+        84
+      ],
+      "summary": "Extracts genre and mood items from Pathfinder API response nodes into BrowseAllItem instances.",
+      "tags": [
+        "utility",
+        "parsing",
+        "browse"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs:TryExtract",
+      "type": "function",
+      "name": "TryExtract",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs",
+      "lineRange": [
+        41,
+        83
+      ],
+      "summary": "Attempts to extract a single BrowseAllItem from a JSON node, returning null on parse failure.",
+      "tags": [
+        "parsing",
+        "utility",
+        "browse"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllTaxonomy.cs",
+      "type": "file",
+      "name": "BrowseAllTaxonomy.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllTaxonomy.cs",
+      "summary": "Defines the static genre/mood taxonomy used to assign browse items to display groups and sort orders in the Browse All section.",
+      "tags": [
+        "data-model",
+        "browse",
+        "taxonomy",
+        "home"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllTaxonomy.cs:BrowseAllTaxonomy",
+      "type": "class",
+      "name": "BrowseAllTaxonomy",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllTaxonomy.cs",
+      "lineRange": [
+        11,
+        95
+      ],
+      "summary": "Holds a static lookup table mapping Spotify category IDs to taxonomy entries (group kind and display order).",
+      "tags": [
+        "data-model",
+        "browse",
+        "taxonomy"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "type": "file",
+      "name": "HomeFeedViewModel.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "summary": "ViewModel managing the Home feed sections collection: applies cache/fresh/background data, handles local library section injection, chip selection, user preference persistence, and section pin/reorder.",
+      "tags": [
+        "view-model",
+        "home",
+        "feed",
+        "sections"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs:HomeFeedViewModel",
+      "type": "class",
+      "name": "HomeFeedViewModel",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "lineRange": [
+        34,
+        941
+      ],
+      "summary": "Orchestrates the Home feed: snapshot application, local section upsert, chip-based facet filtering, section visibility/pin/order preferences, and background refresh coordination.",
+      "tags": [
+        "view-model",
+        "home",
+        "feed"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs:RefreshLocalSectionAsync",
+      "type": "function",
+      "name": "RefreshLocalSectionAsync",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "lineRange": [
+        281,
+        370
+      ],
+      "summary": "Rebuilds the local library section content (recently played, saved albums/artists) and upserts it into the feed.",
+      "tags": [
+        "async",
+        "local-library",
+        "home"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs:ApplyChips",
+      "type": "function",
+      "name": "ApplyChips",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "lineRange": [
+        579,
+        611
+      ],
+      "summary": "Maps the available home feed chips (facets) to display items and marks the active chip.",
+      "tags": [
+        "chips",
+        "filtering",
+        "home"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs:ApplyPreferences",
+      "type": "function",
+      "name": "ApplyPreferences",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "lineRange": [
+        613,
+        686
+      ],
+      "summary": "Restores user preference state (section order, visibility, pins) from persisted settings onto the current feed sections.",
+      "tags": [
+        "preferences",
+        "persistence",
+        "home"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs:SelectChipAsync",
+      "type": "function",
+      "name": "SelectChipAsync",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "lineRange": [
+        802,
+        875
+      ],
+      "summary": "Handles a chip tap: updates the active facet and triggers a feed refetch for the selected chip.",
+      "tags": [
+        "async",
+        "chips",
+        "navigation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeGreetingViewModel.cs",
+      "type": "file",
+      "name": "HomeGreetingViewModel.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeGreetingViewModel.cs",
+      "summary": "ViewModel for the Home page greeting row, displaying a time-of-day greeting and the authenticated user display name.",
+      "tags": [
+        "view-model",
+        "home",
+        "greeting",
+        "auth"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeGreetingViewModel.cs:HomeGreetingViewModel",
+      "type": "class",
+      "name": "HomeGreetingViewModel",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeGreetingViewModel.cs",
+      "lineRange": [
+        20,
+        115
+      ],
+      "summary": "Binds the greeting string and user display name, updating both on auth state change and deriving the appropriate time-of-day salutation.",
+      "tags": [
+        "view-model",
+        "home",
+        "greeting"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs",
+      "type": "file",
+      "name": "HomeHeroAdapter.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs",
+      "summary": "Adapter that observes the HomeFeedViewModel sections collection and rebuilds hero slide descriptors, side-card items, and hero region lists for the Home page carousel.",
+      "tags": [
+        "view-model",
+        "home",
+        "hero-image",
+        "adapter"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs:HomeHeroAdapter",
+      "type": "class",
+      "name": "HomeHeroAdapter",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs",
+      "lineRange": [
+        54,
+        561
+      ],
+      "summary": "Transforms feed section items into hero slides and side cards for the Home hero carousel, debouncing rapid section collection changes.",
+      "tags": [
+        "adapter",
+        "home",
+        "hero-image"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs:SideCardItem",
+      "type": "class",
+      "name": "SideCardItem",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs",
+      "lineRange": [
+        29,
+        37
+      ],
+      "summary": "Lightweight record holding the display data for a single side card item in the Home hero area.",
+      "tags": [
+        "data-model",
+        "home",
+        "hero-image"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs:RebuildRegions",
+      "type": "function",
+      "name": "RebuildRegions",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs",
+      "lineRange": [
+        216,
+        305
+      ],
+      "summary": "Partitions the visible feed sections into hero, side-card, and overflow region buckets according to position and content-type rules.",
+      "tags": [
+        "home",
+        "hero-image",
+        "sections"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs:RebuildHeroSlides",
+      "type": "function",
+      "name": "RebuildHeroSlides",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs",
+      "lineRange": [
+        319,
+        413
+      ],
+      "summary": "Constructs the ordered list of hero slide descriptors from the hero-region items, including image and accent-color metadata.",
+      "tags": [
+        "home",
+        "hero-image",
+        "slides"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs",
+      "type": "file",
+      "name": "HomeRecommendationsViewModel.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs",
+      "summary": "ViewModel managing the Home recommendations baseline: maps recently-played items to enriched preview tracks and coordinates async metadata enrichment from Pathfinder.",
+      "tags": [
+        "view-model",
+        "home",
+        "recommendations",
+        "recently-played"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs:HomeRecommendationsViewModel",
+      "type": "class",
+      "name": "HomeRecommendationsViewModel",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs",
+      "lineRange": [
+        35,
+        351
+      ],
+      "summary": "Maintains the baseline recommendation list from recently played history, enriching each item with full track metadata asynchronously.",
+      "tags": [
+        "view-model",
+        "home",
+        "recommendations"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs:BeginBaselineEnrichment",
+      "type": "function",
+      "name": "BeginBaselineEnrichment",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs",
+      "lineRange": [
+        157,
+        189
+      ],
+      "summary": "Starts background enrichment of baseline recently-played items by scheduling an async metadata fetch.",
+      "tags": [
+        "async",
+        "enrichment",
+        "recently-played"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs:EnrichBaselineItemsAsync",
+      "type": "function",
+      "name": "EnrichBaselineItemsAsync",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs",
+      "lineRange": [
+        191,
+        224
+      ],
+      "summary": "Fetches full track metadata for the baseline items and applies it to the display collection.",
+      "tags": [
+        "async",
+        "data-loading",
+        "enrichment"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeRegion.cs",
+      "type": "file",
+      "name": "HomeRegion.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeRegion.cs",
+      "summary": "Defines the HomeRegion discriminated-union type and its factory, used to classify each Home feed section into hero, section, or chip regions.",
+      "tags": [
+        "data-model",
+        "home",
+        "sections",
+        "type-definition"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeRegion.cs:HomeRegion",
+      "type": "class",
+      "name": "HomeRegion",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeRegion.cs",
+      "lineRange": [
+        31,
+        114
+      ],
+      "summary": "Encapsulates a Home feed region classification (hero, section-row, chip) with typed payload for the HomeHeroAdapter partitioning logic.",
+      "tags": [
+        "data-model",
+        "home",
+        "sections"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs",
+      "type": "file",
+      "name": "HomeSectionClassifier.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs",
+      "summary": "Stateless classifier that maps a HomeFeedViewModel section item to a HomeRegion kind based on content type, position, and display rules.",
+      "tags": [
+        "utility",
+        "home",
+        "sections",
+        "classifier"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs:HomeSectionClassifier",
+      "type": "class",
+      "name": "HomeSectionClassifier",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs",
+      "lineRange": [
+        19,
+        89
+      ],
+      "summary": "Provides the ClassifyRegion method that inspects a feed section and returns the appropriate HomeRegion variant.",
+      "tags": [
+        "utility",
+        "home",
+        "sections"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs:ClassifyRegion",
+      "type": "function",
+      "name": "ClassifyRegion",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs",
+      "lineRange": [
+        29,
+        88
+      ],
+      "summary": "Returns the HomeRegion classification for a section item based on its type, index, and hero eligibility rules.",
+      "tags": [
+        "classification",
+        "home",
+        "sections"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "type": "file",
+      "name": "HomeViewModel.cs",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "summary": "Master ViewModel for the Home page, orchestrating feed loading, section/item mapping from Pathfinder JSON, nav-cache hibernate/resume, theme derivation from hero content, and page bleed updates.",
+      "tags": [
+        "view-model",
+        "home",
+        "entry-point",
+        "complex-state"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeViewModel",
+      "type": "class",
+      "name": "HomeViewModel",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "lineRange": [
+        40,
+        1133
+      ],
+      "summary": "Root Home page ViewModel: owns the Sections collection, drives load/refresh via HomeFeedViewModel, maps Pathfinder response JSON to typed section items, handles hibernate/resume for nav cache, and derives hero/page-bleed theming.",
+      "tags": [
+        "view-model",
+        "home",
+        "feed"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeSection",
+      "type": "class",
+      "name": "HomeSection",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "lineRange": [
+        1145,
+        1275
+      ],
+      "summary": "Observable ViewModel for a single Home feed section row, holding the section title, content cards, and visibility/pin state.",
+      "tags": [
+        "view-model",
+        "home",
+        "sections"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeSectionItem",
+      "type": "class",
+      "name": "HomeSectionItem",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "lineRange": [
+        1277,
+        1623
+      ],
+      "summary": "Observable ViewModel wrapping a single Home feed card item with content type, image, title, subtitle, and navigation target.",
+      "tags": [
+        "view-model",
+        "home",
+        "sections",
+        "data-model"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeBaselinePreviewTrack",
+      "type": "class",
+      "name": "HomeBaselinePreviewTrack",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "lineRange": [
+        1634,
+        1648
+      ],
+      "summary": "Lightweight data record for a recently-played baseline preview track displayed in the recommendations strip.",
+      "tags": [
+        "data-model",
+        "home",
+        "recently-played"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeChipViewModel",
+      "type": "class",
+      "name": "HomeChipViewModel",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "lineRange": [
+        1650,
+        1661
+      ],
+      "summary": "Simple data record for a Home page facet chip with label and selection state.",
+      "tags": [
+        "data-model",
+        "home",
+        "chips"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeViewModel",
+      "type": "function",
+      "name": "HomeViewModel",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "lineRange": [
+        128,
+        246
+      ],
+      "summary": "Constructor subscribing to playback, auth, and library change observables to drive live section updates.",
+      "tags": [
+        "constructor",
+        "initialization",
+        "reactive"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:LoadAsync",
+      "type": "function",
+      "name": "LoadAsync",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "lineRange": [
+        294,
+        360
+      ],
+      "summary": "Initiates Home page load: checks cache, triggers fresh fetch, populates sections, and applies baseline recommendations.",
+      "tags": [
+        "async",
+        "data-loading",
+        "home"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:MapSectionsFromResponse",
+      "type": "function",
+      "name": "MapSectionsFromResponse",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "lineRange": [
+        520,
+        584
+      ],
+      "summary": "Converts the Pathfinder home feed response into typed HomeSection objects with their item collections.",
+      "tags": [
+        "data-mapping",
+        "home",
+        "sections"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:MapSectionItem",
+      "type": "function",
+      "name": "MapSectionItem",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "lineRange": [
+        586,
+        624
+      ],
+      "summary": "Maps a single Pathfinder response item node to a HomeSectionItem with content-type detection.",
+      "tags": [
+        "data-mapping",
+        "home",
+        "sections"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:NavigateToItem",
+      "type": "function",
+      "name": "NavigateToItem",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "lineRange": [
+        896,
+        941
+      ],
+      "summary": "Handles a card tap by routing to the appropriate page (artist/album/playlist/podcast) based on item content type.",
+      "tags": [
+        "navigation",
+        "home"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:ApplyTheme",
+      "type": "function",
+      "name": "ApplyTheme",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "lineRange": [
+        957,
+        1013
+      ],
+      "summary": "Derives the page accent color from the hero carousel item and applies gradient brushes to the page header.",
+      "tags": [
+        "theming",
+        "hero-image",
+        "home"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:Dispose",
+      "type": "function",
+      "name": "Dispose",
+      "filePath": "src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "lineRange": [
+        1086,
+        1100
+      ],
+      "summary": "Disposes all reactive subscriptions and cancels pending async operations.",
+      "tags": [
+        "lifecycle",
+        "disposal"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs:BrowseAllGrouper",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs:BrowseAllGrouper",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGrouper.cs:Group",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGroupKind.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGroupKind.cs:BrowseAllGroupKindExtensions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGroupKind.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllGroupKind.cs:BrowseAllGroupKindExtensions",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs:BrowseAllParser",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs:BrowseAllParser",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllParser.cs:TryExtract",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllTaxonomy.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllTaxonomy.cs:BrowseAllTaxonomy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllTaxonomy.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/BrowseAllTaxonomy.cs:BrowseAllTaxonomy",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs:HomeFeedViewModel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs:HomeFeedViewModel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs:RefreshLocalSectionAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs:ApplyChips",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs:ApplyPreferences",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeFeedViewModel.cs:SelectChipAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeGreetingViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeGreetingViewModel.cs:HomeGreetingViewModel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeGreetingViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeGreetingViewModel.cs:HomeGreetingViewModel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs:HomeHeroAdapter",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs:HomeHeroAdapter",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs:SideCardItem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs:SideCardItem",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs:RebuildRegions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeHeroAdapter.cs:RebuildHeroSlides",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs:HomeRecommendationsViewModel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs:HomeRecommendationsViewModel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs:BeginBaselineEnrichment",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeRecommendationsViewModel.cs:EnrichBaselineItemsAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeRegion.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeRegion.cs:HomeRegion",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeRegion.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeRegion.cs:HomeRegion",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs:HomeSectionClassifier",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs:HomeSectionClassifier",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/Home/HomeSectionClassifier.cs:ClassifyRegion",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeViewModel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeViewModel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeSection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeSection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeSectionItem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeSectionItem",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeBaselinePreviewTrack",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeBaselinePreviewTrack",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeChipViewModel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "class:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeChipViewModel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:HomeViewModel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:LoadAsync",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:MapSectionsFromResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:MapSectionItem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:NavigateToItem",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:ApplyTheme",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs",
+      "target": "function:src/Wavee.UI.WinUI/ViewModels/HomeViewModel.cs:Dispose",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    }
+  ]
+}

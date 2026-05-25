@@ -33,6 +33,7 @@ using Serilog.Events;
 using Serilog.Extensions.Logging;
 using Wavee.Controls.Lyrics.Services.LocalizationService;
 using Wavee.UI.Services;
+using Wavee.UI.Services.Actions;
 using Wavee.UI.Services.DragDrop;
 using Wavee.UI.Services.DragDrop.Handlers;
 using Wavee.UI.WinUI.Services.Data;
@@ -478,7 +479,15 @@ public static class AppLifecycleHelper
                 .AddSingleton<AppInitializationService>()
                 .AddSingleton<IPlaylistPrefetcher, PlaylistPrefetchService>()
                 .AddSingleton<Data.Contexts.LibrarySyncOrchestrator>()
-                .AddSingleton<IActivityService, Data.Contexts.ActivityService>()
+                .AddSingleton<Data.Contexts.ActivityService>()
+                .AddSingleton<IActivityService>(sp => sp.GetRequiredService<Data.Contexts.ActivityService>())
+                .AddSingleton<IUserActionActivitySink>(sp => sp.GetRequiredService<Data.Contexts.ActivityService>())
+                .AddSingleton<IUserActionRunner>(sp =>
+                    new UserActionRunner(
+                        sp.GetRequiredService<IUserActionActivitySink>(),
+                        () => sp.GetRequiredService<IUserActionFactory>(),
+                        sp.GetService<ILogger<UserActionRunner>>()))
+                .AddSingleton<IUserActionFactory, LibraryUserActionFactory>()
                 .AddSingleton<IFriendsFeedService, Data.Contexts.FriendsFeedService>()
 
                 // EQ processor now lives in AudioHost — settings sent via IPC
@@ -638,12 +647,17 @@ public static class AppLifecycleHelper
 
                 // Data services
                 .AddSingleton<IDataServiceConfiguration>(new DataServiceConfiguration(startInDemoMode: false))
-                .AddSingleton<ITrackLikeService>(sp =>
+                .AddSingleton<Wavee.UI.Services.Library.TrackLikeService>(sp =>
                     new Wavee.UI.Services.Library.TrackLikeService(
                         sp.GetRequiredService<IMetadataDatabase>(),
                         sp.GetService<Wavee.Core.Library.Spotify.ISpotifyLibraryService>(),
                         sp.GetService<Wavee.Local.ILocalLikeService>(),
+                        sp.GetService<IUserActionRunner>(),
                         sp.GetService<ILogger<Wavee.UI.Services.Library.TrackLikeService>>()))
+                .AddSingleton<ITrackLikeService>(sp =>
+                    sp.GetRequiredService<Wavee.UI.Services.Library.TrackLikeService>())
+                .AddSingleton<ILibrarySavedActionExecutor>(sp =>
+                    sp.GetRequiredService<Wavee.UI.Services.Library.TrackLikeService>())
                 .AddSingleton<Wavee.Core.Playlists.IPlaylistCacheService>(sp =>
                     new Wavee.Core.Playlists.PlaylistCacheService(
                         sp.GetRequiredService<ISession>(),
@@ -657,11 +671,19 @@ public static class AppLifecycleHelper
                         sp.GetRequiredService<ITrackLikeService>(),
                         sp.GetRequiredService<IProfileCache>(),
                         sp.GetService<ILogger<UserScopeGuard>>()))
-                .AddSingleton<Wavee.UI.Contracts.IPinService, Data.Contexts.PinService>()
+                .AddSingleton<Data.Contexts.PinService>()
+                .AddSingleton<Wavee.UI.Contracts.IPinService>(sp =>
+                    sp.GetRequiredService<Data.Contexts.PinService>())
+                .AddSingleton<IPinActionExecutor>(sp =>
+                    sp.GetRequiredService<Data.Contexts.PinService>())
                 .AddSingleton<Wavee.UI.Contracts.IPlaylistPermissionService, Data.Contexts.PlaylistPermissionService>()
                 .AddSingleton<Wavee.UI.Contracts.IRootlistService, Data.Contexts.RootlistService>()
                 .AddSingleton<Wavee.UI.Contracts.IPodcastEpisodeService, Data.Contexts.PodcastEpisodeService>()
-                .AddSingleton<Wavee.UI.Contracts.IPlaylistMutationService, Data.Contexts.PlaylistMutationService>()
+                .AddSingleton<Data.Contexts.PlaylistMutationService>()
+                .AddSingleton<Wavee.UI.Contracts.IPlaylistMutationService>(sp =>
+                    sp.GetRequiredService<Data.Contexts.PlaylistMutationService>())
+                .AddSingleton<IPlaylistMutationActionExecutor>(sp =>
+                    sp.GetRequiredService<Data.Contexts.PlaylistMutationService>())
                 // Framework-neutral playlist track filter/sort pipeline — stateless,
                 // singleton. Consumed by PlaylistTrackListViewModel.
                 .AddSingleton<Wavee.UI.Services.Playlists.PlaylistTrackFilterSorter>()
