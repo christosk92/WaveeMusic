@@ -1,8 +1,11 @@
 using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 
 namespace Wavee.UI.WinUI.Controls.Ai;
 
@@ -104,7 +107,28 @@ public sealed partial class AiTextCard : UserControl
         typeof(AiTextCard),
         new PropertyMetadata(TextTrimming.CharacterEllipsis, OnLayoutInputChanged));
 
+    public static readonly DependencyProperty IsCollapsibleProperty = DependencyProperty.Register(
+        nameof(IsCollapsible),
+        typeof(bool),
+        typeof(AiTextCard),
+        new PropertyMetadata(true, OnCollapseInputChanged));
+
+    public static readonly DependencyProperty IsExpandedProperty = DependencyProperty.Register(
+        nameof(IsExpanded),
+        typeof(bool),
+        typeof(AiTextCard),
+        new PropertyMetadata(false, OnExpandedChanged));
+
+    public static readonly DependencyProperty CollapsedMaxLinesProperty = DependencyProperty.Register(
+        nameof(CollapsedMaxLines),
+        typeof(int),
+        typeof(AiTextCard),
+        new PropertyMetadata(2, OnCollapseInputChanged));
+
     private bool _sawStreamingText;
+    // Set during the animated transition so the layout pass triggered by the
+    // text reveal doesn't yank MaxHeight away from the storyboard mid-flight.
+    private bool _suppressClipUpdate;
     private readonly Brush? _defaultCardBackground;
     private readonly Brush? _defaultCardBorderBrush;
 
@@ -219,6 +243,31 @@ public sealed partial class AiTextCard : UserControl
         set => SetValue(BodyTextTrimmingProperty, value);
     }
 
+    /// <summary>When true (default), the card opens collapsed to
+    /// <see cref="CollapsedMaxLines"/> and toggles full content on tap. Set to
+    /// false to force the card always-expanded (e.g. inside an existing
+    /// disclosure surface that already controls visibility).</summary>
+    public bool IsCollapsible
+    {
+        get => (bool)GetValue(IsCollapsibleProperty);
+        set => SetValue(IsCollapsibleProperty, value);
+    }
+
+    /// <summary>Two-way: current open/closed state of the body. Tapping the
+    /// card flips this when <see cref="IsCollapsible"/> is true.</summary>
+    public bool IsExpanded
+    {
+        get => (bool)GetValue(IsExpandedProperty);
+        set => SetValue(IsExpandedProperty, value);
+    }
+
+    /// <summary>Number of lines visible in the collapsed state.</summary>
+    public int CollapsedMaxLines
+    {
+        get => (int)GetValue(CollapsedMaxLinesProperty);
+        set => SetValue(CollapsedMaxLinesProperty, value);
+    }
+
     public InlineCollection BodyInlines => BodyTextBlock.BodyInlines;
 
     private static void OnVisualStateInputChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -297,9 +346,11 @@ public sealed partial class AiTextCard : UserControl
 
     private void ApplyLayoutInputs()
     {
-        BodyHost.MinHeight = Math.Max(0, BodyMinHeight);
+        // MinHeight is reconciled inside UpdateVisualState — it has to know
+        // whether we're showing text vs the thinking placeholder.
         BodyTextBlock.MaxLines = Math.Max(0, BodyMaxLines);
         BodyTextBlock.TextTrimming = BodyTextTrimming;
+        UpdateCollapseState(animated: false);
     }
 
     private void UpdateVisualState()
@@ -318,6 +369,19 @@ public sealed partial class AiTextCard : UserControl
         FooterPresenter.Visibility = FooterContent is null ? Visibility.Collapsed : Visibility.Visible;
         HeaderSparkle.Visibility = ShowSparkleIcon ? Visibility.Visible : Visibility.Collapsed;
         HeaderSparkle.State = showPlaceholder || IsStreaming ? "Generating" : "Normal";
+
+        // When collapsed-with-text, drop the placeholder min-height so the body
+        // sizes to the visible 2-line clip; otherwise honour BodyMinHeight so
+        // the thinking-placeholder / empty-state have breathing room.
+        BodyHost.MinHeight = IsCollapsible && !IsExpanded && hasText
+            ? 0
+            : Math.Max(0, BodyMinHeight);
+
+        // Hide the chevron when there's no content yet — there's nothing to
+        // expand to. It re-renders after the body lands.
+        ExpandChevron.Visibility = IsCollapsible && hasText
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void UpdateFooterContent()
@@ -329,5 +393,187 @@ public sealed partial class AiTextCard : UserControl
     private void OnTypewriterRevealCompleted(object? sender, RevealCompletedEventArgs e)
     {
         RevealCompleted?.Invoke(this, e);
+        // Re-evaluate clip height — the final inlines may differ from the
+        // streamed approximation (linkifier replaces plain runs with hyperlinks
+        // which can shift line wrap).
+        UpdateCollapseState(animated: false);
+    }
+
+    private void OnBodyClipHostSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        BodyClipHost.Clip = new RectangleGeometry
+        {
+            Rect = new Windows.Foundation.Rect(
+                0,
+                0,
+                Math.Max(0, e.NewSize.Width),
+                Math.Max(0, e.NewSize.Height)),
+        };
+    }
+
+    // ── Collapse / expand wiring ───────────────────────────────────────────
+
+    private static void OnCollapseInputChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is AiTextCard card)
+            card.UpdateCollapseState(animated: false);
+    }
+
+    private static void OnExpandedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is AiTextCard card)
+            card.UpdateCollapseState(animated: true);
+    }
+
+    private void OnCardTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (!IsCollapsible || !IsAvailable)
+            return;
+
+        // Ignore taps that originated on an interactive child (hyperlinks in
+        // the body, footer buttons). Hyperlinks set OriginalSource to a Run
+        // inside the Hyperlink, so a direct ancestor walk would mis-classify
+        // them — instead check whether the source is the Run inside our
+        // BodyTextBlock and whether the parent inline is a Hyperlink.
+        if (e.OriginalSource is FrameworkElement source)
+        {
+            var walker = source;
+            while (walker is not null)
+            {
+                if (walker == CardBorder) break;
+                if (walker is ButtonBase or HyperlinkButton)
+                    return;
+                walker = walker.Parent as FrameworkElement;
+            }
+        }
+
+        IsExpanded = !IsExpanded;
+        e.Handled = true;
+    }
+
+    private void UpdateCollapseState(bool animated)
+    {
+        if (_suppressClipUpdate)
+            return;
+
+        var clip = BodyClipHost;
+        var chevron = ExpandChevronTransform;
+        var fade = FadeOverlay;
+        if (clip is null || fade is null || chevron is null)
+            return;
+
+        // Not collapsible — uncap the clip and hide both affordances.
+        if (!IsCollapsible)
+        {
+            clip.MaxHeight = double.PositiveInfinity;
+            fade.Opacity = 0;
+            chevron.Angle = 0;
+            ExpandChevron.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        ExpandChevron.Visibility = Visibility.Visible;
+
+        var collapsedHeight = Math.Max(1, CollapsedMaxLines) * Math.Max(12, BodyTextBlock.LineHeight) + 8;
+        var targetMaxHeight = IsExpanded ? double.PositiveInfinity : collapsedHeight;
+        var targetFade = 0.0;
+        var targetAngle = IsExpanded ? 180.0 : 0.0;
+
+        if (!animated)
+        {
+            clip.MaxHeight = targetMaxHeight;
+            fade.Opacity = targetFade;
+            chevron.Angle = targetAngle;
+            return;
+        }
+
+        // Storyboards can't animate to or from PositiveInfinity, so we resolve
+        // both endpoints to finite values measured from layout.
+        var sb = new Storyboard();
+        if (IsExpanded)
+        {
+            // Expanding: snap MaxHeight to the current rendered height so the
+            // animation has a finite starting point, briefly uncap to measure,
+            // then animate up to the measured value.
+            var startHeight = double.IsFinite(clip.MaxHeight)
+                ? clip.MaxHeight
+                : Math.Max(collapsedHeight, clip.ActualHeight);
+            clip.MaxHeight = double.PositiveInfinity;
+            clip.UpdateLayout();
+            var measured = Math.Max(collapsedHeight, clip.ActualHeight);
+            clip.MaxHeight = startHeight;
+
+            sb.Children.Add(MakeMaxHeightAnimation(clip, measured, durationMs: 260));
+        }
+        else
+        {
+            // Collapsing: if MaxHeight is currently unbounded (PositiveInfinity),
+            // pin it to the rendered ActualHeight so the storyboard has a finite
+            // starting point — otherwise the height would snap to the target
+            // instantly, defeating the animation.
+            if (!double.IsFinite(clip.MaxHeight))
+                clip.MaxHeight = clip.ActualHeight;
+
+            sb.Children.Add(MakeMaxHeightAnimation(clip, collapsedHeight, durationMs: 220));
+        }
+
+        fade.Opacity = 0;
+        sb.Children.Add(MakeRotationAnimation(chevron, targetAngle, durationMs: 220));
+
+        // After the expand animation lands, drop the clip so a later text
+        // change (linkifier, streaming refinement) doesn't get capped at a
+        // stale measured value.
+        if (IsExpanded)
+        {
+            sb.Completed += (_, _) =>
+            {
+                if (IsExpanded && IsCollapsible)
+                    clip.MaxHeight = double.PositiveInfinity;
+            };
+        }
+
+        _suppressClipUpdate = true;
+        try { sb.Begin(); }
+        finally { _suppressClipUpdate = false; }
+    }
+
+    private static DoubleAnimation MakeMaxHeightAnimation(FrameworkElement target, double to, int durationMs)
+    {
+        var animation = new DoubleAnimation
+        {
+            To = to,
+            Duration = TimeSpan.FromMilliseconds(durationMs),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut },
+            EnableDependentAnimation = true,
+        };
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, "MaxHeight");
+        return animation;
+    }
+
+    private static DoubleAnimation MakeOpacityAnimation(UIElement target, double to, int durationMs)
+    {
+        var animation = new DoubleAnimation
+        {
+            To = to,
+            Duration = TimeSpan.FromMilliseconds(durationMs),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, "Opacity");
+        return animation;
+    }
+
+    private static DoubleAnimation MakeRotationAnimation(RotateTransform target, double to, int durationMs)
+    {
+        var animation = new DoubleAnimation
+        {
+            To = to,
+            Duration = TimeSpan.FromMilliseconds(durationMs),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut },
+        };
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, "Angle");
+        return animation;
     }
 }

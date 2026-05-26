@@ -208,6 +208,24 @@ public sealed class DeviceStateManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Toggle private listening for this device. Mutates the in-memory
+    /// <c>DeviceInfo.IsPrivateSession</c> flag and immediately re-publishes
+    /// PutState so Spotify's surfaces (Recently Played, Friends Feed) stop
+    /// recording plays from this device. Wavee additionally suppresses gabo
+    /// <c>RawCoreStream</c> events while the flag is set — see
+    /// <c>EventService</c> for the second half of the gate.
+    /// </summary>
+    public Task SetPrivateSessionAsync(bool isPrivate, CancellationToken ct = default)
+    {
+        if (_deviceInfo.IsPrivateSession == isPrivate) return Task.CompletedTask;
+        _deviceInfo.IsPrivateSession = isPrivate;
+        return UpdateStateAsync(PutStateReason.NewDevice, ct);
+    }
+
+    /// <summary>True when this device is currently announcing as a private session.</summary>
+    public bool IsPrivateSession => _deviceInfo.IsPrivateSession;
+
+    /// <summary>
     /// Sends a PUT state request to Spotify's cloud API.
     /// </summary>
     /// <param name="reason">Reason for the state update.</param>

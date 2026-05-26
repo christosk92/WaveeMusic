@@ -135,6 +135,7 @@ public sealed class ArtistAiQuestionService
     private readonly IArtistAiToolProvider _artistTools;
     private readonly IAiFeatureSettings _settings;
     private readonly IWebSearchToolProvider? _webSearch;
+    private readonly IMusicGroundingProvider? _musicGrounding;
     private readonly IWikipediaLookup? _wikipedia;
     private readonly ILogger? _logger;
 
@@ -142,6 +143,7 @@ public sealed class ArtistAiQuestionService
         ILanguageModelClient model,
         IArtistAiToolProvider artistTools,
         IAiFeatureSettings settings,
+        IMusicGroundingProvider? musicGrounding = null,
         IWebSearchToolProvider? webSearch = null,
         IWikipediaLookup? wikipedia = null,
         ILogger<ArtistAiQuestionService>? logger = null)
@@ -149,6 +151,7 @@ public sealed class ArtistAiQuestionService
         _model = model ?? throw new ArgumentNullException(nameof(model));
         _artistTools = artistTools ?? throw new ArgumentNullException(nameof(artistTools));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _musicGrounding = musicGrounding;
         _webSearch = webSearch;
         _wikipedia = wikipedia;
         _logger = logger;
@@ -328,7 +331,7 @@ public sealed class ArtistAiQuestionService
         IReadOnlyList<ArtistReleaseFact> releases = [];
         IReadOnlyList<ArtistTrackFact> releaseTracks = [];
         IReadOnlyList<WebSearchResult> webResults = [];
-        WikipediaSummary? wikipedia = null;
+        MusicGroundingResult musicGrounding = MusicGroundingResult.Empty;
 
         if (plan.UseProfile)
         {
@@ -343,18 +346,63 @@ public sealed class ArtistAiQuestionService
                 ToolName: "artist.profile",
                 Detail: profile.MonthlyListeners > 0 ? $"{profile.MonthlyListeners:N0} monthly listeners" : null));
 
-            if (_wikipedia is not null)
+            if (_musicGrounding?.IsAvailable == true)
             {
                 activity.Report(new AiActivityEvent(
                     AiActivityKind.ToolStarted,
-                    "Looking up Wikipedia",
+                    "Looking up music sources",
+                    ToolName: "music.grounding"));
+                try
+                {
+                    musicGrounding = await _musicGrounding.GetGroundingAsync(
+                            new MusicGroundingRequest(
+                                MusicGroundingKind.Artist,
+                                ArtistName: request.ArtistName,
+                                MaxSources: 5),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    activity.Report(new AiActivityEvent(
+                        AiActivityKind.ToolCompleted,
+                        musicGrounding.Sources.Count == 0
+                            ? "No music sources found"
+                            : $"Loaded {musicGrounding.Sources.Count} music source{(musicGrounding.Sources.Count == 1 ? "" : "s")}",
+                        ToolName: "music.grounding"));
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger?.LogDebug(ex, "Music grounding failed for {Artist}", request.ArtistName);
+                    activity.Report(new AiActivityEvent(
+                        AiActivityKind.Warning,
+                        "Music grounding failed",
+                        ToolName: "music.grounding",
+                        Detail: ex.Message));
+                }
+            }
+            else if (_wikipedia is not null)
+            {
+                activity.Report(new AiActivityEvent(
+                    AiActivityKind.ToolStarted,
+                    "Looking up Wikipedia fallback",
                     ToolName: "wikipedia.lookup"));
                 try
                 {
-                    wikipedia = await _wikipedia.LookupArtistAsync(request.ArtistName, cancellationToken).ConfigureAwait(false);
+                    var wikipedia = await _wikipedia.LookupArtistAsync(request.ArtistName, cancellationToken).ConfigureAwait(false);
+                    if (wikipedia is not null && !string.IsNullOrWhiteSpace(wikipedia.Extract) && !string.IsNullOrWhiteSpace(wikipedia.Url))
+                    {
+                        musicGrounding = new MusicGroundingResult([
+                            new MusicGroundingSource(
+                                wikipedia.Title,
+                                wikipedia.Url!,
+                                wikipedia.Extract,
+                                "Wikipedia",
+                                MusicGroundingKind.Artist,
+                                IsMusicSpecific: false,
+                                Reliability: 0.45)
+                        ]);
+                    }
                     activity.Report(new AiActivityEvent(
                         AiActivityKind.ToolCompleted,
-                        wikipedia is null ? "No Wikipedia article found" : $"Loaded Wikipedia summary for {wikipedia.Title}",
+                        musicGrounding.Sources.Count == 0 ? "No Wikipedia article found" : $"Loaded Wikipedia summary for {musicGrounding.Sources[0].Title}",
                         ToolName: "wikipedia.lookup"));
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -454,7 +502,7 @@ public sealed class ArtistAiQuestionService
             }
         }
 
-        return new ArtistQuestionContext(profile, topTracks, releases, releaseTracks, webResults, wikipedia);
+        return new ArtistQuestionContext(profile, topTracks, releases, releaseTracks, webResults, musicGrounding);
     }
 
     private static string BuildAnswerPrompt(
@@ -465,7 +513,7 @@ public sealed class ArtistAiQuestionService
         var sb = new StringBuilder();
         sb.AppendLine("You are Wavee's artist assistant inside a Spotify desktop client.");
         sb.AppendLine("Answer the user's artist question directly and concisely.");
-        sb.AppendLine("Treat evidence hierarchically: SPOTIFY_BIOGRAPHY and the artist catalog signals (POPULAR_TRACKS, RELEASES, TRACKS_FETCHED_FROM_RELEASES, PROFILE_SIGNALS) are primary evidence. WIKIPEDIA is reliable secondary context. WEB_RESULTS are supporting background — use them only when consistent with the above.");
+        sb.AppendLine("Treat evidence hierarchically: SPOTIFY_BIOGRAPHY and the artist catalog signals (POPULAR_TRACKS, RELEASES, TRACKS_FETCHED_FROM_RELEASES, PROFILE_SIGNALS) are primary evidence. MUSIC_GROUNDING is music-specific supporting context. WEB_RESULTS are lower-confidence background — use them only when consistent with the above.");
         sb.AppendLine("You may use trained music-domain knowledge for broad, well-known context, but do not invent precise facts not supported by the supplied signals.");
         sb.AppendLine("If the question asks for 'best', distinguish popularity, historical importance, and personal taste when helpful.");
         sb.AppendLine("If the question asks for lesser-known songs, avoid only naming the most popular tracks unless you explain why catalog data is limited.");
@@ -487,12 +535,16 @@ public sealed class ArtistAiQuestionService
             sb.AppendLine();
         }
 
-        if (context.Wikipedia is { } wiki && !string.IsNullOrWhiteSpace(wiki.Extract))
+        if (context.MusicGrounding.Sources.Count > 0)
         {
-            sb.AppendLine("WIKIPEDIA:");
-            if (!string.IsNullOrWhiteSpace(wiki.Description))
-                sb.Append("Summary: ").AppendLine(wiki.Description);
-            sb.AppendLine(TrimForPrompt(wiki.Extract, 1200));
+            sb.AppendLine("MUSIC_GROUNDING:");
+            foreach (var source in context.MusicGrounding.Sources.Take(5))
+            {
+                sb.Append("- ").Append(source.Title).Append(" — ").Append(TrimForPrompt(source.Snippet, 280));
+                if (!string.IsNullOrWhiteSpace(source.SourceName))
+                    sb.Append(" (").Append(source.SourceName).Append(')');
+                sb.AppendLine();
+            }
             sb.AppendLine();
         }
 
@@ -1046,7 +1098,7 @@ public sealed class ArtistAiQuestionService
         IReadOnlyList<ArtistReleaseFact> Releases,
         IReadOnlyList<ArtistTrackFact> ReleaseTracks,
         IReadOnlyList<WebSearchResult> WebResults,
-        WikipediaSummary? Wikipedia);
+        MusicGroundingResult MusicGrounding);
 
     private sealed record ArtistQuestionPlan(
         ArtistQuestionIntent Intent,

@@ -231,7 +231,8 @@
                                                             VerticalAlignment="Center"
                                                             Visibility="{x:Bind ViewModel.Header.HasWorldRank, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                                    <TextBlock Text="WORLD RANK"
+                                                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_100"
+                                                                       Text="WORLD RANK"
                                                                        FontSize="10"
                                                                        FontWeight="Bold"
                                                                        CharacterSpacing="140"
@@ -264,7 +265,8 @@
                                                                           HorizontalAlignment="Center"
                                                                           VerticalAlignment="Center"/>
                                                         </Grid>
-                                                        <TextBlock Text="VERIFIED ARTIST"
+                                                        <TextBlock x:Uid="Views_ArtistPage__TextBlock_101"
+                                                                       Text="VERIFIED ARTIST"
                                                                        FontSize="11"
                                                                        FontWeight="Bold"
                                                                        CharacterSpacing="140"
@@ -285,7 +287,8 @@
                                                                       FontSize="12"
                                                                       Foreground="{ThemeResource WorldRankBadgeForegroundBrush}"
                                                                       VerticalAlignment="Center"/>
-                                                        <TextBlock Text="ARTIST PROFILE"
+                                                        <TextBlock x:Uid="Views_ArtistPage__TextBlock_102"
+                                                                       Text="ARTIST PROFILE"
                                                                        FontSize="11"
                                                                        FontWeight="Bold"
                                                                        CharacterSpacing="140"
@@ -415,11 +418,12 @@
                                                             CornerRadius="22">
                                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                                     <FontIcon Glyph="&#xEC05;" FontSize="13"/>
-                                                    <TextBlock Text="Artist radio"/>
+                                                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_103" Text="Artist radio"/>
                                                 </StackPanel>
                                             </Button>
 
-                                            <Button Style="{StaticResource SubtleButtonStyle}"
+                                            <Button x:Uid="Views_ArtistPage__Button_104"
+                                                            Style="{StaticResource SubtleButtonStyle}"
                                                             Width="44" Height="44"
                                                             Padding="0"
                                                             CornerRadius="22"
@@ -428,7 +432,8 @@
                                                 <FontIcon Glyph="&#xE72D;" FontSize="13"/>
                                             </Button>
 
-                                            <Button Style="{StaticResource SubtleButtonStyle}"
+                                            <Button x:Uid="Views_ArtistPage__Button_105"
+                                                            Style="{StaticResource SubtleButtonStyle}"
                                                             Width="44" Height="44"
                                                             Padding="0"
                                                             CornerRadius="22"
@@ -436,12 +441,12 @@
                                                 <FontIcon Glyph="&#xE712;" FontSize="13"/>
                                                 <Button.Flyout>
                                                     <MenuFlyout>
-                                                        <MenuFlyoutItem Text="Copy link to artist" Click="CopyArtistLink_Click">
+                                                        <MenuFlyoutItem x:Uid="Views_ArtistPage__MenuFlyoutItem_106" Text="Copy link to artist" Click="CopyArtistLink_Click">
                                                             <MenuFlyoutItem.Icon>
                                                                 <FontIcon Glyph="&#xE71B;"/>
                                                             </MenuFlyoutItem.Icon>
                                                         </MenuFlyoutItem>
-                                                        <MenuFlyoutItem Text="Open in Spotify" Click="OpenInSpotify_Click">
+                                                        <MenuFlyoutItem x:Uid="Views_ArtistPage__MenuFlyoutItem_107" Text="Open in Spotify" Click="OpenInSpotify_Click">
                                                             <MenuFlyoutItem.Icon>
                                                                 <FontIcon Glyph="&#xE8A7;"/>
                                                             </MenuFlyoutItem.Icon>
@@ -515,7 +520,8 @@
                                     <Border Width="3" MinHeight="22" CornerRadius="1.5"
                                     VerticalAlignment="Stretch"
                                     Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                    <TextBlock Text="Top tracks &amp; popular releases"
+                                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_108"
+                                       Text="Top tracks &amp; popular releases"
                                        Style="{StaticResource SubtitleTextBlockStyle}"
                                        FontWeight="SemiBold"
                                        VerticalAlignment="Center"/>
@@ -629,9 +635,10 @@
                         <!--  ════════════════════════════════════════════════════════
                       [3] ABOUT EXCERPT
                       ════════════════════════════════════════════════════════ -->
-                        <ai:AiTextCard x:Name="AboutExcerptSection"
+                        <ai:AiTextCard x:Uid="Views_ArtistPage__AiTextCard_109"
+                                       x:Name="AboutExcerptSection"
                                        Title="ABOUT THIS ARTIST"
-                                       IsAvailable="{x:Bind ViewModel.Bio.IsAiBioCardVisible, Mode=OneWay}"
+                                       IsAvailable="{x:Bind ViewModel.Bio.IsAiBioSummaryCardVisible, Mode=OneWay}"
                                        IsGenerating="{x:Bind ViewModel.Bio.IsAiBioGenerating, Mode=OneWay}"
                                        Text="{x:Bind ViewModel.Bio.BioSummaryText, Mode=OneWay}"
                                        EmptyText="{x:Bind ViewModel.Bio.BioSummaryUnavailableText, Mode=OneWay}"
@@ -642,10 +649,43 @@
                                        WordIntervalMs="90"
                                        RevealCompleted="OnBioRevealCompleted">
                             <ai:AiTextCard.FooterContent>
-                                <HyperlinkButton Content="Read full biography ?"
-                                                 FontSize="12"
-                                                 Padding="0,2"
-                                                 Click="ReadFullBioLink_Click"/>
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="14"
+                                            VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="8"
+                                                VerticalAlignment="Center"
+                                                Visibility="{x:Bind ViewModel.Bio.HasBioSummarySources, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBlock x:Uid="Views_ArtistPage__TextBlock_110"
+                                                   Text="Sources"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   VerticalAlignment="Center" />
+                                        <ItemsControl ItemsSource="{x:Bind ViewModel.Bio.BioSummarySources, Mode=OneWay}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal" Spacing="8" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <HyperlinkButton NavigateUri="{Binding NavigateUri}"
+                                                                     Padding="0"
+                                                                     VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Label}"
+                                                                   MaxWidth="140"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                    </HyperlinkButton>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                    <HyperlinkButton x:Uid="Views_ArtistPage__HyperlinkButton_111"
+                                                     Content="Read full biography ?"
+                                                     FontSize="12"
+                                                     Padding="0,2"
+                                                     Click="ReadFullBioLink_Click"/>
+                                </StackPanel>
                             </ai:AiTextCard.FooterContent>
                         </ai:AiTextCard>
 
@@ -666,7 +706,8 @@
                                     <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                     VerticalAlignment="Stretch"
                                     Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                    <TextBlock Text="Albums"
+                                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_112"
+                                       Text="Albums"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        FontSize="16"
                                        VerticalAlignment="Center"/>
@@ -725,7 +766,8 @@
                                     <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                     VerticalAlignment="Stretch"
                                     Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                    <TextBlock Text="Singles &amp; EPs"
+                                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_113"
+                                       Text="Singles &amp; EPs"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        FontSize="16"
                                        VerticalAlignment="Center"/>
@@ -781,7 +823,8 @@
                                     <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                     VerticalAlignment="Stretch"
                                     Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                    <TextBlock Text="Appears on"
+                                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_114"
+                                       Text="Appears on"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        FontSize="16"
                                        VerticalAlignment="Center"/>
@@ -829,7 +872,8 @@
                         <!--  ════════════════════════════════════════════════════════
                       [6] MUSIC VIDEOS — horizontal 16:9 shelf
                       ════════════════════════════════════════════════════════ -->
-                        <shelf:SectionShelf Title="Music videos"
+                        <shelf:SectionShelf x:Uid="Views_ArtistPage__SectionShelf_115"
+                                    Title="Music videos"
                                     ItemsSource="{x:Bind ViewModel.Extras.MusicVideos, Mode=OneWay}"
                                     MinItemWidth="280" MaxItemWidth="280" Spacing="14"
                                     Visibility="{x:Bind ViewModel.Extras.HasMusicVideos, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -849,7 +893,8 @@
                         <!--  ════════════════════════════════════════════════════════
                       [7] PLAYLISTS & DISCOVERY
                       ════════════════════════════════════════════════════════ -->
-                        <shelf:SectionShelf Title="Playlists and discovery"
+                        <shelf:SectionShelf x:Uid="Views_ArtistPage__SectionShelf_116"
+                                    Title="Playlists and discovery"
                                     ItemsSource="{x:Bind ViewModel.Extras.Playlists, Mode=OneWay}"
                                     MinItemWidth="170" MaxItemWidth="190" Spacing="14"
                                     Visibility="{x:Bind ViewModel.Extras.HasPlaylists, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -883,7 +928,8 @@
                                     <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                     VerticalAlignment="Stretch"
                                     Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                    <TextBlock Text="Upcoming concerts"
+                                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_117"
+                                       Text="Upcoming concerts"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        FontSize="16"
                                        VerticalAlignment="Center"/>
@@ -924,7 +970,8 @@
                                     <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                     VerticalAlignment="Stretch"
                                     Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                    <TextBlock Text="Merch"
+                                    <TextBlock x:Uid="Views_ArtistPage__TextBlock_118"
+                                       Text="Merch"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        FontSize="16"
                                        VerticalAlignment="Center"/>
@@ -983,7 +1030,8 @@
                                             <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                             VerticalAlignment="Stretch"
                                             Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                            <TextBlock Text="Biography"
+                                            <TextBlock x:Uid="Views_ArtistPage__TextBlock_119"
+                                               Text="Biography"
                                                Style="{StaticResource BodyStrongTextBlockStyle}"
                                                FontSize="16"
                                                VerticalAlignment="Center"/>
@@ -995,7 +1043,7 @@
                                                 BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                                                 BorderThickness="1"
                                                 Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                                                x:Load="{x:Bind ViewModel.Bio.IsAiBioCardVisible, Mode=OneWay}">
+                                                x:Load="{x:Bind ViewModel.Bio.IsAiBioSummaryCardVisible, Mode=OneWay}">
                                             <StackPanel Orientation="Horizontal" Spacing="0">
                                                 <ToggleButton x:Name="SpotifyBiographyToggle"
                                                               Content="Spotify"
@@ -1050,7 +1098,8 @@
                                         <!-- Listened to most in -->
                                         <StackPanel x:Name="StackPanel23" Spacing="6"
                                             x:Load="{x:Bind ViewModel.Extras.HasTopCities, Mode=OneWay}">
-                                            <TextBlock Text="Listened to most in"
+                                            <TextBlock x:Uid="Views_ArtistPage__TextBlock_120"
+                                               Text="Listened to most in"
                                                Style="{StaticResource CaptionTextBlockStyle}"
                                                FontWeight="SemiBold"
                                                CharacterSpacing="60"
@@ -1085,6 +1134,7 @@
                                     <ai:AiTextCard x:Name="FullBiographyAiCard"
                                                    ShowChrome="False"
                                                    ShowHeader="False"
+                                                   IsCollapsible="False"
                                                    IsAvailable="{x:Bind IsAiBiographySelected, Mode=OneWay}"
                                                    IsGenerating="{x:Bind ViewModel.Bio.IsAiBioGenerating, Mode=OneWay}"
                                                    Text="{x:Bind ViewModel.Bio.BioSummaryText, Mode=OneWay}"
@@ -1110,7 +1160,8 @@
                                                                Width="14"
                                                                Height="14"
                                                                Foreground="{ThemeResource AiAccentSolidBrush}"/>
-                                                <TextBlock Text="Ask AI"
+                                                <TextBlock x:Uid="Views_ArtistPage__TextBlock_121"
+                                                           Text="Ask AI"
                                                            Style="{StaticResource CaptionTextBlockStyle}"
                                                            FontWeight="SemiBold"
                                                            CharacterSpacing="80"
@@ -1123,11 +1174,13 @@
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
 
-                                                <TextBox Grid.Column="0"
+                                                <TextBox x:Uid="Views_ArtistPage__TextBox_122"
+                                                         Grid.Column="0"
                                                          PlaceholderText="Ask for old songs, best tracks, deep cuts..."
                                                          Text="{x:Bind ViewModel.Bio.AskAiQuestionText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                          MaxLength="180"/>
-                                                <Button Grid.Column="1"
+                                                <Button x:Uid="Views_ArtistPage__Button_123"
+                                                        Grid.Column="1"
                                                         Content="Ask"
                                                         MinWidth="72"
                                                         Command="{x:Bind ViewModel.Bio.AskArtistAiCommand}"/>
@@ -1223,7 +1276,8 @@
                                                                                MaxLines="1"/>
                                                                 </StackPanel>
 
-                                                                <Button Grid.Column="2"
+                                                                <Button x:Uid="Views_ArtistPage__Button_124"
+                                                                        Grid.Column="2"
                                                                         Tag="{Binding}"
                                                                         Click="AskAiRecommendationPlay_Click"
                                                                         ToolTipService.ToolTip="Play"
@@ -1233,7 +1287,8 @@
                                                                         Padding="0">
                                                                     <FontIcon Glyph="&#xE768;" FontSize="13"/>
                                                                 </Button>
-                                                                <Button Grid.Column="3"
+                                                                <Button x:Uid="Views_ArtistPage__Button_125"
+                                                                        Grid.Column="3"
                                                                         Tag="{Binding}"
                                                                         Click="AskAiRecommendationOpen_Click"
                                                                         ToolTipService.ToolTip="Open"
@@ -1251,6 +1306,7 @@
 
                                             <ai:AiTextCard ShowChrome="False"
                                                            ShowHeader="False"
+                                                           IsCollapsible="False"
                                                            IsAvailable="{x:Bind ViewModel.Bio.HasAskAiAnswer, Mode=OneWay}"
                                                            IsGenerating="{x:Bind ViewModel.Bio.IsAskAiBusy, Mode=OneWay}"
                                                            Text="{x:Bind ViewModel.Bio.AskAiAnswerText, Mode=OneWay}"
@@ -1276,7 +1332,8 @@
                                         <Border Width="3" MinHeight="20" CornerRadius="1.5"
                                         VerticalAlignment="Stretch"
                                         Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                        <TextBlock Text="Profile facts"
+                                        <TextBlock x:Uid="Views_ArtistPage__TextBlock_126"
+                                           Text="Profile facts"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            FontSize="16"
                                            VerticalAlignment="Center"/>
@@ -1291,27 +1348,33 @@
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
-                                        <cards:StatCard Grid.Row="0" Grid.Column="0"
+                                        <cards:StatCard x:Uid="Views_ArtistPage__StatCard_127"
+                                                Grid.Row="0" Grid.Column="0"
                                                 Number="{x:Bind ViewModel.Header.MonthlyListeners, Mode=OneWay, FallbackValue=''}"
                                                 Label="monthly listeners"
                                                 AccentBrush="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                        <cards:StatCard Grid.Row="0" Grid.Column="1"
+                                        <cards:StatCard x:Uid="Views_ArtistPage__StatCard_128"
+                                                Grid.Row="0" Grid.Column="1"
                                                 Number="{x:Bind ViewModel.Header.FollowersFormatted, Mode=OneWay, FallbackValue=''}"
                                                 Label="followers"
                                                 AccentBrush="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                        <cards:StatCard Grid.Row="1" Grid.Column="0"
+                                        <cards:StatCard x:Uid="Views_ArtistPage__StatCard_129"
+                                                Grid.Row="1" Grid.Column="0"
                                                 Number="{x:Bind ViewModel.Discography.AlbumsTotalCount, Mode=OneWay}"
                                                 Label="albums"
                                                 AccentBrush="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                        <cards:StatCard Grid.Row="1" Grid.Column="1"
+                                        <cards:StatCard x:Uid="Views_ArtistPage__StatCard_130"
+                                                Grid.Row="1" Grid.Column="1"
                                                 Number="{x:Bind ViewModel.Discography.SinglesTotalCount, Mode=OneWay}"
                                                 Label="singles &amp; EPs"
                                                 AccentBrush="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                        <cards:StatCard Grid.Row="2" Grid.Column="0"
+                                        <cards:StatCard x:Uid="Views_ArtistPage__StatCard_131"
+                                                Grid.Row="2" Grid.Column="0"
                                                 Number="{x:Bind ViewModel.Header.ConcertCount, Mode=OneWay}"
                                                 Label="upcoming concerts"
                                                 AccentBrush="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                        <cards:StatCard Grid.Row="2" Grid.Column="1"
+                                        <cards:StatCard x:Uid="Views_ArtistPage__StatCard_132"
+                                                Grid.Row="2" Grid.Column="1"
                                                 Number="{x:Bind ViewModel.RelatedArtists.RelatedArtists.Count, Mode=OneWay}"
                                                 Label="related artists"
                                                 AccentBrush="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
@@ -1330,7 +1393,8 @@
                                 <Border Width="3" MinHeight="22" CornerRadius="1.5"
                                 VerticalAlignment="Stretch"
                                 Background="{x:Bind ViewModel.Header.SectionAccentBrush, Mode=OneWay}"/>
-                                <TextBlock Text="Gallery"
+                                <TextBlock x:Uid="Views_ArtistPage__TextBlock_133"
+                                   Text="Gallery"
                                    Style="{StaticResource SubtitleTextBlockStyle}"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"/>
@@ -1352,14 +1416,15 @@
                         <!--  ════════════════════════════════════════════════════════
                       [11] FANS ALSO LIKE
                       ════════════════════════════════════════════════════════ -->
-                        <shelf:SectionShelf Title="Fans also like"
+                        <shelf:SectionShelf x:Uid="Views_ArtistPage__SectionShelf_134"
+                                    Title="Fans also like"
                                     x:Name="FansAlsoLike"
                                     ItemsSource="{x:Bind ViewModel.RelatedArtists.RelatedArtists, Mode=OneWay}"
                                     MinItemWidth="140"
                                     x:Load="{x:Bind ViewModel.RelatedArtists.HasRelatedArtists, Mode=OneWay}">
                             <shelf:SectionShelf.ItemTemplate>
                                 <DataTemplate x:DataType="vm:RelatedArtistVm">
-                                    <cards:ContentCard
+                                    <cards:ContentCard x:Uid="Views_ArtistPage__ContentCard_135"
                                 ImageUrl="{x:Bind ImageUrl}"
                                 Title="{x:Bind Name}"
                                 Subtitle="Artist"
@@ -1584,7 +1649,8 @@
                     </DataTemplate>
                 </FlipView.ItemTemplate>
             </FlipView>
-            <Button x:Name="GalleryLightboxClose"
+            <Button x:Uid="Views_ArtistPage__Button_136"
+                    x:Name="GalleryLightboxClose"
                     Click="GalleryLightboxClose_Click"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Top"

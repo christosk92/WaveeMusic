@@ -103,10 +103,7 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
     /// <summary>
     /// Fan out CanExecute notifications to every capability-gated command on
     /// this VM. Called by the parent whenever the header's envelope (and thus
-    /// the capability bits) changes. Also re-evaluates the recommendations
-    /// auto-trigger because CanEditItems may have just flipped true after
-    /// tracks already loaded (capabilities arrive on a different envelope
-    /// than the track list).
+    /// the capability bits) changes.
     /// </summary>
     public void NotifyPlaylistCapabilityCommandsChanged()
     {
@@ -124,8 +121,6 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
         OnPropertyChanged(nameof(CanEditCollaborative));
         OnPropertyChanged(nameof(CanEditItems));
         OnPropertyChanged(nameof(CanDelete));
-
-        MaybeAutoLoadRecommendations();
     }
 
     // ── Inline edit (rename + description) ───────────────────────────────────
@@ -399,8 +394,7 @@ public sealed partial class PlaylistMutationCoordinator : ObservableObject
             var recs = await _playlistMutationService.GetPlaylistRecommendationsAsync(playlistId, skipUris, numResults: 20)
                 .ConfigureAwait(true);
 
-            _recommendedTracks.Clear();
-            foreach (var rec in recs) _recommendedTracks.Add(rec);
+            Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(_recommendedTracks, recs);
             HasRecommendedTracks = _recommendedTracks.Count > 0;
         }
         catch (Exception ex)

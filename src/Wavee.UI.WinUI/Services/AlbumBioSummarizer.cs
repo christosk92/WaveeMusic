@@ -15,9 +15,10 @@ namespace Wavee.UI.WinUI.Services;
 /// Generates a short on-device "About this album" paragraph for the album page.
 /// Mirrors the <see cref="ArtistBioSummarizer"/> pattern: gates through
 /// <see cref="AiCapabilities"/>, uses plain-text Phi Silica streaming, caches
-/// per album URI, and grounds output with Wikipedia (album lookup) + a single
-/// DuckDuckGo lite web search alongside the supplied Spotify metadata
-/// (tracklist, release year, label, total duration).
+/// per album URI, and grounds output with music-specific metadata snippets
+/// alongside the supplied Spotify metadata (tracklist, release year, label,
+/// total duration). If no album-specific external source is found, the caller
+/// hides the card instead of asking the model to improvise.
 /// </summary>
 public sealed class AlbumBioSummarizer
 {
@@ -25,6 +26,7 @@ public sealed class AlbumBioSummarizer
     private readonly ILanguageModelClient _model;
     private readonly IWebSearchToolProvider? _webSearch;
     private readonly IWikipediaLookup? _wikipedia;
+    private readonly IMusicGroundingProvider? _musicGrounding;
     private readonly ILogger? _logger;
 
     private readonly ConcurrentDictionary<string, Lazy<Task<LyricsAiResult>>> _requests =
@@ -39,12 +41,14 @@ public sealed class AlbumBioSummarizer
     public AlbumBioSummarizer(
         AiCapabilities capabilities,
         ILanguageModelClient model,
+        IMusicGroundingProvider? musicGrounding = null,
         IWebSearchToolProvider? webSearch = null,
         IWikipediaLookup? wikipedia = null,
         ILogger<AlbumBioSummarizer>? logger = null)
     {
         _capabilities = capabilities ?? throw new ArgumentNullException(nameof(capabilities));
         _model = model ?? throw new ArgumentNullException(nameof(model));
+        _musicGrounding = musicGrounding;
         _webSearch = webSearch;
         _wikipedia = wikipedia;
         _logger = logger;
@@ -53,8 +57,8 @@ public sealed class AlbumBioSummarizer
     /// <summary>
     /// Asks Phi Silica for a short editorial paragraph about the album. Cached
     /// in-memory per <paramref name="albumUri"/>; concurrent callers share one
-    /// in-flight Lazy task. Web search + Wikipedia run in parallel and feed
-    /// the prompt as supporting evidence behind the supplied tracklist + label.
+    /// in-flight Lazy task. Music grounding feeds the prompt as supporting
+    /// evidence behind the supplied tracklist + label.
     /// </summary>
     public Task<LyricsAiResult> SummarizeAlbumAsync(
         string albumUri,
@@ -101,7 +105,7 @@ public sealed class AlbumBioSummarizer
         if (cached.Kind != LyricsAiResultKind.Ok)
             return false;
 
-        result = LyricsAiResult.Ok(cached.Text, fromCache: true);
+        result = cached.WithCacheState(fromCache: true);
         return true;
     }
 
@@ -139,8 +143,15 @@ public sealed class AlbumBioSummarizer
             return LyricsAiResult.Unavailable;
         }
 
-        var webResultsTask = FetchWebGroundingAsync(albumTitle, artistName);
-        var wikipediaTask = FetchWikipediaAsync(albumTitle, artistName);
+        var grounding = await FetchMusicGroundingAsync(albumTitle, artistName).ConfigureAwait(false);
+        if (!HasStrongAlbumGrounding(albumTitle, artistName, grounding))
+        {
+            _logger?.LogDebug(
+                "SummarizeAlbumAsync skipped for {Artist}/{Album}: no album-specific external grounding.",
+                artistName,
+                albumTitle);
+            return LyricsAiResult.UnavailableWithReason("insufficient_grounding");
+        }
 
         if (!await _capabilities.EnsureLanguageModelReadyAsync())
         {
@@ -149,14 +160,66 @@ public sealed class AlbumBioSummarizer
             return LyricsAiResult.Unavailable;
         }
 
-        var webResults = await webResultsTask.ConfigureAwait(false);
-        var wikipedia = await wikipediaTask.ConfigureAwait(false);
-
         return await GeneratePlainTextAlbumBioAsync(
             albumUri,
-            BuildAlbumBioPrompt(albumTitle, artistName, releaseYear, trackTitles, label, totalDurationDisplay, wikipedia, webResults),
-            BuildAlbumBioFallbackPrompt(albumTitle, artistName, releaseYear, wikipedia, webResults),
+            BuildAlbumBioPrompt(albumTitle, artistName, releaseYear, trackTitles, label, totalDurationDisplay, grounding),
+            BuildAlbumBioFallbackPrompt(albumTitle, artistName, releaseYear, grounding),
+            grounding.Sources,
             deltaProgress);
+    }
+
+    private async Task<MusicGroundingResult> FetchMusicGroundingAsync(string albumTitle, string? artistName)
+    {
+        if (_musicGrounding?.IsAvailable == true)
+        {
+            try
+            {
+                return await _musicGrounding.GetGroundingAsync(
+                        new MusicGroundingRequest(
+                            MusicGroundingKind.Album,
+                            ArtistName: artistName,
+                            AlbumTitle: albumTitle,
+                            MaxSources: 5))
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Album music grounding failed for {Artist}/{Album}", artistName, albumTitle);
+            }
+        }
+
+        var webResults = await FetchWebGroundingAsync(albumTitle, artistName).ConfigureAwait(false);
+        var sources = webResults
+            .Where(r => !string.IsNullOrWhiteSpace(r.Title) && !string.IsNullOrWhiteSpace(r.Url))
+            .Where(r => IsAlbumSpecificSource(albumTitle, artistName, r.Title, r.Snippet, r.Url))
+            .Take(5)
+            .Select(r => new MusicGroundingSource(
+                r.Title,
+                r.Url,
+                r.Snippet,
+                r.Source ?? SourceNameFromUrl(r.Url),
+                MusicGroundingKind.Album,
+                IsMusicSpecific: true,
+                Reliability: 0.5))
+            .ToList();
+
+        if (sources.Count == 0)
+        {
+            var wikipedia = await FetchWikipediaAsync(albumTitle, artistName).ConfigureAwait(false);
+            if (wikipedia is { } wiki && !string.IsNullOrWhiteSpace(wiki.Extract) && !string.IsNullOrWhiteSpace(wiki.Url))
+            {
+                sources.Add(new MusicGroundingSource(
+                    wiki.Title,
+                    wiki.Url!,
+                    TrimForPrompt(wiki.Extract, 320),
+                    "Wikipedia",
+                    MusicGroundingKind.Album,
+                    IsMusicSpecific: false,
+                    Reliability: 0.45));
+            }
+        }
+
+        return sources.Count == 0 ? MusicGroundingResult.Empty : new MusicGroundingResult(sources);
     }
 
     private async Task<IReadOnlyList<WebSearchResult>> FetchWebGroundingAsync(string albumTitle, string? artistName)
@@ -201,6 +264,7 @@ public sealed class AlbumBioSummarizer
         string albumUri,
         string prompt,
         string fallbackPrompt,
+        IReadOnlyList<MusicGroundingSource> sources,
         IProgress<string>? deltaProgress)
     {
         var response = await _model.GenerateTextAsync(
@@ -223,7 +287,7 @@ public sealed class AlbumBioSummarizer
             return ToPlainTextFailureResult(albumUri, response);
 
         var text = CleanBio(response.Text);
-        if (string.IsNullOrWhiteSpace(text) && !usedFallback)
+        if ((string.IsNullOrWhiteSpace(text) || AiGeneratedTextGuard.IsInvalidGeneratedText(text)) && !usedFallback)
         {
             response = await _model.GenerateTextAsync(
                 new AiTextGenerationRequest(fallbackPrompt, 0.3f, "SummarizeAlbumBioFallbackEmpty"),
@@ -236,9 +300,12 @@ public sealed class AlbumBioSummarizer
             text = CleanBio(response.Text);
         }
 
+        if (AiGeneratedTextGuard.IsInvalidGeneratedText(text))
+            return LyricsAiResult.UnavailableWithReason("invalid_generation");
+
         return string.IsNullOrWhiteSpace(text)
             ? LyricsAiResult.Error("Phi Silica returned an empty album summary.")
-            : LyricsAiResult.Ok(text, fromCache: false);
+            : LyricsAiResult.Ok(text, fromCache: false, sources);
     }
 
     private LyricsAiResult ToPlainTextFailureResult(string albumUri, AiGenerationResult generated)
@@ -285,21 +352,22 @@ public sealed class AlbumBioSummarizer
         IReadOnlyList<string>? trackTitles,
         string? label,
         string? totalDurationDisplay,
-        WikipediaSummary? wikipedia,
-        IReadOnlyList<WebSearchResult> webResults)
+        MusicGroundingResult grounding)
     {
         var sb = new StringBuilder();
-        sb.Append("Write one rich editorial paragraph (3 to 5 sentences, around 90 to 140 words) ");
-        sb.Append("for an album page. Treat the supplied evidence hierarchically: ");
+        sb.Append("Write one factual album-page paragraph (2 to 3 sentences, around 50 to 90 words). ");
+        sb.Append("Treat the supplied evidence hierarchically: ");
         sb.Append("ALBUM_FACTS (title, artist, year, tracklist, label) are authoritative. ");
-        sb.Append("WIKIPEDIA is reliable secondary context for the recording, era, and reception. ");
-        sb.Append("WEB_RESULTS are supporting background — use them only when consistent with the above. ");
+        sb.Append("MUSIC_GROUNDING is supporting external metadata; use it only when it is clearly about this same album. ");
         sb.Append("Trained music-domain knowledge is last and only when broadly known. ");
-        sb.Append("Do not invent producers, recording dates, chart positions, sales numbers, or critical-reception claims that don't appear in the supplied evidence. ");
-        sb.Append("Be concrete about sound, mood, era, and any standout tracks. ");
-        sb.Append("Avoid stock phrases such as \"resonates deeply\", \"captivates listeners\", \"unique blend\", and \"musical journey\". ");
+        sb.Append("If the evidence is not enough to write the paragraph, output exactly NO_ALBUM_SUMMARY and nothing else. ");
+        sb.Append("Never mention the prompt, instructions, evidence names, missing Spotify/Wikipedia/web data, or inability to answer. ");
+        sb.Append("Do not invent producers, recording dates, chart positions, sales numbers, scenes, influence, critical reception, or release impact. ");
+        sb.Append("Do not call the album acclaimed, influential, experimental, singular, important, or documented unless the supplied evidence says so. ");
+        sb.Append("If evidence is thin, stay terse and descriptive instead of writing a review. ");
+        sb.Append("Avoid stock phrases such as \"resonates deeply\", \"captivates listeners\", \"unique blend\", \"musical journey\", \"sonic exploration\", and \"stands as\". ");
         sb.Append("When naming songs from the album, prefer titles from the TRACKLIST below — those are the album's actual tracks. ");
-        sb.Append("Mention two to four track titles by name in straight double quotes (e.g. \"Track Name\") so they can be cross-referenced. ");
+        sb.Append("Mention at most two track titles by name in straight double quotes (e.g. \"Track Name\") so they can be cross-referenced. ");
         sb.Append("Do not invent track names that don't appear in the supplied tracklist. ");
         sb.Append("Do not use bullets, headings, or markdown. Plain prose only.\n\n");
 
@@ -323,16 +391,7 @@ public sealed class AlbumBioSummarizer
             sb.AppendLine();
         }
 
-        if (wikipedia is { } wiki && !string.IsNullOrWhiteSpace(wiki.Extract))
-        {
-            sb.Append("WIKIPEDIA:\n");
-            if (!string.IsNullOrWhiteSpace(wiki.Description))
-                sb.Append("Summary: ").AppendLine(wiki.Description);
-            sb.AppendLine(TrimForPrompt(wiki.Extract, 1200));
-            sb.AppendLine();
-        }
-
-        AppendWebResultsBlock(sb, webResults);
+        AppendMusicGroundingBlock(sb, grounding.Sources);
 
         return sb.ToString();
     }
@@ -341,46 +400,41 @@ public sealed class AlbumBioSummarizer
         string albumTitle,
         string? artistName,
         int? releaseYear,
-        WikipediaSummary? wikipedia,
-        IReadOnlyList<WebSearchResult> webResults)
+        MusicGroundingResult grounding)
     {
         var sb = new StringBuilder();
-        sb.Append("Write one rich editorial paragraph (3 to 4 sentences, around 80 to 120 words) introducing the album \"");
+        sb.Append("Write one factual paragraph (2 sentences, around 45 to 75 words) introducing the album \"");
         sb.Append(albumTitle);
         if (!string.IsNullOrWhiteSpace(artistName))
             sb.Append("\" by ").Append(artistName);
         if (releaseYear is { } year && year > 0)
             sb.Append(" (").Append(year).Append(")");
-        sb.Append(". Use the supplied evidence first (album facts > Wikipedia > web), then trained knowledge for broad context. ");
-        sb.Append("Be specific about sound, mood, era, or notable tracks where possible, avoid stock promo language, and do not invent biographical facts. ");
+        sb.Append(". Use only supplied evidence first (album facts > music grounding), then broad music-domain knowledge for genre context only. ");
+        sb.Append("If there is not enough evidence, output exactly NO_ALBUM_SUMMARY and nothing else. ");
+        sb.Append("Never mention the prompt, instructions, missing evidence, Spotify biography, Wikipedia, web results, or inability to answer. ");
+        sb.Append("Avoid review language, hype, reception claims, and invented facts. ");
         sb.Append("Plain prose, no markdown, no bullets.\n\n");
 
-        if (wikipedia is { } wiki && !string.IsNullOrWhiteSpace(wiki.Extract))
-        {
-            sb.Append("WIKIPEDIA:\n");
-            sb.AppendLine(TrimForPrompt(wiki.Extract, 900));
-        }
-
-        AppendWebResultsBlock(sb, webResults);
+        AppendMusicGroundingBlock(sb, grounding.Sources);
 
         return sb.ToString();
     }
 
-    private static void AppendWebResultsBlock(StringBuilder sb, IReadOnlyList<WebSearchResult> webResults)
+    private static void AppendMusicGroundingBlock(StringBuilder sb, IReadOnlyList<MusicGroundingSource> sources)
     {
-        if (webResults is null || webResults.Count == 0)
+        if (sources is null || sources.Count == 0)
             return;
 
         var emitted = 0;
         var header = false;
-        foreach (var result in webResults)
+        foreach (var result in sources)
         {
             if (emitted >= 5) break;
             if (string.IsNullOrWhiteSpace(result.Title)) continue;
 
             if (!header)
             {
-                sb.Append("WEB_RESULTS:\n");
+                sb.Append("MUSIC_GROUNDING:\n");
                 header = true;
             }
 
@@ -390,13 +444,69 @@ public sealed class AlbumBioSummarizer
             sb.Append("- ").Append(result.Title.Trim());
             if (!string.IsNullOrWhiteSpace(snippet))
                 sb.Append(" — ").Append(snippet);
-            if (!string.IsNullOrWhiteSpace(result.Source))
-                sb.Append(" (").Append(result.Source).Append(')');
+            if (!string.IsNullOrWhiteSpace(result.SourceName))
+                sb.Append(" (").Append(result.SourceName).Append(')');
             sb.AppendLine();
             emitted++;
         }
 
         if (header) sb.AppendLine();
+    }
+
+    private static bool HasStrongAlbumGrounding(
+        string albumTitle,
+        string? artistName,
+        MusicGroundingResult grounding)
+    {
+        if (grounding.Sources.Count == 0)
+            return false;
+
+        return grounding.Sources.Any(source =>
+            (source.IsMusicSpecific || string.Equals(source.SourceName, "Wikipedia", StringComparison.OrdinalIgnoreCase))
+            && source.Reliability >= 0.45
+            && IsAlbumSpecificSource(albumTitle, artistName, source.Title, source.Snippet, source.Url));
+    }
+
+    private static bool IsAlbumSpecificSource(
+        string albumTitle,
+        string? artistName,
+        string? title,
+        string? snippet,
+        string? url)
+    {
+        var haystack = NormalizeForMatch(string.Join(" ", title, snippet, url));
+        if (string.IsNullOrEmpty(haystack))
+            return false;
+
+        var album = NormalizeForMatch(albumTitle);
+        var artist = NormalizeForMatch(artistName);
+        if (string.IsNullOrEmpty(album) || !haystack.Contains(album, StringComparison.Ordinal))
+            return false;
+
+        return string.IsNullOrEmpty(artist) || haystack.Contains(artist, StringComparison.Ordinal);
+    }
+
+    private static string SourceNameFromUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return "Web";
+
+        var host = uri.Host.ToLowerInvariant();
+        if (host.StartsWith("www.", StringComparison.Ordinal))
+            host = host[4..];
+
+        return host switch
+        {
+            "musicbrainz.org" => "MusicBrainz",
+            "genius.com" => "Genius",
+            "musixmatch.com" => "Musixmatch",
+            "discogs.com" => "Discogs",
+            "allmusic.com" => "AllMusic",
+            "last.fm" => "Last.fm",
+            "bandcamp.com" => "Bandcamp",
+            "songfacts.com" => "Songfacts",
+            _ => host,
+        };
     }
 
     private static string TrimForPrompt(string value, int maxCharacters)
@@ -409,6 +519,31 @@ public sealed class AlbumBioSummarizer
         if (lastSpace > maxCharacters / 2)
             trimmed = trimmed[..lastSpace];
         return trimmed.TrimEnd() + "...";
+    }
+
+    private static string NormalizeForMatch(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var normalized = value.ToLowerInvariant();
+        var sb = new StringBuilder(normalized.Length);
+        var previousSpace = false;
+        foreach (var c in normalized)
+        {
+            if (char.IsLetterOrDigit(c))
+            {
+                sb.Append(c);
+                previousSpace = false;
+            }
+            else if (!previousSpace)
+            {
+                sb.Append(' ');
+                previousSpace = true;
+            }
+        }
+
+        return sb.ToString().Trim();
     }
 
     private static string NormalizeAlbumUri(string albumUri)

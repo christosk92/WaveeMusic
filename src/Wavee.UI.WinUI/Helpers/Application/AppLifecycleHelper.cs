@@ -83,6 +83,8 @@ public static class AppLifecycleHelper
     /// </summary>
     public static Wavee.AudioIpc.AudioProcessManager? AudioProcessManager => _audioProcessManager;
 
+    internal static UiHandoffLaunchOptions? PendingUiHandoff { get; set; }
+
     /// <summary>
     /// Serilog level switch driving the file + in-memory sinks. Flipped at runtime by the
     /// "Verbose logging" toggle in the Diagnostics settings — no app restart required.
@@ -378,8 +380,12 @@ public static class AppLifecycleHelper
                 // App state services
                 .AddSingleton<Services.InPageFilterController>()
                 .AddSingleton<INotificationService, NotificationService>()
+                .AddSingleton<Services.UiRestartCoordinator>()
                 .AddSingleton<IUpdateService, UpdateService>()
                 .AddSingleton<IPlaybackStateService, PlaybackStateService>()
+                .AddSingleton<Services.SystemMediaTransportControlsService>()
+                .AddSingleton<Wavee.UI.Services.Playback.SleepTimerService>()
+                .AddSingleton<Wavee.UI.Contracts.IContentFilterService, Wavee.UI.Services.Library.ContentFilterService>()
                 // Per-session in-memory cache for music-video metadata. Fed
                 // by GraphQL response handlers on artist / album / search
                 // surfaces; consumed by the discovery service to avoid
@@ -514,6 +520,7 @@ public static class AppLifecycleHelper
                     sp.GetRequiredService<Services.Ai.ConfigurableWebSearchToolProvider>(),
                     sp.GetRequiredService<Services.Ai.DuckDuckGoLiteWebSearchProvider>()))
                 .AddSingleton<Wavee.AI.Tools.IWikipediaLookup, Services.Ai.WikipediaArticleLookup>()
+                .AddSingleton<Wavee.AI.Tools.IMusicGroundingProvider, Services.Ai.MusicWebGroundingProvider>()
                 .AddSingleton<Wavee.AI.Artists.ArtistAiQuestionService>()
                 .AddSingleton<AiCapabilities>()
                 .AddSingleton<LyricsAiService>()
@@ -789,6 +796,7 @@ public static class AppLifecycleHelper
                 .AddTransient<AlbumsLibraryViewModel>()
                 .AddTransient<ArtistsLibraryViewModel>()
                 .AddTransient<LikedSongsViewModel>()
+                .AddTransient<RecentlyPlayedViewModel>()
                 .AddTransient<YourEpisodesViewModel>()
                 .AddTransient<PlaylistViewModel>()
                 .AddTransient<CreatePlaylistViewModel>()
@@ -1163,16 +1171,61 @@ public static class AppLifecycleHelper
 
             // Now start the audio process (state/error events are already wired above)
             var clusterVol = (int)(session.PlaybackState?.CurrentState?.Volume ?? 0);
-            logger?.LogInformation("Starting audio process for user {User}, initialVolume={Vol}%", username, clusterVol);
-            var proxy = await _audioProcessManager.StartAsync(
-                username,
-                creds.AuthData,
-                session.Config.DeviceId,
-                initialVolumePercent: clusterVol,
-                audioPreset: audioCacheSettings?.AudioPreset,
-                audioCacheDirectory: audioCacheDirectory,
-                audioCacheMaxBytes: audioCacheMaxBytes,
-                CancellationToken.None);
+            Wavee.AudioIpc.AudioPipelineProxy proxy;
+            var pendingHandoff = PendingUiHandoff;
+            PendingUiHandoff = null;
+            if (pendingHandoff is not null)
+            {
+                try
+                {
+                    logger?.LogInformation(
+                        "Adopting existing audio process PID={Pid} for user {User}",
+                        pendingHandoff.AudioHostProcessId,
+                        username);
+                    proxy = await _audioProcessManager.AttachAsync(
+                        pendingHandoff.AudioHostProcessId,
+                        pendingHandoff.PipeName,
+                        pendingHandoff.SessionId,
+                        pendingHandoff.LaunchToken,
+                        username,
+                        creds.AuthData,
+                        session.Config.DeviceId,
+                        initialVolumePercent: clusterVol,
+                        audioPreset: audioCacheSettings?.AudioPreset,
+                        audioCacheDirectory: audioCacheDirectory,
+                        audioCacheMaxBytes: audioCacheMaxBytes,
+                        connectTimeout: TimeSpan.FromSeconds(90),
+                        ct: CancellationToken.None);
+                    pendingHandoff.TryDeleteFile();
+                }
+                catch (Exception ex)
+                {
+                    pendingHandoff.TryDeleteFile();
+                    logger?.LogWarning(ex, "Audio process adoption failed; starting a new audio process");
+                    proxy = await _audioProcessManager.StartAsync(
+                        username,
+                        creds.AuthData,
+                        session.Config.DeviceId,
+                        initialVolumePercent: clusterVol,
+                        audioPreset: audioCacheSettings?.AudioPreset,
+                        audioCacheDirectory: audioCacheDirectory,
+                        audioCacheMaxBytes: audioCacheMaxBytes,
+                        CancellationToken.None);
+                }
+            }
+            else
+            {
+                logger?.LogInformation("Starting audio process for user {User}, initialVolume={Vol}%", username, clusterVol);
+                proxy = await _audioProcessManager.StartAsync(
+                    username,
+                    creds.AuthData,
+                    session.Config.DeviceId,
+                    initialVolumePercent: clusterVol,
+                    audioPreset: audioCacheSettings?.AudioPreset,
+                    audioCacheDirectory: audioCacheDirectory,
+                    audioCacheMaxBytes: audioCacheMaxBytes,
+                    CancellationToken.None);
+            }
             await ApplyAudioPipelineSettingsAsync(proxy, settingsForAudioPipeline, logger, CancellationToken.None);
 
             // Create PlaybackOrchestrator — owns queue, track resolution, remote commands

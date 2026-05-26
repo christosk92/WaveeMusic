@@ -60,6 +60,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
     private bool _disposed;
     private bool _restoringSelection;
     private readonly HashSet<Track.TrackItem> _itemsViewRows = new();
+    private int _projectionDiagnosticGeneration;
     // Centralized LazyTrackItem.PropertyChanged subscription book-keeping. One
     // shared handler (_lazyItemHandler) is attached at most once per source
     // LazyTrackItem; the realized row is looked up via _rowByLazyItem on
@@ -1128,6 +1129,7 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
 
     private void ReprojectRows()
     {
+        using var _ = UiOperationProfiler.Instance?.Profile("trackGrid.reprojectRows");
         var selectedKeys = CaptureSelectedTrackKeys();
         var source = _sourceSnapshot;
         if (source.Count == 0)
@@ -1135,33 +1137,62 @@ public sealed partial class TrackDataGrid : UserControl, IDisposable
             if (_visibleRows.Count > 0)
                 _visibleRows.Clear();
             ApplyLoadingRowsVisibility();
+            QueueProjectionDiagnostic(0, 0);
             return;
         }
 
-        IEnumerable<ITrackItem> pipeline = source;
-
-        if (!string.IsNullOrWhiteSpace(_filterText))
+        var sortColumn = Columns?.SortColumn;
+        var hasFilter = !string.IsNullOrWhiteSpace(_filterText);
+        var hasSort = sortColumn is { SortKey: not null, SortDirection: not null };
+        List<object> rows;
+        if (!hasFilter && !hasSort)
         {
-            var q = _filterText;
-            pipeline = pipeline.Where(t =>
-                t.Title.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                t.ArtistName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                t.AlbumName.Contains(q, StringComparison.OrdinalIgnoreCase));
+            rows = BuildFlatRowsWithHeaders(source);
+        }
+        else
+        {
+            IEnumerable<ITrackItem> pipeline = source;
+
+            if (hasFilter)
+            {
+                var q = _filterText;
+                pipeline = pipeline.Where(t =>
+                    t.Title.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    t.ArtistName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    t.AlbumName.Contains(q, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (sortColumn is { SortKey: { } sortKey, SortDirection: { } direction })
+            {
+                pipeline = direction == TrackDataGridSortDirection.Ascending
+                    ? pipeline.OrderBy(t => SortValue(t, sortKey), Comparer<object?>.Create(CompareObjects))
+                    : pipeline.OrderByDescending(t => SortValue(t, sortKey), Comparer<object?>.Create(CompareObjects));
+            }
+
+            rows = BuildFlatRowsWithHeaders(pipeline.ToList());
         }
 
-        if (Columns?.SortColumn is { SortKey: { } sortKey, SortDirection: { } direction })
-        {
-            pipeline = direction == TrackDataGridSortDirection.Ascending
-                ? pipeline.OrderBy(t => SortValue(t, sortKey), Comparer<object?>.Create(CompareObjects))
-                : pipeline.OrderByDescending(t => SortValue(t, sortKey), Comparer<object?>.Create(CompareObjects));
-        }
-
-        var tracks = pipeline.ToList();
-        var rows = BuildFlatRowsWithHeaders(tracks);
         AppendFooterRow(rows);
         _visibleRows.ReplaceWith(rows);
         RestoreSelectionByKeys(selectedKeys);
         ApplyLoadingRowsVisibility();
+        QueueProjectionDiagnostic(source.Count, rows.Count);
+    }
+
+    private void QueueProjectionDiagnostic(int sourceCount, int visibleCount)
+    {
+        var generation = ++_projectionDiagnosticGeneration;
+        if (DispatcherQueue is null)
+            return;
+
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (_disposed || generation != _projectionDiagnosticGeneration)
+                return;
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[track-grid] page={PageKey} source={sourceCount} visibleRows={visibleCount} realizedRows={_itemsViewRows.Count} parentScroll={IsParentScrolling}");
+        });
     }
 
     private void AppendFooterRow(List<object> rows)

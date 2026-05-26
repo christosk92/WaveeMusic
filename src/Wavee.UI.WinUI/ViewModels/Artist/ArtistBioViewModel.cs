@@ -9,9 +9,11 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Wavee.AI.Activity;
 using Wavee.AI.Artists;
+using Wavee.AI.Tools;
 using Wavee.UI.Contracts;
 using Wavee.UI.Formatters.Artist;
 using Wavee.UI.WinUI.Services;
+using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.ViewModels.Artist;
 
@@ -46,6 +48,8 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _suggestedQuestionsCts;
     private string? _suggestedQuestionsArtistUri;
     private bool _suppressAskAiSuggestionRefresh;
+    private bool _hideAiBioSummaryCard;
+    private readonly ObservableCollection<AiGroundingSourceLink> _bioSummarySources = [];
 
     public ArtistBioViewModel(
         ArtistBioSummarizer? bioSummarizer,
@@ -124,12 +128,13 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
 
     public bool HasBioSummary => !string.IsNullOrWhiteSpace(BioSummaryText);
     public bool IsAiBioCardVisible => _capabilities?.IsArtistBioSummarizeEnabled == true;
-    public bool HasBiographyOrAi => HasBiography || IsAiBioCardVisible;
+    public bool IsAiBioSummaryCardVisible => IsAiBioCardVisible && !_hideAiBioSummaryCard;
+    public bool HasBiographyOrAi => HasBiography || IsAiBioSummaryCardVisible;
     public bool IsAiBioGenerating =>
-        IsAiBioCardVisible && !HasBioSummary && string.IsNullOrWhiteSpace(BioSummaryUnavailableText);
+        IsAiBioSummaryCardVisible && !HasBioSummary && string.IsNullOrWhiteSpace(BioSummaryUnavailableText);
     public bool IsAiBioReady => HasBioSummary;
     public bool IsAiBioUnavailable =>
-        IsAiBioCardVisible && !IsBioSummaryLoading && !HasBioSummary && !string.IsNullOrWhiteSpace(BioSummaryUnavailableText);
+        IsAiBioSummaryCardVisible && !IsBioSummaryLoading && !HasBioSummary && !string.IsNullOrWhiteSpace(BioSummaryUnavailableText);
 
     public string BioExcerptText => HasBioPeekLine
         ? BioPeekLine!
@@ -139,6 +144,10 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         Biography, BioSummaryText, _artistNameProvider(), HeroBioMaxLength);
 
     public bool HasHeroBioLine => !string.IsNullOrWhiteSpace(HeroBioLine);
+
+    public IReadOnlyList<AiGroundingSourceLink> BioSummarySources => _bioSummarySources;
+
+    public bool HasBioSummarySources => _bioSummarySources.Count > 0;
 
     public ObservableCollection<AiActivityEvent> AskAiActivity { get; } = new();
 
@@ -191,6 +200,7 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HeroBioLine));
         OnPropertyChanged(nameof(HasHeroBioLine));
         OnPropertyChanged(nameof(IsAiBioCardVisible));
+        OnPropertyChanged(nameof(IsAiBioSummaryCardVisible));
         OnPropertyChanged(nameof(HasBiographyOrAi));
         OnPropertyChanged(nameof(IsAiBioGenerating));
         OnPropertyChanged(nameof(IsAiBioReady));
@@ -208,10 +218,12 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         _suggestedQuestionsCts?.Cancel();
         _suggestedQuestionsArtistUri = null;
         BioSummaryText = null;
+        _hideAiBioSummaryCard = false;
         WasLastBioFromCache = false;
         IsBioSummaryStreaming = false;
         BioSummaryUnavailableText = null;
         IsBioSummaryLoading = false;
+        ClearBioSummarySources();
         AskAiQuestionText = string.Empty;
         AskAiAnswerText = string.Empty;
         AskAiCaption = string.Empty;
@@ -271,9 +283,13 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
         {
             IsBioSummaryLoading = true;
             BioSummaryText = null;
+            _hideAiBioSummaryCard = false;
             WasLastBioFromCache = false;
             IsBioSummaryStreaming = false;
             BioSummaryUnavailableText = null;
+            ClearBioSummarySources();
+            OnPropertyChanged(nameof(IsAiBioSummaryCardVisible));
+            OnPropertyChanged(nameof(HasBiographyOrAi));
 
             var topTrackNames = _topTrackNamesProvider();
             var monthlyListeners = _monthlyListenersProvider();
@@ -303,6 +319,13 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
                         return;
                     }
 
+                    if (AiGeneratedTextGuard.IsInvalidGeneratedTextInProgress(preview))
+                    {
+                        IsBioSummaryStreaming = false;
+                        BioSummaryText = null;
+                        return;
+                    }
+
                     IsBioSummaryStreaming = true;
                     BioSummaryText = preview;
                 });
@@ -325,10 +348,22 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
                 WasLastBioFromCache = result.FromCache;
                 BioSummaryText = result.Text;
                 IsBioSummaryStreaming = false;
+                SetBioSummarySources(result.Sources);
             }
             else
             {
                 IsBioSummaryStreaming = false;
+                ClearBioSummarySources();
+                if (string.Equals(result.ErrorMessage, "invalid_generation", StringComparison.Ordinal)
+                    || string.Equals(result.ErrorMessage, "insufficient_grounding", StringComparison.Ordinal))
+                {
+                    _hideAiBioSummaryCard = true;
+                    BioSummaryUnavailableText = null;
+                    OnPropertyChanged(nameof(IsAiBioSummaryCardVisible));
+                    OnPropertyChanged(nameof(HasBiographyOrAi));
+                    return;
+                }
+
                 BioSummaryUnavailableText = result.Kind switch
                 {
                     LyricsAiResultKind.Filtered => "The on-device model could not describe this artist safely.",
@@ -345,6 +380,7 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
             if (!cts.IsCancellationRequested)
             {
                 IsBioSummaryStreaming = false;
+                ClearBioSummarySources();
                 BioSummaryUnavailableText = "The on-device model could not describe this artist right now.";
             }
         }
@@ -356,6 +392,40 @@ public sealed partial class ArtistBioViewModel : ObservableObject, IDisposable
                 IsBioSummaryLoading = false;
             }
         }
+    }
+
+    private void SetBioSummarySources(IReadOnlyList<MusicGroundingSource>? sources)
+    {
+        _bioSummarySources.Clear();
+        if (sources is not null)
+        {
+            foreach (var source in sources.Take(4))
+            {
+                if (string.IsNullOrWhiteSpace(source.Url)
+                    || !Uri.TryCreate(source.Url, UriKind.Absolute, out var uri))
+                {
+                    continue;
+                }
+
+                var label = string.IsNullOrWhiteSpace(source.SourceName)
+                    ? uri.Host
+                    : source.SourceName;
+                _bioSummarySources.Add(new AiGroundingSourceLink(label, uri));
+            }
+        }
+
+        OnPropertyChanged(nameof(BioSummarySources));
+        OnPropertyChanged(nameof(HasBioSummarySources));
+    }
+
+    private void ClearBioSummarySources()
+    {
+        if (_bioSummarySources.Count == 0)
+            return;
+
+        _bioSummarySources.Clear();
+        OnPropertyChanged(nameof(BioSummarySources));
+        OnPropertyChanged(nameof(HasBioSummarySources));
     }
 
     private void RunOnDispatcher(Action action)

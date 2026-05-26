@@ -261,6 +261,22 @@ public sealed class AutoplayEnabledChangedMessage(bool isEnabled)
     : ValueChangedMessage<bool>(isEnabled);
 
 /// <summary>
+/// Sent when the user toggles Private Session in Settings → Playback. The
+/// handler in <c>AppLifecycleHelper</c> flips both the DeviceInfo.is_private_session
+/// flag (re-publishing PutState) and the EventService's SuppressPlayHistory
+/// gate so subsequent RawCoreStream events are dropped.
+/// </summary>
+public sealed class PrivateSessionChangedMessage(bool isPrivateSession)
+    : ValueChangedMessage<bool>(isPrivateSession);
+
+/// <summary>
+/// Sent when Settings → Playback → Close minimizes to tray is toggled.
+/// MainWindow listens and shows/hides the system-tray icon accordingly.
+/// </summary>
+public sealed class MinimizeToTrayChangedMessage(bool enabled)
+    : ValueChangedMessage<bool>(enabled);
+
+/// <summary>
 /// Sent when the main app window is reactivated after being deactivated.
 /// </summary>
 public sealed class MainWindowFocusReturnedMessage;

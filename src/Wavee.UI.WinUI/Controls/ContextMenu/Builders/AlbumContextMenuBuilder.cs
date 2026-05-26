@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Styles;
@@ -41,7 +42,7 @@ public static class AlbumContextMenuBuilder
             Glyph = FluentGlyphs.Play,
             AccentIconStyleKey = "App.AccentIcons.Media.Play",
             Command = ctx.PlayCommand,
-            Invoke = ctx.PlayCommand is null ? () => Debug.WriteLine($"PlayAlbum: {uri}") : null,
+            Invoke = ctx.PlayCommand is null ? () => PlayContextDefault(uri, shuffle: false) : null,
             IsPrimary = true
         });
 
@@ -51,7 +52,7 @@ public static class AlbumContextMenuBuilder
             Glyph = FluentGlyphs.Shuffle,
             AccentIconStyleKey = "App.AccentIcons.Media.Shuffle",
             Command = ctx.ShuffleCommand,
-            Invoke = ctx.ShuffleCommand is null ? () => Debug.WriteLine($"ShuffleAlbum: {uri}") : null,
+            Invoke = ctx.ShuffleCommand is null ? () => PlayContextDefault(uri, shuffle: true) : null,
             IsPrimary = true
         });
 
@@ -63,7 +64,7 @@ public static class AlbumContextMenuBuilder
             Glyph = ctx.IsSaved ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline,
             AccentIconStyleKey = ctx.IsSaved ? "App.AccentIcons.Media.Saved" : "App.AccentIcons.Media.Save",
             Command = ctx.ToggleSaveCommand,
-            Invoke = ctx.ToggleSaveCommand is null ? () => Debug.WriteLine($"ToggleAlbumSave: {uri}") : null,
+            Invoke = ctx.ToggleSaveCommand is null ? () => ToggleAlbumSaveDefault(uri, ctx.IsSaved) : null,
             IsPrimary = true
         });
 
@@ -72,7 +73,7 @@ public static class AlbumContextMenuBuilder
             Text = AppLocalization.GetString(ctx.IsPinned ? "SidebarMenu_UnpinFolder" : "SidebarMenu_PinFolder"),
             Glyph = ctx.IsPinned ? FluentGlyphs.Unpin : FluentGlyphs.Pin,
             Command = ctx.TogglePinCommand,
-            Invoke = ctx.TogglePinCommand is null ? () => Debug.WriteLine($"TogglePinAlbum: {uri}") : null,
+            Invoke = ctx.TogglePinCommand is null ? () => TogglePinDefault(uri, ctx.IsPinned) : null,
             IsPrimary = true
         });
 
@@ -84,7 +85,7 @@ public static class AlbumContextMenuBuilder
             Text = AppLocalization.GetString("SidebarMenu_AddToQueue"),
             Glyph = FluentGlyphs.Queue,
             Command = ctx.AddToQueueCommand,
-            Invoke = ctx.AddToQueueCommand is null ? () => Debug.WriteLine($"AddAlbumToQueue: {uri}") : null
+            Invoke = ctx.AddToQueueCommand is null ? () => AddAlbumToQueueDefault(uri) : null
         });
 
         if (!string.IsNullOrEmpty(ctx.ArtistId))
@@ -105,14 +106,60 @@ public static class AlbumContextMenuBuilder
                                 ?.StartRadioAsync(uri, ctx.AlbumName is { Length: > 0 } name ? $"{name} Radio" : "Album Radio")
         });
 
-        items.Add(new ContextMenuItemModel
+        // Share — host pages that have a clipboard-copy implementation pass
+        // a ShareCommand. Surfaces that don't (rare) simply omit the entry.
+        if (ctx.ShareCommand is not null)
         {
-            Text = AppLocalization.GetString("TrackMenu_Share"),
-            Glyph = FluentGlyphs.Share,
-            Command = ctx.ShareCommand,
-            Invoke = ctx.ShareCommand is null ? () => Debug.WriteLine($"ShareAlbum: {uri}") : null
-        });
+            items.Add(new ContextMenuItemModel
+            {
+                Text = AppLocalization.GetString("TrackMenu_Share"),
+                Glyph = FluentGlyphs.Share,
+                Command = ctx.ShareCommand
+            });
+        }
 
         return items;
+    }
+
+    private static void PlayContextDefault(string uri, bool shuffle)
+    {
+        var playback = Ioc.Default.GetService<IPlaybackService>();
+        if (playback is null) return;
+        if (shuffle)
+            Ioc.Default.GetService<IPlaybackStateService>()?.SetShuffle(true);
+        _ = playback.PlayContextAsync(uri);
+    }
+
+    private static async void ToggleAlbumSaveDefault(string uri, bool wasSaved)
+    {
+        var svc = Ioc.Default.GetService<ITrackLikeService>();
+        if (svc is null) return;
+        svc.ToggleSave(SavedItemType.Album, uri, wasSaved);
+        await System.Threading.Tasks.Task.CompletedTask.ConfigureAwait(true);
+    }
+
+    private static async void TogglePinDefault(string uri, bool wasPinned)
+    {
+        var pinService = Ioc.Default.GetService<IPinService>();
+        if (pinService is null) return;
+        try
+        {
+            if (wasPinned) await pinService.UnpinAsync(uri).ConfigureAwait(true);
+            else await pinService.PinAsync(uri).ConfigureAwait(true);
+        }
+        catch
+        {
+            Ioc.Default.GetService<INotificationService>()?.Show(
+                wasPinned ? "Couldn't unpin" : "Couldn't pin",
+                NotificationSeverity.Error,
+                TimeSpan.FromSeconds(3));
+        }
+    }
+
+    private static void AddAlbumToQueueDefault(string uri)
+    {
+        // The album is added as a context — Spotify Connect resolves the album
+        // URI server-side and inserts its tracks at the end of the user queue.
+        Ioc.Default.GetService<IPlaybackStateService>()?.AddToQueue(uri);
     }
 }

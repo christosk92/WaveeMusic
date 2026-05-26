@@ -240,4 +240,14 @@ public static class FluentGlyphs
             return FontAwesome6.EFontAwesomeIcon.Brands_Apple;
         return FontAwesome6.EFontAwesomeIcon.Solid_ArrowUpRightFromSquare;
     }
+
+    // ── Content filter (Block / Hide) ─────────────────────────────────────
+    /// <summary>Block — Stop sign ( alt) used for "Don't play this artist".</summary>
+    public const string Block = "";
+    /// <summary>Unblock — Accept.</summary>
+    public const string Unblock = "";
+    /// <summary>Hide — Hide ().</summary>
+    public const string HideOutline = "";
+    /// <summary>Show / unhide — View ().</summary>
+    public const string ShowFilled = "";
 }

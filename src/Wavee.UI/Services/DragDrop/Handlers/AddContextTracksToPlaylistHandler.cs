@@ -51,7 +51,13 @@ public static class AddContextTracksToPlaylistHandler
         try
         {
             await mediator.AddTracksAsync(ctx.TargetId, uris, ct).ConfigureAwait(false);
-            return DropResult.Ok(uris.Count, $"Adding {uris.Count} track{(uris.Count == 1 ? string.Empty : "s")}…");
+            var playlistName = await mediator.GetDisplayNameAsync(ctx.TargetId, ct).ConfigureAwait(false);
+            var n = uris.Count;
+            var nounTrack = n == 1 ? "track" : "tracks";
+            var message = string.IsNullOrEmpty(playlistName)
+                ? $"Added {n} {nounTrack} to playlist"
+                : $"Added {n} {nounTrack} to {playlistName}";
+            return DropResult.Ok(n, message);
         }
         catch (Exception ex)
         {

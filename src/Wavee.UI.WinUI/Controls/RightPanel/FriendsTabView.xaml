@@ -109,7 +109,9 @@
 
         <DataTemplate x:Key="FriendRowTemplate" x:DataType="vm:FriendFeedRowViewModel">
             <Button Style="{StaticResource FriendRowButtonStyle}"
-                    Command="{x:Bind NavigateToContextCommand, Mode=OneTime}">
+                    Command="{x:Bind NavigateToContextCommand, Mode=OneTime}"
+                    ContextRequested="FriendRow_ContextRequested"
+                    DataContext="{x:Bind}">
                 <Grid ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>

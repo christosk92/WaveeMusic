@@ -11,6 +11,7 @@
             Padding="0"
             Width="32" Height="32"
             MinWidth="0" MinHeight="0"
+            AutomationProperties.Name="Save to Liked Songs"
             ToolTipService.ToolTip="Save to Liked Songs">
         <FontIcon x:Name="HeartIcon"
                   Glyph="&#xEB51;"

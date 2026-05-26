@@ -292,20 +292,7 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     ///   <item>Viewer of a playlist with multiple contributors (David Laid case) → ≥2 distinct → shown.</item>
     /// </list>
     /// </summary>
-    public bool ShouldShowAddedByColumn
-    {
-        get
-        {
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var t in _tracksSnapshotProvider())
-            {
-                if (string.IsNullOrEmpty(t.AddedBy)) continue;
-                if (seen.Add(t.AddedBy) && seen.Count >= 2)
-                    return true;
-            }
-            return false;
-        }
-    }
+    public bool ShouldShowAddedByColumn => _shouldShowAddedByColumn;
 
     // ── Recommendations gate (read-only — Mutations owns the fetch) ──────────
 
@@ -356,6 +343,7 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     // guard the page rebuilds the avatar stack on every fire and a fresh nav
     // can trigger 3+ rebuilds back-to-back on a large playlist.
     private string? _lastCollaboratorSignature;
+    private bool _shouldShowAddedByColumn;
 
     private readonly Dictionary<string, UserProfileSummary> _addedByProfilesById =
         new(StringComparer.OrdinalIgnoreCase);
@@ -561,11 +549,13 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
         // by the same user, so any one suffices).
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrEmpty(ownerId)) seen.Add(ownerId);
+        var addedBySeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var t in tracks)
         {
             var addedBy = t.AddedBy;
             if (string.IsNullOrEmpty(addedBy)) continue;
+            addedBySeen.Add(addedBy);
             if (!seen.Add(addedBy)) continue;
             TryGetAddedByProfile(addedBy, out var profile);
 
@@ -578,6 +568,8 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
                 Role = PlaylistMemberRole.Contributor,
             });
         }
+
+        SetShouldShowAddedByColumn(addedBySeen.Count >= 2);
 
         // Skip the rebuild entirely if the resolved set hasn't actually
         // changed — large playlists otherwise pay for 3+ stack-visual rebuilds
@@ -597,23 +589,13 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
 
         HasCollaborators = IsCollaborative || Collaborators.Count >= 2;
 
-        // The AddedBy gate reads directly off the track snapshot (no observable
-        // source) so re-fire its change so the page-side OneWay binding picks
-        // up the new value whenever the track set has been rebuilt.
-        OnPropertyChanged(nameof(ShouldShowAddedByColumn));
-
         _logger?.LogInformation(
             "[collab-stack] rebuilt: count={Count} hasCollab={Has} isCollab={IsCollab} ownerId={Owner}",
             Collaborators.Count, HasCollaborators, IsCollaborative, ownerId);
 
-        var uniqueAddedBys = tracks
-            .Select(t => t.AddedBy)
-            .Where(s => !string.IsNullOrEmpty(s))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Count();
         _logger?.LogInformation(
             "[addedby-gate] '{Id}' uniqueAddedBys={N} → ShouldShow={Show}",
-            PlaylistId, uniqueAddedBys, ShouldShowAddedByColumn);
+            PlaylistId, addedBySeen.Count, ShouldShowAddedByColumn);
     }
 
     /// <summary>
@@ -623,7 +605,19 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     /// resolved collaborator signature didn't change.
     /// </summary>
     public void NotifyAddedByGateChanged()
-        => OnPropertyChanged(nameof(ShouldShowAddedByColumn));
+        => RebuildCollaboratorsFromContext();
+
+    public void RefreshTrackDerivedState()
+        => RebuildCollaboratorsFromContext();
+
+    private void SetShouldShowAddedByColumn(bool value)
+    {
+        if (_shouldShowAddedByColumn == value)
+            return;
+
+        _shouldShowAddedByColumn = value;
+        OnPropertyChanged(nameof(ShouldShowAddedByColumn));
+    }
 
     private static string ExtractBareUserId(string idOrUri)
     {
@@ -693,8 +687,7 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
             // the real member list.
             if (enriched.Length > 0)
             {
-                Collaborators.Clear();
-                foreach (var m in enriched) Collaborators.Add(m);
+                Wavee.UI.WinUI.Extensions.ObservableCollectionExtensions.ReplaceWith(Collaborators, enriched);
                 HasCollaborators = Collaborators.Count > 0;
             }
         }
@@ -1185,6 +1178,7 @@ public sealed partial class PlaylistHeaderViewModel : ObservableObject
     public void ResetForNewPlaylist()
     {
         _lastCollaboratorSignature = null;
+        SetShouldShowAddedByColumn(false);
         Collaborators.Clear();
         HasCollaborators = false;
         LatestInviteLink = null;

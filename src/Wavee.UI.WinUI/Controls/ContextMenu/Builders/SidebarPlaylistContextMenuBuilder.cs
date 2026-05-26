@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Windows.Input;
+using CommunityToolkit.Mvvm.DependencyInjection;
+using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Models;
+using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Styles;
 
@@ -49,7 +53,7 @@ public static class SidebarPlaylistContextMenuBuilder
             CommandParameter = uri,
             IsPrimary = true,
             Invoke = ctx.AddToQueueCommand is null
-                ? () => Debug.WriteLine($"AddPlaylistToQueue: {uri}")
+                ? () => Ioc.Default.GetService<IPlaybackStateService>()?.AddToQueue(uri)
                 : null
         });
 
@@ -63,27 +67,41 @@ public static class SidebarPlaylistContextMenuBuilder
             IsPrimary = true,
             // Owners delete instead of unfollowing — hide the heart for them.
             ShowItem = !ctx.IsOwner,
-            Invoke = ctx.ToggleLibraryAction ?? (() => Debug.WriteLine($"ToggleLibrary: {uri}"))
+            Invoke = ctx.ToggleLibraryAction ?? (() => ToggleLibraryDefault(uri, ctx.IsInLibrary))
         });
 
         // ── Primary dropdown items ────────────────────────────────────────
-        items.Add(ContextMenuItemModel.Separator);
+        // Only show entries whose action is either explicitly wired OR has a
+        // real default behavior. Add to profile / Report / Exclude from taste
+        // are Spotify-server features Wavee doesn't yet route — omit them
+        // unless the caller wires them. Owners get fewer entries (deleting
+        // their own content instead of reporting / excluding).
 
-        items.Add(new ContextMenuItemModel
-        {
-            Text = AppLocalization.GetString("SidebarMenu_AddToProfile"),
-            Glyph = FluentGlyphs.AddToProfile,
-            Invoke = ctx.AddToProfileAction ?? (() => Debug.WriteLine($"AddToProfile: {uri}"))
-        });
+        var hasOptionalEntries = ctx.AddToProfileAction is not null
+            || ctx.ReportAction is not null
+            || ctx.ExcludeFromTasteAction is not null;
+        if (hasOptionalEntries)
+            items.Add(ContextMenuItemModel.Separator);
 
-        items.Add(new ContextMenuItemModel
+        if (ctx.AddToProfileAction is { } addToProfile)
         {
-            Text = AppLocalization.GetString("SidebarMenu_Report"),
-            Glyph = FluentGlyphs.Report,
-            // Reporting your own playlist is nonsense — hide for owners.
-            ShowItem = !ctx.IsOwner,
-            Invoke = ctx.ReportAction ?? (() => Debug.WriteLine($"Report: {uri}"))
-        });
+            items.Add(new ContextMenuItemModel
+            {
+                Text = AppLocalization.GetString("SidebarMenu_AddToProfile"),
+                Glyph = FluentGlyphs.AddToProfile,
+                Invoke = addToProfile
+            });
+        }
+
+        if (!ctx.IsOwner && ctx.ReportAction is { } report)
+        {
+            items.Add(new ContextMenuItemModel
+            {
+                Text = AppLocalization.GetString("SidebarMenu_Report"),
+                Glyph = FluentGlyphs.Report,
+                Invoke = report
+            });
+        }
 
         // ── Creation shortcuts ────────────────────────────────────────────
         items.Add(ContextMenuItemModel.Separator);
@@ -92,27 +110,27 @@ public static class SidebarPlaylistContextMenuBuilder
         {
             Text = AppLocalization.GetString("SidebarMenu_CreatePlaylist"),
             Glyph = FluentGlyphs.CreatePlaylist,
-            Invoke = ctx.CreatePlaylistAction ?? (() => Debug.WriteLine("CreatePlaylist (sidebar)"))
+            Invoke = ctx.CreatePlaylistAction ?? (() => NavigationHelpers.OpenCreatePlaylist(isFolder: false))
         });
 
         items.Add(new ContextMenuItemModel
         {
             Text = AppLocalization.GetString("SidebarMenu_CreateFolder"),
             Glyph = FluentGlyphs.CreateFolder,
-            Invoke = ctx.CreateFolderAction ?? (() => Debug.WriteLine("CreateFolder (sidebar)"))
+            Invoke = ctx.CreateFolderAction ?? (() => NavigationHelpers.OpenCreatePlaylist(isFolder: true))
         });
 
         // ── Taste profile & move ──────────────────────────────────────────
-        items.Add(ContextMenuItemModel.Separator);
-
-        items.Add(new ContextMenuItemModel
+        if (!ctx.IsOwner && ctx.ExcludeFromTasteAction is { } excludeFromTaste)
         {
-            Text = AppLocalization.GetString("SidebarMenu_ExcludeFromTaste"),
-            Glyph = FluentGlyphs.Exclude,
-            // Taste-profile signal is owner-implicit; hide for owned playlists.
-            ShowItem = !ctx.IsOwner,
-            Invoke = ctx.ExcludeFromTasteAction ?? (() => Debug.WriteLine($"ExcludeFromTaste: {uri}"))
-        });
+            items.Add(ContextMenuItemModel.Separator);
+            items.Add(new ContextMenuItemModel
+            {
+                Text = AppLocalization.GetString("SidebarMenu_ExcludeFromTaste"),
+                Glyph = FluentGlyphs.Exclude,
+                Invoke = excludeFromTaste
+            });
+        }
 
         if (ctx.BuildMoveTargets is not null)
         {
@@ -145,10 +163,44 @@ public static class SidebarPlaylistContextMenuBuilder
                 Text = AppLocalization.GetString("SidebarMenu_Delete"),
                 Glyph = FluentGlyphs.Delete,
                 IsDestructive = true,
-                Invoke = ctx.DeleteAction ?? (() => Debug.WriteLine($"DeletePlaylist: {uri}"))
+                Invoke = ctx.DeleteAction ?? (() => DeletePlaylistDefault(uri))
             });
         }
 
         return items;
+    }
+
+    private static async void ToggleLibraryDefault(string uri, bool wasSaved)
+    {
+        var mutations = Ioc.Default.GetService<IPlaylistMutationService>();
+        if (mutations is null) return;
+        try
+        {
+            await mutations.SetPlaylistFollowedAsync(uri, !wasSaved).ConfigureAwait(true);
+        }
+        catch
+        {
+            Ioc.Default.GetService<INotificationService>()?.Show(
+                wasSaved ? "Couldn't remove from library" : "Couldn't save to library",
+                NotificationSeverity.Error,
+                TimeSpan.FromSeconds(3));
+        }
+    }
+
+    private static async void DeletePlaylistDefault(string uri)
+    {
+        var mutations = Ioc.Default.GetService<IPlaylistMutationService>();
+        if (mutations is null) return;
+        try
+        {
+            await mutations.DeletePlaylistAsync(uri).ConfigureAwait(true);
+        }
+        catch
+        {
+            Ioc.Default.GetService<INotificationService>()?.Show(
+                "Couldn't delete playlist",
+                NotificationSeverity.Error,
+                TimeSpan.FromSeconds(3));
+        }
     }
 }

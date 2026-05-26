@@ -105,19 +105,31 @@ jobs:
     # Only attach to a GitHub Release when triggered by a tag push.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build-sign
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download signed artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
+      - name: Generate .appinstaller for auto-update
+        shell: pwsh
+        run: |
+          pwsh ./signing/Generate-AppInstaller.ps1 `
+            -Tag "${{ github.ref_name }}" `
+            -OutputDirectory ./artifacts
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*.msix
+          files: |
+            artifacts/**/*.msix
+            artifacts/Wavee.appinstaller
           generate_release_notes: true
           draft: true

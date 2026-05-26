@@ -958,35 +958,52 @@ public sealed partial class PlaybackOrchestrator : IPlaybackEngine, IAsyncDispos
 
         _logger?.LogInformation("Head data sent — audio starting instantly for {Title}", resolution.Metadata?.Title);
 
-        // 4. Wait for audio key (always needed); CDN URL only if not using local cache
-        await Task.WhenAll(resolution.AudioKeyTask, resolution.FileSizeTask);
-
-        // 5. Send deferred resolution → AudioHost seamlessly continues
-        if (resolution.LocalCacheFileId != null)
-        {
-            // File is fully cached on disk — no CDN URL needed
-            await _proxy.SendDeferredCachedAsync(
-                deferredId,
-                resolution.LocalCacheFileId,
-                await resolution.AudioKeyTask,
-                await resolution.FileSizeTask,
-                ct);
-            _logger?.LogInformation("Deferred resolved from local cache for {Title}", resolution.Metadata?.Title);
-        }
-        else
-        {
-            await _proxy.SendDeferredResolvedAsync(
-                deferredId,
-                await resolution.CdnUrlTask,
-                await resolution.AudioKeyTask,
-                await resolution.FileSizeTask,
-                spotifyFileId: resolution.SpotifyFileId,
-                ct: ct);
-            _logger?.LogInformation("Deferred CDN resolved — seamless playback continuing");
-        }
-
+        // The UI can now show the new current track and queue. Do not hold that
+        // behind the slower audio-key/CDN tail; AudioHost already has enough
+        // head data to begin playback while the deferred result resolves.
         PublishQueueState();
         PrimeQueueContinuationIfNeeded();
+
+        _ = CompleteDeferredResolutionAsync(deferredId, resolution);
+    }
+
+    private async Task CompleteDeferredResolutionAsync(string deferredId, TrackResolution resolution)
+    {
+        try
+        {
+            // Audio key is always needed; CDN URL only if not using local cache.
+            await Task.WhenAll(resolution.AudioKeyTask, resolution.FileSizeTask).ConfigureAwait(false);
+            var audioKey = await resolution.AudioKeyTask.ConfigureAwait(false);
+            var fileSize = await resolution.FileSizeTask.ConfigureAwait(false);
+
+            // Send deferred resolution -> AudioHost seamlessly continues.
+            if (resolution.LocalCacheFileId != null)
+            {
+                // File is fully cached on disk — no CDN URL needed
+                await _proxy.SendDeferredCachedAsync(
+                    deferredId,
+                    resolution.LocalCacheFileId,
+                    audioKey,
+                    fileSize).ConfigureAwait(false);
+                _logger?.LogInformation("Deferred resolved from local cache for {Title}", resolution.Metadata?.Title);
+            }
+            else
+            {
+                var cdnUrl = await resolution.CdnUrlTask.ConfigureAwait(false);
+                await _proxy.SendDeferredResolvedAsync(
+                    deferredId,
+                    cdnUrl,
+                    audioKey,
+                    fileSize,
+                    spotifyFileId: resolution.SpotifyFileId).ConfigureAwait(false);
+                _logger?.LogInformation("Deferred CDN resolved — seamless playback continuing");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Deferred track resolution failed for {Uri}", resolution.TrackUri);
+            _errorSubject.OnNext(new PlaybackError(PlaybackErrorType.Unknown, ex.Message, ex));
+        }
     }
 
     private bool ShouldPreferSpotifyVideoPlayback()

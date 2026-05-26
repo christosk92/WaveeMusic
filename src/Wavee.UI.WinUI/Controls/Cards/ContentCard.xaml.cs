@@ -73,10 +73,6 @@ public sealed partial class ContentCard : UserControl
     private static readonly SolidColorBrush TransparentBrush = new(Microsoft.UI.Colors.Transparent);
 
     private string? _currentImageCacheUrl;
-    private Thickness _defaultCardRootPadding;
-    private Thickness _defaultCardRootBorderThickness;
-    private Brush? _defaultCardRootBackground;
-    private Brush? _defaultCardRootBorderBrush;
     private double _defaultContentPanelSpacing;
 
     private readonly ThemeColorService? _themeColorService;
@@ -105,6 +101,7 @@ public sealed partial class ContentCard : UserControl
         // the cursor stays assigned, no per-event toggling needed.
         ProtectedCursor = Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand);
         EnsureManualDragAttached();
+        ActualThemeChanged += OnActualThemeChanged;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         // EffectiveViewportChanged is wired by CardEffectiveViewportBehavior
@@ -197,16 +194,23 @@ public sealed partial class ContentCard : UserControl
 
     private void CaptureDefaultDensityValues()
     {
-        if (CardRoot != null)
-        {
-            _defaultCardRootPadding = CardRoot.Padding;
-            _defaultCardRootBorderThickness = CardRoot.BorderThickness;
-            _defaultCardRootBackground = CardRoot.Background;
-            _defaultCardRootBorderBrush = CardRoot.BorderBrush;
-        }
-
         if (ContentPanel != null)
             _defaultContentPanelSpacing = ContentPanel.Spacing;
+    }
+
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+    {
+        if (IsCategoryTile)
+            ApplyCategoryTileBackground();
+        else
+            ApplyDensityMode();
+
+        if (string.IsNullOrEmpty(PlaceholderColorHex))
+            ApplyPlaceholderColor(null);
+
+        UpdateBadgeForeground();
+        UpdateSubtitleNavigationVisualState();
+        UpdatePlayingState();
     }
 
     private void ApplyDensityMode()
@@ -224,10 +228,10 @@ public sealed partial class ContentCard : UserControl
         }
         else
         {
-            CardRoot.Padding = _defaultCardRootPadding;
-            CardRoot.BorderThickness = _defaultCardRootBorderThickness;
-            CardRoot.Background = _defaultCardRootBackground;
-            CardRoot.BorderBrush = _defaultCardRootBorderBrush;
+            CardRoot.ClearValue(Grid.PaddingProperty);
+            CardRoot.ClearValue(Grid.BorderThicknessProperty);
+            CardRoot.ClearValue(Grid.BorderBrushProperty);
+            CardRoot.ClearValue(Panel.BackgroundProperty);
             ContentPanel.Spacing = _defaultContentPanelSpacing;
         }
     }
@@ -498,7 +502,7 @@ public sealed partial class ContentCard : UserControl
     {
         if (string.IsNullOrEmpty(hex))
         {
-            SquareImageContainer.Background = (Brush)Application.Current.Resources["CardBackgroundFillColorSecondaryBrush"];
+            SquareImageContainer.ClearValue(Panel.BackgroundProperty);
             return;
         }
 
@@ -545,9 +549,7 @@ public sealed partial class ContentCard : UserControl
         else
         {
             ContentPanel.Visibility = Visibility.Visible;
-            CardRoot.BorderThickness = new Microsoft.UI.Xaml.Thickness(1);
-            CardRoot.Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
-            CardRoot.Padding = new Microsoft.UI.Xaml.Thickness(8, 8, 8, 12);
+            ApplyDensityMode();
             if (CategoryTileOverlay != null)
                 CategoryTileOverlay.Visibility = Visibility.Collapsed;
         }
@@ -565,7 +567,7 @@ public sealed partial class ContentCard : UserControl
         var hex = PlaceholderColorHex;
         if (string.IsNullOrEmpty(hex))
         {
-            CardRoot.Background = (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"];
+            CardRoot.Background = GetThemeBrush("AccentFillColorDefaultBrush") ?? _themeColorService?.AccentFill;
             return;
         }
 

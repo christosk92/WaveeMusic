@@ -10,7 +10,7 @@
     Unloaded="OnUnloaded"
     mc:Ignorable="d">
 
-    <controls:SettingsExpander Margin="0,0,0,12"
+    <controls:SettingsExpander x:Uid="Controls_Settings_MemoryDiagnosticsCard__SettingsExpander_100" Margin="0,0,0,12"
                                Header="Memory diagnostics"
                                Description="Live process memory + cache + retained-page counts. Use this to find what grows during navigation.">
         <controls:SettingsExpander.HeaderIcon>
@@ -23,7 +23,7 @@
                    Text="{x:Bind ViewModel.WorkingSetMb, Mode=OneWay}"/>
 
         <controls:SettingsExpander.Items>
-            <controls:SettingsCard Header="Managed heap"
+            <controls:SettingsCard x:Uid="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_101" Header="Managed heap"
                                    Description="GC.GetTotalMemory">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE74D;"/>
@@ -33,7 +33,7 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </controls:SettingsCard>
 
-            <controls:SettingsCard Header="Heap committed"
+            <controls:SettingsCard x:Uid="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_102" Header="Heap committed"
                                    Description="Total committed bytes (incl. fragmentation)">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE7B8;"/>
@@ -45,13 +45,13 @@
                     <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                FontFamily="Consolas" FontSize="11"
                                VerticalAlignment="Center">
-                        <Run Text="frag"/>
+                        <Run x:Uid="Controls_Settings_MemoryDiagnosticsCard__Run_103" Text="frag"/>
                         <Run Text="{x:Bind ViewModel.HeapFragmentedMb, Mode=OneWay}"/>
                     </TextBlock>
                 </StackPanel>
             </controls:SettingsCard>
 
-            <controls:SettingsCard Header="GC collections"
+            <controls:SettingsCard x:Uid="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_104" Header="GC collections"
                                    Description="Counts since process start">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE72C;"/>
@@ -61,7 +61,7 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </controls:SettingsCard>
 
-            <controls:SettingsCard Header="CPU usage"
+            <controls:SettingsCard x:Uid="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_105" Header="CPU usage"
                                    Description="% of all logical cores since previous sample (matches Task Manager)">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE950;"/>
@@ -71,7 +71,7 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </controls:SettingsCard>
 
-            <controls:SettingsCard Header="Tabs / cached pages"
+            <controls:SettingsCard x:Uid="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_106" Header="Tabs / cached pages"
                                    Description="Open tabs and total retained Page instances across them">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8FD;"/>
@@ -79,13 +79,13 @@
                 <TextBlock FontFamily="Consolas" FontSize="12"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}">
                     <Run Text="{x:Bind ViewModel.TabCount, Mode=OneWay}"/>
-                    <Run Text="tabs · "/>
+                    <Run x:Uid="Controls_Settings_MemoryDiagnosticsCard__Run_107" Text="tabs · "/>
                     <Run Text="{x:Bind ViewModel.CachedPageCount, Mode=OneWay}"/>
-                    <Run Text="pages"/>
+                    <Run x:Uid="Controls_Settings_MemoryDiagnosticsCard__Run_108" Text="pages"/>
                 </TextBlock>
             </controls:SettingsCard>
 
-            <controls:SettingsCard Header="Image cache"
+            <controls:SettingsCard x:Uid="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_109" Header="Image cache"
                                    Description="BitmapImage entries (bucketed by URL × decode size)">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xEB9F;"/>
@@ -95,7 +95,7 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </controls:SettingsCard>
 
-            <controls:SettingsCard Header="Cache breakdown"
+            <controls:SettingsCard x:Uid="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_110" Header="Cache breakdown"
                                    Description="Counts per ICleanableCache instance">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8F1;"/>
@@ -106,7 +106,7 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </controls:SettingsCard>
 
-            <controls:SettingsCard Header="Live ViewModels"
+            <controls:SettingsCard x:Uid="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_111" Header="Live ViewModels"
                                    Description="Tracked via WeakReference. Counts that don't drop after navigating away indicate leaks.">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE7C3;"/>
@@ -117,32 +117,32 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </controls:SettingsCard>
 
-            <controls:SettingsCard Header="Actions"
+            <controls:SettingsCard x:Uid="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_112" Header="Actions"
                                    Description="Run experiments and append snapshots to %AppData%\Wavee\diag\memory-{date}.csv">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE945;"/>
                 </controls:SettingsCard.HeaderIcon>
                 <StackPanel Orientation="Vertical" Spacing="6">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Button Content="Force GC" Command="{x:Bind ViewModel.ForceGcCommand}"
+                        <Button x:Uid="Controls_Settings_MemoryDiagnosticsCard__Button_113" Content="Force GC" Command="{x:Bind ViewModel.ForceGcCommand}"
                                 Padding="10,4"/>
-                        <Button Content="Release working set" Command="{x:Bind ViewModel.ReleaseWorkingSetCommand}"
+                        <Button x:Uid="Controls_Settings_MemoryDiagnosticsCard__Button_114" Content="Release working set" Command="{x:Bind ViewModel.ReleaseWorkingSetCommand}"
                                 Padding="10,4"/>
-                        <Button Content="Snapshot" Command="{x:Bind ViewModel.SnapshotCommand}"
+                        <Button x:Uid="Controls_Settings_MemoryDiagnosticsCard__Button_115" Content="Snapshot" Command="{x:Bind ViewModel.SnapshotCommand}"
                                 Padding="10,4"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Button Content="Clear image cache" Command="{x:Bind ViewModel.ClearImageCacheCommand}"
+                        <Button x:Uid="Controls_Settings_MemoryDiagnosticsCard__Button_116" Content="Clear image cache" Command="{x:Bind ViewModel.ClearImageCacheCommand}"
                                 Padding="10,4"/>
-                        <Button Content="Clear all caches" Command="{x:Bind ViewModel.ClearAllCachesCommand}"
+                        <Button x:Uid="Controls_Settings_MemoryDiagnosticsCard__Button_117" Content="Clear all caches" Command="{x:Bind ViewModel.ClearAllCachesCommand}"
                                 Padding="10,4"/>
-                        <Button Content="Drop tab cache" Command="{x:Bind ViewModel.DropTabCacheCommand}"
+                        <Button x:Uid="Controls_Settings_MemoryDiagnosticsCard__Button_118" Content="Drop tab cache" Command="{x:Bind ViewModel.DropTabCacheCommand}"
                                 Padding="10,4"/>
                     </StackPanel>
                 </StackPanel>
             </controls:SettingsCard>
 
-            <controls:SettingsCard Header="Last action"
+            <controls:SettingsCard x:Uid="Controls_Settings_MemoryDiagnosticsCard__SettingsCard_119" Header="Last action"
                                    Description="{x:Bind ViewModel.LastAction, Mode=OneWay}">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE946;"/>

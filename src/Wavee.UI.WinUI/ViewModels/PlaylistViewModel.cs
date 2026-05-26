@@ -53,6 +53,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
     private string? _appliedDetailSignature;
     private string? _ownerResolutionKey;
     private string? _pendingFallbackMosaicPlaylistId;
+    private int _recommendationsAutoLoadGeneration;
     private bool _disposed;
 
     [ObservableProperty]
@@ -157,14 +158,14 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
         {
             Mutations.NotifyPlaylistCapabilityCommandsChanged();
             TrackList.NotifyCapabilityGatesChanged();
+            ScheduleRecommendationsAutoLoad();
         };
 
         // TrackList snapshot changes → header re-derives the AddedBy column
         // gate + the collaborator stack (both read from the snapshot accessor).
         TrackList.TracksChanged += (_, _) =>
         {
-            Header.NotifyAddedByGateChanged();
-            Header.RebuildCollaboratorsFromContext();
+            Header.RefreshTrackDerivedState();
         };
 
         // TrackList totals → forward into header so MetaInlineLine /
@@ -174,10 +175,51 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
         {
             Header.SetTotalTracks(TrackList.TotalTracks);
             Header.SetTotalDuration(TrackList.TotalDuration);
-            Mutations.MaybeAutoLoadRecommendations();
+            ScheduleRecommendationsAutoLoad();
         };
 
         Diagnostics.LiveInstanceTracker.Register(this);
+    }
+
+    private void ScheduleRecommendationsAutoLoad()
+    {
+        var playlistId = PlaylistId;
+        if (string.IsNullOrEmpty(playlistId))
+            return;
+
+        var generation = ++_recommendationsAutoLoadGeneration;
+        if (!_dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            {
+                if (_disposed ||
+                    generation != _recommendationsAutoLoadGeneration ||
+                    !string.Equals(PlaylistId, playlistId, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                Mutations.MaybeAutoLoadRecommendations();
+            }))
+        {
+            Mutations.MaybeAutoLoadRecommendations();
+        }
+    }
+
+    private void ScheduleVideoAvailabilityFetch(string playlistId, CancellationToken cancellationToken)
+    {
+        if (!_dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            {
+                if (_disposed ||
+                    !string.Equals(PlaylistId, playlistId, StringComparison.Ordinal) ||
+                    cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                TrackList.TryTriggerVideoAvailabilityFetch(playlistId, cancellationToken);
+            }))
+        {
+            TrackList.TryTriggerVideoAvailabilityFetch(playlistId, cancellationToken);
+        }
     }
 
     /// <summary>
@@ -338,9 +380,10 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
             // brief window between Activate and LoadTracksAsync — those would
             // latch into already-materializing ListView containers).
             TrackList.ResetForNewPlaylist();
-            Header.NotifyAddedByGateChanged();
+            Header.RefreshTrackDerivedState();
             _tracksLoadedFor = null;
             _tracksLoadInFlightFor = null;
+            _recommendationsAutoLoadGeneration++;
             _appliedDetailSignature = null;
             _ownerResolutionKey = null;
 
@@ -385,6 +428,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
         _tracksCts?.Cancel();
         _tracksCts?.Dispose();
         _tracksCts = null;
+        _recommendationsAutoLoadGeneration++;
         Header.Deactivate();
         TrackList.Deactivate();
     }
@@ -409,7 +453,8 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
         _pendingFallbackMosaicPlaylistId = null;
 
         TrackList.Hibernate();
-        Header.NotifyAddedByGateChanged();
+        Header.RefreshTrackDerivedState();
+        _recommendationsAutoLoadGeneration++;
     }
 
     public void Dispose()
@@ -657,7 +702,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
         if (_disposed || PlaylistId != playlistId)
             return;
 
-        Header.RebuildCollaboratorsFromContext();
+        Header.RefreshTrackDerivedState();
         _ = Header.LoadCollaboratorsCommand.ExecuteAsync(null);
     }
 
@@ -780,7 +825,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
                     changed = true;
                 }
                 if (changed)
-                    Header.RebuildCollaboratorsFromContext();
+                    Header.RefreshTrackDerivedState();
             });
         }
         catch (OperationCanceledException)
@@ -912,7 +957,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
                 if (isWarmHit && TrackList.TracksAreEquivalent(tracks))
                 {
                     TrackList.ApplyVideoAvailabilityToCurrentTracks(tracks);
-                    TrackList.TryTriggerVideoAvailabilityFetch(playlistId, ct);
+                    ScheduleVideoAvailabilityFetch(playlistId, ct);
                     _tracksLoadedFor = playlistId;
                     TrackList.IsLoadingTracks = false;
                     TrackList.ClearPendingSignalChip();
@@ -930,7 +975,7 @@ public sealed partial class PlaylistViewModel : ObservableObject, IDisposable
                 }
 
                 TrackList.ApplyTracks(tracks);
-                TrackList.TryTriggerVideoAvailabilityFetch(playlistId, ct);
+                ScheduleVideoAvailabilityFetch(playlistId, ct);
                 _tracksLoadedFor = playlistId;
                 TrackList.IsLoadingTracks = false;
                 TrackList.ClearPendingSignalChip();

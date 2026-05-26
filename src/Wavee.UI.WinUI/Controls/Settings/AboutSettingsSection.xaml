@@ -6,6 +6,8 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:fa="using:FontAwesome6.Svg"
+    xmlns:settings="using:Wavee.UI.WinUI.Controls.Settings"
     mc:Ignorable="d">
 
     <Grid>
@@ -84,13 +86,28 @@
                 </controls:SettingsCard>
 
                 <TextBlock x:Uid="Controls_Settings_AboutSettingsSection__TextBlock_11" Text="Help" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8" Tag="help"/>
+
+                <!-- Hidden until the in-app feedback destination is built; the
+                     "Report on GitHub" card below replaces it for the initial beta. -->
                 <controls:SettingsCard x:Uid="Controls_Settings_AboutSettingsSection__SettingsCard_12" Header="Send feedback"
                                        Description="Report bugs, request features, or share your thoughts"
                                        IsClickEnabled="True"
                                        Click="Feedback_Click"
-                                       Tag="help">
+                                       Tag="help"
+                                       Visibility="Collapsed">
                     <controls:SettingsCard.HeaderIcon>
                         <FontIcon Glyph="&#xED15;"/>
+                    </controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
+                </controls:SettingsCard>
+
+                <controls:SettingsCard x:Uid="Controls_Settings_AboutSettingsSection__SettingsCard_100" Header="Report an issue on GitHub"
+                                       Description="Packages your recent logs into a zip and opens GitHub Issues"
+                                       IsClickEnabled="True"
+                                       Click="ReportOnGitHub_Click"
+                                       Tag="help">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE943;"/>
                     </controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
                 </controls:SettingsCard>
@@ -106,6 +123,151 @@
                     </controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
                 </controls:SettingsCard>
+
+                <TextBlock x:Uid="Controls_Settings_AboutSettingsSection__TextBlock_101" Text="Legal" Style="{StaticResource SubtitleTextBlockStyle}" Margin="0,24,0,8" Tag="legal"/>
+                <controls:SettingsExpander x:Uid="Controls_Settings_AboutSettingsSection__SettingsExpander_102" Header="Privacy"
+                                           Description="What data Wavee sends and where"
+                                           Tag="legal">
+                    <controls:SettingsExpander.HeaderIcon>
+                        <FontIcon Glyph="&#xE72E;"/>
+                    </controls:SettingsExpander.HeaderIcon>
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard ContentAlignment="Vertical">
+                            <TextBlock TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="Wavee is a third-party Spotify client. To make Recently Played, play counts, and recommendations work, the app sends the same minimum set of playback events to Spotify that the official client sends (the &quot;gabo&quot; telemetry pipeline): track URI, context URI, ms played, reason started/ended, audio format. Nothing else. No third-party analytics, no Wavee-operated server, no remote crash reporting. Your Spotify credentials are encrypted on disk via Windows DPAPI; the encryption is bound to your Windows user account. AI features (lyrics meaning, song themes) run entirely on-device via Phi Silica on Copilot+ PCs and never leave the machine."/>
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+
+                <controls:SettingsCard Header="License"
+                                       Description="Wavee is MIT-licensed open source"
+                                       IsClickEnabled="True"
+                                       Click="License_Click"
+                                       Tag="legal">
+                    <controls:SettingsCard.HeaderIcon>
+                        <FontIcon Glyph="&#xE8A5;"/>
+                    </controls:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE8A7;" FontSize="14"/>
+                </controls:SettingsCard>
+
+                <controls:SettingsExpander Header="Third-party notices"
+                                           Description="Licenses, links, and why each component is included"
+                                           Tag="legal">
+                    <controls:SettingsExpander.HeaderIcon>
+                        <FontIcon Glyph="&#xE82D;"/>
+                    </controls:SettingsExpander.HeaderIcon>
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard ContentAlignment="Vertical">
+                            <StackPanel Spacing="12">
+                                <TextBlock TextWrapping="Wrap"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                           Text="These are the major direct and vendored components Wavee ships with or builds against. The complete transitive package graph is still available from dotnet list package --include-transitive."/>
+
+                                <ItemsRepeater ItemsSource="{x:Bind ThirdPartyNotices}">
+                                    <ItemsRepeater.Layout>
+                                        <StackLayout Spacing="8"/>
+                                    </ItemsRepeater.Layout>
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate x:DataType="settings:ThirdPartyNoticeItem">
+                                            <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="8"
+                                                    Padding="12">
+                                                <Grid ColumnSpacing="12">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="40"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <Border Width="40"
+                                                            Height="40"
+                                                            CornerRadius="8"
+                                                            Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                            BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                                                            BorderThickness="1"
+                                                            VerticalAlignment="Top">
+                                                        <Grid>
+                                                            <fa:SvgAwesome Icon="{x:Bind BrandIcon}"
+                                                                           Width="19"
+                                                                           Height="19"
+                                                                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                                           HorizontalAlignment="Center"
+                                                                           VerticalAlignment="Center"
+                                                                           Visibility="{x:Bind BrandIconVisibility}"/>
+                                                            <FontIcon Glyph="{x:Bind FallbackGlyph}"
+                                                                      FontSize="17"
+                                                                      Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                                      Visibility="{x:Bind FallbackIconVisibility}"/>
+                                                        </Grid>
+                                                    </Border>
+
+                                                    <StackPanel Grid.Column="1" Spacing="8">
+                                                        <Grid ColumnSpacing="10">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <StackPanel Grid.Column="0" Spacing="2">
+                                                                <TextBlock Text="{x:Bind Name}"
+                                                                           TextWrapping="NoWrap"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                                                                <TextBlock Text="{x:Bind PackageDisplay}"
+                                                                           TextWrapping="WrapWholeWords"
+                                                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                                            </StackPanel>
+
+                                                            <Border Grid.Column="1"
+                                                                    Padding="8,3"
+                                                                    CornerRadius="10"
+                                                                    Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                                                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                                                                    BorderThickness="1"
+                                                                    VerticalAlignment="Top">
+                                                                <TextBlock Text="{x:Bind License}"
+                                                                           FontSize="11"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                                            </Border>
+                                                        </Grid>
+
+                                                        <TextBlock Text="{x:Bind Reason}"
+                                                                   TextWrapping="WrapWholeWords"
+                                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+
+                                                        <StackPanel Orientation="Horizontal"
+                                                                    Spacing="10">
+                                                            <HyperlinkButton NavigateUri="{x:Bind PrimaryUri}"
+                                                                             Padding="0">
+                                                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                                                    <TextBlock Text="{x:Bind PrimaryLinkLabel}"/>
+                                                                    <FontIcon Glyph="&#xE8A7;" FontSize="11"/>
+                                                                </StackPanel>
+                                                            </HyperlinkButton>
+                                                            <HyperlinkButton NavigateUri="{x:Bind SecondaryUri}"
+                                                                             Padding="0"
+                                                                             Visibility="{x:Bind SecondaryLinkVisibility}">
+                                                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                                                    <TextBlock Text="{x:Bind SecondaryLinkLabel}"/>
+                                                                    <FontIcon Glyph="&#xE8A7;" FontSize="11"/>
+                                                                </StackPanel>
+                                                            </HyperlinkButton>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
+                            </StackPanel>
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
             </StackPanel>
         </ScrollViewer>
 

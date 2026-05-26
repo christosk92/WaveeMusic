@@ -70,7 +70,23 @@ public sealed partial class TrackItem
     }
 
     private void OnHeartClicked()
-        => _ = OnHeartClickedAsync();
+        => _ = OnHeartClickedSafeAsync();
+
+    private async Task OnHeartClickedSafeAsync()
+    {
+        try
+        {
+            await OnHeartClickedAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "HeartButton click failed");
+            Ioc.Default.GetService<INotificationService>()?.Show(
+                "Couldn't save track",
+                Wavee.UI.WinUI.Data.Models.NotificationSeverity.Error,
+                TimeSpan.FromSeconds(3));
+        }
+    }
 
     private async Task OnHeartClickedAsync()
     {

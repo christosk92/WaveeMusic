@@ -1774,6 +1774,9 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   <data name="Playlist_AddTracksFailed" xml:space="preserve">
     <value>플레이리스트에 트랙을 추가하지 못했습니다</value>
   </data>
+  <data name="Playlist_AddTrackSucceeded" xml:space="preserve">
+    <value>플레이리스트에 트랙 {0}개를 추가했습니다</value>
+  </data>
   <data name="Playlist_AddTracksSucceeded" xml:space="preserve">
     <value>플레이리스트에 트랙 {0}개를 추가했습니다</value>
   </data>
@@ -1806,5 +1809,830 @@ Supports Markdown: **bold**, _italic_, `code`, - lists</value>
   </data>
   <data name="TrackGrid_Column_Progress" xml:space="preserve">
     <value>Progress</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_100.Title" xml:space="preserve">
+    <value>메모리 캐시</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_100.Description" xml:space="preserve">
+    <value>메모리 사용량과 네트워크 재요청, 탐색 속도의 균형을 조정합니다.</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__TextBlock_101.Text" xml:space="preserve">
+    <value>낮음</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_102.Title" xml:space="preserve">
+    <value>오디오 캐시</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_102.Description" xml:space="preserve">
+    <value>캐시된 오디오, 캐시 크기, 라이브러리 동기화 새로 고침을 관리합니다.</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_103.Header" xml:space="preserve">
+    <value>라이브러리 동기화 초기화</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_103.Description" xml:space="preserve">
+    <value>라이브러리(좋아요 표시한 곡, 앨범, 아티스트, 프로그램)를 전체 새로 고침합니다. 표시 내용이 오래되어 보이면 사용하세요.</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__Button_104.Content" xml:space="preserve">
+    <value>지우고 재동기화</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_105.Title" xml:space="preserve">
+    <value>로컬 파일</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_105.Description" xml:space="preserve">
+    <value>감시 폴더와 앱에서 로컬 음악이 표시되는 방식을 선택합니다.</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_106.Header" xml:space="preserve">
+    <value>홈에 표시</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_106.Description" xml:space="preserve">
+    <value>색인된 파일이 있을 때 홈 상단 근처에 로컬 파일 진열대를 표시합니다.</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_107.Header" xml:space="preserve">
+    <value>감시 폴더</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_107.Description" xml:space="preserve">
+    <value>Wavee가 이 폴더에서 음악을 스캔하여 검색과 라이브러리에 추가합니다. 색인은 백그라운드에서 업데이트됩니다.</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__Button_108.Content" xml:space="preserve">
+    <value>지금 다시 스캔</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__Button_109.Content" xml:space="preserve">
+    <value>폴더 추가…</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__ComboBox_110.ToolTipService.ToolTip" xml:space="preserve">
+    <value>이 폴더의 예상 콘텐츠 종류</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_111.Content" xml:space="preserve">
+    <value>자동</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_112.Content" xml:space="preserve">
+    <value>음악</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_113.Content" xml:space="preserve">
+    <value>뮤직 비디오</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_114.Content" xml:space="preserve">
+    <value>TV 프로그램</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_115.Content" xml:space="preserve">
+    <value>영화</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_116.Content" xml:space="preserve">
+    <value>기타</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__Button_117.Content" xml:space="preserve">
+    <value>제거</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_118.Header" xml:space="preserve">
+    <value>동기화 진행 상황</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_119.Title" xml:space="preserve">
+    <value>온라인 메타데이터 조회</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_119.Description" xml:space="preserve">
+    <value>TMDB 및 MusicBrainz의 포스터와 제목으로 로컬 파일을 보강합니다.</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsExpander_120.Header" xml:space="preserve">
+    <value>TMDB 통합</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsExpander_120.Description" xml:space="preserve">
+    <value>영화 및 TV 메타데이터를 위한 무료 서비스입니다.</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__TextBlock_121.Text" xml:space="preserve">
+    <value>구성되지 않음</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__TextBlock_122.Text" xml:space="preserve">
+    <value>TMDB v4 읽기 액세스 토큰을 붙여넣으세요. 토큰은 Windows DPAPI로 암호화되며 기기를 벗어나지 않습니다.</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__Button_123.Content" xml:space="preserve">
+    <value>확인</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__Button_124.Content" xml:space="preserve">
+    <value>지우기</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__HyperlinkButton_125.Content" xml:space="preserve">
+    <value>무료 토큰 받기(60초) →</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_126.Header" xml:space="preserve">
+    <value>지금 실행</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_126.Description" xml:space="preserve">
+    <value>메타데이터 조회를 위해 모든 로컬 파일을 수동으로 다시 대기열에 추가합니다.</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__Button_127.Content" xml:space="preserve">
+    <value>지금 실행</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_128.Header" xml:space="preserve">
+    <value>캐시된 조회 결과 지우기</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_128.Description" xml:space="preserve">
+    <value>이전의 모든 TMDB / MusicBrainz 일치 결과를 삭제하여 다음 동기화 시 처음부터 다시 조회합니다.</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__Button_129.Content" xml:space="preserve">
+    <value>지우기</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_130.Title" xml:space="preserve">
+    <value>연결</value>
+  </data>
+  <data name="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_130.Description" xml:space="preserve">
+    <value>재연결 동작과 네트워크 시간 초과를 구성합니다.</value>
+  </data>
+  <data name="Views_FeedbackPage__ComboBoxItem_100.Content" xml:space="preserve">
+    <value>낮음</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__TextBlock_1.Text" xml:space="preserve">
+    <value>온디바이스 AI</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__Run_1.Text" xml:space="preserve">
+    <value>PC의 신경망 처리 장치(NPU)에서 실행되는 Phi Silica로 구동됩니다. 추론은 디바이스에서 수행됩니다. 환각을 줄이기 위해 앱은 짧은 익명의 음악 관련 메타데이터 스니펫을 가져오며, Wikipedia는 대체 수단으로만 사용되고, 이를 각 답변의 보조 컨텍스트로 제공합니다. Windows 11 24H2를 실행하는 Copilot+ PC(Snapdragon X, Intel Core Ultra Series 2, AMD Ryzen AI 300+)에서만 사용 가능합니다.</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__SettingsCard_1.Header" xml:space="preserve">
+    <value>온디바이스 AI 기능 활성화</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__SettingsCard_1.Description" xml:space="preserve">
+    <value>기본적으로 꺼져 있습니다. 켜면 기능을 처음 사용할 때 모델이 다운로드됩니다. AI 응답은 익명의 음악 메타데이터 스니펫으로 근거를 갖습니다.</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__TextBlock_2.Text" xml:space="preserve">
+    <value>Microsoft Store에서 Phi Silica 모델을 다운로드하고 있습니다. 일회성 설정이며, 모델은 Windows AI API를 사용하는 모든 앱에서 공유됩니다.</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__TextBlock_3.Text" xml:space="preserve">
+    <value>가사</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__SettingsCard_2.Header" xml:space="preserve">
+    <value>가사 의미</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__SettingsCard_2.Description" xml:space="preserve">
+    <value>요청 시 노래의 가사, 이미지, 감정의 흐름을 설명합니다.</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__TextBlock_4.Text" xml:space="preserve">
+    <value>아티스트</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__SettingsCard_3.Header" xml:space="preserve">
+    <value>이 아티스트 정보</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__SettingsCard_3.Description" xml:space="preserve">
+    <value>아티스트 페이지에서 온디바이스 요약을 생성하고 아티스트 관련 질문에 답합니다.</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__TextBlock_5.Text" xml:space="preserve">
+    <value>앨범</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__SettingsCard_4.Header" xml:space="preserve">
+    <value>이 앨범 정보</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__SettingsCard_4.Description" xml:space="preserve">
+    <value>앨범 페이지에서 신뢰할 수 있는 앨범별 음악 소스가 발견된 경우에만 온디바이스 요약을 생성합니다.</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__TextBlock_6.Text" xml:space="preserve">
+    <value>웹 그라운딩</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__SettingsCard_5.Header" xml:space="preserve">
+    <value>사용자 지정 웹 검색 엔드포인트</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__SettingsCard_5.Description" xml:space="preserve">
+    <value>선택 사항입니다. 기본 제공 DuckDuckGo 그라운딩을 사용자 정의 JSON 엔드포인트(Brave, Bing 등)로 재정의합니다. URL에 {query}를 사용하거나 q= 매개변수를 노출하세요.</value>
+  </data>
+  <data name="Controls_Settings_AiSettingsSection__TextBox_1.PlaceholderText" xml:space="preserve">
+    <value>https://example/search?q={query}</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsGroupHeader_100.Title" xml:space="preserve">
+    <value>트랙 상호작용</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsGroupHeader_100.Description" xml:space="preserve">
+    <value>트랙 행이 클릭에 어떻게 반응할지 선택하세요.</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsGroupHeader_101.Title" xml:space="preserve">
+    <value>대기열 동작</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsGroupHeader_101.Description" xml:space="preserve">
+    <value>재생이 시작될 때 Wavee가 현재 대기열을 어떻게 처리할지 설정하세요.</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsCard_102.Header" xml:space="preserve">
+    <value>자동 재생</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsCard_102.Description" xml:space="preserve">
+    <value>재생목록, 앨범 또는 아티스트가 끝나면 유사한 곡을 계속 재생합니다</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsGroupHeader_103.Title" xml:space="preserve">
+    <value>플레이어</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsGroupHeader_103.Description" xml:space="preserve">
+    <value>다른 플레이어 보기가 열려 있을 때 고정 플레이어가 어떻게 동작할지 제어합니다.</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsCard_104.Header" xml:space="preserve">
+    <value>고정 플레이어 표시 유지</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsCard_104.Description" xml:space="preserve">
+    <value>플레이어가 팝아웃된 동안 하단 또는 사이드바 플레이어를 표시합니다</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsGroupHeader_105.Title" xml:space="preserve">
+    <value>스트리밍 오디오</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsGroupHeader_105.Description" xml:space="preserve">
+    <value>스트리밍 트랙의 네트워크 품질 및 라우드니스 처리를 선택하세요.</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsGroupHeader_106.Title" xml:space="preserve">
+    <value>가사 소스</value>
+  </data>
+  <data name="Controls_Settings_PlaybackSettingsSection__SettingsGroupHeader_106.Description" xml:space="preserve">
+    <value>공급자를 활성화하고 여러 소스가 일치할 때 우선순위에 따라 정렬하세요.</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_1.Header" xml:space="preserve">
+    <value>메모리 진단 패널</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_1.Description" xml:space="preserve">
+    <value>아래에 실시간 메모리 및 캐시 분석 패널을 표시합니다. 기본적으로 꺼져 있으며, 켜져 있는 동안에만 샘플링이 활성화됩니다.</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsExpander_2.Header" xml:space="preserve">
+    <value>오디오 파이프라인</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_3.Header" xml:space="preserve">
+    <value>프로세스 ID</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_3.Description" xml:space="preserve">
+    <value>오디오 엔진 프로세스의 PID입니다 (0 = 프로세스 내).</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_4.Header" xml:space="preserve">
+    <value>재시작 횟수</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_4.Description" xml:space="preserve">
+    <value>이번 세션에서 자동 재시작된 횟수입니다.</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_5.Header" xml:space="preserve">
+    <value>오디오 언더런</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_5.Description" xml:space="preserve">
+    <value>PortAudio 버퍼 언더플로입니다 (오디오 결함의 원인).</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_6.Header" xml:space="preserve">
+    <value>GC 수집</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_6.Description" xml:space="preserve">
+    <value>가비지 수집 횟수입니다 (Gen2는 오디오 정지의 원인).</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_7.Header" xml:space="preserve">
+    <value>가장 느린 UI 작업</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_7.Description" xml:space="preserve">
+    <value>UI 스레드를 차단하는 프로파일링된 작업입니다.</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_8.Header" xml:space="preserve">
+    <value>IPC 처리량</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_8.Description" xml:space="preserve">
+    <value>명명된 파이프를 통해 송수신된 메시지입니다.</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_9.Header" xml:space="preserve">
+    <value>상태 신선도</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_9.Description" xml:space="preserve">
+    <value>오디오 프로세스에서 마지막 상태 업데이트 이후 경과 시간입니다.</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_10.Header" xml:space="preserve">
+    <value>탐색 상태 보고서</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_10.Description" xml:space="preserve">
+    <value>최근 탐색 타이밍, GC 횟수, 작업 집합 변화량, 페이지 폴트 및 마지막 MemoryReleaseHelper 이벤트의 스냅샷을 복사합니다. 정지 후 충돌 행을 재현한 다음 버그 보고서에 붙여넣으십시오.</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__Button_11.Content" xml:space="preserve">
+    <value>보고서 복사</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsExpander_12.Header" xml:space="preserve">
+    <value>시계 동기화</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsExpander_12.Description" xml:space="preserve">
+    <value>Spotify 서버 시계와 NTP 방식으로 동기화합니다.</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__Run_13.Text" xml:space="preserve">
+    <value>ms 오프셋</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_14.Header" xml:space="preserve">
+    <value>네트워크 왕복</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_14.Description" xml:space="preserve">
+    <value>최적 동기화 샘플의 지연 시간입니다.</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__Run_15.Text" xml:space="preserve">
+    <value>ms</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_16.Header" xml:space="preserve">
+    <value>동기화 간격</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_16.Description" xml:space="preserve">
+    <value>재동기화 주기입니다.</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__ComboBoxItem_17.Content" xml:space="preserve">
+    <value>5분</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__ComboBoxItem_18.Content" xml:space="preserve">
+    <value>10분</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__ComboBoxItem_19.Content" xml:space="preserve">
+    <value>15분</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__ComboBoxItem_20.Content" xml:space="preserve">
+    <value>30분</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_21.Header" xml:space="preserve">
+    <value>마지막 동기화</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__TextBlock_22.Text" xml:space="preserve">
+    <value>다음 동기화</value>
+  </data>
+  <data name="Controls_Settings_DiagnosticsConfigurationSection__Button_23.Content" xml:space="preserve">
+    <value>지금 동기화</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__TextBlock_100.Text" xml:space="preserve">
+    <value>이 대기열의 끝에 도달했습니다. 재생을 클릭하여 다시 시작하세요.</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_101.ToolTipService.ToolTip" xml:space="preserve">
+    <value>닫기</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__TeachingTip_102.Title" xml:space="preserve">
+    <value>팝아웃 플레이어에서 동영상이 재생 중입니다</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__TeachingTip_102.Subtitle" xml:space="preserve">
+    <value>재생이 분리된 플레이어 창으로 전환되었습니다.</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__TeachingTip_102.ActionButtonContent" xml:space="preserve">
+    <value>플레이어 포커스</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__TeachingTip_102.CloseButtonContent" xml:space="preserve">
+    <value>닫기</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__TeachingTip_103.Title" xml:space="preserve">
+    <value>에피소드를 이어서 재생하시겠어요?</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__TeachingTip_103.CloseButtonContent" xml:space="preserve">
+    <value>처음부터 재생</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__TransportModeButton_104.ToolTipService.ToolTip" xml:space="preserve">
+    <value>셔플</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_105.ToolTipService.ToolTip" xml:space="preserve">
+    <value>15초 뒤로</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_106.ToolTipService.ToolTip" xml:space="preserve">
+    <value>이전 곡</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_107.ToolTipService.ToolTip" xml:space="preserve">
+    <value>재생/일시 정지</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_108.ToolTipService.ToolTip" xml:space="preserve">
+    <value>다음 곡</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__TransportModeButton_109.ToolTipService.ToolTip" xml:space="preserve">
+    <value>반복</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_110.ToolTipService.ToolTip" xml:space="preserve">
+    <value>15초 앞으로</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_111.ToolTipService.ToolTip" xml:space="preserve">
+    <value>재생 속도</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__ToggleButton_112.ToolTipService.ToolTip" xml:space="preserve">
+    <value>대기열</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__ToggleButton_113.ToolTipService.ToolTip" xml:space="preserve">
+    <value>세부 정보</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__ToggleButton_114.ToolTipService.ToolTip" xml:space="preserve">
+    <value>가사</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_115.ToolTipService.ToolTip" xml:space="preserve">
+    <value>오디오로 듣기</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__DropDownButton_116.ToolTipService.ToolTip" xml:space="preserve">
+    <value>플레이어 확장</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_117.Text" xml:space="preserve">
+    <value>극장 모드</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_118.Text" xml:space="preserve">
+    <value>전체 화면</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_119.ToolTipService.ToolTip" xml:space="preserve">
+    <value>더 보기</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_120.Text" xml:space="preserve">
+    <value>곡 좋아요</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_121.Text" xml:space="preserve">
+    <value>대기열</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_122.Text" xml:space="preserve">
+    <value>가사</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_123.Text" xml:space="preserve">
+    <value>세부 정보</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_124.Text" xml:space="preserve">
+    <value>극장 모드</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_125.Text" xml:space="preserve">
+    <value>전체 화면</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_126.Text" xml:space="preserve">
+    <value>동영상 보기</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_127.Text" xml:space="preserve">
+    <value>오디오로 듣기</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_128.Text" xml:space="preserve">
+    <value>미니 플레이어 표시</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_129.Text" xml:space="preserve">
+    <value>이 세션에서 동영상 자동 재생</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_130.Text" xml:space="preserve">
+    <value>사이드바에 표시</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__TransportModeButton_131.ToolTipService.ToolTip" xml:space="preserve">
+    <value>셔플</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_132.ToolTipService.ToolTip" xml:space="preserve">
+    <value>15초 뒤로</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_133.ToolTipService.ToolTip" xml:space="preserve">
+    <value>이전 곡</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_134.ToolTipService.ToolTip" xml:space="preserve">
+    <value>재생/일시 정지</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_135.ToolTipService.ToolTip" xml:space="preserve">
+    <value>다음 곡</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__TransportModeButton_136.ToolTipService.ToolTip" xml:space="preserve">
+    <value>반복</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_137.ToolTipService.ToolTip" xml:space="preserve">
+    <value>15초 앞으로</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_138.ToolTipService.ToolTip" xml:space="preserve">
+    <value>재생 속도</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__Button_139.ToolTipService.ToolTip" xml:space="preserve">
+    <value>더 보기</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_140.Text" xml:space="preserve">
+    <value>곡 좋아요</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_141.Text" xml:space="preserve">
+    <value>대기열</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_142.Text" xml:space="preserve">
+    <value>가사</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_143.Text" xml:space="preserve">
+    <value>세부 정보</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_144.Text" xml:space="preserve">
+    <value>극장 모드</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_145.Text" xml:space="preserve">
+    <value>전체 화면</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_146.Text" xml:space="preserve">
+    <value>동영상 보기</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_147.Text" xml:space="preserve">
+    <value>오디오로 듣기</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_148.Text" xml:space="preserve">
+    <value>미니 플레이어 표시</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_149.Text" xml:space="preserve">
+    <value>이 세션에서 동영상 자동 재생</value>
+  </data>
+  <data name="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_150.Text" xml:space="preserve">
+    <value>사이드바에 표시</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__TextBlock_1.Text" xml:space="preserve">
+    <value>축소</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_1.Text" xml:space="preserve">
+    <value>없음</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_2.Text" xml:space="preserve">
+    <value>균일</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_3.Text" xml:space="preserve">
+    <value>채우기에 맞춤</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_4.Text" xml:space="preserve">
+    <value>채우기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__TextBlock_2.Text" xml:space="preserve">
+    <value>버퍼링 중</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_1.ToolTipService.ToolTip" xml:space="preserve">
+    <value>더 보기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_5.Text" xml:space="preserve">
+    <value>대기열</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_6.Text" xml:space="preserve">
+    <value>가사</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_7.Text" xml:space="preserve">
+    <value>세부 정보</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_8.Text" xml:space="preserve">
+    <value>음소거</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__MenuFlyoutItem_1.Text" xml:space="preserve">
+    <value>10초 뒤로 건너뛰기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__MenuFlyoutItem_2.Text" xml:space="preserve">
+    <value>30초 앞으로 건너뛰기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__MenuFlyoutItem_3.Text" xml:space="preserve">
+    <value>하단 바로 다시 이동</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleButton_1.ToolTipService.ToolTip" xml:space="preserve">
+    <value>셔플</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_2.ToolTipService.ToolTip" xml:space="preserve">
+    <value>15초 뒤로</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_3.ToolTipService.ToolTip" xml:space="preserve">
+    <value>15초 뒤로</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_4.ToolTipService.ToolTip" xml:space="preserve">
+    <value>이전 곡</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_5.ToolTipService.ToolTip" xml:space="preserve">
+    <value>재생/일시 정지</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_6.ToolTipService.ToolTip" xml:space="preserve">
+    <value>다음 곡</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_7.ToolTipService.ToolTip" xml:space="preserve">
+    <value>15초 앞으로</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_8.ToolTipService.ToolTip" xml:space="preserve">
+    <value>재생 속도</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleButton_2.ToolTipService.ToolTip" xml:space="preserve">
+    <value>반복</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_9.ToolTipService.ToolTip" xml:space="preserve">
+    <value>오디오로 듣기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleButton_3.ToolTipService.ToolTip" xml:space="preserve">
+    <value>셔플</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_10.ToolTipService.ToolTip" xml:space="preserve">
+    <value>이전 곡</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_11.ToolTipService.ToolTip" xml:space="preserve">
+    <value>재생/일시 정지</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_12.ToolTipService.ToolTip" xml:space="preserve">
+    <value>다음 곡</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_13.ToolTipService.ToolTip" xml:space="preserve">
+    <value>15초 앞으로</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_14.ToolTipService.ToolTip" xml:space="preserve">
+    <value>재생 속도</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleButton_4.ToolTipService.ToolTip" xml:space="preserve">
+    <value>반복</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_15.ToolTipService.ToolTip" xml:space="preserve">
+    <value>오디오로 듣기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_16.ToolTipService.ToolTip" xml:space="preserve">
+    <value>더 보기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_9.Text" xml:space="preserve">
+    <value>대기열</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_10.Text" xml:space="preserve">
+    <value>가사</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_11.Text" xml:space="preserve">
+    <value>세부 정보</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_12.Text" xml:space="preserve">
+    <value>음소거</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__MenuFlyoutItem_4.Text" xml:space="preserve">
+    <value>10초 뒤로 건너뛰기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__MenuFlyoutItem_5.Text" xml:space="preserve">
+    <value>30초 앞으로 건너뛰기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__MenuFlyoutItem_6.Text" xml:space="preserve">
+    <value>하단 바로 다시 이동</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__TextBlock_3.Text" xml:space="preserve">
+    <value>대기열의 끝 — 재생을 클릭하여 다시 시작하세요.</value>
+  </data>
+  <data name="Controls_SidebarPlayer_SidebarPlayerWidget__Button_17.ToolTipService.ToolTip" xml:space="preserve">
+    <value>닫기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_1.ToolTipService.ToolTip" xml:space="preserve">
+    <value>닫기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__TextBlock_1.Text" xml:space="preserve">
+    <value>다른 창에서 재생 중</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__TextBlock_2.Text" xml:space="preserve">
+    <value>한 번에 하나의 비디오 화면만 표시할 수 있습니다.</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_2.ToolTipService.ToolTip" xml:space="preserve">
+    <value>이 플레이어로 비디오 재생 이동</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__TextBlock_3.Text" xml:space="preserve">
+    <value>여기에서 대신 재생</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__HyperlinkButton_1.ToolTipService.ToolTip" xml:space="preserve">
+    <value>앨범 열기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_3.ToolTipService.ToolTip" xml:space="preserve">
+    <value>품질 및 스트림 세부 정보</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_4.ToolTipService.ToolTip" xml:space="preserve">
+    <value>오디오로 듣기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_5.ToolTipService.ToolTip" xml:space="preserve">
+    <value>15초 뒤로</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_6.ToolTipService.ToolTip" xml:space="preserve">
+    <value>이전</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_7.ToolTipService.ToolTip" xml:space="preserve">
+    <value>재생/일시 정지</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_8.ToolTipService.ToolTip" xml:space="preserve">
+    <value>다음</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_9.ToolTipService.ToolTip" xml:space="preserve">
+    <value>15초 앞으로</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_10.ToolTipService.ToolTip" xml:space="preserve">
+    <value>재생 속도</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__ToggleButton_1.ToolTipService.ToolTip" xml:space="preserve">
+    <value>셔플</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__ToggleButton_2.ToolTipService.ToolTip" xml:space="preserve">
+    <value>반복</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_11.ToolTipService.ToolTip" xml:space="preserve">
+    <value>품질 및 스트림 세부 정보</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_12.ToolTipService.ToolTip" xml:space="preserve">
+    <value>대기열</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_13.ToolTipService.ToolTip" xml:space="preserve">
+    <value>비디오에 창 맞추기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__ToggleButton_3.ToolTipService.ToolTip" xml:space="preserve">
+    <value>시어터 모드 종료</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__HyperlinkButton_2.ToolTipService.ToolTip" xml:space="preserve">
+    <value>앨범 열기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_14.ToolTipService.ToolTip" xml:space="preserve">
+    <value>오디오로 듣기</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__ToggleButton_4.ToolTipService.ToolTip" xml:space="preserve">
+    <value>셔플</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_15.ToolTipService.ToolTip" xml:space="preserve">
+    <value>15초 뒤로</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_16.ToolTipService.ToolTip" xml:space="preserve">
+    <value>이전</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_17.ToolTipService.ToolTip" xml:space="preserve">
+    <value>재생/일시 정지</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_18.ToolTipService.ToolTip" xml:space="preserve">
+    <value>다음</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_19.ToolTipService.ToolTip" xml:space="preserve">
+    <value>15초 앞으로</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_20.ToolTipService.ToolTip" xml:space="preserve">
+    <value>재생 속도</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__ToggleButton_5.ToolTipService.ToolTip" xml:space="preserve">
+    <value>반복</value>
+  </data>
+  <data name="Controls_SidebarPlayer_ExpandedNowPlayingLayout__TextBlock_4.Text" xml:space="preserve">
+    <value>버퍼링 중</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_100.Text" xml:space="preserve">
+    <value>월드 랭크</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_101.Text" xml:space="preserve">
+    <value>인증된 아티스트</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_102.Text" xml:space="preserve">
+    <value>아티스트 프로필</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_103.Text" xml:space="preserve">
+    <value>아티스트 라디오</value>
+  </data>
+  <data name="Views_ArtistPage__Button_104.ToolTipService.ToolTip" xml:space="preserve">
+    <value>공유</value>
+  </data>
+  <data name="Views_ArtistPage__Button_105.ToolTipService.ToolTip" xml:space="preserve">
+    <value>더 보기</value>
+  </data>
+  <data name="Views_ArtistPage__MenuFlyoutItem_106.Text" xml:space="preserve">
+    <value>아티스트 링크 복사</value>
+  </data>
+  <data name="Views_ArtistPage__MenuFlyoutItem_107.Text" xml:space="preserve">
+    <value>Spotify에서 열기</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_108.Text" xml:space="preserve">
+    <value>인기 곡 및 인기 발매작</value>
+  </data>
+  <data name="Views_ArtistPage__AiTextCard_109.Title" xml:space="preserve">
+    <value>이 아티스트 소개</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_110.Text" xml:space="preserve">
+    <value>출처</value>
+  </data>
+  <data name="Views_ArtistPage__HyperlinkButton_111.Content" xml:space="preserve">
+    <value>전체 약력 읽기 →</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_112.Text" xml:space="preserve">
+    <value>앨범</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_113.Text" xml:space="preserve">
+    <value>싱글 및 EP</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_114.Text" xml:space="preserve">
+    <value>참여 앨범</value>
+  </data>
+  <data name="Views_ArtistPage__SectionShelf_115.Title" xml:space="preserve">
+    <value>뮤직 비디오</value>
+  </data>
+  <data name="Views_ArtistPage__SectionShelf_116.Title" xml:space="preserve">
+    <value>플레이리스트 및 디스커버리</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_117.Text" xml:space="preserve">
+    <value>예정된 콘서트</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_118.Text" xml:space="preserve">
+    <value>굿즈</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_119.Text" xml:space="preserve">
+    <value>약력</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_120.Text" xml:space="preserve">
+    <value>가장 많이 청취된 지역</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_121.Text" xml:space="preserve">
+    <value>AI에 물어보기</value>
+  </data>
+  <data name="Views_ArtistPage__TextBox_122.PlaceholderText" xml:space="preserve">
+    <value>옛 노래, 베스트 트랙, 숨은 명곡을 물어보세요...</value>
+  </data>
+  <data name="Views_ArtistPage__Button_123.Content" xml:space="preserve">
+    <value>물어보기</value>
+  </data>
+  <data name="Views_ArtistPage__Button_124.ToolTipService.ToolTip" xml:space="preserve">
+    <value>재생</value>
+  </data>
+  <data name="Views_ArtistPage__Button_125.ToolTipService.ToolTip" xml:space="preserve">
+    <value>열기</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_126.Text" xml:space="preserve">
+    <value>프로필 정보</value>
+  </data>
+  <data name="Views_ArtistPage__StatCard_127.Label" xml:space="preserve">
+    <value>월간 청취자</value>
+  </data>
+  <data name="Views_ArtistPage__StatCard_128.Label" xml:space="preserve">
+    <value>팔로워</value>
+  </data>
+  <data name="Views_ArtistPage__StatCard_129.Label" xml:space="preserve">
+    <value>앨범</value>
+  </data>
+  <data name="Views_ArtistPage__StatCard_130.Label" xml:space="preserve">
+    <value>싱글 및 EP</value>
+  </data>
+  <data name="Views_ArtistPage__StatCard_131.Label" xml:space="preserve">
+    <value>예정된 콘서트</value>
+  </data>
+  <data name="Views_ArtistPage__StatCard_132.Label" xml:space="preserve">
+    <value>관련 아티스트</value>
+  </data>
+  <data name="Views_ArtistPage__TextBlock_133.Text" xml:space="preserve">
+    <value>갤러리</value>
+  </data>
+  <data name="Views_ArtistPage__SectionShelf_134.Title" xml:space="preserve">
+    <value>팬들이 좋아하는 아티스트</value>
+  </data>
+  <data name="Views_ArtistPage__ContentCard_135.Subtitle" xml:space="preserve">
+    <value>아티스트</value>
+  </data>
+  <data name="Views_ArtistPage__Button_136.ToolTipService.ToolTip" xml:space="preserve">
+    <value>닫기 (Esc)</value>
   </data>
 </root>

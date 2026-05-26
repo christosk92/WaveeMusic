@@ -17,7 +17,15 @@
     Background="Transparent"
     waveeHelpers:PageEntranceFade.Fade="True">
 
-    <ScrollView x:Name="PageScrollView" VerticalScrollBarVisibility="Auto" ContentOrientation="Vertical">
+    <Grid>
+    <controls:PageErrorState
+        Title="Couldn't load search results"
+        Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+        RetryCommand="{x:Bind ViewModel.RetryCommand}"
+        Canvas.ZIndex="10"
+        Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+    <ScrollView x:Name="PageScrollView" VerticalScrollBarVisibility="Auto" ContentOrientation="Vertical"
+                Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
         <StackPanel x:Name="RootPanel" Padding="20,18,20,28" Spacing="0">
 
             <ScrollViewer HorizontalScrollBarVisibility="Hidden"
@@ -231,4 +239,5 @@
 
         </StackPanel>
     </ScrollView>
+    </Grid>
 </UserControl>

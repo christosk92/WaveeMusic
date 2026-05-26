@@ -651,6 +651,11 @@ public sealed partial class SearchViewModel : ObservableObject, ITabBarItemConte
         => !IsLoading && !string.IsNullOrWhiteSpace(Query);
 
     [RelayCommand(CanExecute = nameof(CanRetry))]
-    private Task RetryAsync()
-        => string.IsNullOrWhiteSpace(Query) ? Task.CompletedTask : LoadAsync(Query);
+    private async Task RetryAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Query)) return;
+        HasError = false;
+        ErrorMessage = null;
+        await LoadAsync(Query);
+    }
 }

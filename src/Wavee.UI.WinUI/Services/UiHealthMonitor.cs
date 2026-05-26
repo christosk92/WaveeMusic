@@ -23,6 +23,9 @@ internal sealed class UiHealthMonitor : IDisposable
     private const int TickIntervalMs = 16; // ~60 fps target
     public int WarnThresholdMs { get; set; } = 50;
     public int CriticalThresholdMs { get; set; } = 100;
+    private const int SevereFreezeThresholdMs = 1500;
+    private const int DegradedCriticalFrameThreshold = 10;
+    private static readonly TimeSpan DegradedPromptCooldown = TimeSpan.FromHours(1);
 
     // ── State ──
     private long _lastTickTimestamp;
@@ -48,6 +51,8 @@ internal sealed class UiHealthMonitor : IDisposable
     private int _stallCount;
     private int _criticalCount;
     private int _totalFrames;
+    private int _criticalFramesSinceDegradedPrompt;
+    private long _lastDegradedPromptTimestamp;
 
     // Cached current-process handle. The overlay polls every render frame when
     // active — allocating a Process wrapper per call adds finalizer pressure.
@@ -73,6 +78,8 @@ internal sealed class UiHealthMonitor : IDisposable
         _lastGen2 = GC.CollectionCount(2);
         _lastManagedBytes = GC.GetTotalMemory(false);
     }
+
+    public event EventHandler<UiDegradationDetectedEventArgs>? Degraded;
 
     public void Start()
     {
@@ -128,6 +135,7 @@ internal sealed class UiHealthMonitor : IDisposable
         var elapsedMs = (now - _lastTickTimestamp) * 1000.0 / Stopwatch.Frequency;
         _lastTickTimestamp = now;
 
+        UiDegradationDetectedEventArgs? degradedArgs = null;
         lock (_statsLock)
         {
             _totalFrames++;
@@ -213,7 +221,38 @@ internal sealed class UiHealthMonitor : IDisposable
             {
                 _logger?.LogDebug("Gen2 GC detected (frame #{Frame}, tick={ElapsedMs:F1}ms)", _totalFrames, elapsedMs);
             }
+
+            degradedArgs = EvaluateDegradationLocked(elapsedMs, now);
         }
+
+        if (degradedArgs is not null)
+            Degraded?.Invoke(this, degradedArgs);
+    }
+
+    private UiDegradationDetectedEventArgs? EvaluateDegradationLocked(double elapsedMs, long timestamp)
+    {
+        if (elapsedMs > CriticalThresholdMs)
+            _criticalFramesSinceDegradedPrompt++;
+
+        if (_lastDegradedPromptTimestamp != 0
+            && Stopwatch.GetElapsedTime(_lastDegradedPromptTimestamp, timestamp) < DegradedPromptCooldown)
+        {
+            return null;
+        }
+
+        var severeFreeze = elapsedMs >= SevereFreezeThresholdMs;
+        var repeatedCriticalFrames = _criticalFramesSinceDegradedPrompt >= DegradedCriticalFrameThreshold;
+        if (!severeFreeze && !repeatedCriticalFrames)
+            return null;
+
+        _lastDegradedPromptTimestamp = timestamp;
+        var criticalFrames = _criticalFramesSinceDegradedPrompt;
+        _criticalFramesSinceDegradedPrompt = 0;
+
+        return new UiDegradationDetectedEventArgs(
+            elapsedMs,
+            criticalFrames,
+            severeFreeze ? "severe-freeze" : "repeated-critical-stalls");
     }
 
     /// <summary>
@@ -350,6 +389,8 @@ internal sealed class UiHealthMonitor : IDisposable
             _stallCount = 0;
             _criticalCount = 0;
             _totalFrames = 0;
+            _criticalFramesSinceDegradedPrompt = 0;
+            _lastDegradedPromptTimestamp = 0;
             _frameDurations.Clear();
             _renderFrameDurations.Clear();
             _historyCount = 0;
@@ -389,3 +430,8 @@ internal record struct UiHealthStats
     public double WorkingSetMb { get; init; }
     public double PrivateMb { get; init; }
 }
+
+internal sealed record UiDegradationDetectedEventArgs(
+    double LastFrameMs,
+    int CriticalFrames,
+    string Reason);

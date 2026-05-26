@@ -608,6 +608,36 @@ public sealed class AudioHostConfig
     public long? AudioCacheMaxBytes { get; init; }
 }
 
+public sealed class PrepareUiHandoffCommand
+{
+    [JsonPropertyName("newParentProcessId")]
+    public int NewParentProcessId { get; init; }
+
+    [JsonPropertyName("pipeName")]
+    public required string PipeName { get; init; }
+
+    [JsonPropertyName("sessionId")]
+    public required string SessionId { get; init; }
+
+    [JsonPropertyName("launchToken")]
+    public required string LaunchToken { get; init; }
+
+    [JsonPropertyName("timeoutMs")]
+    public int TimeoutMs { get; init; }
+}
+
+public sealed class AdoptUiSessionCommand
+{
+    [JsonPropertyName("parentProcessId")]
+    public int ParentProcessId { get; init; }
+
+    [JsonPropertyName("sessionId")]
+    public required string SessionId { get; init; }
+
+    [JsonPropertyName("launchToken")]
+    public required string LaunchToken { get; init; }
+}
+
 // ── Well-known message types ──
 
 public static class IpcMessageTypes
@@ -637,6 +667,8 @@ public static class IpcMessageTypes
     public const string StopPreviewAnalysis = "stop_preview_analysis";
     public const string DerivePlayPlayKey = "derive_playplay_key";
     public const string Configure = "configure";
+    public const string PrepareUiHandoff = "prepare_ui_handoff";
+    public const string AdoptUiSession = "adopt_ui_session";
     public const string Shutdown = "shutdown";
     public const string Ping = "ping";
 
@@ -687,4 +719,6 @@ public static class IpcMessageTypes
 [JsonSerializable(typeof(PreviewVisualizationFrame))]
 [JsonSerializable(typeof(AudioHostReady))]
 [JsonSerializable(typeof(AudioHostConfig))]
+[JsonSerializable(typeof(PrepareUiHandoffCommand))]
+[JsonSerializable(typeof(AdoptUiSessionCommand))]
 public partial class IpcJsonContext : JsonSerializerContext;

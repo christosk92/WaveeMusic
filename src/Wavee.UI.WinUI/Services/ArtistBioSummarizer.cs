@@ -32,6 +32,7 @@ public sealed class ArtistBioSummarizer
     private readonly ILanguageModelClient _model;
     private readonly IWebSearchToolProvider? _webSearch;
     private readonly IWikipediaLookup? _wikipedia;
+    private readonly IMusicGroundingProvider? _musicGrounding;
     private readonly ILogger? _logger;
 
     private readonly ConcurrentDictionary<string, Lazy<Task<LyricsAiResult>>> _requests =
@@ -50,12 +51,14 @@ public sealed class ArtistBioSummarizer
     public ArtistBioSummarizer(
         AiCapabilities capabilities,
         ILanguageModelClient model,
+        IMusicGroundingProvider? musicGrounding = null,
         IWebSearchToolProvider? webSearch = null,
         IWikipediaLookup? wikipedia = null,
         ILogger<ArtistBioSummarizer>? logger = null)
     {
         _capabilities = capabilities ?? throw new ArgumentNullException(nameof(capabilities));
         _model = model ?? throw new ArgumentNullException(nameof(model));
+        _musicGrounding = musicGrounding;
         _webSearch = webSearch;
         _wikipedia = wikipedia;
         _logger = logger;
@@ -65,8 +68,8 @@ public sealed class ArtistBioSummarizer
     /// Asks Phi Silica for a fuller neutral biography of the artist. Cached
     /// in-memory per <paramref name="artistUri"/>; concurrent callers share the
     /// same in-flight Lazy task. Grounded with the Spotify biography (when
-    /// available), a Wikipedia summary, and a web-search pass — the model is
-    /// told to treat these as primary truth.
+    /// available) and music-specific metadata snippets; Wikipedia is only a
+    /// fallback inside the grounding provider.
     /// </summary>
     public Task<LyricsAiResult> SummarizeBioAsync(
         string artistUri,
@@ -112,7 +115,7 @@ public sealed class ArtistBioSummarizer
         if (cached.Kind != LyricsAiResultKind.Ok)
             return false;
 
-        result = LyricsAiResult.Ok(cached.Text, fromCache: true);
+        result = cached.WithCacheState(fromCache: true);
         return true;
     }
 
@@ -155,8 +158,16 @@ public sealed class ArtistBioSummarizer
         // Kick off external grounding in parallel with the Phi Silica readiness
         // check. Both calls catch their own failures and degrade to null/empty
         // rather than blocking the AI surface.
-        var webResultsTask = FetchWebGroundingAsync(artistName);
-        var wikipediaTask = FetchWikipediaAsync(artistName);
+        var groundingTask = FetchMusicGroundingAsync(artistName);
+
+        var grounding = await groundingTask.ConfigureAwait(false);
+        if (!HasUsableBiographyEvidence(spotifyBiography, grounding))
+        {
+            _logger?.LogDebug(
+                "SummarizeBioAsync skipped for {ArtistName}: insufficient grounded artist evidence.",
+                artistName);
+            return LyricsAiResult.UnavailableWithReason("insufficient_grounding");
+        }
 
         if (!await _capabilities.EnsureLanguageModelReadyAsync())
         {
@@ -165,14 +176,91 @@ public sealed class ArtistBioSummarizer
             return LyricsAiResult.Unavailable;
         }
 
-        var webResults = await webResultsTask.ConfigureAwait(false);
-        var wikipedia = await wikipediaTask.ConfigureAwait(false);
-
         return await GeneratePlainTextBioAsync(
             artistUri,
-            BuildBioPrompt(artistName, genres, monthlyListenersDisplay, topTrackNames, spotifyBiography, wikipedia, webResults),
-            BuildBioFallbackPrompt(artistName, spotifyBiography, wikipedia, webResults),
+            artistName,
+            BuildBioPrompt(artistName, genres, monthlyListenersDisplay, topTrackNames, spotifyBiography, grounding),
+            BuildBioFallbackPrompt(artistName, topTrackNames, spotifyBiography, grounding),
+            spotifyBiography,
+            topTrackNames,
+            grounding.Sources,
             deltaProgress);
+    }
+
+    private async Task<MusicGroundingResult> FetchMusicGroundingAsync(string artistName)
+    {
+        if (_musicGrounding?.IsAvailable == true)
+        {
+            try
+            {
+                return await _musicGrounding.GetGroundingAsync(
+                        new MusicGroundingRequest(
+                            MusicGroundingKind.Artist,
+                            ArtistName: artistName,
+                            MaxSources: 5))
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Artist music grounding failed for {Artist}", artistName);
+            }
+        }
+
+        var webResults = await FetchWebGroundingAsync(artistName).ConfigureAwait(false);
+        var sources = webResults
+            .Where(r => !string.IsNullOrWhiteSpace(r.Title) && !string.IsNullOrWhiteSpace(r.Url))
+            .Take(5)
+            .Select(r => new MusicGroundingSource(
+                r.Title,
+                r.Url,
+                r.Snippet,
+                r.Source ?? SourceNameFromUrl(r.Url),
+                MusicGroundingKind.Artist,
+                IsMusicSpecific: true,
+                Reliability: 0.5))
+            .ToList();
+
+        if (sources.Count == 0)
+        {
+            var wikipedia = await FetchWikipediaAsync(artistName).ConfigureAwait(false);
+            if (wikipedia is { } wiki && !string.IsNullOrWhiteSpace(wiki.Extract) && !string.IsNullOrWhiteSpace(wiki.Url))
+            {
+                sources.Add(new MusicGroundingSource(
+                    wiki.Title,
+                    wiki.Url!,
+                    TrimForPrompt(wiki.Extract, 320),
+                    "Wikipedia",
+                    MusicGroundingKind.Artist,
+                    IsMusicSpecific: false,
+                    Reliability: 0.45));
+            }
+        }
+
+        return sources.Count == 0 ? MusicGroundingResult.Empty : new MusicGroundingResult(sources);
+    }
+
+    private static bool HasUsableBiographyEvidence(string? spotifyBiography, MusicGroundingResult grounding)
+    {
+        if (!string.IsNullOrWhiteSpace(spotifyBiography) && spotifyBiography.Trim().Length >= 120)
+            return true;
+
+        foreach (var source in grounding.Sources)
+        {
+            if (string.IsNullOrWhiteSpace(source.Snippet) || source.Snippet.Trim().Length < 80)
+                continue;
+
+            if (source.Reliability >= 0.6)
+                return true;
+
+            if (!source.IsMusicSpecific
+                && string.Equals(source.SourceName, "Wikipedia", StringComparison.OrdinalIgnoreCase)
+                && source.Snippet.Trim().Length >= 160)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async Task<IReadOnlyList<WebSearchResult>> FetchWebGroundingAsync(string artistName)
@@ -212,8 +300,12 @@ public sealed class ArtistBioSummarizer
 
     private async Task<LyricsAiResult> GeneratePlainTextBioAsync(
         string artistUri,
+        string artistName,
         string prompt,
         string fallbackPrompt,
+        string? spotifyBiography,
+        IReadOnlyList<string>? topTrackNames,
+        IReadOnlyList<MusicGroundingSource> sources,
         IProgress<string>? deltaProgress)
     {
         var response = await _model.GenerateTextAsync(
@@ -236,7 +328,10 @@ public sealed class ArtistBioSummarizer
             return ToPlainTextFailureResult(artistUri, response);
 
         var text = CleanBio(response.Text);
-        if (string.IsNullOrWhiteSpace(text) && !usedFallback)
+        if ((string.IsNullOrWhiteSpace(text)
+             || AiGeneratedTextGuard.IsInvalidGeneratedText(text)
+             || !IsGroundedInEvidence(text, artistName, spotifyBiography, topTrackNames, sources))
+            && !usedFallback)
         {
             response = await _model.GenerateTextAsync(
                 new AiTextGenerationRequest(fallbackPrompt, 0.3f, "SummarizeArtistBioFallbackEmpty"),
@@ -249,9 +344,15 @@ public sealed class ArtistBioSummarizer
             text = CleanBio(response.Text);
         }
 
+        if (AiGeneratedTextGuard.IsInvalidGeneratedText(text)
+            || !IsGroundedInEvidence(text, artistName, spotifyBiography, topTrackNames, sources))
+        {
+            return LyricsAiResult.UnavailableWithReason("invalid_generation");
+        }
+
         return string.IsNullOrWhiteSpace(text)
             ? LyricsAiResult.Error("Phi Silica returned an empty biography.")
-            : LyricsAiResult.Ok(text, fromCache: false);
+            : LyricsAiResult.Ok(text, fromCache: false, sources);
     }
 
     private LyricsAiResult ToPlainTextFailureResult(
@@ -299,20 +400,19 @@ public sealed class ArtistBioSummarizer
         string? monthlyListenersDisplay,
         IReadOnlyList<string>? topTrackNames,
         string? spotifyBiography,
-        WikipediaSummary? wikipedia,
-        IReadOnlyList<WebSearchResult> webResults)
+        MusicGroundingResult grounding)
     {
         var sb = new StringBuilder();
-        sb.Append("Write one rich editorial paragraph (3 to 5 sentences, around 90 to 140 words) ");
+        sb.Append("Write one specific, grounded artist-page paragraph (3 to 5 sentences, around 90 to 140 words) ");
         sb.Append("for an artist page. Treat the supplied evidence hierarchically: ");
         sb.Append("SPOTIFY_BIOGRAPHY is authoritative — paraphrase its verifiable facts. ");
-        sb.Append("WIKIPEDIA is reliable secondary context for era, scene, and catalogue. ");
-        sb.Append("WEB_RESULTS are supporting background — use them only when consistent with the above. ");
+        sb.Append("MUSIC_GROUNDING is supporting music metadata and page snippets; use it only when consistent with the above. ");
         sb.Append("Trained music-domain knowledge is last and only when broadly known. ");
+        sb.Append("If the evidence is not enough to write the paragraph, output exactly NO_ARTIST_SUMMARY and nothing else. ");
+        sb.Append("Never mention the prompt, instructions, evidence names, missing Spotify/Wikipedia/web data, or inability to answer. ");
         sb.Append("Do not invent specific biographical facts (debut dates, label history, member counts, awards, hometown) ");
         sb.Append("unless they appear in the supplied evidence. Be concrete about sound, era, scene, signature appeal, ");
-        sb.Append("or why listeners know the artist. Avoid stock phrases such as \"resonates deeply\", \"dedicated fanbase\", ");
-        sb.Append("\"captivates listeners\", \"showcases\", \"unique blend\", and \"musical journey\". ");
+        sb.Append("or why listeners know the artist. Avoid stock promotional phrasing; tie every descriptive claim to supplied evidence. ");
         sb.Append("When naming songs, EPs, or albums, prefer titles from the supplied POPULAR_TRACKS list or the SPOTIFY_BIOGRAPHY text — those are the artist's actual catalog. ");
         sb.Append("Mention three to five such titles by name to anchor the description, written in straight double quotes (e.g. \"Track Name\") so they can be cross-referenced. ");
         sb.Append("Do not invent track or album names that don't appear in the supplied evidence. ");
@@ -338,14 +438,6 @@ public sealed class ArtistBioSummarizer
             sb.Append("MONTHLY LISTENERS: ").Append(monthlyListenersDisplay).Append('\n');
         }
 
-        if (wikipedia is { } wiki && !string.IsNullOrWhiteSpace(wiki.Extract))
-        {
-            sb.Append("WIKIPEDIA:\n");
-            if (!string.IsNullOrWhiteSpace(wiki.Description))
-                sb.Append("Summary: ").AppendLine(wiki.Description);
-            sb.AppendLine(TrimForPrompt(wiki.Extract, 1200));
-        }
-
         if (topTrackNames is { Count: > 0 })
         {
             sb.Append("POPULAR_TRACKS (artist's actual catalog — quote these by name):\n");
@@ -353,21 +445,23 @@ public sealed class ArtistBioSummarizer
                 sb.Append("- \"").Append(title).Append("\"\n");
         }
 
-        AppendWebResultsBlock(sb, webResults);
+        AppendMusicGroundingBlock(sb, grounding.Sources);
 
         return sb.ToString();
     }
 
     private static string BuildBioFallbackPrompt(
         string artistName,
+        IReadOnlyList<string>? topTrackNames,
         string? spotifyBiography,
-        WikipediaSummary? wikipedia,
-        IReadOnlyList<WebSearchResult> webResults)
+        MusicGroundingResult grounding)
     {
         var sb = new StringBuilder();
-        sb.Append("Write one rich editorial paragraph (3 to 4 sentences, around 80 to 120 words) introducing the artist named \"");
+        sb.Append("Write one specific, grounded paragraph (3 to 4 sentences, around 80 to 120 words) introducing the artist named \"");
         sb.Append(artistName);
-        sb.Append("\". Use the supplied evidence first (Spotify > Wikipedia > web), then trained knowledge for broad context. ");
+        sb.Append("\". Use the supplied evidence first (Spotify > music grounding), then trained knowledge for broad context. ");
+        sb.Append("If there is not enough evidence, output exactly NO_ARTIST_SUMMARY and nothing else. ");
+        sb.Append("Never mention the prompt, instructions, missing evidence, Spotify biography, Wikipedia, web results, or inability to answer. ");
         sb.Append("Be specific about sound, era, scene, or listener appeal where possible, avoid stock promo language, and do not invent detailed biographical facts. ");
         sb.Append("Plain prose, no markdown, no bullets.\n\n");
 
@@ -377,32 +471,196 @@ public sealed class ArtistBioSummarizer
             sb.AppendLine(TrimForPrompt(spotifyBiography!, 1200));
         }
 
-        if (wikipedia is { } wiki && !string.IsNullOrWhiteSpace(wiki.Extract))
+        if (topTrackNames is { Count: > 0 })
         {
-            sb.Append("WIKIPEDIA:\n");
-            sb.AppendLine(TrimForPrompt(wiki.Extract, 900));
+            sb.Append("POPULAR_TRACKS (artist's actual catalog - quote these by name if useful):\n");
+            foreach (var title in topTrackNames.Take(20))
+                sb.Append("- \"").Append(title).Append("\"\n");
         }
 
-        AppendWebResultsBlock(sb, webResults);
+        AppendMusicGroundingBlock(sb, grounding.Sources);
 
         return sb.ToString();
     }
 
-    private static void AppendWebResultsBlock(StringBuilder sb, IReadOnlyList<WebSearchResult> webResults)
+    private static bool IsGroundedInEvidence(
+        string? text,
+        string artistName,
+        string? spotifyBiography,
+        IReadOnlyList<string>? topTrackNames,
+        IReadOnlyList<MusicGroundingSource>? sources)
     {
-        if (webResults is null || webResults.Count == 0)
+        var normalizedText = NormalizeForEvidence(text);
+        if (normalizedText.Length == 0)
+            return false;
+
+        if (ContainsKnownTitle(normalizedText, topTrackNames))
+            return true;
+
+        if (HasEvidenceTokenOverlap(normalizedText, spotifyBiography, artistName, requiredMatches: 4))
+            return true;
+
+        if (sources is null)
+            return false;
+
+        foreach (var source in sources)
+        {
+            if (HasEvidenceTokenOverlap(normalizedText, source.Title, artistName, requiredMatches: 2)
+                || HasEvidenceTokenOverlap(normalizedText, source.Snippet, artistName, requiredMatches: 3))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsKnownTitle(string normalizedText, IReadOnlyList<string>? topTrackNames)
+    {
+        if (topTrackNames is null || topTrackNames.Count == 0)
+            return false;
+
+        var paddedText = $" {normalizedText} ";
+        foreach (var title in topTrackNames)
+        {
+            var normalizedTitle = NormalizeForEvidence(title);
+            if (normalizedTitle.Length < 4)
+                continue;
+
+            if (paddedText.Contains($" {normalizedTitle} ", StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasEvidenceTokenOverlap(
+        string normalizedText,
+        string? evidence,
+        string artistName,
+        int requiredMatches)
+    {
+        var evidenceTokens = SignificantEvidenceTokens(evidence, artistName);
+        if (evidenceTokens.Count == 0)
+            return false;
+
+        var paddedText = $" {normalizedText} ";
+        var matches = 0;
+        foreach (var token in evidenceTokens)
+        {
+            if (!paddedText.Contains($" {token} ", StringComparison.Ordinal))
+                continue;
+
+            matches++;
+            if (matches >= requiredMatches)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static HashSet<string> SignificantEvidenceTokens(string? value, string artistName)
+    {
+        var tokens = new HashSet<string>(StringComparer.Ordinal);
+        var artistTokens = NormalizeForEvidence(artistName)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(token => token.Length >= 3)
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var token in NormalizeForEvidence(value).Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (token.Length < 4
+                || artistTokens.Contains(token)
+                || IsEvidenceStopWord(token))
+            {
+                continue;
+            }
+
+            tokens.Add(token);
+        }
+
+        return tokens;
+    }
+
+    private static string NormalizeForEvidence(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var sb = new StringBuilder(value.Length);
+        var previousWasSpace = true;
+        foreach (var ch in value)
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                sb.Append(char.ToLowerInvariant(ch));
+                previousWasSpace = false;
+            }
+            else if (!previousWasSpace)
+            {
+                sb.Append(' ');
+                previousWasSpace = true;
+            }
+        }
+
+        return sb.ToString().Trim();
+    }
+
+    private static bool IsEvidenceStopWord(string token)
+        => token is "about"
+            or "across"
+            or "after"
+            or "album"
+            or "albums"
+            or "also"
+            or "and"
+            or "artist"
+            or "artists"
+            or "before"
+            or "between"
+            or "biography"
+            or "known"
+            or "listeners"
+            or "music"
+            or "musical"
+            or "official"
+            or "over"
+            or "profile"
+            or "release"
+            or "released"
+            or "song"
+            or "songs"
+            or "spotify"
+            or "their"
+            or "them"
+            or "there"
+            or "they"
+            or "this"
+            or "through"
+            or "track"
+            or "tracks"
+            or "under"
+            or "video"
+            or "where"
+            or "which"
+            or "with"
+            or "within";
+
+    private static void AppendMusicGroundingBlock(StringBuilder sb, IReadOnlyList<MusicGroundingSource> sources)
+    {
+        if (sources is null || sources.Count == 0)
             return;
 
         var emitted = 0;
         var header = false;
-        foreach (var result in webResults)
+        foreach (var result in sources)
         {
             if (emitted >= 5) break;
             if (string.IsNullOrWhiteSpace(result.Title)) continue;
 
             if (!header)
             {
-                sb.Append("WEB_RESULTS:\n");
+                sb.Append("MUSIC_GROUNDING:\n");
                 header = true;
             }
 
@@ -412,8 +670,8 @@ public sealed class ArtistBioSummarizer
             sb.Append("- ").Append(result.Title.Trim());
             if (!string.IsNullOrWhiteSpace(snippet))
                 sb.Append(" — ").Append(snippet);
-            if (!string.IsNullOrWhiteSpace(result.Source))
-                sb.Append(" (").Append(result.Source).Append(')');
+            if (!string.IsNullOrWhiteSpace(result.SourceName))
+                sb.Append(" (").Append(result.SourceName).Append(')');
             sb.AppendLine();
             emitted++;
         }
@@ -431,6 +689,29 @@ public sealed class ArtistBioSummarizer
         if (lastSpace > maxCharacters / 2)
             trimmed = trimmed[..lastSpace];
         return trimmed.TrimEnd() + "...";
+    }
+
+    private static string SourceNameFromUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return "Web";
+
+        var host = uri.Host.ToLowerInvariant();
+        if (host.StartsWith("www.", StringComparison.Ordinal))
+            host = host[4..];
+
+        return host switch
+        {
+            "musicbrainz.org" => "MusicBrainz",
+            "genius.com" => "Genius",
+            "musixmatch.com" => "Musixmatch",
+            "discogs.com" => "Discogs",
+            "allmusic.com" => "AllMusic",
+            "last.fm" => "Last.fm",
+            "bandcamp.com" => "Bandcamp",
+            "songfacts.com" => "Songfacts",
+            _ => host,
+        };
     }
 
     private static string NormalizeArtistUri(string artistUri)

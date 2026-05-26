@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -8,8 +7,10 @@ using Microsoft.UI.Xaml.Input;
 using Windows.System;
 using Wavee.UI.Contracts;
 using Wavee.UI.Models;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Helpers.Playback;
 using Wavee.UI.WinUI.Services;
@@ -65,8 +66,12 @@ public static class TrackContextMenuBuilder
             AccentIconStyleKey = "App.AccentIcons.Media.Play",
             Command = ctx.PlayCommand,
             CommandParameter = track,
+            // Fallback: load a one-track queue. Mirrors what every host page's
+            // PlayCommand ultimately does — preserves "right-click → Play"
+            // working everywhere even on surfaces that didn't bind an explicit
+            // command (e.g. floating mini cards).
             Invoke = ctx.PlayCommand is null
-                ? () => Debug.WriteLine($"Play: {track.Uri}")
+                ? () => PlayDefault(track)
                 : null,
             IsPrimary = true
         });
@@ -176,14 +181,16 @@ public static class TrackContextMenuBuilder
             });
         }
 
-        // View credits — always visible (falls back to Debug log when no action provided)
+        // View credits — only when the host page supplies the action. Hosts
+        // that have no credits surface (e.g. some local-file rows) simply omit
+        // the entry rather than show a menu item that silently does nothing.
+        if (ctx.ShowCreditsAction is { } creditsAction)
         {
-            var creditsAction = ctx.ShowCreditsAction;
             items.Add(new ContextMenuItemModel
             {
                 Text = AppLocalization.GetString("TrackMenu_ViewCredits"),
                 Glyph = FluentGlyphs.Credits,
-                Invoke = creditsAction ?? (() => Debug.WriteLine($"ViewCredits: {track.Uri}"))
+                Invoke = creditsAction
             });
         }
 
@@ -198,6 +205,37 @@ public static class TrackContextMenuBuilder
                 CommandParameter = track,
                 KeyboardAcceleratorTextOverride = "Ctrl+Shift+C",
                 KeyboardAccelerator = Accelerator(VirtualKey.C, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift)
+            });
+        }
+
+        // Hide song — toggles Spotify's "ban" collection for this track URI.
+        // Server-side state syncs across devices via the same collection-v2
+        // pipeline that powers Liked / Pinned / Saved.
+        if (!string.IsNullOrEmpty(track.Uri) && track.Uri.StartsWith("spotify:track:", StringComparison.Ordinal))
+        {
+            var filter = Ioc.Default.GetService<IContentFilterService>();
+            var hidden = filter?.IsTrackHidden(track.Uri) == true;
+            items.Add(new ContextMenuItemModel
+            {
+                Text = hidden ? "Unhide song" : "Hide song",
+                Glyph = hidden ? FluentGlyphs.ShowFilled : FluentGlyphs.HideOutline,
+                Invoke = () => _ = ToggleHiddenAsync(track.Uri!, hidden)
+            });
+        }
+
+        // Block artist — toggles Spotify's "artistban" collection.
+        if (!string.IsNullOrEmpty(track.ArtistId))
+        {
+            var artistUri = track.ArtistId.StartsWith("spotify:artist:", StringComparison.Ordinal)
+                ? track.ArtistId
+                : "spotify:artist:" + track.ArtistId;
+            var filter = Ioc.Default.GetService<IContentFilterService>();
+            var blocked = filter?.IsArtistBlocked(artistUri) == true;
+            items.Add(new ContextMenuItemModel
+            {
+                Text = blocked ? "Stop ignoring this artist" : "Don't play this artist",
+                Glyph = blocked ? FluentGlyphs.Unblock : FluentGlyphs.Block,
+                Invoke = () => _ = ToggleArtistBlockedAsync(artistUri, blocked)
             });
         }
 
@@ -263,6 +301,56 @@ public static class TrackContextMenuBuilder
         }
 
         return items;
+    }
+
+    private static void PlayDefault(ITrackItem track)
+    {
+        if (string.IsNullOrEmpty(track.Uri)) return;
+        var playback = Ioc.Default.GetService<IPlaybackService>();
+        if (playback is null) return;
+        _ = playback.PlayContextAsync(track.Uri);
+    }
+
+    private static async Task ToggleHiddenAsync(string trackUri, bool currentlyHidden)
+    {
+        var filter = Ioc.Default.GetService<IContentFilterService>();
+        if (filter is null) return;
+        try
+        {
+            await filter.SetTrackHiddenAsync(trackUri, !currentlyHidden).ConfigureAwait(true);
+            Ioc.Default.GetService<INotificationService>()?.Show(
+                currentlyHidden ? "Unhid track" : "Hid track",
+                NotificationSeverity.Success,
+                TimeSpan.FromSeconds(3));
+        }
+        catch
+        {
+            Ioc.Default.GetService<INotificationService>()?.Show(
+                "Couldn't update hidden tracks",
+                NotificationSeverity.Error,
+                TimeSpan.FromSeconds(3));
+        }
+    }
+
+    private static async Task ToggleArtistBlockedAsync(string artistUri, bool currentlyBlocked)
+    {
+        var filter = Ioc.Default.GetService<IContentFilterService>();
+        if (filter is null) return;
+        try
+        {
+            await filter.SetArtistBlockedAsync(artistUri, !currentlyBlocked).ConfigureAwait(true);
+            Ioc.Default.GetService<INotificationService>()?.Show(
+                currentlyBlocked ? "Unblocked artist" : "Blocked artist",
+                NotificationSeverity.Success,
+                TimeSpan.FromSeconds(3));
+        }
+        catch
+        {
+            Ioc.Default.GetService<INotificationService>()?.Show(
+                "Couldn't update blocked artists",
+                NotificationSeverity.Error,
+                TimeSpan.FromSeconds(3));
+        }
     }
 
     private static void PlayNextDefault(ITrackItem track)
@@ -349,15 +437,35 @@ public static class TrackContextMenuBuilder
         return items;
     }
 
-    private static void AddToPlaylist(ITrackItem track, string playlistId, string playlistName)
+    private static async void AddToPlaylist(ITrackItem track, string playlistId, string playlistName)
     {
-        // TODO: Call _libraryDataService.AddTracksToPlaylistAsync when the mutation method exists.
-        Debug.WriteLine($"AddToPlaylist: {track.Uri} -> {playlistId} ({playlistName})");
+        if (string.IsNullOrEmpty(track.Uri) || string.IsNullOrEmpty(playlistId)) return;
+
+        var mutations = Ioc.Default.GetService<IPlaylistMutationService>();
+        var notifications = Ioc.Default.GetService<INotificationService>();
+        if (mutations is null) return;
+
+        try
+        {
+            await mutations.AddTracksToPlaylistAsync(playlistId, new[] { track.Uri }).ConfigureAwait(true);
+            notifications?.Show(
+                $"Added to {(string.IsNullOrEmpty(playlistName) ? "playlist" : playlistName)}",
+                NotificationSeverity.Success,
+                TimeSpan.FromSeconds(3));
+        }
+        catch
+        {
+            notifications?.Show(
+                "Couldn't add to the playlist",
+                NotificationSeverity.Error,
+                TimeSpan.FromSeconds(3));
+        }
     }
 
     private static void AddToNewPlaylist(ITrackItem track)
     {
-        Debug.WriteLine($"AddToNewPlaylist: {track.Uri}");
+        if (string.IsNullOrEmpty(track.Uri)) return;
+        NavigationHelpers.OpenCreatePlaylist(isFolder: false, trackIds: new[] { track.Uri });
     }
 
     private static KeyboardAccelerator Accelerator(VirtualKey key, VirtualKeyModifiers modifiers) =>

@@ -505,6 +505,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
                 case nameof(ArtistBioViewModel.HasBiography):
                 case nameof(ArtistBioViewModel.HasBiographyOrAi):
                 case nameof(ArtistBioViewModel.IsAiBioCardVisible):
+                case nameof(ArtistBioViewModel.IsAiBioSummaryCardVisible):
                     UpdateBiographySourceForAvailability();
                     Bindings?.Update();
                     break;
@@ -686,9 +687,9 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     private void SetBiographySource(BiographySource source)
     {
         if (source == BiographySource.Spotify && !ViewModel.Bio.HasBiography)
-            source = ViewModel.Bio.IsAiBioCardVisible ? BiographySource.Ai : BiographySource.Spotify;
+            source = ViewModel.Bio.IsAiBioSummaryCardVisible ? BiographySource.Ai : BiographySource.Spotify;
 
-        if (source == BiographySource.Ai && !ViewModel.Bio.IsAiBioCardVisible)
+        if (source == BiographySource.Ai && !ViewModel.Bio.IsAiBioSummaryCardVisible)
             source = BiographySource.Spotify;
 
         if (_selectedBiographySource != source)
@@ -699,7 +700,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
 
     private void UpdateBiographySourceForAvailability()
     {
-        if (_selectedBiographySource == BiographySource.Ai && !ViewModel.Bio.IsAiBioCardVisible)
+        if (_selectedBiographySource == BiographySource.Ai && !ViewModel.Bio.IsAiBioSummaryCardVisible)
         {
             _selectedBiographySource = BiographySource.Spotify;
             return;
@@ -707,7 +708,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
 
         if (_selectedBiographySource == BiographySource.Spotify
             && !ViewModel.Bio.HasBiography
-            && ViewModel.Bio.IsAiBioCardVisible)
+            && ViewModel.Bio.IsAiBioSummaryCardVisible)
         {
             _selectedBiographySource = BiographySource.Ai;
         }
@@ -1542,7 +1543,7 @@ public sealed partial class ArtistPage : UserControl, ITabBarItemContent, INavig
     private void ReadFullBioLink_Click(object sender, RoutedEventArgs e)
     {
         if (AboutLinksSection is null) return;
-        if (ViewModel.Bio.IsAiBioCardVisible)
+        if (ViewModel.Bio.IsAiBioSummaryCardVisible)
             SetBiographySource(BiographySource.Ai);
 
         try

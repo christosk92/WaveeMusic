@@ -88,6 +88,16 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// here and injected into <see cref="Omnibar"/>; no XAML binding.</summary>
     public LinkPreviewCoordinator LinkPreview { get; }
 
+    /// <summary>Session connectivity to Spotify's Access Point. XAML binds the
+    /// shell-wide offline infobar against <c>Vm.Connectivity.IsConnected</c> /
+    /// <c>IsReconnecting</c>.</summary>
+    public IConnectivityService Connectivity { get; }
+
+    /// <summary>Authentication state — used by the shell's
+    /// "Wavee requires Premium" non-dismissible banner shown when a free
+    /// account is signed in.</summary>
+    public IAuthState Auth { get; }
+
     /// <summary>
     /// Sidebar pin drop-zone tag — kept as a constant on the shell so
     /// <c>ShellPage</c> can route drops on the placeholder without taking a
@@ -159,6 +169,45 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// — the PropertyChanged subscription is wired in the constructor body.
     /// </summary>
     public IPanelDockingService Docking => _docking;
+
+    /// <summary>
+    /// True only when the session is fully disconnected (neither connected
+    /// nor in the middle of an automatic retry). The shell's offline infobar
+    /// binds against this; the reconnecting infobar binds directly against
+    /// <see cref="IConnectivityService.IsReconnecting"/>. The two are
+    /// mutually exclusive so the user never sees both stacked.
+    /// </summary>
+    public bool IsOfflineBannerOpen => !Connectivity.IsConnected && !Connectivity.IsReconnecting;
+
+    /// <summary>
+    /// True when the signed-in account is not Premium. Wavee needs Premium for
+    /// playback; the banner explains this without trapping the user — they can
+    /// still browse and decide whether to upgrade or sign out.
+    /// </summary>
+    public bool IsPremiumRequiredBannerOpen => Auth.IsAuthenticated && !Auth.IsPremium;
+
+    private void OnConnectivityPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IConnectivityService.IsConnected)
+            || e.PropertyName == nameof(IConnectivityService.IsReconnecting))
+        {
+            OnPropertyChanged(nameof(IsOfflineBannerOpen));
+        }
+    }
+
+    private void OnAuthPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IAuthState.IsPremium)
+            || e.PropertyName == nameof(IAuthState.IsAuthenticated)
+            || e.PropertyName == nameof(IAuthState.Status))
+        {
+            void RaisePremiumBannerChanged()
+                => OnPropertyChanged(nameof(IsPremiumRequiredBannerOpen));
+
+            if (_dispatcher?.TryEnqueue(RaisePremiumBannerChanged) != true)
+                RaisePremiumBannerChanged();
+        }
+    }
 
     private void OnDockingPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -342,6 +391,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         INowPlayingPresentationService presentation,
         OmnibarSuggestionRanker omnibarRanker,
         OmnibarSuggestionCache omnibarCache,
+        IConnectivityService connectivity,
+        IAuthState authState,
         ISettingsService? settingsService = null,
         IDispatcherService? dispatcher = null,
         ILogger<ShellViewModel>? logger = null,
@@ -359,6 +410,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _appModel = appModel;
         _shellSession = shellSession;
         _docking = docking;
+        Connectivity = connectivity;
+        Auth = authState;
         _presentation = presentation;
         _miniVideoVm = miniVideoVm;
         _backgroundWork = backgroundWorkRunner ?? new Wavee.UI.Services.Infra.BackgroundWorkRunner();
@@ -402,6 +455,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // ctor-DI move replaced.)
         _docking.PropertyChanged += OnDockingPropertyChanged;
         _presentation.PropertyChanged += OnPresentationPropertyChanged;
+        Connectivity.PropertyChanged += OnConnectivityPropertyChanged;
+        Auth.PropertyChanged += OnAuthPropertyChanged;
         if (_miniVideoVm is not null)
             _miniVideoVm.PropertyChanged += OnMiniVideoPlayerPropertyChanged;
 
@@ -842,12 +897,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void OpenSettings()
-    {
-        // TODO: Navigate to settings
-    }
-
-    [RelayCommand]
     private void CloseTab(TabBarItem? tab)
     {
         if (tab is null) return;
@@ -1030,6 +1079,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         _docking.PropertyChanged -= OnDockingPropertyChanged;
         _presentation.PropertyChanged -= OnPresentationPropertyChanged;
+        Connectivity.PropertyChanged -= OnConnectivityPropertyChanged;
+        Auth.PropertyChanged -= OnAuthPropertyChanged;
         if (_miniVideoVm is not null)
             _miniVideoVm.PropertyChanged -= OnMiniVideoPlayerPropertyChanged;
     }

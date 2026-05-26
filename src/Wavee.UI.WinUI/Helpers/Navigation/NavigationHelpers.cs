@@ -265,6 +265,16 @@ public static class NavigationHelpers
         Navigate(typeof(LibraryPage), "likedsongs", AppLocalization.GetString("Shell_SidebarLikedSongs"), CreateIconSource(typeof(LibraryPage), "likedsongs"), openInNewTab);
     }
 
+    /// <summary>
+    /// Navigate to the dedicated Recently Played page. Pulls from
+    /// <c>RecentlyPlayedService.Items</c> — the same list the Home shelf binds.
+    /// </summary>
+    public static void OpenRecentlyPlayed(bool openInNewTab = false)
+    {
+        Navigate(typeof(RecentlyPlayedPage), null, "Recently played",
+            CreateIconSource(typeof(RecentlyPlayedPage), null), openInNewTab);
+    }
+
     public static void OpenYourEpisodes(bool openInNewTab = false)
     {
         OpenPodcasts(openInNewTab);

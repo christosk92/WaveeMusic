@@ -31,7 +31,8 @@
                                    Foreground="{ThemeResource AiAccentGradientBrush}" />
                 </Border>
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="On-device AI"
+                    <TextBlock x:Uid="Controls_Settings_AiSettingsSection__TextBlock_1"
+                               Text="On-device AI"
                                Style="{StaticResource SubtitleTextBlockStyle}" />
                     <TextBlock Text="{x:Bind ViewModel.StatusDescription, Mode=OneWay}"
                                Style="{StaticResource AiCaptionTextBlockStyle}" />
@@ -48,12 +49,14 @@
                        TextWrapping="Wrap"
                        Margin="0,0,0,8"
                        Tag="availability">
-                <Run Text="Powered by Phi Silica running on your PC's neural processor (NPU). Inference is on-device. To reduce hallucinations, the app also fetches a short anonymous web search (and Wikipedia for artists) and feeds it as supporting context for each answer. Available only on Copilot+ PCs (Snapdragon X, Intel Core Ultra Series 2, AMD Ryzen AI 300+) running Windows 11 24H2."/>
+                <Run x:Uid="Controls_Settings_AiSettingsSection__Run_1"
+                     Text="Powered by Phi Silica running on your PC's neural processor (NPU). Inference is on-device. To reduce hallucinations, the app also fetches short anonymous music-specific metadata snippets, with Wikipedia only as a fallback, and feeds them as supporting context for each answer. Available only on Copilot+ PCs (Snapdragon X, Intel Core Ultra Series 2, AMD Ryzen AI 300+) running Windows 11 24H2."/>
             </TextBlock>
 
             <!-- ── Master toggle ── -->
-            <controls:SettingsCard Header="Enable on-device AI features"
-                                   Description="Off by default. When on, the model is downloaded the first time you use a feature. Each AI response is grounded with a single anonymous web search."
+            <controls:SettingsCard x:Uid="Controls_Settings_AiSettingsSection__SettingsCard_1"
+                                   Header="Enable on-device AI features"
+                                   Description="Off by default. When on, the model is downloaded the first time you use a feature. AI responses are grounded with anonymous music metadata snippets."
                                    IsEnabled="{x:Bind ViewModel.CanUseAi, Mode=OneWay}"
                                    Tag="availability">
                 <controls:SettingsCard.HeaderIcon>
@@ -87,11 +90,11 @@
                                      Maximum="100"
                                      Value="{x:Bind ViewModel.ModelPreparationProgress, Mode=OneWay}"
                                      IsIndeterminate="False" />
-                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock x:Uid="Controls_Settings_AiSettingsSection__TextBlock_2"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap">
-                            The Phi Silica model is downloading from the Microsoft Store. This is a one-time setup — the model is shared across all apps that use Windows AI APIs.
-                        </TextBlock>
+                                   TextWrapping="Wrap"
+                                   Text="The Phi Silica model is downloading from the Microsoft Store. This is a one-time setup — the model is shared across all apps that use Windows AI APIs." />
                     </StackPanel>
                 </Border>
 
@@ -115,12 +118,14 @@
             </Grid>
 
             <!-- ── Per-feature toggles ── -->
-            <TextBlock Text="Lyrics"
+            <TextBlock x:Uid="Controls_Settings_AiSettingsSection__TextBlock_3"
+                       Text="Lyrics"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        Margin="0,24,0,8"
                        Tag="lyrics" />
 
-            <controls:SettingsCard Header="Lyrics meaning"
+            <controls:SettingsCard x:Uid="Controls_Settings_AiSettingsSection__SettingsCard_2"
+                                   Header="Lyrics meaning"
                                    Description="Explain the song's lyrics, imagery, and emotional arc on demand."
                                    IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}"
                                    Tag="lyrics">
@@ -132,12 +137,14 @@
             </controls:SettingsCard>
 
             <!-- ── Artist ── -->
-            <TextBlock Text="Artist"
+            <TextBlock x:Uid="Controls_Settings_AiSettingsSection__TextBlock_4"
+                       Text="Artist"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        Margin="0,24,0,8"
                        Tag="artist" />
 
-            <controls:SettingsCard Header="About this artist"
+            <controls:SettingsCard x:Uid="Controls_Settings_AiSettingsSection__SettingsCard_3"
+                                   Header="About this artist"
                                    Description="On the artist page, generate an on-device summary and answer artist questions."
                                    IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}"
                                    Tag="artist">
@@ -149,13 +156,15 @@
             </controls:SettingsCard>
 
             <!-- ── Album ── -->
-            <TextBlock Text="Album"
+            <TextBlock x:Uid="Controls_Settings_AiSettingsSection__TextBlock_5"
+                       Text="Album"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        Margin="0,24,0,8"
                        Tag="album" />
 
-            <controls:SettingsCard Header="About this album"
-                                   Description="On the album page, generate an on-device summary grounded by the tracklist plus a web search."
+            <controls:SettingsCard x:Uid="Controls_Settings_AiSettingsSection__SettingsCard_4"
+                                   Header="About this album"
+                                   Description="On the album page, generate an on-device summary only when reliable album-specific music sources are found."
                                    IsEnabled="{x:Bind ViewModel.ArePerFeatureTogglesEnabled, Mode=OneWay}"
                                    Tag="album">
                 <controls:SettingsCard.HeaderIcon>
@@ -166,19 +175,22 @@
             </controls:SettingsCard>
 
             <!-- ── Web grounding ── -->
-            <TextBlock Text="Web grounding"
+            <TextBlock x:Uid="Controls_Settings_AiSettingsSection__TextBlock_6"
+                       Text="Web grounding"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        Margin="0,24,0,8"
                        Tag="tools" />
 
-            <controls:SettingsCard Header="Custom web search endpoint"
+            <controls:SettingsCard x:Uid="Controls_Settings_AiSettingsSection__SettingsCard_5"
+                                   Header="Custom web search endpoint"
                                    Description="Optional. Override the built-in DuckDuckGo grounding with your own JSON endpoint (Brave, Bing, etc.). Use {query} in the URL or expose a q= parameter."
                                    IsEnabled="{x:Bind ViewModel.IsCustomEndpointConfigurationEnabled, Mode=OneWay}"
                                    Tag="tools">
                 <controls:SettingsCard.HeaderIcon>
                     <ic:SymbolIcon Symbol="Search" />
                 </controls:SettingsCard.HeaderIcon>
-                <TextBox Width="420"
+                <TextBox x:Uid="Controls_Settings_AiSettingsSection__TextBox_1"
+                         Width="420"
                          PlaceholderText="https://example/search?q={query}"
                          Text="{x:Bind ViewModel.AiWebSearchEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             </controls:SettingsCard>

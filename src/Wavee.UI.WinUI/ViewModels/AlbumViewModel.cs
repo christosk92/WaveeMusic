@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
+using Wavee.AI.Tools;
 using Wavee.Core.Data;
 using Wavee.UI.Contracts;
 using Wavee.UI.WinUI.Data.Contracts;
@@ -69,6 +70,8 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     private bool _isAlbumAiSummaryLoading;
     private bool _wasLastAlbumAiSummaryFromCache;
     private string? _albumAiSummaryUnavailableText;
+    private bool _hideAlbumAiCardForWeakGrounding;
+    private readonly ObservableCollection<AiGroundingSourceLink> _albumAiSummarySources = [];
 
     /// <summary>All loaded tracks (unfiltered). Null until loaded.</summary>
     private List<LazyTrackItem> _allTracks = [];
@@ -432,7 +435,7 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     /// + per-feature toggle all open). The page x:Load binds to this so the
     /// section evaporates entirely on non-AI machines.</summary>
     public bool IsAiAlbumCardVisible =>
-        _aiCapabilities?.IsAlbumBioSummarizeEnabled == true;
+        _aiCapabilities?.IsAlbumBioSummarizeEnabled == true && !_hideAlbumAiCardForWeakGrounding;
 
     /// <summary>True while the load runs (model warmup + grounding fetch +
     /// streaming generation). Drives the card's shimmer / "generating" chrome.</summary>
@@ -485,6 +488,10 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         get => _albumAiSummaryUnavailableText;
         private set => SetProperty(ref _albumAiSummaryUnavailableText, value);
     }
+
+    public IReadOnlyList<AiGroundingSourceLink> AlbumAiSummarySources => _albumAiSummarySources;
+
+    public bool HasAlbumAiSummarySources => _albumAiSummarySources.Count > 0;
 
     /// <summary>
     /// Refresh selection-driven command CanExecute flags when SelectedItems
@@ -1099,6 +1106,9 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         IsAlbumAiSummaryStreaming = false;
         IsAlbumAiSummaryLoading = false;
         AlbumAiSummaryUnavailableText = null;
+        _hideAlbumAiCardForWeakGrounding = false;
+        ClearAlbumAiSummarySources();
+        OnPropertyChanged(nameof(IsAiAlbumCardVisible));
     }
 
     private void ApplyDetailState(EntityState<AlbumDetailResult> state, string expectedAlbumId)
@@ -1704,6 +1714,8 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
             WasLastAlbumAiSummaryFromCache = false;
             IsAlbumAiSummaryStreaming = false;
             AlbumAiSummaryUnavailableText = null;
+            _hideAlbumAiCardForWeakGrounding = false;
+            ClearAlbumAiSummarySources();
             OnPropertyChanged(nameof(IsAiAlbumCardVisible));
 
             var streamedText = string.Empty;
@@ -1726,6 +1738,13 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
                     if (cts.IsCancellationRequested
                         || Interlocked.CompareExchange(ref streamCompleted, 0, 0) != 0)
                     {
+                        return;
+                    }
+
+                    if (AiGeneratedTextGuard.IsInvalidGeneratedText(preview))
+                    {
+                        IsAlbumAiSummaryStreaming = false;
+                        AlbumAiSummaryText = null;
                         return;
                     }
 
@@ -1763,10 +1782,21 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
                     WasLastAlbumAiSummaryFromCache = result.FromCache;
                     AlbumAiSummaryText = result.Text;
                     IsAlbumAiSummaryStreaming = false;
+                    SetAlbumAiSummarySources(result.Sources);
                 }
                 else
                 {
                     IsAlbumAiSummaryStreaming = false;
+                    ClearAlbumAiSummarySources();
+                    if (string.Equals(result.ErrorMessage, "insufficient_grounding", StringComparison.Ordinal)
+                        || string.Equals(result.ErrorMessage, "invalid_generation", StringComparison.Ordinal))
+                    {
+                        _hideAlbumAiCardForWeakGrounding = true;
+                        AlbumAiSummaryUnavailableText = null;
+                        OnPropertyChanged(nameof(IsAiAlbumCardVisible));
+                        return;
+                    }
+
                     AlbumAiSummaryUnavailableText = result.Kind switch
                     {
                         LyricsAiResultKind.Filtered => "The on-device model could not describe this album safely.",
@@ -1787,10 +1817,45 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
                 {
                     IsAlbumAiSummaryLoading = false;
                     IsAlbumAiSummaryStreaming = false;
+                    ClearAlbumAiSummarySources();
                     AlbumAiSummaryUnavailableText = "The on-device model could not describe this album right now.";
                 }).ConfigureAwait(false);
             }
         }
+    }
+
+    private void SetAlbumAiSummarySources(IReadOnlyList<MusicGroundingSource>? sources)
+    {
+        _albumAiSummarySources.Clear();
+        if (sources is not null)
+        {
+            foreach (var source in sources.Take(4))
+            {
+                if (string.IsNullOrWhiteSpace(source.Url)
+                    || !Uri.TryCreate(source.Url, UriKind.Absolute, out var uri))
+                {
+                    continue;
+                }
+
+                var label = string.IsNullOrWhiteSpace(source.SourceName)
+                    ? uri.Host
+                    : source.SourceName;
+                _albumAiSummarySources.Add(new AiGroundingSourceLink(label, uri));
+            }
+        }
+
+        OnPropertyChanged(nameof(AlbumAiSummarySources));
+        OnPropertyChanged(nameof(HasAlbumAiSummarySources));
+    }
+
+    private void ClearAlbumAiSummarySources()
+    {
+        if (_albumAiSummarySources.Count == 0)
+            return;
+
+        _albumAiSummarySources.Clear();
+        OnPropertyChanged(nameof(AlbumAiSummarySources));
+        OnPropertyChanged(nameof(HasAlbumAiSummarySources));
     }
 
     private async Task ApplySecondaryAlbumSectionsAsync(AlbumDetailResult detail, string albumId)
@@ -1989,10 +2054,11 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     }
 
     private void BuildQueueAndPlay(int startIndex, bool shuffle)
-    {
-        if (FilteredTracks.Count == 0) return;
+        => BuildQueueAndPlay(FilteredTracks, startIndex, shuffle);
 
-        var queueItems = FilteredTracks.Select(t => new QueueItem
+    private void BuildQueueAndPlay(IEnumerable<LazyTrackItem> source, int startIndex, bool shuffle)
+    {
+        var queueItems = source.Select(t => new QueueItem
         {
             TrackId = t.Id,
             Title = t.Title,
@@ -2006,6 +2072,8 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
             IsExplicit = t.IsExplicit,
             HasVideo = t.HasVideo,
         }).ToList();
+
+        if (queueItems.Count == 0) return;
 
         if (shuffle)
         {
@@ -2024,25 +2092,35 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         _playbackStateService.LoadQueue(queueItems, context, startIndex);
     }
 
+    private IReadOnlyList<string> CollectSelectedTrackUris()
+        => SelectedItems
+            .OfType<ITrackItem>()
+            .Select(t => t.Uri)
+            .Where(u => !string.IsNullOrEmpty(u))
+            .ToArray();
+
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void PlaySelected()
     {
-        if (!HasSelection) return;
-        // TODO: Implement play selected tracks
+        var selected = SelectedItems.OfType<LazyTrackItem>().ToList();
+        if (selected.Count == 0) return;
+        BuildQueueAndPlay(selected, startIndex: 0, shuffle: false);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void PlayAfter()
     {
-        if (!HasSelection) return;
-        // TODO: Implement play after current track
+        var uris = CollectSelectedTrackUris();
+        if (uris.Count == 0) return;
+        _playbackStateService.PlayNext(uris);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void AddSelectedToQueue()
     {
-        if (!HasSelection) return;
-        // TODO: Implement add selected to queue
+        var uris = CollectSelectedTrackUris();
+        if (uris.Count == 0) return;
+        _playbackStateService.AddToQueue(uris);
     }
 
     [RelayCommand]
@@ -2052,10 +2130,20 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void AddToPlaylist(PlaylistSummaryDto? playlist)
+    private async Task AddToPlaylistAsync(PlaylistSummaryDto? playlist)
     {
-        if (playlist == null || !HasSelection) return;
-        // TODO: Implement add selected tracks to playlist
+        if (playlist?.Id is not { Length: > 0 } playlistId) return;
+        var uris = CollectSelectedTrackUris();
+        if (uris.Count == 0) return;
+
+        try
+        {
+            await _playlistMutationService.AddTracksToPlaylistAsync(playlistId, uris).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "AddToPlaylistAsync (album selection) failed → {Playlist}", playlistId);
+        }
     }
 
     [RelayCommand]
@@ -2401,3 +2489,5 @@ public sealed partial class AlbumViewModel : Wavee.UI.ViewModels.Helpers.TrackLi
         _recommendedPlaylists.ClearWithoutNotify();
     }
 }
+
+public sealed record AiGroundingSourceLink(string Label, Uri NavigateUri);

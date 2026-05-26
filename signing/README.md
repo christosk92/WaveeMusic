@@ -163,21 +163,19 @@ Package Family Names → two different tokens.
 | `CN=ckara` (dev) | `s6dvdzhx5m6rm` | `4f5ca249-aa41-4d46-84ce-62b6098fdb06_s6dvdzhx5m6rm` |
 | `CN=cproducts, O=cproducts, …` (release) | `43x7j183z9t4g` | `4f5ca249-aa41-4d46-84ce-62b6098fdb06_43x7j183z9t4g` |
 
-The currently-shipped LAF token (`4+g4v/xx6B81Wc6Z0sO0bg==`) was issued
-on 2026-05-01 against the **dev** PFN. Production-signed builds with
-the release publisher will have `LimitedAccessFeatures.TryUnlockFeature`
-return `Unavailable`; `AiCapabilities` swallows that and silently hides
-AI affordances — the app still works, just without on-device lyrics
-features.
-
-To unblock AI in production builds: file a second LAF request with
-Microsoft for the release publisher's PFN and either replace the const
-or store both tokens and pick by `Package.Current.Id.Publisher` at
-runtime. See `signing/laf-second-request.md` for the email draft.
+Both LAF tokens are wired in `Services/AiCapabilities.cs` — the dev
+token (`4+g4v/xx6B81Wc6Z0sO0bg==`, issued 2026-05-01) and the
+production token (`3HfoeP9ZwxR9ZYqlpXrCWw==`, issued later under the
+same case `TrackingID #2605010040005804`). At runtime the unlock path
+inspects `Package.Current.Id.FamilyName` and picks the matching
+`(token, attribution)` pair, so both dev and release builds unlock AI
+without any build-time symbol swap.
 
 Microsoft confirmed (2026-05-01, Mike Bowen) that LAF tokens are safe
 to commit publicly — they don't unlock anywhere except for an MSIX
-signed by the same publisher.
+signed by the same publisher. Any future publisher (new cert, new CA)
+needs a new LAF token; reuse the same email thread (Mike Bowen) and
+add a new tuple to `LanguageModelLafCredentials`.
 
 ---
 
@@ -205,5 +203,4 @@ See:
 | `Set-Publisher.ps1` | Standalone publisher-swap helper. Used by CI. |
 | `metadata.template.json` | Committed template for `metadata.json`. |
 | `metadata.json` | **Gitignored.** Your account-specific values. |
-| `laf-second-request.md` | Email draft for requesting a production LAF token. |
 | `README.md` | This file. |

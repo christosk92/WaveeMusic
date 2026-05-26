@@ -48,6 +48,16 @@ public sealed class EventService : IAsyncDisposable
     public IObservable<IPlaybackEvent> Events => _eventSubject.AsObservable();
 
     /// <summary>
+    /// When true, play-history events (<c>RawCoreStream</c>,
+    /// <c>RawCoreStreamSegment</c>) are dropped on the floor instead of being
+    /// POSTed to gabo. Set by <c>SessionData</c> from
+    /// <c>SetPrivateSessionEnabled</c>. Non-play-history events (Download,
+    /// HeadFileDownload, AudioSession, ContentIntegrity, …) keep flowing —
+    /// they don't drive Recently Played.
+    /// </summary>
+    public bool SuppressPlayHistory { get; set; }
+
+    /// <summary>
     /// Creates the EventService. <paramref name="installationId"/> should be
     /// stable across runs (16-byte random per install). For now Wavee derives
     /// it from the device id — same effect for play history attribution.
@@ -110,6 +120,12 @@ public sealed class EventService : IAsyncDisposable
 
         _eventSubject.OnNext(playbackEvent);
 
+        if (SuppressPlayHistory && IsPlayHistoryEvent(playbackEvent))
+        {
+            _logger?.LogDebug("Private session: dropping {EventType}", playbackEvent.GetType().Name);
+            return;
+        }
+
         if (!_asyncWorker.TrySubmit(playbackEvent))
         {
             _logger?.LogWarning("Event queue full, dropping event: {EventType}",
@@ -120,6 +136,9 @@ public sealed class EventService : IAsyncDisposable
             _logger?.LogDebug("Event queued: {EventType}", playbackEvent.GetType().Name);
         }
     }
+
+    private static bool IsPlayHistoryEvent(IPlaybackEvent evt)
+        => evt is RawCoreStreamPlaybackEvent || evt is RawCoreStreamSegmentPlaybackEvent;
 
     /// <summary>
     /// Dispatches a group of events as ONE gabo POST. Mirrors the desktop
@@ -134,14 +153,33 @@ public sealed class EventService : IAsyncDisposable
 
         foreach (var ev in events) _eventSubject.OnNext(ev);
 
-        var batch = new EventBatch(events);
+        // Private session: strip play-history events from the batch before
+        // queueing the network POST. The remaining (non-history) events still
+        // ship so download / audio-session telemetry stays intact.
+        IReadOnlyList<IPlaybackEvent> toSend = events;
+        if (SuppressPlayHistory)
+        {
+            var filtered = new List<IPlaybackEvent>(events.Count);
+            foreach (var ev in events)
+            {
+                if (!IsPlayHistoryEvent(ev)) filtered.Add(ev);
+            }
+            if (filtered.Count == 0)
+            {
+                _logger?.LogDebug("Private session: dropped batch of {Count} (all play-history)", events.Count);
+                return;
+            }
+            toSend = filtered;
+        }
+
+        var batch = new EventBatch(toSend);
         if (!_asyncWorker.TrySubmit(batch))
         {
-            _logger?.LogWarning("Event queue full, dropping batch of {Count}", events.Count);
+            _logger?.LogWarning("Event queue full, dropping batch of {Count}", toSend.Count);
         }
         else
         {
-            _logger?.LogDebug("Event batch queued: {Count} events", events.Count);
+            _logger?.LogDebug("Event batch queued: {Count} events", toSend.Count);
         }
     }
 

@@ -62,8 +62,8 @@ public sealed partial class MainWindow : WindowEx
         // leaving it null causes white glyphs on a light app (or vice-versa) whenever
         // the app and system themes disagree. ActualThemeChanged fires both at load
         // and on every runtime theme switch.
-        RootHost.ActualThemeChanged += OnRootThemeChanged;
-        Helpers.Application.TitleBarHelper.ApplyCaptionButtonColors(AppWindow, RootHost.ActualTheme);
+        WindowRoot.ActualThemeChanged += OnRootThemeChanged;
+        Helpers.Application.TitleBarHelper.ApplyCaptionButtonColors(AppWindow, WindowRoot.ActualTheme);
 
         // Subscribe to now-playing presentation so we can swap the AppWindow
         // presenter between Overlapped (Normal / Theatre) and FullScreen.
@@ -78,6 +78,19 @@ public sealed partial class MainWindow : WindowEx
         catch (Exception ex)
         {
             Debug.WriteLine($"MainWindow presentation service resolve failed: {ex}");
+        }
+
+        // System Media Transport Controls: lock screen now-playing card,
+        // volume-flyout media tile, hardware media keys (Bluetooth / headphone
+        // play-pause). Resolving here means the singleton lives for the
+        // window's lifetime; .Initialize() is idempotent.
+        try
+        {
+            Ioc.Default.GetService<Services.SystemMediaTransportControlsService>()?.Initialize();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"SMTC service initialize failed: {ex}");
         }
     }
 
@@ -142,7 +155,7 @@ public sealed partial class MainWindow : WindowEx
         VisibilityChanged -= OnVisibilityChangedForMemoryRelease;
         AppWindow.Changed -= OnAppWindowChangedForMemoryRelease;
         AppWindow.Closing -= OnAppWindowClosing;
-        RootHost.ActualThemeChanged -= OnRootThemeChanged;
+        WindowRoot.ActualThemeChanged -= OnRootThemeChanged;
         if (_presentation is not null)
             _presentation.PropertyChanged -= OnPresentationPropertyChanged;
         if (_memoryReleaseTimer != null)
@@ -154,6 +167,9 @@ public sealed partial class MainWindow : WindowEx
 
         var shellVm = Ioc.Default.GetService<Wavee.UI.WinUI.ViewModels.ShellViewModel>();
         shellVm?.Cleanup();
+
+        if (App.IsUiHandoffExit)
+            return;
 
         try
         {
@@ -178,6 +194,16 @@ public sealed partial class MainWindow : WindowEx
     {
         if (_allowWindowClose)
             return;
+
+        // Minimize-to-tray short-circuits the close confirmation entirely:
+        // hide the window, keep playback going, surface the tray icon.
+        var settings = Ioc.Default.GetService<ISettingsService>();
+        if (settings is not null && settings.Settings.MinimizeToTrayOnClose)
+        {
+            args.Cancel = true;
+            HideToTray();
+            return;
+        }
 
         var shellSession = Ioc.Default.GetService<IShellSessionService>();
         if (shellSession == null)
@@ -364,11 +390,11 @@ public sealed partial class MainWindow : WindowEx
 
         // Initialize color service (before theme, so brushes are cached early)
         var colorService = Ioc.Default.GetRequiredService<ThemeColorService>();
-        colorService.Initialize(RootHost);
+        colorService.Initialize(WindowRoot);
 
         // Initialize theme service
         var themeService = Ioc.Default.GetRequiredService<IThemeService>();
-        themeService.Initialize(RootHost);
+        themeService.Initialize(WindowRoot);
 
         // Always navigate to ShellPage (app works without Spotify login).
         // Hand off from BootSplash → ShellPage on PageHost.Navigated, deferred
@@ -405,6 +431,37 @@ public sealed partial class MainWindow : WindowEx
         // Show "What's New" dialog once the shell has rendered
         _ = ShowWhatsNewAfterDelayAsync(settingsService);
 
+        // Wire Private Session toggle: every time the user flips Settings →
+        // Playback → Private session, push the new state to the device's
+        // DeviceInfo (causing a PutState that hides this device from Spotify's
+        // friend / recently-played surfaces) AND to the gabo EventService
+        // (suppressing the play-history events Wavee normally posts).
+        WeakReferenceMessenger.Default.Register<Wavee.UI.WinUI.Data.Messages.PrivateSessionChangedMessage>(
+            this,
+            async (_, msg) => await ApplyPrivateSessionAsync(msg.Value).ConfigureAwait(false));
+
+        // Tray icon visibility tracks the MinimizeToTrayOnClose setting; the
+        // initial state is applied here, and a message handler updates it on
+        // live toggle.
+        RefreshTrayIconVisibility(settingsService.Settings.MinimizeToTrayOnClose);
+        WeakReferenceMessenger.Default.Register<Wavee.UI.WinUI.Data.Messages.MinimizeToTrayChangedMessage>(
+            this,
+            (_, msg) => RefreshTrayIconVisibility(msg.Value));
+
+        // Warm the content-filter cache (Spotify ban / artistban collections)
+        // so context menus get O(1) IsTrackHidden / IsArtistBlocked lookups
+        // from the first click.
+        try
+        {
+            var contentFilter = Ioc.Default.GetService<Wavee.UI.Contracts.IContentFilterService>();
+            if (contentFilter is not null)
+                _ = contentFilter.InitializeAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"ContentFilter init failed: {ex}");
+        }
+
         // Try to restore cached Spotify session in background (non-blocking)
         var authState = Ioc.Default.GetRequiredService<IAuthState>();
         _ = Task.Run(async () =>
@@ -419,6 +476,42 @@ public sealed partial class MainWindow : WindowEx
                 // Not critical -- user can connect manually via sidebar button
             }
         });
+
+        // Apply current Private Session setting once the session is up. We can't
+        // do this before TryRestoreSessionAsync completes; instead subscribe to
+        // AuthStateChanged and apply on every Authenticated transition so the
+        // setting is honored across login / logout.
+        authState.AuthStatusChanged += async (_, status) =>
+        {
+            if (status != AuthStatus.Authenticated) return;
+            try
+            {
+                await ApplyPrivateSessionAsync(settingsService.Settings.IsPrivateSession).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Apply private-session on auth failed: {ex}");
+            }
+        };
+    }
+
+    private static async Task ApplyPrivateSessionAsync(bool isPrivate)
+    {
+        // Private-session plumbing lives on the concrete Session, not ISession,
+        // because DeviceState / Events aren't part of the interface (they're
+        // optional subsystems gated on EnableConnect). Cast through the
+        // interface to the concrete type for this single call.
+        if (Ioc.Default.GetService<Wavee.Core.Session.ISession>() is not Wavee.Core.Session.Session session)
+            return;
+        if (session.DeviceState is { } dsm)
+        {
+            try { await dsm.SetPrivateSessionAsync(isPrivate).ConfigureAwait(false); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"DeviceState.SetPrivateSession failed: {ex}"); }
+        }
+        if (session.Events is { } events)
+        {
+            events.SuppressPlayHistory = isPrivate;
+        }
     }
 
     public async Task RestartApplicationAsync()
@@ -466,5 +559,105 @@ public sealed partial class MainWindow : WindowEx
         {
             System.Diagnostics.Debug.WriteLine($"What's New dialog failed: {ex}");
         }
+    }
+
+    // ── Tray icon ───────────────────────────────────────────────────────────
+    //
+    // Tray surfaces are only mounted (TrayIcon.Visibility = Visible) when the
+    // user has opted into MinimizeToTrayOnClose; otherwise the icon stays
+    // hidden so we don't clutter the system tray for users who don't want it.
+    // The tray menu drives IPlaybackService directly via Ioc — we don't take
+    // a ViewModel-level dependency from the window because the icon lives in
+    // the visual tree but logically belongs to the app singleton.
+
+    /// <summary>
+    /// Command bound to TaskbarIcon.LeftClickCommand — restores the window
+    /// when the user clicks the tray icon.
+    /// </summary>
+    public CommunityToolkit.Mvvm.Input.IRelayCommand TrayShowCommand
+        => _trayShowCommand ??= new CommunityToolkit.Mvvm.Input.RelayCommand(ShowFromTray);
+    private CommunityToolkit.Mvvm.Input.IRelayCommand? _trayShowCommand;
+
+    public void RefreshTrayIconVisibility(bool minimizeToTrayEnabled)
+    {
+        if (TrayIcon is null) return;
+        TrayIcon.Visibility = minimizeToTrayEnabled ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void HideToTray()
+    {
+        try
+        {
+            if (TrayIcon is not null) TrayIcon.Visibility = Visibility.Visible;
+            AppWindow.Hide();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"HideToTray failed: {ex}");
+        }
+    }
+
+    private void ShowFromTray()
+    {
+        try
+        {
+            AppWindow.Show(activateWindow: true);
+            this.SetForegroundWindow();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"ShowFromTray failed: {ex}");
+        }
+    }
+
+    private void TrayShow_Click(object sender, RoutedEventArgs e) => ShowFromTray();
+
+    private async void TrayPlayPause_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var playback = Ioc.Default.GetService<Wavee.UI.Contracts.IPlaybackService>();
+            if (playback is null) return;
+            await playback.TogglePlayPauseAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"TrayPlayPause failed: {ex}");
+        }
+    }
+
+    private async void TrayNext_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var playback = Ioc.Default.GetService<Wavee.UI.Contracts.IPlaybackService>();
+            if (playback is null) return;
+            await playback.SkipNextAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"TrayNext failed: {ex}");
+        }
+    }
+
+    private async void TrayPrev_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var playback = Ioc.Default.GetService<Wavee.UI.Contracts.IPlaybackService>();
+            if (playback is null) return;
+            await playback.SkipPreviousAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"TrayPrev failed: {ex}");
+        }
+    }
+
+    private void TrayQuit_Click(object sender, RoutedEventArgs e)
+    {
+        _allowWindowClose = true;
+        try { Close(); }
+        catch (Exception ex) { Debug.WriteLine($"TrayQuit Close failed: {ex}"); }
     }
 }

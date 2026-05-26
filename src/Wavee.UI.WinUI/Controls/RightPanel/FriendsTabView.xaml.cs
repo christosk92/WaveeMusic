@@ -168,6 +168,82 @@ public sealed partial class FriendsTabView : UserControl
         _ = _service?.RefreshAsync();
     }
 
+    private void FriendRow_ContextRequested(UIElement sender, Microsoft.UI.Xaml.Input.ContextRequestedEventArgs args)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not FriendFeedRowViewModel row)
+            return;
+
+        var flyout = new MenuFlyout();
+        var playback = Ioc.Default.GetService<IPlaybackStateService>();
+
+        if (!string.IsNullOrEmpty(row.TrackUri))
+        {
+            var playNext = new MenuFlyoutItem
+            {
+                Text = "Play next",
+                Icon = new FontIcon { Glyph = Wavee.UI.WinUI.Styles.FluentGlyphs.PlayNext }
+            };
+            playNext.Click += (_, _) => playback?.PlayNext(row.TrackUri!);
+            flyout.Items.Add(playNext);
+
+            var addToQueue = new MenuFlyoutItem
+            {
+                Text = "Add to queue",
+                Icon = new FontIcon { Glyph = Wavee.UI.WinUI.Styles.FluentGlyphs.Queue }
+            };
+            addToQueue.Click += (_, _) => playback?.AddToQueue(row.TrackUri!);
+            flyout.Items.Add(addToQueue);
+
+            flyout.Items.Add(new MenuFlyoutSeparator());
+
+            var goToTrack = new MenuFlyoutItem
+            {
+                Text = "Go to track",
+                Icon = new FontIcon { Glyph = Wavee.UI.WinUI.Styles.FluentGlyphs.MusicNote }
+            };
+            goToTrack.Click += (_, _) =>
+            {
+                if (row.NavigateToTrackCommand?.CanExecute(null) == true)
+                    row.NavigateToTrackCommand.Execute(null);
+            };
+            flyout.Items.Add(goToTrack);
+        }
+
+        if (!string.IsNullOrEmpty(row.ArtistUri))
+        {
+            var goToArtist = new MenuFlyoutItem
+            {
+                Text = "Go to artist",
+                Icon = new FontIcon { Glyph = Wavee.UI.WinUI.Styles.FluentGlyphs.Artist }
+            };
+            goToArtist.Click += (_, _) =>
+            {
+                if (row.NavigateToArtistCommand?.CanExecute(null) == true)
+                    row.NavigateToArtistCommand.Execute(null);
+            };
+            flyout.Items.Add(goToArtist);
+        }
+
+        if (!string.IsNullOrEmpty(row.AlbumUri))
+        {
+            var goToAlbum = new MenuFlyoutItem
+            {
+                Text = "Go to album",
+                Icon = new FontIcon { Glyph = Wavee.UI.WinUI.Styles.FluentGlyphs.Album }
+            };
+            goToAlbum.Click += (_, _) => NavigationHelpers.OpenAlbum(row.AlbumUri!, row.AlbumName ?? "Album");
+            flyout.Items.Add(goToAlbum);
+        }
+
+        if (flyout.Items.Count == 0) return;
+
+        if (args.TryGetPosition(fe, out var pos))
+            flyout.ShowAt(fe, pos);
+        else
+            flyout.ShowAt(fe);
+        args.Handled = true;
+    }
+
     private void JamDismiss_Click(object sender, RoutedEventArgs e)
     {
         JamCard.Visibility = Visibility.Collapsed;

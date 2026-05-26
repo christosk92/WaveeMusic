@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -35,6 +36,7 @@ public sealed class LyricsAiService
 {
     private readonly AiCapabilities _capabilities;
     private readonly ILanguageModelClient _model;
+    private readonly IMusicGroundingProvider? _musicGrounding;
     private readonly IWebSearchToolProvider? _webSearch;
     private readonly ILogger? _logger;
 
@@ -44,11 +46,13 @@ public sealed class LyricsAiService
     public LyricsAiService(
         AiCapabilities capabilities,
         ILanguageModelClient model,
+        IMusicGroundingProvider? musicGrounding = null,
         IWebSearchToolProvider? webSearch = null,
         ILogger<LyricsAiService>? logger = null)
     {
         _capabilities = capabilities ?? throw new ArgumentNullException(nameof(capabilities));
         _model = model ?? throw new ArgumentNullException(nameof(model));
+        _musicGrounding = musicGrounding;
         _webSearch = webSearch;
         _logger = logger;
     }
@@ -136,7 +140,7 @@ public sealed class LyricsAiService
         // assembly + Phi Silica readiness check. The search runs whenever the
         // provider thinks it can — failures or empty results collapse to no
         // grounding rather than blocking the AI call.
-        var webResultsTask = FetchWebGroundingAsync(trackTitle, artistName);
+        var groundingTask = FetchMusicGroundingAsync(trackTitle, artistName);
 
         if (!await _capabilities.EnsureLanguageModelReadyAsync())
         {
@@ -152,12 +156,56 @@ public sealed class LyricsAiService
         var fallbackLyrics = LyricsAiPrompts.BuildNumberedLyricsContext(
             LyricsAiPrompts.TrimLyricsForFallback(fullLyric));
         var trackContext = LyricsAiPrompts.BuildTrackContext(trackTitle, artistName);
-        var webResults = await webResultsTask.ConfigureAwait(false);
+        var grounding = await groundingTask.ConfigureAwait(false);
 
         return await GeneratePlainTextLyricsMeaningAsync(
-            LyricsAiPrompts.BuildLyricsMeaningPlainTextPrompt(numberedLyrics.Text, trackContext, webResults),
-            LyricsAiPrompts.BuildLyricsMeaningPlainTextFallbackPrompt(fallbackLyrics.Text, trackContext, webResults),
+            LyricsAiPrompts.BuildLyricsMeaningPlainTextPrompt(numberedLyrics.Text, trackContext, grounding.Sources),
+            LyricsAiPrompts.BuildLyricsMeaningPlainTextFallbackPrompt(fallbackLyrics.Text, trackContext, grounding.Sources),
+            grounding.Sources,
             deltaProgress);
+    }
+
+    private async Task<MusicGroundingResult> FetchMusicGroundingAsync(
+        string? trackTitle,
+        string? artistName)
+    {
+        var artist = (artistName ?? string.Empty).Trim();
+        var title = (trackTitle ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(artist) && string.IsNullOrEmpty(title))
+            return MusicGroundingResult.Empty;
+
+        if (_musicGrounding?.IsAvailable == true)
+        {
+            try
+            {
+                return await _musicGrounding.GetGroundingAsync(
+                        new MusicGroundingRequest(
+                            MusicGroundingKind.Track,
+                            ArtistName: artist,
+                            TrackTitle: title,
+                            MaxSources: 5))
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Lyrics music grounding failed for {Artist}/{Track}", artist, title);
+            }
+        }
+
+        var webResults = await FetchWebGroundingAsync(trackTitle, artistName).ConfigureAwait(false);
+        var sources = webResults
+            .Where(r => !string.IsNullOrWhiteSpace(r.Title) && !string.IsNullOrWhiteSpace(r.Url))
+            .Take(5)
+            .Select(r => new MusicGroundingSource(
+                r.Title,
+                r.Url,
+                r.Snippet,
+                r.Source ?? "Web",
+                MusicGroundingKind.Track,
+                IsMusicSpecific: true,
+                Reliability: 0.5))
+            .ToList();
+        return sources.Count == 0 ? MusicGroundingResult.Empty : new MusicGroundingResult(sources);
     }
 
     private async Task<IReadOnlyList<WebSearchResult>> FetchWebGroundingAsync(
@@ -194,6 +242,7 @@ public sealed class LyricsAiService
     private async Task<LyricsAiResult> GeneratePlainTextLyricsMeaningAsync(
         string prompt,
         string fallbackPrompt,
+        IReadOnlyList<MusicGroundingSource> sources,
         IProgress<string>? deltaProgress)
     {
         var response = await _model.GenerateTextAsync(
@@ -231,7 +280,7 @@ public sealed class LyricsAiService
 
         return string.IsNullOrWhiteSpace(text)
             ? LyricsAiResult.Error("Phi Silica returned an empty lyrics meaning.")
-            : LyricsAiResult.Ok(text, fromCache: false);
+            : LyricsAiResult.Ok(text, fromCache: false, sources);
     }
 
     private LyricsAiResult ToPlainTextFailureResult(AiGenerationResult generated)

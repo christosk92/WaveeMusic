@@ -280,7 +280,7 @@ public sealed partial class ContentCard
         // Accent color on title when this is the active context
         if (isActiveContext)
             TitleText.Foreground = _themeColorService?.AccentText
-                ?? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
+                ?? GetThemeBrush("AccentTextFillColorPrimaryBrush");
         else
             TitleText.ClearValue(TextBlock.ForegroundProperty);
     }

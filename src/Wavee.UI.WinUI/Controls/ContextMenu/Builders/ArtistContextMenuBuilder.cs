@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contracts;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.Styles;
 
@@ -37,7 +38,7 @@ public static class ArtistContextMenuBuilder
             Glyph = FluentGlyphs.Play,
             AccentIconStyleKey = "App.AccentIcons.Media.Play",
             Command = ctx.PlayCommand,
-            Invoke = ctx.PlayCommand is null ? () => Debug.WriteLine($"PlayArtist: {uri}") : null,
+            Invoke = ctx.PlayCommand is null ? () => PlayContextDefault(uri) : null,
             IsPrimary = true
         });
 
@@ -49,7 +50,7 @@ public static class ArtistContextMenuBuilder
             Glyph = ctx.IsFollowing ? FluentGlyphs.HeartFilled : FluentGlyphs.HeartOutline,
             AccentIconStyleKey = ctx.IsFollowing ? "App.AccentIcons.Media.Saved" : "App.AccentIcons.Media.Save",
             Command = ctx.ToggleFollowCommand,
-            Invoke = ctx.ToggleFollowCommand is null ? () => Debug.WriteLine($"ToggleFollowArtist: {uri}") : null,
+            Invoke = ctx.ToggleFollowCommand is null ? () => ToggleFollowDefault(uri, ctx.IsFollowing) : null,
             IsPrimary = true
         });
 
@@ -58,7 +59,7 @@ public static class ArtistContextMenuBuilder
             Text = AppLocalization.GetString(ctx.IsPinned ? "SidebarMenu_UnpinFolder" : "SidebarMenu_PinFolder"),
             Glyph = ctx.IsPinned ? FluentGlyphs.Unpin : FluentGlyphs.Pin,
             Command = ctx.TogglePinCommand,
-            Invoke = ctx.TogglePinCommand is null ? () => Debug.WriteLine($"TogglePinArtist: {uri}") : null,
+            Invoke = ctx.TogglePinCommand is null ? () => TogglePinDefault(uri, ctx.IsPinned) : null,
             IsPrimary = true
         });
 
@@ -70,7 +71,7 @@ public static class ArtistContextMenuBuilder
             Text = AppLocalization.GetString("SidebarMenu_AddToQueue"),
             Glyph = FluentGlyphs.Queue,
             Command = ctx.AddToQueueCommand,
-            Invoke = ctx.AddToQueueCommand is null ? () => Debug.WriteLine($"AddArtistToQueue: {uri}") : null
+            Invoke = ctx.AddToQueueCommand is null ? () => AddContextToQueueDefault(uri) : null
         });
 
         items.Add(new ContextMenuItemModel
@@ -81,14 +82,51 @@ public static class ArtistContextMenuBuilder
                                 ?.StartRadioAsync(uri, ctx.ArtistName is { Length: > 0 } name ? $"{name} Radio" : "Artist Radio")
         });
 
-        items.Add(new ContextMenuItemModel
+        if (ctx.ShareCommand is not null)
         {
-            Text = AppLocalization.GetString("TrackMenu_Share"),
-            Glyph = FluentGlyphs.Share,
-            Command = ctx.ShareCommand,
-            Invoke = ctx.ShareCommand is null ? () => Debug.WriteLine($"ShareArtist: {uri}") : null
-        });
+            items.Add(new ContextMenuItemModel
+            {
+                Text = AppLocalization.GetString("TrackMenu_Share"),
+                Glyph = FluentGlyphs.Share,
+                Command = ctx.ShareCommand
+            });
+        }
 
         return items;
     }
+
+    private static void PlayContextDefault(string uri)
+    {
+        var playback = Ioc.Default.GetService<IPlaybackService>();
+        if (playback is null) return;
+        _ = playback.PlayContextAsync(uri);
+    }
+
+    private static void ToggleFollowDefault(string uri, bool isFollowing)
+    {
+        var svc = Ioc.Default.GetService<ITrackLikeService>();
+        if (svc is null) return;
+        svc.ToggleSave(SavedItemType.Artist, uri, isFollowing);
+    }
+
+    private static async void TogglePinDefault(string uri, bool wasPinned)
+    {
+        var pinService = Ioc.Default.GetService<IPinService>();
+        if (pinService is null) return;
+        try
+        {
+            if (wasPinned) await pinService.UnpinAsync(uri).ConfigureAwait(true);
+            else await pinService.PinAsync(uri).ConfigureAwait(true);
+        }
+        catch
+        {
+            Ioc.Default.GetService<INotificationService>()?.Show(
+                wasPinned ? "Couldn't unpin" : "Couldn't pin",
+                NotificationSeverity.Error,
+                TimeSpan.FromSeconds(3));
+        }
+    }
+
+    private static void AddContextToQueueDefault(string uri)
+        => Ioc.Default.GetService<IPlaybackStateService>()?.AddToQueue(uri);
 }

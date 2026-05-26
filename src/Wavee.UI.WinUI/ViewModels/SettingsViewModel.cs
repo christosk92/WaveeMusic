@@ -195,6 +195,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         _normalizationEnabled = s.NormalizationEnabled;
         _autoplayEnabled = s.AutoplayEnabled;
+        _isPrivateSession = s.IsPrivateSession;
+        _minimizeToTrayOnClose = s.MinimizeToTrayOnClose;
         _showDockedPlayerWithFloatingPlayer = s.ShowDockedPlayerWithFloatingPlayer;
         _showLocalFilesOnHome = s.ShowLocalFilesOnHome;
 
@@ -619,6 +621,24 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         // next end-of-context evaluation with no further plumbing.
         _settingsService.Update(s => s.AutoplayEnabled = value);
         WeakReferenceMessenger.Default.Send(new AutoplayEnabledChangedMessage(value));
+    }
+
+    [ObservableProperty]
+    private bool _isPrivateSession;
+
+    partial void OnIsPrivateSessionChanged(bool value)
+    {
+        _settingsService.Update(s => s.IsPrivateSession = value);
+        WeakReferenceMessenger.Default.Send(new PrivateSessionChangedMessage(value));
+    }
+
+    [ObservableProperty]
+    private bool _minimizeToTrayOnClose;
+
+    partial void OnMinimizeToTrayOnCloseChanged(bool value)
+    {
+        _settingsService.Update(s => s.MinimizeToTrayOnClose = value);
+        WeakReferenceMessenger.Default.Send(new MinimizeToTrayChangedMessage(value));
     }
 
     // ── Verbose logging ──

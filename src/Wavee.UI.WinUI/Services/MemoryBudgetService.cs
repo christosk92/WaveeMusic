@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Wavee.Core.Storage.Abstractions;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Data.Contexts;
 using Wavee.UI.WinUI.ViewModels;
 
 namespace Wavee.UI.WinUI.Services;
@@ -45,6 +46,7 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
 
     private readonly IReadOnlyList<ICleanableCache> _caches;
     private readonly ILogger<MemoryBudgetService>? _logger;
+    private readonly IWindowContext? _windowContext;
     private readonly Process _process = Process.GetCurrentProcess();
     private PeriodicTimer? _timer;
     private CancellationTokenSource? _cts;
@@ -56,9 +58,11 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
 
     public MemoryBudgetService(
         IEnumerable<ICleanableCache> caches,
+        IWindowContext? windowContext = null,
         ILogger<MemoryBudgetService>? logger = null)
     {
         _caches = caches.ToList();
+        _windowContext = windowContext;
         _logger = logger;
     }
 
@@ -157,6 +161,9 @@ public sealed class MemoryBudgetService : IDisposable, IAsyncDisposable
         {
             while (await _timer!.WaitForNextTickAsync(ct))
             {
+                if (_windowContext?.IsUiPowerSaving == true)
+                    continue;
+
                 await CheckAsync(ct).ConfigureAwait(false);
             }
         }

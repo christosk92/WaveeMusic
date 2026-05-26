@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
@@ -46,6 +47,7 @@ public sealed partial class FriendsFeedService
     private readonly SessionImpl _session;
     private readonly IMessenger _messenger;
     private readonly ILogger? _logger;
+    private readonly IWindowContext? _windowContext;
     private readonly DispatcherQueue? _dispatcher;
     private bool _dealerSubscribed;
 
@@ -66,6 +68,7 @@ public sealed partial class FriendsFeedService
     private string? _seedConnectionId;
     private DateTimeOffset _lastPushAt;
     private bool _isActive;
+    private bool _refreshNeededOnPowerResume;
     private bool _disposed;
 
     public event Action<string>? FriendUpserted;
@@ -79,17 +82,21 @@ public sealed partial class FriendsFeedService
     public FriendsFeedService(
         SessionImpl session,
         IMessenger messenger,
+        IWindowContext? windowContext = null,
         ILogger<FriendsFeedService>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(messenger);
         _session = session;
         _messenger = messenger;
+        _windowContext = windowContext;
         _logger = logger;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
         Items = new ReadOnlyObservableCollection<FriendFeedRowViewModel>(_items);
 
         _messenger.Register<AuthStatusChangedMessage>(this);
+        if (_windowContext != null)
+            _windowContext.PropertyChanged += OnWindowContextPropertyChanged;
 
         // Row tick (IsCurrentlyListening / TrailingText wall-clock sync) is
         // started lazily by SetActive(true) when the FriendsActivity panel
@@ -221,6 +228,12 @@ public sealed partial class FriendsFeedService
         _lastPushAt = DateTimeOffset.UtcNow;
         Dispatch(() => LastPushUri = msg.Uri);
 
+        if (IsUiPowerSaving)
+        {
+            _refreshNeededOnPowerResume = true;
+            return;
+        }
+
         var userId = ExtractUserId(msg.Uri);
         if (string.IsNullOrEmpty(userId))
         {
@@ -338,14 +351,15 @@ public sealed partial class FriendsFeedService
 
         if (isActive)
         {
-            _safetyTimer ??= new Timer(OnSafetyTick, null, WatchdogReseedInterval, WatchdogReseedInterval);
-            // Row tick is panel-visible-only — no point ticking timestamp-
-            // relative TrailingText every 30s when the feed isn't on screen.
-            _rowTickTimer ??= new Timer(OnRowTick, null, RowTickInterval, RowTickInterval);
+            StartActiveTimersIfAllowed();
 
             // If we have a connection but no data (e.g. service was idle when panel was closed), seed now.
             var connId = _session.Dealer?.CurrentConnectionId;
-            if (!string.IsNullOrEmpty(connId) && State is FriendsFeedState.Idle or FriendsFeedState.Offline)
+            if (IsUiPowerSaving)
+            {
+                _refreshNeededOnPowerResume = true;
+            }
+            else if (!string.IsNullOrEmpty(connId) && State is FriendsFeedState.Idle or FriendsFeedState.Offline)
             {
                 _seedConnectionId = connId;
                 _ = SeedAsync(connId, CancellationToken.None);
@@ -353,11 +367,51 @@ public sealed partial class FriendsFeedService
         }
         else
         {
-            _safetyTimer?.Dispose();
-            _safetyTimer = null;
-            _rowTickTimer?.Dispose();
-            _rowTickTimer = null;
+            StopActiveTimers();
         }
+    }
+
+    private bool IsUiPowerSaving => _windowContext?.IsUiPowerSaving == true;
+
+    private void OnWindowContextPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(IWindowContext.IsUiPowerSaving) || _disposed || !_isActive)
+            return;
+
+        if (IsUiPowerSaving)
+        {
+            StopActiveTimers();
+            _refreshNeededOnPowerResume = true;
+            return;
+        }
+
+        StartActiveTimersIfAllowed();
+        OnRowTick(null);
+
+        if (_refreshNeededOnPowerResume)
+        {
+            _refreshNeededOnPowerResume = false;
+            _ = RefreshAsync();
+        }
+    }
+
+    private void StartActiveTimersIfAllowed()
+    {
+        if (IsUiPowerSaving)
+            return;
+
+        _safetyTimer ??= new Timer(OnSafetyTick, null, WatchdogReseedInterval, WatchdogReseedInterval);
+        // Row tick is panel-visible-only — no point ticking timestamp-
+        // relative TrailingText every 30s when the feed isn't on screen.
+        _rowTickTimer ??= new Timer(OnRowTick, null, RowTickInterval, RowTickInterval);
+    }
+
+    private void StopActiveTimers()
+    {
+        _safetyTimer?.Dispose();
+        _safetyTimer = null;
+        _rowTickTimer?.Dispose();
+        _rowTickTimer = null;
     }
 
     public Task RefreshAsync(CancellationToken cancellationToken = default)
@@ -374,7 +428,7 @@ public sealed partial class FriendsFeedService
 
     private void OnSafetyTick(object? _)
     {
-        if (_disposed || !_isActive) return;
+        if (_disposed || !_isActive || IsUiPowerSaving) return;
         if (DateTimeOffset.UtcNow - _lastPushAt < WatchdogReseedInterval) return;
 
         var connId = _seedConnectionId;
@@ -481,12 +535,14 @@ public sealed partial class FriendsFeedService
         _safetyTimer = null;
         _rowTickTimer?.Dispose();
         _rowTickTimer = null;
+        if (_windowContext != null)
+            _windowContext.PropertyChanged -= OnWindowContextPropertyChanged;
         _lifecycleSubs.Dispose();
     }
 
     private void OnRowTick(object? _)
     {
-        if (_disposed) return;
+        if (_disposed || IsUiPowerSaving) return;
 
         // Dispatch snapshot + refresh to UI thread (touching ObservableProperty
         // setters raises PropertyChanged, which WinUI requires on the dispatcher).

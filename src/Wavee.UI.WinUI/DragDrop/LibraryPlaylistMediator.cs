@@ -86,4 +86,40 @@ internal sealed class LibraryPlaylistMediator(
         var detail = await podcastService.GetShowDetailAsync(showUri, ct).ConfigureAwait(false);
         return detail?.EpisodeUris ?? (IReadOnlyList<string>)Array.Empty<string>();
     }
+
+    public async Task<string?> GetDisplayNameAsync(string uri, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(uri)) return null;
+
+        try
+        {
+            if (uri.StartsWith("spotify:playlist:", StringComparison.Ordinal))
+            {
+                var playlists = await library.GetUserPlaylistsAsync(ct).ConfigureAwait(false);
+                return playlists.FirstOrDefault(p => string.Equals(p.Id, uri, StringComparison.Ordinal))?.Name;
+            }
+            if (uri.StartsWith("spotify:album:", StringComparison.Ordinal))
+            {
+                var detail = await albumService.GetDetailAsync(uri, ct).ConfigureAwait(false);
+                return detail.Name;
+            }
+            if (uri.StartsWith("spotify:artist:", StringComparison.Ordinal))
+            {
+                var overview = await artistService.GetOverviewAsync(uri, ct).ConfigureAwait(false);
+                return overview?.Name;
+            }
+            if (uri.StartsWith("spotify:show:", StringComparison.Ordinal))
+            {
+                var detail = await podcastService.GetShowDetailAsync(uri, ct).ConfigureAwait(false);
+                return detail?.Name;
+            }
+        }
+        catch
+        {
+            // Name resolution is best-effort; on any failure the drop handler
+            // falls back to a generic toast.
+        }
+
+        return null;
+    }
 }

@@ -51,6 +51,7 @@ public sealed class AudioProcessManager : IAsyncDisposable
     private bool _disposed;
     private int _restartCount;
     private int _restartInProgress; // 0 = idle, 1 = restarting (guards against double-trigger)
+    private int _handoffInProgress; // 1 while this UI is handing AudioHost to a replacement UI process
     private Timer? _heartbeatTimer;
 
     // Demand-driven readiness gate. EnsureConnectedAsync awaits this TCS so callers
@@ -260,6 +261,141 @@ public sealed class AudioProcessManager : IAsyncDisposable
         return await LaunchAndConnectAsync(ct);
     }
 
+    /// <summary>
+    /// Attaches this UI process to an AudioHost that was kept alive by a previous UI process.
+    /// </summary>
+    public async Task<AudioPipelineProxy> AttachAsync(
+        int audioHostProcessId,
+        string pipeName,
+        string sessionId,
+        string launchToken,
+        string username,
+        byte[] storedCredential,
+        string deviceId,
+        int initialVolumePercent = 0,
+        string? audioPreset = null,
+        string? audioCacheDirectory = null,
+        long? audioCacheMaxBytes = null,
+        TimeSpan? connectTimeout = null,
+        CancellationToken ct = default)
+    {
+        _username = username;
+        _storedCredential = storedCredential;
+        _deviceId = deviceId;
+        _initialVolumePercent = initialVolumePercent;
+        _audioPreset = audioPreset;
+        _audioCacheDirectory = audioCacheDirectory;
+        _audioCacheMaxBytes = audioCacheMaxBytes;
+        _restartCount = 0;
+        _pipeName = pipeName;
+        _launchContext = new AudioHostLaunchContext(
+            Environment.ProcessId,
+            sessionId,
+            launchToken,
+            pipeName,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+
+        SetState(AudioProcessState.Connecting, "Reconnecting to audio engine...");
+
+        try
+        {
+            _process = Process.GetProcessById(audioHostProcessId);
+            if (_process.HasExited)
+                throw new InvalidOperationException("Audio host process has exited");
+
+            _process.EnableRaisingEvents = true;
+            _process.Exited += OnProcessExited;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            SetState(AudioProcessState.Failed, "Existing audio engine is not available");
+            throw new InvalidOperationException("Existing audio host process is not available", ex);
+        }
+
+        var pipeClient = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        try
+        {
+            var timeoutMs = (int)(connectTimeout ?? TimeSpan.FromSeconds(90)).TotalMilliseconds;
+            _logger?.LogDebug("Connecting to adopted audio host pipe {PipeName}...", pipeName);
+            await pipeClient.ConnectAsync(timeoutMs, ct).ConfigureAwait(false);
+
+            var transport = new IpcPipeTransport(pipeClient, _logger);
+            _proxy = new AudioPipelineProxy(transport, _logger);
+            _proxy.Disconnected += OnProxyDisconnected;
+            _proxy.PongReceived += () => _lastPongTimestamp = Stopwatch.GetTimestamp();
+
+            var success = await _proxy.AdoptUiSessionAsync(
+                Environment.ProcessId,
+                sessionId,
+                launchToken,
+                ct).ConfigureAwait(false);
+            if (!success)
+                throw new InvalidOperationException("Audio host adoption failed");
+
+            _proxy.StartReceiving();
+            _lastPongTimestamp = Stopwatch.GetTimestamp();
+            _heartbeatTimer?.Dispose();
+            _heartbeatTimer = new Timer(HeartbeatTick, null, HeartbeatIntervalMs, HeartbeatIntervalMs);
+
+            SetState(AudioProcessState.Connected, "Audio engine connected");
+            SignalReadiness(true);
+            _logger?.LogInformation("Adopted audio process PID={Pid}", audioHostProcessId);
+            return _proxy;
+        }
+        catch
+        {
+            if (_proxy != null)
+            {
+                _proxy.Disconnected -= OnProxyDisconnected;
+                await _proxy.DisposeAsync().ConfigureAwait(false);
+                _proxy = null;
+            }
+            else
+            {
+                await pipeClient.DisposeAsync().ConfigureAwait(false);
+            }
+
+            SetState(AudioProcessState.Failed, "Could not reconnect to existing audio engine");
+            SignalReadiness(false);
+            throw;
+        }
+    }
+
+    public async Task PrepareUiHandoffAsync(
+        int newParentProcessId,
+        string pipeName,
+        string sessionId,
+        string launchToken,
+        TimeSpan timeout,
+        CancellationToken ct = default)
+    {
+        var proxy = _proxy ?? throw new InvalidOperationException("Audio host is not connected");
+        if (!proxy.IsConnected)
+            throw new InvalidOperationException("Audio host pipe is not connected");
+
+        Interlocked.Exchange(ref _handoffInProgress, 1);
+        _heartbeatTimer?.Dispose();
+        _heartbeatTimer = null;
+
+        try
+        {
+            await proxy.PrepareUiHandoffAsync(
+                newParentProcessId,
+                pipeName,
+                sessionId,
+                launchToken,
+                timeout,
+                ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            Interlocked.Exchange(ref _handoffInProgress, 0);
+            _lastPongTimestamp = Stopwatch.GetTimestamp();
+            _heartbeatTimer = new Timer(HeartbeatTick, null, HeartbeatIntervalMs, HeartbeatIntervalMs);
+            throw;
+        }
+    }
+
     private async Task<AudioPipelineProxy> LaunchAndConnectAsync(CancellationToken ct)
     {
         SetState(AudioProcessState.Connecting, "Starting audio engine...");
@@ -431,6 +567,11 @@ public sealed class AudioProcessManager : IAsyncDisposable
     private void OnProcessExited(object? sender, EventArgs e)
     {
         if (_disposed) return;
+        if (Volatile.Read(ref _handoffInProgress) != 0)
+        {
+            _logger?.LogInformation("Ignoring AudioHost exit during UI handoff");
+            return;
+        }
 
         var exitCode = -1;
         try { exitCode = _process?.ExitCode ?? -1; } catch { }
@@ -521,6 +662,11 @@ public sealed class AudioProcessManager : IAsyncDisposable
     private void OnProxyDisconnected(string reason)
     {
         if (_disposed) return;
+        if (Volatile.Read(ref _handoffInProgress) != 0)
+        {
+            _logger?.LogInformation("Audio proxy disconnected during UI handoff: {Reason}", reason);
+            return;
+        }
 
         _logger?.LogWarning("Audio proxy disconnected: {Reason}", reason);
         _heartbeatTimer?.Dispose();
@@ -761,12 +907,13 @@ public sealed class AudioProcessManager : IAsyncDisposable
             var job = CreateJobObjectW(IntPtr.Zero, jobName);
             if (job == IntPtr.Zero) return;
 
-            // Configure: kill child when job (parent) closes
+            // Keep the Job Object only for grouping. The AudioHost lifetime is
+            // governed by IPC/parent monitoring so it can survive a UI handoff.
             var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION
             {
                 BasicLimitInformation = new JOBOBJECT_BASIC_LIMIT_INFORMATION
                 {
-                    LimitFlags = 0x2000 // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                    LimitFlags = 0
                 }
             };
             var size = Marshal.SizeOf(info);

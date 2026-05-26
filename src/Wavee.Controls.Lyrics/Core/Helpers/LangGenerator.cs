@@ -50,7 +50,7 @@ public static class LangGenerator
             }
             else
             {
-                newMap[key] = $"[TODO] {defaultVal}";
+                newMap[key] = defaultVal;
             }
         }
 

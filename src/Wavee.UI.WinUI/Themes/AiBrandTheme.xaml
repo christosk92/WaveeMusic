@@ -43,6 +43,26 @@
                  default card color so it reads as related to the gradient
                  without competing with body text contrast. -->
             <SolidColorBrush x:Key="AiPanelBackgroundBrush" Color="#0FA33EBC" />
+
+            <!-- AiTextCard background. Subtle warm-to-cool accent gradient over
+                 a near-white base so the card reads as "AI surface" in light
+                 mode without becoming muddy grey. Sits on top of the page
+                 background; alphas are intentionally low (≤ 8%) so the page
+                 tonal palette still bleeds through. -->
+            <LinearGradientBrush x:Key="AiCardBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#142D5DFF" Offset="0.00" />
+                <GradientStop Color="#10A33EBC" Offset="0.55" />
+                <GradientStop Color="#08F4793A" Offset="1.00" />
+            </LinearGradientBrush>
+
+            <!-- Vertical gradient used to fade out the bottom of a collapsed AI
+                 paragraph. Top stop is transparent, bottom stop matches the
+                 card surface in light mode (near-white) so the text dissolves
+                 into the card rather than getting clipped sharply. -->
+            <LinearGradientBrush x:Key="AiCardFadeBrush" StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#00FFFFFF" Offset="0.00" />
+                <GradientStop Color="#F5FAFAFB" Offset="1.00" />
+            </LinearGradientBrush>
         </ResourceDictionary>
 
         <!-- ────────────────────────────────────────────────────────────────
@@ -60,6 +80,23 @@
             <SolidColorBrush x:Key="AiAccentSolidBrush" Color="#C261D8" />
             <SolidColorBrush x:Key="AiBorderBrush" Color="#55C261D8" />
             <SolidColorBrush x:Key="AiPanelBackgroundBrush" Color="#1FC261D8" />
+
+            <!-- AiTextCard background. Same warm-to-cool accent gradient but
+                 layered over a dark base so the card lifts off the page
+                 background. Alphas pushed up since the underlying surface is
+                 already dark. -->
+            <LinearGradientBrush x:Key="AiCardBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#1F5B85FF" Offset="0.00" />
+                <GradientStop Color="#1AC261D8" Offset="0.55" />
+                <GradientStop Color="#10FF9456" Offset="1.00" />
+            </LinearGradientBrush>
+
+            <!-- Vertical fade-out gradient. Bottom stop is near-black so the
+                 collapsed-paragraph fade dissolves into the dark card. -->
+            <LinearGradientBrush x:Key="AiCardFadeBrush" StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#00000000" Offset="0.00" />
+                <GradientStop Color="#F0181820" Offset="1.00" />
+            </LinearGradientBrush>
         </ResourceDictionary>
 
         <!-- ────────────────────────────────────────────────────────────────
@@ -70,6 +107,8 @@
             <SolidColorBrush x:Key="AiAccentSolidBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="AiBorderBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="AiPanelBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AiCardBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AiCardFadeBrush" Color="{ThemeResource SystemColorWindowColor}" />
         </ResourceDictionary>
 
     </ResourceDictionary.ThemeDictionaries>

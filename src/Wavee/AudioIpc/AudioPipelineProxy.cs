@@ -168,6 +168,38 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
         return false;
     }
 
+    public async Task<bool> AdoptUiSessionAsync(
+        int parentProcessId,
+        string sessionId,
+        string launchToken,
+        CancellationToken ct = default)
+    {
+        var cmd = new AdoptUiSessionCommand
+        {
+            ParentProcessId = parentProcessId,
+            SessionId = sessionId,
+            LaunchToken = launchToken,
+        };
+
+        var id = Interlocked.Increment(ref _nextRequestId);
+        Interlocked.Increment(ref _messagesSent);
+        await _transport.SendAsync(
+            IpcMessageTypes.AdoptUiSession,
+            IpcPayloadHelper.SerializeToUtf8(cmd),
+            id,
+            ct).ConfigureAwait(false);
+
+        var response = await _transport.ReceiveAsync(ct).ConfigureAwait(false);
+        if (response?.Type == IpcMessageTypes.Ready)
+        {
+            _logger?.LogInformation("Audio host UI session adopted");
+            return true;
+        }
+
+        _logger?.LogError("Unexpected handoff response: {Type}", response?.Type);
+        return false;
+    }
+
     public async Task PlayAsync(PlayCommand command, CancellationToken cancellationToken = default)
     {
         // Legacy path — callers should prefer PlayResolvedAsync
@@ -340,6 +372,28 @@ public sealed class AudioPipelineProxy : IPlaybackEngine, IAsyncDisposable
 
     public Task SendPingAsync(CancellationToken ct = default)
         => SendSimpleCommandAsync(IpcMessageTypes.Ping, ct);
+
+    public async Task PrepareUiHandoffAsync(
+        int newParentProcessId,
+        string pipeName,
+        string sessionId,
+        string launchToken,
+        TimeSpan timeout,
+        CancellationToken ct = default)
+    {
+        var result = await SendRequestAsync(IpcMessageTypes.PrepareUiHandoff,
+            new PrepareUiHandoffCommand
+            {
+                NewParentProcessId = newParentProcessId,
+                PipeName = pipeName,
+                SessionId = sessionId,
+                LaunchToken = launchToken,
+                TimeoutMs = (int)Math.Clamp(timeout.TotalMilliseconds, 1, int.MaxValue)
+            }, ct).ConfigureAwait(false);
+
+        if (!result.Success)
+            throw new InvalidOperationException(result.ErrorMessage ?? "AudioHost rejected UI handoff");
+    }
 
     public Task StartPreviewAnalysisAsync(string sessionId, string previewUrl, CancellationToken ct = default)
         => SendCommandAsync(IpcMessageTypes.StartPreviewAnalysis, new StartPreviewAnalysisCommand

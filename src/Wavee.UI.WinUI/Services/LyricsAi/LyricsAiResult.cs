@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Wavee.AI.Tools;
 
 namespace Wavee.UI.WinUI.Services;
 
@@ -28,7 +29,8 @@ public readonly record struct LyricsAiResult(
     bool FromCache,
     string? ErrorMessage,
     IReadOnlyList<LyricsAiTextSegment>? Segments,
-    IReadOnlyList<LyricsAiCitation>? Citations)
+    IReadOnlyList<LyricsAiCitation>? Citations,
+    IReadOnlyList<MusicGroundingSource>? Sources = null)
 {
     public static readonly LyricsAiResult Unavailable = new(LyricsAiResultKind.Unavailable, string.Empty, false, null, null, null);
     public static readonly LyricsAiResult Empty = new(LyricsAiResultKind.Empty, string.Empty, false, null, null, null);
@@ -40,21 +42,32 @@ public readonly record struct LyricsAiResult(
     public static LyricsAiResult Ok(
         string text,
         bool fromCache,
+        IReadOnlyList<MusicGroundingSource> sources)
+        => new(LyricsAiResultKind.Ok, text, fromCache, null, null, null, sources);
+
+    public static LyricsAiResult Ok(
+        string text,
+        bool fromCache,
         IReadOnlyList<LyricsAiTextSegment> segments,
         IReadOnlyList<LyricsAiCitation> citations)
         => new(LyricsAiResultKind.Ok, text, fromCache, null, segments, citations);
+
+    public static LyricsAiResult UnavailableWithReason(string reason)
+        => new(LyricsAiResultKind.Unavailable, string.Empty, false, reason, null, null);
 
     public static LyricsAiResult Error(string message)
         => new(LyricsAiResultKind.Error, string.Empty, false, message, null, null);
 
     public LyricsAiResult WithCacheState(bool fromCache)
-        => new(Kind, Text, fromCache, ErrorMessage, Segments, Citations);
+        => new(Kind, Text, fromCache, ErrorMessage, Segments, Citations, Sources);
 
     public bool IsSuccess => Kind == LyricsAiResultKind.Ok;
 
     public bool HasCitations => IsSuccess
                                 && Segments is { Count: > 0 }
                                 && Citations is { Count: > 0 };
+
+    public bool HasSources => Sources is { Count: > 0 };
 }
 
 public enum LyricsAiResultKind

@@ -6,6 +6,7 @@
     xmlns:winuiex="using:WinUIEx"
     xmlns:splash="using:Wavee.UI.WinUI.Controls.Splash"
     xmlns:host="using:Wavee.UI.WinUI.Controls.PageHost"
+    xmlns:tb="using:H.NotifyIcon"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     x:Uid="MainWindow"
@@ -23,8 +24,52 @@
          ~150ms cold-start gap between Activate() and ShellPage's first
          layout pass. MainWindow.InitializeApplicationAsync triggers the
          splash fade-out once PageHost.Navigated has fired. -->
-    <Grid>
+    <Grid x:Name="WindowRoot">
         <host:PageHost x:Name="RootHost" IsNavigationStackEnabled="False" />
         <splash:BootSplash x:Name="Splash" />
+
+        <!-- System-tray icon. Visibility is bound to AppSettings.MinimizeToTrayOnClose
+             via code-behind; left-click restores the window, the menu drives
+             playback / quit. Sits inside the visual tree (instead of being a
+             Window-level element) because H.NotifyIcon.WinUI requires a
+             XamlRoot to forward keyboard input to its flyouts. -->
+        <tb:TaskbarIcon
+            x:Name="TrayIcon"
+            ToolTipText="Wavee"
+            Visibility="Collapsed"
+            NoLeftClickDelay="True"
+            LeftClickCommand="{x:Bind TrayShowCommand, Mode=OneTime}">
+            <tb:TaskbarIcon.ContextFlyout>
+                <MenuFlyout>
+                    <MenuFlyoutItem Text="Show Wavee" Click="TrayShow_Click">
+                        <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xE740;"/>
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutSeparator/>
+                    <MenuFlyoutItem Text="Play / pause" Click="TrayPlayPause_Click">
+                        <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xE768;"/>
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem Text="Next track" Click="TrayNext_Click">
+                        <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xF8AD;"/>
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem Text="Previous track" Click="TrayPrev_Click">
+                        <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xF8AC;"/>
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutSeparator/>
+                    <MenuFlyoutItem Text="Quit Wavee" Click="TrayQuit_Click">
+                        <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xE7E8;"/>
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                </MenuFlyout>
+            </tb:TaskbarIcon.ContextFlyout>
+        </tb:TaskbarIcon>
     </Grid>
 </winuiex:WindowEx>

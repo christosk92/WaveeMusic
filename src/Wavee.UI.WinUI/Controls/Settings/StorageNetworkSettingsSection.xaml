@@ -19,7 +19,8 @@
 
     <ScrollView>
         <StackPanel x:Name="SettingsGroupsRoot" Spacing="6" Padding="0,12,0,24">
-            <settings:SettingsGroupHeader Title="Memory cache"
+            <settings:SettingsGroupHeader x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_100"
+                                          Title="Memory cache"
                                           Description="Balance memory usage against network refetches and browsing speed."
                                           IconGlyph="&#xE8F1;"
                                           Tag="memory"/>
@@ -47,7 +48,8 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Low"
+                        <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_101"
+                                   Grid.Column="0" Text="Low"
                                    HorizontalAlignment="Left"
                                    Style="{ThemeResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -74,7 +76,8 @@
                 </StackPanel>
             </controls:SettingsCard>
 
-            <settings:SettingsGroupHeader Title="Audio cache"
+            <settings:SettingsGroupHeader x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_102"
+                                          Title="Audio cache"
                                           Description="Manage cached audio, cache size, and library revision refreshes."
                                           IconGlyph="&#xE74E;"
                                           Tag="audio-cache"/>
@@ -119,25 +122,29 @@
                 </controls:SettingsCard.HeaderIcon>
                 <Button x:Uid="Controls_Settings_StorageNetworkSettingsSection__Button_15" Content="Clear Cache" Command="{x:Bind ViewModel.ClearCacheCommand}"/>
             </controls:SettingsCard>
-            <controls:SettingsCard Header="Clear collection revisions"
+            <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_103"
+                                   Header="Clear collection revisions"
                                    Description="Forces a full refresh of your library (Liked Songs, albums, artists, shows). Use if something looks out of date."
                                    Tag="audio-cache">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE895;"/>
                 </controls:SettingsCard.HeaderIcon>
-                <Button Content="Clear &amp; resync" Click="ClearCollectionRevisions_Click"/>
+                <Button x:Uid="Controls_Settings_StorageNetworkSettingsSection__Button_104"
+                        Content="Clear &amp; resync" Click="ClearCollectionRevisions_Click"/>
             </controls:SettingsCard>
 
             <!-- ── Local Files ─────────────────────────────────────────────── -->
             <StackPanel x:Load="{x:Bind ViewModel.IsLocalFilesFeatureEnabled, Mode=OneWay}"
                         x:Name="localFileSection"
                         Spacing="6">
-            <settings:SettingsGroupHeader Title="Local files"
+            <settings:SettingsGroupHeader x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_105"
+                                          Title="Local files"
                                           Description="Choose watched folders and how local music appears in the app."
                                           IconGlyph="&#xE8B7;"
                                           Tag="local-files"/>
 
-            <controls:SettingsCard Header="Show on Home"
+            <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_106"
+                                   Header="Show on Home"
                                    Description="Display a Local files shelf near the top of Home when indexed files are available."
                                    Tag="local-files">
                 <controls:SettingsCard.HeaderIcon>
@@ -148,16 +155,19 @@
                               OffContent=""/>
             </controls:SettingsCard>
 
-            <controls:SettingsCard Header="Watched folders"
+            <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_107"
+                                   Header="Watched folders"
                                    Description="Wavee scans these folders for music and adds it to Search and your library. Indexes update in the background."
                                    Tag="local-files">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8B7;"/>
                 </controls:SettingsCard.HeaderIcon>
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Content="Rescan now"
+                    <Button x:Uid="Controls_Settings_StorageNetworkSettingsSection__Button_108"
+                            Content="Rescan now"
                             Click="RescanAllLocal_Click"/>
-                    <Button Content="Add folder…"
+                    <Button x:Uid="Controls_Settings_StorageNetworkSettingsSection__Button_109"
+                            Content="Add folder…"
                             Style="{ThemeResource AccentButtonStyle}"
                             Click="AddLocalFolder_Click"/>
                 </StackPanel>
@@ -180,20 +190,22 @@
                                      toward the chosen kind. Never overrides clear
                                      signals (a movie misfiled in a music folder still
                                      gets classified as Movie). -->
-                                <ComboBox SelectedIndex="{x:Bind ExpectedKindIndex, Mode=TwoWay}"
+                                <ComboBox x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBox_110"
+                                          SelectedIndex="{x:Bind ExpectedKindIndex, Mode=TwoWay}"
                                           ToolTipService.ToolTip="Expected content kind for this folder"
                                           MinWidth="140">
-                                    <ComboBoxItem Content="Auto"/>
-                                    <ComboBoxItem Content="Music"/>
-                                    <ComboBoxItem Content="Music videos"/>
-                                    <ComboBoxItem Content="TV shows"/>
-                                    <ComboBoxItem Content="Movies"/>
-                                    <ComboBoxItem Content="Other"/>
+                                    <ComboBoxItem x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_111" Content="Auto"/>
+                                    <ComboBoxItem x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_112" Content="Music"/>
+                                    <ComboBoxItem x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_113" Content="Music videos"/>
+                                    <ComboBoxItem x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_114" Content="TV shows"/>
+                                    <ComboBoxItem x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_115" Content="Movies"/>
+                                    <ComboBoxItem x:Uid="Controls_Settings_StorageNetworkSettingsSection__ComboBoxItem_116" Content="Other"/>
                                 </ComboBox>
                                 <TextBlock Text="{x:Bind LastScanDisplay}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            VerticalAlignment="Center"/>
-                                <Button Content="Remove"
+                                <Button x:Uid="Controls_Settings_StorageNetworkSettingsSection__Button_117"
+                                        Content="Remove"
                                         Click="RemoveLocalFolder_Click"
                                         Tag="{x:Bind}"/>
                             </StackPanel>
@@ -202,7 +214,8 @@
                 </ItemsRepeater.ItemTemplate>
             </ItemsRepeater>
 
-            <controls:SettingsCard Header="Sync progress"
+            <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_118"
+                                   Header="Sync progress"
                                    Description="{x:Bind ViewModel.LocalFiles.ProgressCurrentFile, Mode=OneWay}"
                                    Visibility="{x:Bind ViewModel.LocalFiles.IsScanning, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                    Tag="local-files">
@@ -226,13 +239,15 @@
                  BYO TMDB v4 read-access token — every user pastes their own
                  free token. Enrichment runs only on explicit Sync clicks
                  (Shows / Movies / detail pages, or "Run now" below). -->
-            <settings:SettingsGroupHeader Title="Online metadata lookups"
+            <settings:SettingsGroupHeader x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_119"
+                                          Title="Online metadata lookups"
                                           Description="Enrich local files with posters and titles from TMDB and MusicBrainz."
                                           IconGlyph="&#xE968;"
                                           Tag="local-enrichment"/>
 
             <!-- TMDB integration card with token PasswordBox + Test/Clear. -->
-            <controls:SettingsExpander Header="TMDB integration"
+            <controls:SettingsExpander x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsExpander_120"
+                                       Header="TMDB integration"
                                        Description="Free service for movie and TV metadata."
                                        Tag="local-enrichment"
                                        IsExpanded="True">
@@ -245,7 +260,8 @@
                         CornerRadius="10"
                         Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                         VerticalAlignment="Center">
-                    <TextBlock x:Name="TmdbStatusPillText"
+                    <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_121"
+                               x:Name="TmdbStatusPillText"
                                Text="Not configured"
                                FontSize="11"
                                FontWeight="SemiBold"
@@ -256,7 +272,8 @@
                     <controls:SettingsCard ContentAlignment="Vertical"
                                            Tag="local-enrichment">
                         <StackPanel Spacing="10" Padding="0,4,0,4">
-                            <TextBlock Text="Paste your TMDB v4 read-access token. The token is encrypted with Windows DPAPI and never leaves your machine."
+                            <TextBlock x:Uid="Controls_Settings_StorageNetworkSettingsSection__TextBlock_122"
+                                       Text="Paste your TMDB v4 read-access token. The token is encrypted with Windows DPAPI and never leaves your machine."
                                        TextWrapping="Wrap"
                                        Style="{ThemeResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -270,14 +287,17 @@
                                        Style="{ThemeResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button x:Name="TestTokenButton"
+                                <Button x:Uid="Controls_Settings_StorageNetworkSettingsSection__Button_123"
+                                        x:Name="TestTokenButton"
                                         Style="{StaticResource AccentButtonStyle}"
                                         Content="Verify"
                                         Click="TestTmdbToken_Click"/>
-                                <Button x:Name="ClearTokenButton"
+                                <Button x:Uid="Controls_Settings_StorageNetworkSettingsSection__Button_124"
+                                        x:Name="ClearTokenButton"
                                         Content="Clear"
                                         Click="ClearTmdbToken_Click"/>
-                                <HyperlinkButton Content="Get a free token (60 seconds) →"
+                                <HyperlinkButton x:Uid="Controls_Settings_StorageNetworkSettingsSection__HyperlinkButton_125"
+                                                 Content="Get a free token (60 seconds) →"
                                                  Click="GetTmdbToken_Click"/>
                             </StackPanel>
                         </StackPanel>
@@ -285,26 +305,31 @@
                 </controls:SettingsExpander.Items>
             </controls:SettingsExpander>
 
-            <controls:SettingsCard Header="Run now"
+            <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_126"
+                                   Header="Run now"
                                    Description="Manually re-queue every local file for metadata lookup."
                                    Tag="local-enrichment">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE895;"/>
                 </controls:SettingsCard.HeaderIcon>
-                <Button Content="Run now" Click="RunEnrichmentNow_Click"/>
+                <Button x:Uid="Controls_Settings_StorageNetworkSettingsSection__Button_127"
+                        Content="Run now" Click="RunEnrichmentNow_Click"/>
             </controls:SettingsCard>
-            <controls:SettingsCard Header="Clear cached lookups"
+            <controls:SettingsCard x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsCard_128"
+                                   Header="Clear cached lookups"
                                    Description="Drop every previous TMDB / MusicBrainz match so the next Sync re-queries from scratch."
                                    Tag="local-enrichment">
                 <controls:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE74D;"/>
                 </controls:SettingsCard.HeaderIcon>
-                <Button Content="Clear" Click="ClearCachedLookups_Click"/>
+                <Button x:Uid="Controls_Settings_StorageNetworkSettingsSection__Button_129"
+                        Content="Clear" Click="ClearCachedLookups_Click"/>
             </controls:SettingsCard>
 
             </StackPanel>
 
-            <settings:SettingsGroupHeader Title="Connection"
+            <settings:SettingsGroupHeader x:Uid="Controls_Settings_StorageNetworkSettingsSection__SettingsGroupHeader_130"
+                                          Title="Connection"
                                           Description="Configure reconnect behavior and network timeouts."
                                           IconGlyph="&#xE703;"
                                           Tag="connection"/>

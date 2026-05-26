@@ -22,6 +22,7 @@ public partial class App : Application
     private static readonly SemaphoreSlim _shutdownGate = new(1, 1);
     private static Task? _shutdownTask;
     private static int _shutdownStarted;
+    private static int _uiHandoffExit;
     // Owns the long-lived Rx subscription that drains the local-video
     // suppressor token on state changes. Stored in a field so it can be
     // disposed on shutdown — without this, the subscription was untracked
@@ -32,6 +33,10 @@ public partial class App : Application
     public static AppModel AppModel { get; private set; } = null!;
 
     internal static bool IsHostShuttingDown => Volatile.Read(ref _shutdownStarted) != 0;
+    internal static bool IsUiHandoffExit => Volatile.Read(ref _uiHandoffExit) != 0;
+
+    internal static void BeginUiHandoffExit()
+        => Volatile.Write(ref _uiHandoffExit, 1);
 
     public App()
     {
@@ -101,6 +106,9 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        AppLifecycleHelper.PendingUiHandoff =
+            UiHandoffLaunchOptions.TryReadFromCommandLine(Environment.GetCommandLineArgs());
+
         // App-notification activation must be wired BEFORE we touch
         // AppInstance.GetActivatedEventArgs() — the WinAppSDK docs are emphatic
         // about this ordering. Subscribing to NotificationInvoked + calling

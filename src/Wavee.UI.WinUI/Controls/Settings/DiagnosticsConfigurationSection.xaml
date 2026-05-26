@@ -13,7 +13,7 @@
     <ScrollView VerticalScrollBarVisibility="Auto"
                 HorizontalScrollBarVisibility="Hidden">
         <StackPanel x:Name="ConfigurationGroupsRoot" Spacing="0" Padding="0,4,0,24">
-            <controls:SettingsCard Margin="0,0,0,12"
+            <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_1" Margin="0,0,0,12"
                                    Header="Memory diagnostics panel"
                                    Tag="health"
                                    Description="Reveal the live memory + cache breakdown panel below. Off by default - sampling is only active while this is on.">
@@ -27,7 +27,7 @@
                 Visibility="{x:Bind ViewModel.MemoryDiagnosticsEnabled, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                 Tag="health"/>
 
-            <controls:SettingsExpander x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsExpander_1" Margin="0,0,0,12"
+            <controls:SettingsExpander x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsExpander_2" Margin="0,0,0,12"
                                        Header="Audio Pipeline"
                                        Tag="health"
                                        Description="{x:Bind ViewModel.AudioPipelineMode, Mode=OneWay}">
@@ -40,7 +40,7 @@
                                Text="{x:Bind ViewModel.AudioPipelineStatus, Mode=OneWay}"/>
                 </StackPanel>
                 <controls:SettingsExpander.Items>
-                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsCard_2" Header="Process ID"
+                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_3" Header="Process ID"
                                            Description="PID of the audio engine process (0 = in-process)">
                         <controls:SettingsCard.HeaderIcon>
                             <FontIcon Glyph="&#xE943;"/>
@@ -48,7 +48,7 @@
                         <TextBlock Text="{x:Bind ViewModel.AudioPipelinePid, Mode=OneWay}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </controls:SettingsCard>
-                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsCard_3" Header="Restart Count"
+                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_4" Header="Restart Count"
                                            Description="Number of auto-restarts this session">
                         <controls:SettingsCard.HeaderIcon>
                             <FontIcon Glyph="&#xE72C;"/>
@@ -56,7 +56,7 @@
                         <TextBlock Text="{x:Bind ViewModel.AudioRestartCount, Mode=OneWay}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </controls:SettingsCard>
-                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsCard_4" Header="Audio Underruns"
+                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_5" Header="Audio Underruns"
                                            Description="PortAudio buffer underflows (causes audible glitches)">
                         <controls:SettingsCard.HeaderIcon>
                             <FontIcon Glyph="&#xE7BA;"/>
@@ -64,7 +64,7 @@
                         <TextBlock Text="{x:Bind ViewModel.AudioUnderrunCount, Mode=OneWay}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </controls:SettingsCard>
-                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsCard_5" Header="GC Collections"
+                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_6" Header="GC Collections"
                                            Description="Garbage collection counts (Gen2 causes audio freezes)">
                         <controls:SettingsCard.HeaderIcon>
                             <FontIcon Glyph="&#xE74D;"/>
@@ -73,7 +73,7 @@
                                    FontFamily="Consolas" FontSize="12"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </controls:SettingsCard>
-                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsCard_6" Header="Slowest UI Operations"
+                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_7" Header="Slowest UI Operations"
                                            Description="Profiled operations that block the UI thread">
                         <controls:SettingsCard.HeaderIcon>
                             <FontIcon Glyph="&#xE916;"/>
@@ -83,7 +83,7 @@
                                    MaxWidth="300" TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </controls:SettingsCard>
-                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsCard_7" Header="IPC Throughput"
+                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_8" Header="IPC Throughput"
                                            Description="Messages sent/received over the Named Pipe">
                         <controls:SettingsCard.HeaderIcon>
                             <FontIcon Glyph="&#xE8AB;"/>
@@ -92,7 +92,7 @@
                                    FontFamily="Consolas" FontSize="12"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </controls:SettingsCard>
-                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsCard_8" Header="State Freshness"
+                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_9" Header="State Freshness"
                                            Description="Time since last state update from audio process">
                         <controls:SettingsCard.HeaderIcon>
                             <FontIcon Glyph="&#xE2AD;"/>
@@ -112,7 +112,7 @@
                 <diag:IpcLineChart x:Name="RttChart" Height="180"/>
             </Border>
 
-            <controls:SettingsCard Margin="0,0,0,12"
+            <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_10" Margin="0,0,0,12"
                                    Header="Navigation Health Report"
                                    Tag="health"
                                    Description="Copies a snapshot of recent navigation timings, GC counts, working-set deltas, page faults, and the last MemoryReleaseHelper event. Paste into a bug report after reproducing the stall-then-BOOM hang.">
@@ -124,12 +124,12 @@
                                VerticalAlignment="Center"
                                FontSize="11"
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                    <Button Content="Copy report"
+                    <Button x:Uid="Controls_Settings_DiagnosticsConfigurationSection__Button_11" Content="Copy report"
                             Command="{x:Bind ViewModel.CopyNavigationHealthReportCommand}"/>
                 </StackPanel>
             </controls:SettingsCard>
 
-            <controls:SettingsExpander x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsExpander_9" Margin="0,0,0,12"
+            <controls:SettingsExpander x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsExpander_12" Margin="0,0,0,12"
                                        Header="Clock Synchronization"
                                        Tag="clock"
                                        Description="NTP-style sync with Spotify's server clock">
@@ -140,51 +140,51 @@
                     <TextBlock VerticalAlignment="Center"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}">
                         <Run Text="{x:Bind ViewModel.ClockOffsetMs, Mode=OneWay}"/>
-                        <Run x:Uid="Controls_Settings_DiagnosticsSettingsSection__Run_10" Text="ms offset"/>
+                        <Run x:Uid="Controls_Settings_DiagnosticsConfigurationSection__Run_13" Text="ms offset"/>
                     </TextBlock>
                     <FontIcon Glyph="&#xE73E;" FontSize="12"
                               Foreground="{ThemeResource SystemFillColorSuccessBrush}"
                               Visibility="{x:Bind ViewModel.ClockIsSynced, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </StackPanel>
                 <controls:SettingsExpander.Items>
-                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsCard_11" Header="Network round-trip"
+                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_14" Header="Network round-trip"
                                            Description="Latency of the best sync sample">
                         <controls:SettingsCard.HeaderIcon>
                             <FontIcon Glyph="&#xE968;"/>
                         </controls:SettingsCard.HeaderIcon>
                         <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}">
                             <Run Text="{x:Bind ViewModel.ClockLastRttMs, Mode=OneWay}"/>
-                            <Run x:Uid="Controls_Settings_DiagnosticsSettingsSection__Run_12" Text="ms"/>
+                            <Run x:Uid="Controls_Settings_DiagnosticsConfigurationSection__Run_15" Text="ms"/>
                         </TextBlock>
                     </controls:SettingsCard>
-                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsCard_13" Header="Sync interval"
+                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_16" Header="Sync interval"
                                            Description="How often to re-synchronize">
                         <controls:SettingsCard.HeaderIcon>
                             <FontIcon Glyph="&#xE916;"/>
                         </controls:SettingsCard.HeaderIcon>
                         <ComboBox SelectedIndex="{x:Bind ViewModel.ClockSyncIntervalIndex, Mode=TwoWay}"
                                   MinWidth="140">
-                            <ComboBoxItem x:Uid="Controls_Settings_DiagnosticsSettingsSection__ComboBoxItem_14" Content="5 minutes"/>
-                            <ComboBoxItem x:Uid="Controls_Settings_DiagnosticsSettingsSection__ComboBoxItem_15" Content="10 minutes"/>
-                            <ComboBoxItem x:Uid="Controls_Settings_DiagnosticsSettingsSection__ComboBoxItem_16" Content="15 minutes"/>
-                            <ComboBoxItem x:Uid="Controls_Settings_DiagnosticsSettingsSection__ComboBoxItem_17" Content="30 minutes"/>
+                            <ComboBoxItem x:Uid="Controls_Settings_DiagnosticsConfigurationSection__ComboBoxItem_17" Content="5 minutes"/>
+                            <ComboBoxItem x:Uid="Controls_Settings_DiagnosticsConfigurationSection__ComboBoxItem_18" Content="10 minutes"/>
+                            <ComboBoxItem x:Uid="Controls_Settings_DiagnosticsConfigurationSection__ComboBoxItem_19" Content="15 minutes"/>
+                            <ComboBoxItem x:Uid="Controls_Settings_DiagnosticsConfigurationSection__ComboBoxItem_20" Content="30 minutes"/>
                         </ComboBox>
                     </controls:SettingsCard>
-                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsSettingsSection__SettingsCard_18" Header="Last sync"
+                    <controls:SettingsCard x:Uid="Controls_Settings_DiagnosticsConfigurationSection__SettingsCard_21" Header="Last sync"
                                            Description="{x:Bind ViewModel.ClockLastSyncDisplay, Mode=OneWay}">
                         <controls:SettingsCard.HeaderIcon>
                             <FontIcon Glyph="&#xE895;"/>
                         </controls:SettingsCard.HeaderIcon>
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <StackPanel VerticalAlignment="Center" Spacing="0">
-                                <TextBlock x:Uid="Controls_Settings_DiagnosticsSettingsSection__TextBlock_19" Text="Next sync in"
+                                <TextBlock x:Uid="Controls_Settings_DiagnosticsConfigurationSection__TextBlock_22" Text="Next sync in"
                                            FontSize="11"
                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                                 <TextBlock Text="{x:Bind ViewModel.ClockNextSyncCountdown, Mode=OneWay}"
                                            FontSize="13" FontWeight="SemiBold"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             </StackPanel>
-                            <Button x:Uid="Controls_Settings_DiagnosticsSettingsSection__Button_20" Content="Sync now" Command="{x:Bind ViewModel.RefreshClockCommand}"/>
+                            <Button x:Uid="Controls_Settings_DiagnosticsConfigurationSection__Button_23" Content="Sync now" Command="{x:Bind ViewModel.RefreshClockCommand}"/>
                         </StackPanel>
                     </controls:SettingsCard>
                 </controls:SettingsExpander.Items>

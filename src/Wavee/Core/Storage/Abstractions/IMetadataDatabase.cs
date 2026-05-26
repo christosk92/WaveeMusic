@@ -539,6 +539,20 @@ public interface IMetadataDatabase : IAsyncDisposable
     /// </summary>
     Task SetPersistedHeadDataAsync(string fileIdHex, byte[] headData, CancellationToken ct = default);
 
+    /// <summary>
+    /// Gets a persisted CDN URL + expiry for a FileId, or null if not stored
+    /// or expired. Used by <c>CacheService</c> to warm-start CDN URL resolution
+    /// across app launches — without it, every cold start needs a round-trip
+    /// to Spotify's storage-resolve endpoint before audio can stream.
+    /// </summary>
+    Task<(string Url, DateTimeOffset Expiry)?> GetPersistedCdnUrlAsync(string fileIdHex, CancellationToken ct = default);
+
+    /// <summary>
+    /// Persists a CDN URL with expiry. Overwrites any existing entry. Cleans
+    /// up expired rows opportunistically (no separate sweep needed).
+    /// </summary>
+    Task SetPersistedCdnUrlAsync(string fileIdHex, string url, DateTimeOffset expiry, CancellationToken ct = default);
+
     #endregion
 
     #region Media Override Operations

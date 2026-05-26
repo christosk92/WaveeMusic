@@ -360,6 +360,13 @@
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
 
+        <controls1:PageErrorState
+            Title="Couldn't load Home"
+            Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+            RetryCommand="{x:Bind ViewModel.RefreshCommand}"
+            Canvas.ZIndex="10"
+            Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
         <!-- Loading: shimmer skeleton (crossfades to content) -->
         <ScrollView
             x:Name="ShimmerContainer"

@@ -85,6 +85,24 @@ public sealed class AppSettings
 
     public bool ShowLocalFilesOnHome { get; set; } = true;
 
+    /// <summary>
+    /// Private listening session. When true, the device announces
+    /// <c>is_private_session=true</c> in its DeviceInfo, and Wavee suppresses
+    /// the <c>RawCoreStream</c> / <c>RawCoreStreamSegment</c> gabo events that
+    /// drive Recently Played / play counts / friend activity. Off by default;
+    /// must be flipped explicitly from Settings → Playback.
+    /// </summary>
+    public bool IsPrivateSession { get; set; }
+
+    /// <summary>
+    /// When true, the X button hides the window into the system tray
+    /// instead of exiting. Audio keeps playing; the tray icon's menu has
+    /// Show / Play-Pause / Next / Prev / Quit. Default off — closing the
+    /// window kills playback to match the user's intuition until they
+    /// explicitly opt into background behavior.
+    /// </summary>
+    public bool MinimizeToTrayOnClose { get; set; }
+
     // ── Cache (applied on next launch) ──
 
     /// <summary>

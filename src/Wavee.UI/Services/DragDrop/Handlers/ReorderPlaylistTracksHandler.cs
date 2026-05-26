@@ -45,7 +45,8 @@ public static class ReorderPlaylistTracksHandler
         try
         {
             await mediator.ReorderTracksAsync(ctx.TargetId, fromIndex, length, toIndex, ct).ConfigureAwait(false);
-            return DropResult.Ok(length);
+            var nounTrack = length == 1 ? "track" : "tracks";
+            return DropResult.Ok(length, $"Reordered {length} {nounTrack}");
         }
         catch (System.Exception ex)
         {

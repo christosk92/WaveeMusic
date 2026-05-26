@@ -21,6 +21,20 @@
     PointerPressed="Card_PointerPressed"
     PointerReleased="Card_PointerReleased">
 
+    <UserControl.Resources>
+        <Style x:Key="ContentCardRootGridStyle" TargetType="Grid">
+            <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,8,8,12" />
+        </Style>
+
+        <Style x:Key="ContentCardSquareImageContainerStyle" TargetType="Grid">
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorSecondaryBrush}" />
+        </Style>
+    </UserControl.Resources>
+
     <Button
         x:Name="CardButton"
         Padding="0"
@@ -41,11 +55,7 @@
              HomePage first-paint burst (one Border per card). AttachedCardShadow attaches to any
              FrameworkElement, so the shadow still works unchanged. -->
         <Grid x:Name="CardRoot"
-              CornerRadius="{ThemeResource ControlCornerRadius}"
-              Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-              BorderThickness="1"
-              Padding="8,8,8,12">
+              Style="{StaticResource ContentCardRootGridStyle}">
             <!-- Shimmer overlay — instantiated lazily only when a card is in the IsLoading
                  state (passive/placeholder mode). Skipping creation cuts ~3 framework elements
                  × ~310 cards = ~930 elements from the HomePage realization burst. -->
@@ -61,7 +71,7 @@
                 <Grid x:Name="SquareImageContainer"
                       CornerRadius="4"
                       HorizontalAlignment="Stretch"
-                      Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                      Style="{StaticResource ContentCardSquareImageContainerStyle}"
                       SizeChanged="SquareImageContainer_SizeChanged">
                     <FontIcon x:Name="SquarePlaceholderIcon"
                               Canvas.ZIndex="1"

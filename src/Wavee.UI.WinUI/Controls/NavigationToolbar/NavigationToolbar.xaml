@@ -87,6 +87,7 @@
             <Button x:Uid="Controls_NavigationToolbar_NavigationToolbar__Button_1"
                 x:Name="BackButton"
                 Style="{StaticResource NavigationButtonStyle}"
+                AutomationProperties.Name="Back"
                 ToolTipService.ToolTip="Back"
                 IsEnabled="{x:Bind CanGoBack, Mode=OneWay}"
                 Click="BackButton_Click">
@@ -97,6 +98,7 @@
             <Button x:Uid="Controls_NavigationToolbar_NavigationToolbar__Button_2"
                 x:Name="ForwardButton"
                 Style="{StaticResource NavigationButtonStyle}"
+                AutomationProperties.Name="Forward"
                 ToolTipService.ToolTip="Forward"
                 IsEnabled="{x:Bind CanGoForward, Mode=OneWay}"
                 Click="ForwardButton_Click">
@@ -114,6 +116,7 @@
                     x:Name="HomeButton"
                     Grid.Row="0"
                     Style="{StaticResource NavigationButtonStyle}"
+                    AutomationProperties.Name="Home"
                     ToolTipService.ToolTip="Home"
                     Click="HomeButton_Click">
                     <FontIcon FontSize="14" Glyph="&#xE80F;" />
@@ -136,6 +139,7 @@
             <Button x:Uid="Controls_NavigationToolbar_NavigationToolbar__Button_4"
                 x:Name="RefreshButton"
                 Style="{StaticResource NavigationButtonStyle}"
+                AutomationProperties.Name="Refresh"
                 ToolTipService.ToolTip="Refresh"
                 Click="RefreshButton_Click"
                 Visibility="Collapsed">
@@ -175,6 +179,7 @@
                     Style="{StaticResource NavigationButtonStyle}"
                     Width="Auto"
                     Padding="4,0,8,0"
+                    AutomationProperties.Name="Profile"
                     ToolTipService.ToolTip="Profile"
                     Visibility="{x:Bind ShowProfileChip, Mode=OneWay}">
                     <Button.Flyout>
@@ -224,6 +229,7 @@
                     Height="32"
                     Padding="10,0,12,0"
                     VerticalAlignment="Center"
+                    AutomationProperties.Name="Sign in with Spotify"
                     ToolTipService.ToolTip="Sign in with Spotify"
                     Click="SignInButton_Click"
                     Visibility="{x:Bind ShowSignInCta, Mode=OneWay}">
@@ -254,6 +260,7 @@
                 Padding="0"
                 CornerRadius="4"
                 VerticalAlignment="Center"
+                AutomationProperties.Name="Friends Activity"
                 ToolTipService.ToolTip="Friends Activity"
                 IsChecked="{x:Bind IsFriendsPanelActive, Mode=OneWay}"
                 Click="FriendsButton_Click">
@@ -271,6 +278,7 @@
             <Button x:Uid="Controls_NavigationToolbar_NavigationToolbar__Button_10"
                 x:Name="ThemeToggleButton"
                 Style="{StaticResource NavigationButtonStyle}"
+                AutomationProperties.Name="Toggle theme"
                 ToolTipService.ToolTip="Toggle theme"
                 Click="ThemeToggleButton_Click">
                 <FontIcon FontSize="14" Glyph="{x:Bind ThemeGlyph, Mode=OneWay}"/>
@@ -285,6 +293,7 @@
                 Padding="0"
                 CornerRadius="4"
                 VerticalAlignment="Center"
+                AutomationProperties.Name="Toggle side panel"
                 ToolTipService.ToolTip="Toggle side panel"
                 IsChecked="{x:Bind IsRightPanelOpen, Mode=TwoWay}">
                 <FontIcon FontSize="14" Glyph="&#xE90D;" />

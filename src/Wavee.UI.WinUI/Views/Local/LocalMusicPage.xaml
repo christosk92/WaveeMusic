@@ -22,25 +22,28 @@
 
         <!-- Header row: title left, Sync-with-Spotify action right. -->
         <Grid Grid.Row="0">
-            <TextBlock Text="Music" Style="{StaticResource TitleTextBlockStyle}" FontWeight="Bold"/>
+            <TextBlock x:Uid="Views_Local_LocalMusicPage__TextBlock_100" Text="Music" Style="{StaticResource TitleTextBlockStyle}" FontWeight="Bold"/>
             <StackPanel Orientation="Horizontal"
                         Spacing="6"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Center">
-                <Button x:Name="SpotifySyncButton"
+                <Button x:Uid="Views_Local_LocalMusicPage__Button_101"
+                        x:Name="SpotifySyncButton"
                         Click="SpotifySyncButton_Click"
                         ToolTipService.ToolTip="Search Spotify for canonical metadata + cover art for every local track">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE72C;" FontSize="14"/>
-                        <TextBlock Text="Sync with Spotify"/>
+                        <TextBlock x:Uid="Views_Local_LocalMusicPage__TextBlock_102" Text="Sync with Spotify"/>
                     </StackPanel>
                 </Button>
-                <Button x:Name="SpotifyMoreButton"
+                <Button x:Uid="Views_Local_LocalMusicPage__Button_103"
+                        x:Name="SpotifyMoreButton"
                         ToolTipService.ToolTip="More">
                     <FontIcon Glyph="&#xE712;" FontSize="14"/>
                     <Button.Flyout>
                         <MenuFlyout>
-                            <MenuFlyoutItem Text="Force re-sync with Spotify"
+                            <MenuFlyoutItem x:Uid="Views_Local_LocalMusicPage__MenuFlyoutItem_104"
+                                            Text="Force re-sync with Spotify"
                                             Click="SpotifyForceResync_Click">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE72C;"/>
@@ -52,14 +55,15 @@
             </StackPanel>
         </Grid>
 
-        <ToggleSwitch Grid.Row="1" Header="Show only liked"
+        <ToggleSwitch x:Uid="Views_Local_LocalMusicPage__ToggleSwitch_105"
+                      Grid.Row="1" Header="Show only liked"
                       IsOn="{x:Bind ViewModel.ShowOnlyLiked, Mode=TwoWay}"/>
 
         <StackPanel Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8"
                     Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}">
             <FontIcon Glyph="&#xE8D6;" FontSize="48" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-            <TextBlock Text="No local music yet" Style="{ThemeResource SubtitleTextBlockStyle}" HorizontalAlignment="Center"/>
-            <TextBlock Text="Add a folder containing audio files in Settings."
+            <TextBlock x:Uid="Views_Local_LocalMusicPage__TextBlock_106" Text="No local music yet" Style="{ThemeResource SubtitleTextBlockStyle}" HorizontalAlignment="Center"/>
+            <TextBlock x:Uid="Views_Local_LocalMusicPage__TextBlock_107" Text="Add a folder containing audio files in Settings."
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
         </StackPanel>
 

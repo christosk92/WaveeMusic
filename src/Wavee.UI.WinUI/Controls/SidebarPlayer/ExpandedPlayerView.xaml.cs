@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contexts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers.Navigation;
 using Wavee.UI.WinUI.Services;
@@ -38,6 +39,7 @@ public sealed partial class ExpandedPlayerView : UserControl
     private readonly PlayerBarViewModel _viewModel;
     private readonly LyricsViewModel? _lyricsVm;
     private readonly IActiveVideoSurfaceService _videoSurface;
+    private readonly IWindowContext? _windowContext;
     private DispatcherQueueTimer? _lyricsScrollResetTimer;
     private DispatcherQueueTimer? _lyricsRenderPulseTimer;
     private DispatcherQueueTimer? _lyricsTimelineSyncTimer;
@@ -76,6 +78,7 @@ public sealed partial class ExpandedPlayerView : UserControl
         _viewModel = Ioc.Default.GetRequiredService<PlayerBarViewModel>();
         _lyricsVm = Ioc.Default.GetService<LyricsViewModel>();
         _videoSurface = Ioc.Default.GetRequiredService<IActiveVideoSurfaceService>();
+        _windowContext = Ioc.Default.GetService<IWindowContext>();
 
         InitializeComponent();
 
@@ -84,6 +87,8 @@ public sealed partial class ExpandedPlayerView : UserControl
         SizeChanged += OnSizeChanged;
         ActualThemeChanged += OnActualThemeChanged;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        if (_windowContext != null)
+            _windowContext.PropertyChanged += OnWindowContextPropertyChanged;
         _videoSurface.ActiveSurfaceChanged += OnActiveVideoSurfaceChanged;
         PlayerLayout.TheaterModeChanged += OnPlayerLayoutTheaterModeChanged;
         PlayerLayout.FitVideoWindowRequested += OnPlayerLayoutFitVideoWindowRequested;
@@ -132,6 +137,8 @@ public sealed partial class ExpandedPlayerView : UserControl
         ReleaseHeavyResources();
         _videoSurface.ActiveSurfaceChanged -= OnActiveVideoSurfaceChanged;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        if (_windowContext != null)
+            _windowContext.PropertyChanged -= OnWindowContextPropertyChanged;
         ActualThemeChanged -= OnActualThemeChanged;
     }
 
@@ -341,8 +348,28 @@ public sealed partial class ExpandedPlayerView : UserControl
     private bool IsLyricsModeActive =>
         Mode == ExpandedPlayerContentMode.Lyrics
         && Visibility == Visibility.Visible
+        && _windowContext?.IsUiPowerSaving != true
         && _lyricsVm?.HasLyrics == true
         && _lyricsVm.CurrentLyrics != null;
+
+    private void OnWindowContextPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(IWindowContext.IsUiPowerSaving))
+            return;
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_windowContext?.IsUiPowerSaving == true)
+            {
+                _surfaceTintTimer?.Stop();
+                _ambientTintTimer?.Stop();
+                _lyricsRenderPulseTimer?.Stop();
+                _lyricsTimelineSyncTimer?.Stop();
+            }
+
+            UpdateLyricsRenderState();
+        });
+    }
 
     /// <summary>
     /// Drives <see cref="Controls.RightPanel.RightPanelView.PanelWidth"/> from
@@ -1345,6 +1372,15 @@ public sealed partial class ExpandedPlayerView : UserControl
 
     private void AnimateAmbient(Color top, Color upperMid, Color lowerMid, Color bottom)
     {
+        if (_windowContext?.IsUiPowerSaving == true)
+        {
+            AmbientStopTop.Color = top;
+            AmbientStopUpperMid.Color = upperMid;
+            AmbientStopLowerMid.Color = lowerMid;
+            AmbientStopBottom.Color = bottom;
+            return;
+        }
+
         // Snapshot live colors so an in-flight fade interrupted by a fast
         // track skip continues from the on-screen blend.
         _ambientTintFrom[0] = AmbientStopTop.Color;

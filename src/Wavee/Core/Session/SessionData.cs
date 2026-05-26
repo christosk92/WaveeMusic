@@ -50,10 +50,6 @@ internal sealed class SessionData : IDisposable
     private readonly TaskCompletionSource<bool> _authReadyTcs =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    // Lazy managers (initialized on first access)
-    private readonly Lazy<object> _mercury;      // TODO: Replace with MercuryManager
-    private readonly Lazy<object> _channel;      // TODO: Replace with ChannelManager
-    private readonly Lazy<object> _audioKey;     // TODO: Replace with AudioKeyManager
     private readonly Lazy<Login5Client> _login5Client;
 
     private readonly SessionConfig _config;
@@ -66,10 +62,6 @@ internal sealed class SessionData : IDisposable
         _config = config;
         _preferredLocale = NormalizePreferredLocale(config.PreferredLocale);
 
-        // Lazy initialization for managers (thread-safe by default)
-        _mercury = new Lazy<object>(() => CreateMercuryManager());
-        _channel = new Lazy<object>(() => CreateChannelManager());
-        _audioKey = new Lazy<object>(() => CreateAudioKeyManager());
         _login5Client = new Lazy<Login5Client>(() =>
             new Login5Client(httpClient, config.GetClientId(), config.DeviceId, logger));
     }
@@ -327,24 +319,6 @@ internal sealed class SessionData : IDisposable
         {
             _lock.ExitReadLock();
         }
-    }
-
-    private object CreateMercuryManager()
-    {
-        // TODO: Create MercuryManager when implemented
-        throw new NotImplementedException("Mercury manager not yet implemented");
-    }
-
-    private object CreateChannelManager()
-    {
-        // TODO: Create ChannelManager when implemented
-        throw new NotImplementedException("Channel manager not yet implemented");
-    }
-
-    private object CreateAudioKeyManager()
-    {
-        // TODO: Create AudioKeyManager when implemented
-        throw new NotImplementedException("Audio key manager not yet implemented");
     }
 
     public void Dispose()

@@ -12,20 +12,20 @@ internal static class LyricsAiPrompts
     internal static string BuildLyricsMeaningPlainTextPrompt(
         string numberedLyrics,
         string trackContext,
-        IReadOnlyList<WebSearchResult>? webResults)
+        IReadOnlyList<MusicGroundingSource>? groundingSources)
     {
         return
             "Interpret song lyrics with the numbered lyrics as primary evidence. " +
             "Use trained music-domain knowledge about the artist, genre, song, idioms, " +
             "references, and cultural context when it helps, but never override the lyrics. " +
-            "External web context is provided as supporting background to ground references, " +
+            "Music-specific external metadata is provided as supporting background to ground references, " +
             "idioms, and cultural context — repeat web facts only when they're clearly about the same song. " +
             "Do not invent facts.\n\n" +
             "Write one tight paragraph in English: 2 sentences, 35 to 55 words, naming " +
             "who speaks, to whom, what they feel, and what they want. No bullets, lists, " +
             "headings, markdown, line breaks, citations, or quoted lyric text. Paraphrase only.\n\n" +
             trackContext +
-            BuildWebResultsBlock(webResults) +
+            BuildMusicGroundingBlock(groundingSources) +
             "LYRICS WITH LINE NUMBERS:\n" +
             numberedLyrics;
     }
@@ -33,28 +33,28 @@ internal static class LyricsAiPrompts
     internal static string BuildLyricsMeaningPlainTextFallbackPrompt(
         string numberedLyrics,
         string trackContext,
-        IReadOnlyList<WebSearchResult>? webResults)
+        IReadOnlyList<MusicGroundingSource>? groundingSources)
     {
         return
             "Interpret these numbered lyrics in English in one concise paragraph " +
             "(2 sentences, 35 to 50 words). Lyrics are the primary evidence; trained " +
-            "music-domain knowledge, track context, and web background may disambiguate only. " +
+            "music-domain knowledge, track context, and music grounding may disambiguate only. " +
             "Do not invent facts, quote lyrics, use markdown, or add line breaks. " +
             "If context is too thin, say so plainly.\n\n" +
             trackContext +
-            BuildWebResultsBlock(webResults) +
+            BuildMusicGroundingBlock(groundingSources) +
             "LYRICS WITH LINE NUMBERS:\n" +
             numberedLyrics;
     }
 
-    internal static string BuildWebResultsBlock(IReadOnlyList<WebSearchResult>? webResults)
+    internal static string BuildMusicGroundingBlock(IReadOnlyList<MusicGroundingSource>? sources)
     {
-        if (webResults is null || webResults.Count == 0)
+        if (sources is null || sources.Count == 0)
             return string.Empty;
 
-        var sb = new StringBuilder("WEB_RESULTS:\n");
+        var sb = new StringBuilder("MUSIC_GROUNDING:\n");
         var emitted = 0;
-        foreach (var result in webResults)
+        foreach (var result in sources)
         {
             if (emitted >= 5) break;
             if (string.IsNullOrWhiteSpace(result.Title)) continue;
@@ -65,8 +65,8 @@ internal static class LyricsAiPrompts
             sb.Append("- ").Append(result.Title.Trim());
             if (!string.IsNullOrWhiteSpace(snippet))
                 sb.Append(" — ").Append(snippet);
-            if (!string.IsNullOrWhiteSpace(result.Source))
-                sb.Append(" (").Append(result.Source).Append(')');
+            if (!string.IsNullOrWhiteSpace(result.SourceName))
+                sb.Append(" (").Append(result.SourceName).Append(')');
             sb.AppendLine();
             emitted++;
         }

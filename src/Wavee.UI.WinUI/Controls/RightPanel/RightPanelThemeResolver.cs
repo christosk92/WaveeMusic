@@ -53,13 +53,19 @@ internal static class RightPanelThemeResolver
     {
         var albumHex = GetBackgroundTintHex(actualTheme, extractedColor);
         if (TryParseHexColor(albumHex, out var albumColor))
-            return albumColor;
+            return actualTheme == ElementTheme.Light
+                ? SoftenForLightTheme(albumColor)
+                : albumColor;
 
         if (themeColors?.AccentFill is SolidColorBrush accentBrush)
-            return accentBrush.Color;
+        {
+            return actualTheme == ElementTheme.Light
+                ? SoftenForLightTheme(accentBrush.Color)
+                : accentBrush.Color;
+        }
 
         return actualTheme == ElementTheme.Light
-            ? Color.FromArgb(255, 110, 132, 148)
+            ? Color.FromArgb(255, 226, 233, 238)
             : Color.FromArgb(255, 84, 116, 140);
     }
 
@@ -84,8 +90,8 @@ internal static class RightPanelThemeResolver
     }
 
     /// <summary>
-    /// Pick the extracted-colour variant that contrasts against the active
-    /// theme. Returns <c>null</c> when no extraction has happened yet.
+    /// Pick the extracted-colour variant that best fits the active theme.
+    /// Returns <c>null</c> when no extraction has happened yet.
     /// </summary>
     public static string? GetBackgroundTintHex(ElementTheme actualTheme, ExtractedColor? extractedColor)
     {
@@ -93,7 +99,7 @@ internal static class RightPanelThemeResolver
         {
             var isLightTheme = actualTheme == ElementTheme.Light;
             return isLightTheme
-                ? extractedColor.DarkHex ?? extractedColor.RawHex
+                ? extractedColor.LightHex ?? extractedColor.RawHex ?? extractedColor.DarkHex
                 : extractedColor.LightHex ?? extractedColor.RawHex;
         }
 
@@ -115,6 +121,9 @@ internal static class RightPanelThemeResolver
             (byte)Math.Clamp((baseColor.G * baseWeight) + (overlayColor.G * overlayWeight), 0, 255),
             (byte)Math.Clamp((baseColor.B * baseWeight) + (overlayColor.B * overlayWeight), 0, 255));
     }
+
+    public static Color SoftenForLightTheme(Color color)
+        => BlendColors(Colors.White, Color.FromArgb(255, color.R, color.G, color.B), 0.28f);
 
     /// <summary>
     /// Multiply each colour channel by <c>1 - amount</c>. Keeps alpha at 255.

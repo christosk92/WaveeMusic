@@ -113,6 +113,8 @@
 		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
 		<!-- Window management -->
 		<PackageReference Include="WinUIEx" Version="2.9.0" />
+		<!-- System-tray notification icon for minimize-to-tray + headless control. -->
+		<PackageReference Include="H.NotifyIcon.WinUI" Version="2.3.0" />
 		<!-- MVVM and DI -->
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.7" />

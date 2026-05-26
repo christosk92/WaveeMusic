@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Dispatching;
 using Wavee.Core.Authentication;
 using Wavee.Core.Session;
 using Wavee.OAuth;
@@ -42,6 +43,7 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
     private readonly IPlaybackStateService? _playbackStateService;
     private readonly System.Net.Http.IHttpClientFactory? _httpClientFactory;
     private readonly IUserScopeGuard? _userScopeGuard;
+    private readonly DispatcherQueue? _dispatcherQueue;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAuthenticated))]
@@ -80,7 +82,8 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         IPlaybackStateService? playbackStateService = null,
         System.Net.Http.IHttpClientFactory? httpClientFactory = null,
         IUserScopeGuard? userScopeGuard = null,
-        ILogger<AuthStateService>? logger = null)
+        ILogger<AuthStateService>? logger = null,
+        DispatcherQueue? dispatcherQueue = null)
     {
         _messenger = messenger;
         _config = config;
@@ -91,6 +94,7 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         _httpClientFactory = httpClientFactory;
         _userScopeGuard = userScopeGuard;
         _logger = logger;
+        _dispatcherQueue = dispatcherQueue ?? DispatcherQueue.GetForCurrentThread();
     }
 
     public async Task<bool> TryRestoreSessionAsync(CancellationToken ct = default)
@@ -382,16 +386,78 @@ internal sealed partial class AuthStateService : ObservableObject, IAuthState, I
         if (Status == newStatus) return;
 
         Status = newStatus;
-        AuthStatusChanged?.Invoke(this, newStatus);
-        _messenger.Send(new AuthStatusChangedMessage(newStatus));
+        PublishAuthStatusChanged(newStatus);
     }
 
     private void SendAuthProgress(string mainText, string subText, double authProgress, bool showProgressPanel = true)
-        => _messenger.Send(new AuthProgressMessage(mainText, subText, Math.Clamp(authProgress, 0, 1), showProgressPanel));
+        => PublishMessage(new AuthProgressMessage(mainText, subText, Math.Clamp(authProgress, 0, 1), showProgressPanel));
 
     partial void OnCurrentUserChanged(UserData? value)
     {
-        _messenger.Send(new UserProfileUpdatedMessage(value));
+        PublishMessage(new UserProfileUpdatedMessage(value));
+    }
+
+    protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (TryDispatchToUi(() => base.OnPropertyChanged(e)))
+            return;
+
+        base.OnPropertyChanged(e);
+    }
+
+    private void PublishAuthStatusChanged(AuthStatus status)
+    {
+        void Publish()
+        {
+            var handlers = AuthStatusChanged?.GetInvocationList();
+            if (handlers is not null)
+            {
+                foreach (var handler in handlers)
+                {
+                    try
+                    {
+                        ((EventHandler<AuthStatus>)handler).Invoke(this, status);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "AuthStatusChanged subscriber failed for status {Status}", status);
+                    }
+                }
+            }
+
+            PublishMessage(new AuthStatusChangedMessage(status));
+        }
+
+        if (!TryDispatchToUi(Publish))
+            Publish();
+    }
+
+    private void PublishMessage<TMessage>(TMessage message)
+        where TMessage : class
+    {
+        void Send()
+        {
+            try
+            {
+                _messenger.Send(message);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Auth message publish failed for {MessageType}", typeof(TMessage).Name);
+            }
+        }
+
+        if (!TryDispatchToUi(Send))
+            Send();
+    }
+
+    private bool TryDispatchToUi(Action action)
+    {
+        var dispatcher = _dispatcherQueue;
+        if (dispatcher is null || dispatcher.HasThreadAccess)
+            return false;
+
+        return dispatcher.TryEnqueue(() => action());
     }
 
     public void Dispose()

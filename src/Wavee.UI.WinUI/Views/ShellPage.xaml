@@ -86,7 +86,7 @@
             SignInRequested="NavToolbar_SignInRequested"/>
 
         <!-- Shell-level notification bars -->
-        <StackPanel Grid.Row="2" Canvas.ZIndex="1">
+        <StackPanel Grid.Row="2" Canvas.ZIndex="1" VerticalAlignment="Top">
             <InfoBar x:Uid="Views_ShellPage__InfoBar_1"
                 x:Name="ConnectionErrorBar"
                 Title="Connection failed"
@@ -95,6 +95,30 @@
                 IsClosable="True">
                 <InfoBar.ActionButton>
                     <Button x:Uid="Views_ShellPage__Button_2" Content="Retry" Click="RetryConnection_Click"/>
+                </InfoBar.ActionButton>
+            </InfoBar>
+
+            <!-- Live connectivity banner — driven by IConnectivityService. -->
+            <InfoBar x:Name="ReconnectingBar"
+                     Title="Reconnecting…"
+                     Message="Wavee lost its connection to Spotify and is retrying. Some features may be unavailable until you're back online."
+                     Severity="Warning"
+                     IsClosable="False"
+                     IsOpen="{x:Bind ViewModel.Connectivity.IsReconnecting, Mode=OneWay}"/>
+            <InfoBar x:Name="OfflineBar"
+                     Title="You're offline"
+                     Message="Wavee can't reach Spotify. Check your network connection — playback and library updates are paused until you reconnect."
+                     Severity="Error"
+                     IsClosable="False"
+                     IsOpen="{x:Bind ViewModel.IsOfflineBannerOpen, Mode=OneWay}"/>
+            <InfoBar x:Name="PremiumRequiredBar"
+                     Title="Wavee requires Spotify Premium"
+                     Message="Playback won't work with a free Spotify account. Upgrade to Premium or sign in with a Premium account to use Wavee."
+                     Severity="Warning"
+                     IsClosable="False"
+                     IsOpen="{x:Bind ViewModel.IsPremiumRequiredBannerOpen, Mode=OneWay}">
+                <InfoBar.ActionButton>
+                    <Button Content="Get Premium" Click="OpenSpotifyPremium_Click"/>
                 </InfoBar.ActionButton>
             </InfoBar>
         </StackPanel>

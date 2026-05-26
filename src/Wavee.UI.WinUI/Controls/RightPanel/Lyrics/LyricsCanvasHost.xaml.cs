@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Input;
 using Wavee.Controls.Lyrics.Models;
 using Wavee.Controls.Lyrics.Models.Lyrics;
 using Wavee.UI.Contracts;
+using Wavee.UI.WinUI.Data.Contexts;
 using Wavee.UI.WinUI.Services;
 using Wavee.UI.WinUI.ViewModels;
 using Windows.UI;
@@ -39,6 +40,7 @@ namespace Wavee.UI.WinUI.Controls.RightPanel.Lyrics;
 public sealed partial class LyricsCanvasHost : UserControl
 {
     private LyricsViewModel? _lyricsVm;
+    private IWindowContext? _windowContext;
     private DispatcherQueueTimer? _positionTimer;
     private DispatcherQueueTimer? _scrollResetTimer;
     private double _lastCanvasPositionMs = -1;
@@ -54,6 +56,11 @@ public sealed partial class LyricsCanvasHost : UserControl
     {
         InitializeComponent();
         _lyricsVm = Ioc.Default.GetService<LyricsViewModel>();
+        _windowContext = Ioc.Default.GetService<IWindowContext>();
+        if (_windowContext != null)
+            _windowContext.PropertyChanged += OnWindowContextPropertyChanged;
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     /// <summary>
@@ -124,6 +131,32 @@ public sealed partial class LyricsCanvasHost : UserControl
     {
         if (d is LyricsCanvasHost host)
             host.UpdateTimerState();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_windowContext != null)
+        {
+            _windowContext.PropertyChanged -= OnWindowContextPropertyChanged;
+            _windowContext = null;
+        }
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_windowContext != null)
+            return;
+
+        _windowContext = Ioc.Default.GetService<IWindowContext>();
+        if (_windowContext != null)
+            _windowContext.PropertyChanged += OnWindowContextPropertyChanged;
+        UpdateTimerState();
+    }
+
+    private void OnWindowContextPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IWindowContext.IsUiPowerSaving))
+            DispatcherQueue.TryEnqueue(UpdateTimerState);
     }
 
     // ── Lifecycle ──
@@ -411,6 +444,7 @@ public sealed partial class LyricsCanvasHost : UserControl
 
         var canRender = IsLyricsTabActive
                         && IsPanelVisible
+                        && _windowContext?.IsUiPowerSaving != true
                         && _lyricsVm.HasLyrics
                         && _lyricsVm.CurrentLyrics != null;
 
@@ -451,6 +485,7 @@ public sealed partial class LyricsCanvasHost : UserControl
 
         return IsLyricsTabActive
             && IsPanelVisible
+            && _windowContext?.IsUiPowerSaving != true
             && lyricsVm.PlaybackState.IsPlaying
             && lyricsVm.HasLyrics
             && lyricsVm.CurrentLyrics != null;
@@ -484,6 +519,7 @@ public sealed partial class LyricsCanvasHost : UserControl
             || _canvas == null
             || !IsLyricsTabActive
             || !IsPanelVisible
+            || _windowContext?.IsUiPowerSaving == true
             || !_lyricsVm.HasLyrics
             || _lyricsVm.CurrentLyrics == null)
         {

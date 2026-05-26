@@ -6,5 +6,8 @@ public interface IWindowContext : INotifyPropertyChanged
 {
     bool IsCompactOverlay { get; }
     bool IsFullScreen { get; }
+    bool IsMinimized { get; }
+    bool IsVisible { get; }
+    bool IsUiPowerSaving { get; }
     bool IsRunningAsAdmin { get; }
 }

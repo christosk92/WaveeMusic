@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -83,7 +82,8 @@ Console.CancelKeyPress += (_, e) =>
     cts.Cancel();
 };
 
-using var parentMonitorRegistration = StartParentMonitor(parentPid, standaloneDev, logger, cts);
+// AudioHostService validates the parent during startup. After that the IPC idle
+// watchdog owns cleanup so the process can survive a bounded UI-only restart.
 
 try
 {
@@ -147,45 +147,6 @@ catch (Exception ex)
 finally
 {
     Log.CloseAndFlush();
-}
-
-static IDisposable? StartParentMonitor(
-    int parentPid,
-    bool standaloneDev,
-    ILogger logger,
-    CancellationTokenSource shutdownCts)
-{
-    if (standaloneDev || parentPid <= 0) return null;
-
-    try
-    {
-        var parent = Process.GetProcessById(parentPid);
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await parent.WaitForExitAsync(shutdownCts.Token);
-                if (!shutdownCts.IsCancellationRequested)
-                {
-                    logger.LogWarning("Parent process {ParentPid} exited; shutting down AudioHost", parentPid);
-                    shutdownCts.Cancel();
-                }
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Parent process monitor failed; shutting down AudioHost");
-                shutdownCts.Cancel();
-            }
-        });
-        return parent;
-    }
-    catch (Exception ex)
-    {
-        logger.LogCritical(ex, "Parent process {ParentPid} is not available; refusing AudioHost startup", parentPid);
-        shutdownCts.Cancel();
-        return null;
-    }
 }
 
 static void SetWaveeAppUserModelId()

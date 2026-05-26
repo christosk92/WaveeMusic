@@ -396,7 +396,7 @@ public sealed class CacheService : ICacheService, ICleanableCache
 
     #region CDN URL Operations
 
-    public Task<CdnCacheEntry?> GetCdnUrlAsync(FileId fileId, CancellationToken ct = default)
+    public async Task<CdnCacheEntry?> GetCdnUrlAsync(FileId fileId, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -408,22 +408,29 @@ public sealed class CacheService : ICacheService, ICleanableCache
             {
                 if (cached.IsValid)
                 {
-                    _logger?.LogTrace("CDN cache hit: {FileId}", key);
-                    return Task.FromResult<CdnCacheEntry?>(cached);
+                    _logger?.LogTrace("CDN cache hot hit: {FileId}", key);
+                    return cached;
                 }
-                else
-                {
-                    // Expired, remove
-                    _cdnCache.Remove(key);
-                }
+                // Expired, remove
+                _cdnCache.Remove(key);
             }
         }
 
-        // TODO: Check SQLite cdn_cache table when implemented
-        return Task.FromResult<CdnCacheEntry?>(null);
+        // SQLite fallback. Persisted rows that are still within their expiry
+        // window get promoted back into the in-memory cache for the next hit.
+        var persisted = await _database.GetPersistedCdnUrlAsync(key, ct);
+        if (persisted is { } row)
+        {
+            var entry = new CdnCacheEntry(row.Url, row.Expiry);
+            lock (_auxCacheLock) { _cdnCache[key] = entry; }
+            _logger?.LogDebug("CDN cache SQLite hit (expires in {Remaining}s): {FileId}",
+                (long)(row.Expiry - DateTimeOffset.UtcNow).TotalSeconds, key);
+            return entry;
+        }
+        return null;
     }
 
-    public Task SetCdnUrlAsync(FileId fileId, string url, TimeSpan ttl, CancellationToken ct = default)
+    public async Task SetCdnUrlAsync(FileId fileId, string url, TimeSpan ttl, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -460,9 +467,17 @@ public sealed class CacheService : ICacheService, ICleanableCache
             _cdnCache[key] = new CdnCacheEntry(url, expiry);
         }
 
-        // TODO: Persist to SQLite cdn_cache table when implemented
+        // Persist for cross-launch warm-start. Failure here is non-fatal —
+        // the in-memory cache still serves this session.
+        try
+        {
+            await _database.SetPersistedCdnUrlAsync(key, url, expiry, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "CDN URL persist to SQLite failed (in-memory cache still holds it)");
+        }
         _logger?.LogTrace("Set CDN URL: {FileId}, expires in {TTL}", key, ttl);
-        return Task.CompletedTask;
     }
 
     #endregion

@@ -35,6 +35,7 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     private readonly Wavee.UI.Services.Infra.IReloadCoordinator _reloadCoordinator;
     private IDisposable? _reloadRegistration;
     private readonly IPlaybackStateService _playbackStateService;
+    private readonly IPlaylistMutationService _playlistMutationService;
     private readonly ITrackDescriptorFetcher _descriptorFetcher;
     private readonly IAuthState? _authState;
     private readonly IMusicVideoMetadataService? _musicVideoMetadata;
@@ -122,6 +123,7 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     public LikedSongsViewModel(
         ILibraryDataService libraryDataService,
         IPlaybackStateService playbackStateService,
+        IPlaylistMutationService playlistMutationService,
         ITrackDescriptorFetcher descriptorFetcher,
         Wavee.UI.Services.Infra.IReloadCoordinator reloadCoordinator,
         IAuthState? authState = null,
@@ -133,6 +135,7 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     {
         _libraryDataService = libraryDataService;
         _playbackStateService = playbackStateService;
+        _playlistMutationService = playlistMutationService;
         _descriptorFetcher = descriptorFetcher;
         _authState = authState;
         _reloadCoordinator = reloadCoordinator;
@@ -539,10 +542,11 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     }
 
     private void BuildQueueAndPlay(int startIndex, bool shuffle)
-    {
-        if (FilteredSongs.Count == 0) return;
+        => BuildQueueAndPlay(FilteredSongs, startIndex, shuffle);
 
-        var queueItems = FilteredSongs.Select(t => new QueueItem
+    private void BuildQueueAndPlay(IEnumerable<ITrackItem> source, int startIndex, bool shuffle)
+    {
+        var queueItems = source.Select(t => new QueueItem
         {
             TrackId = t.Id,
             Title = t.Title,
@@ -556,6 +560,8 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
             IsExplicit = t.IsExplicit,
             HasVideo = t.HasVideo,
         }).ToList();
+
+        if (queueItems.Count == 0) return;
 
         if (shuffle)
         {
@@ -586,28 +592,43 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
         _playbackStateService.LoadQueue(queueItems, context, startIndex);
     }
 
+    private IReadOnlyList<string> CollectSelectedTrackUris()
+        => SelectedItems
+            .OfType<ITrackItem>()
+            .Select(t => t.Uri)
+            .Where(u => !string.IsNullOrEmpty(u))
+            .ToArray();
+
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void PlaySelected()
     {
-        if (!HasSelection) return;
+        var selected = SelectedItems.OfType<ITrackItem>().ToList();
+        if (selected.Count == 0) return;
+        BuildQueueAndPlay(selected, startIndex: 0, shuffle: false);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void PlayAfter()
     {
-        if (!HasSelection) return;
+        var uris = CollectSelectedTrackUris();
+        if (uris.Count == 0) return;
+        _playbackStateService.PlayNext(uris);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void AddSelectedToQueue()
     {
-        if (!HasSelection) return;
+        var uris = CollectSelectedTrackUris();
+        if (uris.Count == 0) return;
+        _playbackStateService.AddToQueue(uris);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void RemoveSelected()
     {
-        if (!HasSelection) return;
+        var selected = SelectedTracks.ToList();
+        if (selected.Count == 0) return;
+        RemoveTracksFromLikedSongs(selected.Cast<ITrackItem>().ToList());
     }
 
     [RelayCommand]
@@ -637,9 +658,20 @@ public sealed partial class LikedSongsViewModel : LibraryViewModelBase, ITrackLi
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void AddToPlaylist(PlaylistSummaryDto? playlist)
+    private async Task AddToPlaylistAsync(PlaylistSummaryDto? playlist)
     {
-        if (playlist == null || !HasSelection) return;
+        if (playlist?.Id is not { Length: > 0 } playlistId) return;
+        var uris = CollectSelectedTrackUris();
+        if (uris.Count == 0) return;
+
+        try
+        {
+            await _playlistMutationService.AddTracksToPlaylistAsync(playlistId, uris).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "AddToPlaylistAsync (liked-songs selection) failed → {Playlist}", playlistId);
+        }
     }
 
     [RelayCommand]

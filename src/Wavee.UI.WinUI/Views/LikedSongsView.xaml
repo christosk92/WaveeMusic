@@ -9,10 +9,18 @@
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:tdg="using:Wavee.UI.WinUI.Controls.TrackDataGrid"
     xmlns:vm="using:Wavee.UI.WinUI.ViewModels"
+    xmlns:controls="using:Wavee.UI.WinUI.Controls"
     mc:Ignorable="d"
     Background="Transparent">
 
     <Grid>
+        <controls:PageErrorState
+            Title="Couldn't load Liked Songs"
+            Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+            RetryCommand="{x:Bind ViewModel.LoadCommand}"
+            Canvas.ZIndex="10"
+            Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+        <Grid Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>   <!-- filter chip row -->
             <RowDefinition Height="*"/>      <!-- TrackDataGrid -->
@@ -129,5 +137,6 @@
             HorizontalAlignment="Center"
             VerticalAlignment="Bottom"
             Margin="0,0,0,24"/>
+        </Grid>
     </Grid>
 </UserControl>

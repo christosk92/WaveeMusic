@@ -17,6 +17,7 @@ using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.Enums;
 using Wavee.UI.Models;
 using Wavee.UI.Services;
+using Wavee.UI.WinUI.Data.Contexts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
 using Wavee.UI.WinUI.Data.Models;
@@ -50,6 +51,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private readonly ILyricsService? _lyricsService;
     private readonly ILibraryDataService? _libraryDataService;
     private readonly IPodcastEpisodeService? _podcastEpisodeService;
+    private readonly IWindowContext? _windowContext;
     private readonly ILogger? _logger;
     private bool _disposed;
     private CancellationTokenSource? _chapterFetchCts;
@@ -300,6 +302,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
                               ILyricsService? lyricsService = null,
                               ILibraryDataService? libraryDataService = null,
                               IPodcastEpisodeService? podcastEpisodeService = null,
+                              IWindowContext? windowContext = null,
                               ILoggerFactory? loggerFactory = null)
     {
         _playbackStateService = playbackStateService;
@@ -310,6 +313,7 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _lyricsService = lyricsService;
         _libraryDataService = libraryDataService;
         _podcastEpisodeService = podcastEpisodeService;
+        _windowContext = windowContext;
         _logger = loggerFactory?.CreateLogger<PlayerBarViewModel>();
 
         _navigateToArtistCommand = new RelayCommand<object?>(NavigateToArtist);
@@ -321,6 +325,8 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
 
         // Subscribe to service changes
         _playbackStateService.PropertyChanged += OnPlaybackServicePropertyChanged;
+        if (_windowContext != null)
+            _windowContext.PropertyChanged += OnWindowContextPropertyChanged;
 
         // Subscribe to connectivity changes to disable playback commands
         if (_connectivityService != null)
@@ -924,6 +930,21 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void OnWindowContextPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(IWindowContext.IsUiPowerSaving))
+            return;
+
+        if (_windowContext?.IsUiPowerSaving == false && IsPlaying && !IsSeeking)
+        {
+            var interpolated = GetInterpolatedPlaybackPosition();
+            Position = interpolated;
+            AnchorPositionMs = interpolated;
+        }
+
+        UpdatePositionTimerState();
+    }
+
     private double GetInterpolatedPlaybackPosition()
     {
         var elapsed = Math.Max(0, (DateTime.UtcNow - _lastServicePositionUpdate).TotalMilliseconds);
@@ -1046,7 +1067,9 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
     private void UpdatePositionTimerState()
     {
         if (_disposed || _positionTimer == null) return;
-        var shouldRun = IsPlaying && (_barVisibleCount > 0 || _widgetVisibleCount > 0);
+        var shouldRun = IsPlaying
+                        && (_barVisibleCount > 0 || _widgetVisibleCount > 0)
+                        && _windowContext?.IsUiPowerSaving != true;
         try
         {
             if (shouldRun)
@@ -1621,6 +1644,8 @@ public sealed partial class PlayerBarViewModel : ObservableObject, IDisposable
         _disposed = true;
 
         _playbackStateService.PropertyChanged -= OnPlaybackServicePropertyChanged;
+        if (_windowContext != null)
+            _windowContext.PropertyChanged -= OnWindowContextPropertyChanged;
         if (_connectivityService != null)
             _connectivityService.PropertyChanged -= OnConnectivityPropertyChanged;
         WeakReferenceMessenger.Default.Unregister<RightPanelStateChangedMessage>(this);

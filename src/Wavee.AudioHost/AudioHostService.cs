@@ -22,11 +22,11 @@ namespace Wavee.AudioHost;
 /// </summary>
 internal sealed class AudioHostService : IAsyncDisposable
 {
-    private readonly string _pipeName;
+    private string _pipeName;
     private readonly ILogger _logger;
-    private readonly int _expectedParentProcessId;
-    private readonly string? _expectedSessionId;
-    private readonly string? _expectedLaunchToken;
+    private int _expectedParentProcessId;
+    private string? _expectedSessionId;
+    private string? _expectedLaunchToken;
     private readonly bool _standaloneDevMode;
     private readonly CancellationTokenSource _cts = new();
 
@@ -41,7 +41,17 @@ internal sealed class AudioHostService : IAsyncDisposable
     private PreviewAnalysisService? _previewAnalysisService;
     private Timer? _pipeIdleWatchdogTimer;
     private long _lastPipeMessageTimestamp;
+    private PendingUiHandoff? _pendingHandoff;
+    private string _deviceId = "";
+    private int _suspendEngineEvents;
     private const int PipeIdleTimeoutMs = 30_000;
+
+    private sealed record PendingUiHandoff(
+        int NewParentProcessId,
+        string PipeName,
+        string SessionId,
+        string LaunchToken,
+        TimeSpan Timeout);
 
     // Cached audio device state — re-sent in snapshot only when it changes, avoiding
     // IPC spam on every position tick.
@@ -96,54 +106,85 @@ internal sealed class AudioHostService : IAsyncDisposable
 
         _logger.LogInformation("AudioHost starting — pipe={PipeName}", _pipeName);
 
-        // Create named pipe server and wait for UI process to connect
-        var pipeServer = new NamedPipeServerStream(
-            _pipeName,
-            PipeDirection.InOut,
-            1,
-            PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous);
-
-        _logger.LogInformation("Waiting for UI process to connect...");
-        await pipeServer.WaitForConnectionAsync(token);
-        _logger.LogInformation("UI process connected");
-
-        _transport = new IpcPipeTransport(pipeServer, _logger);
-
-        // Wait for config message from UI process
-        var configMsg = await _transport.ReceiveAsync(token);
-        if (configMsg?.Type != IpcMessageTypes.Configure)
-        {
-            _logger.LogError("Expected configure message, got: {Type}", configMsg?.Type);
+        if (!await AcceptInitialConnectionAsync(token).ConfigureAwait(false))
             return;
-        }
-
-        var config = IpcPayloadHelper.Deserialize<AudioHostConfig>(configMsg);
-        ValidateLaunchConfig(config);
-        _logger.LogInformation("Configured — device={DeviceId}", config?.DeviceId);
-
-        // Create audio engine
-        InitializeEngine(config);
-
-        // Send ready message
-        await _transport.SendAsync(IpcMessageTypes.Ready,
-            IpcPayloadHelper.SerializeToUtf8(new AudioHostReady
-            {
-                DeviceId = config?.DeviceId ?? "",
-                PipeName = _pipeName,
-                ParentProcessId = _expectedParentProcessId,
-                SessionId = _expectedSessionId
-            }), ct: token);
 
         // Subscribe to engine state and errors
         SubscribeToEngineEvents(token);
 
         // Process commands
         _logger.LogInformation("AudioHost ready — processing commands");
+        StartPipeIdleWatchdog();
+        while (!token.IsCancellationRequested)
+        {
+            await ProcessCommandsAsync(token).ConfigureAwait(false);
+            if (!await TryAcceptPendingHandoffAsync(token).ConfigureAwait(false))
+                break;
+        }
+    }
+
+    private async Task<bool> AcceptInitialConnectionAsync(CancellationToken token)
+    {
+        await OpenPipeServerAsync(_pipeName, token).ConfigureAwait(false);
+
+        var configMsg = await _transport!.ReceiveAsync(token).ConfigureAwait(false);
+        if (configMsg?.Type != IpcMessageTypes.Configure)
+        {
+            _logger.LogError("Expected configure message, got: {Type}", configMsg?.Type);
+            return false;
+        }
+
+        var config = IpcPayloadHelper.Deserialize<AudioHostConfig>(configMsg);
+        ValidateLaunchConfig(config);
+        _deviceId = config?.DeviceId ?? "";
+        _logger.LogInformation("Configured — device={DeviceId}", _deviceId);
+
+        InitializeEngine(config);
+        await SendReadyAsync(token).ConfigureAwait(false);
+        return true;
+    }
+
+    private async Task OpenPipeServerAsync(string pipeName, CancellationToken token)
+    {
+        var pipeServer = new NamedPipeServerStream(
+            pipeName,
+            PipeDirection.InOut,
+            1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous);
+
+        try
+        {
+            _logger.LogInformation("Waiting for UI process to connect on {PipeName}...", pipeName);
+            await pipeServer.WaitForConnectionAsync(token).ConfigureAwait(false);
+            _logger.LogInformation("UI process connected");
+            _transport = new IpcPipeTransport(pipeServer, _logger);
+        }
+        catch
+        {
+            await pipeServer.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private Task SendReadyAsync(CancellationToken token)
+    {
+        if (_transport is null) return Task.CompletedTask;
+        return _transport.SendAsync(IpcMessageTypes.Ready,
+            IpcPayloadHelper.SerializeToUtf8(new AudioHostReady
+            {
+                DeviceId = _deviceId,
+                PipeName = _pipeName,
+                ParentProcessId = _expectedParentProcessId,
+                SessionId = _expectedSessionId
+            }), ct: token);
+    }
+
+    private void StartPipeIdleWatchdog()
+    {
         _lastPipeMessageTimestamp = Stopwatch.GetTimestamp();
         _pipeIdleWatchdogTimer?.Dispose();
         _pipeIdleWatchdogTimer = new Timer(CheckPipeIdleTimeout, null, PipeIdleTimeoutMs, PipeIdleTimeoutMs);
-        await ProcessCommandsAsync(token);
     }
 
     private void InitializeEngine(AudioHostConfig? config)
@@ -236,9 +277,137 @@ internal sealed class AudioHostService : IAsyncDisposable
         }
     }
 
+    private void PrepareUiHandoff(PrepareUiHandoffCommand? command)
+    {
+        if (command is null)
+            throw new InvalidOperationException("Missing UI handoff payload");
+        if (command.NewParentProcessId <= 0)
+            throw new InvalidOperationException("Missing new parent PID");
+        if (string.IsNullOrWhiteSpace(command.PipeName))
+            throw new InvalidOperationException("Missing handoff pipe name");
+        if (string.IsNullOrWhiteSpace(command.SessionId))
+            throw new InvalidOperationException("Missing handoff session id");
+        if (string.IsNullOrWhiteSpace(command.LaunchToken))
+            throw new InvalidOperationException("Missing handoff launch token");
+
+        try
+        {
+            using var nextParent = Process.GetProcessById(command.NewParentProcessId);
+            if (nextParent.HasExited)
+                throw new InvalidOperationException("New UI process has exited");
+        }
+        catch (ArgumentException ex)
+        {
+            throw new InvalidOperationException("New UI process is not running", ex);
+        }
+
+        var timeoutMs = command.TimeoutMs <= 0 ? 90_000 : command.TimeoutMs;
+        _pendingHandoff = new PendingUiHandoff(
+            command.NewParentProcessId,
+            command.PipeName,
+            command.SessionId,
+            command.LaunchToken,
+            TimeSpan.FromMilliseconds(timeoutMs));
+
+        _pipeIdleWatchdogTimer?.Dispose();
+        _pipeIdleWatchdogTimer = null;
+        _logger.LogInformation(
+            "Prepared UI handoff: nextPid={Pid}, pipe={PipeName}, timeoutMs={TimeoutMs}",
+            command.NewParentProcessId,
+            command.PipeName,
+            timeoutMs);
+    }
+
+    private async Task<bool> TryAcceptPendingHandoffAsync(CancellationToken token)
+    {
+        var handoff = _pendingHandoff;
+        if (handoff is null)
+            return false;
+
+        Volatile.Write(ref _suspendEngineEvents, 1);
+        _pipeIdleWatchdogTimer?.Dispose();
+        _pipeIdleWatchdogTimer = null;
+
+        if (_transport is not null)
+        {
+            await _transport.DisposeAsync().ConfigureAwait(false);
+            _transport = null;
+        }
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token, _cts.Token);
+        timeoutCts.CancelAfter(handoff.Timeout);
+
+        try
+        {
+            _pipeName = handoff.PipeName;
+            await OpenPipeServerAsync(handoff.PipeName, timeoutCts.Token).ConfigureAwait(false);
+
+            var adoptMsg = await _transport!.ReceiveAsync(timeoutCts.Token).ConfigureAwait(false);
+            if (adoptMsg?.Type != IpcMessageTypes.AdoptUiSession)
+                throw new InvalidOperationException($"Expected adopt_ui_session message, got: {adoptMsg?.Type}");
+
+            ValidateAdoptUiSession(handoff, IpcPayloadHelper.Deserialize<AdoptUiSessionCommand>(adoptMsg));
+            _expectedParentProcessId = handoff.NewParentProcessId;
+            _expectedSessionId = handoff.SessionId;
+            _expectedLaunchToken = handoff.LaunchToken;
+            _pendingHandoff = null;
+
+            await SendReadyAsync(timeoutCts.Token).ConfigureAwait(false);
+            if (_lastSentState != null && _transport != null)
+            {
+                await _transport.SendAsync(IpcMessageTypes.StateUpdate,
+                    IpcPayloadHelper.SerializeToUtf8(MapToSnapshot(_lastSentState)),
+                    ct: CancellationToken.None).ConfigureAwait(false);
+            }
+
+            StartPipeIdleWatchdog();
+            Volatile.Write(ref _suspendEngineEvents, 0);
+            _logger.LogInformation("UI handoff complete: parentPid={Pid}", _expectedParentProcessId);
+            return true;
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            _logger.LogWarning("UI handoff timed out after {TimeoutMs}ms; shutting down AudioHost",
+                handoff.Timeout.TotalMilliseconds);
+            Volatile.Write(ref _suspendEngineEvents, 0);
+            await _cts.CancelAsync().ConfigureAwait(false);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "UI handoff failed; shutting down AudioHost");
+            Volatile.Write(ref _suspendEngineEvents, 0);
+            await _cts.CancelAsync().ConfigureAwait(false);
+            return false;
+        }
+    }
+
+    private static void ValidateAdoptUiSession(PendingUiHandoff handoff, AdoptUiSessionCommand? command)
+    {
+        if (command is null)
+            throw new InvalidOperationException("Missing adopt UI session payload");
+        if (command.ParentProcessId != handoff.NewParentProcessId)
+            throw new InvalidOperationException("Adopt parent PID mismatch");
+        if (!string.Equals(command.SessionId, handoff.SessionId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Adopt session mismatch");
+        if (!string.Equals(command.LaunchToken, handoff.LaunchToken, StringComparison.Ordinal))
+            throw new InvalidOperationException("Adopt token mismatch");
+
+        try
+        {
+            using var parent = Process.GetProcessById(command.ParentProcessId);
+            if (parent.HasExited)
+                throw new InvalidOperationException("Adopting UI process has exited");
+        }
+        catch (ArgumentException ex)
+        {
+            throw new InvalidOperationException("Adopting UI process is not running", ex);
+        }
+    }
+
     private void CheckPipeIdleTimeout(object? state)
     {
-        if (_cts.IsCancellationRequested || _transport is null) return;
+        if (_cts.IsCancellationRequested || _transport is null || _pendingHandoff is not null) return;
         var elapsed = Stopwatch.GetElapsedTime(_lastPipeMessageTimestamp);
         if (elapsed.TotalMilliseconds <= PipeIdleTimeoutMs) return;
 
@@ -315,8 +484,11 @@ internal sealed class AudioHostService : IAsyncDisposable
             .Subscribe(state =>
             {
                 if (ct.IsCancellationRequested) return;
+                if (Volatile.Read(ref _suspendEngineEvents) != 0) return;
+                var transport = _transport;
+                if (transport is null) return;
                 var snapshot = MapToSnapshot(state);
-                _ = _transport.SendAsync(IpcMessageTypes.StateUpdate,
+                _ = transport.SendAsync(IpcMessageTypes.StateUpdate,
                     IpcPayloadHelper.SerializeToUtf8(snapshot), ct: CancellationToken.None);
             });
 
@@ -324,12 +496,15 @@ internal sealed class AudioHostService : IAsyncDisposable
         _errorSubscription = _engine.Errors.Subscribe(error =>
         {
             if (ct.IsCancellationRequested) return;
+            if (Volatile.Read(ref _suspendEngineEvents) != 0) return;
+            var transport = _transport;
+            if (transport is null) return;
             var msg = new PlaybackErrorMessage
             {
                 ErrorType = "Unknown",
                 Message = error.Message
             };
-            _ = _transport.SendAsync(IpcMessageTypes.Error,
+            _ = transport.SendAsync(IpcMessageTypes.Error,
                 IpcPayloadHelper.SerializeToUtf8(msg), ct: CancellationToken.None);
         });
 
@@ -338,9 +513,12 @@ internal sealed class AudioHostService : IAsyncDisposable
         _engine.TrackCompleted.Subscribe(trackUri =>
         {
             if (ct.IsCancellationRequested) return;
+            if (Volatile.Read(ref _suspendEngineEvents) != 0) return;
+            var transport = _transport;
+            if (transport is null) return;
             _logger.LogInformation("Track finished naturally: {TrackUri}", trackUri);
             var finished = new TrackFinishedMessage { TrackUri = trackUri, Reason = "finished" };
-            _ = _transport!.SendAsync(IpcMessageTypes.TrackFinished,
+            _ = transport.SendAsync(IpcMessageTypes.TrackFinished,
                 IpcPayloadHelper.SerializeToUtf8(finished), ct: CancellationToken.None);
         });
     }
@@ -392,6 +570,12 @@ internal sealed class AudioHostService : IAsyncDisposable
 
         switch (msg.Type)
         {
+            case IpcMessageTypes.PrepareUiHandoff:
+            {
+                PrepareUiHandoff(IpcPayloadHelper.Deserialize<PrepareUiHandoffCommand>(msg));
+                await SendOk(msg.Id, ct);
+                break;
+            }
             case IpcMessageTypes.PlayResolved:
             {
                 var cmd = IpcPayloadHelper.Deserialize<PlayResolvedTrackCommand>(msg);

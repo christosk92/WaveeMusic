@@ -57,7 +57,8 @@ public static class ConnectStateHelpers
         int volume = MaxVolume / 2,
         int volumeSteps = DefaultVolumeSteps,
         string? audioOutputDeviceName = null,
-        AudioOutputDeviceType audioOutputDeviceType = AudioOutputDeviceType.UnknownAudioOutputDeviceType)
+        AudioOutputDeviceType audioOutputDeviceType = AudioOutputDeviceType.UnknownAudioOutputDeviceType,
+        bool isPrivateSession = false)
     {
         var localSpotifyPlaybackEnabled = config.LocalSpotifyPlaybackEnabled;
         var info = new DeviceInfo
@@ -80,6 +81,9 @@ public static class ConnectStateHelpers
             // device is eligible to register plays. Without it, plays from the
             // device may be excluded from Recently Played.
             License = "premium",
+            // Private listening mode — when on, Spotify's Recently Played and
+            // friend-activity surfaces hide this session's plays.
+            IsPrivateSession = isPrivateSession,
         };
 
         if (!localSpotifyPlaybackEnabled)

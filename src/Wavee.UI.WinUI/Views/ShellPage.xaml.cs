@@ -10,15 +10,17 @@ using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Wavee.UI.Contracts;
-using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Controls;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
 using Wavee.UI.WinUI.Controls.NavigationToolbar;
 using Wavee.UI.WinUI.Controls.Sidebar;
 using Wavee.UI.WinUI.Controls.TabBar;
+using Wavee.UI.WinUI.Data.Contexts;
+using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Data.Messages;
+using Wavee.UI.WinUI.Data.Models;
 using Wavee.UI.Services.DragDrop;
 using Wavee.UI.Services.DragDrop.Payloads;
 using Wavee.UI.WinUI.DragDrop;
@@ -39,6 +41,7 @@ public sealed partial class ShellPage : UserControl
     private readonly IAuthState? _authState;
     private readonly ISettingsService? _settingsService;
     private readonly IPlaybackStateService? _playbackState;
+    private readonly IWindowContext? _windowContext;
     private readonly IActiveVideoSurfaceService? _videoSurface;
     private readonly MiniVideoPlayerViewModel? _miniVideoViewModel;
     private readonly ILibraryDataService? _libraryDataService;
@@ -70,6 +73,7 @@ public sealed partial class ShellPage : UserControl
         _authState = Ioc.Default.GetService<IAuthState>();
         _settingsService = Ioc.Default.GetService<ISettingsService>();
         _playbackState = Ioc.Default.GetService<IPlaybackStateService>();
+        _windowContext = Ioc.Default.GetService<IWindowContext>();
         _videoSurface = Ioc.Default.GetService<IActiveVideoSurfaceService>();
         _miniVideoViewModel = Ioc.Default.GetService<MiniVideoPlayerViewModel>();
         _libraryDataService = Ioc.Default.GetService<ILibraryDataService>();
@@ -89,6 +93,8 @@ public sealed partial class ShellPage : UserControl
 
         // Suppress search flyout when on SearchPage
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        if (_windowContext != null)
+            _windowContext.PropertyChanged += OnWindowContextPropertyChanged;
 
         // Open initial tab after page is fully loaded
         Loaded += ShellPage_Loaded;
@@ -126,6 +132,9 @@ public sealed partial class ShellPage : UserControl
 
     private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
     {
+        if (_uiHealthMonitor != null)
+            _uiHealthMonitor.Degraded -= OnUiHealthDegraded;
+
 #if DEBUG
         _uiHealthOverlay?.Detach();
         _uiHealthMonitor?.Dispose();
@@ -154,6 +163,8 @@ public sealed partial class ShellPage : UserControl
             _observedTabForFilter = null;
         }
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        if (_windowContext != null)
+            _windowContext.PropertyChanged -= OnWindowContextPropertyChanged;
 
         // ShellPage_Unloaded can fire AFTER App.ShutdownHostCoreAsync has
         // disposed the IServiceProvider (window closing → Host.Dispose runs
@@ -500,16 +511,42 @@ public sealed partial class ShellPage : UserControl
 
     private async void RetryConnection_Click(object sender, RoutedEventArgs e)
     {
-        if (_authState != null)
-            await _authState.RetryConnectionAsync();
+        try
+        {
+            if (_authState != null)
+                await _authState.RetryConnectionAsync();
+        }
+        catch (System.Exception ex)
+        {
+            _logger?.LogWarning(ex, "RetryConnection_Click failed");
+        }
+    }
+
+    private async void OpenSpotifyPremium_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await Windows.System.Launcher.LaunchUriAsync(new System.Uri("https://www.spotify.com/premium/"));
+        }
+        catch
+        {
+            // Browser launch is best-effort; nothing to recover from a failed launch.
+        }
     }
 
     private async void NotificationAction_Click(object sender, RoutedEventArgs e)
     {
-        var notificationService = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetService<INotificationService>();
-        if (notificationService != null)
-            await notificationService.InvokeActionAsync();
+        try
+        {
+            var notificationService = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<INotificationService>();
+            if (notificationService != null)
+                await notificationService.InvokeActionAsync();
+        }
+        catch (System.Exception ex)
+        {
+            _logger?.LogWarning(ex, "NotificationAction_Click failed");
+        }
     }
 
     private void Notification_CloseRequested(object sender, RoutedEventArgs e)
@@ -541,11 +578,10 @@ public sealed partial class ShellPage : UserControl
 
         // FPS overlay — always available, toggled with Ctrl+Shift+F
         _uiHealthMonitor = new Services.UiHealthMonitor(DispatcherQueue, Ioc.Default.GetService<ILogger<Services.UiHealthMonitor>>());
-        // Start the monitor unconditionally so the 16 ms tick observes GC
-        // collections even when the overlay is hidden — required for
-        // NavigationDiagnostics' [gc] log ring to fill. The visible overlay is
-        // still gated on Ctrl+Shift+F; this just keeps the sampler alive.
-        _uiHealthMonitor.Start();
+        _uiHealthMonitor.Degraded += OnUiHealthDegraded;
+        // Keep the monitor alive while the UI is visible so NavigationDiagnostics'
+        // [gc] ring fills, but shut down the 16 ms sampler while minimized.
+        UpdateUiHealthMonitorState();
 
         _uiHealthOverlay = new Controls.Diagnostics.UiHealthOverlay();
         _uiHealthOverlay.Attach(_uiHealthMonitor);
@@ -570,6 +606,43 @@ public sealed partial class ShellPage : UserControl
 
         // Unsubscribe to avoid duplicate calls
         Loaded -= ShellPage_Loaded;
+    }
+
+    private void OnUiHealthDegraded(object? sender, Services.UiDegradationDetectedEventArgs e)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var notificationService = Ioc.Default.GetService<INotificationService>();
+            var restartCoordinator = Ioc.Default.GetService<Services.UiRestartCoordinator>();
+            if (notificationService is null || restartCoordinator is null)
+                return;
+
+            notificationService.Show(new NotificationInfo
+            {
+                Message = "We noticed the app might be working slower for you. Restart just the UI?",
+                Severity = NotificationSeverity.Warning,
+                AutoDismissAfter = TimeSpan.FromSeconds(30),
+                ActionLabel = "Restart UI",
+                Action = () => restartCoordinator.RestartUiOnlyAsync()
+            });
+        });
+    }
+
+    private void OnWindowContextPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IWindowContext.IsUiPowerSaving))
+            DispatcherQueue.TryEnqueue(UpdateUiHealthMonitorState);
+    }
+
+    private void UpdateUiHealthMonitorState()
+    {
+        if (_uiHealthMonitor == null)
+            return;
+
+        if (_windowContext?.IsUiPowerSaving == true)
+            _uiHealthMonitor.Stop();
+        else
+            _uiHealthMonitor.Start();
     }
 
     private void UpdateExpandedArtSize()
@@ -963,11 +1036,16 @@ public sealed partial class ShellPage : UserControl
 
         if (model.IsFolder && model.Tag.StartsWith("folder:", StringComparison.Ordinal))
         {
+            var folderId = model.Tag["folder:".Length..];
+            var folderName = model.Text;
+            var folderStartUri = $"folder:{folderId}";
             items = SidebarFolderContextMenuBuilder.Build(new SidebarFolderMenuContext
             {
-                FolderId = model.Tag["folder:".Length..],
-                FolderName = model.Text,
-                IsPinned = false
+                FolderId = folderId,
+                FolderName = folderName,
+                IsPinned = false,
+                RenameAction = () => _ = PromptAndRenameSidebarFolderAsync(folderStartUri, folderName),
+                DeleteAction = () => _ = ConfirmAndDeleteSidebarFolderAsync(folderStartUri, folderName),
             });
         }
         else if (model.Tag.StartsWith("spotify:playlist:", StringComparison.Ordinal))
@@ -1027,6 +1105,75 @@ public sealed partial class ShellPage : UserControl
         }
     }
 
+    private async System.Threading.Tasks.Task PromptAndRenameSidebarFolderAsync(string folderStartUri, string currentName)
+    {
+        var rootlist = Ioc.Default.GetService<Wavee.UI.Contracts.IRootlistService>();
+        if (rootlist is null) return;
+
+        var input = new TextBox
+        {
+            Text = currentName,
+            PlaceholderText = "Folder name",
+            SelectionStart = currentName.Length
+        };
+        var dialog = new ContentDialog
+        {
+            Title = "Rename folder",
+            Content = input,
+            PrimaryButtonText = "Rename",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.XamlRoot
+        };
+        dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
+
+        var result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary) return;
+        var newName = input.Text?.Trim();
+        if (string.IsNullOrEmpty(newName) || string.Equals(newName, currentName, StringComparison.Ordinal))
+            return;
+
+        try
+        {
+            await rootlist.RenameFolderAsync(folderStartUri, newName);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to rename folder {Uri}", folderStartUri);
+            ViewModel.ShowNotification("Couldn't rename the folder");
+        }
+    }
+
+    private async System.Threading.Tasks.Task ConfirmAndDeleteSidebarFolderAsync(string folderStartUri, string folderName)
+    {
+        var rootlist = Ioc.Default.GetService<Wavee.UI.Contracts.IRootlistService>();
+        if (rootlist is null) return;
+
+        var dialog = new ContentDialog
+        {
+            Title = "Delete folder?",
+            Content = $"\"{folderName}\" will be removed. Playlists inside the folder stay in your library.",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot
+        };
+        dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
+
+        var result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary) return;
+
+        try
+        {
+            await rootlist.DeleteFolderAsync(folderStartUri);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to delete folder {Uri}", folderStartUri);
+            ViewModel.ShowNotification("Couldn't delete the folder");
+        }
+    }
+
     private async void SidebarControl_ItemDropped(object? sender, ItemDroppedEventArgs e)
     {
         var service = Ioc.Default.GetService<IDragDropService>();
@@ -1069,14 +1216,17 @@ public sealed partial class ShellPage : UserControl
             // own UserMessage (set in EnqueueTracks etc.).
             if (payload.Kind == DragPayloadKind.Tracks && targetKind == DropTargetKind.PlaylistRow)
             {
-                _logger?.LogInformation("Added {TrackCount} track(s) to playlist {PlaylistId}", result.ItemsAffected, targetId);
-                ViewModel.ShowNotification(string.Format(
-                    AppLocalization.GetString("Playlist_AddTracksSucceeded"),
-                    result.ItemsAffected));
+                _logger?.LogInformation("Added {TrackCount} tracks to playlist {PlaylistId}", result.ItemsAffected, targetId);
+                var messageKey = result.ItemsAffected == 1
+                    ? "Playlist_AddTrackSucceeded"
+                    : "Playlist_AddTracksSucceeded";
+                ViewModel.ShowNotification(
+                    AppLocalization.Format(messageKey, result.ItemsAffected),
+                    InfoBarSeverity.Success);
             }
             else if (result.UserMessage is not null)
             {
-                ViewModel.ShowNotification(result.UserMessage);
+                ViewModel.ShowNotification(result.UserMessage, InfoBarSeverity.Success);
             }
         }
     }

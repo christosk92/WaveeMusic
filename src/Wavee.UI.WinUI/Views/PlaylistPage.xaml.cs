@@ -51,6 +51,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     bool IInPageFilterable.CanFilter => ViewModel?.TrackList is not null;
 
     private const int PlaylistCoverDecodeSize = 280;
+    private const int VirtualizedBannerTrackThreshold = 80;
 
     private readonly ILogger? _logger;
     private readonly ISettingsService _settings;
@@ -66,6 +67,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
     private int _visualSettlingGeneration;
     private int _loadedViewWorkGeneration;
     private int _navigationRevision;
+    private bool? _lastUsesParentContentScroll;
 
     // Composition resources for the full-width hero banner image. Surface is
     // (re)loaded whenever HeaderImageUrl changes; null when no header image.
@@ -177,6 +179,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         // throw "Calling Scale API is not allowed on this object".
         LeftColumnHost.Opacity = 0;
         ContentScrollView.SizeChanged += ContentScrollView_SizeChanged;
+        TrackGrid.RowsScrollViewChanged += TrackGrid_RowsScrollViewChanged;
         ApplyContentScrollMode();
         Loaded += PlaylistPage_Loaded;
         Unloaded += PlaylistPage_Unloaded;
@@ -280,8 +283,9 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
 
     // ── Shy-header (banner → pinned PlaylistShyPill morph) ──────────────────
     //
-    // Banner-mode playlists keep the compact shy pill, driven by the right
-    // content ScrollView so the banner, toolbar, and rows move as one surface.
+    // Banner-mode playlists keep the compact shy pill. Small banners use the
+    // outer content ScrollView; large playlists switch to the track row scroller
+    // so ItemsView keeps a finite viewport and row virtualization stays active.
     //
     // PlaylistPage's banner is built from custom composition visuals (image
     // + scrim) plus a XAML procedural-gradient fallback, so it doesn't expose
@@ -301,7 +305,8 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
             return;
         }
 
-        if (ContentScrollView is null ||
+        var scrollView = ResolveShyHeaderScrollView();
+        if (scrollView is null ||
             HeroBannerRow is null ||
             BannerOverlayPanel is null ||
             PlaylistShyPill is null)
@@ -313,7 +318,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         if (transition is null) return;
 
         _shyHeader = new ShyHeaderController(
-            ContentScrollView,
+            scrollView,
             HeroBannerRow,
             BannerOverlayPanel,
             PlaylistShyPill,
@@ -331,34 +336,68 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         ApplyContentScrollMode();
     }
 
+    private void TrackGrid_RowsScrollViewChanged(object? sender, EventArgs e)
+    {
+        if (_isDisposed || ViewModel.Header.LayoutMode != PlaylistLayoutMode.Banner)
+            return;
+
+        ReattachShyHeader();
+    }
+
     private void ApplyContentScrollMode()
     {
         if (ContentScrollView is null || TrackGrid is null)
             return;
 
         var isBanner = ViewModel.Header.LayoutMode == PlaylistLayoutMode.Banner;
-        Grid.SetRow(ContentScrollView, isBanner ? 0 : 1);
-        Grid.SetRowSpan(ContentScrollView, isBanner ? 2 : 1);
+        var useParentContentScroll = UsesParentContentScroll();
+        Grid.SetRow(ContentScrollView, useParentContentScroll ? 0 : 1);
+        Grid.SetRowSpan(ContentScrollView, useParentContentScroll ? 2 : 1);
 
-        ContentScrollView.VerticalScrollMode = isBanner
+        ContentScrollView.VerticalScrollMode = useParentContentScroll
             ? ScrollingScrollMode.Auto
             : ScrollingScrollMode.Disabled;
         ContentScrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
 
-        TrackGrid.IsParentScrolling = isBanner;
-        TrackGrid.Margin = isBanner
+        TrackGrid.IsParentScrolling = useParentContentScroll;
+        TrackGrid.Margin = useParentContentScroll
             ? new Thickness(0, PlaylistCoverDecodeSize, 0, 0)
             : new Thickness(0);
-        TrackGrid.Height = isBanner
+        TrackGrid.Height = useParentContentScroll
             ? double.NaN
             : Math.Max(0, ContentScrollView.ActualHeight);
+
+        if (_lastUsesParentContentScroll != useParentContentScroll)
+        {
+            _lastUsesParentContentScroll = useParentContentScroll;
+            _logger?.LogDebug(
+                "Playlist scroll mode: layout={LayoutMode} totalTracks={TotalTracks} parentContentScroll={ParentContentScroll}",
+                ViewModel.Header.LayoutMode,
+                ViewModel.TrackList.TotalTracks,
+                useParentContentScroll);
+        }
     }
+
+    private bool UsesParentContentScroll()
+        => ViewModel.Header.LayoutMode == PlaylistLayoutMode.Banner &&
+           ViewModel.TrackList.TotalTracks <= VirtualizedBannerTrackThreshold;
+
+    private ScrollView? ResolveShyHeaderScrollView()
+        => UsesParentContentScroll()
+            ? ContentScrollView
+            : TrackGrid?.RowsScrollView;
 
     private void DetachShyHeader()
     {
         if (_shyHeader is null) return;
         _shyHeader.Detach();
         _shyHeader = null;
+    }
+
+    private void ReattachShyHeader()
+    {
+        DetachShyHeader();
+        AttachShyHeader();
     }
 
     /// <summary>
@@ -468,6 +507,11 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
 
         if (ev.PropertyName == nameof(Wavee.UI.WinUI.ViewModels.Playlist.PlaylistTrackListViewModel.HasAnyAddedAt))
             ApplyDateAddedColumnVisibility();
+        else if (ev.PropertyName == nameof(Wavee.UI.WinUI.ViewModels.Playlist.PlaylistTrackListViewModel.TotalTracks))
+        {
+            ApplyContentScrollMode();
+            ReattachShyHeader();
+        }
     }
 
     private void Collaborators_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -584,6 +628,7 @@ public sealed partial class PlaylistPage : UserControl, INavigationCacheMemoryPa
         HeaderBackgroundHost.Unloaded -= HeaderBackgroundHost_Unloaded;
         ActualThemeChanged -= PlaylistPage_ActualThemeChanged;
         ContentScrollView.SizeChanged -= ContentScrollView_SizeChanged;
+        TrackGrid.RowsScrollViewChanged -= TrackGrid_RowsScrollViewChanged;
         DetachShyHeader();
         SelectionBar.Detach();
         TrackGrid.Dispose();

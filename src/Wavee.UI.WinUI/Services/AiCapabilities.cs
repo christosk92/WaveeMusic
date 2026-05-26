@@ -49,17 +49,28 @@ public sealed class AiCapabilities
     private bool? _runtimeAvailableCache;
 
     // Limited Access Feature unlock — required by Windows AI APIs for
-    // packaged apps. Token + attribution are issued by Microsoft per package
-    // (Package Family Name suffix s6dvdzhx5m6rm). The unlock is process-wide
-    // and idempotent; we still cache the outcome so repeated probes don't
-    // re-enter the WinRT call.
+    // packaged apps. Each (token, attribution) is cryptographically bound to
+    // one Package Family Name; pick the pair that matches the running PFN.
+    // The unlock is process-wide and idempotent; we still cache the outcome
+    // so repeated probes don't re-enter the WinRT call.
     //
-    // Source of values: Microsoft LAF Access Request response, 2026-05-01,
-    // TrackingID #2605010040005804.
+    // Source: Microsoft LAF Access Requests, TrackingID #2605010040005804
+    // (initial dev token + later production token, both issued by Mike Bowen).
+    // Tokens are safe to commit publicly — see
+    // reference_laf_token_publisher_binding.md.
     private const string LanguageModelLafFeatureId = "com.microsoft.windows.ai.languagemodel";
-    private const string LanguageModelLafToken = "4+g4v/xx6B81Wc6Z0sO0bg==";
-    private const string LanguageModelLafAttribution =
-        "s6dvdzhx5m6rm has registered their use of com.microsoft.windows.ai.languagemodel with Microsoft and agrees to the terms of use.";
+
+    private static readonly (string PfnSuffix, string Token, string Attribution)[] LanguageModelLafCredentials =
+    {
+        // Dev publisher (CN=ckara, self-signed)
+        ("s6dvdzhx5m6rm",
+            "4+g4v/xx6B81Wc6Z0sO0bg==",
+            "s6dvdzhx5m6rm has registered their use of com.microsoft.windows.ai.languagemodel with Microsoft and agrees to the terms of use."),
+        // Production publisher (CN=cproducts, Azure Artifact Signing)
+        ("43x7j183z9t4g",
+            "3HfoeP9ZwxR9ZYqlpXrCWw==",
+            "43x7j183z9t4g has registered their use of com.microsoft.windows.ai.languagemodel with Microsoft and agrees to the terms of use."),
+    };
 
     private static readonly object LafUnlockGate = new();
     private static bool? _lafUnlockedCache;
@@ -307,10 +318,27 @@ public sealed class AiCapabilities
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool TryUnlockLanguageModelLafCore(out string statusLabel)
     {
+        var pfn = Windows.ApplicationModel.Package.Current.Id.FamilyName;
+        (string Token, string Attribution)? credentials = null;
+        foreach (var entry in LanguageModelLafCredentials)
+        {
+            if (pfn.EndsWith("_" + entry.PfnSuffix, StringComparison.Ordinal))
+            {
+                credentials = (entry.Token, entry.Attribution);
+                break;
+            }
+        }
+
+        if (credentials is null)
+        {
+            statusLabel = $"No LAF token registered for PFN '{pfn}'";
+            return false;
+        }
+
         var access = Windows.ApplicationModel.LimitedAccessFeatures.TryUnlockFeature(
             LanguageModelLafFeatureId,
-            LanguageModelLafToken,
-            LanguageModelLafAttribution);
+            credentials.Value.Token,
+            credentials.Value.Attribution);
 
         switch (access.Status)
         {

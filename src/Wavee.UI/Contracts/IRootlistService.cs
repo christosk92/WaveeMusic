@@ -46,4 +46,22 @@ public interface IRootlistService
         string playlistUri,
         int destinationRootIndex,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Renames a sidebar folder. Targets the <c>spotify:start-group:…</c>
+    /// marker that opens the folder in the rootlist.
+    /// </summary>
+    Task RenameFolderAsync(
+        string folderStartUri,
+        string newName,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes a sidebar folder. Its children are lifted to top-level at
+    /// the folder's current position (matches Spotify's web/desktop behavior —
+    /// users don't expect contained playlists to disappear).
+    /// </summary>
+    Task DeleteFolderAsync(
+        string folderStartUri,
+        CancellationToken ct = default);
 }

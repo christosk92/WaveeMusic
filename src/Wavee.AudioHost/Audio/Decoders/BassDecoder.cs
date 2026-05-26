@@ -40,9 +40,30 @@ public sealed class BassDecoder : IAudioDecoder
 
     private readonly ILogger? _logger;
 
+    // Live BASS handle for the current DecodeAsync session. Set after CreateStream,
+    // cleared in the finally that StreamFrees it. SeekTo is invoked from
+    // AudioEngine while the decode loop is running, so it must mutate the same
+    // handle (mirrors the _cachedReader pattern in VorbisDecoder).
+    private int _activeHandle;
+
     /// <inheritdoc/>
     public string FormatName => "Bass";
-    public void SeekTo(long positionMs) { /* TODO: BASS seek support */ }
+
+    public void SeekTo(long positionMs)
+    {
+        var handle = _activeHandle;
+        if (handle == 0) return;
+
+        var bytePos = Bass.ChannelSeconds2Bytes(handle, positionMs / 1000.0);
+        if (bytePos < 0)
+        {
+            _logger?.LogWarning("BASS SeekTo({PositionMs}ms): ChannelSeconds2Bytes failed: {Error}", positionMs, Bass.LastError);
+            return;
+        }
+
+        if (!Bass.ChannelSetPosition(handle, bytePos))
+            _logger?.LogWarning("BASS SeekTo({PositionMs}ms): ChannelSetPosition failed: {Error}", positionMs, Bass.LastError);
+    }
 
     /// <summary>
     /// Creates a new BassDecoder.
@@ -250,6 +271,9 @@ public sealed class BassDecoder : IAudioDecoder
             throw new InvalidOperationException($"BASS failed to create stream: {error}");
         }
 
+        // Publish the handle so SeekTo() can act on this decode session.
+        _activeHandle = handle;
+
         try
         {
             var info = Bass.ChannelGetInfo(handle);
@@ -310,11 +334,13 @@ public sealed class BassDecoder : IAudioDecoder
                                 await Task.Delay(delay, cancellationToken);
 
                                 // Free old handle and create new one
+                                _activeHandle = 0;
                                 Bass.StreamFree(handle);
                                 handle = Bass.CreateStream(streamUrl, 0, BassFlags.Decode | BassFlags.Float, null);
 
                                 if (handle != 0)
                                 {
+                                    _activeHandle = handle;
                                     _logger?.LogInformation("Live stream reconnected successfully");
                                     reconnected = true;
                                     break;
@@ -378,6 +404,7 @@ public sealed class BassDecoder : IAudioDecoder
         }
         finally
         {
+            _activeHandle = 0;
             Bass.StreamFree(handle);
         }
     }

@@ -76,6 +76,49 @@ public interface IWebSearchToolProvider
         CancellationToken cancellationToken = default);
 }
 
+public enum MusicGroundingKind
+{
+    Artist,
+    Album,
+    Track,
+}
+
+public sealed record MusicGroundingRequest(
+    MusicGroundingKind Kind,
+    string? ArtistName = null,
+    string? AlbumTitle = null,
+    string? TrackTitle = null,
+    int MaxSources = 5);
+
+public sealed record MusicGroundingSource(
+    string Title,
+    string Url,
+    string Snippet,
+    string SourceName,
+    MusicGroundingKind Kind,
+    bool IsMusicSpecific = true,
+    double Reliability = 0.5);
+
+public sealed record MusicGroundingResult(
+    IReadOnlyList<MusicGroundingSource> Sources)
+{
+    public static readonly MusicGroundingResult Empty = new([]);
+
+    public bool HasSources => Sources.Count > 0;
+
+    public bool HasMusicSpecificSources =>
+        Sources.Any(static s => s.IsMusicSpecific);
+}
+
+public interface IMusicGroundingProvider
+{
+    bool IsAvailable { get; }
+
+    Task<MusicGroundingResult> GetGroundingAsync(
+        MusicGroundingRequest request,
+        CancellationToken cancellationToken = default);
+}
+
 public sealed record WikipediaSummary(
     string Title,
     string Extract,

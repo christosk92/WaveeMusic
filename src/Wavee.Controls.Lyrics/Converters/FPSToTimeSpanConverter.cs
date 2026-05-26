@@ -16,8 +16,6 @@ namespace Wavee.Controls.Lyrics.Converters
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)
-        {
-            throw new NotImplementedException();
-        }
+            => throw new NotSupportedException("FPSToTimeSpanConverter is one-way only.");
     }
 }

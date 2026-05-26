@@ -26,7 +26,13 @@ public static class AddTracksToPlaylistHandler
         try
         {
             await mediator.AddTracksAsync(ctx.TargetId, tracks.TrackUris, ct).ConfigureAwait(false);
-            return DropResult.Ok(tracks.ItemCount);
+            var playlistName = await mediator.GetDisplayNameAsync(ctx.TargetId, ct).ConfigureAwait(false);
+            var n = tracks.ItemCount;
+            var nounTrack = n == 1 ? "track" : "tracks";
+            var message = string.IsNullOrEmpty(playlistName)
+                ? $"Added {n} {nounTrack} to playlist"
+                : $"Added {n} {nounTrack} to {playlistName}";
+            return DropResult.Ok(n, message);
         }
         catch (System.Exception ex)
         {

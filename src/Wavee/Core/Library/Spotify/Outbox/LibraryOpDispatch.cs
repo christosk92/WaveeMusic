@@ -55,11 +55,13 @@ internal static class LibraryOpDispatch
     // can stay as well (still used by sync paths unrelated to the outbox).
     private static string GetSetForItemType(SpotifyLibraryItemType itemType) => itemType switch
     {
-        SpotifyLibraryItemType.Track  => "collection",
-        SpotifyLibraryItemType.Album  => "collection",
-        SpotifyLibraryItemType.Artist => "artist",
-        SpotifyLibraryItemType.Show   => "show",
-        SpotifyLibraryItemType.YlPin  => "ylpin",
+        SpotifyLibraryItemType.Track     => "collection",
+        SpotifyLibraryItemType.Album     => "collection",
+        SpotifyLibraryItemType.Artist    => "artist",
+        SpotifyLibraryItemType.Show      => "show",
+        SpotifyLibraryItemType.YlPin     => "ylpin",
+        SpotifyLibraryItemType.Ban       => "ban",
+        SpotifyLibraryItemType.ArtistBan => "artistban",
         _ => "collection"
     };
 }

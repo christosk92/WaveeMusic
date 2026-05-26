@@ -301,7 +301,7 @@
                                                    FontWeight="Bold"/>
                                     </StackPanel>
                                 </ComboBox.Header>
-                                <ComboBoxItem Content="Low"/>
+                                <ComboBoxItem x:Uid="Views_FeedbackPage__ComboBoxItem_100" Content="Low"/>
                                 <ComboBoxItem x:Uid="Views_FeedbackPage__ComboBoxItem_33" Content="Medium"/>
                                 <ComboBoxItem x:Uid="Views_FeedbackPage__ComboBoxItem_34" Content="High"/>
                                 <ComboBoxItem x:Uid="Views_FeedbackPage__ComboBoxItem_35" Content="Critical"/>

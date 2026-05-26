@@ -344,7 +344,8 @@
                                     <FontIcon Glyph="&#xE722;" FontSize="32"
                                               Foreground="White"
                                               HorizontalAlignment="Center"/>
-                                    <TextBlock Text="Change photo"
+                                    <TextBlock x:Uid="Views_PlaylistPage__TextBlock_100"
+                                               Text="Change photo"
                                                Foreground="White"
                                                FontSize="13"
                                                FontWeight="SemiBold"
@@ -432,16 +433,18 @@
                     <Button Style="{StaticResource AccentButtonStyle}"
                             Command="{x:Bind ViewModel.TrackList.PlayAllCommand}"
                             Padding="18,10" CornerRadius="20"
+                            x:Uid="Views_PlaylistPage__Button_101"
                             ToolTipService.ToolTip="Play">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE768;" FontSize="14"/>
-                            <TextBlock Text="Play" FontSize="13" FontWeight="SemiBold"/>
+                            <TextBlock x:Uid="Views_PlaylistPage__TextBlock_102" Text="Play" FontSize="13" FontWeight="SemiBold"/>
                         </StackPanel>
                     </Button>
                     <Button Command="{x:Bind ViewModel.TrackList.ShuffleCommand}"
                             Width="40" Height="40" CornerRadius="20" Padding="0"
                             Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                             BorderThickness="0"
+                            x:Uid="Views_PlaylistPage__Button_103"
                             ToolTipService.ToolTip="Shuffle play">
                         <FontIcon Glyph="&#xE8B1;" FontSize="14"/>
                     </Button>
@@ -454,6 +457,7 @@
                             Background="Transparent"
                             BorderThickness="0"
                             VerticalAlignment="Center"
+                            x:Uid="Views_PlaylistPage__Button_104"
                             ToolTipService.ToolTip="Copy link to playlist">
                         <FontIcon Glyph="&#xE72D;" FontSize="14"/>
                     </Button>
@@ -690,9 +694,10 @@
                 ResizeCompleted="PlaylistSplitter_ResizeCompleted"/>
 
             <!-- Track column scroll owner. Cover playlists keep TrackDataGrid's
-                 internal virtualized row scroller; banner playlists flip this
-                 wrapper to the content scroller so the banner, toolbar, and
-                 rows move as one page surface. -->
+                 internal virtualized row scroller; banner playlists use the
+                 outer content scroller only while the track count is small.
+                 Large banners hand scrolling back to TrackDataGrid so the row
+                 surface stays virtualized. -->
             <ScrollView x:Name="ContentScrollView"
                         Grid.Row="1"
                         Grid.Column="2"
@@ -999,8 +1004,9 @@
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
             RetryCommand="{x:Bind ViewModel.RetryCommand}"/>
 
-        <!-- Banner-mode shy pill. It is driven by TrackGrid's row scroller,
-             not an outer page scroller, so row virtualization stays intact. -->
+        <!-- Banner-mode shy pill. It follows whichever scroll owner the page
+             selected: the outer content scroller for small banners, or the
+             TrackGrid row scroller for large virtualized playlists. -->
         <playlist:PlaylistShyPill
             x:Name="PlaylistShyPill"
             HorizontalAlignment="Center"

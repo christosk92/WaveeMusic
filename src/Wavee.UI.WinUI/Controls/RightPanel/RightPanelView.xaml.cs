@@ -16,6 +16,7 @@ using Wavee.Controls.Lyrics.Models.Settings;
 using Wavee.UI.Contracts;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Controls.RightPanel.Details;
+using Wavee.UI.WinUI.Data.Contexts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.Enums;
 using Wavee.UI.WinUI.Helpers;
@@ -80,7 +81,9 @@ public sealed partial class RightPanelView : UserControl
     private readonly ThemeColorService? _themeColors;
     private readonly ILyricsService? _lyricsService;
     private readonly IColorService? _colorService;
+    private readonly IWindowContext? _windowContext;
     private bool _themeColorsSubscribed;
+    private bool _windowContextSubscribed;
 
     private readonly BackgroundOverlayCompositionBehavior _overlayBehavior = new();
     private bool _parentPlaybackStateSubscribed;
@@ -97,6 +100,7 @@ public sealed partial class RightPanelView : UserControl
         _themeColors = Ioc.Default.GetService<ThemeColorService>();
         _lyricsService = Ioc.Default.GetService<ILyricsService>();
         _colorService = Ioc.Default.GetService<IColorService>();
+        _windowContext = Ioc.Default.GetService<IWindowContext>();
         _lyricsVm = Ioc.Default.GetService<LyricsViewModel>();
         Visibility = Visibility.Collapsed;
         Width = PanelWidth;
@@ -111,6 +115,12 @@ public sealed partial class RightPanelView : UserControl
         {
             _themeColors.ThemeChanged += OnThemeColorsChanged;
             _themeColorsSubscribed = true;
+        }
+
+        if (_windowContext != null && !_windowContextSubscribed)
+        {
+            _windowContext.PropertyChanged += OnWindowContextPropertyChanged;
+            _windowContextSubscribed = true;
         }
 
         // Wire up the lyrics VM subscription on the parent so we can drive
@@ -176,6 +186,12 @@ public sealed partial class RightPanelView : UserControl
             _themeColorsSubscribed = false;
         }
 
+        if (_windowContext != null && _windowContextSubscribed)
+        {
+            _windowContext.PropertyChanged -= OnWindowContextPropertyChanged;
+            _windowContextSubscribed = false;
+        }
+
         if (_lyricsVm != null && _parentPlaybackStateSubscribed)
         {
             _lyricsVm.PlaybackState.PropertyChanged -= OnParentPlaybackStateChanged;
@@ -235,6 +251,18 @@ public sealed partial class RightPanelView : UserControl
         UpdateLyricsPaletteForTheme();
         UpdateBackgroundChrome();
         TabPager?.SyncVisualState();
+    }
+
+    private void OnWindowContextPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(IWindowContext.IsUiPowerSaving))
+            return;
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ApplySharedLyricsCanvasBackgroundState();
+            UpdateBackgroundMediaVisibility();
+        });
     }
 
     private void UpdateLyricsPaletteForTheme()
@@ -550,6 +578,7 @@ public sealed partial class RightPanelView : UserControl
         var palette = ResolveSidebarCanvasPalette(_lyricsVm.CurrentPalette ?? status.WindowPalette);
         NowPlayingCanvas.SetNowPlayingPalette(palette);
         NowPlayingCanvas.Visibility = Visibility.Visible;
+        NowPlayingCanvas.SetRenderingActive(true);
 
         if (SelectedMode != RightPanelMode.Lyrics)
         {
@@ -566,6 +595,7 @@ public sealed partial class RightPanelView : UserControl
     private bool ShouldShowSharedLyricsCanvasBackground()
         => _isOpenCached
            && !IsEmbeddedChromeTransparent
+           && _windowContext?.IsUiPowerSaving != true
            && _lyricsVm != null
            && !IsDetailsCanvasBackgroundActive();
 
@@ -578,7 +608,7 @@ public sealed partial class RightPanelView : UserControl
     private void ConfigureSidebarLyricsBackground(LyricsBackgroundSettings bg, ElementTheme actualTheme)
     {
         bg.IsPureColorOverlayEnabled = true;
-        bg.PureColorOverlayOpacity = actualTheme == ElementTheme.Light ? 42 : 78;
+        bg.PureColorOverlayOpacity = actualTheme == ElementTheme.Light ? 24 : 78;
         bg.IsFluidOverlayEnabled = false;
         bg.IsCoverOverlayEnabled = false;
         bg.IsSpectrumOverlayEnabled = false;
@@ -622,6 +652,12 @@ public sealed partial class RightPanelView : UserControl
         if (NowPlayingCanvas == null || !_isOpenCached || IsEmbeddedChromeTransparent || DispatcherQueue == null)
             return;
 
+        if (!ShouldShowSharedLyricsCanvasBackground())
+        {
+            NowPlayingCanvas.SetRenderingActive(false);
+            return;
+        }
+
         NowPlayingCanvas.SetRenderingActive(true);
         var generation = ++_sharedLyricsCanvasRenderGeneration;
         DispatcherQueue.TryEnqueue(async () =>
@@ -630,10 +666,16 @@ public sealed partial class RightPanelView : UserControl
             if (!IsLoaded || !_isOpenCached || generation != _sharedLyricsCanvasRenderGeneration)
                 return;
 
+            if (!ShouldShowSharedLyricsCanvasBackground())
+            {
+                NowPlayingCanvas.SetRenderingActive(false);
+                return;
+            }
+
             if (SelectedMode == RightPanelMode.Lyrics && LyricsContent != null)
                 LyricsContent.UpdateTimerState();
             else
-                NowPlayingCanvas.SetRenderingActive(false);
+                NowPlayingCanvas.SetRenderingActive(true);
         });
     }
 

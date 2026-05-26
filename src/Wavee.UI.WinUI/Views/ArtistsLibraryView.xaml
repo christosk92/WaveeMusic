@@ -304,13 +304,13 @@
             <primitives:SegmentedItem Tag="Saved">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon Glyph="&#xE73E;" FontSize="14"/>
-                    <TextBlock Text="Following"/>
+                    <TextBlock x:Uid="Views_ArtistsLibraryView__TextBlock_100" Text="Following"/>
                 </StackPanel>
             </primitives:SegmentedItem>
             <primitives:SegmentedItem Tag="FromLikedSongs">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon Glyph="&#xEB52;" FontSize="14"/>
-                    <TextBlock Text="From Liked Songs"/>
+                    <TextBlock x:Uid="Views_ArtistsLibraryView__TextBlock_101" Text="From Liked Songs"/>
                 </StackPanel>
             </primitives:SegmentedItem>
         </primitives:Segmented>
@@ -775,7 +775,7 @@
                         Spacing="12"
                         Visibility="{x:Bind ViewModel.ShowLikedArtistPlaceholder, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <FontIcon Glyph="&#xE728;" FontSize="48" Opacity="0.3"/>
-                        <TextBlock
+                        <TextBlock x:Uid="Views_ArtistsLibraryView__TextBlock_102"
                             Text="Select an artist to see liked songs"
                             Style="{StaticResource BodyTextBlockStyle}"
                             Opacity="0.5"

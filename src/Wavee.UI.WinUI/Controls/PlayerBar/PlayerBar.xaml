@@ -173,6 +173,7 @@
                 Foreground="{ThemeResource InfoBarInformationalSeverityIconBackground}" />
 
             <TextBlock
+                x:Uid="Controls_PlayerBar_PlayerBar__TextBlock_100"
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 FontSize="12"
@@ -180,6 +181,7 @@
                 Text="You've reached the end of this queue — click Play to restart." />
 
             <Button
+                x:Uid="Controls_PlayerBar_PlayerBar__Button_101"
                 Grid.Column="2"
                 x:Name="EndOfContextDismissButton"
                 Background="Transparent"
@@ -194,6 +196,7 @@
         </Grid>
 
         <TeachingTip
+            x:Uid="Controls_PlayerBar_PlayerBar__TeachingTip_102"
             x:Name="VideoPopoutTeachingTip"
             Title="Video is playing in the popout player"
             Subtitle="Playback was routed to the detached player window."
@@ -206,6 +209,7 @@
             Closed="VideoPopoutTeachingTip_Closed" />
 
         <TeachingTip
+            x:Uid="Controls_PlayerBar_PlayerBar__TeachingTip_103"
             x:Name="PodcastResumeTeachingTip"
             Title="Resume episode?"
             Subtitle="{x:Bind ViewModel.PodcastResumePromptText, Mode=OneWay}"
@@ -371,6 +375,7 @@
                         Spacing="0"
                         Margin="0,0,12,0">
                         <playback:TransportModeButton
+                            x:Uid="Controls_PlayerBar_PlayerBar__TransportModeButton_104"
                             Style="{StaticResource TransportModeButtonStyle}"
                             Width="32"
                             Height="32"
@@ -381,6 +386,7 @@
                             <FontIcon Glyph="&#xE8B1;" FontSize="14" />
                         </playback:TransportModeButton>
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_105"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="34"
                             Height="32"
@@ -391,20 +397,24 @@
                             <TextBlock Text="-15" FontSize="11" FontWeight="SemiBold" />
                         </Button>
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_106"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="32"
                             Height="32"
                             Padding="0"
                             Command="{x:Bind ViewModel.PreviousCommand}"
+                            AutomationProperties.Name="Previous track"
                             ToolTipService.ToolTip="Previous">
                             <FontIcon Glyph="&#xF8AC;" FontSize="14" />
                         </Button>
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_107"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="36"
                             Height="36"
                             Padding="0"
                             Command="{x:Bind ViewModel.PlayPauseCommand}"
+                            AutomationProperties.Name="Play or pause"
                             ToolTipService.ToolTip="Play/Pause">
                             <playback:PlaybackActionContent IconSize="18"
                                                            SpinnerSize="20"
@@ -413,15 +423,18 @@
                                                            ActionForeground="{ThemeResource TextFillColorPrimaryBrush}"/>
                         </Button>
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_108"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="32"
                             Height="32"
                             Padding="0"
                             Command="{x:Bind ViewModel.NextCommand}"
+                            AutomationProperties.Name="Next track"
                             ToolTipService.ToolTip="Next">
                             <FontIcon Glyph="&#xF8AD;" FontSize="14" />
                         </Button>
                         <playback:TransportModeButton
+                            x:Uid="Controls_PlayerBar_PlayerBar__TransportModeButton_109"
                             Style="{StaticResource TransportModeButtonStyle}"
                             Width="32"
                             Height="32"
@@ -434,6 +447,7 @@
                                 FontSize="14" />
                         </playback:TransportModeButton>
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_110"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="34"
                             Height="32"
@@ -444,6 +458,7 @@
                             <TextBlock Text="+15" FontSize="11" FontWeight="SemiBold" />
                         </Button>
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_111"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="42"
                             Height="32"
@@ -539,6 +554,7 @@
                             VerticalAlignment="Center"
                             Spacing="0">
                             <ToggleButton
+                                x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_112"
                                 Style="{StaticResource SubtleToggleButtonStyle}"
                                 Width="32"
                                 Height="32"
@@ -550,6 +566,7 @@
                             </ToggleButton>
 
                             <ToggleButton
+                                x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_113"
                                 Style="{StaticResource SubtleToggleButtonStyle}"
                                 Width="32"
                                 Height="32"
@@ -562,6 +579,7 @@
                             </ToggleButton>
 
                             <ToggleButton
+                                x:Uid="Controls_PlayerBar_PlayerBar__ToggleButton_114"
                                 Style="{StaticResource SubtleToggleButtonStyle}"
                                 Width="32"
                                 Height="32"
@@ -576,6 +594,7 @@
                             <playback:WatchVideoButton ButtonSize="32" IconSize="16" />
 
                             <Button
+                                x:Uid="Controls_PlayerBar_PlayerBar__Button_115"
                                 Style="{StaticResource TransparentButtonStyle}"
                                 Width="32"
                                 Height="32"
@@ -603,6 +622,7 @@
                                  Each menu item has its own glyph + label, so the choice
                                  is unambiguous. -->
                             <DropDownButton
+                                x:Uid="Controls_PlayerBar_PlayerBar__DropDownButton_116"
                                 x:Name="ExpandPlayerDropDown"
                                 Width="32"
                                 Height="32"
@@ -615,6 +635,7 @@
                                 <DropDownButton.Flyout>
                                     <MenuFlyout Placement="TopEdgeAlignedRight">
                                         <MenuFlyoutItem
+                                            x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_117"
                                             Text="Theatre mode"
                                             Command="{x:Bind ViewModel.EnterTheatreCommand}">
                                             <MenuFlyoutItem.Icon>
@@ -622,6 +643,7 @@
                                             </MenuFlyoutItem.Icon>
                                         </MenuFlyoutItem>
                                         <MenuFlyoutItem
+                                            x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_118"
                                             Text="Fullscreen"
                                             Command="{x:Bind ViewModel.EnterFullscreenCommand}"
                                             KeyboardAcceleratorTextOverride="F11">
@@ -635,6 +657,7 @@
                         </StackPanel>
 
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_119"
                             x:Name="OverflowButton"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="32"
@@ -645,6 +668,7 @@
                             <Button.Flyout>
                                 <MenuFlyout Opening="OverflowFlyout_Opening">
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_120"
                                         x:Name="WideLikeMenuItem"
                                         Tag="like"
                                         Text="Like track"
@@ -654,6 +678,7 @@
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <ToggleMenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_121"
                                         Text="Queue"
                                         IsChecked="{x:Bind ViewModel.IsQueuePanelActive, Mode=OneWay}"
                                         Command="{x:Bind ViewModel.ToggleQueuePanelCommand}">
@@ -662,6 +687,7 @@
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
                                     <ToggleMenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_122"
                                         Text="Lyrics"
                                         IsChecked="{x:Bind ViewModel.IsLyricsPanelActive, Mode=OneWay}"
                                         Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}"
@@ -671,6 +697,7 @@
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
                                     <ToggleMenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_123"
                                         Text="Details"
                                         IsChecked="{x:Bind ViewModel.IsDetailsPanelActive, Mode=OneWay}"
                                         Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}"
@@ -680,6 +707,7 @@
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_124"
                                         Text="Theatre mode"
                                         Command="{x:Bind ViewModel.EnterTheatreCommand}"
                                         Visibility="{x:Bind ViewModel.IsVideoContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -688,6 +716,7 @@
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_125"
                                         Text="Fullscreen"
                                         Command="{x:Bind ViewModel.EnterFullscreenCommand}"
                                         Visibility="{x:Bind ViewModel.IsVideoContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
@@ -697,6 +726,7 @@
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_126"
                                         Text="Watch Video"
                                         Command="{x:Bind ViewModel.SwitchToVideoCommand}"
                                         IsEnabled="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
@@ -706,6 +736,7 @@
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_127"
                                         Text="Listen as audio"
                                         Command="{x:Bind ViewModel.SwitchToAudioCommand}"
                                         IsEnabled="{x:Bind ViewModel.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
@@ -715,6 +746,7 @@
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_128"
                                         Text="Show mini player"
                                         Click="ShowMiniVideoPlayer_Click"
                                         Visibility="{x:Bind ViewModel.IsCurrentTrackAudioCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -723,6 +755,7 @@
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <ToggleMenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_129"
                                         Text="Auto play videos this session"
                                         IsChecked="{x:Bind ViewModel.PreferVideoPlaybackInSession, Mode=OneWay}"
                                         Command="{x:Bind ViewModel.ToggleVideoPlaybackPreferenceCommand}">
@@ -732,6 +765,7 @@
                                     </ToggleMenuFlyoutItem>
                                     <MenuFlyoutSeparator />
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_130"
                                         Text="Show in sidebar"
                                         Click="ShowInSidebar_Click">
                                         <MenuFlyoutItem.Icon>
@@ -853,6 +887,7 @@
                         Spacing="0"
                         Margin="0,0,4,0">
                         <playback:TransportModeButton
+                            x:Uid="Controls_PlayerBar_PlayerBar__TransportModeButton_131"
                             Style="{StaticResource TransportModeButtonStyle}"
                             Width="30"
                             Height="30"
@@ -863,6 +898,7 @@
                             <FontIcon Glyph="&#xE8B1;" FontSize="13" />
                         </playback:TransportModeButton>
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_132"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="30"
                             Height="32"
@@ -873,20 +909,24 @@
                             <TextBlock Text="-15" FontSize="10" FontWeight="SemiBold" />
                         </Button>
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_133"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="32"
                             Height="32"
                             Padding="0"
                             Command="{x:Bind ViewModel.PreviousCommand}"
+                            AutomationProperties.Name="Previous track"
                             ToolTipService.ToolTip="Previous">
                             <FontIcon Glyph="&#xF8AC;" FontSize="14" />
                         </Button>
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_134"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="36"
                             Height="36"
                             Padding="0"
                             Command="{x:Bind ViewModel.PlayPauseCommand}"
+                            AutomationProperties.Name="Play or pause"
                             ToolTipService.ToolTip="Play/Pause">
                             <playback:PlaybackActionContent IconSize="18"
                                                            SpinnerSize="20"
@@ -895,15 +935,18 @@
                                                            ActionForeground="{ThemeResource TextFillColorPrimaryBrush}"/>
                         </Button>
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_135"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="32"
                             Height="32"
                             Padding="0"
                             Command="{x:Bind ViewModel.NextCommand}"
+                            AutomationProperties.Name="Next track"
                             ToolTipService.ToolTip="Next">
                             <FontIcon Glyph="&#xF8AD;" FontSize="14" />
                         </Button>
                         <playback:TransportModeButton
+                            x:Uid="Controls_PlayerBar_PlayerBar__TransportModeButton_136"
                             Style="{StaticResource TransportModeButtonStyle}"
                             Width="30"
                             Height="30"
@@ -916,6 +959,7 @@
                                 FontSize="13" />
                         </playback:TransportModeButton>
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_137"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="30"
                             Height="32"
@@ -926,6 +970,7 @@
                             <TextBlock Text="+15" FontSize="10" FontWeight="SemiBold" />
                         </Button>
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_138"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="38"
                             Height="32"
@@ -971,6 +1016,7 @@
                             CompactFlyoutPlacement="TopEdgeAlignedRight" />
 
                         <Button
+                            x:Uid="Controls_PlayerBar_PlayerBar__Button_139"
                             x:Name="NarrowOverflowButton"
                             Style="{StaticResource TransparentButtonStyle}"
                             Width="32"
@@ -980,6 +1026,7 @@
                             <Button.Flyout>
                                 <MenuFlyout Opening="OverflowFlyout_Opening">
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_140"
                                         x:Name="NarrowLikeMenuItem"
                                         Tag="like"
                                         Text="Like track"
@@ -989,6 +1036,7 @@
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <ToggleMenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_141"
                                         Text="Queue"
                                         IsChecked="{x:Bind ViewModel.IsQueuePanelActive, Mode=OneWay}"
                                         Command="{x:Bind ViewModel.ToggleQueuePanelCommand}">
@@ -997,6 +1045,7 @@
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
                                     <ToggleMenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_142"
                                         Text="Lyrics"
                                         IsChecked="{x:Bind ViewModel.IsLyricsPanelActive, Mode=OneWay}"
                                         Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}"
@@ -1006,6 +1055,7 @@
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
                                     <ToggleMenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_143"
                                         Text="Details"
                                         IsChecked="{x:Bind ViewModel.IsDetailsPanelActive, Mode=OneWay}"
                                         Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}"
@@ -1015,6 +1065,7 @@
                                         </ToggleMenuFlyoutItem.Icon>
                                     </ToggleMenuFlyoutItem>
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_144"
                                         Text="Theatre mode"
                                         Command="{x:Bind ViewModel.EnterTheatreCommand}"
                                         Visibility="{x:Bind ViewModel.IsVideoContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -1023,6 +1074,7 @@
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_145"
                                         Text="Fullscreen"
                                         Command="{x:Bind ViewModel.EnterFullscreenCommand}"
                                         Visibility="{x:Bind ViewModel.IsVideoContent, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
@@ -1032,6 +1084,7 @@
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_146"
                                         Text="Watch Video"
                                         Command="{x:Bind ViewModel.SwitchToVideoCommand}"
                                         IsEnabled="{x:Bind ViewModel.IsResolvingVideo, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
@@ -1041,6 +1094,7 @@
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_147"
                                         Text="Listen as audio"
                                         Command="{x:Bind ViewModel.SwitchToAudioCommand}"
                                         IsEnabled="{x:Bind ViewModel.IsSwitchingToAudio, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
@@ -1050,6 +1104,7 @@
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_148"
                                         Text="Show mini player"
                                         Click="ShowMiniVideoPlayer_Click"
                                         Visibility="{x:Bind ViewModel.IsCurrentTrackAudioCapable, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -1058,6 +1113,7 @@
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <ToggleMenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__ToggleMenuFlyoutItem_149"
                                         Text="Auto play videos this session"
                                         IsChecked="{x:Bind ViewModel.PreferVideoPlaybackInSession, Mode=OneWay}"
                                         Command="{x:Bind ViewModel.ToggleVideoPlaybackPreferenceCommand}">
@@ -1067,6 +1123,7 @@
                                     </ToggleMenuFlyoutItem>
                                     <MenuFlyoutSeparator />
                                     <MenuFlyoutItem
+                                        x:Uid="Controls_PlayerBar_PlayerBar__MenuFlyoutItem_150"
                                         Text="Show in sidebar"
                                         Click="ShowInSidebar_Click">
                                         <MenuFlyoutItem.Icon>

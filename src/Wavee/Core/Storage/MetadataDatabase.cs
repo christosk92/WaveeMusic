@@ -466,6 +466,11 @@ public sealed class MetadataDatabase : IMetadataDatabase
                 obf_key_bytes  BLOB NOT NULL,
                 cached_at      INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS cdn_cache (
+                file_id    TEXT PRIMARY KEY NOT NULL,
+                url        TEXT NOT NULL,
+                expiry_ms  INTEGER NOT NULL
+            );
             """;
         cmd.ExecuteNonQuery();
     }
@@ -1147,6 +1152,24 @@ public sealed class MetadataDatabase : IMetadataDatabase
                     """;
                 cmd.ExecuteNonQuery();
             }
+
+            // CDN URL cache — Spotify hands out signed CDN URLs with short
+            // expiries (minutes to hours). Persisting them across launches
+            // lets cold-start playback skip a storage-resolve roundtrip when
+            // the URL is still valid.
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS cdn_cache (
+                        file_id    TEXT PRIMARY KEY NOT NULL,
+                        url        TEXT NOT NULL,
+                        expiry_ms  INTEGER NOT NULL
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
 
             using (var cmd = connection.CreateCommand())
             {
@@ -4413,6 +4436,80 @@ public sealed class MetadataDatabase : IMetadataDatabase
             cmd.Parameters.AddWithValue("@data", headData);
             cmd.Parameters.AddWithValue("@cached", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<(string Url, DateTimeOffset Expiry)?> GetPersistedCdnUrlAsync(string fileIdHex, CancellationToken ct = default)
+    {
+        using var connection = CreateConnection();
+        await connection.OpenAsync(ct);
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT url, expiry_ms FROM cdn_cache WHERE file_id = @file_id";
+        cmd.Parameters.AddWithValue("@file_id", fileIdHex);
+
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct)) return null;
+        if (reader.IsDBNull(0) || reader.IsDBNull(1)) return null;
+
+        var url = reader.GetString(0);
+        var expiryMs = reader.GetInt64(1);
+        var expiry = DateTimeOffset.FromUnixTimeMilliseconds(expiryMs);
+        if (expiry <= DateTimeOffset.UtcNow)
+        {
+            // Stale row — sweep it opportunistically. Don't fail the read.
+            try
+            {
+                _ = DeletePersistedCdnUrlAsync(fileIdHex, CancellationToken.None);
+            }
+            catch { }
+            return null;
+        }
+        return (url, expiry);
+    }
+
+    /// <inheritdoc />
+    public async Task SetPersistedCdnUrlAsync(string fileIdHex, string url, DateTimeOffset expiry, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT OR REPLACE INTO cdn_cache (file_id, url, expiry_ms)
+                VALUES (@file_id, @url, @expiry_ms)
+                """;
+            cmd.Parameters.AddWithValue("@file_id", fileIdHex);
+            cmd.Parameters.AddWithValue("@url", url);
+            cmd.Parameters.AddWithValue("@expiry_ms", expiry.ToUnixTimeMilliseconds());
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    private async Task DeletePersistedCdnUrlAsync(string fileIdHex, CancellationToken ct)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM cdn_cache WHERE file_id = @file_id";
+            cmd.Parameters.AddWithValue("@file_id", fileIdHex);
             await cmd.ExecuteNonQueryAsync(ct);
         }
         finally

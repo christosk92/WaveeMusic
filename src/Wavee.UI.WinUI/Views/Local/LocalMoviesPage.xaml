@@ -56,11 +56,13 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" Spacing="6" VerticalAlignment="Bottom">
-                                <TextBlock Text="LIBRARY"
+                                <TextBlock x:Uid="Views_Local_LocalMoviesPage__TextBlock_100"
+                                           Text="LIBRARY"
                                            FontWeight="SemiBold"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            Style="{ThemeResource CaptionTextBlockStyle}"/>
-                                <TextBlock Text="Movies"
+                                <TextBlock x:Uid="Views_Local_LocalMoviesPage__TextBlock_101"
+                                           Text="Movies"
                                            Style="{ThemeResource TitleLargeTextBlockStyle}"
                                            FontWeight="Bold"
                                            transitions:TransitionHelper.Id="library-title"/>
@@ -78,7 +80,7 @@
                                     transitions:TransitionHelper.Id="library-sync">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon x:Name="SyncButtonGlyph" Glyph="&#xE895;" FontSize="14"/>
-                                    <TextBlock x:Name="SyncButtonText" Text="Sync with TMDB"/>
+                                    <TextBlock x:Uid="Views_Local_LocalMoviesPage__TextBlock_102" x:Name="SyncButtonText" Text="Sync with TMDB"/>
                                 </StackPanel>
                             </Button>
                         </Grid>
@@ -92,8 +94,8 @@
                                 Margin="0,80,0,0"
                                 Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVis}}">
                         <FontIcon Glyph="&#xE714;" FontSize="48" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                        <TextBlock Text="No local movies yet" Style="{ThemeResource SubtitleTextBlockStyle}" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Add a watched folder containing movie files in Settings."
+                        <TextBlock x:Uid="Views_Local_LocalMoviesPage__TextBlock_103" Text="No local movies yet" Style="{ThemeResource SubtitleTextBlockStyle}" HorizontalAlignment="Center"/>
+                        <TextBlock x:Uid="Views_Local_LocalMoviesPage__TextBlock_104" Text="Add a watched folder containing movie files in Settings."
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    HorizontalAlignment="Center"/>
                     </StackPanel>

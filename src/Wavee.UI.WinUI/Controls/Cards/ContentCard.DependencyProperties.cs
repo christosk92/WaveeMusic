@@ -665,12 +665,9 @@ public sealed partial class ContentCard
             hasLink ? $"Open {SubtitleNavigationTitle ?? Subtitle ?? "artist"}" : null);
     }
 
-    private static Brush? GetThemeBrush(string key)
+    private Brush? GetThemeBrush(string key)
     {
-        return Application.Current?.Resources.TryGetValue(key, out var value) == true
-            && value is Brush brush
-            ? brush
-            : null;
+        return _themeColorService?.GetBrush(key);
     }
 
     private static bool IsArtistSubtitleNavigationUri(string? uri)

@@ -38,6 +38,16 @@ public sealed class PlaylistTrackFilterSorter
         if (source is null) return Array.Empty<PlaylistTrackDto>();
 
         var query = searchQuery?.Trim();
+        if (string.IsNullOrEmpty(query) &&
+            !videosOnly &&
+            sortColumn == PlaylistSortColumn.Custom &&
+            !sortDescending)
+        {
+            return source is IReadOnlyList<PlaylistTrackDto> list
+                ? list
+                : source.ToList();
+        }
+
         IEnumerable<PlaylistTrackDto> filtered = source;
 
         if (!string.IsNullOrEmpty(query))

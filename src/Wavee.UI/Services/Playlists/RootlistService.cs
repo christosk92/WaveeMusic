@@ -281,6 +281,170 @@ public sealed class RootlistService : IRootlistService
         _changeBus.Publish(ChangeScope.Library);
     }
 
+    public async Task RenameFolderAsync(
+        string folderStartUri,
+        string newName,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(folderStartUri);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newName);
+
+        var userData = _session.GetUserData()
+            ?? throw new InvalidOperationException("RenameFolderAsync requires an authenticated session");
+        var username = userData.Username;
+
+        var rootlist = await _playlistCache.GetRootlistAsync(ct: ct);
+        var startIdx = RootlistGraph.FindRootlistFolderStartIndex(rootlist, folderStartUri);
+        if (startIdx < 0)
+        {
+            rootlist = await _playlistCache.GetRootlistAsync(forceRefresh: true, ct);
+            startIdx = RootlistGraph.FindRootlistFolderStartIndex(rootlist, folderStartUri);
+        }
+        if (startIdx < 0)
+            throw new InvalidOperationException($"Folder '{folderStartUri}' is not in the current user's rootlist.");
+        if (rootlist.Items[startIdx] is not RootlistFolderStart existing)
+            throw new InvalidOperationException($"Rootlist index {startIdx} is not a folder start.");
+
+        // Folder rename = Rem the old start-group marker + Add a new one at the
+        // same index whose URI encodes the new name. The end-group marker isn't
+        // touched (it carries no name).
+        var groupId = existing.Id;
+        var encodedName = Uri.EscapeDataString(newName).Replace("%20", "+");
+        var newStartUri = $"spotify:start-group:{groupId}:{encodedName}";
+
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var changes = new Wavee.Protocol.Playlist.ListChanges
+        {
+            BaseRevision = ByteString.CopyFrom(rootlist.Revision),
+            Deltas =
+            {
+                new Wavee.Protocol.Playlist.Delta
+                {
+                    Ops =
+                    {
+                        new Wavee.Protocol.Playlist.Op
+                        {
+                            Kind = Wavee.Protocol.Playlist.Op.Types.Kind.Rem,
+                            Rem = new Wavee.Protocol.Playlist.Rem
+                            {
+                                FromIndex = startIdx,
+                                Length = 1,
+                                ItemsAsKey = true,
+                            }
+                        },
+                        new Wavee.Protocol.Playlist.Op
+                        {
+                            Kind = Wavee.Protocol.Playlist.Op.Types.Kind.Add,
+                            Add = new Wavee.Protocol.Playlist.Add
+                            {
+                                FromIndex = startIdx,
+                                Items =
+                                {
+                                    new Wavee.Protocol.Playlist.Item
+                                    {
+                                        Uri = newStartUri,
+                                        Attributes = new Wavee.Protocol.Playlist.ItemAttributes { Timestamp = nowMs },
+                                    }
+                                }
+                            }
+                        },
+                    },
+                    Info = RootlistGraph.BuildRootlistChangeInfo(username, nowMs),
+                }
+            },
+            WantResultingRevisions = true,
+            WantSyncResult = true,
+            Nonces = { RootlistGraph.NextRootlistNonce() },
+        };
+
+        await _session.SpClient.PostRootlistChangesAsync(username, changes, ct);
+        await _playlistCache.InvalidateAsync(PlaylistCacheUris.Rootlist, ct);
+        try { await _playlistCache.GetRootlistAsync(forceRefresh: true, ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogDebug(ex, "Rootlist refresh after RenameFolder failed (folder={Uri})", folderStartUri);
+        }
+        _changeBus.Publish(ChangeScope.Playlists);
+        _changeBus.Publish(ChangeScope.Library);
+    }
+
+    public async Task DeleteFolderAsync(string folderStartUri, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(folderStartUri);
+
+        var userData = _session.GetUserData()
+            ?? throw new InvalidOperationException("DeleteFolderAsync requires an authenticated session");
+        var username = userData.Username;
+
+        var rootlist = await _playlistCache.GetRootlistAsync(ct: ct);
+        var startIdx = RootlistGraph.FindRootlistFolderStartIndex(rootlist, folderStartUri);
+        if (startIdx < 0)
+        {
+            rootlist = await _playlistCache.GetRootlistAsync(forceRefresh: true, ct);
+            startIdx = RootlistGraph.FindRootlistFolderStartIndex(rootlist, folderStartUri);
+        }
+        if (startIdx < 0)
+            throw new InvalidOperationException($"Folder '{folderStartUri}' is not in the current user's rootlist.");
+
+        var endIdx = RootlistGraph.FindMatchingFolderEndIndex(rootlist, startIdx);
+        if (endIdx < 0)
+            throw new InvalidOperationException($"Folder '{folderStartUri}' has no matching end marker.");
+
+        // Spotify's wire-level "delete folder" = Rem both start-group and
+        // end-group markers. The playlists nested inside stay where they
+        // were — they're already real rootlist entries; the markers just
+        // bracketed them. Order matters: remove end first so the start
+        // index doesn't shift mid-delta.
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var changes = new Wavee.Protocol.Playlist.ListChanges
+        {
+            BaseRevision = ByteString.CopyFrom(rootlist.Revision),
+            Deltas =
+            {
+                new Wavee.Protocol.Playlist.Delta
+                {
+                    Ops =
+                    {
+                        new Wavee.Protocol.Playlist.Op
+                        {
+                            Kind = Wavee.Protocol.Playlist.Op.Types.Kind.Rem,
+                            Rem = new Wavee.Protocol.Playlist.Rem
+                            {
+                                FromIndex = endIdx,
+                                Length = 1,
+                                ItemsAsKey = true,
+                            }
+                        },
+                        new Wavee.Protocol.Playlist.Op
+                        {
+                            Kind = Wavee.Protocol.Playlist.Op.Types.Kind.Rem,
+                            Rem = new Wavee.Protocol.Playlist.Rem
+                            {
+                                FromIndex = startIdx,
+                                Length = 1,
+                                ItemsAsKey = true,
+                            }
+                        },
+                    },
+                    Info = RootlistGraph.BuildRootlistChangeInfo(username, nowMs),
+                }
+            },
+            WantResultingRevisions = true,
+            WantSyncResult = true,
+            Nonces = { RootlistGraph.NextRootlistNonce() },
+        };
+
+        await _session.SpClient.PostRootlistChangesAsync(username, changes, ct);
+        await _playlistCache.InvalidateAsync(PlaylistCacheUris.Rootlist, ct);
+        try { await _playlistCache.GetRootlistAsync(forceRefresh: true, ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogDebug(ex, "Rootlist refresh after DeleteFolder failed (folder={Uri})", folderStartUri);
+        }
+        _changeBus.Publish(ChangeScope.Playlists);
+        _changeBus.Publish(ChangeScope.Library);
+    }
+
     private async Task PostRootlistMovAsync(
         string username,
         RootlistSnapshot rootlist,

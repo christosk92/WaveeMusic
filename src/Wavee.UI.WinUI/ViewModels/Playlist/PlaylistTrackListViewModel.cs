@@ -328,7 +328,10 @@ public sealed partial class PlaylistTrackListViewModel
     // ── Filter + sort plumbing ───────────────────────────────────────────────
 
     private void ApplyFilterAndSort()
-        => FilteredTracks.ReplaceWith(BuildFilteredAndSortedTracks().Cast<ITrackItem>());
+    {
+        using var _ = UiOperationProfiler.Instance?.Profile("playlist.tracks.project");
+        FilteredTracks.ReplaceWith(BuildFilteredAndSortedTracks().Cast<ITrackItem>());
+    }
 
     private IReadOnlyList<PlaylistTrackDto> BuildFilteredAndSortedTracks()
         => _filterSorter.FilterAndSort(
@@ -340,13 +343,15 @@ public sealed partial class PlaylistTrackListViewModel
 
     private void ApplyFilterAndSortIntoExistingLoadingRows()
     {
-        var rows = BuildFilteredAndSortedTracks().Cast<ITrackItem>().ToList();
+        using var _ = UiOperationProfiler.Instance?.Profile("playlist.tracks.project");
+        var projected = BuildFilteredAndSortedTracks();
         if (!FilteredTracks.Any(static row => !row.IsLoaded))
         {
-            FilteredTracks.ReplaceWith(rows);
+            FilteredTracks.ReplaceWith(projected.Cast<ITrackItem>());
             return;
         }
 
+        var rows = projected.Cast<ITrackItem>().ToList();
         var merged = new List<ITrackItem>(rows.Count);
         for (var i = 0; i < rows.Count; i++)
         {
@@ -401,12 +406,26 @@ public sealed partial class PlaylistTrackListViewModel
     /// </summary>
     public void ApplyTracks(IReadOnlyList<PlaylistTrackDto> tracks)
     {
-        _allTracks = tracks.Select((t, i) => t with { OriginalIndex = i + 1 }).ToList();
+        using var _ = UiOperationProfiler.Instance?.Profile("playlist.tracks.apply");
+        _allTracks = NormalizeOriginalIndexes(tracks);
         HasAnyAddedAt = _allTracks.Any(t => t.AddedAt.HasValue);
         NotifyVideoFilterProperties();
         UpdateAggregates();
         ApplyFilterAndSortIntoExistingLoadingRows();
         TracksChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static List<PlaylistTrackDto> NormalizeOriginalIndexes(IReadOnlyList<PlaylistTrackDto> tracks)
+    {
+        var normalized = new List<PlaylistTrackDto>(tracks.Count);
+        for (var i = 0; i < tracks.Count; i++)
+        {
+            var desiredIndex = i + 1;
+            var track = tracks[i];
+            normalized.Add(track with { OriginalIndex = desiredIndex });
+        }
+
+        return normalized;
     }
 
     /// <summary>
@@ -990,11 +1009,12 @@ public sealed partial class PlaylistTrackListViewModel
     }
 
     private void BuildQueueAndPlay(int startIndex, bool shuffle)
-    {
-        if (FilteredTracks.Count == 0) return;
+        => BuildQueueAndPlay(FilteredTracks, startIndex, shuffle);
 
+    private void BuildQueueAndPlay(IEnumerable<ITrackItem> source, int startIndex, bool shuffle)
+    {
         var fallbackImage = _playlistImageUrlProvider();
-        var queueItems = FilteredTracks.Select(t => new QueueItem
+        var queueItems = source.Select(t => new QueueItem
         {
             TrackId = t.Id,
             Title = t.Title,
@@ -1014,6 +1034,8 @@ public sealed partial class PlaylistTrackListViewModel
             IsExplicit = t.IsExplicit,
             HasVideo = t.HasVideo,
         }).ToList();
+
+        if (queueItems.Count == 0) return;
 
         if (shuffle)
         {
@@ -1036,22 +1058,35 @@ public sealed partial class PlaylistTrackListViewModel
         _playbackStateService.LoadQueue(queueItems, context, startIndex);
     }
 
+    private IReadOnlyList<string> CollectSelectedTrackUris()
+        => SelectedItems
+            .OfType<ITrackItem>()
+            .Select(t => t.Uri)
+            .Where(u => !string.IsNullOrEmpty(u))
+            .ToArray();
+
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void PlaySelected()
     {
-        if (!HasSelection) return;
+        var selected = SelectedItems.OfType<ITrackItem>().ToList();
+        if (selected.Count == 0) return;
+        BuildQueueAndPlay(selected, startIndex: 0, shuffle: false);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void PlayAfter()
     {
-        if (!HasSelection) return;
+        var uris = CollectSelectedTrackUris();
+        if (uris.Count == 0) return;
+        _playbackStateService.PlayNext(uris);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void AddSelectedToQueue()
     {
-        if (!HasSelection) return;
+        var uris = CollectSelectedTrackUris();
+        if (uris.Count == 0) return;
+        _playbackStateService.AddToQueue(uris);
     }
 
     [RelayCommand(CanExecute = nameof(CanRemove))]
@@ -1093,9 +1128,20 @@ public sealed partial class PlaylistTrackListViewModel
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void AddToPlaylist(PlaylistSummaryDto? playlist)
+    private async Task AddToPlaylistAsync(PlaylistSummaryDto? playlist)
     {
-        if (playlist == null || !HasSelection) return;
+        if (playlist?.Id is not { Length: > 0 } playlistId) return;
+        var uris = CollectSelectedTrackUris();
+        if (uris.Count == 0) return;
+
+        try
+        {
+            await _playlistMutationService.AddTracksToPlaylistAsync(playlistId, uris).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "AddToPlaylistAsync (playlist selection) failed → {Playlist}", playlistId);
+        }
     }
 
     /// <summary>

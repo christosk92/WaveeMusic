@@ -53,4 +53,12 @@ public interface IPlaylistDragDropMediator
 
     /// <summary>Returns every episode URI on the supplied podcast show.</summary>
     Task<IReadOnlyList<string>> GetShowEpisodeUrisAsync(string showUri, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns a human display name for the given Spotify entity URI (playlist,
+    /// album, artist, show). Used to render "Added N to {name}" toasts in
+    /// drop handlers. Returns null when the entity isn't known to the local
+    /// cache yet — callers should fall back to a generic message.
+    /// </summary>
+    Task<string?> GetDisplayNameAsync(string uri, CancellationToken ct = default);
 }

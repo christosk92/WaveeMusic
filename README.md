@@ -84,7 +84,18 @@ A **Spotify Premium** account is required, and the app is intended for personal 
   </tr>
 </table>
 
-## Quick start
+## Download the beta
+
+The public beta ships as a signed MSIX from
+[GitHub Releases](https://github.com/christosk92/WaveeMusic/releases) —
+grab `WaveeMusic-{version}-x64.msix` or `-arm64.msix` for your machine.
+See [BETA.md](BETA.md) for system requirements, installation steps,
+known limitations, and how to file a useful bug report.
+
+> A Spotify **Premium** account is required. Wavee shows a non-dismissible
+> banner if you sign in with a Free account.
+
+## Quick start (for developers)
 
 ### Prerequisites
 - **Windows 11 version 24H2 (build 26100)** or later — required since v0.1.0-beta to enable on-device AI features.

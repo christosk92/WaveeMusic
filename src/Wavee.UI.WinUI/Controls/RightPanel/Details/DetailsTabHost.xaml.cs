@@ -31,6 +31,7 @@ using Wavee.UI.Contracts;
 using Wavee.UI.Helpers;
 using Wavee.UI.WinUI.Controls.ContextMenu;
 using Wavee.UI.WinUI.Controls.ContextMenu.Builders;
+using Wavee.UI.WinUI.Data.Contexts;
 using Wavee.UI.WinUI.Data.Contracts;
 using Wavee.UI.WinUI.Data.DTOs;
 using Wavee.UI.WinUI.Data.Enums;
@@ -108,6 +109,8 @@ public sealed partial class DetailsTabHost : UserControl
     private readonly AiCapabilities? _aiCapabilities;
     private readonly ISettingsService? _settingsService;
     private readonly INotificationService? _notificationService;
+    private readonly IWindowContext? _windowContext;
+    private bool _windowContextSubscribed;
 
     private bool _initialized;
     private bool _detailsSubscribed;
@@ -178,6 +181,7 @@ public sealed partial class DetailsTabHost : UserControl
         _aiCapabilities = Ioc.Default.GetService<AiCapabilities>();
         _settingsService = Ioc.Default.GetService<ISettingsService>();
         _notificationService = Ioc.Default.GetService<INotificationService>();
+        _windowContext = Ioc.Default.GetService<IWindowContext>();
     }
 
     // ── Dependency Properties ──
@@ -305,6 +309,12 @@ public sealed partial class DetailsTabHost : UserControl
             _detailsSubscribed = true;
         }
 
+        if (_windowContext != null && !_windowContextSubscribed)
+        {
+            _windowContext.PropertyChanged += OnWindowContextPropertyChanged;
+            _windowContextSubscribed = true;
+        }
+
         EnsurePodcastChapterTimelineTimer();
         EnsureDetailsSnippetTimer();
         RegisterDetailsWheelHandler();
@@ -337,6 +347,12 @@ public sealed partial class DetailsTabHost : UserControl
             _detailsSubscribed = false;
         }
 
+        if (_windowContext != null && _windowContextSubscribed)
+        {
+            _windowContext.PropertyChanged -= OnWindowContextPropertyChanged;
+            _windowContextSubscribed = false;
+        }
+
         TeardownCanvasBackground();
         TeardownBlurredAlbumArt();
         TeardownDetailsLyricsComposition();
@@ -351,6 +367,23 @@ public sealed partial class DetailsTabHost : UserControl
         _canvasDevice?.Dispose();
         _canvasDevice = null;
         _initialized = false;
+    }
+
+    private bool IsUiPowerSaving => _windowContext?.IsUiPowerSaving == true;
+
+    private void OnWindowContextPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(IWindowContext.IsUiPowerSaving))
+            return;
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            UpdateDetailsSnippetTimerState();
+            UpdatePodcastChapterTimelineTimerState();
+            UpdateDetailsLyricsUpdateMode();
+            UpdateCanvasLyricsVisibility();
+            UpdateBackgroundMediaVisibility();
+        });
     }
 
     // ── DP-driven state transitions ──
@@ -880,6 +913,7 @@ public sealed partial class DetailsTabHost : UserControl
     {
         return IsDetailsTabActive
             && IsPanelVisible
+            && !IsUiPowerSaving
             && _detailsVm?.IsPodcastEpisode == true
             && _detailsVm.HasPodcastChapters
             && _detailsVm.PlaybackState.IsPlaying;
@@ -1533,6 +1567,7 @@ public sealed partial class DetailsTabHost : UserControl
     {
         var show = IsDetailsTabActive
                    && _activeBackgroundMode == DetailsBackgroundMode.Canvas
+                   && !IsUiPowerSaving
                    && _lyricsVm?.HasLyrics == true;
         _canvasLyricsActive = show;
         CanvasLyricsOverlay.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
@@ -1647,6 +1682,7 @@ public sealed partial class DetailsTabHost : UserControl
     {
         return _canvasLyricsActive
             && IsDetailsTabActive
+            && !IsUiPowerSaving
             && _lyricsVm?.PlaybackState.IsPlaying == true;
     }
 
@@ -1654,6 +1690,7 @@ public sealed partial class DetailsTabHost : UserControl
     {
         return IsDetailsTabActive
             && IsPanelVisible
+            && !IsUiPowerSaving
             && _lyricsVm?.HasLyrics == true
             && _lyricsVm.CurrentLyrics != null
             && !ShouldRunDetailsLyricsRenderLoop();
@@ -2338,6 +2375,7 @@ public sealed partial class DetailsTabHost : UserControl
         var showMedia = IsDetailsTabActive
                         && _activeBackgroundMode == DetailsBackgroundMode.Canvas
                         && hasMedia
+                        && !IsUiPowerSaving
                         && !IsEmbeddedChromeTransparent;
 
         DetailsCanvasImage.Visibility = showMedia ? Visibility.Visible : Visibility.Collapsed;

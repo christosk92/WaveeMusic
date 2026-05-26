@@ -135,6 +135,7 @@
                                 Foreground="White" />
                             <TextBlock
                                 x:Name="VideoStatusText"
+                                x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__TextBlock_4"
                                 Text="Buffering"
                                 FontSize="13"
                                 FontWeight="SemiBold"
@@ -147,6 +148,7 @@
                         Background="Black"
                         Visibility="Collapsed">
                         <Button
+                            x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_1"
                             Style="{StaticResource VideoOverlayButtonStyle}"
                             Width="32"
                             Height="32"
@@ -168,6 +170,7 @@
                                 Opacity="0.7"
                                 Foreground="White" />
                             <TextBlock
+                                x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__TextBlock_1"
                                 Text="Playing in another window"
                                 FontSize="18"
                                 FontWeight="SemiBold"
@@ -175,6 +178,7 @@
                                 TextAlignment="Center"
                                 HorizontalAlignment="Center" />
                             <TextBlock
+                                x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__TextBlock_2"
                                 Text="Only one video surface can render at a time."
                                 FontSize="13"
                                 Opacity="0.74"
@@ -182,13 +186,16 @@
                                 TextAlignment="Center"
                                 TextWrapping="Wrap" />
                             <Button
+                                x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_2"
                                 Padding="16,8"
                                 CornerRadius="18"
                                 Click="VideoTakeoverButton_Click"
                                 ToolTipService.ToolTip="Move video playback to this player">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon Glyph="&#xE768;" FontSize="13" />
-                                    <TextBlock Text="Play here instead" />
+                                    <TextBlock
+                                        x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__TextBlock_3"
+                                        Text="Play here instead" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -225,6 +232,7 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
                                         <HyperlinkButton
+                                            x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__HyperlinkButton_1"
                                             Padding="0"
                                             MinWidth="0"
                                             MinHeight="0"
@@ -260,6 +268,7 @@
                                         VerticalAlignment="Center">
                                         <controls:HeartButton x:Name="OverlayHeartButton" Width="36" Height="36" />
                                         <Button
+                                            x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_3"
                                             Style="{StaticResource VideoOverlayButtonStyle}"
                                             Width="36"
                                             Height="36"
@@ -271,6 +280,7 @@
                                                 Foreground="White" />
                                         </Button>
                                         <Button
+                                            x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_4"
                                             Style="{StaticResource VideoOverlayButtonStyle}"
                                             Width="36"
                                             Height="36"
@@ -301,6 +311,7 @@
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center">
                                     <Button
+                                        x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_5"
                                         Style="{StaticResource VideoOverlayButtonStyle}"
                                         Width="44"
                                         Height="44"
@@ -311,6 +322,7 @@
                                         <TextBlock Text="-15" FontSize="12" FontWeight="SemiBold" Foreground="White" />
                                     </Button>
                                     <Button
+                                        x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_6"
                                         Style="{StaticResource VideoOverlayButtonStyle}"
                                         Width="46"
                                         Height="46"
@@ -320,6 +332,7 @@
                                         <FontIcon Glyph="&#xF8AC;" FontSize="17" Foreground="White" />
                                     </Button>
                                     <Button
+                                        x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_7"
                                         Style="{StaticResource VideoOverlayButtonStyle}"
                                         Width="62"
                                         Height="62"
@@ -334,6 +347,7 @@
                                             ActionForeground="White" />
                                     </Button>
                                     <Button
+                                        x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_8"
                                         Style="{StaticResource VideoOverlayButtonStyle}"
                                         Width="46"
                                         Height="46"
@@ -343,6 +357,7 @@
                                         <FontIcon Glyph="&#xF8AD;" FontSize="17" Foreground="White" />
                                     </Button>
                                     <Button
+                                        x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_9"
                                         Style="{StaticResource VideoOverlayButtonStyle}"
                                         Width="44"
                                         Height="44"
@@ -353,6 +368,7 @@
                                         <TextBlock Text="+15" FontSize="12" FontWeight="SemiBold" Foreground="White" />
                                     </Button>
                                     <Button
+                                        x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_10"
                                         Style="{StaticResource VideoOverlayButtonStyle}"
                                         Width="50"
                                         Height="44"
@@ -420,6 +436,7 @@
                                             HorizontalAlignment="Left"
                                             VerticalAlignment="Center">
                                             <ToggleButton
+                                                x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__ToggleButton_1"
                                                 Style="{StaticResource VideoOverlayToggleButtonStyle}"
                                                 Width="36"
                                                 Height="36"
@@ -429,6 +446,7 @@
                                                 <FontIcon Glyph="&#xE8B1;" FontSize="15" Foreground="White" />
                                             </ToggleButton>
                                             <ToggleButton
+                                                x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__ToggleButton_2"
                                                 Style="{StaticResource VideoOverlayToggleButtonStyle}"
                                                 Width="36"
                                                 Height="36"
@@ -448,6 +466,7 @@
                                             HorizontalAlignment="Right"
                                             VerticalAlignment="Center">
                                             <Button
+                                                x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_11"
                                                 Style="{StaticResource VideoOverlayButtonStyle}"
                                                 Width="36"
                                                 Height="36"
@@ -456,6 +475,7 @@
                                                 <FontIcon Glyph="&#xE713;" FontSize="15" Foreground="White" />
                                             </Button>
                                             <Button
+                                                x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_12"
                                                 Style="{StaticResource VideoOverlayButtonStyle}"
                                                 Width="36"
                                                 Height="36"
@@ -464,6 +484,7 @@
                                                 <FontIcon Glyph="&#xE142;" FontSize="15" Foreground="White" />
                                             </Button>
                                             <Button
+                                                x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_13"
                                                 Style="{StaticResource VideoOverlayButtonStyle}"
                                                 Width="36"
                                                 Height="36"
@@ -472,6 +493,7 @@
                                                 <FontIcon Glyph="&#xE9A6;" FontSize="15" Foreground="White" />
                                             </Button>
                                             <ToggleButton
+                                                x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__ToggleButton_3"
                                                 x:Name="VideoOverlayTheaterModeButton"
                                                 Style="{StaticResource VideoOverlayToggleButtonStyle}"
                                                 Width="36"
@@ -508,6 +530,7 @@
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
                 <HyperlinkButton
+                    x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__HyperlinkButton_2"
                     Padding="0"
                     MinWidth="0"
                     MinHeight="0"
@@ -544,6 +567,7 @@
                 <controls:HeartButton x:Name="HeartButton" Width="32" Height="32" />
                 <playback:WatchVideoButton ButtonSize="32" IconSize="16" />
                 <Button
+                    x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_14"
                     Style="{StaticResource TransparentButtonStyle}"
                     Width="32"
                     Height="32"
@@ -611,6 +635,7 @@
                     HorizontalAlignment="Center"
                     Spacing="12">
             <ToggleButton x:Name="ShuffleButton"
+                          x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__ToggleButton_4"
                           Style="{StaticResource SubtleToggleButtonStyle}"
                           Width="40" Height="40" Padding="0"
                           IsChecked="{x:Bind ViewModel.IsShuffle, Mode=OneWay}"
@@ -619,6 +644,7 @@
                 <FontIcon x:Name="ShuffleIcon" Glyph="&#xE8B1;" FontSize="16" />
             </ToggleButton>
             <Button x:Name="SkipBackwardButton"
+                    x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_15"
                     Style="{StaticResource TransparentButtonStyle}"
                     Width="40" Height="40" Padding="0"
                     Command="{x:Bind ViewModel.SkipBackwardCommand}"
@@ -627,6 +653,7 @@
                 <TextBlock x:Name="SkipBackwardText" Text="-15" FontSize="12" FontWeight="SemiBold" />
             </Button>
             <Button x:Name="PreviousButton"
+                    x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_16"
                     Style="{StaticResource TransparentButtonStyle}"
                     Width="44" Height="44" Padding="0"
                     Command="{x:Bind ViewModel.PreviousCommand}"
@@ -634,6 +661,7 @@
                 <FontIcon x:Name="PreviousIcon" Glyph="&#xF8AC;" FontSize="20" />
             </Button>
             <Button x:Name="PlayPauseButton"
+                    x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_17"
                     Style="{StaticResource TransparentButtonStyle}"
                     Width="60" Height="60" Padding="0"
                     Command="{x:Bind ViewModel.PlayPauseCommand}"
@@ -647,6 +675,7 @@
                     ActionForeground="{ThemeResource TextFillColorPrimaryBrush}" />
             </Button>
             <Button x:Name="NextButton"
+                    x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_18"
                     Style="{StaticResource TransparentButtonStyle}"
                     Width="44" Height="44" Padding="0"
                     Command="{x:Bind ViewModel.NextCommand}"
@@ -654,6 +683,7 @@
                 <FontIcon x:Name="NextIcon" Glyph="&#xF8AD;" FontSize="20" />
             </Button>
             <Button x:Name="SkipForwardButton"
+                    x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_19"
                     Style="{StaticResource TransparentButtonStyle}"
                     Width="40" Height="40" Padding="0"
                     Command="{x:Bind ViewModel.SkipForwardCommand}"
@@ -662,6 +692,7 @@
                 <TextBlock x:Name="SkipForwardText" Text="+15" FontSize="12" FontWeight="SemiBold" />
             </Button>
             <Button x:Name="PlaybackSpeedButton"
+                    x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__Button_20"
                     Style="{StaticResource TransparentButtonStyle}"
                     Width="48" Height="40" Padding="0"
                     Visibility="{x:Bind ViewModel.IsCurrentItemEpisode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
@@ -682,6 +713,7 @@
                 <TextBlock x:Name="PlaybackSpeedText" Text="{x:Bind ViewModel.PlaybackSpeedText, Mode=OneWay}" FontSize="12" FontWeight="SemiBold" />
             </Button>
             <ToggleButton x:Name="RepeatButton"
+                          x:Uid="Controls_SidebarPlayer_ExpandedNowPlayingLayout__ToggleButton_5"
                           Style="{StaticResource SubtleToggleButtonStyle}"
                           Width="40" Height="40" Padding="0"
                           IsChecked="{x:Bind ViewModel.RepeatMode, Mode=OneWay, Converter={StaticResource RepeatCheckedConverter}}"

@@ -106,7 +106,7 @@
                 Canvas.ZIndex="2"
                 Click="ChevronButton_Click">
                 <ToolTipService.ToolTip>
-                    <TextBlock x:Name="ChevronTooltip" Text="Collapse" />
+                    <TextBlock x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__TextBlock_1" x:Name="ChevronTooltip" Text="Collapse" />
                 </ToolTipService.ToolTip>
                 <FontIcon
                     x:Name="ChevronGlyph"
@@ -174,18 +174,22 @@
                             <Grid.ContextFlyout>
                                 <MenuFlyout>
                                     <ToggleMenuFlyoutItem
+                                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_1"
                                         x:Name="VideoStretchNoneItem"
                                         Text="None"
                                         Click="VideoStretchNone_Click" />
                                     <ToggleMenuFlyoutItem
+                                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_2"
                                         x:Name="VideoStretchUniformItem"
                                         Text="Uniform"
                                         Click="VideoStretchUniform_Click" />
                                     <ToggleMenuFlyoutItem
+                                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_3"
                                         x:Name="VideoStretchUniformToFillItem"
                                         Text="Uniform to fill"
                                         Click="VideoStretchUniformToFill_Click" />
                                     <ToggleMenuFlyoutItem
+                                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_4"
                                         x:Name="VideoStretchFillItem"
                                         Text="Fill"
                                         Click="VideoStretchFill_Click" />
@@ -207,6 +211,7 @@
                                         IsActive="True"
                                         Foreground="White" />
                                     <TextBlock
+                                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__TextBlock_2"
                                         x:Name="ExpandedVideoStatusText"
                                         Text="Buffering"
                                         FontSize="11"
@@ -276,6 +281,7 @@
                         Width="28"
                         Height="28" />
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_1"
                         x:Name="ExpandedOverflowButton"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="28"
@@ -285,6 +291,7 @@
                         <Button.Flyout>
                             <MenuFlyout>
                                 <ToggleMenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_5"
                                     Text="Queue"
                                     IsChecked="{x:Bind ViewModel.IsQueuePanelActive, Mode=OneWay}"
                                     Command="{x:Bind ViewModel.ToggleQueuePanelCommand}">
@@ -293,6 +300,7 @@
                                     </ToggleMenuFlyoutItem.Icon>
                                 </ToggleMenuFlyoutItem>
                                 <ToggleMenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_6"
                                     Text="Lyrics"
                                     IsChecked="{x:Bind ViewModel.IsLyricsPanelActive, Mode=OneWay}"
                                     Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}">
@@ -301,6 +309,7 @@
                                     </ToggleMenuFlyoutItem.Icon>
                                 </ToggleMenuFlyoutItem>
                                 <ToggleMenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_7"
                                     Text="Details"
                                     IsChecked="{x:Bind ViewModel.IsDetailsPanelActive, Mode=OneWay}"
                                     Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}">
@@ -309,6 +318,7 @@
                                     </ToggleMenuFlyoutItem.Icon>
                                 </ToggleMenuFlyoutItem>
                                 <ToggleMenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_8"
                                     Text="Mute"
                                     IsChecked="{x:Bind ViewModel.IsMuted, Mode=OneWay}"
                                     Command="{x:Bind ViewModel.ToggleMuteCommand}">
@@ -320,6 +330,7 @@
                                 </ToggleMenuFlyoutItem>
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__MenuFlyoutItem_1"
                                     Text="Skip back 10 seconds"
                                     Command="{x:Bind ViewModel.SkipBackwardCommand}">
                                     <MenuFlyoutItem.Icon>
@@ -327,6 +338,7 @@
                                     </MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__MenuFlyoutItem_2"
                                     Text="Skip forward 30 seconds"
                                     Command="{x:Bind ViewModel.SkipForwardCommand}">
                                     <MenuFlyoutItem.Icon>
@@ -335,6 +347,7 @@
                                 </MenuFlyoutItem>
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__MenuFlyoutItem_3"
                                     Text="Move back to bottom bar"
                                     Click="MoveToBottomBar_Click">
                                     <MenuFlyoutItem.Icon>
@@ -401,6 +414,7 @@
                     HorizontalAlignment="Center"
                     Spacing="2">
                     <ToggleButton
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleButton_1"
                         Style="{StaticResource SubtleToggleButtonStyle}"
                         Width="28"
                         Height="28"
@@ -411,6 +425,7 @@
                         <FontIcon Glyph="&#xE8B1;" FontSize="12" />
                     </ToggleButton>
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_2"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="26"
                         Height="26"
@@ -421,6 +436,7 @@
                         <TextBlock Text="-15" FontSize="9" FontWeight="SemiBold" />
                     </Button>
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_3"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="28"
                         Height="28"
@@ -431,6 +447,7 @@
                         <TextBlock Text="-15" FontSize="10" FontWeight="SemiBold" />
                     </Button>
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_4"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="30"
                         Height="30"
@@ -440,6 +457,7 @@
                         <FontIcon Glyph="&#xF8AC;" FontSize="14" />
                     </Button>
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_5"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="40"
                         Height="40"
@@ -454,6 +472,7 @@
                             ActionForeground="{ThemeResource TextFillColorPrimaryBrush}" />
                     </Button>
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_6"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="30"
                         Height="30"
@@ -463,6 +482,7 @@
                         <FontIcon Glyph="&#xF8AD;" FontSize="14" />
                     </Button>
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_7"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="28"
                         Height="28"
@@ -473,6 +493,7 @@
                         <TextBlock Text="+15" FontSize="10" FontWeight="SemiBold" />
                     </Button>
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_8"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="38"
                         Height="28"
@@ -495,6 +516,7 @@
                         <TextBlock Text="{x:Bind ViewModel.PlaybackSpeedText, Mode=OneWay}" FontSize="10" FontWeight="SemiBold" />
                     </Button>
                     <ToggleButton
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleButton_2"
                         Style="{StaticResource SubtleToggleButtonStyle}"
                         Width="28"
                         Height="28"
@@ -508,6 +530,7 @@
                     </ToggleButton>
                     <playback:WatchVideoButton ButtonSize="28" IconSize="14" />
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_9"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="28"
                         Height="28"
@@ -649,6 +672,7 @@
                     HorizontalAlignment="Center"
                     Spacing="4">
                     <ToggleButton
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleButton_3"
                         Style="{StaticResource SubtleToggleButtonStyle}"
                         Width="26"
                         Height="26"
@@ -659,6 +683,7 @@
                         <FontIcon Glyph="&#xE8B1;" FontSize="12" />
                     </ToggleButton>
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_10"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="28"
                         Height="28"
@@ -668,6 +693,7 @@
                         <FontIcon Glyph="&#xF8AC;" FontSize="13" />
                     </Button>
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_11"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="32"
                         Height="32"
@@ -682,6 +708,7 @@
                             ActionForeground="{ThemeResource TextFillColorPrimaryBrush}" />
                     </Button>
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_12"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="28"
                         Height="28"
@@ -691,6 +718,7 @@
                         <FontIcon Glyph="&#xF8AD;" FontSize="13" />
                     </Button>
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_13"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="26"
                         Height="26"
@@ -701,6 +729,7 @@
                         <TextBlock Text="+15" FontSize="9" FontWeight="SemiBold" />
                     </Button>
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_14"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="34"
                         Height="26"
@@ -723,6 +752,7 @@
                         <TextBlock Text="{x:Bind ViewModel.PlaybackSpeedText, Mode=OneWay}" FontSize="9" FontWeight="SemiBold" />
                     </Button>
                     <ToggleButton
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleButton_4"
                         Style="{StaticResource SubtleToggleButtonStyle}"
                         Width="26"
                         Height="26"
@@ -736,6 +766,7 @@
                     </ToggleButton>
                     <playback:WatchVideoButton ButtonSize="26" IconSize="13" />
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_15"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="26"
                         Height="26"
@@ -757,6 +788,7 @@
                         </Grid>
                     </Button>
                     <Button
+                        x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_16"
                         x:Name="CollapsedOverflowButton"
                         Style="{StaticResource TransparentButtonStyle}"
                         Width="26"
@@ -766,6 +798,7 @@
                         <Button.Flyout>
                             <MenuFlyout>
                                 <ToggleMenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_9"
                                     Text="Queue"
                                     IsChecked="{x:Bind ViewModel.IsQueuePanelActive, Mode=OneWay}"
                                     Command="{x:Bind ViewModel.ToggleQueuePanelCommand}">
@@ -774,6 +807,7 @@
                                     </ToggleMenuFlyoutItem.Icon>
                                 </ToggleMenuFlyoutItem>
                                 <ToggleMenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_10"
                                     Text="Lyrics"
                                     IsChecked="{x:Bind ViewModel.IsLyricsPanelActive, Mode=OneWay}"
                                     Command="{x:Bind ViewModel.ToggleLyricsPanelCommand}">
@@ -782,6 +816,7 @@
                                     </ToggleMenuFlyoutItem.Icon>
                                 </ToggleMenuFlyoutItem>
                                 <ToggleMenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_11"
                                     Text="Details"
                                     IsChecked="{x:Bind ViewModel.IsDetailsPanelActive, Mode=OneWay}"
                                     Command="{x:Bind ViewModel.ToggleDetailsPanelCommand}">
@@ -790,6 +825,7 @@
                                     </ToggleMenuFlyoutItem.Icon>
                                 </ToggleMenuFlyoutItem>
                                 <ToggleMenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__ToggleMenuFlyoutItem_12"
                                     Text="Mute"
                                     IsChecked="{x:Bind ViewModel.IsMuted, Mode=OneWay}"
                                     Command="{x:Bind ViewModel.ToggleMuteCommand}">
@@ -800,6 +836,7 @@
                                     </ToggleMenuFlyoutItem.Icon>
                                 </ToggleMenuFlyoutItem>
                                 <MenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__MenuFlyoutItem_4"
                                     Text="Skip back 10 seconds"
                                     Command="{x:Bind ViewModel.SkipBackwardCommand}">
                                     <MenuFlyoutItem.Icon>
@@ -807,6 +844,7 @@
                                     </MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__MenuFlyoutItem_5"
                                     Text="Skip forward 30 seconds"
                                     Command="{x:Bind ViewModel.SkipForwardCommand}">
                                     <MenuFlyoutItem.Icon>
@@ -815,6 +853,7 @@
                                 </MenuFlyoutItem>
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem
+                                    x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__MenuFlyoutItem_6"
                                     Text="Move back to bottom bar"
                                     Click="MoveToBottomBar_Click">
                                     <MenuFlyoutItem.Icon>
@@ -855,6 +894,7 @@
                 Foreground="{ThemeResource InfoBarInformationalSeverityIconBackground}" />
 
             <TextBlock
+                x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__TextBlock_3"
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 FontSize="11"
@@ -862,6 +902,7 @@
                 Text="End of queue — click Play to restart." />
 
             <Button
+                x:Uid="Controls_SidebarPlayer_SidebarPlayerWidget__Button_17"
                 Grid.Column="2"
                 Background="Transparent"
                 BorderThickness="0"

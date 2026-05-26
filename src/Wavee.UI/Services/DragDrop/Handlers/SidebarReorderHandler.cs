@@ -39,7 +39,13 @@ public static class SidebarReorderHandler
                 var uris = await mediator.GetPlaylistTrackUrisAsync(p.SourceUri, ct).ConfigureAwait(false);
                 if (uris.Count == 0) return DropResult.Failed("Source playlist is empty");
                 await mediator.AddTracksAsync(ctx.TargetId, uris, ct).ConfigureAwait(false);
-                return DropResult.Ok(uris.Count, $"Adding {uris.Count} track{(uris.Count == 1 ? string.Empty : "s")}…");
+                var targetName = await mediator.GetDisplayNameAsync(ctx.TargetId, ct).ConfigureAwait(false);
+                var n = uris.Count;
+                var nounTrack = n == 1 ? "track" : "tracks";
+                var msg = string.IsNullOrEmpty(targetName)
+                    ? $"Added {n} {nounTrack} to playlist"
+                    : $"Added {n} {nounTrack} to {targetName}";
+                return DropResult.Ok(n, msg);
             }
             catch (Exception ex)
             {
@@ -51,7 +57,7 @@ public static class SidebarReorderHandler
         try
         {
             await mediator.MovePlaylistInRootlistAsync(p.SourceUri, ctx.TargetId, ctx.Position, ct).ConfigureAwait(false);
-            return DropResult.Ok(1);
+            return DropResult.Ok(1, "Sidebar reordered");
         }
         catch (Exception ex)
         {
@@ -73,10 +79,12 @@ public static class SidebarReorderHandler
         {
             // Inside-of-folder drop = nest. Before/After = reorder relative to the folder.
             if (ctx.Position == DropPosition.Inside && p.ItemKind == SidebarItemKind.Playlist)
+            {
                 await mediator.MovePlaylistIntoFolderAsync(p.SourceUri, ctx.TargetId, ct).ConfigureAwait(false);
-            else
-                await mediator.MovePlaylistInRootlistAsync(p.SourceUri, ctx.TargetId, ctx.Position, ct).ConfigureAwait(false);
-            return DropResult.Ok(1);
+                return DropResult.Ok(1, "Moved into folder");
+            }
+            await mediator.MovePlaylistInRootlistAsync(p.SourceUri, ctx.TargetId, ctx.Position, ct).ConfigureAwait(false);
+            return DropResult.Ok(1, "Sidebar reordered");
         }
         catch (Exception ex)
         {
@@ -99,10 +107,12 @@ public static class SidebarReorderHandler
         try
         {
             if (ctx.Position == DropPosition.Inside)
+            {
                 await mediator.MovePlaylistIntoFolderAsync(p.PlaylistUri, ctx.TargetId, ct).ConfigureAwait(false);
-            else
-                await mediator.MovePlaylistInRootlistAsync(p.PlaylistUri, ctx.TargetId, ctx.Position, ct).ConfigureAwait(false);
-            return DropResult.Ok(1);
+                return DropResult.Ok(1, "Moved into folder");
+            }
+            await mediator.MovePlaylistInRootlistAsync(p.PlaylistUri, ctx.TargetId, ctx.Position, ct).ConfigureAwait(false);
+            return DropResult.Ok(1, "Sidebar reordered");
         }
         catch (Exception ex)
         {
@@ -137,7 +147,7 @@ public static class SidebarReorderHandler
         try
         {
             await mediator.MovePlaylistInRootlistAsync(p.PlaylistUri, ctx.TargetId, ctx.Position, ct).ConfigureAwait(false);
-            return DropResult.Ok(1);
+            return DropResult.Ok(1, "Sidebar reordered");
         }
         catch (Exception ex)
         {
@@ -160,7 +170,7 @@ public static class SidebarReorderHandler
         try
         {
             await mediator.MovePlaylistOutOfFolderAsync(p.SourceUri, destIdx, ct).ConfigureAwait(false);
-            return DropResult.Ok(1);
+            return DropResult.Ok(1, "Moved out of folder");
         }
         catch (Exception ex)
         {
